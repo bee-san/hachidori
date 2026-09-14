@@ -213,6 +213,7 @@ for (const [index, type] of mutationTypes.entries()) {
     requestId: `lookup-during-${type}`,
     ok: false,
     error: "the dictionary engine is busy mutating",
+    errorCode: "engine-mutating",
   });
   if (index === 0) {
     for (const [boundedType, limit] of responseLimits) {
@@ -226,6 +227,7 @@ for (const [index, type] of mutationTypes.entries()) {
     requestId: `remove-during-${type}`,
     ok: false,
     error: "the dictionary engine is busy mutating",
+    errorCode: "engine-mutating",
   });
 
   engine.emit("message", {

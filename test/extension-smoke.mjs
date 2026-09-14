@@ -1869,6 +1869,7 @@ async function sharingClientStage() {
     && !restartAlarms.values.has("hachidori-managed-dictionary-updates");
   check("losing the host fails reads, reports sent mutations as uncertain, and restores the linked role before local work",
     failed.ok === false && failed.error === "The linked Hachidori is not reachable."
+      && failed.errorCode === "sharing-disconnected"
       && editUnknown.ok === false && editUnknown.outcomeUnknown === true
       && editUnknown.error === "The linked Hachidori may have completed this change. Check its state before trying again."
       && uncertain.ok === true && uncertain.state === "uncertain" && uncertain.error.includes("Check Anki before trying again")
@@ -7084,6 +7085,9 @@ async function main() {
     noteContent?.renderFailure === true,
     JSON.stringify(noteContent?.renderFailure),
   );
+  for (const [name, passed] of Object.entries(noteContent?.lookupFailures ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   check(
     "content readers ignore older and repeated option revisions before their next lookup",
     noteContent?.newestOnlyOptions === true,
@@ -11828,6 +11832,13 @@ async function contentNoteStage() {
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
         },
+        renderLookupFailure(value, options = {}) {
+          recordRender({
+            kind: "failure",
+            value,
+            context: { preserveViewControls: options.preserveView === true },
+          });
+        },
         renderNotice(value, candidate) {
           recordRender({ kind: "notice", value, candidate, context: {} });
         },
@@ -11977,6 +11988,9 @@ async function contentNoteStage() {
     show,
     hide,
     runLookup,
+    executeViewRequest(request, depth = 0, replayOptions = null) {
+      return executeViewRequest(request, levels[depth], replayOptions);
+    },
     scanPointer,
     scheduleHide,
     showKanji,
@@ -15289,6 +15303,114 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function lookupFailureCase() {
+    const outcomes = {
+      "lookup failures explain updates, disconnections and engine startup failures with a retry": false,
+      "a failed same-view refresh retains its definition and open Note until retry succeeds": false,
+      "ordinary misses and unrelated errors remain quiet": false,
+    };
+    const cases = [
+      {
+        error: "the dictionary engine is busy mutating",
+        title: "Dictionary update in progress.",
+      },
+      {
+        code: "sharing-disconnected",
+        error: "The linked Hachidori is not reachable.",
+        title: "Shared Hachidori is disconnected.",
+      },
+      {
+        code: "engine-start-failed",
+        error: "WebAssembly compilation failed",
+        title: "Dictionary engine could not start.",
+      },
+    ];
+    const explained = [];
+    for (const descriptor of cases) {
+      const harness = await createHarness();
+      try {
+        const lookup = harness.driver.runLookup(harness.candidate);
+        harness.reply(harness.take("hd_lookup"), {
+          error: descriptor.error,
+          errorCode: descriptor.code,
+        }, false);
+        await lookup;
+        const failure = harness.render();
+        const visible = failure?.kind === "failure"
+          && failure.value?.title === descriptor.title
+          && failure.value?.actionLabel === "Try again"
+          && harness.driver.snapshot().popupHidden === false;
+        const retry = failure?.value?.onAction?.();
+        const retryRequest = harness.take("hd_lookup");
+        if (retryRequest) {
+          harness.reply(retryRequest, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+          await retry;
+        }
+        explained.push(visible && retryRequest?.request.text === harness.candidate.query
+          && harness.render()?.kind === "terms");
+      } finally {
+        harness.close();
+      }
+    }
+    outcomes[Object.keys(outcomes)[0]] = explained.every(Boolean);
+
+    const retained = await createHarness();
+    try {
+      await retained.initialLookup();
+      const definitions = retained.popup.querySelector(".gsm-hoshidicts-definitions");
+      retained.edit(true);
+      const refresh = retained.driver.executeViewRequest(
+        retained.driver.viewRequest(),
+        0,
+        { preserveViewControls: true },
+      );
+      retained.reply(retained.take("hd_lookup"), {
+        error: "the dictionary engine is busy mutating",
+        errorCode: "engine-mutating",
+      }, false);
+      await refresh;
+      const failure = retained.render();
+      const kept = failure?.kind === "failure"
+        && failure.context.preserveViewControls === true
+        && retained.popup.querySelector(".gsm-hoshidicts-definitions") === definitions
+        && retained.driver.snapshot().noteEditing
+        && !retained.driver.snapshot().popupHidden;
+      const retry = failure?.value?.onAction?.();
+      const retryRequest = retained.take("hd_lookup");
+      if (retryRequest) {
+        retained.reply(retryRequest, {
+          dictionaryCount: 1,
+          results: [retained.term(retained.candidate.query)],
+        });
+        await retry;
+      }
+      outcomes[Object.keys(outcomes)[1]] = kept && retained.render()?.kind === "terms"
+        && retained.driver.snapshot().noteEditing;
+    } finally {
+      retained.close();
+    }
+
+    const quietError = await createHarness();
+    const quietMiss = await createHarness();
+    try {
+      const failed = quietError.driver.runLookup(quietError.candidate);
+      quietError.reply(quietError.take("hd_lookup"), { error: "an unrelated lookup failure" }, false);
+      await failed;
+      const unrelatedQuiet = quietError.driver.snapshot().popupHidden
+        && quietError.renders.every(render => render.kind !== "failure");
+      const missed = quietMiss.driver.runLookup(quietMiss.candidate);
+      quietMiss.reply(quietMiss.take("hd_lookup"), { dictionaryCount: 1, results: [] });
+      await missed;
+      outcomes[Object.keys(outcomes)[2]] = unrelatedQuiet
+        && quietMiss.driver.snapshot().popupHidden
+        && quietMiss.renders.every(render => render.kind !== "failure");
+    } finally {
+      quietError.close();
+      quietMiss.close();
+    }
+    return outcomes;
+  }
+
   async function mediaOwnershipCase() {
     const result = {};
     const url = "data:image/png;base64,YQ==";
@@ -15950,6 +16072,7 @@ async function contentNoteStage() {
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
+    lookupFailures: await lookupFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
     detached: await detachedCase(),
     detachedDuringRefresh: await detachedDuringRefreshCase(),
@@ -16668,6 +16791,51 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       reading: kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-reading")?.value,
       definition: kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-definition")?.value,
     }),
+  );
+
+  view.renderResults(lookup.results, candidate);
+  popup.querySelector(".gsm-hoshidicts-note-button")?.click();
+  const retainedDefinitions = popup.querySelector(".gsm-hoshidicts-definitions");
+  const retainedForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const retainedDraft = retainedForm?.querySelector(".gsm-hoshidicts-note-definition");
+  if (retainedDraft) retainedDraft.value = "keep this draft";
+  let failureRetries = 0;
+  view.renderLookupFailure({
+    kind: "updating",
+    title: "Dictionary update in progress.",
+    detail: "Try the lookup again when the update finishes.",
+    actionLabel: "Try again",
+    onAction() { failureRetries += 1; },
+  }, { preserveView: true });
+  const failure = popup.querySelector(".gsm-hoshidicts-lookup-failure");
+  failure?.querySelector(".gsm-hoshidicts-lookup-failure-action")?.click();
+  check(
+    "a compact lookup failure retains the rendered definition and Note draft while offering retry",
+    failure?.getAttribute("role") === "alert"
+      && failure.querySelector(".gsm-hoshidicts-lookup-failure-title")?.textContent === "Dictionary update in progress."
+      && popup.querySelector(".gsm-hoshidicts-definitions") === retainedDefinitions
+      && popup.querySelector(".gsm-hoshidicts-note-form") === retainedForm
+      && retainedDraft?.value === "keep this draft"
+      && failureRetries === 1,
+    JSON.stringify({
+      text: failure?.textContent,
+      definitionRetained: popup.querySelector(".gsm-hoshidicts-definitions") === retainedDefinitions,
+      formRetained: popup.querySelector(".gsm-hoshidicts-note-form") === retainedForm,
+      draft: retainedDraft?.value,
+      failureRetries,
+    }),
+  );
+  view.renderLookupFailure({
+    kind: "engine",
+    title: "Dictionary engine could not start.",
+    detail: "Open Settings to check the engine status, then try again.",
+  });
+  check(
+    "a first-lookup failure replaces stale definitions with one actionable state",
+    popup.querySelector(".gsm-hoshidicts-definitions") === null
+      && popup.querySelector(".gsm-hoshidicts-note-form") === null
+      && popup.querySelectorAll(".gsm-hoshidicts-lookup-failure").length === 1,
+    JSON.stringify(popup.textContent),
   );
 
   view.renderNotice("nothing found", candidate);

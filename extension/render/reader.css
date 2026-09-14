@@ -2115,6 +2115,48 @@ html[data-hoshidicts-theme="girlypop"],
   margin: 1px 0 7px;
 }
 
+.gsm-hoshidicts-lookup-failure {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 11px;
+  padding: 7px 8px;
+  border: 1px solid var(--hoshidicts-warning);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--hoshidicts-warning) 12%, var(--hoshidicts-surface));
+  color: var(--text-color);
+  font-size: 12px;
+}
+
+.gsm-hoshidicts-lookup-failure-copy {
+  min-width: 0;
+  display: grid;
+  flex: 1 1 auto;
+  gap: 1px;
+}
+
+.gsm-hoshidicts-lookup-failure-title,
+.gsm-hoshidicts-lookup-failure-detail {
+  overflow-wrap: anywhere;
+}
+
+.gsm-hoshidicts-lookup-failure-detail {
+  color: var(--text-color-light1);
+  font-size: 11px;
+}
+
+.gsm-hoshidicts-lookup-failure-action {
+  flex: 0 0 auto;
+  min-height: 30px;
+}
+
+.gsm-hoshidicts-lookup-failure[data-kind="disconnected"],
+.gsm-hoshidicts-lookup-failure[data-kind="engine"] {
+  border-color: var(--hoshidicts-danger);
+  background: color-mix(in srgb, var(--hoshidicts-danger) 10%, var(--hoshidicts-surface));
+}
+
 .gsm-hoshidicts-mining-feedback[hidden] {
   display: none;
 }
