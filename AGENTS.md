@@ -68,16 +68,16 @@ When implementing the dictionary-only scope from issue #9:
 - The reader adopts a row event or a reply for a term only when it is newer than that term's own payload, without rolling the global descriptor back; older generations stay rejected. Unrelated revisions never refresh visible terms.
 - Hachidori lookup counts use only local browser storage. The user requested removing the GSM Corpus Seen integration during the standalone Settings/startup refresh; retired corpus connection options are ignored and must not trigger network requests. Preserve source attribution and existing text-protocol compatibility.
 - Blur decisions live on the request, so tabs, Show more, Note refresh and Back keep them and a new request starts fresh. The view renders pending before the count and never re-blurs once revealed. One absolute deadline runs from first display; navigating away cancels only the live timer, Back and a persisted `pageshow` re-arm the remainder. The decision waits for the stored options when a lookup renders before the initial storage read.
-- The first count decides autoplay for the whole visit: a qualifying count suppresses every later bind for that request, anything else releases the held first result once. The audio controller keys held first results by owner, settles them only for the request whose decision applies, and keeps a retired hold's visit unspent; a manual play consumes every waiting result.
+- Autoplay stays held while a request's definitions are pending or blurred, and every reveal (a non-qualifying decision, hover, the deadline, Back past it, or disabling blur) releases the held first result once. The first count still decides the blur for the whole visit. The audio controller keys held first results by owner, settles them only for the request being revealed, and keeps a retired hold's visit unspent; a manual play consumes every waiting result.
 
 ## Repository map
 
-- `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer.
+- `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer; `extension/README.md` maps its files.
+- `extension/anki-relay/` is the Hachidori Relay add-on for Anki: the sharing relay in Python, shipped as the `.ankiaddon` that Settings → Sharing builds from that folder.
 - `wasm/bindings.cpp` is the JavaScript-facing boundary around the hoshidicts engine.
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
 - `extension/vendor/hoshidicts.{mjs,wasm}` is committed build output. Update it with its source change; otherwise leave it alone.
 - `test/` contains the fixture generator, smoke suites, real-Chrome E2E test, and optional native baseline. See `test/README.md` for what each suite proves.
-- `bridge/` contains the native messaging bridge and its installer for Sharing. It uses only Node.js built-ins plus `extension/sharing-protocol.js`, which the service worker imports too.
 
 ## Validation
 
@@ -86,7 +86,8 @@ Run the narrowest existing checks that exercise the change:
 - Documentation-only changes: inspect the rendered Markdown, links, and final diff; code tests are not required.
 - Fixture, C ABI, or WebAssembly changes: rebuild when needed, then run `node test/make-fixture.mjs` and `node test/node-smoke.mjs`.
 - Extension runtime or renderer changes: run `node test/make-fixture.mjs` and `node test/extension-smoke.mjs`.
-- Sharing bridge, protocol or Settings changes: also run `node --test test/sharing-protocol.test.mjs test/bridge.test.mjs test/sharing-settings.test.mjs`.
+- Sharing relay changes (`extension/anki-relay/`): run `node --test test/sharing-relay.test.mjs`, which needs `python3`; with Anki installed, also `python3 test/anki-relay-desktop.py`.
+- Sharing protocol, relay, host, client, Settings or startup-page changes: also run `node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` and `node test/chrome-sharing.mjs`, which needs a network address beyond loopback.
 - Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`.
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.
@@ -114,9 +115,8 @@ Before opening the pull request:
 
 Before merging a pull request:
 
-- Wait for GitHub Copilot's review comments before manually requesting Codex. Reserve manual Codex requests for meaningful code changes; batch review fixes and finish documentation, screenshots, and minor cleanup before requesting the final exact-head review.
 - Require a successful completed CI check and a clean merge state for the exact head SHA.
-- Require the current Codex review summary to be Completed for that exact head. Fix every substantive finding and resolve every review thread.
+- Fix every substantive review finding and resolve every review thread.
 - Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
 - Re-run the gate after every follow-up commit, including documentation-only fixes, then merge through GitHub and fast-forward the local `main` checkout.
 

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { createCustomLinkSettings, parseCustomLinks } from "../extension/custom-link-settings.js";
+import { createCustomLinkSettings, validateCustomLink } from "../extension/custom-link-settings.js";
 import { createSettingsSearch } from "../extension/settings-search.js";
 import "../extension/reader-options.js";
 
@@ -23,12 +23,11 @@ test("GSM word/sentence templates and reading encode values exactly once and rej
   assert.equal(url.searchParams.get("sentence"), values.sentence);
   for (const template of ["javascript:alert('%w')", "data:text/html,%s", "file:///tmp/%w", "https://user:pass@example.test/%w", "https://example.test/\n%w"]) {
     assert.equal(expandCustomLinkUrl(template, values), null, template);
-    assert.throws(() => parseCustomLinks(`Unsafe, ${template}`), /Line/u);
+    assert.match(validateCustomLink("Unsafe", template), /http/u, template);
   }
-  assert.deepEqual(parseCustomLinks("Jisho, https://jisho.org/search/%w\n\nPair, https://example.test/?q=%w,%r"), [
-    { label: "Jisho", url: "https://jisho.org/search/%w" },
-    { label: "Pair", url: "https://example.test/?q=%w,%r" },
-  ]);
+  assert.equal(validateCustomLink("Pair", "https://example.test/?q=%w,%r"), "");
+  assert.match(validateCustomLink("", "https://example.test/%w"), /name/u);
+  assert.match(validateCustomLink("Bad\u0007", "https://example.test/%w"), /name/u);
   assert.deepEqual(globalThis.HDReaderOptions.normaliseOptions({}).customLinks, []);
   assert.throws(() => globalThis.HDReaderOptions.validateOptionsPatch({ customLinks: [{ label: "", url: "https://example.test" }] }));
 });
@@ -42,49 +41,92 @@ function fixture(t) {
   const saves = [];
   const controller = createCustomLinkSettings({ document, readLinks: () => links,
     saveLinks(value) { saves.push(value); links = value; } });
-  const editor = el("opt-custom-links");
-  function type(value) {
-    editor.value = value;
-    editor.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  function type(id, value) {
+    el(id).value = value;
+    el(id).dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   }
+  function add(label, url) {
+    type("opt-custom-link-name", label);
+    type("opt-custom-link-url", url);
+    el("custom-link-submit").click();
+  }
+  const rows = () => [...el("custom-link-list").children];
+  const row = label => rows().find(node => node.querySelector("strong").textContent === label);
+  const action = (label, text) => [...row(label).querySelectorAll("button")].find(node => node.textContent === text);
   t.after(() => dom.window.close());
-  return { window: dom.window, document, el, controller, editor, saves, type,
+  return { window: dom.window, document, el, controller, saves, type, add, rows, action,
+    labels: () => rows().map(node => node.querySelector("strong").textContent),
     get links() { return links; }, receive(value) { links = value; controller.render(); } };
 }
 
-test("link editor saves only explicit valid edits and preserves order, invalid drafts and concurrent changes", t => {
+test("link editor adds, edits, reorders and deletes links, saving each change at once", t => {
   const f = fixture(t);
-  assert.equal(f.editor.value, "", "placeholder examples never become configured links");
-  assert.equal(f.el("save-custom-links").disabled, true);
-  f.type("Jisho, https://jisho.org/search/%w\nSentence, https://example.test/?q=%s");
-  assert.equal(f.saves.length, 0);
-  f.el("save-custom-links").click();
+  assert.equal(f.el("custom-link-empty").hidden, false);
+  assert.equal(f.el("opt-custom-link-name").value, "", "placeholder examples never become configured links");
+  f.add("Jisho", "https://jisho.org/search/%w");
+  f.add("Sentence", "https://example.test/?q=%s");
   assert.deepEqual(f.links.map(link => link.label), ["Jisho", "Sentence"]);
-  f.type("Sentence, https://example.test/?q=%s\nJisho, https://jisho.org/search/%w");
-  f.el("save-custom-links").click();
+  assert.equal(f.saves.length, 2);
+  assert.equal(f.el("custom-link-empty").hidden, true);
+  assert.equal(f.rows()[1].querySelector("code").textContent, "https://example.test/?q=%s");
+  assert.equal(f.el("opt-custom-link-name").value, "", "adding clears the form");
+
+  f.action("Sentence", "↑").click();
+  assert.deepEqual(f.labels(), ["Sentence", "Jisho"]);
   assert.deepEqual(f.links.map(link => link.label), ["Sentence", "Jisho"]);
-  f.type("Bad, javascript:alert(1)");
-  f.el("save-custom-links").click();
-  f.controller.render();
-  assert.equal(f.editor.value, "Bad, javascript:alert(1)");
-  assert.equal(f.saves.length, 2);
-  assert.match(f.el("custom-links-status").textContent, /Line 1/u);
-  f.type("Local, https://example.test/local/%w");
+  assert.equal(f.action("Sentence", "↑").disabled, true);
+  assert.equal(f.action("Jisho", "↓").disabled, true);
+
+  f.action("Jisho", "Edit").click();
+  assert.equal(f.el("custom-link-submit").textContent, "Save link");
+  assert.equal(f.el("custom-link-cancel").hidden, false);
+  assert.equal(f.el("opt-custom-link-url").value, "https://jisho.org/search/%w");
+  assert.equal(f.controller.dirty(), false);
+  f.type("opt-custom-link-name", "Jisho word");
+  assert.equal(f.controller.dirty(), true);
+  f.el("custom-link-cancel").click();
+  assert.equal(f.el("custom-link-submit").textContent, "Add link");
+  assert.equal(f.links[1].label, "Jisho", "cancel discards the edit");
+
+  f.action("Jisho", "Edit").click();
+  f.type("opt-custom-link-name", "Jisho word");
+  f.el("custom-link-submit").click();
+  assert.deepEqual(f.links, [{ label: "Sentence", url: "https://example.test/?q=%s" },
+    { label: "Jisho word", url: "https://jisho.org/search/%w" }]);
+
+  f.add("Bad", "javascript:alert(1)");
+  assert.match(f.el("custom-links-status").textContent, /http/u);
+  assert.equal(f.el("opt-custom-link-name").value, "Bad", "an invalid draft stays in the form");
+  assert.equal(f.saves.length, 4);
+  f.type("opt-custom-link-name", "");
+  f.type("opt-custom-link-url", "");
+
+  f.action("Sentence", "Delete").click();
+  assert.deepEqual(f.links.map(link => link.label), ["Jisho word"]);
+  f.action("Jisho word", "Delete").click();
+  assert.deepEqual(f.links, []);
+  assert.equal(f.el("custom-link-empty").hidden, false);
+});
+
+test("saving an edit refuses a link that changed elsewhere and keeps the draft", t => {
+  const f = fixture(t);
+  f.add("Jisho", "https://jisho.org/search/%w");
+  f.action("Jisho", "Edit").click();
+  f.type("opt-custom-link-url", "https://example.test/local/%w");
   f.receive([{ label: "Other window", url: "https://example.test/current/%w" }]);
-  f.el("save-custom-links").click();
+  assert.equal(f.el("opt-custom-link-url").value, "https://example.test/local/%w", "a storage echo keeps the draft");
+  const saves = f.saves.length;
+  f.el("custom-link-submit").click();
   assert.match(f.el("custom-links-status").textContent, /changed elsewhere/u);
-  assert.equal(f.editor.value, "Local, https://example.test/local/%w");
-  assert.equal(f.saves.length, 2);
-  f.el("discard-custom-links").click();
-  assert.equal(f.editor.value, "Other window, https://example.test/current/%w");
-  f.type("");
-  f.el("save-custom-links").click();
-  assert.deepEqual(f.links, [], "clearing the editor removes the links");
+  assert.equal(f.saves.length, saves);
+  f.controller.reset();
+  assert.equal(f.el("opt-custom-link-url").value, "");
+  assert.deepEqual(f.labels(), ["Other window"]);
 });
 
 test("global search reaches Custom toolbar links in inactive Design without discarding a draft", t => {
   const f = fixture(t);
-  f.type("Unfinished link");
+  f.type("opt-custom-link-name", "Unfinished link");
   f.window.HTMLElement.prototype.scrollIntoView = function () {};
   const search = createSettingsSearch({ document: f.document, navigate(section) {
     search.clear();
@@ -95,10 +137,10 @@ test("global search reaches Custom toolbar links in inactive Design without disc
   input.value = "custom toolbar links";
   input.dispatchEvent(new f.window.Event("input", { bubbles: true }));
   const result = [...f.el("settings-search-matches").querySelectorAll("a")]
-    .find(node => node.querySelector("strong").textContent === "Names and URL templates");
+    .find(node => node.querySelector("strong").textContent === "Link name");
   assert.ok(result);
   result.click();
   assert.equal(f.el("design").hidden, false);
-  assert.equal(f.document.activeElement, f.editor);
-  assert.equal(f.editor.value, "Unfinished link");
+  assert.equal(f.document.activeElement, f.el("opt-custom-link-name"));
+  assert.equal(f.el("opt-custom-link-name").value, "Unfinished link");
 });

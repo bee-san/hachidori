@@ -1,55 +1,66 @@
 /*
- * Host side of sharing: owns the native messaging port to
- * bridge/hachidori-bridge.mjs, the browsers linked through it, and the
- * storage batches pushed to them. Requests arrive as ordinary runtime messages
- * and are answered by the service worker's own handlers.
+ * Host side of sharing: one outbound WebSocket to the relay the Anki add-on
+ * runs, the browsers linked through it, and the storage batches pushed to
+ * them. Requests arrive as ordinary runtime messages and are answered by the
+ * service worker's own handlers.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import {
-  DEFAULT_BRIDGE_PORT, NATIVE_HOST_NAME, PROTOCOL_VERSION, createTextAssembler, formatLinkAddress, parseClientFrame,
-} from "./sharing-protocol.js";
+import { DEFAULT_SHARING_PORT, PROTOCOL_VERSION, formatHostAddress, parseClientFrame } from "./sharing-protocol.js";
 
 export const SHARING_KEY = "sharing";
 export const SHARING_HOST_ALARM = "hachidori-sharing-host";
+
+const LOOPBACK_PEERS = new Set(["127.0.0.1", "::1"]);
 
 function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
+function relayAddresses(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map(entry => ({ address: String(entry?.address ?? ""), kind: entry?.kind === "tailscale" ? "tailscale" : "local" }))
+    .filter(entry => entry.address !== "");
+}
+
 // `dispatch(message, clientId)` answers a forwarded request with the same
 // reply object a runtime sender would receive. `readSnapshot()` returns the
 // shared storage keys as stored. `sharedKey(key)` says whether a storage
-// change belongs to the mirror.
-export function createSharingHost({ chrome, alarms, dispatch, readSnapshot, sharedKey, version }) {
+// change belongs to the mirror. `name` is what linked browsers call this one.
+export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name }) {
   const clients = new Map();
-  const assembler = createTextAssembler();
   let enabled = false;
-  let configuredPort = DEFAULT_BRIDGE_PORT;
-  let port = null;
+  let configuredPort = DEFAULT_SHARING_PORT;
+  // The preference, and what the relay last confirmed.
+  let network = false;
+  let networkState = { active: false, addresses: [], error: null };
+  let dictionaries = 0;
+  let socket = null;
   let listeningPort = null;
   let error = null;
   let attempt = 0;
   let retryTimer = null;
 
   function status() {
-    const connected = port !== null && listeningPort !== null;
+    const connected = socket !== null && listeningPort !== null;
     return {
       enabled,
       connected,
       port: listeningPort ?? configuredPort,
-      address: formatLinkAddress({ port: listeningPort ?? configuredPort }),
-      clients: [...clients.values()],
+      dictionaries,
       error,
+      network: { enabled: network, active: connected && networkState.active, addresses: connected ? networkState.addresses : [], error: networkState.error },
+      clients: [...clients.values()],
     };
   }
 
-  function post(message) {
+  function post(frame) {
+    if (socket === null || socket.readyState !== 1) return;
     try {
-      port?.postMessage(message);
-    } catch (postError) {
-      console.warn("hachidori: could not reach the sharing bridge:", describe(postError));
+      socket.send(JSON.stringify(frame));
+    } catch (sendError) {
+      console.warn("hachidori: could not reach the sharing relay:", describe(sendError));
     }
   }
 
@@ -71,7 +82,7 @@ export function createSharingHost({ chrome, alarms, dispatch, readSnapshot, shar
       if (client) Object.assign(client, { name: frame.name, version: frame.version });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
-      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, dictionaryCount, snapshot });
+      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, snapshot });
       return;
     }
     if (frame.kind === "request") {
@@ -79,39 +90,50 @@ export function createSharingHost({ chrome, alarms, dispatch, readSnapshot, shar
     }
   }
 
-  function onNativeMessage(message) {
+  function onRelayMessage(text) {
+    let message;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      console.warn("hachidori: dropped an unreadable relay message");
+      return;
+    }
     switch (message?.kind) {
       case "listening":
         listeningPort = Number(message.port) || configuredPort;
         error = null;
         attempt = 0;
         alarms.clear(SHARING_HOST_ALARM);
+        if (network) post({ kind: "network", enabled: true });
         return;
       case "listen-failed":
-        error = `The sharing bridge could not listen on port ${configuredPort}: ${message.error}`;
+        error = String(message.error ?? "The relay refused this Hachidori.");
         return;
-      case "client-open":
-        clients.set(message.clientId, { id: message.clientId, origin: String(message.origin ?? ""), name: "", version: "", connectedAt: Date.now() });
+      case "network":
+        networkState = { active: message.enabled === true, addresses: relayAddresses(message.addresses),
+          error: typeof message.error === "string" ? message.error : null };
         return;
+      case "client-open": {
+        const address = String(message.address ?? "");
+        clients.set(message.clientId, { id: message.clientId, origin: String(message.origin ?? ""), address, local: LOOPBACK_PEERS.has(address),
+          name: "", version: "", connectedAt: Date.now() });
+        return;
+      }
       case "client-close":
         clients.delete(message.clientId);
         return;
-      case "client-text": {
-        let text;
-        try {
-          text = assembler.push(message);
-        } catch (partError) {
-          console.warn("hachidori: dropped a malformed bridge part:", describe(partError));
-          return;
-        }
-        if (text !== null) void handleClientText(message.clientId, text);
+      case "client-text":
+        void handleClientText(message.clientId, String(message.text));
         return;
-      }
+      case "ping":
+        return;
       default:
-        console.warn("hachidori: unknown sharing bridge message", message?.kind);
+        console.warn("hachidori: unknown sharing relay message", message?.kind);
     }
   }
 
+  // While the relay is away, retry quickly for as long as this worker lives and
+  // once a minute through the alarm after Chrome has put it to sleep.
   function scheduleRetry() {
     if (!enabled || retryTimer !== null) return;
     const delay = Math.min(10_000, 500 * 2 ** Math.min(attempt, 5));
@@ -120,68 +142,81 @@ export function createSharingHost({ chrome, alarms, dispatch, readSnapshot, shar
       retryTimer = null;
       connect();
     }, delay);
-    alarms.create(SHARING_HOST_ALARM, { periodInMinutes: 1 });
+    alarms.create(SHARING_HOST_ALARM, { delayInMinutes: 1 });
   }
 
+  // Sharing waits for something to share: an empty install must not take the
+  // host slot ahead of the browser that has the dictionaries.
   function connect() {
-    if (!enabled || port !== null) return;
+    if (!enabled || socket !== null || dictionaries === 0) return;
     let next;
     try {
-      next = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+      next = new WebSocket(formatHostAddress({ port: configuredPort }));
     } catch (connectError) {
       error = describe(connectError);
       scheduleRetry();
       return;
     }
-    port = next;
+    socket = next;
     listeningPort = null;
-    next.onMessage.addListener(onNativeMessage);
-    next.onDisconnect.addListener(() => {
-      const reason = chrome.runtime.lastError?.message;
-      if (port !== next) return;
-      port = null;
+    next.onmessage = (event) => onRelayMessage(String(event.data));
+    next.onclose = () => {
+      if (socket !== next) return;
+      socket = null;
       listeningPort = null;
+      networkState = { active: false, addresses: [], error: null };
       clients.clear();
-      if (!enabled) return;
-      // A failed listen already explains itself better than the exit it causes.
-      if (error === null) error = reason || "The sharing bridge stopped.";
-      scheduleRetry();
-    });
-    next.postMessage({ kind: "listen", port: configuredPort });
+      if (enabled) scheduleRetry();
+    };
+  }
+
+  function dropSocket() {
+    const previous = socket;
+    socket = null;
+    listeningPort = null;
+    networkState = { active: false, addresses: [], error: null };
+    clients.clear();
+    previous?.close();
   }
 
   return {
     status,
-    enable({ port: requestedPort = DEFAULT_BRIDGE_PORT } = {}) {
+    // A changed port reconnects; a changed network preference alone is told to
+    // the relay over the open socket.
+    enable({ port = DEFAULT_SHARING_PORT, network: wantNetwork = false, dictionaries: count = dictionaries } = {}) {
+      const nextPort = Number(port) || DEFAULT_SHARING_PORT;
+      const reconnect = !enabled || socket === null || nextPort !== configuredPort;
       enabled = true;
-      configuredPort = Number(requestedPort) || DEFAULT_BRIDGE_PORT;
-      error = null;
-      attempt = 0;
-      if (port !== null) {
-        port.disconnect();
-        port = null;
-        listeningPort = null;
-        clients.clear();
+      configuredPort = nextPort;
+      dictionaries = Number(count) || 0;
+      network = wantNetwork === true;
+      if (reconnect) {
+        error = null;
+        attempt = 0;
+        dropSocket();
+        connect();
+      } else if (listeningPort !== null) {
+        post({ kind: "network", enabled: network });
       }
-      connect();
+    },
+    setDictionaries(count) {
+      dictionaries = Number(count) || 0;
+      if (enabled && socket === null && retryTimer === null) connect();
     },
     disable() {
       enabled = false;
       if (retryTimer !== null) clearTimeout(retryTimer);
       retryTimer = null;
       alarms.clear(SHARING_HOST_ALARM);
-      port?.disconnect();
-      port = null;
-      listeningPort = null;
-      clients.clear();
+      dropSocket();
       error = null;
     },
-    // The watchdog alarm and worker restarts land here.
+    // The alarm and worker restarts land here.
     reconnect() {
-      if (enabled && port === null && retryTimer === null) connect();
+      if (enabled && socket === null && retryTimer === null) connect();
     },
     storageChanged(changes, area) {
-      if (area !== "local" || port === null || clients.size === 0) return;
+      if (area !== "local" || socket === null || clients.size === 0) return;
       const shared = Object.entries(changes).filter(([key]) => sharedKey(key));
       if (shared.length === 0) return;
       post({ kind: "broadcast", text: JSON.stringify({

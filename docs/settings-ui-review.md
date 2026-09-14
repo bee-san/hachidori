@@ -8,7 +8,7 @@ Source attribution and the compatible text-receiver protocol remain intact.
 
 Lookup history and definition blur live in **Reading**. **Design** concentrates
 on appearance and definition presentation, with wider selectors, compact numeric
-rows and a collapsible live preview. Reset Design preserves the Reading rules.
+rows and a live preview that is always shown. Reset Design preserves the Reading rules.
 The selected lookup theme now colours the complete Settings document as well as
 the lookup and preview.
 Threshold/reveal details and custom CSS use native disclosures. Narrow windows
@@ -63,7 +63,7 @@ separates supporting text from the primary content without changing the other
 
 | Desktop Design | Narrow Design |
 | --- | --- |
-| ![Design with full-width selectors and live preview](assets/settings-design-1440-dark.png) | ![Compact navigation and collapsed preview at 375 pixels](assets/settings-design-375-light.png) |
+| ![Design with full-width selectors and live preview](assets/settings-design-1440-dark.png) | ![Compact navigation and the live preview above the controls at 375 pixels](assets/settings-design-375-light.png) |
 
 ![Reading with local lookup history and definition blur](assets/settings-reading.png)
 

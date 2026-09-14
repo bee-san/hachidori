@@ -23,6 +23,18 @@ import { normalizeConfig, sha256Canonical } from "./lib.mjs";
 
 const RUNNER = resolve(import.meta.dirname, "run.mjs");
 
+// Provenance and completed-resume checks need executable/package bytes to hash,
+// but must never start a browser. Keep those inputs independent of local installs.
+function provenanceRunner(root) {
+  const packageRoot = join(root, "puppeteer-core");
+  const entry = join(packageRoot, "entry.mjs");
+  mkdirSync(packageRoot);
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "puppeteer-core", version: "1.0.0" }));
+  writeFileSync(entry, 'export function launch() { throw new Error("provenance check unexpectedly launched a browser"); }\n');
+  const env = { ...process.env, HACHIDORI_CHROME: process.execPath, HACHIDORI_PUPPETEER: entry };
+  return args => spawnSync(process.execPath, [RUNNER, ...args], { encoding: "utf8", env });
+}
+
 test("benchmark runner documents its reproducible inputs and output", () => {
   const result = spawnSync(process.execPath, [RUNNER, "--help"], { encoding: "utf8" });
 
@@ -137,6 +149,7 @@ test("standard suite pins Jitendex and Pixiv Light as separate import cells", ()
 test("dry run pins config, archive hash, revision, and deterministic schedule without Chrome", () => {
   const root = mkdtempSync(join(tmpdir(), "hdw-bench-runner-"));
   try {
+    const run = provenanceRunner(root);
     const archive = join(root, "dict.zip");
     const config = join(root, "config.json");
     const output = join(root, "output");
@@ -148,12 +161,11 @@ test("dry run pins config, archive hash, revision, and deterministic schedule wi
       samples: 2,
     }));
 
-    const result = spawnSync(process.execPath, [
-      RUNNER,
+    const result = run([
       "--config", config,
       "--output", output,
       "--dry-run",
-    ], { encoding: "utf8" });
+    ]);
 
     assert.equal(result.status, 0, result.stderr);
     const definition = JSON.parse(readFileSync(join(output, "run-definition.json"), "utf8"));
@@ -174,12 +186,11 @@ test("dry run pins config, archive hash, revision, and deterministic schedule wi
     assert.equal(schedule.length, 3);
     assert.match(result.stdout, /dry run complete/i);
 
-    const resumed = spawnSync(process.execPath, [
-      RUNNER,
+    const resumed = run([
       "--config", config,
       "--output", output,
       "--dry-run",
-    ], { encoding: "utf8" });
+    ]);
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.deepEqual(
       JSON.parse(readFileSync(join(output, "run-definition.json"), "utf8")),
@@ -188,12 +199,11 @@ test("dry run pins config, archive hash, revision, and deterministic schedule wi
 
     const inputSnapshotsBefore = readdirSync(join(output, "inputs")).sort();
     writeFileSync(archive, "changed archive bytes");
-    const sourceChanged = spawnSync(process.execPath, [
-      RUNNER,
+    const sourceChanged = run([
       "--config", config,
       "--output", output,
       "--dry-run",
-    ], { encoding: "utf8" });
+    ]);
     assert.equal(sourceChanged.status, 2);
     assert.match(sourceChanged.stderr, /different benchmark definition|SHA-256 mismatch|changed identity/i);
     assert.equal(readFileSync(definition.config.corpora[0].archive, "utf8"), "archive bytes");
@@ -241,6 +251,7 @@ test("resume rejects changed Puppeteer bytes at the same path", () => {
 test("completed resume preserves completion provenance and checksums", () => {
   const root = mkdtempSync(join(tmpdir(), "hdw-bench-resume-"));
   try {
+    const run = provenanceRunner(root);
     const archive = join(root, "dict.zip");
     const config = join(root, "config.json");
     const output = join(root, "output");
@@ -256,9 +267,7 @@ test("completed resume preserves completion provenance and checksums", () => {
       samples: 1,
     }));
 
-    const dryRun = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output, "--dry-run",
-    ], { encoding: "utf8" });
+    const dryRun = run(["--config", config, "--output", output, "--dry-run"]);
     assert.equal(dryRun.status, 0, dryRun.stderr);
     const definition = JSON.parse(readFileSync(join(output, "run-definition.json"), "utf8"));
     const [scheduled] = JSON.parse(readFileSync(join(output, "schedule.json"), "utf8"));
@@ -294,9 +303,7 @@ test("completed resume preserves completion provenance and checksums", () => {
       },
     })}\n`);
 
-    const first = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const first = run(["--config", config, "--output", output]);
     assert.equal(first.status, 0, first.stderr);
     const firstSummary = readFileSync(join(output, "summary.json"), "utf8");
     const firstChecksums = readFileSync(join(output, "SHA256SUMS"), "utf8");
@@ -306,9 +313,7 @@ test("completed resume preserves completion provenance and checksums", () => {
     const snapshotPath = definition.config.corpora[0].archive;
     const snapshotBytes = readFileSync(snapshotPath);
 
-    const resumed = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const resumed = run(["--config", config, "--output", output]);
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.match(resumed.stdout, /skip sample-00-00-expected-failure/);
     assert.equal(readFileSync(join(output, "summary.json"), "utf8"), firstSummary);
@@ -316,43 +321,33 @@ test("completed resume preserves completion provenance and checksums", () => {
     assert.equal(statSync(schedulePath, { bigint: true }).mtimeNs, scheduleMtimeNs);
 
     rmSync(syntheticProfile, { recursive: true, force: true });
-    const missingProfileRejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const missingProfileRejected = run(["--config", config, "--output", output]);
     assert.equal(missingProfileRejected.status, 2);
     assert.match(missingProfileRejected.stderr, /retained diagnostic profile is missing/i);
     mkdirSync(syntheticProfile, { recursive: true });
 
     writeFileSync(schedulePath, "corrupt schedule\n");
-    const scheduleRejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const scheduleRejected = run(["--config", config, "--output", output]);
     assert.equal(scheduleRejected.status, 2);
     assert.equal(readFileSync(schedulePath, "utf8"), "corrupt schedule\n");
     writeFileSync(schedulePath, scheduleBytes);
 
     unlinkSync(snapshotPath);
-    const missingSnapshotRejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const missingSnapshotRejected = run(["--config", config, "--output", output]);
     assert.equal(missingSnapshotRejected.status, 2);
     assert.equal(existsSync(snapshotPath), false);
     writeFileSync(snapshotPath, snapshotBytes);
     chmodSync(snapshotPath, 0o444);
 
     writeFileSync(join(output, "SHA256SUMS"), `${firstChecksums}${"0".repeat(64)}  extra.txt\n`);
-    const extraChecksumRejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const extraChecksumRejected = run(["--config", config, "--output", output]);
     assert.equal(extraChecksumRejected.status, 2);
     assert.match(extraChecksumRejected.stderr, /checksum manifest/i);
     writeFileSync(join(output, "SHA256SUMS"), firstChecksums);
 
     const firstChecksumLine = firstChecksums.split("\n")[0];
     writeFileSync(join(output, "SHA256SUMS"), `${firstChecksums}${firstChecksumLine}\n`);
-    const duplicateChecksumRejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const duplicateChecksumRejected = run(["--config", config, "--output", output]);
     assert.equal(duplicateChecksumRejected.status, 2);
     assert.match(duplicateChecksumRejected.stderr, /duplicate checksum/i);
     writeFileSync(join(output, "SHA256SUMS"), firstChecksums);
@@ -360,9 +355,7 @@ test("completed resume preserves completion provenance and checksums", () => {
     const altered = JSON.parse(firstSummary);
     altered.metadata.mode = "altered";
     writeFileSync(join(output, "summary.json"), `${JSON.stringify(altered, null, 2)}\n`);
-    const rejected = spawnSync(process.execPath, [
-      RUNNER, "--config", config, "--output", output,
-    ], { encoding: "utf8" });
+    const rejected = run(["--config", config, "--output", output]);
     assert.equal(rejected.status, 2);
     assert.match(rejected.stderr, /checksum|stale or altered completed deliverables/i);
   } finally {

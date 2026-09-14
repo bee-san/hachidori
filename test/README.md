@@ -2,6 +2,61 @@
 
 # Hachidori test harness
 
+## Reproducible setup and CI
+
+Use Node **22.23.1** (`.node-version`) and npm **10.9.8**. The bridge suite needs
+Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**
+and runs the relay socket suite separately on **Python 3.9.25**.
+Ordinary JavaScript tests use the committed WASM bundles and need no build or
+submodule checkout.
+
+From the repository root, these are the same commands CI runs:
+
+```sh
+npm ci --prefix test/tooling
+npm --prefix test/tooling test                 # all test/*.test.mjs and benchmark/*.test.mjs
+npm --prefix test/tooling run test:smoke        # both WASM variants, bridge, extension
+npm --prefix test/tooling run install:chrome    # Chrome for Testing 152.0.7977.75
+npm --prefix test/tooling run test:chrome       # primary OPFS path and UI
+npm --prefix test/tooling run test:sharing      # two browsers and the Python relay
+npm --prefix test/tooling run test:fallback     # IDBFS path
+npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
+```
+
+`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.9.0**,
+the browser installer **3.2.1**, and their transitive dependencies. The small
+`test/run.mjs` launcher supplies the existing environment overrides, generates
+fixtures, runs each existing suite in a separate Node process, and propagates
+every nonzero exit or signal. It selects the exact Chrome build from
+`test/tooling/package.json` rather than whichever browser happens to be newest
+in a developer's cache. Dependencies are isolated from the extension under
+`test/tooling/node_modules`; the browser is ignored under `test/tmp/browsers`.
+The launcher ignores a machine-wide `CHROME_BIN` (GitHub runners set it to their
+system browser). Use `HACHIDORI_CHROME` for an intentional browser override.
+
+On Ubuntu/Debian, install the browser's system dependencies with
+`sudo "$(command -v node)" test/run.mjs install-chrome --install-deps` and install
+`fonts-noto-cjk` for Japanese text. CI uses Ubuntu 24.04 with these dependencies.
+For a Linux container that cannot run Chrome's sandbox, set
+`HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
+non-loopback network address for its other-computer checks.
+
+`.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, and
+all four browser suites on every PR and push to `main`, or manually. The browser
+matrix runs independently so one failing suite cannot hide the others. Logs are
+saved to `test/tmp/ci`; failing CI jobs upload them, the available screenshots,
+and the browser profiles retained by failed suites, for seven days. The same
+commands reproduce the failure locally. The optional native/submodule checks
+below and headful media-capture suites remain separate checks for their domains.
+
+Direct `node test/...` commands below still support the external cache and
+`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a
+focused jsdom test with the locked tooling directly:
+
+```sh
+HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
+```
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
@@ -37,23 +92,52 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
-`node --test test/sharing-protocol.test.mjs test/bridge.test.mjs` checks the
-sharing wire contract (loopback addresses, the forwarding table, splitting a
-frame into native messages) and drives the real `bridge/hachidori-bridge.mjs`
-process over its stdio port and raw loopback WebSockets: listening, the
-`Origin` rule, relaying and reassembling a 1.5 MB frame, broadcast, pings,
-closes and exit. `node --test test/sharing-settings.test.mjs` checks the
-Settings → Sharing host card with jsdom: status polling, the permission request
-before enabling, the copied address and Chrome's bridge failure reasons. The
-extension smoke suite's sharing-host stage covers the service worker's side.
+`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs
+test/sharing-settings.test.mjs test/anki-addon.test.mjs` checks the sharing
+wire contract (addresses as a person types them, browser names, the forwarding
+table, frame validation), drives the Anki add-on's `extension/anki-relay/server.py`
+as a `python3` process over raw sockets (`test/anki-relay-server.mjs` starts
+it): the `Origin` rule, the loopback-only host, clients refused without a host,
+a second host turned away, large UTF-8 frames relayed whole in both directions,
+broadcast, pings, closes, host loss, and the network listener opened on the
+host's `network` frame, linked through this machine's own address, closed
+again and dropped with the host. It also pauses a real client during 16 MiB
+UTF-8 replies, checks healthy requests and pings, resumes to verify frame order,
+and interrupts stalled writes on network disable and host loss. The idle accept
+timeout is checked on Python 3.9 as well as the CI interpreter.
+`sharing-settings.test.mjs` covers the
+Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
+sharing states, the add-on download, the network switch with the addresses it
+lists and copies, the offer to use the Hachidori found on this computer, an
+address for another computer, the linked state and unlinking.
+`anki-addon.test.mjs` builds the `.ankiaddon` the page hands out and reads it
+back with zip.js and with Python's `zipfile`. The extension smoke suite's
+sharing-host and sharing-client stages cover the service worker's side,
+including hosting that waits for dictionaries, the network exchange, linking
+that turns hosting off and a linked install's kept state.
+
+`node test/chrome-sharing.mjs` launches two real Chromes and the add-on's
+relay on a test-only port (`HACHIDORI_SHARING_PORT`, default 18771): the host
+imports the fixture, saves the add-on from its Sharing page and moves its
+sharing to that port; the second browser's startup page offers the shared
+Hachidori and links with one click, looks a word up through the link, writes
+an option and a personal entry that the host commits and pushes back, loses the
+host when it closes and reconnects when it relaunches, unlinks back to its own
+empty state, and links again through this machine's network address (the
+machine needs one beyond loopback) until the host stops sharing on the
+network. Two Settings tabs then issue overlapping Link and Unlink requests,
+preserving a compiled local personal dictionary and settings. Nine predeclared
+checks; profiles are kept on failure.
+`HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
+that real run.
 
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.
 
-Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
-`extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
-`puppeteer-core`; those dependencies stay outside the repository.
+The lower-level checks can also be run individually in this order. Node suites
+use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
+`puppeteer-core`; the launcher above supplies the locked tooling automatically.
 
 ```sh
 cd /path/to/hachidori
@@ -70,7 +154,8 @@ node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
 HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
 node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 13. optional native cross-check
+node test/chrome-overlay.mjs     # 13. overlay mode's glyph selection and host events in real Chrome
+./test/baseline.sh               # 14. optional native cross-check
 ```
 
 Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
@@ -227,7 +312,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-116 checks, ordered by dependency. Exits 0 on success,
+117 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -349,7 +434,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 490 checks, all of
+full request→reply round trip per contract-C message type. 506 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -402,7 +487,7 @@ What it proves, in order:
    pinned controls, lazily constructed shared term/kanji Note behavior,
    exact-view refresh and Back context, Escape/hover guards, and successful
    append followed by failed refresh.
-2. **Boot and relay.** `hd_status` has exactly the ten documented envelope
+2. **Boot and relay.** `hd_status` has exactly the eleven documented envelope
    keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
    and never concurrently. `background.js` stamps `relayed` on its forwarded copy
    and senders never do.
@@ -484,6 +569,9 @@ What it proves, in order:
    one- and three-result truncation, selected ascending/descending directions,
    disabled and all-dictionary ordering, and stable glossary identity. Their
    generated index metadata also repairs older stored packages on reload.
+   A committed package whose files no longer load is skipped on reload: the
+   other dictionaries keep answering lookups, `hd_status.failedDictionaries`
+   names it with its load error, and removing it clears the report.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
@@ -572,7 +660,7 @@ What it proves, in order:
    ordinary/preferred/em dimensions, and recover intermediate width arithmetic
    overflow/underflow while retaining valid original rounding and display clamps.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
-   and removing an unknown title does not bump `generation`. Removal strict-loads
+   and removing an unknown title does not bump `generation`. Removal loads
    the remaining manifest and commits it before deleting the old root. The
    failure case injects a `chrome.storage.local.set` rejection: the original
    generation and live engine must remain intact. Startup recovery also preserves
@@ -651,8 +739,8 @@ These focused suites never contact an
 Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
-decision when both criteria are enabled, held autoplay, silent hover reveal
-and later tab bindings, first-count retention, stale replies, mapping changes,
+decision when both criteria are enabled, autoplay held until the hover reveal
+and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,
 lookup before initial options, and pending/completed evidence retained for Back
 across Anki mapping edits. Settings exercises the Off / Lookup count / Mature
 Anki cards / Either condition selector, its mapping to the existing booleans,
@@ -665,7 +753,8 @@ The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
 service-worker target (mining controls) and offscreen target (including its
 dedicated maturity refresh worker). It checks
 source persistence, a responsive cold-cache popup during a held refresh,
-cached mature results without repeated Anki calls, and silent hover reveal.
+cached mature results without repeated Anki calls, and pronunciation that
+waits for the hover reveal.
 Real alarm delivery verifies that a refresh changes new lookups while keeping
 the open popup intact; disable/re-enable refuses pending publication, and
 unavailable Anki retains the last successful snapshot. A real worker restart
@@ -676,15 +765,15 @@ fixtures, never the user's actual notes or scheduling data.
 
 ### jsdom
 
-The renderer integration stage needs jsdom. It is not a repo dependency — it lives in the same
-out-of-repo tree as `puppeteer-core`, so a checkout carries neither:
+The renderer integration stage needs jsdom. The reproducible setup above installs
+it in `test/tooling`. Direct commands can also use an external dependency tree:
 
 ```sh
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$CACHE_ROOT/hachidori-e2e"
 cd "$CACHE_ROOT/hachidori-e2e"
-npm install jsdom puppeteer-core
-./node_modules/.bin/browsers install chrome@stable --path "$CACHE_ROOT/hachidori-browsers"
+npm install --save-exact jsdom@30.0.1 puppeteer-core@25.9.0 @puppeteer/browsers@3.2.1
+./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
 That path is the built-in default, so `node test/extension-smoke.mjs` finds it
@@ -755,9 +844,9 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 198 predeclared checks in a browser. Chrome and `puppeteer-core`
-live outside the repo so a checkout does not carry a browser. The setup command
-above installs Chrome for Testing in the default cache; the harness also checks
+The primary-path test runs 200 predeclared checks in a browser. The reproducible
+launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
+external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
 `HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
 naming the variable if either is missing.
@@ -1174,7 +1263,7 @@ and wait for both package state and the global completed-check timestamp; the
 
 ### what the assertions are pinned to
 
-Dictionary stylesheet installation moved from jsdom to three real-Chrome checks:
+Dictionary stylesheet installation moved from jsdom to four real-Chrome checks:
 jsdom cannot exercise constructed stylesheets, CSS nesting, or `@scope`. The
 production `applyDictionaryStyles` runs inside a shadow root with the production
 reader stylesheet. Tests verify escaped canonical titles, malformed-brace
@@ -1183,7 +1272,10 @@ Resource probes intercept and abort a reserved `.invalid` origin; direct and
 escaped URLs, image-set strings, shorthand and escaped variables, comment-like
 strings, and page-defined fonts/functions/registered properties must neither
 apply a resource nor request it. Benign nested gradients and numeric variables
-still render through the typed wrappers.
+still render through the typed wrappers. A dictionary's own custom properties
+drive lengths, colors and fallbacks, and a grammar-card disclosure keeps its
+flex summary and block chevron; page-inherited and page-registered values under
+the same names reach none of them.
 The existing glossary card must contain fixed-position descendants and oversized
 shadows without intercepting the reader control above it. The engine's exact
 `hd_styles` response remains independently covered by the extension smoke suite.
@@ -1444,6 +1536,27 @@ It accepts `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`, defaults to
 `/usr/bin/chromium`, and retains `results.json` and temporary profiles under the
 printed evidence directory. A passing X11 minimize/restore check does not prove
 physical sleep/wake behavior or audio availability on other operating systems.
+
+### Installed Anki Desktop relay
+
+`anki-relay-desktop.py` is an optional check that the Hachidori Relay add-on
+starts inside the installed Anki. Run it with the Python interpreter that can
+import the installed `anki` and `aqt` packages:
+
+```sh
+python3 test/anki-relay-desktop.py
+```
+
+Each run creates a fresh temporary Anki base with only `extension/anki-relay/`
+installed, configured through the add-on's `meta.json` to a test-only port
+(18772, or `--port`), starts a separate Anki instance on it, and connects to
+the relay over raw WebSockets: a `/host` handshake with an extension `Origin`
+must answer 101 and the `listening` frame with the port; the host's `network`
+frame must be answered with this machine's addresses, and a `/link` handshake
+over the first of them must answer 101 and reach the host as `client-open`
+with that address; a web `Origin` must be refused with 403. The live Anki
+profile, its add-ons and AnkiConnect are never opened. It prints a JSON
+summary, gives up after 90 s, and exits non-zero on failure.
 
 ### Installed Anki Desktop playback
 

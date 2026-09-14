@@ -19,23 +19,33 @@ cd hachidori
 
 The committed `extension/vendor/hoshidicts.{mjs,wasm}` bundle is enough to load and test ordinary JavaScript changes. Rebuilding it requires Emscripten and CMake; see the [architecture guide](docs/architecture.md).
 
-To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`.
+To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`. [Its README](extension/README.md) maps what is in that folder.
 
 ## Run the checks
 
+Use Node **22.23.1** (pinned in `.node-version`) and npm **10.9.8**. The relay
+checks need Python; CI uses **3.13.2**. Install the locked test-only dependencies:
+
 ```sh
-node test/make-fixture.mjs
-node test/node-smoke.mjs
-node test/extension-smoke.mjs
+npm ci --prefix test/tooling
+npm --prefix test/tooling test
+npm --prefix test/tooling run test:smoke
 ```
 
 Run the real-browser test for changes to the manifest, service worker, offscreen lifecycle, IndexedDB persistence, content script, or rendered popup:
 
 ```sh
-node test/chrome-e2e.mjs
+npm --prefix test/tooling run install:chrome
+npm --prefix test/tooling run test:chrome
 ```
 
-The browser and jsdom dependencies live outside the repository. [The test harness guide](test/README.md) contains setup commands, the native baseline, and an exact account of what each suite proves.
+Sharing changes also need `npm --prefix test/tooling run test:sharing` and a
+usable non-loopback network address. The Runtime tests workflow runs Node
+contracts, both WASM smoke variants, the extension smoke suite, and four real
+Chrome suites on pull requests. Test tooling stays under `test/tooling` and the
+browser under ignored `test/tmp/browsers`; neither ships in the extension.
+[The test harness guide](test/README.md) contains the exact CI commands, browser
+dependencies, external-tooling overrides, and what each suite proves.
 
 ## Pull requests
 

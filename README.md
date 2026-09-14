@@ -8,18 +8,17 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
-  <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-128%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 128 or newer"></a>
+  <a href="#install-in-15-seconds"><img src="https://img.shields.io/badge/Chrome-128%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 128 or newer"></a>
   <a href="docs/privacy.md"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <a href="#install-in-60-seconds">Install</a> ·
-  <a href="#use-it">Usage</a> ·
-  <a href="#benchmarks">Benchmarks</a> ·
-  <a href="#hachidori-vs-the-alternatives">Compare</a> ·
+  <a href="#install-in-15-seconds">Install</a> ·
+  <a href="benchmark/README.md">Benchmarks</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="extension/README.md">Extension</a> ·
   <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
@@ -30,14 +29,7 @@ Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature
 
 ## Install in 15 seconds
 
-```sh
-git clone https://github.com/bee-san/hachidori.git
-```
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Hachidori opens a short welcome on its first install. Choose **Start setup**
+Click <a href="https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe">here to install from Chrome store.</a> (note: this will always lag behind the repo and may have bugs fixed in the repo)
 
 <p align="center">
   <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">
@@ -48,6 +40,8 @@ git clone https://github.com/bee-san/hachidori.git
 Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
 
 <img width="1672" height="941" alt="ChatGPT Image Sep 9, 2026, 09_18_59 AM" src="https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3" />
+
+See [the measured results](docs/browser-performance.md).
 
 
 # Media mining
@@ -84,11 +78,7 @@ It can even use anki.
 
 # Sharing
 
-I read in Chrome and I play games with the GameSentenceMiner overlay, and I did not want two Hachidoris with two sets of dictionaries, two personal dictionaries and two sets of settings that drift apart.
-
-Turn on **Sharing** in the Chrome install and the other browser uses it: same dictionaries, same personal entries, same lookup counts, same settings, edited from either side.
-
-See [Sharing](docs/sharing.md) for the one-time bridge install.
+Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer. Same dictionaries and settings used across multiple Hachidoris.
 
 # Optionated
 

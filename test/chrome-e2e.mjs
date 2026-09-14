@@ -211,7 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
-  "a fresh profile declares the optional native messaging permission and reports sharing off",
+  "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -267,11 +267,11 @@ const PLANNED = [
   "accepted reader lookups persist canonical counts without delaying definitions",
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "local count and blur settings belong to Reading without external corpus controls",
-  "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+  "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
   "the Anki maturity blur source persists independently of lookup counts",
   "a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
-  "cached mature definitions reveal silently and repeated lookups make no Anki requests",
+  "cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
   "a scheduled maturity refresh preserves the current popup and updates only new lookups",
   "disabling maturity cancels its alarm and pending publication and re-enabling refreshes immediately",
   "an unavailable Anki refresh retains cached maturity and independent count blur",
@@ -283,6 +283,7 @@ const PLANNED = [
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
   "source highlights reconcile selected text mutations without changing selection",
+  "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
@@ -294,6 +295,7 @@ const PLANNED = [
   "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
+  "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
   "settings page renders exactly five safe recommended dictionary links",
@@ -618,20 +620,29 @@ async function popupReader(page, depth = 0) {
         const noteActions = noteForm?.querySelector(".gsm-hoshidicts-note-actions");
         const noteFormRect = noteForm?.getBoundingClientRect();
         const noteActionsRect = noteActions?.getBoundingClientRect();
-        const pitchRuby = this.querySelector(".gsm-hoshidicts-pitch-ruby");
-        const pitchContour = pitchRuby?.querySelector(".gsm-hoshidicts-pitch-contour");
-        const firstBase = pitchRuby && [...pitchRuby.childNodes]
-          .find(node => node.nodeType !== Node.ELEMENT_NODE || node.tagName !== "RT");
-        let firstBaseRect = null;
-        if (firstBase instanceof Element) {
-          firstBaseRect = firstBase.getBoundingClientRect();
-        } else if (firstBase?.nodeType === Node.TEXT_NODE && firstBase.length > 0) {
+        // Each headword reading must be centred over the text it reads (た over
+        // 食, not over 食べ), and pitch contours must join into one line. Chrome
+        // reports a native <rt>'s whole column for its text, wherever ruby-align
+        // draws the glyphs, so plain ruby can only be checked through its style.
+        // Pitch ruby is laid out as flex boxes, whose text geometry is real.
+        const expression = this.querySelector(".gsm-hoshidicts-expression");
+        const pitchRubies = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-ruby") ?? [])];
+        const textCentre = node => {
           const range = this.ownerDocument.createRange();
-          range.setStart(firstBase, 0);
-          range.setEnd(firstBase, 1);
-          firstBaseRect = range.getBoundingClientRect();
-        }
-        const pitchContourRect = pitchContour?.getBoundingClientRect();
+          const walker = this.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          const rects = [];
+          while (walker.nextNode()) {
+            range.selectNodeContents(walker.currentNode);
+            rects.push(range.getBoundingClientRect());
+          }
+          return (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2;
+        };
+        const pitchCentring = pitchRubies.map(ruby => Math.abs(
+          textCentre(ruby.querySelector("rt")) - textCentre(ruby.querySelector(".gsm-hoshidicts-pitch-base"))));
+        const contourRects = pitchRubies
+          .map(ruby => ruby.querySelector(".gsm-hoshidicts-pitch-contour").getBoundingClientRect());
+        const contourGaps = contourRects.slice(1)
+          .map((rect, index) => Math.abs(rect.left - contourRects[index].right));
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -671,11 +682,13 @@ async function popupReader(page, depth = 0) {
             || (noteForm.scrollHeight <= noteForm.clientHeight + 1
               && noteActionsRect.top >= noteFormRect.top - 1
               && noteActionsRect.bottom <= noteFormRect.bottom + 1),
-          furiganaAlignment: pitchContourRect && firstBaseRect ? {
-            readingLeft: pitchContourRect.left,
-            wordLeft: firstBaseRect.left,
-            difference: Math.abs(pitchContourRect.left - firstBaseRect.left),
-          } : null,
+          furiganaAlignment: {
+            rubyAlign: expression ? view.getComputedStyle(expression).rubyAlign : null,
+            rubies: expression?.querySelectorAll("ruby").length ?? 0,
+            pitchRubies: pitchRubies.length,
+            pitchCentring: Math.max(0, ...pitchCentring),
+            contourGap: Math.max(0, ...contourGaps),
+          },
         };
       }`,
     });
@@ -1315,13 +1328,11 @@ async function popupReader(page, depth = 0) {
         const feedback = this.querySelector(".gsm-hoshidicts-mining-feedback");
         const controls = [...this.querySelectorAll(".gsm-hoshidicts-anki-control")];
         const adds = [...this.querySelectorAll(".gsm-hoshidicts-mine-button")];
-        const views = [...this.querySelectorAll(".gsm-hoshidicts-anki-view")];
         const primaryActions = this.querySelector(".gsm-hoshidicts-primary-header .gsm-hoshidicts-entry-actions");
         const actionKind = node => {
           if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
           if (node.classList.contains("gsm-hoshidicts-audio-control")) return "audio";
           if (node.classList.contains("gsm-hoshidicts-note-button")) return "note";
-          if (node.classList.contains("gsm-hoshidicts-anki-view")) return "view";
           if (node.classList.contains("gsm-hoshidicts-external-link-button")) return "external";
           return node.className;
         };
@@ -1330,15 +1341,12 @@ async function popupReader(page, depth = 0) {
           feedback: feedback ? { hidden: feedback.hidden, text: feedback.textContent, kind: feedback.dataset.kind ?? null } : null,
           controls: adds.map((add, index) => {
             const control = controls[index];
-            const view = views[index];
             const icon = add.querySelector(".gsm-hoshidicts-mine-icon");
             return { hidden: add.hidden, text: add.textContent,
               title: add.title, icon: icon?.dataset.icon ?? icon?.textContent ?? "",
               state: add.dataset.state, disabled: add.disabled,
               output: control?.querySelector("output")?.textContent ?? "",
-              viewDisabled: view?.disabled ?? true,
-              viewHidden: view?.hidden ?? true,
-              viewClass: view?.className ?? "",
+              action: add.dataset.action,
               rect: add.getBoundingClientRect().toJSON() };
           }) };
       }.toString(),
@@ -1543,7 +1551,9 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.detailsRect)
       && fitsWidth(expanded.popupRect, expanded.listRect)
       && fitsWidth(expanded.popupRect, expanded.noteRect)
-      && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
+      // Responsive action buttons can wrap as the expanded headword gets wider;
+      // the whole Note button must still be visible and usable.
+      && expanded.noteRect.top >= expanded.popupRect.top && expanded.noteRect.bottom <= expanded.popupRect.bottom
       && note?.open === true && note.noteInputFocused && note.noteInputReachable
       && lastStep?.open === true && Math.abs(lastStep.toolbarScrollTop) > 0 && lastStep.lastStepReachable
       && lastStep.lastStepRect.top >= lastStep.popupRect.top
@@ -3255,6 +3265,9 @@ async function checkDictionaryStyles(page) {
         "z-index:2147483647!important",
       ].join(";");
       host.style.setProperty("--external", 'url("https://dictionary-style.invalid/inherited.png")');
+      host.style.setProperty("--local-inherited", 'url("https://dictionary-style.invalid/local-inherited.png")');
+      host.style.setProperty("--bugd-well", "rgb(200, 0, 0)");
+      host.style.setProperty("--light-border-color", "rgb(200, 0, 0)");
       for (const suffix of [" evil", ")evil", ",evil"]) {
         host.style.setProperty(`--fg${suffix}`, 'url("https://dictionary-style.invalid/escaped-var.png")');
       }
@@ -3264,7 +3277,7 @@ async function checkDictionaryStyles(page) {
       readerStyles.replaceSync(await (await fetch(chrome.runtime.getURL("render/reader.css"))).text());
       shadow.adoptedStyleSheets = [readerStyles];
       const pageFont = document.createElement("style");
-      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); } @property --text-color { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered.png"); } @property --font-size-no-units { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered-number.png"); }';
+      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); } @property --text-color { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered.png"); } @property --font-size-no-units { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered-number.png"); } @property --local-registered { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/local-registered.png"); }';
       const popup = document.createElement("div");
       popup.className = "gsm-hoshidicts-popup";
       popup.style.cssText = "left:20px;top:20px;width:400px;height:300px";
@@ -3286,10 +3299,20 @@ async function checkDictionaryStyles(page) {
       inside.innerHTML = '<span class="inside">Definition <b class="nested">nested</b></span>';
       const escaped = addGlossary(escapedTitle);
       escaped.textContent = "Escaped title";
+      const variables = addGlossary("variable-test");
+      variables.innerHTML = '<div data-sc-grammar-card><details><summary>Source</summary><div>Body</div></details><div class="row">Row</div></div>';
       const apply = (generation, entries) => HDGlossary.applyDictionaryStyles(document, shadow, generation, entries);
       const styles = apply(1, [
         { dictionary: "scope-test", styles: '.inside { color:rgb(1, 2, 3); background:radial-gradient(var(--text-color, var(--fg, #333)), transparent); font-size:calc(var(--font-size-no-units) * 1px); & .nested { font-weight:900; } } } .outside { color:rgb(200, 0, 0) !important; } :host { --escaped:yes; } @scope (.unused) {' },
         { dictionary: escapedTitle, styles: ':scope { color:rgb(4, 5, 6); }' },
+        // The shape Bee's Ultimate Grammar Dictionary draws its disclosures with.
+        { dictionary: "variable-test", styles: [
+          "[data-sc-grammar-card] { --bugd-gap:7px; --bugd-well:rgb(1, 2, 3); --bugd-edge:var(--light-border-color, rgb(4, 5, 6)); }",
+          "[data-sc-grammar-card] .row { margin-top:var(--bugd-gap); background:var(--bugd-well); border-top:1px solid var(--bugd-edge); }",
+          "[data-sc-grammar-card] summary { display:flex; align-items:center; list-style:none; }",
+          "[data-sc-grammar-card] summary::marker { content:''; }",
+          "[data-sc-grammar-card] summary::before { content:''; width:0.62em; height:0.62em; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(-45deg); }",
+        ].join("\n") },
         { dictionary: "scope-test", styles: '.inside { color:red; }' },
       ]);
       const scope = {
@@ -3301,6 +3324,13 @@ async function checkDictionaryStyles(page) {
         escapedTitle: getComputedStyle(escaped).color,
         outside: getComputedStyle(popup.querySelector(".outside")).color,
         escapedHost: getComputedStyle(host).getPropertyValue("--escaped"),
+        rowGap: getComputedStyle(variables.querySelector(".row")).marginTop,
+        rowWell: getComputedStyle(variables.querySelector(".row")).backgroundColor,
+        rowEdge: getComputedStyle(variables.querySelector(".row")).borderTopColor,
+        summaryDisplay: getComputedStyle(variables.querySelector("summary")).display,
+        summaryListStyle: getComputedStyle(variables.querySelector("summary")).listStyleType,
+        chevronDisplay: getComputedStyle(variables.querySelector("summary"), "::before").display,
+        chevronTransform: getComputedStyle(variables.querySelector("summary"), "::before").transform,
       };
       document.head.appendChild(pageFont);
       host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
@@ -3323,6 +3353,10 @@ async function checkDictionaryStyles(page) {
         'background-image:v\\61\r\nr(--external)',
         'background-image:--external-image()',
         'background-image:\\2d\\2d external-image()',
+        'background-image:var(--local-inherited)',
+        '--local-registered:4px;background:var(--local-registered)',
+        '--local-url:url("https://dictionary-style.invalid/local-url.png");background-image:var(--local-url)',
+        '--local-font:page-resource-test;font-family:var(--local-font)',
       ];
       network.innerHTML = resourceCases.map((_, index) => `<div class="resource-${index}">Resource test</div>`).join("");
       apply(2, [{ dictionary: "network-test", styles: [
@@ -3344,6 +3378,7 @@ async function checkDictionaryStyles(page) {
       await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
       network.remove();
       escaped.remove();
+      variables.remove();
       inside.innerHTML = '<div class="overlay">Dictionary overlay</div>';
       apply(3, [{ dictionary: "scope-test", styles: '.overlay { position:fixed; inset:0; z-index:2147483647; background:red; box-shadow:0 0 0 10000px red; }' }]);
       const overlay = inside.querySelector(".overlay");
@@ -3369,11 +3404,16 @@ async function checkDictionaryStyles(page) {
     page.off("request", intercept);
   }
   check("dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
-    evidence.scope.count === 2 && evidence.scope.inside === "rgb(1, 2, 3)"
+    evidence.scope.count === 3 && evidence.scope.inside === "rgb(1, 2, 3)"
       && evidence.scope.nested === "900" && evidence.scope.escapedTitle === "rgb(4, 5, 6)"
       && evidence.scope.gradient.startsWith("radial-gradient(") && evidence.scope.fontSize === "14px"
       && evidence.scope.outside === "rgb(9, 9, 9)" && evidence.scope.escapedHost === ""
       && evidence.replacement, JSON.stringify(evidence));
+  check("dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
+    evidence.scope.rowGap === "7px" && evidence.scope.rowWell === "rgb(1, 2, 3)"
+      && evidence.scope.rowEdge === "rgb(4, 5, 6)" && evidence.scope.summaryDisplay === "flex"
+      && evidence.scope.summaryListStyle === "none" && evidence.scope.chevronDisplay === "block"
+      && evidence.scope.chevronTransform !== "none", JSON.stringify(evidence.scope));
   check("dictionary CSS cannot load remote resources or inherit resource-valued variables",
     requests.length === 0 && evidence.resources.every((value) => value === "none")
       && evidence.fonts.every((value) => !value.includes("page-resource-test"))
@@ -4086,16 +4126,15 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const rect = ready.controls[0].rect;
     await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
-    await popup.click(".gsm-hoshidicts-mine-button");
     const browseCount = calls.filter(call => call.action === "guiBrowse").length;
-    await popup.click(".gsm-hoshidicts-anki-view");
-    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].viewDisabled);
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
     const duplicate = await settled(state => state?.controls[0]?.state === "view-existing"
-      && !state.controls[0].disabled && state.controls[0].viewHidden);
+      && !state.controls[0].disabled && state.controls[0].action === "view");
     if (process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT) {
       const { x, y, width, height } = duplicate.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT,
@@ -4107,18 +4146,17 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
     check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
       quiet
-        && JSON.stringify(ready.order.slice(0, 4)) === JSON.stringify(["add", "audio", "note", "view"])
-        && ready.order.slice(4).every(kind => kind === "external")
-        && ready.controls[0].icon === "big-circle"
-        && ready.controls[0].viewClass.includes("gsm-hoshidicts-view-in-anki-button")
-        && saved.controls[0].disabled && saved.controls[0].icon === "✓"
+        && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
+        && ready.order.slice(3).every(kind => kind === "external")
+        && ready.controls[0].icon === "big-circle" && ready.controls[0].action === "add"
+        && saved.controls[0].action === "view" && saved.controls[0].icon === "✓"
         && saved.feedback?.hidden === false && saved.feedback.kind === "success"
         && saved.controls[0].output.startsWith("Added note ")
         && saved.feedback.text.includes(saved.controls[0].output)
         && note.Front === "食べる"
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
-        && browse.params.query === '"食べる"'
+        && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "view-note"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
@@ -4215,7 +4253,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   }, { data: files.get(filename), rect: popupRect });
   check(
     "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
-    saved.controls[0].disabled === true
+    saved.controls[0].action === "view"
       && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1
       && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(upload?.params.filename ?? "")
       && filename === upload.params.filename && files.get(filename) === upload.params.data
@@ -5148,17 +5186,17 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     const qualifying = await decided();
     const pendingOrBlurred = await popup.definitionBlur();
     await tab.mouse.move(qualifying.definitionsPoint.x, qualifying.definitionsPoint.y);
-    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioAttempted, 5_000);
     await updateSettingsControls(settings, { "opt-blur-direction": "below" });
     const revealedDefinition = await freshLookup();
     const notQualifying = await decided();
     const autoplayed = await waitForDefinitionBlur(popup, value => value?.audioAttempted, 5_000);
-    check("definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+    check("definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
       qualifyingDefinition?.plain.includes("食べる")
         && qualifying?.state === "blurred" && qualifying.definitionsState === "blurred"
         && qualifying.countText.includes(`Looked up ${threshold}`)
         && !pendingOrBlurred.audioAttempted
-        && hovered?.state === "revealed" && !hovered.audioAttempted
+        && hovered?.state === "revealed" && hovered.audioAttempted
         && revealedDefinition?.plain.includes("食べる")
         && notQualifying?.state === "revealed" && notQualifying.countText.includes(`Looked up ${threshold + 1}`)
         && autoplayed?.audioAttempted,
@@ -5300,14 +5338,14 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     const matureDefinition = await freshLookup();
     const mature = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     await tab.mouse.move(mature.definitionsPoint.x, mature.definitionsPoint.y);
-    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioAttempted, 5_000);
     await freshLookup();
     const repeated = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     const after = await readLookupStatistics(settings);
     const query = calls.find(call => call.action === "notesInfo")?.params.query ?? "";
-    check("cached mature definitions reveal silently and repeated lookups make no Anki requests",
+    check("cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
       matureDefinition?.plain.includes("食べる") && mature?.state === "blurred" && mature.definitionsState === "blurred"
-        && !mature.audioAttempted && hovered?.state === "revealed" && !hovered.audioAttempted
+        && !mature.audioAttempted && hovered?.state === "revealed" && hovered.audioAttempted
         && repeated?.state === "blurred" && refreshCalls() === 1 && !calls.some(call => call.action === "findCards")
         && before.ok && after.ok && before.statistics === null && after.statistics === null
         && before.descriptor.generation === after.descriptor.generation && before.descriptor.revision === after.descriptor.revision
@@ -5820,7 +5858,6 @@ async function checkDesignPreview(page) {
   try {
     await page.setViewport({ width: 1280, height: 900 });
     await showSettingsSection(page, "design");
-    await page.$eval("#design-preview-disclosure", node => { node.open = true; });
     const frame = await (await page.$("#design-preview")).contentFrame();
     await frame.waitForFunction(() => document.getElementById("preview-host")?.shadowRoot
       ?.querySelector('.gloss-image-link[data-image-load-state="loaded"] img')?.naturalWidth > 0,
@@ -6066,6 +6103,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       "opt-pitch-badge": false, "opt-grammar-tags": false });
     const hidden = await expectMetadata(value => value.frequencyNames.length === 0 && value.pitch === 0
       && value.ruby.length === 0 && value.grammar === 0);
+    const plainFurigana = (await popup.state())?.furiganaAlignment;
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
     const defaultNarrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
       && value.metadata.defaultFrequencyPill);
@@ -6073,6 +6111,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
+      && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchRubies === 0
       && hidden.metadata.defaultFrequencyPill && hidden.metadata.defaultFrequencyLabel === "Freq:"
       && hidden.metadata.frequencyText.startsWith("Freq: ")
       && defaultNarrow.metadata.defaultFrequencyPill && !defaultNarrow.metadata.clippedFrequencies
@@ -6093,7 +6132,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
     const contourState = await popup.state();
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
-      && contourState?.furiganaAlignment?.difference <= 1
+      && contourState?.furiganaAlignment?.pitchRubies === 2
+      && contourState.furiganaAlignment.pitchCentring <= 1 && contourState.furiganaAlignment.contourGap <= 1
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
@@ -6306,6 +6346,49 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
     await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    // An overlay host turns click-through when the popup hides, so pressing on
+    // text must keep it open until release decides between a drag and a click.
+    await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
+    await moveTo("#verb");
+    const hoverPopup = await popup.waitForVisible();
+    await tab.evaluate(() => {
+      globalThis.__hiddenEvents = 0;
+      globalThis.__countHidden ??= () => { globalThis.__hiddenEvents += 1; };
+      window.addEventListener("hachidori-popup-hidden", globalThis.__countHidden);
+    });
+    const hoverBox = await (await tab.$("#verb")).boundingBox();
+    await tab.mouse.move(hoverBox.x + 1, hoverBox.y + hoverBox.height / 2);
+    await tab.mouse.down();
+    let hoverDrag;
+    try {
+      await tab.mouse.move(hoverBox.x + hoverBox.width - 1, hoverBox.y + hoverBox.height / 2, { steps: 8 });
+      hoverDrag = await tab.evaluate(() => ({ hidden: globalThis.__hiddenEvents,
+        selected: window.getSelection().toString() }));
+      hoverDrag.visible = popup.visible(await popup.state());
+    } finally {
+      await tab.mouse.up();
+      await tab.evaluate(() => window.removeEventListener("hachidori-popup-hidden", globalThis.__countHidden));
+    }
+    await pause();
+    const hoverSelected = await popup.waitForVisible();
+    const hoverEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const hoverEditor = await popup.state();
+    await popup.click(".gsm-hoshidicts-note-cancel");
+    await dismiss();
+    await moveTo("#verb");
+    const clickPopup = await popup.waitForVisible();
+    await tab.mouse.down();
+    await tab.mouse.up();
+    await pause();
+    const clickDismissed = !popup.visible(await popup.state());
+    check("hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
+      hoverPopup?.plain.includes("食べる") && hoverDrag.hidden === 0 && hoverDrag.visible
+        && hoverDrag.selected === "食べたかった" && hoverSelected?.plain.includes("食べる")
+        && hoverEditorOpened && hoverEditor.noteTerm === "食べたかった" && hoverEditor.noteReading === ""
+        && Boolean(clickPopup) && clickDismissed,
+      JSON.stringify({ hoverPopup: Boolean(hoverPopup), hoverDrag, hoverSelected: Boolean(hoverSelected),
+        hoverEditorOpened, hoverEditor, clickPopup: Boolean(clickPopup), clickDismissed }));
+    await dismiss();
     await tab.$eval("#verb", (element) => {
       element.innerHTML = '<input value="食べたかった"><textarea>食べたかった</textarea>'
         + '<b contenteditable="true"><i>食べたかった</i></b><button class="vn-next" type="button">→</button>';
@@ -6813,6 +6896,7 @@ async function main() {
 
   const launchArgs = {
     executablePath: CHROME,
+    enableExtensions: true,
     dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
     userDataDir: PROFILE,
@@ -6992,40 +7076,50 @@ async function main() {
   await showSettingsSection(page, "sharing");
   const sharing = await page.evaluate(async () => {
     const manifest = chrome.runtime.getManifest();
-    const granted = await chrome.permissions.contains({ permissions: ["nativeMessaging"] });
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_status", requestId: "e2e-sharing" });
     const toggle = document.getElementById("sharing-host-enabled");
     for (let attempt = 0; attempt < 50 && toggle.disabled; attempt++) {
       await new Promise(resolveWait => setTimeout(resolveWait, 20));
     }
     return {
-      optional: manifest.optional_permissions ?? [],
-      granted,
+      optional: manifest.optional_permissions ?? null,
+      permissions: manifest.permissions,
       reply,
       visible: !document.getElementById("sharing").hidden,
       toggleDisabled: toggle.disabled,
       toggleChecked: toggle.checked,
-      address: document.getElementById("sharing-host-address").value,
-      command: document.getElementById("sharing-install-command").textContent,
+      networkDisabled: document.getElementById("sharing-host-network").disabled,
+      addonOffered: !document.getElementById("sharing-addon").hidden,
+      alarms: (await chrome.alarms.getAll()).map(alarm => alarm.name),
       status: document.getElementById("sharing-status").textContent,
     };
   });
   check(
-    "a fresh profile declares the optional native messaging permission and reports sharing off",
-    sharing.optional.includes("nativeMessaging")
-      && sharing.granted === false
+    "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
+    sharing.optional === null
+      && !sharing.permissions.includes("nativeMessaging")
       && sharing.reply?.ok === true
-      && sharing.reply.sharing?.enabled === false
+      && sharing.reply.sharing?.enabled === true
       && sharing.reply.sharing.connected === false
-      && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.reply.sharing.dictionaries === 0
+      && sharing.reply.sharing.error === null
+      && sharing.reply.sharing.port === 8771
+      && sharing.reply.sharing.network?.enabled === false
+      && sharing.reply.sharing.client?.linked === false
       && sharing.visible
       && sharing.toggleDisabled === false
-      && sharing.toggleChecked === false
-      && sharing.address === "ws://127.0.0.1:8771/link"
-      && sharing.command === `node bridge/install.mjs --extension-id ${extensionId}`
-      && sharing.status === "Not sharing.",
+      && sharing.toggleChecked === true
+      && sharing.networkDisabled === false
+      && sharing.addonOffered
+      && !sharing.alarms.includes("hachidori-sharing-host")
+      && sharing.status === "Sharing starts once this Hachidori has dictionaries.",
     JSON.stringify(sharing),
   );
+  // Sharing connects, with a watchdog alarm while the relay is away, as soon as
+  // this profile has dictionaries; off for the rest of this profile so the
+  // update-alarm checks below see only their own alarms.
+  const sharingOff = await page.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "e2e-sharing-off" }));
+  if (sharingOff?.ok !== true) throw new Error(`sharing could not be turned off: ${sharingOff?.error}`);
   await showSettingsSection(page, "keybinds");
   const browserShortcuts = await page.evaluate(async () => {
     const commands = await chrome.commands.getAll();
@@ -9621,6 +9715,20 @@ async function main() {
     sourcePrefix: CUSTOM_SETTINGS_SOURCE,
     definition: CUSTOM_TERM_NOTE_DEFINITION,
   }).then((handle) => handle.jsonValue()).catch(() => null);
+  let refreshedTermNote = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = await popup.state();
+    if (popup.visible(state)
+        && state?.noteOpen === false
+        && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
+      refreshedTermNote = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+
+  // The storage commit precedes generation cleanup. The refreshed popup is the
+  // existing barrier proving that the save completed and lookups are available.
   const customGlobalTermLookup = await page.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-offscreen",
     type: "hd_lookup",
@@ -9634,17 +9742,6 @@ async function main() {
       primaryReading: "",
     },
   }));
-  let refreshedTermNote = null;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const state = await popup.state();
-    if (popup.visible(state)
-        && state?.noteOpen === false
-        && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
-      refreshedTermNote = state;
-      break;
-    }
-    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
-  }
 
   const clickedCustomKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   let customKanjiView = null;

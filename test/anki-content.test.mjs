@@ -8,7 +8,8 @@ import "../extension/reader-options.js";
 import "../extension/anki-content.js";
 import { createCaptureSession } from "../extension/capture-session.js";
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [resolve(homedir(), ".cache/hachidori-e2e")] }));
+const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+  || resolve(homedir(), ".cache/hachidori-e2e")] }));
 const configured = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS, anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, model: "Basic" } };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function until(predicate) {
@@ -41,7 +42,6 @@ function fixture(t, send, capture = send, wait, conceal) {
     popup.append(actions, feedback);
     return { actions, feedback, get control() { return feedback.querySelector(".gsm-hoshidicts-anki-control"); },
       get add() { return actions.querySelector(".gsm-hoshidicts-mine-button"); },
-      get view() { return actions.querySelector(".gsm-hoshidicts-anki-view"); },
       get output() { return feedback.querySelector("output"); }, result: { term: { expression, reading: "" } } };
   });
   return { controller, context, items };
@@ -60,7 +60,7 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
   f.controller.bind(f.items, f.context);
   await tick();
   assert.deepEqual(calls, []);
-  assert.ok(f.items.every(item => item.add === null && item.view === null && item.control === null),
+  assert.ok(f.items.every(item => item.add === null && item.control === null),
     "unconfigured mining creates no Anki control DOM");
   f.controller.update(configured);
   await until(() => calls.length === 2);
@@ -93,12 +93,11 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
     if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
     if (node.classList.contains("gsm-hoshidicts-audio-control")) return "audio";
     if (node.classList.contains("gsm-hoshidicts-note-button")) return "note";
-    if (node.classList.contains("gsm-hoshidicts-anki-view")) return "view";
     if (node.classList.contains("gsm-hoshidicts-external-link-button")) return "external";
     return node.className;
   };
   assert.deepEqual([...f.items[0].actions.children].map(actionKind),
-    ["add", "audio", "note", "view", "external"]);
+    ["add", "audio", "note", "external"]);
   assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "big-circle");
   assert.match(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").getAttribute("src"),
     /render\/icons\/big-circle\.svg$/u);
@@ -107,23 +106,23 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
     "view-note");
   assert.equal(f.items[1].add.disabled, false);
   assert.equal(f.items[1].add.title, "View existing notes in Anki");
-  assert.equal(f.items[1].view.hidden, true);
+  assert.equal(f.items[1].add.dataset.action, "view");
+  assert.equal(f.items[0].actions.querySelectorAll("button").length, 4);
   f.items[1].add.click();
   await until(() => browse.length === 1);
   assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "overwrite-big-circle");
-  assert.ok(f.items[0].view.classList.contains("gsm-hoshidicts-view-in-anki-button"));
-  assert.match(f.items[0].view.querySelector(".gsm-hoshidicts-view-in-anki-icon").getAttribute("src"),
-    /render\/icons\/view-note\.svg$/u);
 });
 
-test("successful Add remains successful after a refresh failure and cannot invite a second click", async t => {
+test("successful Add remains successful after a refresh failure and a second click opens the new note", async t => {
   let submitted = 0;
-  const f = fixture(t, async type => {
+  const browse = [];
+  const f = fixture(t, async (type, { request } = {}) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
     if (type === "hd_anki_submit") { submitted++; return { state: "added", noteId: 12, warnings: ["Audio unavailable"] }; }
+    if (type === "hd_anki_browse") { browse.push(request); return { opened: true }; }
     if (submitted) throw new Error("refresh offline");
     return { state: "addable", canAdd: true };
   });
@@ -135,16 +134,21 @@ test("successful Add remains successful after a refresh failure and cannot invit
   await until(() => f.items[0].add.dataset.state === "success");
   await tick();
   assert.match(f.items[0].output.textContent, /Added.*12.*Audio unavailable/u);
-  assert.equal(f.items[0].add.disabled, true);
+  assert.equal(f.items[0].add.dataset.action, "view");
+  f.items[0].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫" }]);
   assert.equal(submitted, 1);
 });
 
-test("late preflight cannot expose retired controls and an uncertain write stays disabled with View available", async t => {
+test("late preflight cannot expose retired controls and an uncertain write opens Anki instead of retrying", async t => {
   const held = Promise.withResolvers();
   let pending = true, writes = 0;
-  const f = fixture(t, async type => {
+  const browse = [];
+  const f = fixture(t, async (type, { request } = {}) => {
     if (type === "hd_anki_status") { if (pending) await held.promise; return { available: true, configKey: "current" }; }
     if (type === "hd_anki_submit") { writes++; throw new Error("reply lost"); }
+    if (type === "hd_anki_browse") { browse.push(request); return { opened: true }; }
     return { state: "addable", canAdd: true };
   });
   f.controller.update(configured);
@@ -158,10 +162,11 @@ test("late preflight cannot expose retired controls and an uncertain write stays
   assert.equal(f.items[0].control, null);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "error");
-  assert.equal(f.items[1].add.disabled, true);
-  assert.equal(f.items[1].view.disabled, false);
-  assert.match(f.items[1].output.textContent, /View in Anki/u);
+  assert.equal(f.items[1].add.dataset.action, "view");
+  assert.match(f.items[1].output.textContent, /Check Anki before trying again/u);
   f.items[1].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{ noteIds: [], expression: "犬" }]);
   assert.equal(writes, 1);
 });
 
@@ -205,9 +210,9 @@ test("settings changes during submission preserve confirmed and uncertain outcom
     await until(() => f.items[0].add && !f.items[0].add.disabled);
     f.items[0].add.click();
     f.controller.update({ ...configured, anki: { ...configured.anki, duplicateBehavior: "new" } });
-    held.resolve({ state, noteId: 42, warnings: [], error: "Use View in Anki before trying again." });
+    held.resolve({ state, noteId: 42, warnings: [], error: "Check Anki before trying again." });
     await until(() => !f.items[0].output.textContent.includes("Saving"));
-    assert.equal(f.items[0].add.disabled, true, `${state} must remain terminal after configuration changes`);
+    assert.equal(f.items[0].add.dataset.action, "view", `${state} must remain terminal after configuration changes`);
     f.items[0].add.click();
     assert.equal(writes, 1);
   }
@@ -441,7 +446,7 @@ test("uncertain replies and lost submission responses retain the prepared job an
       await until(() => f.items[0].add && !f.items[0].add.disabled);
       f.items[0].add.click();
       await until(() => f.items[0].add.dataset.state === "error");
-      assert.equal(f.items[0].add.disabled, true);
+      assert.equal(f.items[0].add.dataset.action, "view");
       assert.equal(f.session.jobStatus(f.jobs[0]).state, "ready");
       assert.equal(f.captureCalls.includes("hd_capture_cancel"), false);
     });

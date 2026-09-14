@@ -1,0 +1,118 @@
+name: Runtime tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Node contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.2'
+      - run: npm ci --prefix test/tooling
+      - run: npm --prefix test/tooling test
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: node-failure
+          path: test/tmp/ci/
+          retention-days: 7
+
+  relay-compatibility:
+    name: Relay on Python 3.9
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.9.25'
+      - run: node --test test/sharing-relay.test.mjs
+
+  smoke:
+    name: WASM and extension smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - run: npm ci --prefix test/tooling
+      - run: npm --prefix test/tooling run test:smoke
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: smoke-failure
+          path: test/tmp/ci/
+          retention-days: 7
+
+  chrome:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [chrome-e2e, chrome-sharing, chrome-fallback, chrome-overlay]
+    env:
+      HACHIDORI_ALLOW_NO_SANDBOX: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.2'
+      - run: npm ci --prefix test/tooling
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: test/tmp/browsers
+          key: chrome-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('test/tooling/package.json') }}
+      - name: Install the pinned Chrome and its Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          npm --prefix test/tooling run install:chrome
+          sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
+      - run: node test/run.mjs ${{ matrix.suite }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ${{ matrix.suite }}-failure
+          path: |
+            test/tmp/ci/
+            /tmp/hachidori-e2e-profile-*
+            /tmp/hachidori-sharing-host-*
+            /tmp/hachidori-sharing-client-*
+            /tmp/hachidori-fallback-profile-*
+            /tmp/hachidori-overlay-profile-*
+          include-hidden-files: true
+          retention-days: 7

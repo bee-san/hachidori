@@ -189,6 +189,7 @@
             <h1 id="import-heading" tabindex="-1">Import dictionaries</h1>
             <p class="hint">Yomitan ZIP files, stored on this device.</p>
           </div>
+          <p class="field-hint sharing-linked-notice" id="sharing-import-notice" hidden>Dictionaries live on the linked Hachidori: import ZIP files there. Recommended dictionaries can still be installed from here, and <a href="#sharing">Sharing</a> lets you unlink to use this browser’s own dictionaries again.</p>
           <div
             class="import-drop-zone"
             id="import-drop-zone"
@@ -578,7 +579,7 @@
                   <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
                 </label>
               </div>
-              <p class="field-hint" id="definition-blur-help" hidden>Hovering a definition or the compact summary always reveals it. Pronunciation does not auto-play for blurred results.</p>
+              <p class="field-hint" id="definition-blur-help" hidden>Hovering a definition or the compact summary always reveals it. Automatic pronunciation waits until the definitions are revealed.</p>
             </details>
           </fieldset>
           <div id="settings-local-file-access" hidden></div>
@@ -636,6 +637,11 @@
                   <span>Highlight the word on the page</span>
                   <input id="opt-source-highlight" type="checkbox" />
                 </label>
+                <label class="lookup-enable">
+                  <span>Show the audio button</span>
+                  <input id="opt-popup-audio-button" type="checkbox" aria-describedby="popup-audio-button-help" />
+                </label>
+                <p class="field-hint" id="popup-audio-button-help">Autoplay and audio keybinds still work when it's hidden.</p>
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Definitions</legend>
@@ -729,18 +735,28 @@
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Custom toolbar links</legend>
-                <label class="field">
-                  <span class="field-label">Names and URL templates</span>
-                  <textarea id="opt-custom-links" rows="4" spellcheck="false"
-                    aria-describedby="custom-links-help custom-links-status"
-                    placeholder="Jisho, https://jisho.org/search/%w&#10;Search sentence, https://www.google.com/search?q=%s"></textarea>
-                  <span id="custom-links-help" class="field-hint">One link per line: name, URL. Use %w for the word, %r for its reading, and %s for the sentence. Change line order to reorder buttons; remove a line to remove a link.</span>
-                </label>
-                <div class="custom-dictionary-actions">
-                  <button id="save-custom-links" type="button" class="ghost">Save links</button>
-                  <button id="discard-custom-links" type="button" class="ghost">Discard changes</button>
-                </div>
-                <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+                <p class="field-hint">Use %w for the word, %r for its reading and %s for the sentence.</p>
+                <ol id="custom-link-list" class="custom-link-list"></ol>
+                <p id="custom-link-empty" class="field-hint">No custom links yet.</p>
+                <form id="custom-link-form" class="custom-link-form" novalidate>
+                  <div class="fields">
+                    <label class="field">
+                      <span class="field-label">Link name</span>
+                      <input id="opt-custom-link-name" type="text" autocomplete="off" placeholder="Jisho"
+                        aria-describedby="custom-links-status" />
+                    </label>
+                    <label class="field">
+                      <span class="field-label">URL template</span>
+                      <input id="opt-custom-link-url" type="text" spellcheck="false" autocomplete="off"
+                        placeholder="https://jisho.org/search/%w" aria-describedby="custom-links-status" />
+                    </label>
+                  </div>
+                  <div class="custom-dictionary-actions">
+                    <button id="custom-link-submit" type="submit" class="ghost">Add link</button>
+                    <button id="custom-link-cancel" type="button" class="ghost" hidden>Cancel</button>
+                  </div>
+                  <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+                </form>
               </fieldset>
               <details class="settings-disclosure custom-css-disclosure">
                 <summary>Custom CSS</summary>
@@ -758,9 +774,9 @@
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
               <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
             </div>
-            <details class="design-sample" id="design-preview-disclosure" open>
-              <summary>Live preview</summary>
+            <section class="design-sample" aria-labelledby="design-preview-heading">
               <div class="preview-heading">
+                <h2 id="design-preview-heading">Live preview</h2>
                 <label class="preview-size-label">View
                   <select id="preview-size">
                     <option value="fit">Scale to fit</option>
@@ -772,27 +788,25 @@
               <div class="preview-viewport" id="preview-viewport">
                 <div id="preview-canvas"></div>
               </div>
-            </details>
+            </section>
           </div>
         </section>
         <section class="card" id="audio" aria-labelledby="audio-heading" hidden>
           <div class="card-head">
             <h1 id="audio-heading" tabindex="-1" data-search-keywords="voice pronunciation text to speech TTS source provider URL">Audio</h1>
-            <p class="hint">Choose where pronunciations come from, in priority order.</p>
+            <p class="hint">Pronunciation sources, tried from top to bottom.</p>
           </div>
           <div class="options-feedback-slot"></div>
-          <p class="section-note">Choose a voice for text-to-speech, or add an audio provider. Hachidori tries enabled sources from top to bottom.</p>
-          <p class="field-hint">Automatic Japanese chooses an available Japanese voice. To attach browser speech to Anki, start Media capture with shared audio; Hachidori records that exact voice when you add the note. Downloadable sources work without capture.</p>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
-          <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
-          <p class="field-hint">Pronunciation sends the selected word and reading to your configured audio providers. Use HTTPS for remote sources; HTTP localhost services on this computer are supported.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
           <details class="settings-disclosure">
-            <summary>Audio URLs and testing</summary>
-            <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code> (ja). Substitutions are URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
-            <p class="field-hint">Test plays 聞く / きく using that source, even if it is disabled. URL sources contact the configured provider; some system voices use an online service.</p>
+            <summary>Help</summary>
+            <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code>, URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
+            <p class="field-hint">Shift-click or right-click the popup's audio button to choose a pronunciation.</p>
+            <p class="field-hint">To add browser speech to Anki, start Media capture with shared audio.</p>
+            <p class="field-hint">Sources receive the word and reading. Remote URLs need HTTPS; localhost may use HTTP. Some system voices are online.</p>
           </details>
         </section>
         <section class="card" id="media" aria-labelledby="media-heading" hidden>
@@ -986,28 +1000,49 @@
         </section>
         <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
           <div class="card-head">
-            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link bridge other browser GSM overlay native messaging port address">Sharing</h1>
-            <p class="hint">Use one Hachidori from every browser on this computer.</p>
+            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
+            <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
           <output id="sharing-status" class="anki-status" aria-live="polite"></output>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
-            <p class="field-hint">Other browsers on this computer, such as the GameSentenceMiner overlay, then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own.</p>
+            <p class="field-hint">Your other browsers then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own. Anki carries the connection: install the Hachidori Relay add-on once and keep Anki open.</p>
+            <div class="sharing-actions" id="sharing-addon">
+              <button id="sharing-addon-download" type="button" class="ghost">Download the Anki add-on</button>
+              <span class="field-hint">Then double-click the file to install it and restart Anki.</span>
+            </div>
             <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
-            <div class="fields">
-              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">Change it only if another program already uses this port.</span></label>
-              <label class="field"><span class="field-label">Address</span><input id="sharing-host-address" type="text" readonly spellcheck="false"><span class="field-hint">Other browsers find this Hachidori on the default port by themselves; enter the address there when the port differs.</span></label>
+            <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
+            <label class="lookup-enable"><span>Also with my other computers</span><input id="sharing-host-network" type="checkbox" disabled></label>
+            <p class="field-hint">Over Tailscale or your home network. Anyone on that network could reach it, so leave it off on public Wi-Fi.</p>
+            <div id="sharing-host-addresses" hidden>
+              <p class="field-hint" id="sharing-host-addresses-note"></p>
+              <ul id="sharing-host-address-list" class="sharing-addresses"></ul>
+            </div>
+            <details class="settings-disclosure">
+              <summary>Advanced</summary>
+              <div class="fields">
+                <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">Change it only if you changed the add-on’s port in Anki (Tools → Add-ons → Hachidori Relay → Config).</span></label>
+              </div>
+            </details>
+          </fieldset>
+          <fieldset class="lookup-group" id="sharing-client">
+            <legend>Use another Hachidori</legend>
+            <p class="field-hint">This browser then uses that Hachidori’s dictionaries, personal entries, lookup counts and settings. Nothing is copied, and unlinking brings this browser’s own state back.</p>
+            <div id="sharing-client-nearby">
+              <output id="sharing-client-found" class="field-hint" aria-live="polite"></output>
+              <div class="sharing-actions">
+                <button id="sharing-client-use" type="button" class="primary-button" hidden>Use it</button>
+                <button id="sharing-client-find" type="button" class="ghost">Look again</button>
+              </div>
+            </div>
+            <div class="fields" id="sharing-client-remote">
+              <label class="field"><span class="field-label">On another computer</span><input id="sharing-client-address" type="text" spellcheck="false" autocomplete="off" placeholder="100.101.102.103"><span class="field-hint">The address shown under Sharing on that computer.</span></label>
             </div>
             <div class="sharing-actions">
-              <button id="sharing-host-copy" type="button" class="ghost">Copy address</button>
+              <button id="sharing-client-link" type="button" class="ghost">Link</button>
+              <button id="sharing-client-unlink" type="button" class="ghost" hidden>Unlink</button>
             </div>
-            <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
-            <details class="anki-details" id="sharing-install">
-              <summary>Install the bridge</summary>
-              <p class="field-hint">Sharing needs a small helper program that Chrome starts and stops together with this switch. Install it once from the Hachidori checkout with Node.js:</p>
-              <pre id="sharing-install-command" class="sharing-command"></pre>
-              <p class="field-hint">Add <code>--browser chromium</code> for Chromium, or <code>--user-data-dir</code> when the browser runs on a custom profile directory. Then turn the switch on again.</p>
-            </details>
           </fieldset>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
@@ -1015,6 +1050,7 @@
             <h1 id="backup-heading" tabindex="-1">Backup &amp; restore</h1>
             <p class="hint">A complete copy of this browser’s Hachidori data.</p>
           </div>
+          <p class="field-hint sharing-linked-notice" id="sharing-backup-notice" hidden>Backups are made and restored on the linked Hachidori. Open <a href="#sharing">Sharing</a> to unlink and use this browser’s own data again.</p>
           <div class="backup-action">
             <div>
               <h2>Save a backup</h2>

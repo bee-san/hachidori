@@ -2,9 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_ANKI_STATUSES, SETUP_STAGES, advanceSetupState, initialSetupState,
-  normaliseSetupState, recordSetupAnki, recordSetupDictionaries, setupIncomplete,
+  normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries, setupIncomplete,
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
+
+test("overlay mining never takes a screenshot or records browser text-to-speech", () => {
+  const stored = globalThis.HDReaderOptions.normaliseOptions({
+    anki: { captureScreenshot: true },
+    audioSources: [
+      { id: "tts", type: "text-to-speech", enabled: true, url: "", voice: "" },
+      { id: "reading", type: "text-to-speech-reading", enabled: true, url: "", voice: "" },
+      { id: "jpod", type: "custom", enabled: true, url: "https://audio.test/%w", voice: "" },
+    ],
+  });
+  const overlay = overlayAnkiOptions(stored);
+  assert.equal(overlay.anki.captureScreenshot, false);
+  assert.deepEqual(overlay.audioSources.map(source => source.id), ["jpod"]);
+  assert.equal(stored.anki.captureScreenshot, true, "the stored options are not changed");
+  assert.equal(stored.audioSources.length, 3);
+});
 
 const EMPTY_DICTIONARIES = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
 

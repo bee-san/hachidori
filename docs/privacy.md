@@ -75,15 +75,25 @@ Any later Anki synchronization is controlled by Anki and your Anki configuration
 a WebSocket service on the same computer. Lookup counts use only local browser
 storage and never contact an external service.
 
-**Sharing between browsers.** Turning on **Share this Hachidori** in Settings
-starts a helper program on your computer that listens on a local port
-(`127.0.0.1`, port 8771 by default) so other browsers on the same computer can
-use this Hachidori. Only browser extensions can connect. A linked browser
-receives dictionary results, personal entries, lookup counts and settings,
-including custom URLs and the AnkiConnect API key, and its edits are stored
-here. Nothing is sent to other computers. Another program or extension on your
-computer could connect while sharing is on, as with AnkiConnect. Sharing is off
-by default and needs the optional native messaging permission.
+**Sharing between browsers.** A browser install of Hachidori shares itself by
+default with other Hachidoris on the same computer through Anki: while Anki
+runs with the Hachidori Relay add-on, Hachidori connects to that relay
+(`127.0.0.1`, port 8771 by default) and answers lookups and settings edits from
+browsers linked through it. Only browser extensions can connect to the relay,
+and it listens on this computer alone until you tick **Also with my other
+computers** in Settings, which makes it accept links from the network this
+computer is on (Tailscale, your home network) and shows the addresses that
+reach it; anyone on that network could then connect, as with AnkiConnect
+bound to all interfaces. A linked browser receives dictionary results,
+personal entries, lookup counts and settings, including custom URLs and the
+AnkiConnect API key, and its edits are stored here. Nothing is sent to other
+computers while that switch is off, and nothing is sent at all while Anki is
+closed. Another program or extension on your computer could connect to the
+relay while it runs, as with AnkiConnect. **Share this Hachidori** in Settings
+turns it off. A browser linked to a shared Hachidori sends the text it looks up
+and its settings, presentation and personal-dictionary edits to that Hachidori,
+and keeps a mirror of its settings, personal entries and lookup counts until it
+unlinks.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,

@@ -1,0 +1,350 @@
+// Drives the Anki add-on's relay, extension/anki-relay/server.py run as a
+// process, over raw sockets.
+// SPDX-License-Identifier: GPL-3.0-or-later
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { connect } from "node:net";
+import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { startAnkiRelayServer } from "./anki-relay-server.mjs";
+
+const EXTENSION_ORIGIN = "chrome-extension://hachidorirelaytestextensionid";
+
+function queue() {
+  const items = [];
+  const waiters = [];
+  return {
+    push(item) {
+      const waiter = waiters.shift();
+      if (waiter) waiter(item);
+      else items.push(item);
+    },
+    next(what = "item", timeoutMs = 5000) {
+      if (items.length > 0) return Promise.resolve(items.shift());
+      return new Promise((resolveNext, rejectNext) => {
+        const timer = setTimeout(() => rejectNext(new Error(`timed out waiting for ${what}`)), timeoutMs);
+        waiters.push((item) => { clearTimeout(timer); resolveNext(item); });
+      });
+    },
+  };
+}
+
+function encodeClientFrame(opcode, payload) {
+  const mask = randomBytes(4);
+  let header;
+  if (payload.length <= 125) header = Buffer.from([0x80 | opcode, 0x80 | payload.length]);
+  else if (payload.length <= 0xffff) {
+    header = Buffer.alloc(4);
+    header[0] = 0x80 | opcode;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x80 | opcode;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  const masked = Buffer.from(payload);
+  for (let index = 0; index < masked.length; index += 1) masked[index] ^= mask[index % 4];
+  return Buffer.concat([header, mask, masked]);
+}
+
+function readServerFrame(buffer) {
+  if (buffer.length < 2) return null;
+  const opcode = buffer[0] & 0x0f;
+  let length = buffer[1] & 0x7f;
+  let offset = 2;
+  if (length === 126) {
+    if (buffer.length < 4) return null;
+    length = buffer.readUInt16BE(2);
+    offset = 4;
+  } else if (length === 127) {
+    if (buffer.length < 10) return null;
+    length = Number(buffer.readBigUInt64BE(2));
+    offset = 10;
+  }
+  if (buffer.length < offset + length) return null;
+  return { opcode, payload: buffer.subarray(offset, offset + length), length: offset + length };
+}
+
+// A minimal WebSocket client: Node's built-in one cannot set the Origin header
+// the relay checks.
+async function connectClient(t, port, path, origin = EXTENSION_ORIGIN, host = "127.0.0.1") {
+  const socket = connect(port, host);
+  t.after(() => socket.destroy());
+  await new Promise((resolveConnect, rejectConnect) => {
+    socket.once("connect", resolveConnect);
+    socket.once("error", rejectConnect);
+  });
+  const key = randomBytes(16).toString("base64");
+  socket.write([
+    `GET ${path} HTTP/1.1`, `Host: ${host}:${port}`, "Upgrade: websocket", "Connection: Upgrade",
+    `Sec-WebSocket-Key: ${key}`, "Sec-WebSocket-Version: 13", ...(origin === null ? [] : [`Origin: ${origin}`]), "", "",
+  ].join("\r\n"));
+  const frames = queue();
+  const closed = new Promise((resolveClose) => socket.once("close", resolveClose));
+  let buffer = Buffer.alloc(0);
+  let status = null;
+  const head = new Promise((resolveHead) => {
+    socket.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (status === null) {
+        const end = buffer.indexOf("\r\n\r\n");
+        if (end === -1) return;
+        status = Number(buffer.toString("latin1", 0, end).split(" ")[1]);
+        buffer = buffer.subarray(end + 4);
+        resolveHead(status);
+      }
+      while (true) {
+        const frame = readServerFrame(buffer);
+        if (frame === null) return;
+        buffer = buffer.subarray(frame.length);
+        frames.push(frame);
+      }
+    });
+  });
+  socket.on("error", () => {});
+  await head;
+  return {
+    status,
+    closed,
+    pause() { socket.pause(); },
+    resume() { socket.resume(); },
+    send(text) { socket.write(encodeClientFrame(0x1, Buffer.from(text, "utf8"))); },
+    async ping(text) {
+      socket.write(encodeClientFrame(0x9, Buffer.from(text, "utf8")));
+      let frame = await frames.next("a pong frame");
+      while (frame.opcode !== 0xA) frame = await frames.next("a pong frame");
+      assert.equal(frame.payload.toString("utf8"), text);
+    },
+    async json(what = "a frame") {
+      const frame = await frames.next(what);
+      assert.equal(frame.opcode, 0x1, `expected a text frame, got opcode ${frame.opcode}`);
+      return JSON.parse(frame.payload.toString("utf8"));
+    },
+    async closeFrame() {
+      let frame = await frames.next("a close frame");
+      while (frame.opcode !== 0x8) frame = await frames.next("a close frame");
+      return frame;
+    },
+    close() { socket.write(encodeClientFrame(0x8, Buffer.alloc(0))); },
+    destroy() { socket.destroy(); },
+  };
+}
+
+async function untilKind(client, kind) {
+  let frame = await client.json(`a ${kind} frame`);
+  while (frame.kind !== kind) frame = await client.json(`a ${kind} frame`);
+  return frame;
+}
+
+async function server(t) {
+  const started = await startAnkiRelayServer({ pingMs: 50 });
+  t.after(() => started.close());
+  return started;
+}
+
+const listening = (port) => ({ kind: "listening", port });
+
+test("clients are refused until a host connects, and a second host is turned away", async (t) => {
+  const { port } = await server(t);
+  assert.equal((await connectClient(t, port, "/link")).status, 503);
+  assert.equal((await connectClient(t, port, "/host", "https://example.com")).status, 403);
+  assert.equal((await connectClient(t, port, "/host", null)).status, 403);
+  assert.equal((await connectClient(t, port, "/elsewhere")).status, 404);
+  const host = await connectClient(t, port, "/host");
+  assert.equal(host.status, 101);
+  assert.deepEqual(await host.json(), listening(port));
+  const second = await connectClient(t, port, "/host");
+  assert.equal(second.status, 101);
+  assert.deepEqual(await second.json(), { kind: "listen-failed", error: "Another browser on this computer is already sharing through Anki." });
+  await second.closeFrame();
+  const client = await connectClient(t, port, "/link");
+  assert.equal(client.status, 101);
+  const opened = await untilKind(host, "client-open");
+  assert.equal(opened.origin, EXTENSION_ORIGIN);
+});
+
+test("text crosses the relay whole in both directions, with pings on both sides", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const first = await connectClient(t, port, "/link");
+  const { clientId } = await untilKind(host, "client-open");
+  const large = "大きな".repeat(Math.ceil(1.5 * 1024 * 1024 / 3));
+  first.send(large);
+  const relayed = await untilKind(host, "client-text");
+  assert.equal(relayed.clientId, clientId);
+  assert.equal(relayed.text, large);
+  host.send(JSON.stringify({ kind: "send", clientId, text: JSON.stringify({ kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } }) }));
+  assert.deepEqual(await untilKind(first, "reply"), { kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } });
+  const second = await connectClient(t, port, "/link");
+  const secondOpen = await untilKind(host, "client-open");
+  host.send(JSON.stringify({ kind: "broadcast", text: JSON.stringify({ kind: "storage", changes: { options: null } }) }));
+  const [one, two] = await Promise.all([untilKind(first, "storage"), untilKind(second, "storage")]);
+  assert.deepEqual([one, two], [{ kind: "storage", changes: { options: null } }, { kind: "storage", changes: { options: null } }]);
+  assert.deepEqual(await untilKind(host, "ping"), { kind: "ping" });
+  assert.deepEqual(await untilKind(second, "ping"), { kind: "ping" });
+  host.send(JSON.stringify({ kind: "close", clientId: secondOpen.clientId }));
+  await second.closeFrame();
+  await second.closed;
+  const closedFrame = await untilKind(host, "client-close");
+  assert.equal(closedFrame.clientId, secondOpen.clientId);
+  first.close();
+  assert.equal((await untilKind(host, "client-close")).clientId, clientId);
+});
+
+test("losing the host closes its clients, and the next host is accepted", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const client = await connectClient(t, port, "/link");
+  await untilKind(host, "client-open");
+  host.destroy();
+  await client.closeFrame();
+  await client.closed;
+  assert.equal((await connectClient(t, port, "/link")).status, 503, "the lost host is forgotten");
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port));
+});
+
+// The relay listens on this computer alone until the host asks for the network.
+// Skipped, with a note, on a machine that has no address other than loopback.
+async function networkOn(t, host) {
+  host.send(JSON.stringify({ kind: "network", enabled: true }));
+  const reply = await untilKind(host, "network");
+  assert.equal(reply.enabled, true);
+  assert.ok(Array.isArray(reply.addresses));
+  if (reply.addresses.length === 0) {
+    t.diagnostic("no network address on this machine; the network cases did not run");
+    return null;
+  }
+  for (const entry of reply.addresses) assert.match(entry.kind, /^(tailscale|local)$/u, JSON.stringify(entry));
+  return reply.addresses[0].address;
+}
+
+test("the host opens the relay to the network and closes it again", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  assert.deepEqual(await host.json(), listening(port));
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  assert.equal((await connectClient(t, port, "/host", EXTENSION_ORIGIN, address)).status, 403, "only this computer's Hachidori hosts");
+  const remote = await connectClient(t, port, "/link", EXTENSION_ORIGIN, address);
+  assert.equal(remote.status, 101);
+  const remoteOpen = await untilKind(host, "client-open");
+  assert.equal(remoteOpen.address, address, "the host learns where a linked browser is");
+  const local = await connectClient(t, port, "/link");
+  assert.equal(local.status, 101);
+  assert.equal((await untilKind(host, "client-open")).address, "127.0.0.1");
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  assert.deepEqual(await untilKind(host, "network"), { kind: "network", enabled: false, addresses: [] });
+  await remote.closeFrame();
+  await remote.closed;
+  assert.equal((await untilKind(host, "client-close")).clientId, remoteOpen.clientId);
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u, "the network listener is gone");
+  local.send("still here");
+  assert.equal((await untilKind(host, "client-text")).text, "still here", "the linked browser on this computer stays");
+  assert.equal((await connectClient(t, port, "/link")).status, 101, "the relay still accepts on this computer");
+});
+
+test("losing the host returns the relay to this computer", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  host.send(JSON.stringify({ kind: "network", enabled: true }));
+  assert.equal((await untilKind(host, "network")).enabled, true);
+  assert.equal((await connectClient(t, port, "/link", EXTENSION_ORIGIN, address)).status, 101);
+  host.destroy();
+  await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u);
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port));
+});
+
+test("an idle accept timeout keeps the relay available for the next connection", async (t) => {
+  const relay = await server(t);
+  await delay(1250);
+  assert.equal(relay.exitCode, null, "the listener must survive its one-second accept timeout");
+  const host = await connectClient(t, relay.port, "/host");
+  assert.deepEqual(await host.json(), listening(relay.port));
+});
+
+// Larger than the TCP send/receive buffers while a peer is paused. These are
+// real sockets: no replacement send method can accidentally hide backpressure.
+const largeReply = () => "大きな".repeat(Math.ceil(16 * 1024 * 1024 / 9));
+function sendReply(host, clientId, reply) {
+  host.send(JSON.stringify({ kind: "send", clientId, text: JSON.stringify(reply) }));
+}
+
+test("a stalled peer leaves healthy requests and pings responsive, then receives large frames in order", { timeout: 20000 }, async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const slow = await connectClient(t, port, "/link");
+  const { clientId: slowId } = await untilKind(host, "client-open");
+  const healthy = await connectClient(t, port, "/link");
+  const { clientId: healthyId } = await untilKind(host, "client-open");
+  slow.pause();
+  const text = largeReply();
+  sendReply(host, slowId, { kind: "large", sequence: 1, text });
+  host.send(JSON.stringify({ kind: "broadcast", text: JSON.stringify({ kind: "marker", sequence: 2 }) }));
+  assert.equal((await untilKind(healthy, "marker")).sequence, 2, "the host can broadcast past a stalled send");
+  healthy.send("healthy lookup");
+  const request = await untilKind(host, "client-text");
+  assert.equal(request.clientId, healthyId);
+  assert.equal(request.text, "healthy lookup");
+  sendReply(host, healthyId, { kind: "reply", text: "healthy result" });
+  assert.equal((await untilKind(healthy, "reply")).text, "healthy result");
+  await healthy.ping("healthy control ping");
+  assert.deepEqual(await untilKind(healthy, "ping"), { kind: "ping" });
+  sendReply(host, slowId, { kind: "large", sequence: 3, text });
+  slow.resume();
+  const first = await untilKind(slow, "large");
+  assert.equal(first.sequence, 1);
+  assert.ok(first.text === text, "the first large UTF-8 frame arrives intact");
+  assert.equal((await untilKind(slow, "marker")).sequence, 2);
+  const last = await untilKind(slow, "large");
+  assert.equal(last.sequence, 3);
+  assert.ok(last.text === text, "the queued large UTF-8 frame arrives intact after the broadcast");
+});
+
+test("network disable and host loss interrupt stalled sends and release their connections", { timeout: 20000 }, async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  const remote = await connectClient(t, port, "/link", EXTENSION_ORIGIN, address);
+  const { clientId: remoteId } = await untilKind(host, "client-open");
+  const healthy = await connectClient(t, port, "/link");
+  await untilKind(host, "client-open");
+  remote.pause();
+  const text = largeReply();
+  sendReply(host, remoteId, { kind: "large", text });
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  assert.equal((await untilKind(host, "network")).enabled, false);
+  assert.equal((await untilKind(host, "client-close")).clientId, remoteId);
+  remote.resume();
+  await remote.closed;
+  healthy.send("still local");
+  assert.equal((await untilKind(host, "client-text")).text, "still local");
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u);
+
+  const slow = await connectClient(t, port, "/link");
+  const { clientId: slowId } = await untilKind(host, "client-open");
+  slow.pause();
+  sendReply(host, slowId, { kind: "large", text });
+  // An acknowledgement after the large frame proves the host processed it.
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  await untilKind(host, "network");
+  host.destroy();
+  await healthy.closeFrame();
+  await healthy.closed;
+  slow.resume();
+  await slow.closed;
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port), "host loss releases the host slot too");
+});

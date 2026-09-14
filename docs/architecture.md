@@ -71,7 +71,7 @@ Each dictionary import follows one logical transaction:
 2. The service worker transfers the archive to the offscreen document.
 3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
 4. The generated files are flushed to the storage backend before metadata can reference them.
-5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it.
+5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it. A package already committed at its path that no longer loads does not block the candidate; see below.
 6. Only a confirmed commit publishes the new dictionary count and generation.
 7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
 8. The settings page renders success only after that reply.
@@ -85,9 +85,9 @@ engine resolves the ID itself and validates the final URL, title, update index,
 revision, and defining capability. Only then does the package gain its optional
 `sourceId` and catalogue-owned update URLs.
 
-If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
+If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine loads those paths and removes unreferenced generations rather than adopting them from disk. A committed package that no longer loads (missing or damaged files) is left out of the loaded set rather than failing every lookup: its row stays in the manifest, `hd_status.failedDictionaries` reports its `id`, `title` and load error, and Settings names it until it is re-imported or removed. Only packages a mutation introduces must load before they are committed. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
-Removal first strict-loads the remaining manifest, then commits it, publishes the
+Removal first loads the remaining manifest, then commits it, publishes the
 new state, and finally garbage-collects the removed generation. The
 `/dicts/.hdw-remove` handling remains only for recovery of dictionaries stranded
 by the older removal protocol, including a legacy dictionary whose real title
@@ -771,10 +771,11 @@ original decision when a snapshot changes, including visits retained for Back.
 Each request owns one blur decision and the original first-display deadline.
 Pending rules hide definitions immediately, and qualifying evidence can settle
 the combined decision without waiting for the other rule. Otherwise both
-enabled rules must finish before releasing the held first audio result.
-The first count snapshot controls that visit's autoplay; later statistics rows
-cannot reverse it. A qualifying visit suppresses every later autoplay bind,
-even after hover or timed reveal. Manual pronunciation remains available.
+enabled rules must finish before revealing. The first count snapshot controls
+that visit's blur; later statistics rows cannot reverse it. The first audio
+result stays held while definitions are pending or blurred, and the reveal,
+whether from the decision, hover, the deadline or disabling blur, releases it
+once. A manual play while blurred spends it.
 Navigating away cancels only the live timer; Back and persisted `pageshow`
 re-arm its remaining time. Revealed requests never reblur. Anki option changes
 invalidate pending and completed maturity evidence through an options epoch,
@@ -1287,16 +1288,23 @@ content. Raw archive CSS is never concatenated around a scope boundary. Normal
 style rules, CSS nesting, and media/supports/container groups are retained;
 global definitions such as imports, fonts, properties, and keyframes are removed.
 
-A rule containing resource functions, custom functions/properties, untrusted
-variable references, residual CSS escapes, or non-generic font selection is
-omitted. The whole declaration block is checked because variable-containing
-shorthands expose empty CSSOM longhands before substitution. Comment-like text
-inside strings is not stripped. Five color/size compatibility variables support
-Jitendex formatting through color/math wrappers at each variable use. Typing only
-the alias declaration is insufficient: a page's registered `@property` can
-replace an invalid value with a URL-valued initial value. Use-site wrappers also
-retain live theme changes without re-fetching dictionary styles. Dictionary
-media still uses the generation-owned `hd_media` path, not stylesheet URLs.
+A rule containing resource functions, custom functions, residual CSS escapes, or
+non-generic font selection is omitted. The whole declaration block is checked
+because variable-containing shorthands expose empty CSSOM longhands before
+substitution. Comment-like text inside strings is not stripped. Five color/size
+compatibility variables support Jitendex formatting through color/math wrappers
+at each variable use. Typing only the alias declaration is insufficient: a
+page's registered `@property` can replace an invalid value with a URL-valued
+initial value. Use-site wrappers also retain live theme changes without
+re-fetching dictionary styles. Every other custom property belongs to the
+dictionary, which can declare and reference it freely: Bee's Ultimate Grammar
+Dictionary builds its card, including its disclosure chevrons, from its own
+`--bugd-*` tokens. Those names are rewritten under a random prefix, chosen each
+time styles are installed, in both declarations and `var()` references. The page
+cannot read that prefix through the closed shadow root, so it can neither
+inherit a value into one nor register an `@property` for it, and a reference the
+dictionary never declares falls back as in a theme without it. Dictionary media
+still uses the generation-owned `hd_media` path, not stylesheet URLs.
 
 The trusted glossary card sits outside the dictionary scope and establishes
 paint containment, so fixed descendants and oversized shadows cannot cover
@@ -1330,6 +1338,10 @@ and shared options feedback stays near the section heading. Notices from Library
 children are labelled and aggregated on the primary Library destination while
 the local navigation identifies the active child. Status setters own these
 notices; there are no observers or additional polling loops.
+
+[The Settings UI review](settings-ui-review.md) records the layout decisions
+behind this section, unedited browser captures of each state and the targeted
+timings taken while it was reworked.
 
 The toolbar action opens a compact popup with a global lookup switch, recording
 shortcut and Settings. The switch uses the worker's existing revisioned option
@@ -1617,7 +1629,10 @@ interaction and draft selection. Only existing popup actions are shown.
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)
 
-Add and View appear only with a valid configured Anki note type. The content
+The Anki button appears only with a valid configured Anki note type. It is
+one button: it adds, and once there is a note to show it opens Anki instead,
+at the duplicates that block adding, the note it just wrote, or a search for
+the expression after a write it could not confirm. The content
 controller preflights rendered candidates sequentially, retires detached actions
 after live tab/group projection, and creates no Anki controls or requests while
 unconfigured. Mining uses the selected projected result, current frequency
@@ -1942,38 +1957,84 @@ retryable.
 
 ## Sharing between browsers
 
-Sharing makes one install the host for every other Hachidori on the same
-computer. Extensions cannot listen for connections, so the host runs
-`bridge/hachidori-bridge.mjs` through native messaging: a dependency-free Node.js
-script that owns one loopback WebSocket listener (`ws://127.0.0.1:8771/link` by
-default) and forwards frames without understanding them. Chrome keeps the host's
-service worker alive while that port is open, and the bridge exits when the port
-closes. The manifest declares `nativeMessaging` as an optional permission; the
-Sharing section requests it inside the switch's click.
+Sharing makes one install the host for every other Hachidori, on the same
+computer and, when the host asks, on the person's other computers. Extensions
+cannot listen for connections, so a relay does: one WebSocket listener
+(`127.0.0.1:8771` by default) with a `/host` role and a `/link` role, and
+both Hachidoris connect out to it. The Hachidori Relay add-on in
+`extension/anki-relay/` runs the relay inside Anki; Settings → Sharing builds
+the `.ankiaddon` in the browser from those files (`extension/anki-addon.js`,
+zip.js, stored) so the add-on always matches the extension. Chrome keeps the
+host's service worker alive while its socket carries traffic; the relay pings
+both sides every 20 s.
 
-`extension/sharing-protocol.js` is imported by both the service worker and the
-bridge: the native host name, default port, address rules, the table of
-forwardable requests, and the splitting of a WebSocket text frame into native
-messages of at most 1 MB (`splitNativeText` / `createTextAssembler`). Native
-messages from the bridge carry `client-open`, `client-close` and `client-text`
-parts; the host answers with `send`, `broadcast` and `close`. A linked browser
-speaks JSON text frames: `hello` (answered with the host version, dictionary
-count and a snapshot of the five shared keys), `request` carrying an ordinary
-runtime message, and `pong` to the bridge's periodic `ping`.
+`extension/sharing-protocol.js` is imported by the service worker and the
+Settings and startup pages: the default port, the `/host` and `/link` paths,
+`parseLinkAddress` (a host, `host:port` or a ws:// URL, with the `display`
+form a person sees), `browserName` (what an install calls itself, from
+`navigator.userAgentData`), the table of forwardable requests and the frame
+validators. `extension/anki-relay/server.py` keeps the host, its clients and
+the frames between them behind one lock; its `Listener` owns the listening
+socket and swaps it between `127.0.0.1` and every interface, because Linux
+refuses a wildcard bind beside a loopback listener. Towards the host the relay
+sends `listening` (the port), `listen-failed` (another browser already
+shares), `network` (the reply to the host's own `network` frame: whether the
+network listener is on, the addresses found from the routes to Tailscale's
+resolver and the default route, or the bind error), `client-open` (with the
+peer address), `client-close` and `client-text`; from the host it takes
+`send`, `broadcast`, `close` and `network`. Its rules: a handshake's `Origin`
+must start with `chrome-extension://`, `/host` is accepted from loopback peers
+only, a client is refused (503) while no host is connected, and turning the
+network off closes the clients that came over it. There is no token. A linked
+browser speaks JSON text frames: `hello` (answered with the host's version,
+browser name, dictionary count and a snapshot of the five shared keys),
+`request` carrying an ordinary runtime message, and `pong` to the relay's
+`ping`.
 
-`extension/sharing-host.js` owns the port, retries with the capture host's
-backoff, keeps a one-minute `hachidori-sharing-host` alarm only while enabled
-and disconnected, and records Chrome's disconnect reason for Settings. A
-forwarded request is dispatched by its target through `relayEngineRequest`,
-`handleWorkerRequest`, `handleUpdatesRequest` or `handleAnkiRequest` with a
-synthetic sender, exactly as a page's message would be; the reply goes back
-verbatim, including its `requestId`. Every `chrome.storage.onChanged` batch
-touching `dictionaryState`, `options`, `customDictionarySource`,
-`dictionaryUpdates`, `lookupStats` or a `lookupStats:` row is broadcast whole,
-so a linked browser can replay it as one write. The bridge's only rule is that
-the handshake's `Origin` starts with `chrome-extension://`; there is no token.
-The local-only `sharing` key holds `{ host: { enabled, port } | null }` and
-is not part of backups. See [sharing](sharing.md) for setup.
+`extension/sharing-host.js` owns the host socket, retries with the capture
+host's backoff while the worker lives, and keeps a one-minute
+`hachidori-sharing-host` alarm only while enabled and disconnected so a worker
+Chrome has put to sleep still notices Anki starting. It connects only while
+the install has dictionaries, so an empty install never takes the host slot
+ahead of the library; the service worker feeds it the count at start and on
+every `dictionaryState` change. After `listening` it asks for the network
+when that preference is on and keeps the relay's answer (`network.active`,
+`network.addresses`) in its status. A forwarded request is dispatched by its
+target through `relayEngineRequest`, `handleWorkerRequest`,
+`handleUpdatesRequest` or `handleAnkiRequest` with a synthetic sender, exactly
+as a page's message would be; the reply goes back verbatim, including its
+`requestId`. Every `chrome.storage.onChanged` batch touching
+`dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
+`lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
+can replay it as one write. A browser install shares by default; the overlay
+copy (`OVERLAY_MODE`) does not.
+
+A linked install runs `extension/sharing-client.js`: one WebSocket to the
+relay's `/link`, on this computer or another, `hello` on open, requests
+matched to replies by id, and the same backoff on close. Linking
+(`hd_sharing_client_link`) first turns this install's own hosting off, since
+the relay holds one host and a linked install has nothing of its own to share,
+probes the address, puts hosting back if nothing answers (which is also what
+happens when an install is given its own address), and otherwise stores the
+host role off. An empty address means this computer on the port set under
+Advanced, which is also what the startup page and Settings → Sharing probe.
+`relayEngineRequest`, `handleWorkerRequest`, `handleUpdatesRequest` and
+`handleAnkiRequest` forward every message in the `FORWARDED_REQUESTS` table
+while linked and return the host's reply verbatim; the storage batches the
+host pushes are written with one `chrome.storage.local` `set()` outside
+`writeLocalState()`, the only other writer of shared keys. At link time the
+install's own five shared values are kept in `sharingLocalState`, the host's
+snapshot takes their place under the live keys, and the engine's
+`hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
+from that kept record, so no local generation is judged against the mirror.
+Update-alarm and maturity-cache reconciliation clear their alarms while linked.
+Unlinking restores the kept values with `max(kept, mirrored) + 1` revisions and
+removes the host's `lookupStats:` rows. The local-only `sharing` key holds
+`{ host: { enabled, port, network } | null, client: { address } | null }` and
+neither it nor `sharingLocalState` is part of backups. The startup page's
+welcome view probes this computer once and, when a shared Hachidori answers,
+offers to use it; that link then advances setup to `complete`. See
+[sharing](sharing.md) for use.
 
 ## Storage ownership
 
@@ -1983,7 +2044,8 @@ is not part of backups. See [sharing](sharing.md) for setup.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Sharing configuration: whether this install shares and on which port | service worker | `chrome.storage.local` key `sharing` |
+| Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
+| A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
@@ -2054,7 +2116,8 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
-| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, or start and stop the native messaging bridge that serves other browsers on this computer |
+| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
+| `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
 | `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
 | `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |

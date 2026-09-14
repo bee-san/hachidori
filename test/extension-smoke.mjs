@@ -765,6 +765,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const sharingHost = readFileSync(resolve(EXTENSION, "sharing-host.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const sharingClient = readFileSync(resolve(EXTENSION, "sharing-client.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -783,6 +786,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -791,12 +796,15 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
   sandbox.crypto ??= globalThis.crypto;
+  // A browser install shares by default; a socket that never opens keeps the
+  // host's retry timer and alarm out of stages that fake timers or count alarms.
+  sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
   Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1114,7 +1122,8 @@ async function overlayModeBackgroundStage() {
   const seeded = storage.raw.get("options");
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
-      lookupMode: "hover", sourceHighlightEnabled: false,
+      lookupMode: "hover", anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
+      sourceHighlightEnabled: false,
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
 
@@ -1132,44 +1141,31 @@ async function overlayModeBackgroundStage() {
   await settle();
   const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
 
-  check("overlay mode seeds hover lookups without a highlight once and never opens setup",
+  check("overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup",
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+
+  // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
+  // screenshot switched on from before overlay mode must never reach for it.
+  const kept = makeStorage(), bus = makeBus();
+  await kept.api().local.set({ options: { revision: 1,
+    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: true } } });
+  const keptChrome = makeChrome("overlay-worker-screenshot", bus, kept);
+  keptChrome.tabs = tabsApi;
+  loadBackgroundScript({ chrome: keptChrome, console, URL, setTimeout, clearTimeout, Promise, Error }, { overlayMode: true });
+  const screenshot = await bus.sendMessage("overlay-reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "overlay-screenshot", request: {} }, { id: keptChrome.runtime.id, url: "https://reader.test/page",
+    frameId: 0, documentId: "overlay-document", tab: { id: 1 } });
+  check("overlay mode never takes a mining screenshot, even when the stored option is on",
+    screenshot?.ok === false && screenshot.error.includes("turned off"), JSON.stringify(screenshot));
 }
 
-// The host side of sharing: a fake native port stands in for the bridge, and a
-// fake offscreen engine answers the relayed lookup.
-function fakeNativePorts(chrome) {
-  const ports = [];
-  chrome.runtime.connectNative = (name) => {
-    const port = {
-      name,
-      posted: [],
-      disconnected: false,
-      listeners: { message: [], disconnect: [] },
-      onMessage: { addListener(fn) { port.listeners.message.push(fn); } },
-      onDisconnect: { addListener(fn) { port.listeners.disconnect.push(fn); } },
-      postMessage(message) { port.posted.push(structuredClone(message)); },
-      disconnect() { port.disconnected = true; },
-      deliver(message) { for (const fn of port.listeners.message) fn(structuredClone(message)); },
-      drop(reason) {
-        chrome.runtime.lastError = reason ? { message: reason } : undefined;
-        for (const fn of port.listeners.disconnect) fn();
-        chrome.runtime.lastError = undefined;
-      },
-      sent: () => port.posted.filter(message => message.kind === "send").map(message => JSON.parse(message.text)),
-      broadcasts: () => port.posted.filter(message => message.kind === "broadcast").map(message => JSON.parse(message.text)),
-    };
-    ports.push(port);
-    return port;
-  };
-  return ports;
-}
-
+// The host side of sharing: a fake WebSocket stands in for the Anki add-on's
+// relay, and a fake offscreen engine answers the relayed lookup.
 async function sharingHostStage() {
+  FakeSharingSocket.instances.length = 0;
   const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
   const chrome = makeChrome("sharing-host-worker", bus, storage, alarms);
-  const ports = fakeNativePorts(chrome);
   Object.assign(offscreenState, { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 });
   const relayed = [];
   bus.addListener("sharing-engine", (message, sender, sendResponse) => {
@@ -1178,92 +1174,475 @@ async function sharingHostStage() {
     sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, results: [{ matched: message.text }] });
     return true;
   });
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
   const settle = async (predicate = () => false) => {
     for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
       await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
     }
   };
   const send = (type, fields = {}) => bus.sendMessage("sharing-page", { target: "hachidori-sharing", type, requestId: `sharing-${type}`, ...fields });
-  const clientText = (port, id, text, parts = 1) => {
-    const size = Math.ceil(text.length / parts);
-    for (let index = 0; index < parts; index += 1) {
-      port.deliver({ kind: "client-text", clientId: "client-1", id, index, count: parts, part: text.slice(index * size, (index + 1) * size) });
-    }
-  };
+  const hostSockets = () => FakeSharingSocket.instances.filter(socket => socket.url.endsWith("/host"));
+  const sent = socket => socket.sent.filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
+  const broadcasts = socket => socket.sent.filter(frame => frame.kind === "broadcast").map(frame => JSON.parse(frame.text));
+  const clientText = (socket, text) => socket.receive({ kind: "client-text", clientId: "client-1", text });
 
+  // Sharing is on from install but waits for something to share.
+  await settle();
+  const empty = await send("hd_sharing_status");
+  const noSocketWhileEmpty = hostSockets().length === 0;
+  const dictionary = { id: "host-dict", title: "Host", displayName: null, path: "/dicts/Host", enabled: true, favorite: false, revision: "1",
+    isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null, termCount: 3, frequencyCount: 0,
+    pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-09-01T00:00:00.000Z", lastUpdateCheck: null };
+  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [dictionary], groups: [] } });
+  await settle(() => hostSockets().length >= 1);
+  const initial = hostSockets()[0];
   const before = await send("hd_sharing_status");
-  const enabled = await send("hd_sharing_host_enable", { port: 4321 });
-  await settle(() => storage.raw.get("sharing")?.host?.enabled === true);
-  const port = ports[0];
-  port.deliver({ kind: "listening", port: 4321 });
-  port.deliver({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
-  clientText(port, 1, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
-  await settle(() => port.sent().length >= 1);
-  const hello = port.sent()[0];
+  const enabled = await send("hd_sharing_host_enable", { port: 4321, network: true });
+  await settle(() => hostSockets().length >= 2 && storage.raw.get("sharing")?.host?.enabled === true);
+  const socket = hostSockets()[1];
+  socket.open();
+  socket.receive({ kind: "listening", port: 4321 });
+  await settle(() => socket.sent.some(frame => frame.kind === "network"));
+  const askedForNetwork = socket.sent.find(frame => frame.kind === "network");
+  socket.receive({ kind: "network", enabled: true, addresses: [{ address: "100.75.152.75", kind: "tailscale" }, { address: "192.168.1.123", kind: "local" }] });
+  socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser", address: "127.0.0.1" });
+  clientText(socket, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
+  await settle(() => sent(socket).length >= 1);
+  const hello = sent(socket)[0];
   const listening = await send("hd_sharing_status");
-  check("turning sharing on starts the bridge, stores the port and answers a linked browser's hello with the shared snapshot",
-    before.sharing?.enabled === false && enabled.ok === true && enabled.sharing.enabled === true
-      && port.posted[0]?.kind === "listen" && port.posted[0].port === 4321
-      && storage.raw.get("sharing")?.host?.port === 4321
-      && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
+  check("a browser install shares by default once it has dictionaries, connects to the relay on the chosen port, asks for the network it was set to, and answers a linked browser's hello with the shared snapshot",
+    empty.sharing?.enabled === true && empty.sharing.connected === false && empty.sharing.dictionaries === 0 && noSocketWhileEmpty
+      && before.sharing?.enabled === true && before.sharing.connected === false && before.sharing.error === null && before.sharing.dictionaries === 1
+      && initial.url === "ws://127.0.0.1:8771/host" && initial.readyState === 3
+      && enabled.ok === true && enabled.sharing.enabled === true && socket.url === "ws://127.0.0.1:4321/host"
+      && storage.raw.get("sharing")?.host?.port === 4321 && storage.raw.get("sharing")?.host?.network === true
+      && JSON.stringify(askedForNetwork) === JSON.stringify({ kind: "network", enabled: true })
+      && listening.sharing.connected === true && listening.sharing.port === 4321
+      && listening.sharing.network.enabled === true && listening.sharing.network.active === true
+      && JSON.stringify(listening.sharing.network.addresses) === JSON.stringify([{ address: "100.75.152.75", kind: "tailscale" }, { address: "192.168.1.123", kind: "local" }])
       && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
-      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
+      && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
+      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
-    JSON.stringify({ before, enabled, listening, hello, posted: port.posted }));
+    JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
 
-  clientText(port, 2, JSON.stringify({ kind: "request", id: "r1",
-    message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }), 3);
-  await settle(() => port.sent().length >= 2);
-  const lookup = port.sent()[1];
-  check("a forwarded lookup split across native parts reaches the engine once and returns its exact reply",
+  clientText(socket, JSON.stringify({ kind: "request", id: "r1",
+    message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }));
+  await settle(() => sent(socket).length >= 2);
+  const lookup = sent(socket)[1];
+  check("a forwarded lookup reaches the engine once and returns its exact reply",
     relayed.length === 1 && relayed[0].type === "hd_lookup" && relayed[0].text === "猫" && relayed[0].requestId === "lookup-9"
       && lookup?.kind === "reply" && lookup.id === "r1" && lookup.response?.type === "hd_lookup_result"
       && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
     JSON.stringify({ relayed, lookup }));
 
-  clientText(port, 3, JSON.stringify({ kind: "request", id: "r2",
+  clientText(socket, JSON.stringify({ kind: "request", id: "r2",
     message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "write-1", baseRevision: 0, options: { hoverEnabled: false } } }));
-  await settle(() => port.sent().length >= 3 && port.broadcasts().length >= 1);
-  const written = port.sent()[2];
-  const broadcast = port.broadcasts()[0];
+  await settle(() => sent(socket).length >= 3 && broadcasts(socket).length >= 1);
+  const written = sent(socket)[2];
+  const broadcast = broadcasts(socket)[0];
   await storage.api().local.set({ setupState: { stage: "welcome" } });
   await settle();
-  clientText(port, 4, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
-  await settle(() => port.sent().length >= 4);
-  const refused = port.sent()[3];
+  clientText(socket, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
+  await settle(() => sent(socket).length >= 4);
+  const refused = sent(socket)[3];
   check("a forwarded options write commits on the host and every linked browser receives that storage batch, while local-only keys stay home",
     written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
       && storage.raw.get("options")?.hoverEnabled === false
       && broadcast?.kind === "storage" && JSON.stringify(Object.keys(broadcast.changes)) === JSON.stringify(["options"])
       && broadcast.changes.options.revision === written.response.options.revision
-      && port.broadcasts().length === 1
+      && broadcasts(socket).length === 1
       && refused?.kind === "reply" && refused.id === "r3" && refused.response?.ok === false
       && /unsupported shared request target/u.test(refused.response.error),
-    JSON.stringify({ written, broadcasts: port.broadcasts(), refused }));
+    JSON.stringify({ written, broadcasts: broadcasts(socket), refused }));
 
-  port.drop("Specified native messaging host not found.");
+  socket.drop();
   await settle();
   const dropped = await send("hd_sharing_status");
   const retrying = alarms.values.has("hachidori-sharing-host");
+  // The first retry follows the capture host's backoff: 500 ms.
+  for (let attempt = 0; attempt < 400 && hostSockets().length < 3; attempt += 1) {
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
+  }
+  const retried = hostSockets()[2];
+  retried.open();
+  retried.receive({ kind: "listen-failed", error: "Another browser on this computer is already sharing through Anki." });
+  await settle();
+  const refusedHost = await send("hd_sharing_status");
   const restartBus = makeBus();
   const restartChrome = makeChrome("sharing-host-restart", restartBus, storage, makeAlarms());
-  const restartPorts = fakeNativePorts(restartChrome);
-  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error });
-  await settle(() => restartPorts.length === 1);
+  const socketsBefore = FakeSharingSocket.instances.length;
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  await settle(() => FakeSharingSocket.instances.length > socketsBefore);
+  const restarted = FakeSharingSocket.instances[socketsBefore];
   const disabled = await send("hd_sharing_host_disable");
   await settle(() => storage.raw.get("sharing")?.host === null);
-  const restarted = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
-  check("a lost bridge is reported with Chrome's reason and retried by alarm, a restarted worker reconnects on its own, and turning sharing off ends the port",
-    dropped.sharing.enabled === true && dropped.sharing.connected === false
-      && dropped.sharing.error === "Specified native messaging host not found."
-      && dropped.sharing.clients.length === 0 && retrying
-      && restartPorts[0]?.posted[0]?.kind === "listen" && restartPorts[0].posted[0].port === 4321
+  const off = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
+  check("a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket",
+    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null
+      && dropped.sharing.clients.length === 0 && dropped.sharing.network.active === false && dropped.sharing.network.addresses.length === 0 && retrying
+      && refusedHost.sharing.error === "Another browser on this computer is already sharing through Anki."
+      && restarted?.url === "ws://127.0.0.1:4321/host"
       && disabled.ok === true && disabled.sharing.enabled === false && disabled.sharing.error === null
       && !alarms.values.has("hachidori-sharing-host") && storage.raw.get("sharing")?.host === null
-      && restarted.ok === true && restartPorts[0].disconnected === true,
-    JSON.stringify({ dropped, retrying, disabled, restarted, alarms: [...alarms.values.keys()], restartPosted: restartPorts[0]?.posted }));
+      && off.ok === true && restarted.readyState === 3,
+    JSON.stringify({ dropped, retrying, refusedHost, disabled, off, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+}
+
+// A linked install: a fake WebSocket stands in for the bridge and the host.
+class FakeSharingSocket {
+  static instances = [];
+  constructor(url) {
+    this.url = url;
+    this.sent = [];
+    this.readyState = 0;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onclose = null;
+    FakeSharingSocket.instances.push(this);
+  }
+  send(text) { this.sent.push(JSON.parse(text)); }
+  close() {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    setTimeout(() => this.onclose?.({}), 0);
+  }
+  open() { this.readyState = 1; this.onopen?.(); }
+  receive(frame) { this.onmessage?.({ data: JSON.stringify(frame) }); }
+  drop() { this.readyState = 3; this.onclose?.({}); }
+  requests() { return this.sent.filter(frame => frame.kind === "request"); }
+}
+
+async function sharingClientStage() {
+  FakeSharingSocket.instances.length = 0;
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("sharing-client-worker", bus, storage, alarms);
+  const localDictionary = { id: "local-id", title: "Local", displayName: null, path: "/dicts/Local", enabled: true, favorite: false,
+    revision: "1", isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null,
+    termCount: 3, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-09-01T00:00:00.000Z", lastUpdateCheck: null };
+  const localState = { schemaVersion: 1, revision: 2, dictionaries: [localDictionary], groups: [] };
+  const localStats = { generation: "local-gen", revision: 1 };
+  const localRow = { term: "猫", reading: "ねこ", lookupCount: 4, firstLookedUpAt: 1, lastLookedUpAt: 2 };
+  await storage.api().local.set({
+    options: { hoverEnabled: true, revision: 3 },
+    dictionaryState: localState,
+    lookupStats: localStats,
+    ['lookupStats:"local-gen":["猫","ねこ"]']: localRow,
+  });
+  storage.sets.length = 0;
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-client-page",
+    { target, type, requestId: `client-${type}`, ...fields });
+  const engineSender = { id: "hachidorismokeextensionid", url: `${EXTENSION_ORIGIN}/offscreen.html` };
+  const hostDictionary = { ...localDictionary, id: "host-id", title: "Host", path: "/dicts/Host", termCount: 900 };
+  const hostSnapshot = {
+    dictionaryState: { schemaVersion: 1, revision: 7, dictionaries: [hostDictionary], groups: [] },
+    options: { hoverEnabled: false, revision: 1 },
+    customDictionarySource: null,
+    dictionaryUpdates: { revision: 0, schedule: "off", lastCheckedAt: null },
+    lookupStats: { generation: "host-gen", revision: 40 },
+  };
+  const hello = { kind: "hello", protocol: 1, version: "9.9.9", name: "Chrome", dictionaryCount: 1, snapshot: hostSnapshot };
+
+  // Linking stops this install's own hosting first (sharing is on by default,
+  // and this install has a dictionary), then probes, then keeps one connection.
+  const hostSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/host"));
+  const linkSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/link"));
+  await settle(() => hostSockets().length >= 1);
+  const ownHost = hostSockets()[0];
+  const failing = send("hd_sharing_client_link", { address: "127.0.0.1:9999" });
+  await settle(() => linkSockets().length >= 1);
+  const hostClosedForProbe = ownHost.readyState === 3;
+  linkSockets()[0].drop();
+  const refusedLink = await failing;
+  await settle(() => hostSockets().length >= 2);
+  const hostBack = hostSockets()[1];
+  check("a link that finds nothing puts this install's own sharing back",
+    hostClosedForProbe && refusedLink.ok === false && refusedLink.error === "No shared Hachidori answered at ws://127.0.0.1:9999/link."
+      && hostBack?.url === "ws://127.0.0.1:8771/host" && hostBack.readyState !== 3
+      && storage.raw.get("sharing") === undefined && !storage.raw.has("sharingLocalState"),
+    JSON.stringify({ hostClosedForProbe, refusedLink, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+
+  const linking = send("hd_sharing_client_link", { address: "127.0.0.1:9100" });
+  await settle(() => linkSockets().length >= 2);
+  const probe = linkSockets()[1];
+  probe.open();
+  await settle(() => probe.sent.length >= 1);
+  probe.receive(hello);
+  await settle(() => linkSockets().length >= 3);
+  const socket = linkSockets()[2];
+  socket.open();
+  await settle(() => socket.sent.length >= 1);
+  socket.receive(hello);
+  const linkedReply = await linking;
+  // The kept connection's own hello lands after the reply; wait for it.
+  let linkedStatus = await send("hd_sharing_status");
+  for (let attempt = 0; attempt < 200 && !linkedStatus.sharing?.client?.connected; attempt += 1) {
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    linkedStatus = await send("hd_sharing_status");
+  }
+  const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
+  check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
+    probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello" && probe.readyState === 3
+      && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
+      && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
+      && linkedReply.sharing.client.display === "this computer"
+      && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"
+      && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
+      && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
+        customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats })
+      && JSON.stringify(storage.raw.get("dictionaryState")) === JSON.stringify(hostSnapshot.dictionaryState)
+      && JSON.stringify(storage.raw.get("options")) === JSON.stringify(hostSnapshot.options)
+      && JSON.stringify(storage.raw.get("lookupStats")) === JSON.stringify(hostSnapshot.lookupStats)
+      && !storage.raw.has("customDictionarySource") && mirrorSet !== undefined
+      && storage.raw.get("sharing")?.client?.address === "ws://127.0.0.1:9100/link",
+    JSON.stringify({ linkedReply, linkedStatus, sets: storage.sets, local: storage.raw.get("sharingLocalState"), sockets: FakeSharingSocket.instances.map(s => s.url) }));
+
+  // Page requests forward and take the host's reply verbatim; the mirror only
+  // moves when the host pushes its storage batch.
+  const setsBefore = storage.sets.length;
+  const writing = send("hd_options_write", { baseRevision: 1, options: { hoverEnabled: true } }, "hoshidicts-worker");
+  await settle(() => socket.requests().length >= 1);
+  const forwardedWrite = socket.requests()[0];
+  socket.receive({ kind: "reply", id: forwardedWrite.id, response: { type: "hd_options_write_result", requestId: "client-hd_options_write", ok: true, error: null, options: { hoverEnabled: true, revision: 2 } } });
+  const written = await writing;
+  const beforePush = storage.raw.get("options").revision;
+  socket.receive({ kind: "storage", changes: { options: { hoverEnabled: true, revision: 2 } } });
+  await settle(() => storage.raw.get("options").revision === 2);
+  const looking = send("hd_lookup", { text: "猫" }, "hoshidicts-offscreen");
+  await settle(() => socket.requests().length >= 2);
+  const forwardedLookup = socket.requests()[1];
+  socket.receive({ kind: "reply", id: forwardedLookup.id, response: { type: "hd_lookup_result", requestId: "client-hd_lookup", ok: true, error: null, results: [{ matched: "猫" }], generation: 3 } });
+  const looked = await looking;
+  const counting = send("hd_lookup_stats_record", { term: "猫", reading: "ねこ" }, "hoshidicts-worker");
+  await settle(() => socket.requests().length >= 3);
+  const forwardedCount = socket.requests()[2];
+  socket.receive({ kind: "reply", id: forwardedCount.id, response: { type: "hd_lookup_stats_record_result", requestId: "client-hd_lookup_stats_record", ok: true, error: null, descriptor: { generation: "host-gen", revision: 41 }, statistics: { term: "猫", reading: "ねこ", lookupCount: 9 } } });
+  const counted = await counting;
+  const rowKey = 'lookupStats:"host-gen":["猫","ねこ"]';
+  socket.receive({ kind: "storage", changes: { lookupStats: { generation: "host-gen", revision: 41 }, [rowKey]: { term: "猫", reading: "ねこ", lookupCount: 9, firstLookedUpAt: 1, lastLookedUpAt: 3 } } });
+  await settle(() => storage.raw.has(rowKey));
+  const rowSet = storage.sets.slice(setsBefore).find(keys => keys.includes("lookupStats") && keys.includes(rowKey));
+  check("a linked page's writes, lookups and lookup counts go to the host, whose storage batches land locally as single writes",
+    forwardedWrite.message.type === "hd_options_write" && forwardedWrite.message.target === "hoshidicts-worker" && forwardedWrite.message.baseRevision === 1
+      && written.ok === true && written.options.revision === 2 && written.requestId === "client-hd_options_write"
+      && beforePush === 1 && storage.raw.get("options").revision === 2
+      && forwardedLookup.message.type === "hd_lookup" && forwardedLookup.message.text === "猫" && looked.results?.[0]?.matched === "猫"
+      && bus.log.every(entry => !(entry.type === "hd_lookup" && entry.relayed))
+      && forwardedCount.message.type === "hd_lookup_stats_record" && counted.statistics?.lookupCount === 9
+      && rowSet !== undefined && rowSet.length === 2
+      && storage.sets.slice(setsBefore).every(keys => keys.every(key => key !== "options" || true)),
+    JSON.stringify({ forwardedWrite, written, looked, counted, sets: storage.sets.slice(setsBefore) }));
+
+  // This install's own engine keeps its pre-link state.
+  const engineRead = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_read", requestId: "engine-read" }, engineSender);
+  const engineCas = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_cas", requestId: "engine-cas",
+    baseRevision: 2, dictionaries: [{ ...localDictionary, enabled: false }], groups: [] }, engineSender);
+  const cleanup = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_lookup_stats_cleanup", requestId: "engine-cleanup" }, engineSender);
+  check("a linked install's engine reads and commits the state it had before linking, never the mirror",
+    engineRead.ok === true && engineRead.state?.revision === 2 && engineRead.state.dictionaries[0].id === "local-id"
+      && engineCas.ok === true && engineCas.state.revision === 3 && engineCas.state.dictionaries[0].enabled === false
+      && storage.raw.get("sharingLocalState").dictionaryState.revision === 3
+      && storage.raw.get("dictionaryState").revision === 7 && storage.raw.get("dictionaryState").dictionaries[0].id === "host-id"
+      && cleanup.ok === true && storage.raw.has(rowKey),
+    JSON.stringify({ engineRead, engineCas, cleanup, local: storage.raw.get("sharingLocalState") }));
+
+  // Losing the host fails what was in flight, and a restarted worker relinks by itself.
+  const dangling = send("hd_lookup", { text: "犬" }, "hoshidicts-offscreen");
+  await settle(() => socket.requests().length >= 4);
+  socket.drop();
+  const failed = await dangling;
+  const status = await send("hd_sharing_status");
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("sharing-client-restart", restartBus, storage, makeAlarms());
+  const linkSocketsBefore = linkSockets().length;
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  await settle(() => linkSockets().length > linkSocketsBefore);
+  const restartSocket = linkSockets()[linkSocketsBefore];
+  check("losing the host fails in-flight lookups with one message, and a restarted worker reconnects to the stored address",
+    failed.ok === false && failed.error === "The linked Hachidori is not reachable."
+      && status.sharing.client.linked === true && status.sharing.client.connected === false
+      && restartSocket?.url === "ws://127.0.0.1:9100/link",
+    JSON.stringify({ failed, status, sockets: FakeSharingSocket.instances.map(s => s.url) }));
+
+  // Unlinking restores the kept state above the mirror's revisions and drops the host's rows.
+  const unlinked = await send("hd_sharing_client_unlink");
+  await settle(() => !storage.raw.has("sharingLocalState"));
+  const restoredState = storage.raw.get("dictionaryState");
+  const restoredOptions = storage.raw.get("options");
+  const restoredStats = storage.raw.get("lookupStats");
+  check("unlinking restores this install's own state with newer revisions and removes the host's lookup rows",
+    unlinked.ok === true && unlinked.sharing.client.linked === false
+      && restoredState.revision === 8 && restoredState.dictionaries[0].id === "local-id" && restoredState.dictionaries[0].enabled === false
+      && restoredOptions.revision === 4 && restoredOptions.hoverEnabled === true
+      && restoredStats.generation === "local-gen" && restoredStats.revision === 42
+      && storage.raw.has('lookupStats:"local-gen":["猫","ねこ"]') && !storage.raw.has(rowKey)
+      && !storage.raw.has("dictionaryUpdates") && !storage.raw.has("customDictionarySource")
+      && storage.raw.get("sharing")?.client === null,
+    JSON.stringify({ unlinked, restoredState, restoredOptions, restoredStats, keys: [...storage.raw.keys()] }));
+}
+
+async function sharingTransitionStage() {
+  const tick = () => new Promise(resolveTimer => setTimeout(resolveTimer, 2));
+  const until = async predicate => {
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      if (predicate()) return;
+      await tick();
+    }
+    throw new Error("sharing transition did not settle");
+  };
+  async function fixture() {
+    const bus = makeBus(), storage = makeStorage();
+    const chrome = makeChrome("sharing-transitions-worker", bus, storage);
+    const text = "私語,しご,my personal entry\n";
+    const semanticRevision = await customDictionarySemanticRevision(parseCustomDictionary(text).entries);
+    const local = {
+      dictionaryState: { schemaVersion: 1, revision: 2, dictionaries: [genericPackage({
+        id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE, revision: semanticRevision,
+      })], groups: [] },
+      options: { hoverEnabled: true, revision: 3 },
+      customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
+      dictionaryUpdates: null, lookupStats: null,
+    };
+    await chrome.storage.local.set({ sharing: { host: null },
+      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)) });
+    const sockets = [];
+    class Socket extends FakeSharingSocket {
+      constructor(url) { super(url); sockets.push(this); }
+    }
+    const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket });
+    const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-settings-tab",
+      { target, type, requestId: `transition-${type}`, ...fields });
+    await send("hd_sharing_status");
+    const hello = { kind: "hello", protocol: 1, version: "1", name: "Host", dictionaryCount: 1, snapshot: {
+      dictionaryState: { schemaVersion: 1, revision: 9, dictionaries: [genericPackage({ id: "host" })], groups: [] },
+      options: { hoverEnabled: false, revision: 10 }, customDictionarySource: null,
+      dictionaryUpdates: { revision: 5, schedule: "off", lastCheckedAt: null }, lookupStats: null,
+    } };
+    async function finishLinks(requests) {
+      let replies;
+      const finished = Promise.all(requests).then(value => { replies = value; });
+      await until(() => {
+        for (const socket of sockets.filter(item => item.readyState === 0)) {
+          socket.open();
+          socket.receive(hello);
+        }
+        return replies !== undefined;
+      });
+      await finished;
+      await tick();
+      return replies;
+    }
+    return { chrome, storage, local, sockets, send, hello, finishLinks,
+      link: () => send("hd_sharing_client_link", { address: "127.0.0.1:9100" }),
+      dispose: () => runInContext("getSharingClient().unlink()", context) };
+  }
+
+  const f = await fixture();
+  try {
+    const first = f.link(), second = f.link();
+    await until(() => f.sockets.length > 0);
+    const edit = await f.send("hd_options_write", { baseRevision: 3, options: { showLookupCounts: false } }, "hoshidicts-worker");
+    f.local.options = structuredClone(f.storage.raw.get("options"));
+    const links = await f.finishLinks([first, second]);
+    const kept = structuredClone(f.storage.raw.get("sharingLocalState"));
+    check("concurrent Links keep the original personal state including edits made while the probe waits",
+      edit.ok && links.every(reply => reply.ok) && f.sockets.length === 2
+        && JSON.stringify(kept) === JSON.stringify(f.local), JSON.stringify({ links, kept, local: f.local, sockets: f.sockets.length }));
+    const writes = f.storage.sets.length, sockets = f.sockets.length;
+    await f.finishLinks([f.link()]);
+    check("a repeated Link returns the current link without probing or replacing its saved state",
+      f.storage.sets.length === writes && f.sockets.length === sockets
+        && JSON.stringify(f.storage.raw.get("sharingLocalState")) === JSON.stringify(kept));
+
+    const unlinks = await Promise.all([f.send("hd_sharing_client_unlink"), f.send("hd_sharing_client_unlink")]);
+    const restored = Object.fromEntries(f.storage.raw);
+    await f.send("hd_sharing_client_unlink");
+    check("concurrent and repeated Unlinks restore personal entries and settings once without erasing them",
+      unlinks.every(reply => reply.ok && !reply.sharing.client.linked)
+        && restored.customDictionarySource?.text === f.local.customDictionarySource.text
+        && restored.dictionaryState?.dictionaries[0].id === CUSTOM_DICTIONARY_ID
+        && restored.options?.showLookupCounts === false && restored.options?.revision > 10
+        && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
+        && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
+  } finally { f.dispose(); }
+
+  const failure = await fixture();
+  try {
+    await failure.finishLinks([failure.link()]);
+    const before = JSON.stringify(Object.fromEntries(failure.storage.raw));
+    failure.storage.failNextSet("restoration refused");
+    const refused = await failure.send("hd_sharing_client_unlink");
+    const status = await failure.send("hd_sharing_status");
+    check("a refused restoration keeps the saved state and linked routing available for retry",
+      !refused.ok && refused.error === "restoration refused" && status.sharing.client.linked
+        && before === JSON.stringify(Object.fromEntries(failure.storage.raw)), JSON.stringify({ refused, status }));
+    const remove = failure.chrome.storage.local.remove;
+    failure.chrome.storage.local.remove = async () => { throw new Error("restoration removal refused"); };
+    const partial = await failure.send("hd_sharing_client_unlink");
+    failure.chrome.storage.local.remove = remove;
+    const partialStatus = await failure.send("hd_sharing_status");
+    const retained = failure.storage.raw.has("sharingLocalState");
+    const retried = await failure.send("hd_sharing_client_unlink");
+    check("a partial restoration retains its snapshot until removals succeed and the retry restores personal entries",
+      !partial.ok && partialStatus.sharing.client.linked && retained && retried.ok
+        && failure.storage.raw.get("customDictionarySource")?.text === failure.local.customDictionarySource.text,
+      JSON.stringify({ partial, partialStatus, retained, retried }));
+    await failure.finishLinks([failure.link()]);
+    await remove("sharingLocalState");
+    const withoutSnapshot = JSON.stringify(Object.fromEntries([...failure.storage.raw].filter(([key]) => key !== "sharing")));
+    const missing = await failure.send("hd_sharing_client_unlink");
+    check("a linked install with no saved snapshot unlinks without deleting its current user data",
+      missing.ok && !missing.sharing.client.linked
+        && withoutSnapshot === JSON.stringify(Object.fromEntries([...failure.storage.raw].filter(([key]) => key !== "sharing"))));
+  } finally { failure.dispose(); }
+
+  const late = await fixture();
+  try {
+    await late.finishLinks([late.link()]);
+    const oldSocket = late.sockets.at(-1);
+    const set = late.chrome.storage.local.set;
+    let release, restoring = false;
+    const held = new Promise(resolveHeld => { release = resolveHeld; });
+    late.chrome.storage.local.set = async values => {
+      if (values.dictionaryState?.dictionaries[0]?.id === CUSTOM_DICTIONARY_ID) {
+        restoring = true;
+        await held;
+      }
+      return set(values);
+    };
+    const unlink = late.send("hd_sharing_client_unlink");
+    await until(() => restoring);
+    oldSocket.receive({ kind: "storage", changes: { options: { revision: 100, hoverEnabled: false } } });
+    release();
+    await unlink;
+    oldSocket.receive(late.hello);
+    await tick();
+    await tick();
+    check("host batches queued during Unlink and late frames from its retired socket cannot overwrite the restoration",
+      late.storage.raw.get("options")?.hoverEnabled === true && late.storage.raw.get("options")?.revision === 11
+        && late.storage.raw.get("customDictionarySource")?.text === late.local.customDictionarySource.text,
+      JSON.stringify(Object.fromEntries(late.storage.raw)));
+  } finally { late.dispose(); }
+
+  const pending = await fixture();
+  try {
+    const link = pending.link();
+    await until(() => pending.sockets.length > 0);
+    const unlink = pending.send("hd_sharing_client_unlink");
+    const replies = await pending.finishLinks([link, unlink]);
+    const status = await pending.send("hd_sharing_status");
+    check("Unlink from another Settings tab waits for an already pending Link and then restores local state",
+      replies.every(reply => reply.ok) && !status.sharing.client.linked
+        && pending.storage.raw.get("customDictionarySource")?.text === pending.local.customDictionarySource.text
+        && !pending.storage.raw.has("sharingLocalState"), JSON.stringify({ replies, status }));
+  } finally { pending.dispose(); }
 }
 
 async function firstRunBackgroundStage() {
@@ -2611,10 +2990,10 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && reader.DESIGN_OPTION_KEYS.includes("popupToolbarPosition") && toolbarCases.every(Boolean),
       JSON.stringify(toolbarCases));
     const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
-      popupOpacityPercent: 85, sourceHighlightEnabled: true };
+      popupOpacityPercent: 85, sourceHighlightEnabled: true, showPopupAudioButton: true };
     const appearanceAccepted = [];
     for (const [key, value] of Object.entries({ popupTheme: "miku", popupWidthPx: 1200, popupHeightPx: 200,
-      popupOpacityPercent: 0, sourceHighlightEnabled: false })) {
+      popupOpacityPercent: 0, sourceHighlightEnabled: false, showPopupAudioButton: false })) {
       await local.set({ options: saved.options });
       const reply = await send(message({ [key]: value }));
       const repeated = await send(message({ [key]: value }, { baseRevision: 3 }));
@@ -2625,7 +3004,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     for (const patch of [{ popupTheme: "unknown" }, { popupTheme: null }, { popupWidthPx: 279 },
       { popupWidthPx: 1201 }, { popupHeightPx: 199 }, { popupHeightPx: 901 },
       { popupOpacityPercent: -1 }, { popupOpacityPercent: 101 }, { popupOpacityPercent: 50.5 },
-      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }]) {
+      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }, { showPopupAudioButton: "false" }]) {
       await local.set({ options: saved.options });
       const reply = await send(message(patch));
       appearanceRejected.push(reply.ok === false && await unchanged(saved));
@@ -3135,6 +3514,8 @@ async function main() {
   await firstRunBackgroundStage();
   await overlayModeBackgroundStage();
   await sharingHostStage();
+  await sharingClientStage();
+  await sharingTransitionStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
@@ -3508,6 +3889,7 @@ async function main() {
   equal("hd_status replies with the contract-C envelope", Object.keys(status).sort(), [
     "dictionaryCount",
     "error",
+    "failedDictionaries",
     "generation",
     "loading",
     "ok",
@@ -4995,14 +5377,24 @@ async function main() {
   const authoritativeInvalidState = invalidStateWrite.state;
   const invalidReload = await request("hd_reload");
   const stateAfterInvalidReload = await storedDictionaryState();
+  const invalidStatus = await request("hd_status");
+  const lookupBesideInvalid = await request("hd_lookup", { text: "食べる" });
   check(
-    "reload rejects an authoritative invalid package without pruning its state",
+    "reload skips and reports an unloadable committed package while the others keep working",
     invalidStateWrite.ok === true
       && authoritativeInvalidState.dictionaries.length === stateBeforeInvalidLoad.dictionaries.length + 1
-      && invalidReload.ok === false
-      && invalidReload.error?.includes("could not load")
-      && JSON.stringify(stateAfterInvalidReload) === JSON.stringify(authoritativeInvalidState),
-    JSON.stringify({ invalidStateWrite, invalidReload, stateAfterInvalidReload }),
+      && invalidReload.ok === true
+      && invalidReload.dictionaryCount === 4
+      && invalidStatus.ok === true
+      && invalidStatus.failedDictionaries.length === 1
+      && invalidStatus.failedDictionaries[0].title === invalidLoadTitle
+      && invalidStatus.failedDictionaries[0].id === invalidPackage.id
+      && invalidStatus.failedDictionaries[0].error.includes("could not load")
+      && lookupBesideInvalid.ok === true
+      && lookupBesideInvalid.results.some((result) => result.term.expression === "食べる")
+      && JSON.stringify(stateAfterInvalidReload.dictionaries.map(({ id, path }) => [id, path]))
+        === JSON.stringify(authoritativeInvalidState.dictionaries.map(({ id, path }) => [id, path])),
+    JSON.stringify({ invalidStateWrite, invalidReload, invalidStatus, lookupBesideInvalid, stateAfterInvalidReload }),
   );
   const repairedStateWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
@@ -5018,16 +5410,18 @@ async function main() {
   observedEngine.FS.rmdir(invalidGenerationRoot);
   const repairedReload = await request("hd_reload");
   const stateAfterRepair = await storedDictionaryState();
+  const repairedStatus = await request("hd_status");
   check(
-    "reload recovers after the invalid package is explicitly removed",
+    "reload stops reporting the invalid package once it is explicitly removed",
     repairedStateWrite.ok === true
       && !repairedStateWrite.state.dictionaries.some(
         (dictionary) => dictionary.title === invalidLoadTitle,
       )
       && repairedReload.ok === true
       && repairedReload.dictionaryCount === 4
+      && repairedStatus.failedDictionaries.length === 0
       && JSON.stringify(stateAfterRepair) === JSON.stringify(repairedStateWrite.state),
-    JSON.stringify({ repairedStateWrite, repairedReload, stateAfterRepair }),
+    JSON.stringify({ repairedStateWrite, repairedReload, repairedStatus, stateAfterRepair }),
   );
 
   const frequencyFixture = frequencyRankingFixture();
@@ -6930,7 +7324,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
+function startupCase(jsdom, { probe = null, link = null, setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6956,6 +7350,15 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
         if (message.type === "hd_status") {
           return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false,
             ...(status === null ? {} : status(message)) };
+        }
+        // The welcome page looks around this computer once; nothing answers unless the case says so.
+        if (message.type === "hd_sharing_client_probe") {
+          return probe === null
+            ? { type: "hd_sharing_client_probe_result", requestId: message.requestId, ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }
+            : { type: "hd_sharing_client_probe_result", requestId: message.requestId, ok: true, error: null, ...probe(message) };
+        }
+        if (message.type === "hd_sharing_client_link" && link !== null) {
+          return { type: "hd_sharing_client_link_result", requestId: message.requestId, ok: true, error: null, ...link(message) };
         }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
@@ -7091,13 +7494,15 @@ async function startupWelcomeStage() {
   const page = startupCase(jsdom, { setup, reply, cas: () => new Promise((done) => { saveReply = done; }) });
   let resumed;
   let manual;
+  let offered;
   try {
     await page.load();
     const introduction = page.document.getElementById("setup-body").textContent;
-    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
+    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().join(",") === "hd_sharing_client_probe"
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0
       && introduction === "Click Start Setup to automatically set up Hachidori"
+        + "Already using Hachidori in another browser, on this computer or another one? Link to it from Settings instead of setting up again."
       && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
         ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
       && page.document.querySelector('a[href*="privacy"]') === null;
@@ -7131,11 +7536,30 @@ async function startupWelcomeStage() {
     const skipped = manual.saves()[0].stage === "practice" && manual.installs().length === 0
       && !manual.requestTypes().includes("hd_setup_anki")
       && manual.document.querySelector('a[href="settings.html#add-dictionaries"]') !== null;
-    return { quiet, refused, started, resumes, skipped };
+    // A Hachidori sharing itself from another browser on this computer is offered
+    // instead; using it links and completes setup with no dictionary run.
+    let linkRequest;
+    offered = startupCase(jsdom, { setup, reply,
+      probe: () => ({ address: "ws://127.0.0.1:8771/link", display: "this computer", host: { version: "0.1.0", name: "Chrome", dictionaryCount: 5 } }),
+      link: (message) => { linkRequest = message; return { sharing: {} }; },
+      cas: (message) => ({ ok: true, state: { ...setup, revision: 2, stage: message.stage } }) });
+    await offered.load();
+    const offerShown = offered.heading() === "Welcome to Hachidori"
+      && offered.document.getElementById("setup-body").textContent === "Chrome on this computer already has Hachidori set up, with 5 dictionaries."
+        + "Use it here instead of setting up again? Words are looked up there, and nothing is downloaded twice."
+      && offered.actionIds().join(",") === "setup-use-shared,setup-start,setup-manual"
+      && offered.document.getElementById("setup-use-shared").textContent === "Use the Hachidori in Chrome"
+      && offered.document.getElementById("setup-start").textContent === "Set up separately";
+    offered.document.getElementById("setup-use-shared").click();
+    await offered.until(() => offered.heading() === "Setup is complete.", "the linked setup to complete");
+    const used = offerShown && linkRequest?.target === "hachidori-sharing" && linkRequest.address === "ws://127.0.0.1:8771/link"
+      && offered.saves().length === 1 && offered.saves()[0].stage === "complete" && offered.installs().length === 0;
+    return { quiet, refused, started, resumes, skipped, offered: used };
   } finally {
     page.window.close();
     resumed?.window.close();
     manual?.window.close();
+    offered?.window.close();
   }
 }
 
@@ -11110,32 +11534,32 @@ async function contentNoteStage() {
       harness.popup.append(button);
       harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
         audioButtons: [{ button, result: harness.term("成熟") }], miningActions: [] });
-      outcomes["Anki maturity blurs without counts and preserves hover reveal and silent tab rebinds"] =
-        pending && blurred && harness.blurState() === "revealed" && plays() === 0;
+      outcomes["Anki maturity blurs without counts, plays the held result on hover reveal and never replays it on rebind"] =
+        pending && blurred && harness.blurState() === "revealed" && plays() === 1;
 
       harness.reply(await lookup("若い"), { mature: false });
       await harness.settle();
-      const young = harness.blurState() === "revealed" && plays() === 1;
+      const young = harness.blurState() === "revealed" && plays() === 2;
       harness.reply(await lookup("オフライン"), { error: "Anki unavailable" }, false);
       await harness.settle();
       outcomes["nonmature and unavailable Anki fail open and release autoplay once"] =
-        young && harness.blurState() === "revealed" && plays() === 2;
+        young && harness.blurState() === "revealed" && plays() === 3;
 
       const stale = await lookup("古い"), current = await lookup("現在");
       harness.reply(stale, { mature: true });
       await harness.settle();
-      const untouched = harness.blurState() === "pending" && plays() === 2;
+      const untouched = harness.blurState() === "pending" && plays() === 3;
       harness.reply(current, { mature: false });
       await harness.settle();
       outcomes["a retired lookup's Anki result cannot settle the current lookup's blur or autoplay"] =
-        untouched && harness.blurState() === "revealed" && plays() === 3;
+        untouched && harness.blurState() === "revealed" && plays() === 4;
 
       const changed = await lookup("設定");
       harness.emitOptions({ ...options, anki: { ...options.anki, model: "Other" } });
       harness.reply(changed, { mature: true });
       await harness.settle();
       outcomes["changing the Anki mapping releases a pending visit and rejects its late mature result"] =
-        harness.blurState() === "revealed" && plays() === 4;
+        harness.blurState() === "revealed" && plays() === 5;
 
       const combined = { ...options, showLookupCounts: true, definitionBlurEnabled: true, definitionBlurThreshold: 5 };
       harness.emitOptions(combined);
@@ -11144,7 +11568,7 @@ async function contentNoteStage() {
       harness.reply(count, { descriptor: { generation: "statistics", revision: 1 },
         statistics: { term: count.request.term, reading: count.request.reading, lookupCount: 5 } });
       await harness.settle();
-      const countWins = harness.blurState() === "blurred" && plays() === 4;
+      const countWins = harness.blurState() === "blurred" && plays() === 5;
       harness.reply(byCount, { mature: false });
       await harness.settle();
       const byAnki = await lookup("暗記");
@@ -11152,11 +11576,11 @@ async function contentNoteStage() {
       harness.reply(lowCount, { descriptor: { generation: "statistics", revision: 2 },
         statistics: { term: lowCount.request.term, reading: lowCount.request.reading, lookupCount: 1 } });
       await harness.settle();
-      const waiting = harness.blurState() === "pending" && plays() === 4;
+      const waiting = harness.blurState() === "pending" && plays() === 5;
       harness.reply(byAnki, { mature: true });
       await harness.settle();
       outcomes["either the first count or Anki maturity qualifies without waiting for the other signal"] =
-        countWins && waiting && harness.blurState() === "blurred" && plays() === 4;
+        countWins && waiting && harness.blurState() === "blurred" && plays() === 5;
 
       const firstCount = await lookup("最初");
       const firstCountRequest = harness.take("hd_lookup_stats_record");
@@ -11168,7 +11592,7 @@ async function contentNoteStage() {
       harness.reply(firstCount, { mature: false });
       await harness.settle();
       outcomes["waiting for Anki preserves the first count's autoplay decision despite later row events"] =
-        harness.blurState() === "revealed" && plays() === 5;
+        harness.blurState() === "revealed" && plays() === 6;
     } finally { harness.close(); }
 
     const early = await createHarness(null, { deferInitialStorage: true, options: { ...options,
@@ -11239,7 +11663,7 @@ async function contentNoteStage() {
         && harness.render().context.definitionBlurState === "pending";
       answer(first, 5);
       await harness.settle();
-      outcomes["a qualifying count blurs pending definitions and never auto-plays"] =
+      outcomes["a qualifying count blurs pending definitions and keeps autoplay held"] =
         held && harness.blurState() === "blurred" && plays() === 0;
       // A dictionary tab rebinds the first result under a new autoplay key.
       const retab = () => {
@@ -11254,36 +11678,36 @@ async function contentNoteStage() {
       harness.hoverDefinitions();
       harness.render().context.onDictionaryTabSelected(null);
       retab();
-      outcomes["a blurred lookup stays silent across dictionary tabs, even after a hover reveal"] =
-        blurredTabSilent && plays() === 0;
+      outcomes["a blurred lookup stays silent across dictionary tabs and a hover reveal plays the current tab once"] =
+        blurredTabSilent && plays() === 1;
       harness.hoverDefinitions();
       const revealed = harness.blurState() === "revealed";
       harness.emitLookupStats({ generation: "statistics", revision: 6 },
         { term: first.request.term, reading: first.request.reading, lookupCount: 6 });
-      outcomes["hovering definitions reveals and a later count never reblurs or plays"] =
-        revealed && harness.blurState() === "revealed" && plays() === 0;
+      outcomes["hovering definitions reveals and a later count never reblurs or plays again"] =
+        revealed && harness.blurState() === "revealed" && plays() === 1;
 
       const second = await lookup("一回");
-      const heldAgain = harness.blurState() === "pending" && plays() === 0;
+      const heldAgain = harness.blurState() === "pending" && plays() === 1;
       answer(second, 1);
       await harness.settle();
       outcomes["a non-qualifying count reveals and releases one held autoplay"] =
-        heldAgain && harness.blurState() === "revealed" && plays() === 1;
+        heldAgain && harness.blurState() === "revealed" && plays() === 2;
 
       const third = await lookup("失敗");
       harness.reply(third, { error: "lost committed reply" }, false);
       await harness.settle();
       outcomes["an unavailable count fails open and releases autoplay"] =
-        harness.blurState() === "revealed" && plays() === 2;
+        harness.blurState() === "revealed" && plays() === 3;
 
       harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3 });
       const fourth = await lookup("零回");
       answer(fourth, 0);
       await harness.settle();
-      const belowBlurred = harness.blurState() === "blurred" && plays() === 2;
+      const belowBlurred = harness.blurState() === "blurred" && plays() === 3;
       harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
-      outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
-        belowBlurred && harness.blurState() === "revealed" && plays() === 2;
+      outcomes["Below blurs a zero count and disabling blur reveals and plays the held result"] =
+        belowBlurred && harness.blurState() === "revealed" && plays() === 4;
 
       // A retained view replays the same request while its decision is pending:
       // retiring the level must not spend the held first visit.
@@ -11294,22 +11718,22 @@ async function contentNoteStage() {
       harness.popup.append(replayButton);
       harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
         audioButtons: [{ button: replayButton, result: harness.term("再生") }], miningActions: [] });
-      const replayHeld = plays() === 2;
+      const replayHeld = plays() === 4;
       answer(replayed, 1, 8);
       await harness.settle();
       outcomes["retiring a held view before its replay keeps the first visit for the decision"] =
-        replayHeld && harness.blurState() === "revealed" && plays() === 3;
+        replayHeld && harness.blurState() === "revealed" && plays() === 5;
 
       // A stale lookup's late count must not settle the current lookup's autoplay.
       const stale = await lookup("古い");
       const current = await lookup("現在");
       answer(stale, 9, 9);
       await harness.settle();
-      const currentStillPending = harness.blurState() === "pending" && plays() === 3;
+      const currentStillPending = harness.blurState() === "pending" && plays() === 5;
       answer(current, 1, 10);
       await harness.settle();
       outcomes["a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count"] =
-        currentStillPending && harness.blurState() === "revealed" && plays() === 4;
+        currentStillPending && harness.blurState() === "revealed" && plays() === 6;
     } finally { harness.close(); }
 
     const timed = await createHarness(undefined, { holdLookupStats: true,
@@ -14543,11 +14967,10 @@ async function contentNoteStage() {
         .map(([code, key]) => press(defaults, code, key, { altKey: true }));
       const unmodified = press(defaults, "ArrowDown", "ArrowDown");
       const actions = window.document.createElement("div");
-      const mine = window.document.createElement("button"), view = window.document.createElement("button");
+      const mine = window.document.createElement("button");
       mine.className = "gsm-hoshidicts-mine-button";
-      view.className = "gsm-hoshidicts-anki-view";
-      view.hidden = true;
-      actions.append(mine, view);
+      mine.dataset.action = "add";
+      actions.append(mine);
       defaults.popup.append(actions);
       let mined = 0;
       mine.addEventListener("click", () => { mined += 1; });
@@ -14555,7 +14978,8 @@ async function contentNoteStage() {
       defaults.callbacks().onResultsRendered({ audioButtons: [{ button: audioButton, result: defaults.render().results[0] }],
         miningActions: [{ actions, feedback: null, result: defaults.render().results[0] }] });
       const added = press(defaults, "KeyE", "e", { altKey: true });
-      const hiddenView = press(defaults, "KeyV", "v", { altKey: true });
+      // View notes only presses the Anki button while it opens Anki, never while it adds.
+      const viewedAdd = press(defaults, "KeyV", "v", { altKey: true });
       const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
       const command = action => defaults.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command", action });
       command("nextEntry");
@@ -14570,8 +14994,8 @@ async function contentNoteStage() {
       const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
       result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
         (JSON.stringify(defaults.entryFocus().slice(0, 4)) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
-          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !hiddenView && played && escaped)
-        || { focus: defaults.entryFocus(), moved, unmodified, added, mined, hiddenView, played, escaped };
+          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !viewedAdd && played && escaped)
+        || { focus: defaults.entryFocus(), moved, unmodified, added, mined, viewedAdd, played, escaped };
     } finally {
       defaults.close();
     }
@@ -14885,6 +15309,14 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
       && imageAfterBreak?.image?.path === "leading.png",
     JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));
+  // Jitendex redirect entries are just "⟶ <link>"; the summary skips to the next glossary.
+  const redirect = HDPopup.extractCompactDefinitionSummary([
+    { dictionary: "Jitendex", glossary: JSON.stringify([{ type: "structured-content", content: { tag: "div",
+      data: { content: "redirect-glossary" }, content: ["⟶", { tag: "a", href: "?query=悪どい", content: "悪どい" }] } }]) },
+    { dictionary: "Jitendex", glossary: JSON.stringify(["vicious"]) },
+  ]);
+  check("compact summaries skip Jitendex ⟶ redirects", JSON.stringify(redirect?.items) === JSON.stringify(["vicious"]),
+    JSON.stringify(redirect));
 
   const aggregateResult = { term: { frequencies: [
     { dictionary: "Rank A", frequencies: [{ value: 1234, displayValue: "1,234" }, { value: 1 }] },

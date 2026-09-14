@@ -330,19 +330,12 @@ button,
   border-radius: 8px;
   background: var(--surface-sunken);
 }
-.design-sample > summary {
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 620;
-}
-.design-sample[open] > summary {
-  margin-bottom: 12px;
-}
 .preview-heading {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
+  margin-bottom: 12px;
 }
 .preview-size-label {
   display: flex;
@@ -1272,6 +1265,7 @@ textarea {
   width: 8ch;
 }
 #opt-media-offset { width: 10ch; }
+#sharing-host-port { width: 12ch; }
 #definition-blur-count-paused label {
   cursor: pointer;
   text-decoration: underline;
@@ -1467,6 +1461,27 @@ textarea {
 #audio > p { margin: 0; }
 #audio-source-add { align-self: flex-start; }
 
+.custom-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.custom-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-block: 1px solid var(--border);
+}
+.custom-link-row + .custom-link-row { border-top: 0; }
+.custom-link-text { display: grid; gap: 2px; min-width: 0; }
+.custom-link-text code { color: var(--text-dim); overflow-wrap: anywhere; }
+.custom-link-actions { display: flex; gap: 6px; }
+.custom-link-form { display: grid; gap: 8px; }
+.custom-link-form input[type="text"] { width: 100%; }
+
 .keybind-list {
   margin: 0;
   padding: 0;
@@ -1538,18 +1553,26 @@ textarea {
 .sharing-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 8px 12px;
 }
-.sharing-command {
-  margin: 8px 0;
-  padding: 8px 10px;
+#sharing-host-addresses { display: grid; gap: 8px; }
+.sharing-addresses {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sharing-addresses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.sharing-addresses code {
+  padding: 4px 8px;
   border-radius: 4px;
   background: var(--surface-sunken);
-  font:
-    0.95em ui-monospace,
-    monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: all;
+  font-size: 1.05em;
 }
-#sharing-host-port { width: 10ch; }
