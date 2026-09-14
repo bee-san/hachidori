@@ -2080,11 +2080,15 @@ chrome.tabs?.onRemoved?.addListener(tabId => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
-  const operation = HOST_CAPABILITIES.mediaCapture
-    ? (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type) || CAPTURE_CONTROL_TYPES.has(message.type)
-        ? handleCaptureControl(message, sender)
-        : handleCaptureContent(message, sender))
-    : Promise.reject(new Error("Media capture is unavailable in this overlay."));
+  let operation;
+  if (!HOST_CAPABILITIES.mediaCapture) {
+    operation = Promise.reject(new Error("Media capture is unavailable in this overlay."));
+  } else if (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type)
+      || CAPTURE_CONTROL_TYPES.has(message.type)) {
+    operation = handleCaptureControl(message, sender);
+  } else {
+    operation = handleCaptureContent(message, sender);
+  }
   Promise.resolve(operation).then(
     result => sendResponse(workerReply(message, result)),
     error => sendResponse(failureReply(message, error)),
