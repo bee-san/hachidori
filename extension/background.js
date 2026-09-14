@@ -2,7 +2,8 @@ import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
-import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "./anki-maturity-cache.js";
+import { lookupAnkiIndex } from "./anki-index.js";
+import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "./anki-index-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
@@ -87,7 +88,7 @@ const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
-let ankiGateway, ankiMining, ankiMaturityCache;
+let ankiGateway, ankiMining, ankiDuplicateIndex;
 let backupDownloads;
 // One first-run Anki detection at a time; duplicate startup pages share it.
 let ankiSetupDetection = null;
@@ -211,41 +212,42 @@ async function readAnkiOptions() {
   return OVERLAY_MODE ? overlayAnkiOptions(options) : options;
 }
 
-// Called within the background storage queue. Options and cache invalidation
+// Called within the background storage queue. Options and index invalidation
 // share one write so a delayed storage event cannot publish an obsolete pull.
 async function writeLocalState(values, store = chrome.storage.local) {
   if (store === chrome.storage.local && Object.hasOwn(values, OPTIONS_KEY)) {
-    const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_MATURITY_CACHE_KEY]);
-    const cache = await ankiMaturityConfigurationChange(
-      normaliseOptions(stored[OPTIONS_KEY]), normaliseOptions(values[OPTIONS_KEY]), stored[ANKI_MATURITY_CACHE_KEY],
+    const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_INDEX_KEY]);
+    const index = await ankiIndexConfigurationChange(
+      normaliseOptions(stored[OPTIONS_KEY]), normaliseOptions(values[OPTIONS_KEY]), stored[ANKI_INDEX_KEY],
     );
-    if (cache !== undefined) values = { ...values, [ANKI_MATURITY_CACHE_KEY]: cache };
+    if (index !== undefined) values = { ...values, [ANKI_INDEX_KEY]: index };
   }
   await store.set(values);
 }
 
-function getAnkiMaturityCache() {
-  ankiMaturityCache ??= createAnkiMaturityCache({
-    fetchWords: async source => {
-      const reply = await relay({ target: "hachidori-anki-render", type: "hd_anki_maturity_refresh",
-        requestId: `anki-maturity-${crypto.randomUUID()}`, source });
+function getAnkiDuplicateIndex() {
+  ankiDuplicateIndex ??= createAnkiDuplicateIndex({
+    fetchRows: async source => {
+      const reply = await relay({ target: "hachidori-anki-render", type: "hd_anki_index_refresh",
+        requestId: `anki-index-${crypto.randomUUID()}`, source });
       if (!reply.ok) throw new Error(reply.error);
-      return reply.words;
+      return reply.rows;
     },
+    lookupLive: (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression),
     readOptions: readAnkiOptions,
-    readState: async () => (await chrome.storage.local.get(ANKI_MATURITY_CACHE_KEY))[ANKI_MATURITY_CACHE_KEY],
+    readState: async () => (await chrome.storage.local.get(ANKI_INDEX_KEY))[ANKI_INDEX_KEY],
     updateState: update => serialiseStorage(async () => {
-      const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_MATURITY_CACHE_KEY]);
-      const state = stored[ANKI_MATURITY_CACHE_KEY];
+      const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_INDEX_KEY]);
+      const state = stored[ANKI_INDEX_KEY];
       const next = await update({ options: normaliseOptions(stored[OPTIONS_KEY]), state });
       if (next !== undefined && !sameJsonValue(state, next)) {
-        await writeLocalState({ [ANKI_MATURITY_CACHE_KEY]: next });
+        await writeLocalState({ [ANKI_INDEX_KEY]: next });
       }
       return next ?? state;
     }),
     alarms,
   });
-  return ankiMaturityCache;
+  return ankiDuplicateIndex;
 }
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
@@ -1459,16 +1461,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
-  void reconcileAnkiMaturity();
+  void reconcileAnkiIndex();
 });
 
-async function reconcileAnkiMaturity() {
+async function reconcileAnkiIndex() {
   await sharingReady;
-  if (sharingLinked) {
-    await alarms.clear(ANKI_MATURITY_ALARM);
-    return;
-  }
-  await getAnkiMaturityCache().reconcile();
+  await getAnkiDuplicateIndex().reconcile();
 }
 
 const UPDATE_HANDLERS = {
@@ -1954,7 +1952,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleAnkiRequest(message, sender) {
   await sharingReady;
-  // The host owns the mature-word cache; Electron has no alarm to refresh a local one.
+  // The host owns the mirrored index membership used for maturity blur.
   if (sharingLinked && message.type === "hd_anki_maturity") return forwardToHost(message);
   return answerAnkiRequest(message, sender);
 }
@@ -1971,7 +1969,7 @@ function answerAnkiRequest(message, sender) {
       ankiGateway ??= createAnkiGateway();
       ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
         readOptions: readAnkiOptions,
-        maturityCache: getAnkiMaturityCache(),
+        duplicateIndex: getAnkiDuplicateIndex(),
         readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
         engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
         capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
@@ -2288,7 +2286,7 @@ const SHARING_HANDLERS = {
       throw error;
     }
     await reconcileUpdateAlarm();
-    await reconcileAnkiMaturity();
+    await reconcileAnkiIndex();
     return { sharing: sharingStatus() };
   },
   // Restored values outrank the mirror in every reader's revision comparison,
@@ -2326,7 +2324,7 @@ const SHARING_HANDLERS = {
       });
     });
     await reconcileUpdateAlarm();
-    await reconcileAnkiMaturity();
+    await reconcileAnkiIndex();
     return { sharing: sharingStatus() };
   },
   async hd_sharing_host_enable(message) {
@@ -2374,8 +2372,8 @@ async function initialiseSharing() {
 }
 
 chrome.alarms?.onAlarm?.addListener((alarm) => {
-  if (alarm.name === ANKI_MATURITY_ALARM) {
-    void reconcileAnkiMaturity();
+  if (alarm.name === ANKI_INDEX_ALARM) {
+    void reconcileAnkiIndex();
     return;
   }
   if (alarm.name === SHARING_HOST_ALARM) {
@@ -2398,7 +2396,7 @@ chrome.downloads?.onChanged?.addListener(delta => {
 });
 
 function warmUp() {
-  void reconcileAnkiMaturity();
+  void reconcileAnkiIndex();
   ensureOffscreen().catch((error) => {
     console.error("hoshidicts: could not create the offscreen document:", describe(error));
   });
@@ -2509,7 +2507,7 @@ if (OVERLAY_MODE) {
     console.error("hoshidicts: could not seed overlay mode options:", describe(error));
   });
 }
-void reconcileAnkiMaturity(); // NOSONAR -- initialize without delaying worker activation.
+void reconcileAnkiIndex(); // NOSONAR -- initialize without delaying worker activation.
 sharingReady = initialiseSharing().catch((error) => {
   console.error("hachidori: could not restore sharing:", describe(error));
 });

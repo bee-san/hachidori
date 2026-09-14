@@ -566,7 +566,7 @@
                 </label>
               </div>
               <p class="field-hint" id="definition-blur-count-paused" hidden>Lookup count blur is paused. <label for="opt-lookup-counts">Turn on Record and show lookup counts above</label> to use this condition.</p>
-              <p class="field-hint" id="definition-blur-anki-help" hidden>Mature means a review card with an interval of at least 21 days. Uses your configured Anki note type and dedicated Expression field across all decks. Set the mapping in <a href="#anki">Anki settings</a>. Refreshes every 30 minutes; the last saved results still work when Anki is closed.</p>
+              <p class="field-hint" id="definition-blur-anki-help" hidden>Mature means a review card with an interval of at least 21 days. Uses the duplicate scope and dedicated Expression fields selected in <a href="#anki">Anki settings</a>. The shared index refreshes every 30 minutes; its last saved results still work when Anki is closed.</p>
               <div class="fields">
                 <label class="field">
                   <span class="field-label">Reveal</span>
@@ -819,7 +819,7 @@
             <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
           </div>
           <div class="options-feedback-slot"></div>
-          <output id="media-runtime-status" class="anki-status" aria-live="polite">
+          <output id="media-runtime-status" class="operational-status" aria-live="polite" aria-atomic="true">
             Capture is stopped.
           </output>
           <p class="section-note">
@@ -937,13 +937,13 @@
           </div>
           <div class="options-feedback-slot"></div>
           <div class="anki-connection-summary">
-            <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
+            <output id="anki-status" class="operational-status" aria-live="polite" aria-atomic="true">Open Anki to discover your decks and note types.</output>
             <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki.</p>
             <div class="sharing-actions">
               <button id="anki-find-setup" type="button" class="ghost">Find existing setup</button>
               <span class="field-hint">Find your most-used Kiku, Lapis or Senren setup, or check your saved mapping. Open Anki and retry if it was unavailable.</span>
             </div>
-            <output id="anki-setup-status" class="anki-status" aria-live="polite" hidden></output>
+            <output id="anki-setup-status" class="operational-status" aria-live="polite" aria-atomic="true" hidden></output>
           </div>
           <fieldset class="lookup-group">
             <legend>Destination</legend>
@@ -970,12 +970,10 @@
           </fieldset>
           <details class="anki-details">
             <summary>Duplicate handling</summary>
-            <label class="lookup-enable"><span>Check for duplicates</span><input id="opt-anki-check-duplicates" type="checkbox"></label>
             <div class="fields lookup-group">
-              <label class="field"><span class="field-label">Check within</span><select id="opt-anki-duplicate-scope"><option value="collection">Entire collection</option><option value="deck">Selected deck</option><option value="deck-root">Deck root and its subdecks</option></select></label>
-              <label class="field"><span class="field-label">When a duplicate exists</span><select id="opt-anki-duplicate-behavior"><option value="prevent">Prevent duplicate</option><option value="new">Add new anyway</option><option value="overwrite">Overwrite existing</option></select></label>
+              <label class="field"><span class="field-label">Check within</span><select id="opt-anki-duplicate-scope"><option value="model">Configured note type</option><option value="deck">Configured deck and subdecks</option><option value="all">All of Anki</option></select></label>
+              <label class="field"><span class="field-label">When a duplicate exists</span><select id="opt-anki-duplicate-behavior"><option value="prevent">Prevent</option><option value="new">Add anyway</option><option value="overwrite">Overwrite</option></select></label>
             </div>
-            <label class="lookup-enable"><span>Check across all note types</span><input id="opt-anki-check-all-models" type="checkbox"></label>
           </details>
           <details class="anki-details">
             <summary>Connection settings</summary>
@@ -1009,7 +1007,7 @@
             <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
             <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
-          <output id="sharing-status" class="anki-status" aria-live="polite"></output>
+          <output id="sharing-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
             <p class="field-hint">Your other browsers then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own. Anki carries the connection: install the Hachidori Relay add-on once and keep Anki open.</p>
