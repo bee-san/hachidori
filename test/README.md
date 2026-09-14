@@ -23,8 +23,8 @@ npm --prefix test/tooling run test:fallback     # IDBFS path
 npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
 ```
 
-`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.9.0**,
-the browser installer **3.2.1**, and their transitive dependencies. The small
+`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.10.0**,
+the browser installer **3.2.2**, and their transitive dependencies. The small
 `test/run.mjs` launcher supplies the existing environment overrides, generates
 fixtures, runs each existing suite in a separate Node process, and propagates
 every nonzero exit or signal. It selects the exact Chrome build from
@@ -767,7 +767,7 @@ it in `test/tooling`. Direct commands can also use an external dependency tree:
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$CACHE_ROOT/hachidori-e2e"
 cd "$CACHE_ROOT/hachidori-e2e"
-npm install --save-exact jsdom@30.0.1 puppeteer-core@25.9.0 @puppeteer/browsers@3.2.1
+npm install --save-exact jsdom@30.0.1 puppeteer-core@25.10.0 @puppeteer/browsers@3.2.2
 ./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
