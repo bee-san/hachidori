@@ -1488,6 +1488,156 @@ async function sharingClientStage() {
     JSON.stringify({ unlinked, restoredState, restoredOptions, restoredStats, keys: [...storage.raw.keys()] }));
 }
 
+async function sharingTransitionStage() {
+  const tick = () => new Promise(resolveTimer => setTimeout(resolveTimer, 2));
+  const until = async predicate => {
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      if (predicate()) return;
+      await tick();
+    }
+    throw new Error("sharing transition did not settle");
+  };
+  async function fixture() {
+    const bus = makeBus(), storage = makeStorage();
+    const chrome = makeChrome("sharing-transitions-worker", bus, storage);
+    const text = "私語,しご,my personal entry\n";
+    const semanticRevision = await customDictionarySemanticRevision(parseCustomDictionary(text).entries);
+    const local = {
+      dictionaryState: { schemaVersion: 1, revision: 2, dictionaries: [genericPackage({
+        id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE, revision: semanticRevision,
+      })], groups: [] },
+      options: { hoverEnabled: true, revision: 3 },
+      customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
+      dictionaryUpdates: null, lookupStats: null,
+    };
+    await chrome.storage.local.set({ sharing: { host: null },
+      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)) });
+    const sockets = [];
+    class Socket extends FakeSharingSocket {
+      constructor(url) { super(url); sockets.push(this); }
+    }
+    const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket });
+    const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-settings-tab",
+      { target, type, requestId: `transition-${type}`, ...fields });
+    await send("hd_sharing_status");
+    const hello = { kind: "hello", protocol: 1, version: "1", name: "Host", dictionaryCount: 1, snapshot: {
+      dictionaryState: { schemaVersion: 1, revision: 9, dictionaries: [genericPackage({ id: "host" })], groups: [] },
+      options: { hoverEnabled: false, revision: 10 }, customDictionarySource: null,
+      dictionaryUpdates: { revision: 5, schedule: "off", lastCheckedAt: null }, lookupStats: null,
+    } };
+    async function finishLinks(requests) {
+      let replies;
+      const finished = Promise.all(requests).then(value => { replies = value; });
+      await until(() => {
+        for (const socket of sockets.filter(item => item.readyState === 0)) {
+          socket.open();
+          socket.receive(hello);
+        }
+        return replies !== undefined;
+      });
+      await finished;
+      await tick();
+      return replies;
+    }
+    return { chrome, storage, local, sockets, send, hello, finishLinks,
+      link: () => send("hd_sharing_client_link", { address: "127.0.0.1:9100" }),
+      dispose: () => runInContext("getSharingClient().unlink()", context) };
+  }
+
+  const f = await fixture();
+  try {
+    const first = f.link(), second = f.link();
+    await until(() => f.sockets.length > 0);
+    const edit = await f.send("hd_options_write", { baseRevision: 3, options: { showLookupCounts: false } }, "hoshidicts-worker");
+    f.local.options = structuredClone(f.storage.raw.get("options"));
+    const links = await f.finishLinks([first, second]);
+    const kept = structuredClone(f.storage.raw.get("sharingLocalState"));
+    check("concurrent Links keep the original personal state including edits made while the probe waits",
+      edit.ok && links.every(reply => reply.ok) && f.sockets.length === 2
+        && JSON.stringify(kept) === JSON.stringify(f.local), JSON.stringify({ links, kept, local: f.local, sockets: f.sockets.length }));
+    const writes = f.storage.sets.length, sockets = f.sockets.length;
+    await f.finishLinks([f.link()]);
+    check("a repeated Link returns the current link without probing or replacing its saved state",
+      f.storage.sets.length === writes && f.sockets.length === sockets
+        && JSON.stringify(f.storage.raw.get("sharingLocalState")) === JSON.stringify(kept));
+
+    const unlinks = await Promise.all([f.send("hd_sharing_client_unlink"), f.send("hd_sharing_client_unlink")]);
+    const restored = Object.fromEntries(f.storage.raw);
+    await f.send("hd_sharing_client_unlink");
+    check("concurrent and repeated Unlinks restore personal entries and settings once without erasing them",
+      unlinks.every(reply => reply.ok && !reply.sharing.client.linked)
+        && restored.customDictionarySource?.text === f.local.customDictionarySource.text
+        && restored.dictionaryState?.dictionaries[0].id === CUSTOM_DICTIONARY_ID
+        && restored.options?.showLookupCounts === false && restored.options?.revision > 10
+        && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
+        && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
+  } finally { f.dispose(); }
+
+  const failure = await fixture();
+  try {
+    await failure.finishLinks([failure.link()]);
+    const before = JSON.stringify(Object.fromEntries(failure.storage.raw));
+    failure.storage.failNextSet("restoration refused");
+    const refused = await failure.send("hd_sharing_client_unlink");
+    const status = await failure.send("hd_sharing_status");
+    check("a refused restoration keeps the saved state and linked routing available for retry",
+      !refused.ok && refused.error === "restoration refused" && status.sharing.client.linked
+        && before === JSON.stringify(Object.fromEntries(failure.storage.raw)), JSON.stringify({ refused, status }));
+    const remove = failure.chrome.storage.local.remove;
+    failure.chrome.storage.local.remove = async () => { throw new Error("restoration removal refused"); };
+    const partial = await failure.send("hd_sharing_client_unlink");
+    failure.chrome.storage.local.remove = remove;
+    const partialStatus = await failure.send("hd_sharing_status");
+    const retained = failure.storage.raw.has("sharingLocalState");
+    const retried = await failure.send("hd_sharing_client_unlink");
+    check("a partial restoration retains its snapshot until removals succeed and the retry restores personal entries",
+      !partial.ok && partialStatus.sharing.client.linked && retained && retried.ok
+        && failure.storage.raw.get("customDictionarySource")?.text === failure.local.customDictionarySource.text,
+      JSON.stringify({ partial, partialStatus, retained, retried }));
+  } finally { failure.dispose(); }
+
+  const late = await fixture();
+  try {
+    await late.finishLinks([late.link()]);
+    const oldSocket = late.sockets.at(-1);
+    const set = late.chrome.storage.local.set;
+    let release, restoring = false;
+    const held = new Promise(resolveHeld => { release = resolveHeld; });
+    late.chrome.storage.local.set = async values => {
+      if (values.dictionaryState?.dictionaries[0]?.id === CUSTOM_DICTIONARY_ID) {
+        restoring = true;
+        await held;
+      }
+      return set(values);
+    };
+    const unlink = late.send("hd_sharing_client_unlink");
+    await until(() => restoring);
+    oldSocket.receive({ kind: "storage", changes: { options: { revision: 100, hoverEnabled: false } } });
+    release();
+    await unlink;
+    oldSocket.receive(late.hello);
+    await tick();
+    await tick();
+    check("host batches queued during Unlink and late frames from its retired socket cannot overwrite the restoration",
+      late.storage.raw.get("options")?.hoverEnabled === true && late.storage.raw.get("options")?.revision === 11
+        && late.storage.raw.get("customDictionarySource")?.text === late.local.customDictionarySource.text,
+      JSON.stringify(Object.fromEntries(late.storage.raw)));
+  } finally { late.dispose(); }
+
+  const pending = await fixture();
+  try {
+    const link = pending.link();
+    await until(() => pending.sockets.length > 0);
+    const unlink = pending.send("hd_sharing_client_unlink");
+    const replies = await pending.finishLinks([link, unlink]);
+    const status = await pending.send("hd_sharing_status");
+    check("Unlink from another Settings tab waits for an already pending Link and then restores local state",
+      replies.every(reply => reply.ok) && !status.sharing.client.linked
+        && pending.storage.raw.get("customDictionarySource")?.text === pending.local.customDictionarySource.text
+        && !pending.storage.raw.has("sharingLocalState"), JSON.stringify({ replies, status }));
+  } finally { pending.dispose(); }
+}
+
 async function firstRunBackgroundStage() {
   const bus = makeBus();
   const storage = makeStorage();
@@ -3358,6 +3508,7 @@ async function main() {
   await overlayModeBackgroundStage();
   await sharingHostStage();
   await sharingClientStage();
+  await sharingTransitionStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
