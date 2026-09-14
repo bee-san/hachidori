@@ -185,6 +185,7 @@
   // A drag the reader selects itself, glyph by glyph, in an overlay host.
   let dragSelection = null;
   let overlayMode = false;
+  let hostCapabilities = { customLinks: true, mediaCapture: true };
   let hostAttentionPublished = false;
   let hostAttentionHold = 0;
 
@@ -230,10 +231,29 @@
     try {
       const module = await import(chrome.runtime.getURL("overlay-mode.js"));
       overlayMode = module.OVERLAY_MODE === true;
+      hostCapabilities = { ...hostCapabilities, ...module.HOST_CAPABILITIES };
+      const next = applyHostCapabilities(options);
+      const customLinksChanged = JSON.stringify(next.customLinks) !== JSON.stringify(options.customLinks);
+      const miningChanged = JSON.stringify(next.mediaCapture) !== JSON.stringify(options.mediaCapture);
+      options = next;
+      if (customLinksChanged) {
+        for (const level of levels) level.view?.setCustomLinks(options.customLinks);
+      }
+      if (miningChanged) mining?.update(options, optionsStorageRevision >= 0);
     } catch {
       overlayMode = false;
     }
   }
+
+  function applyHostCapabilities(projected) {
+    if (!hostCapabilities.mediaCapture) {
+      projected = { ...projected, mediaCapture: { ...projected.mediaCapture, enabled: false } };
+    }
+    if (!hostCapabilities.customLinks) projected = { ...projected, customLinks: [] };
+    return projected;
+  }
+
+  const projectHostOptions = stored => applyHostCapabilities(projectContentOptions(stored));
 
   function nonnegativeCount(value) {
     const count = Math.trunc(Number(value));
@@ -3518,7 +3538,7 @@
   function adoptOptions(stored) {
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
-    const next = projectContentOptions(stored);
+    const next = projectHostOptions(stored);
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);

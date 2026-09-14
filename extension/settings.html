@@ -734,8 +734,9 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" id="custom-links-settings">
                 <legend>Custom toolbar links</legend>
+                <p id="custom-links-overlay-help" class="section-note" hidden>Custom toolbar links are unavailable in this overlay because Electron cannot open browser tabs. Saved links are preserved for browser mode.</p>
                 <p class="field-hint">Use %w for the word, %r for its reading and %s for the sentence.</p>
                 <ol id="custom-link-list" class="custom-link-list"></ol>
                 <p id="custom-link-empty" class="field-hint">No custom links yet.</p>
@@ -815,15 +816,16 @@
           <div class="section-heading">
             <div class="card-head">
               <h1 id="media-heading" tabindex="-1">Media capture</h1>
-              <p class="hint">Optional local recording for Anki notes. Changes save automatically.</p>
+              <p id="media-heading-help" class="hint">Optional local recording for Anki notes. Changes save automatically.</p>
             </div>
             <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
           </div>
           <div class="options-feedback-slot"></div>
+          <p id="media-overlay-help" class="section-note" hidden>Hachidori recording is unavailable in this embedded overlay. GameSentenceMiner owns game screenshots, recordings and sentence audio; these saved browser settings are left unchanged.</p>
           <output id="media-runtime-status" class="operational-status" aria-live="polite" aria-atomic="true">
             Capture is stopped.
           </output>
-          <p class="section-note">
+          <p id="media-browser-help" class="section-note">
             Open the capture controls to choose a tab, window, or entire screen. Capture keeps running when you close
             the controls. Hachidori never requests microphone access.
           </p>
@@ -923,7 +925,7 @@
               </label>
             </div>
           </fieldset>
-          <p class="section-note">
+          <p id="media-template-help" class="section-note">
             Anki templates use <code>{capture-animation}</code> and <code>{capture-audio}</code>.
             Captured media cannot be placed in the first Anki field.
           </p>
@@ -998,6 +1000,7 @@
           </div>
           <fieldset class="lookup-group" id="browser-shortcuts">
             <legend>Browser shortcuts</legend>
+            <p id="browser-shortcuts-overlay-help" class="section-note" hidden>Page and popup keybinds above still work. Electron does not expose Chrome’s browser shortcut manager.</p>
             <p class="field-hint">Chrome runs these on any page. Popup actions need an open popup. Change them in Chrome's extension shortcuts.</p>
             <ul id="browser-shortcut-list" class="browser-shortcut-list"></ul>
             <button id="browser-shortcuts-open" type="button" class="ghost">Change in Chrome</button>
@@ -1061,6 +1064,7 @@
             <div>
               <h2>Save a backup</h2>
               <p>Includes every dictionary, media and styles, your personal source, groups, and all saved settings.</p>
+              <p id="backup-export-overlay-help" class="field-hint" hidden>Electron cannot start Chrome downloads here. Restore remains available; export from Hachidori in Chrome.</p>
             </div>
             <button id="backup-export" class="ghost" type="button">Export backup</button>
           </div>
