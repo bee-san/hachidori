@@ -80,11 +80,12 @@ fresh. A lookup made before the saved settings have loaded waits for them.
 Native kanji entries are outside term blur; term entries reached through a
 clicked kanji participate.
 
-Automatic pronunciation waits for the combined decision. The first count
-snapshot and Anki result decide once for the whole visit. A qualifying result never
-auto-plays, even after hover or the deadline reveals it, so the audio does not
-give the reading away; a revealed result plays once as usual, and the Audio
-button always works manually.
+Automatic pronunciation waits until the definitions are revealed, so the audio
+does not give the reading away while they are blurred. The first count snapshot
+and Anki result decide the blur once for the whole visit. A result that does not
+qualify reveals and plays at once; a blurred result plays once when hover, the
+deadline or disabling blur reveals it. Pressing the Audio button while blurred
+plays it then instead, and nothing replays at the reveal.
 
 Turning both rules off reveals open popups without touching a Note draft.
 Disabling lookup counts removes only the count rule. Changes to Anki settings

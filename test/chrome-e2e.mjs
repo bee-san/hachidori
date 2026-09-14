@@ -267,11 +267,11 @@ const PLANNED = [
   "accepted reader lookups persist canonical counts without delaying definitions",
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "local count and blur settings belong to Reading without external corpus controls",
-  "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+  "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
   "the Anki maturity blur source persists independently of lookup counts",
   "a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
-  "cached mature definitions reveal silently and repeated lookups make no Anki requests",
+  "cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
   "a scheduled maturity refresh preserves the current popup and updates only new lookups",
   "disabling maturity cancels its alarm and pending publication and re-enabling refreshes immediately",
   "an unavailable Anki refresh retains cached maturity and independent count blur",
@@ -5184,17 +5184,17 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     const qualifying = await decided();
     const pendingOrBlurred = await popup.definitionBlur();
     await tab.mouse.move(qualifying.definitionsPoint.x, qualifying.definitionsPoint.y);
-    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioAttempted, 5_000);
     await updateSettingsControls(settings, { "opt-blur-direction": "below" });
     const revealedDefinition = await freshLookup();
     const notQualifying = await decided();
     const autoplayed = await waitForDefinitionBlur(popup, value => value?.audioAttempted, 5_000);
-    check("definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+    check("definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
       qualifyingDefinition?.plain.includes("食べる")
         && qualifying?.state === "blurred" && qualifying.definitionsState === "blurred"
         && qualifying.countText.includes(`Looked up ${threshold}`)
         && !pendingOrBlurred.audioAttempted
-        && hovered?.state === "revealed" && !hovered.audioAttempted
+        && hovered?.state === "revealed" && hovered.audioAttempted
         && revealedDefinition?.plain.includes("食べる")
         && notQualifying?.state === "revealed" && notQualifying.countText.includes(`Looked up ${threshold + 1}`)
         && autoplayed?.audioAttempted,
@@ -5336,14 +5336,14 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     const matureDefinition = await freshLookup();
     const mature = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     await tab.mouse.move(mature.definitionsPoint.x, mature.definitionsPoint.y);
-    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioAttempted, 5_000);
     await freshLookup();
     const repeated = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     const after = await readLookupStatistics(settings);
     const query = calls.find(call => call.action === "notesInfo")?.params.query ?? "";
-    check("cached mature definitions reveal silently and repeated lookups make no Anki requests",
+    check("cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
       matureDefinition?.plain.includes("食べる") && mature?.state === "blurred" && mature.definitionsState === "blurred"
-        && !mature.audioAttempted && hovered?.state === "revealed" && !hovered.audioAttempted
+        && !mature.audioAttempted && hovered?.state === "revealed" && hovered.audioAttempted
         && repeated?.state === "blurred" && refreshCalls() === 1 && !calls.some(call => call.action === "findCards")
         && before.ok && after.ok && before.statistics === null && after.statistics === null
         && before.descriptor.generation === after.descriptor.generation && before.descriptor.revision === after.descriptor.revision
