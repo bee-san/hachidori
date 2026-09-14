@@ -15,6 +15,8 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   let requestSequence = 0;
   let requestedKey = null;
   let loading = false;
+  let findingSetup = false;
+  let setupSnapshot = null;
   const templateRows = new Map();
   let nextTemplateId = 0;
   const connectionKey = config => JSON.stringify([config.model, config.apiKey, config.url]);
@@ -140,6 +142,44 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
+  function setupStatus(message, error = false) {
+    const status = element("anki-setup-status");
+    status.hidden = message === "";
+    status.textContent = message;
+    status.classList.toggle("is-error", error);
+  }
+
+  async function findSetup() {
+    if (findingSetup || commitConnectionUrl() === null) return;
+    const config = readConfig();
+    const snapshot = JSON.stringify(config);
+    findingSetup = true;
+    element("anki-find-setup").disabled = true;
+    setupStatus("Finding your Anki setup…");
+    try {
+      const reply = await send("hd_anki_setup", { anki: config });
+      if (snapshot !== JSON.stringify(readConfig())) {
+        throw new Error("Anki settings changed while checking. Your changes were kept; retry to check them.");
+      }
+      if (!reply.ok) throw new Error(reply.error || "Anki setup discovery did not reply.");
+      const { proposal, outcome } = reply;
+      if (proposal?.status === "configured") {
+        change({ model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates });
+        setupStatus(`Found ${outcome.model} in deck ‘${outcome.deck}’. Changes save automatically.`);
+      } else if (outcome.status === "already-configured") {
+        setupStatus(`Your saved ${outcome.model} setup for deck ‘${outcome.deck}’ is ready.`);
+      } else {
+        setupStatus(outcome.detail, true);
+      }
+    } catch (error) {
+      setupStatus(error.message, true);
+    } finally {
+      findingSetup = false;
+      setupSnapshot = JSON.stringify(readConfig());
+      element("anki-find-setup").disabled = false;
+    }
+  }
+
   async function refresh() {
     const config = readConfig();
     const key = connectionKey(config);
@@ -190,6 +230,10 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
 
   function render() {
     const config = readConfig();
+    if (!findingSetup && setupSnapshot !== null && setupSnapshot !== JSON.stringify(config)) {
+      setupSnapshot = null;
+      setupStatus("");
+    }
     if (pendingPreset && pendingPreset.key !== connectionKey(config)) pendingPreset = null;
     if (presetModel !== config.model) {
       presetModel = config.model;
@@ -268,6 +312,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     // A changed URL starts discovery through render; don't start it twice.
     if (commitConnectionUrl() === false) void refresh();
   });
+  element("anki-find-setup").addEventListener("click", () => { void findSetup(); });
   element("anki-preset").addEventListener("change", () => { pendingPreset = null; });
   element("anki-apply-preset").addEventListener("click", () => {
     pendingPreset = null;

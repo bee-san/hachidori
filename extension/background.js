@@ -791,6 +791,14 @@ const WORKER_HANDLERS = {
     const url = message.url === undefined ? normaliseOptions(stored[OPTIONS_KEY]).anki.url : message.url;
     return ankiGateway.discover({ model: message.model, apiKey: message.apiKey, url });
   },
+  async hd_anki_setup(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+      throw new Error("Anki setup discovery is available only from Hachidori Settings");
+    }
+    // Settings owns the draft and saves a proposal through its ordinary options
+    // CAS. Discovery itself neither changes options nor records onboarding.
+    return checkAnkiSetup(validateOptionsPatch({ anki: message.anki }).anki);
+  },
   async hd_open_external(message, sender) {
     if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
     const url = normaliseExternalUrl(message.url);
@@ -1055,7 +1063,7 @@ function ankiSetupFailure(error) {
 // One read-only conversation with Anki: an unconfigured profile is offered a
 // proposal, and a mapping the user already saved is verified the way Settings
 // verifies it, never replaced. Nothing here holds the storage queue.
-async function checkFirstRunAnki(anki) {
+async function checkAnkiSetup(anki) {
   ankiGateway ??= createAnkiGateway();
   const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey, undefined, anki.url);
   try {
@@ -1080,7 +1088,7 @@ async function detectFirstRunAnki() {
     const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
     const options = normaliseOptions(stored[OPTIONS_KEY]);
     const last = attempt >= ANKI_SETUP_ATTEMPTS;
-    const { proposal, outcome } = await checkFirstRunAnki(options.anki);
+    const { proposal, outcome } = await checkAnkiSetup(options.anki);
     const written = await serialiseStorage(async () => {
       const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
       const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
@@ -2146,7 +2154,7 @@ async function handleWorkerRequest(message, sender) {
   const invoke = () => WORKER_HANDLERS[type](message, sender);
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const operation = [
-    "hd_open_external", "hd_anki_discover", "hd_setup_anki", "hd_backup_download",
+    "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
     "hd_lookup_stats_record", "hd_lookup_stats_read",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
   return operation.then(

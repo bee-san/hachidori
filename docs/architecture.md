@@ -299,6 +299,14 @@ records `continued: true`. Only settled outcomes are announced, never bytes.
 
 ### Anki stage
 
+Settings → Anki also exposes **Find existing setup** for later recovery and
+overlay installations. Its explicit `hd_anki_setup` request uses the same
+read-only detection/verification as startup, without reading or writing an
+onboarding outcome. An unavailable result can be retried after opening Anki.
+Settings applies a new proposal only while the Anki draft it checked is still
+current, using its ordinary revision-checked options save; saved mappings are
+verified and preserved. Connection refresh remains the lighter metadata check.
+
 After the welcome disclosure and **Start setup**, the Anki stage checks for an
 existing mining setup by itself. The startup page
 asks the worker once with `hd_setup_anki`, accepted from the exact startup page

@@ -2002,6 +2002,28 @@ async function firstRunAnkiStage() {
       && failing.storage.raw.get("options").anki.model === "Kiku v2"
       && failing.storage.raw.get("options").revision === 2,
     JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
+
+  let connected = false;
+  const recovery = worldFor("anki-settings-recovery", { setup: null, options: { revision: 2, anki: defaultAnki() },
+    answer: (action, params) => connected ? collection(action, params) : new TypeError("Failed to fetch") });
+  const settingsSender = { id: recovery.chrome.runtime.id, url: recovery.chrome.runtime.getURL("settings.html#anki") };
+  const detect = () => recovery.send({ type: "hd_anki_setup", anki: defaultAnki() }, settingsSender);
+  const missing = await detect();
+  connected = true;
+  const proposal = await detect();
+  const unchanged = recovery.storage.raw.get("options").revision === 2 && recovery.storage.raw.get("setupState") === null;
+  const refused = await recovery.send({ type: "hd_anki_setup", anki: defaultAnki() });
+  const write = baseRevision => recovery.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write",
+    baseRevision, options: { anki: { ...defaultAnki(), model: proposal.proposal.model, deck: proposal.proposal.deck,
+      fieldTemplates: proposal.proposal.fieldTemplates } } }, settingsSender);
+  const saved = await write(2);
+  const stale = await write(2);
+  check("Settings Anki recovery retries read-only detection without onboarding and saves only through revision-checked options",
+    missing.ok && missing.outcome.status === "unavailable" && proposal.ok && proposal.outcome.status === "configured"
+      && proposal.proposal.model === "Kiku v2" && unchanged && refused.ok === false
+      && saved.ok && saved.options.revision === 3 && stale.ok === false && stale.conflict === true
+      && recovery.storage.raw.get("setupState") === null,
+    JSON.stringify({ missing, proposal, unchanged, refused, saved, stale }));
 }
 
 // A mining screenshot is captured from the page that asked, and only while that
