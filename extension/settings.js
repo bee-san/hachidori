@@ -99,6 +99,7 @@ let optionsRevision = -1;
 let pendingOptions = {};
 let pendingOptionsRevision = 0;
 let savingOptions = null;
+let optionsSaveCompletion = Promise.resolve();
 let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null;
@@ -307,7 +308,14 @@ function updateAnkiSettings() {
   ankiController ??= createAnkiSettingsController({ document, readConfig: () => options.anki,
     capabilities: MINING_CAPABILITIES,
     editConfig: config => { options.anki = config; writeOptions(); },
-    send: (type, fields) => send(type, fields, WORKER_TARGET),
+    send: async (type, fields) => {
+      // Linked checks cannot forward draft endpoint credentials or mappings.
+      // Commit them to the host first, then let the host read its saved copy.
+      if (["hd_anki_discover", "hd_anki_setup"].includes(type) && sharingLinkedAddress !== null) {
+        await flushOptionsUntilIdle();
+      }
+      return send(type, fields, WORKER_TARGET);
+    },
   });
   ankiController.render();
 }
@@ -2956,11 +2964,14 @@ function writeOptions() {
 async function flushOptions() {
   window.clearTimeout(optionsTimer);
   optionsTimer = null;
-  if (savingOptions !== null || optionsSaveFailed) return;
+  if (savingOptions !== null) return optionsSaveCompletion;
+  if (optionsSaveFailed) return;
   if (Object.keys(pendingOptions).length === 0) {
     setOptionsStatus("Saved.");
     return;
   }
+  let finishSave;
+  optionsSaveCompletion = new Promise(resolve => { finishSave = resolve; });
   const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision };
   savingOptions = sent;
   pendingOptions = {};
@@ -2998,6 +3009,19 @@ async function flushOptions() {
     if (!optionsSaveFailed && optionsTimer === null && Object.keys(pendingOptions).length > 0) {
       void flushOptions();
     }
+    finishSave();
+  }
+}
+
+async function flushOptionsUntilIdle() {
+  window.clearTimeout(optionsTimer);
+  optionsTimer = null;
+  for (;;) {
+    if (optionsSaveFailed) {
+      throw new Error("Save the pending settings before checking AnkiConnect.");
+    }
+    if (savingOptions === null && Object.keys(pendingOptions).length === 0) return;
+    await flushOptions();
   }
 }
 

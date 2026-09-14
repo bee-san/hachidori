@@ -62,6 +62,23 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
       calls.push(message.type);
       if (message.type === "hd_anki_audio") {
         audioRequests.push(message);
+        const source = message.sources.find(candidate => candidate.type.startsWith("text-to-speech"));
+        if (message.clientSpeechProbe) {
+          return { recordingRequired: true, clientSpeech: {
+            sourceId: source.id,
+            sourceKey: JSON.stringify(source),
+            expression: message.term.expression,
+            reading: message.term.reading,
+          } };
+        }
+        if (source?.id === "remote-tts") {
+          if (message.recordSpeech === false) return { recordingRequired: true };
+          return {
+            filename: `hachidori_${"a".repeat(64)}.wav`,
+            data: "UklGRg==",
+            sourceId: source.id,
+          };
+        }
         if (audioUnavailable) throw new Error("The chosen pronunciation is unavailable");
         if (deferAllSpeech || (deferSpeech && message.recordSpeech === false)) return { recordingRequired: true };
         return { filename: "checked.wav", data: "YXVkaW8=" };
@@ -126,6 +143,72 @@ test("authoritative first-field speech cannot write the silent preflight placeho
   assert.equal((await f.service.preflight(f.request)).deferred, true);
   await assert.rejects(f.service.submit(f.request), /was not recorded/u);
   assert.equal(f.calls.includes("addNote"), false);
+});
+
+test("linked browser speech is planned by the host, recorded by the reading browser, and reused for the host write", async () => {
+  const source = { id: "remote-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+  const f = fixture(true, false, { audioSources: [source] });
+  f.request.configKey = (await f.service.status()).configKey;
+  const preflight = await f.service.preflightClient(f.request);
+  assert.equal(preflight.deferred, true);
+  assert.deepEqual({
+    ...preflight.clientSpeech,
+    sourceKey: undefined,
+  }, {
+    sourceId: source.id,
+    sourceKey: undefined,
+    expression: "猫",
+    reading: "ねこ",
+  });
+  assert.deepEqual(JSON.parse(preflight.clientSpeech.sourceKey), source);
+  f.request.clientSpeech = preflight.clientSpeech;
+  await f.service.preflightClientSpeech(f.request);
+  const media = await f.service.clientMedia(f.request);
+  assert.deepEqual(media, {
+    speech: {
+      ...preflight.clientSpeech,
+      filename: `hachidori_${"a".repeat(64)}.wav`,
+      byteLength: 4,
+      data: "UklGRg==",
+    },
+  });
+  const result = await f.service.submitClient(f.request, media);
+  assert.equal(result.state, "added");
+  assert.equal(f.fields.Front, `猫[sound:hachidori_${"a".repeat(64)}.wav]`);
+  assert.deepEqual(f.audioRequests.map(request => ({
+    probe: request.clientSpeechProbe === true,
+    supplied: request.clientSpeech !== undefined,
+    record: request.recordSpeech,
+  })), [
+    { probe: true, supplied: false, record: false },
+    { probe: false, supplied: false, record: false },
+    { probe: false, supplied: false, record: true },
+    { probe: false, supplied: true, record: true },
+  ]);
+});
+
+test("linked browser speech is also planned for deferred pronunciation enrichment", async () => {
+  const source = { id: "remote-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+  const f = fixture(false, false, { audioSources: [source] });
+  f.request.configKey = (await f.service.status()).configKey;
+  const preflight = await f.service.preflightClient(f.request);
+  assert.equal(preflight.deferred, undefined);
+  assert.equal(preflight.clientSpeech.sourceId, source.id);
+  f.request.clientSpeech = preflight.clientSpeech;
+  await f.service.preflightClientSpeech(f.request);
+  const media = await f.service.clientMedia(f.request);
+  const result = await f.service.submitClient(f.request, media);
+  assert.equal(result.state, "added");
+  assert.equal(f.fields.Audio, `[sound:hachidori_${"a".repeat(64)}.wav]`);
+  assert.deepEqual(f.audioRequests.map(request => ({
+    probe: request.clientSpeechProbe === true,
+    supplied: request.clientSpeech !== undefined,
+  })), [
+    { probe: true, supplied: false },
+    { probe: false, supplied: false },
+    { probe: false, supplied: false },
+    { probe: false, supplied: true },
+  ]);
 });
 
 test("mixed text/audio overwrite restores pronunciation when its final value matches the original note", async () => {
@@ -264,6 +347,7 @@ function captureFixture({
       return { ok: true, filename: asset.filename, data: asset.data };
     }
     if (message.type === "hd_capture_complete") return { ok: true, completed: true };
+    if (message.type === "hd_capture_cancel") return { ok: true, cancelled: true };
     throw new Error(`Unexpected capture ${message.type}`);
   };
   const service = createAnkiWorkerService({
@@ -284,6 +368,8 @@ function captureFixture({
         fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) => [field,
           template.value
             .replaceAll("{expression}", "猫")
+            .replaceAll("{screenshot}", message.request.captureUnavailable?.includes("screenshot")
+              ? "" : `<img src="${message.request.screenshot?.filename || ""}">`)
             .replaceAll("{capture-animation}", message.request.captureUnavailable?.includes("animation")
               ? "" : `<img src="${message.request.capturePin?.animationFilename || ""}">`)
             .replaceAll("{capture-audio}", message.request.captureUnavailable?.includes("audio")
@@ -486,6 +572,94 @@ test("captured media preflight stays read-only and submission uploads referenced
   assert.deepEqual(f.captureCalls.map(call => call.type),
     ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset", "hd_capture_job_status", "hd_capture_complete"]);
   assert.ok(f.calls.lastIndexOf("storeMediaFile") < f.calls.indexOf("addNote"));
+});
+
+test("host mining uploads externally supplied screenshot and AVIF/WAV bytes without touching host capture state", async () => {
+  const screenshot = {
+    token: "linked-screen",
+    filename: "hachidori-screenshot-123e4567-e89b-42d3-a456-426614174000.jpg",
+  };
+  const f = captureFixture({
+    templates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Screenshot: { value: "{screenshot}", overwriteMode: "overwrite" },
+      Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+      CapturedAudio: { value: "{capture-audio}", overwriteMode: "overwrite" },
+    },
+  });
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.captureJobId = "linked-job";
+  f.request.screenshot = screenshot;
+  const result = await f.service.submitClient(f.request, {
+    screenshot: { ...screenshot, data: "/9j/2Q==" },
+    capture: {
+      jobId: "linked-job",
+      warnings: ["client warning"],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  });
+  assert.equal(result.state, "added");
+  assert.match(result.warnings.join(" "), /client warning/u);
+  assert.equal(f.fields.Screenshot, `<img src="${screenshot.filename}">`);
+  assert.equal(f.fields.Media, '<img src="hachidori-abc123.avif">');
+  assert.equal(f.fields.CapturedAudio, "[sound:hachidori-abc123.wav]");
+  assert.deepEqual(f.storedMedia, [screenshot.filename, "hachidori-abc123.avif", "hachidori-abc123.wav"]);
+  assert.deepEqual(f.captureCalls, [], "Chrome must not consult its own capture session for Brave-owned media");
+  assert.ok(f.calls.filter(call => call === "hd_status").length >= 4, "every host-side generation guard remains active");
+});
+
+test("client media export and outcome cleanup stay local to the reading browser", async () => {
+  const f = captureFixture({
+    templates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+      CapturedAudio: { value: "{capture-audio}", overwriteMode: "overwrite" },
+    },
+    warnings: ["local warning"],
+  });
+  f.request.captureJobId = "client-job";
+  const media = await f.service.clientMedia(f.request);
+  assert.deepEqual(media, {
+    capture: {
+      jobId: "client-job",
+      warnings: ["local warning"],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  });
+  assert.deepEqual(f.captureCalls.map(call => call.type),
+    ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset"]);
+  await f.service.settleClientMedia(f.request, "added");
+  assert.equal(f.captureCalls.at(-1).type, "hd_capture_complete");
+
+  f.request.captureJobId = "client-rejected";
+  await f.service.settleClientMedia(f.request, "duplicate");
+  assert.equal(f.captureCalls.at(-1).type, "hd_capture_cancel");
+});
+
+test("host generation validation rejects stale externally supplied media before any Anki write", async () => {
+  const f = captureFixture();
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.generation = 2;
+  f.request.captureJobId = "stale-job";
+  await assert.rejects(f.service.submitClient(f.request, {
+    capture: {
+      jobId: "stale-job",
+      warnings: [],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  }), /dictionary generation changed/u);
+  assert.equal(f.calls.includes("addNote"), false);
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+  assert.deepEqual(f.captureCalls, []);
 });
 
 test("Stop during the final capture upload or config read prevents a new add or overwrite", async () => {
@@ -758,6 +932,7 @@ test("a mining screenshot is held until the note is written, then stored under i
 
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
+  await assert.rejects(service.screenshot(async () => "data:image/png;base64,c2hvdA=="), /no screenshot/u);
   await assert.rejects(service.screenshot(async () => { throw new Error("The reading tab is no longer the active tab."); }),
     /no longer the active tab/u);
   options.anki.captureScreenshot = false;

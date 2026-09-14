@@ -8,7 +8,11 @@ import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
 import { SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
-import { FORWARDED_REQUESTS, browserName, forwardableRequest, parseLinkAddress } from "./sharing-protocol.js";
+import {
+  FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  browserName, forwardableRequest, parseLinkAddress,
+} from "./sharing-protocol.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
@@ -89,6 +93,23 @@ const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
 let ankiGateway, ankiMining, ankiDuplicateIndex;
+let activeAnkiOperations = 0;
+const ankiIdleWaiters = new Set();
+
+function trackAnkiOperation(job) {
+  activeAnkiOperations += 1;
+  return Promise.resolve().then(job).finally(() => {
+    activeAnkiOperations -= 1;
+    if (activeAnkiOperations !== 0) return;
+    for (const resolve of ankiIdleWaiters) resolve();
+    ankiIdleWaiters.clear();
+  });
+}
+
+function waitForAnkiIdle() {
+  if (activeAnkiOperations === 0) return Promise.resolve();
+  return new Promise(resolve => ankiIdleWaiters.add(resolve));
+}
 let backupDownloads;
 // One first-run Anki detection at a time; duplicate startup pages share it.
 let ankiSetupDetection = null;
@@ -146,12 +167,30 @@ let sharingClient;
 let sharingLinked = false;
 let sharingEpoch = 0;
 let sharingReady = Promise.resolve();
+let sharingTransitionTail = Promise.resolve();
 const WORKER_FORWARDS = FORWARDED_REQUESTS[WORKER_TARGET];
 const SHARING_OPTIONS_VERSION_KEY = "sharingOptionsVersion";
 const OVERLAY_OPTIONS_STORAGE_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY];
+const linkedAnkiConfigPrefix = `linked:${crypto.randomUUID()}:`;
+
+function linkedAnkiConfigKey(configKey) {
+  return `${linkedAnkiConfigPrefix}${String(configKey ?? "")}`;
+}
+
+function hostLinkedAnkiRequest(request) {
+  if (typeof request?.configKey !== "string" || !request.configKey.startsWith(linkedAnkiConfigPrefix)) {
+    throw new Error("Anki configuration changed. Refresh this result before adding a note.");
+  }
+  return { ...request, configKey: request.configKey.slice(linkedAnkiConfigPrefix.length) };
+}
 
 function engineSender(sender) {
   return sender?.id === chrome.runtime.id && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT);
+}
+
+function ankiSettingsSender(sender) {
+  return sender?.id === chrome.runtime.id
+    && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL("settings.html");
 }
 
 // While linked, this install's own engine keeps reading and committing the
@@ -814,7 +853,7 @@ const WORKER_HANDLERS = {
   },
 
   async hd_anki_discover(message, sender) {
-    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+    if (!ankiSettingsSender(sender)) {
       throw new Error("Anki discovery is available only from Hachidori Settings");
     }
     if (typeof message.model !== "string" || typeof message.apiKey !== "string") {
@@ -1564,9 +1603,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void reconcileAnkiIndex();
 });
 
+async function applyAnkiIndexRole() {
+  const index = getAnkiDuplicateIndex();
+  if (sharingLinked) await index.suspend();
+  else await index.resume();
+}
+
 async function reconcileAnkiIndex() {
   await sharingReady;
-  await getAnkiDuplicateIndex().reconcile();
+  // A link suspends the old role before publishing the new one. An options
+  // event or alarm in that interval must not resume local Anki behind it.
+  await sharingTransitionTail;
+  await applyAnkiIndexRole();
 }
 
 const UPDATE_HANDLERS = {
@@ -2052,33 +2100,129 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleAnkiRequest(message, sender) {
   await sharingReady;
-  // The host owns the mirrored index membership used for maturity blur.
-  if (sharingLinked && message.type === "hd_anki_maturity") return forwardToHost(message);
-  return answerAnkiRequest(message, sender);
+  // Linking waits for operations admitted under the old role. Requests which
+  // arrive during that transition wait too, so none can read one browser's
+  // configuration and finish after routing has moved to another.
+  await sharingTransitionTail;
+  return trackAnkiOperation(async () => {
+    if (sharingLinked) {
+      // The reading browser alone can capture or discard its viewport bytes.
+      if (["hd_anki_screenshot", "hd_anki_screenshot_discard"].includes(message.type)) {
+        return answerAnkiRequest(message, sender);
+      }
+      // Mature-word evidence has always belonged to the host, including hosts
+      // from before linked mining advertised a capability.
+      if (message.type === "hd_anki_maturity") return forwardToHost(message);
+      if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
+      if (["hd_anki_status", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
+        try {
+          const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
+          if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
+            await getAnkiMining().preflightClientSpeech({
+              ...message.request,
+              clientSpeech: reply.clientSpeech,
+            });
+          }
+          return reply;
+        } catch (error) {
+          if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
+            return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
+          }
+          return failureReply(message, error);
+        }
+      }
+    }
+    return answerAnkiRequest(message, sender);
+  });
 }
 
-function answerAnkiRequest(message, sender) {
+function getAnkiMining() {
+  if (!ankiMining) {
+    const send = async (target, fields) => {
+      const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
+      if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
+      return reply;
+    };
+    ankiGateway ??= createAnkiGateway();
+    ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
+      readOptions: readAnkiOptions,
+      duplicateIndex: getAnkiDuplicateIndex(),
+      readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
+      engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
+      capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
+    });
+  }
+  return ankiMining;
+}
+
+async function submitToLinkedAnki(message) {
+  const local = getAnkiMining();
+  let clientMedia;
+  try {
+    clientMedia = await local.clientMedia(message.request);
+  } catch (error) {
+    return failureReply(message, error);
+  }
+  let sent = false;
+  let reply;
+  try {
+    reply = await getSharingClient().forward({ ...message, clientMedia }, {
+      capability: LINKED_ANKI_CAPABILITY,
+      onSent: () => { sent = true; },
+    });
+  } catch (error) {
+    if (!sent) return failureReply(message, error);
+    return workerReply(message, {
+      state: "uncertain",
+      error: `The write could not be confirmed. Check Anki before trying again. ${describe(error)}`,
+    });
+  }
+  const states = ["added", "updated", "duplicate", "invalid", "uncertain"];
+  if (!reply || reply.type !== `${message.type}_result` || reply.requestId !== message.requestId
+      || typeof reply.ok !== "boolean" || (reply.ok === true && !states.includes(reply.state))) {
+    return workerReply(message, {
+      state: "uncertain",
+      error: "The write could not be confirmed. Check Anki before trying again. The linked Hachidori returned an unexpected response.",
+    });
+  }
+  const settlement = reply.ok === false ? "invalid"
+    : ["added", "updated", "duplicate", "invalid"].includes(reply.state) ? reply.state : null;
+  if (settlement !== null) {
+    try {
+      await local.settleClientMedia(message.request, settlement);
+    } catch (error) {
+      if (["added", "updated"].includes(settlement)) {
+        reply = { ...reply, warnings: [...(Array.isArray(reply.warnings) ? reply.warnings : []),
+          `Captured media cleanup: ${describe(error)}`] };
+      } else {
+        console.warn("hachidori: could not discard rejected linked media:", describe(error));
+      }
+    }
+  }
+  return reply;
+}
+
+function answerAnkiRequest(message, sender, linkedClient = false) {
   return Promise.resolve().then(async () => {
     if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
-    if (!ankiMining) {
-      const send = async (target, fields) => {
-        const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
-        if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
-        return reply;
-      };
-      ankiGateway ??= createAnkiGateway();
-      ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
-        readOptions: readAnkiOptions,
-        duplicateIndex: getAnkiDuplicateIndex(),
-        readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
-        engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
-        capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
-      });
-    }
+    const service = getAnkiMining();
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
-    if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
-    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
+    if (message.type === "hd_anki_screenshot") return service.screenshot(() => captureSenderViewport(sender));
+    if (linkedClient && message.type === "hd_anki_status") {
+      const status = await service.status();
+      return { ...status, configKey: linkedAnkiConfigKey(status.configKey) };
+    }
+    if (linkedClient && message.type === "hd_anki_preflight") {
+      return service.preflightClient(hostLinkedAnkiRequest(message.request));
+    }
+    if (linkedClient && message.type === "hd_anki_submit") {
+      return service.submitClient(hostLinkedAnkiRequest(message.request), message.clientMedia);
+    }
+    if (linkedClient && message.type === "hd_anki_browse") {
+      return service.browse(hostLinkedAnkiRequest(message.request));
+    }
+    return service[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
   }).then(result => workerReply(message, result), error => failureReply(message, error));
 }
@@ -2235,6 +2379,19 @@ async function handleWorkerRequest(message, sender) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   await sharingReady;
+  if (["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)) await sharingTransitionTail;
+  if (sharingLinked && ["hd_anki_discover", "hd_anki_setup"].includes(type)) {
+    try {
+      if (!ankiSettingsSender(sender)) {
+        throw new Error(`${type === "hd_anki_setup" ? "Anki setup discovery" : "Anki discovery"} is available only from Hachidori Settings`);
+      }
+      const allowed = type === "hd_anki_setup"
+        ? allowLinkedAnkiSetupRequest(message) : allowLinkedAnkiDiscoveryRequest(message);
+      return await getSharingClient().forward(allowed, { capability: LINKED_ANKI_CAPABILITY });
+    } catch (error) {
+      return failureReply(message, error);
+    }
+  }
   // The host owns the lookup-count rows a linked engine would otherwise prune.
   if (sharingLinked && type === "hd_lookup_stats_cleanup") return workerReply(message, {});
   if (type === "hd_options_write") {
@@ -2253,10 +2410,12 @@ async function handleWorkerRequest(message, sender) {
     return forwardWorkerRequest(message).catch(error => failureReply(message, error));
   }
   // Navigation and read-only Anki discovery must not hold up storage commits.
-  const operation = [
+  const run = () => [
     "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
     "hd_lookup_stats_record", "hd_lookup_stats_read",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
+  const operation = ["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)
+    ? trackAnkiOperation(run) : run();
   return operation.then(
     async (result) => {
       if (type === "hd_backup_cas" && result.ok !== false) {
@@ -2302,13 +2461,41 @@ const SHARING_TARGET = "hachidori-sharing";
 
 async function dispatchSharedRequest(message, clientId) {
   const sender = { id: chrome.runtime.id, url: `hachidori-sharing://client/${clientId}` };
+  const ordinary = () => {
+    if (!forwardableRequest(message)) {
+      throw new Error(`unsupported shared request ${JSON.stringify(message.target)} ${JSON.stringify(message.type)}`);
+    }
+  };
   try {
     switch (message.target) {
-      case TARGET: return await relayEngineRequest(message);
-      case WORKER_TARGET: return await handleWorkerRequest(message, sender);
-      case UPDATE_TARGET: return await handleUpdatesRequest(message);
-      case SETUP_TARGET: return await handleRecommendedInstall(message, sender, true);
-      case "hachidori-anki": return await handleAnkiRequest(message, sender);
+      case TARGET:
+        ordinary();
+        return await relayEngineRequest(message);
+      case WORKER_TARGET:
+        if (message.type === "hd_anki_discover") {
+          const allowed = allowLinkedAnkiDiscoveryRequest(message);
+          ankiGateway ??= createAnkiGateway();
+          const options = await readAnkiOptions();
+          return workerReply(allowed, await trackAnkiOperation(
+            () => ankiGateway.discover({ ...options.anki, model: allowed.model }),
+          ));
+        }
+        if (message.type === "hd_anki_setup") {
+          const allowed = allowLinkedAnkiSetupRequest(message);
+          const options = await readAnkiOptions();
+          return workerReply(allowed, await trackAnkiOperation(() => checkAnkiSetup(options.anki)));
+        }
+        ordinary();
+        return await handleWorkerRequest(message, sender);
+      case UPDATE_TARGET:
+        ordinary();
+        return await handleUpdatesRequest(message);
+      case SETUP_TARGET:
+        ordinary();
+        return await handleRecommendedInstall(message, sender, true);
+      case "hachidori-anki": return await trackAnkiOperation(
+        () => answerAnkiRequest(allowLinkedAnkiRequest(message), sender, true),
+      );
       default: throw new Error(`unsupported shared request target ${JSON.stringify(message.target)}`);
     }
   } catch (error) {
@@ -2332,8 +2519,6 @@ function linkTarget(text) {
 // Own the whole user action, including its probe, independently of storage.
 // Network waits must leave the storage queue free for engine callbacks and
 // local edits, and a failed action must not block the next Settings tab.
-let sharingTransitionTail = Promise.resolve();
-
 function serialiseSharingTransition(job) {
   const run = sharingTransitionTail.then(() => sharingReady).then(job);
   sharingTransitionTail = run.catch(() => {});
@@ -2360,9 +2545,13 @@ const SHARING_HANDLERS = {
     if (config?.client?.address === address) return { sharing: sharingStatus() };
     const host = getSharingHost();
     const hosting = host.status();
+    let suspendedIndex = false;
     if (hosting.enabled) host.disable();
     try {
       const hello = await getSharingClient().probe(address);
+      await waitForAnkiIdle();
+      await getAnkiDuplicateIndex().suspend();
+      suspendedIndex = true;
       await serialiseStorage(async () => {
         const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
         if (!sameJsonValue(stored[SHARING_KEY], config)) {
@@ -2386,16 +2575,21 @@ const SHARING_HANDLERS = {
         await applyMirror(hello.snapshot, true);
       });
     } catch (error) {
+      if (suspendedIndex && !sharingLinked) await getAnkiDuplicateIndex().resume();
       if (hosting.enabled && !sharingLinked) host.enable({ port: hosting.port, network: hosting.network.enabled });
       throw error;
     }
     await reconcileUpdateAlarm();
-    await reconcileAnkiIndex();
+    await applyAnkiIndexRole();
     return { sharing: sharingStatus() };
   },
   // Restored values outrank the mirror in every reader's revision comparison,
   // and the host's lookup-count rows leave with it.
   async hd_sharing_client_unlink() {
+    // Finish any request admitted under the linked route before restoring the
+    // local route. In particular, do not let media exported for one host be
+    // sent to local Anki or abandoned merely because Unlink won a race.
+    await waitForAnkiIdle();
     await serialiseStorage(async () => {
       const stored = await chrome.storage.local.get(null);
       // client:null is the durable completion marker. A repeated Unlink must
@@ -2429,7 +2623,7 @@ const SHARING_HANDLERS = {
       });
     });
     await reconcileUpdateAlarm();
-    await reconcileAnkiIndex();
+    await applyAnkiIndexRole();
     return { sharing: sharingStatus() };
   },
   async hd_sharing_host_enable(message) {
@@ -2609,6 +2803,9 @@ async function initialiseUpdateAlarm() {
   }
 }
 
+sharingReady = initialiseSharing().catch((error) => {
+  console.error("hachidori: could not restore sharing:", describe(error));
+});
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 
 if (OVERLAY_MODE) {
@@ -2617,6 +2814,3 @@ if (OVERLAY_MODE) {
   });
 }
 void reconcileAnkiIndex(); // NOSONAR -- initialize without delaying worker activation.
-sharingReady = initialiseSharing().catch((error) => {
-  console.error("hachidori: could not restore sharing:", describe(error));
-});

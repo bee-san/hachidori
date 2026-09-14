@@ -2,8 +2,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, browserName, formatHostAddress, formatLinkAddress, forwardableRequest,
-  parseClientFrame, parseHostFrame, parseLinkAddress,
+  DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  assertLinkedAnkiFrame, browserName,
+  formatHostAddress, formatLinkAddress, forwardableRequest, parseClientFrame, parseHostFrame,
+  parseLinkAddress,
 } from "../extension/sharing-protocol.js";
 
 test("link addresses take a host, host:port or a ws:// URL, and say where that is", () => {
@@ -34,13 +37,16 @@ test("a browser names itself by its brand", () => {
   assert.equal(browserName(undefined), "another browser");
 });
 
-test("only plain-message requests forward; blob imports stay local", () => {
+test("only host-owned plain-message requests forward; screenshots and blob imports stay local", () => {
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "猫" }), true);
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
-  assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_maturity" }), true);
-  assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_submit" }), false);
+  for (const type of ["hd_anki_status", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
+    assert.equal(forwardableRequest({ target: "hachidori-anki", type }), true, type);
+  }
+  assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_screenshot" }), false);
+  assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_screenshot_discard" }), false);
   assert.equal(forwardableRequest({ target: "hachidori-audio", type: "hd_audio_play" }), false);
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_backup_export" }), false);
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_import", blobUrl: "blob:x" }), false);
@@ -49,8 +55,11 @@ test("only plain-message requests forward; blob imports stay local", () => {
 });
 
 test("frames are validated on both sides", () => {
-  assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" })),
-    { kind: "hello", version: "0.1.0", name: "GSM" });
+  assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
+    capabilities: [LINKED_ANKI_CAPABILITY] })),
+  { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [LINKED_ANKI_CAPABILITY] });
+  assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
+    { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),
     { kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "pong" })), { kind: "pong" });
@@ -59,13 +68,106 @@ test("frames are validated on both sides", () => {
   assert.throws(() => parseClientFrame("[]"), /malformed sharing frame/u);
   assert.throws(() => parseClientFrame("{"), /malformed sharing frame/u);
   const snapshot = { options: { revision: 1 } };
-  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "Chrome", dictionaryCount: "5", snapshot })),
-    { kind: "hello", version: "0.1.0", name: "Chrome", dictionaryCount: 5, snapshot });
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "Chrome",
+    dictionaryCount: "5", capabilities: [LINKED_ANKI_CAPABILITY], snapshot })),
+  { kind: "hello", version: "0.1.0", name: "Chrome", dictionaryCount: 5,
+    capabilities: [LINKED_ANKI_CAPABILITY], snapshot });
   assert.equal(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, snapshot })).name, "");
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, snapshot })).capabilities, []);
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "reply", id: "a", response: { ok: true } })), { kind: "reply", id: "a", response: { ok: true } });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "storage", changes: { options: null } })), { kind: "storage", changes: { options: null } });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "ping" })), { kind: "ping" });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "bye", reason: "old" })), { kind: "bye", reason: "old" });
   assert.throws(() => parseHostFrame(JSON.stringify({ kind: "storage", changes: [] })), /malformed sharing storage frame/u);
   assert.throws(() => parseHostFrame(JSON.stringify({ kind: "nope" })), /unknown sharing frame/u);
+});
+
+test("the host allowlists linked Anki operations and strips endpoint credentials", () => {
+  const request = {
+    term: { expression: "猫", reading: "ねこ", glossaries: [{ dictionary: "A", glossary: "url stays in dictionary data" }] },
+    generation: 3,
+    trace: [],
+    configKey: "host-config",
+    url: "https://client.invalid/anki",
+    apiKey: "client-secret",
+    anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },
+  };
+  const media = {};
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki",
+    type: "hd_anki_submit",
+    requestId: "submit-1",
+    url: "https://client.invalid/anki",
+    apiKey: "client-secret",
+    request,
+    clientMedia: media,
+  }), {
+    target: "hachidori-anki",
+    type: "hd_anki_submit",
+    requestId: "submit-1",
+    request: {
+      term: request.term,
+      trace: [],
+      generation: 3,
+      configKey: "host-config",
+    },
+    clientMedia: media,
+  });
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
+    request: { expression: "猫", noteIds: [1, 2], configKey: "linked:host:key", apiKey: "nope" },
+  }), {
+    target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
+    request: { noteIds: [1, 2], expression: "猫", configKey: "linked:host:key" },
+  });
+  assert.throws(() => allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_screenshot", requestId: "capture",
+  }), /unsupported linked Anki request/u);
+  assert.deepEqual(allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId: "discover-1",
+    model: "Basic",
+    url: "https://client.invalid/anki",
+    apiKey: "client-secret",
+  }), {
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId: "discover-1",
+    model: "Basic",
+  });
+  assert.throws(() => allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker", type: "hd_anki_discover", model: null,
+  }), /unsupported linked Anki discovery request/u);
+  assert.throws(() => allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker", type: "hd_anki_discover", model: "x".repeat(4097),
+  }), /unsupported linked Anki discovery request/u);
+  assert.deepEqual(allowLinkedAnkiSetupRequest({
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "setup-1",
+    anki: {
+      model: "Client model",
+      deck: "Client deck",
+      url: "https://client.invalid/anki",
+      apiKey: "client-secret",
+    },
+  }), {
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "setup-1",
+  });
+  assert.throws(() => allowLinkedAnkiSetupRequest({
+    target: "hoshidicts-worker", type: "hd_setup_anki",
+  }), /unsupported linked Anki setup request/u);
+});
+
+test("linked Anki submissions have one 16 MiB UTF-8 frame limit", () => {
+  const exact = "x".repeat(MAX_LINKED_ANKI_FRAME_BYTES);
+  assert.doesNotThrow(() => assertLinkedAnkiFrame(exact));
+  assert.throws(() => assertLinkedAnkiFrame(`${exact}x`), /16 MiB frame limit/u);
+  const oversized = JSON.stringify({ kind: "request", id: 1, message: {
+    target: "hachidori-anki", type: "hd_anki_submit", clientMedia: { screenshot: { data: exact } },
+  } });
+  assert.throws(() => parseClientFrame(oversized), /16 MiB frame limit/u);
 });

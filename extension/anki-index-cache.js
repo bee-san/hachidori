@@ -92,6 +92,7 @@ export function createAnkiDuplicateIndex({
   let rows = new Map();
   let active = null;
   let controlTail = Promise.resolve();
+  let suspended = false;
   const liveLookups = new Map();
   const hydrate = readState().then(value => {
     snapshot = cacheState(value).snapshot;
@@ -189,6 +190,10 @@ export function createAnkiDuplicateIndex({
 
   async function startDueRefresh() {
     await hydrate;
+    if (suspended) {
+      await schedule(null);
+      return null;
+    }
     const source = await sourceFor(await readOptions());
     if (!source) {
       await schedule(null);
@@ -227,6 +232,21 @@ export function createAnkiDuplicateIndex({
     return control(startDueRefresh).then(job => job?.promise).catch(reportError);
   }
 
+  async function suspend() {
+    suspended = true;
+    await hydrate;
+    // Let a refresh which already reserved its pull publish `active`, then
+    // wait outside the control queue so its completion can use that queue.
+    await control(async () => {});
+    await active?.promise;
+    await schedule(null);
+  }
+
+  function resume() {
+    suspended = false;
+    return reconcile();
+  }
+
   async function find(config, expression, invoke, force) {
     const [source, wordKey] = await Promise.all([ankiIndexSource(config), Promise.resolve(ankiWordKey(expression))]);
     if (source === null || wordKey === null) {
@@ -258,6 +278,8 @@ export function createAnkiDuplicateIndex({
 
   return {
     reconcile,
+    suspend,
+    resume,
     source: ankiIndexSource,
     lookup: (config, expression, invoke) => find(config, expression, invoke, false),
     repair: (config, expression, invoke) => find(config, expression, invoke, true),

@@ -110,7 +110,7 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.equal(f.items[0].actions.querySelectorAll("button").length, 4);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬" }]);
+  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "overwrite-big-circle");
@@ -137,8 +137,34 @@ test("successful Add remains successful after a refresh failure and a second cli
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫" }]);
+  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current" }]);
   assert.equal(submitted, 1);
+});
+
+test("a host-planned browser-speech request is carried only into the matching submission", async t => {
+  const clientSpeech = {
+    sourceId: "default-tts",
+    sourceKey: "saved-source",
+    expression: "猫",
+    reading: "",
+  };
+  let submitted;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") {
+      submitted = request;
+      return { state: "added", noteId: 12, warnings: [] };
+    }
+    return request.term.expression === "猫"
+      ? { state: "addable", canAdd: true, clientSpeech }
+      : { state: "addable", canAdd: true };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.deepEqual(submitted.clientSpeech, clientSpeech);
 });
 
 test("late preflight cannot expose retired controls and an uncertain write opens Anki instead of retrying", async t => {
@@ -166,7 +192,7 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   assert.match(f.items[1].output.textContent, /Check Anki before trying again/u);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [], expression: "犬" }]);
+  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current" }]);
   assert.equal(writes, 1);
 });
 

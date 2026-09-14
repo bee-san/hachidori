@@ -118,13 +118,20 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   const request = { configKey: current.configKey };
   assert.equal((await service.preflight(request)).canAdd, true);
   assert.equal((await service.submit(request)).state, "added");
-  await service.browse({ noteIds: [27], expression: "猫" });
+  await service.browse({ configKey: current.configKey, noteIds: [27], expression: "猫" });
   const currentRequests = requests.slice(boundary);
   assert.ok(currentRequests.every(value => value.url === config.url && value.key === config.apiKey));
   for (const action of ["canAddNotesWithErrorDetail", "storeMediaFile", "addNote", "notesInfo", "updateNoteFields", "guiBrowse"]) {
     assert.ok(currentRequests.some(request => request.action === action), `${action} uses the new endpoint`);
   }
   assert.equal(currentRequests.find(request => request.action === "guiBrowse").params.query, "nid:27");
+  config = { ...config, deck: "Changed" };
+  const staleBrowseBoundary = requests.length;
+  await assert.rejects(
+    service.browse({ configKey: current.configKey, noteIds: [27], expression: "猫" }),
+    /configuration changed/u,
+  );
+  assert.equal(requests.length, staleBrowseBoundary, "stale browsing never reaches AnkiConnect");
 });
 
 test("View in Anki uses cached IDs directly and repairs a partially stale row without inspecting fields", async () => {
