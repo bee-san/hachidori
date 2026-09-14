@@ -173,9 +173,6 @@ function stateStore(sender) {
   return sharingLinked && engineSender(sender) ? sharingLocalStore : chrome.storage.local;
 }
 
-// Mirrored values bypass writeLocalState(): their revisions and cache
-// invalidation belong to the host. This is the only other writer of shared
-// keys, and only while linked.
 function composeOverlayOptions(shared, local, revision) {
   const preferences = normaliseOptions(local);
   return { ...projectStoredOptions(shared),
@@ -197,6 +194,8 @@ function overlayHostOptionsValues(shared, stored, snapshot = false) {
   };
 }
 
+// Mirror host batches together; overlay options additionally retain their
+// local preferences and translate the host's revision for existing consumers.
 async function applyMirror(changes, snapshot = false) {
   const values = {};
   const removals = [];

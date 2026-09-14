@@ -17,7 +17,7 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
-// `applyBatch(changes, isCurrent)` writes one host storage batch locally, checking
+// `applyBatch(changes, isCurrent, snapshot)` writes one host storage batch locally, checking
 // isCurrent inside its storage queue; `version` and `name` introduce this install.
 export function createSharingClient({ WebSocket, applyBatch, version, name }) {
   const pending = new Map();

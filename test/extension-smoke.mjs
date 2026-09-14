@@ -1662,6 +1662,7 @@ async function sharingTransitionStage() {
 
   const overlay = await fixture({ overlayMode: true });
   let restarted;
+  let legacy;
   try {
     await overlay.finishLinks([overlay.link()]);
     const socket = overlay.sockets.at(-1);
@@ -1732,6 +1733,16 @@ async function sharingTransitionStage() {
         && JSON.stringify(current()) === beforeRecord && !overlay.storage.raw.has("setupState"));
 
     const restartState = structuredClone(Object.fromEntries(overlay.storage.raw));
+    const legacyState = structuredClone(restartState);
+    delete legacyState.sharingOptionsVersion;
+    legacyState.options = { ...conflictHost, revision: 15, popupWidthPx: 1200 };
+    legacy = await fixture({ overlayMode: true, initial: legacyState });
+    check("an existing linked overlay restores its kept preferences before the host reconnects",
+      legacy.storage.raw.get("options").popupWidthPx === 640
+        && legacy.storage.raw.get("options").lookupMode === "hover"
+        && !legacy.storage.raw.get("options").sourceHighlightEnabled
+        && legacy.storage.raw.get("options").revision > 15
+        && legacy.storage.raw.get("options").popupTheme === "dark");
     restarted = await fixture({ overlayMode: true, initial: restartState });
     const offline = await restarted.send("hd_options_write", { baseRevision: restarted.storage.raw.get("options").revision,
       options: { popupWidthPx: 680 } }, "hoshidicts-worker");
@@ -1752,7 +1763,7 @@ async function sharingTransitionStage() {
       unlinked.ok && lateReply.ok === false && current().popupWidthPx === 640 && current().popupTheme === "sunset"
         && current().revision > restartState.options.revision && !overlay.storage.raw.has("sharingLocalState")
         && !overlay.storage.raw.has("sharingOptionsVersion"), JSON.stringify({ unlinked, lateReply, current: current() }));
-  } finally { overlay.dispose(); restarted?.dispose(); }
+  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); }
 }
 
 async function firstRunBackgroundStage() {

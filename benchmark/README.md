@@ -94,6 +94,26 @@ fixture/WASM hashes, extension commit and environment. Each output filename must
 be new. The relay override changes only the Python source launched by the test,
 allowing a comparison against another checkout with identical browser code.
 
+## Overlay-local option saves
+
+`overlay-options.mjs` compares the actual `hd_options_write` path from a linked
+overlay. Each sample uses fresh host/overlay Chrome profiles, the existing
+dictionary fixture and a packaged relay. It excludes ten warmup width edits,
+times thirty alternating width edits on the page clock, counts host option
+commits and verifies a real linked lookup. Passing two roots runs three
+alternating samples of each:
+
+```sh
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon \
+  node benchmark/overlay-options.mjs /path/to/baseline /path/to/changed
+```
+
+This measures request-to-acknowledgement latency with both browsers on the same
+machine. Browser startup, import, link setup, Settings debounce/rendering and
+final lookup verification are outside the timed boundary. The report records
+the revisions, Chrome version, archive hashes, every sample and host-write count.
+
 ## Clicked-kanji selected dictionary lookup
 
 `kanji-click.mjs` isolates the production `hd_lookup_dictionary` route used

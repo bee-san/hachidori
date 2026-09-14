@@ -9,7 +9,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - Lookups start on **hover**. Holding an activation key over a game is awkward.
 - The **word highlight** starts off. A highlight drawn over game text gets in the way.
 - **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text; with no entry for it, the popup offers the pencil to add your own definition.
-- The **mining screenshot** is never taken, whatever Settings says. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
+- The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -37,25 +37,52 @@ normal first-install preferences plus:
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
 | `anki.captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
-- **Defaults only:** these are starting values, not locks. A user can change
-  any of them in Settings, and the change persists.
+- **Reading defaults:** lookup activation and word highlighting remain editable
+  in Settings, and later choices persist.
 - **Existing profiles:** a profile that already has stored options keeps them.
 - **Timing:** seeding runs on worker start, not in `chrome.runtime.onInstalled`,
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
-- **Screenshot:** seeding the option off only keeps the Settings checkbox honest
-  on a fresh profile. The worker reads `anki.captureScreenshot` as `false` in
-  every overlay profile, so `{screenshot}` fields stay empty without a warning.
+- **Screenshot:** the worker reads `anki.captureScreenshot` as `false` in every
+  overlay profile. Settings also shows the effective off/disabled capability
+  when a carried or shared configuration has the stored option on. It preserves
+  that configuration and its field mappings.
 - **Pronunciation:** no media capture host runs in an overlay, so browser
   text-to-speech cannot be recorded. Mining skips text-to-speech audio sources.
   With no downloadable source left,
   `{audio}` fields stay empty without a warning; add one under Audio to fill them.
+  Audio Settings explains this playback-only speech capability and hides the
+  browser instruction to start capture for speech recording.
 
-Everything else behaves exactly as in Chrome. In particular, the page scan is
-layout-unaware like Yomitan's default: an overlay may box every glyph in its own
+The page scan is layout-unaware like Yomitan's default: an overlay may box every glyph in its own
 absolutely positioned span and Hachidori still reads the word across the boxes,
 taking the sentence from the neighbouring text nodes up to a `"\n"` separator.
+
+## Local preferences while Sharing
+
+A linked overlay uses the host's library and shared settings while retaining
+the preferences for its own reading surface:
+
+| Area | Overlay-local preferences |
+| --- | --- |
+| Activation and scanning | Lookups on/off, Japanese-only scanning, lookup mode, activation key, hover delay and hide delay |
+| Source highlight | Highlight the word on the page |
+| Popup layout | Width, height, columns, toolbar position and nesting depth |
+
+These edits work while the host is disconnected and persist through host
+updates, worker/browser restarts and Unlink. Other settings, including the
+theme and dictionary choices, still update the shared Hachidori. Sharing
+Settings explains this distinction.
+
+The worker composes the live options from the host plus the local values kept
+in `sharingLocalState`. A private `sharingOptionsVersion` tracks the host CAS
+revision and a local offset, so existing readers and Settings still see one
+increasing options revision. Mixed saves send shared fields first and then
+commit local fields; a host conflict, intervening local edit or changed link
+retains the draft for review. Network waits leave local edits and Unlink
+available. Existing linked overlays adopt their kept local preferences on
+worker start before reconnecting.
 
 ## Telling the host when the reader needs the window
 
