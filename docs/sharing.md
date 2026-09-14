@@ -139,10 +139,10 @@ submission—and for an admitted duplicate-index refresh; Unlink also waits for
 the linked transaction it is retiring. New Anki requests wait for either
 transition. Restarting a linked browser restores that role before local Anki or
 update alarms can run. Switching to another host fails requests owned by the old
-connection instead of leaving them hung. Each host worker also gives mining
-requests a host-specific configuration key, so a result from another host, the
-local browser or a pre-restart worker is rejected even if its generation number
-and Anki settings happen to match.
+connection instead of leaving them hung. Each host worker also gives mining and
+browse requests a host-specific configuration key, so a result or note ID from
+another host, the local browser or a pre-restart worker is rejected even if its
+generation number and Anki settings happen to match.
 
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not

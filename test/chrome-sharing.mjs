@@ -780,7 +780,7 @@ try {
   const submittedRequest = { ...request, screenshot: { token: captured.token, filename: captured.filename } };
   const submitted = await message(startup, "hachidori-anki", "hd_anki_submit", { request: submittedRequest });
   const browsed = await message(startup, "hachidori-anki", "hd_anki_browse",
-    { request: { noteIds: [submitted.noteId], expression: request.term.expression } });
+    { request: { noteIds: [submitted.noteId], expression: request.term.expression, configKey: ankiStatus.configKey } });
   const addsBeforeStale = hostAnki.state.calls.filter(call => call.action === "addNote").length;
   const stale = await message(startup, "hachidori-anki", "hd_anki_submit", {
     request: { ...request, generation: request.generation + 1 },

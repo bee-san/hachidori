@@ -114,10 +114,10 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
   });
   assert.deepEqual(allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
-    request: { expression: "猫", noteIds: [1, 2], apiKey: "nope" },
+    request: { expression: "猫", noteIds: [1, 2], configKey: "linked:host:key", apiKey: "nope" },
   }), {
     target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
-    request: { noteIds: [1, 2], expression: "猫" },
+    request: { noteIds: [1, 2], expression: "猫", configKey: "linked:host:key" },
   });
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_screenshot", requestId: "capture",

@@ -1315,7 +1315,10 @@ async function sharingHostStage() {
   const ankiPreflight = await askAnki("anki-preflight", "hd_anki_preflight", { request: ankiRequest });
   const ankiSubmit = await askAnki("anki-submit", "hd_anki_submit", { request: ankiRequest, clientMedia: {} });
   const ankiBrowse = await askAnki("anki-browse", "hd_anki_browse", {
-    request: { noteIds: [71], expression: "猫", apiKey: "client-secret" },
+    request: { noteIds: [71], expression: "猫", configKey: ankiRequest.configKey, apiKey: "client-secret" },
+  });
+  const staleBrowse = await askAnki("anki-stale-browse", "hd_anki_browse", {
+    request: { noteIds: [71], expression: "猫", configKey: "host-config" },
   });
   const ankiMaturity = await askAnki("anki-maturity", "hd_anki_maturity", {
     request: { term: { expression: "猫", reading: "ねこ", url: "https://client.invalid" } },
@@ -1327,12 +1330,13 @@ async function sharingHostStage() {
       && staleHostKey.response?.ok === false && /configuration changed/u.test(staleHostKey.response.error)
       && ankiPreflight.response?.state === "addable" && ankiSubmit.response?.state === "added"
       && ankiBrowse.response?.opened === true && ankiMaturity.response?.mature === true
+      && staleBrowse.response?.ok === false && /configuration changed/u.test(staleBrowse.response.error)
       && hostScreenshot.response?.ok === false && /unsupported linked Anki request/u.test(hostScreenshot.response.error)
       && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify(["status", "preflightClient", "submitClient", "browse", "maturity"])
       && submitted?.[1]?.url === undefined && submitted?.[1]?.apiKey === undefined && submitted?.[1]?.anki === undefined
       && submitted?.[1]?.configKey === "host-config"
       && submitted?.[1]?.term?.expression === "猫" && JSON.stringify(submitted?.[2]) === JSON.stringify({}),
-    JSON.stringify({ ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse, ankiMaturity,
+    JSON.stringify({ ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse, staleBrowse, ankiMaturity,
       hostScreenshot, hostAnkiCalls }));
 
   socket.drop();
@@ -1623,7 +1627,9 @@ async function sharingClientStage() {
   const requestsBeforeSubmit = socket.requests().length;
   const ankiSubmit = await askLinkedAnki("hd_anki_submit", { request: linkedRequest },
     { state: "added", noteId: 82, warnings: [] });
-  const ankiBrowse = await askLinkedAnki("hd_anki_browse", { request: { noteIds: [82], expression: "猫" } },
+  const ankiBrowse = await askLinkedAnki("hd_anki_browse", {
+    request: { noteIds: [82], expression: "猫", configKey: linkedRequest.configKey },
+  },
     { opened: true });
   const ankiMaturity = await askLinkedAnki("hd_anki_maturity", { request: { term: linkedRequest.term } },
     { mature: true });

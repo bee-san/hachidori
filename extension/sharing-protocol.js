@@ -150,7 +150,7 @@ export function allowLinkedAnkiRequest(message) {
     return { ...base, request };
   }
   if (message.type === "hd_anki_browse") {
-    return { ...base, request: selectedFields(message.request, ["noteIds", "expression"]) };
+    return { ...base, request: selectedFields(message.request, ["noteIds", "expression", "configKey"]) };
   }
   const request = selectedFields(message.request, MINING_REQUEST_FIELDS);
   return message.type === "hd_anki_submit"

@@ -330,6 +330,7 @@
         await send("hd_anki_browse", { request: {
           noteIds: Array.isArray(noteIds) ? noteIds : [],
           expression: record.result.term.expression,
+          configKey: record.group.configKey,
         } });
       }
       catch (error) { if (current(record)) setStatus(record, `Could not open Anki: ${error.message}`, "error"); }

@@ -2210,6 +2210,9 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     if (linkedClient && message.type === "hd_anki_submit") {
       return service.submitClient(hostLinkedAnkiRequest(message.request), message.clientMedia);
     }
+    if (linkedClient && message.type === "hd_anki_browse") {
+      return service.browse(hostLinkedAnkiRequest(message.request));
+    }
     return service[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
   }).then(result => workerReply(message, result), error => failureReply(message, error));

@@ -2116,8 +2116,8 @@ pronunciation providers, dictionary media and AnkiConnect requests run from the
 host; `localhost` in those configured URLs therefore means the host machine.
 External media follows the ordinary upload/write/readback path, but the host
 does not consult or complete its own capture session. Status wraps the ordinary
-Anki configuration digest in a host-worker-specific key; preflight and submit
-must return that exact wrapper before the host restores the internal digest.
+Anki configuration digest in a host-worker-specific key; preflight, submit and
+browse must return that exact wrapper before the host restores the internal digest.
 Consequently, a result from local Anki, another sharing host or an earlier host
 worker cannot pass through coincident generation numbers and identical Anki
 settings.

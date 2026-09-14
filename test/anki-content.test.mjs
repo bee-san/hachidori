@@ -110,7 +110,7 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.equal(f.items[0].actions.querySelectorAll("button").length, 4);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬" }]);
+  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "overwrite-big-circle");
@@ -137,7 +137,7 @@ test("successful Add remains successful after a refresh failure and a second cli
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫" }]);
+  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current" }]);
   assert.equal(submitted, 1);
 });
 
@@ -192,7 +192,7 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   assert.match(f.items[1].output.textContent, /Check Anki before trying again/u);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [], expression: "犬" }]);
+  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current" }]);
   assert.equal(writes, 1);
 });
 
