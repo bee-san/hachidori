@@ -102,6 +102,12 @@ every open page adopts it, and removes the host's lookup-count rows. Pages open
 in the linked browser before linking keep their previous reader options until
 they reload; their lookups go to the host straight away.
 
+Sharing actions from multiple Settings tabs run in order, including the initial
+connection probe. Repeating **Link** keeps the original local snapshot; repeating
+**Unlink** keeps the first successful restoration. A failed restoration retains
+the saved state for retry, and late messages from the old connection cannot
+overwrite restored settings or personal entries.
+
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
 reachable* and the Sharing section says so; the linked browser reconnects by
