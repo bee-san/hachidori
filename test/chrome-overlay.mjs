@@ -232,6 +232,7 @@ async function popupReader(page) {
       height: this.getBoundingClientRect().height,
       plain: (stripped.textContent || "").replace(/\\s+/g, " ").trim(),
       pencil: this.querySelector(".gsm-hoshidicts-note-button") !== null,
+      customLinks: this.querySelectorAll(".gsm-hoshidicts-external-link-button").length,
       noteOpen: noteForm !== null && !noteForm.hidden,
       noteTerm: noteForm?.querySelector('[name="term"]')?.value ?? null,
     };
@@ -296,12 +297,105 @@ try {
   const id = await extensionId(browser);
   const settings = await openSettings(browser, id);
   await importFixture(settings);
+  await showSection(settings, "media");
+  await settings.waitForFunction(() =>
+    [...document.querySelectorAll("#media button, #media input, #media select")].every(control => control.disabled));
+  await settings.waitForFunction(() => {
+    const status = document.getElementById("options-status").textContent;
+    return !status.includes("Unsaved") && !status.includes("Saving");
+  });
+  const mediaSettings = await settings.evaluate(() => ({
+    controlsDisabled: [...document.querySelectorAll("#media button, #media input, #media select")]
+      .every(control => control.disabled),
+    enabled: document.getElementById("opt-media-enabled").checked,
+    note: document.getElementById("media-overlay-help").textContent,
+    noteVisible: !document.getElementById("media-overlay-help").hidden,
+    status: document.getElementById("media-runtime-status").textContent,
+  }));
+  if (process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT) {
+    await settings.setViewport({ width: 1280, height: 1200 });
+    await settings.$eval("#media-heading", heading => heading.scrollIntoView({ block: "start" }));
+    await settings.screenshot({ path: process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT });
+  }
+  await showSection(settings, "keybinds");
+  const keybindSettings = await settings.evaluate(() => ({
+    browserDisabled: document.getElementById("browser-shortcuts").disabled,
+    browserHelpVisible: !document.getElementById("browser-shortcuts-overlay-help").hidden,
+    pageKeybindsEnabled: !document.getElementById("keybind-add").disabled,
+  }));
+  await showSection(settings, "design");
+  const designSettings = await settings.evaluate(() => ({
+    customLinksDisabled: document.getElementById("custom-links-settings").disabled,
+    customLinksHelpVisible: !document.getElementById("custom-links-overlay-help").hidden,
+    themeEnabled: !document.getElementById("opt-popup-theme").disabled,
+  }));
+  await showSection(settings, "backup");
+  const backupSettings = await settings.evaluate(() => ({
+    exportDisabled: document.getElementById("backup-export").disabled,
+    exportHelpVisible: !document.getElementById("backup-export-overlay-help").hidden,
+    restoreEnabled: !document.getElementById("backup-file").disabled,
+  }));
+  await showSection(settings, "audio");
+  const audioSettings = await settings.evaluate(() => ({
+    sourceEditorEnabled: !document.getElementById("audio-source-add").disabled,
+    speechHelpVisible: !document.getElementById("audio-mining-help").hidden,
+  }));
+  await showSection(settings, "anki");
+  await settings.waitForFunction(() => document.getElementById("opt-anki-screenshot").disabled);
+  const ankiSettings = await settings.evaluate(() => ({
+    screenshotDisabled: document.getElementById("opt-anki-screenshot").disabled,
+    screenshotEnabled: document.getElementById("opt-anki-screenshot").checked,
+    screenshotHelp: document.getElementById("anki-screenshot-help").textContent,
+  }));
+  await showSection(settings, "lookup");
+  const readingSettings = await settings.evaluate(() => ({
+    readingEnabled: !document.getElementById("opt-hover-enabled").disabled,
+    localFilePromptHidden: document.getElementById("settings-local-file-access").hidden,
+    localFilePromptEmpty: document.getElementById("settings-local-file-access").childElementCount === 0,
+  }));
+  const guardedRequests = await settings.evaluate(() => Promise.all([
+    chrome.runtime.sendMessage({ target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-ui-capture" }),
+    chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_download", requestId: "overlay-ui-backup" }),
+    chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
+      url: "https://example.test/", active: true,
+    }),
+  ]));
+  assert.deepEqual(mediaSettings, {
+    controlsDisabled: true,
+    enabled: false,
+    note: "Hachidori recording is unavailable in this embedded overlay. GameSentenceMiner owns game screenshots, recordings and sentence audio; these saved browser settings are left unchanged.",
+    noteVisible: true,
+    status: "Media capture is unavailable in this overlay.",
+  });
+  assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
+  assert.deepEqual(designSettings, { customLinksDisabled: true, customLinksHelpVisible: true, themeEnabled: true });
+  assert.deepEqual(backupSettings, { exportDisabled: true, exportHelpVisible: true, restoreEnabled: true });
+  assert.deepEqual(audioSettings, { sourceEditorEnabled: true, speechHelpVisible: true });
+  assert.equal(ankiSettings.screenshotDisabled, true);
+  assert.equal(ankiSettings.screenshotEnabled, false);
+  assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
+  assert.deepEqual(readingSettings, { readingEnabled: true, localFilePromptHidden: true, localFilePromptEmpty: true });
+  assert.ok(guardedRequests.every(reply => reply.ok === false && reply.error.includes("unavailable in this overlay")),
+    JSON.stringify(guardedRequests));
+  assert.equal(browser.targets().some(target => target.url().endsWith("/capture.html")), false,
+    "disabled media controls never open a capture tab");
   // Setup never opens in an overlay: the host has no tab to show it in.
   assert.equal(browser.targets().some((target) => target.url().endsWith("/startup.html")), false,
     "overlay mode opens no startup page");
   // A long hover delay keeps a press from racing the hover lookup, so the
   // drag below provably starts with no popup open.
   await editSettingsControls(settings, { "opt-hover-delay": "1500" });
+  await settings.evaluate(async () => {
+    const stored = await chrome.storage.local.get("options");
+    const options = HDReaderOptions.normaliseOptions(stored.options);
+    await chrome.storage.local.set({ options: {
+      ...stored.options,
+      customLinks: [{ label: "Remote link", url: "https://example.test/%w" }],
+      mediaCapture: { ...options.mediaCapture, enabled: true },
+      revision: options.revision + 1,
+    } });
+  });
 
   const tab = await browser.newPage();
   tab.on("console", (message) => diagnostics.push(`[page] ${message.type()}: ${message.text()}`));
@@ -330,6 +424,7 @@ try {
   await tab.mouse.move(...middle(boxes[0]));
   const hovered = await popup.waitForVisible(10_000);
   assert.ok(hovered?.plain.includes("食べる"), `hover reads the boxed word: ${JSON.stringify(hovered)}`);
+  assert.equal(hovered.customLinks, 0, "stored or remotely shared custom links stay out of the overlay popup");
   assert.deepEqual(await events(), ["shown"]);
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true, "Escape closes the hover popup");

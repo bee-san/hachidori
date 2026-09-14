@@ -82,7 +82,8 @@ Reset to defaults. It uses the same external jsdom dependency. The extension smo
 suite drives the content script's keybind dispatch and the real popup view's entry
 navigation. `audio-content.test.mjs` covers keybind audio playback. The keybind
 settings suite also lists Chrome's browser shortcuts and refreshes them when the
-window regains focus.
+window regains focus, while proving an overlay disables only that Chrome-owned
+shortcut manager and leaves page/popup keybind editing available.
 `node --test test/browser-commands.test.mjs` runs the worker's command listener
 against the manifest: the toggle makes one queued revisioned `hoverEnabled`
 write, and the settings command opens Settings. Each argument-free keybind
@@ -138,9 +139,10 @@ issue overlapping Link and Unlink requests, preserving a compiled local
 personal dictionary and settings. A third browser loads the actual overlay-mode
 extension, checks local Settings autosave and mixed shared/local saves, survives
 host disconnection and full browser restart, unlinks with its edited local
-geometry, and verifies the effective screenshot and browser-speech capability
-explanations through DOM assertions. Twelve predeclared checks; profiles are
-kept on failure. The suite needs `python3` and access to the pinned GitHub
+geometry, and verifies that remote recorder/link options cannot reactivate
+Electron-only controls alongside the screenshot and browser-speech capability
+explanations. Twelve predeclared checks; profiles are kept on failure. The suite
+needs `python3` and access to the pinned GitHub
 release. For offline runs or coordinated add-on changes,
 `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` serves that local
 archive at the pinned URL in the browser; no release is downloaded in that
@@ -171,7 +173,7 @@ node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
 HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
 node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
-node test/chrome-overlay.mjs     # 13. overlay mode's glyph selection and host events in real Chrome
+node test/chrome-overlay.mjs     # 13. overlay capability Settings, glyph selection and host events in real Chrome
 ./test/baseline.sh               # 14. optional native cross-check
 ```
 

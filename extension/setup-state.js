@@ -44,6 +44,7 @@ export function overlayAnkiOptions(options) {
     ...options,
     anki: { ...options.anki, captureScreenshot: false },
     audioSources: options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
+    mediaCapture: { ...options.mediaCapture, enabled: false },
   };
 }
 

@@ -10,18 +10,19 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t) {
+function fixture(t, { exportAvailable = true } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"));
   const { window } = dom;
   const sent = [], statuses = [], revoked = [];
-  let blocked = false;
+  let blocked = false, downloads = 0;
   window.URL.createObjectURL = () => "blob:selected-backup";
   window.URL.revokeObjectURL = url => revoked.push(url);
   window.crypto.randomUUID = () => "prepared-token";
   const el = id => window.document.getElementById(id);
   createBackupSettingsController({ document: window.document,
     send: (type, fields) => new Promise(resolve => sent.push({ type, ...fields, resolve })),
-    download: async () => ({ ok: true, downloadId: 7 }),
+    download: async () => { downloads += 1; return { ok: true, downloadId: 7 }; },
+    exportAvailable,
     checkReady() { if (blocked) throw new Error("Save your changes first"); },
     setBusy() {}, status: (...args) => statuses.push(args),
     refresh: async () => { throw new Error("refresh failed after commit"); },
@@ -39,7 +40,8 @@ function fixture(t) {
       dictionaries: [{ title: "<b>private dictionary</b>", enabled: false }], customEntryCount: 2 });
     await tick();
   }
-  return { el, window, sent, statuses, revoked, prepare, block() { blocked = true; } };
+  return { el, window, sent, statuses, revoked, prepare, block() { blocked = true; },
+    get downloads() { return downloads; } };
 }
 
 test("backup Settings previews safe text and requires explicit confirmation for one restore", async t => {
@@ -95,4 +97,15 @@ test("leaving Settings cancels late preparation and does not revive a preview on
     assert.equal(f.el("backup-restore").disabled, true);
     assert.equal(f.el("backup-confirm").checked, false);
   }
+});
+
+test("overlay mode disables backup export while preserving restore", async t => {
+  const f = fixture(t, { exportAvailable: false });
+  assert.equal(f.el("backup-export").disabled, true);
+  assert.equal(f.el("backup-file").disabled, false);
+  f.el("backup-export").click();
+  await tick();
+  assert.equal(f.downloads, 0);
+  await f.prepare();
+  assert.equal(f.el("backup-preview").hidden, false);
 });

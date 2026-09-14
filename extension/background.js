@@ -46,7 +46,7 @@ import { sameJsonValue } from "./json-value.js";
 import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
-import { OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
   RECOMMENDED_SELECTIONS_KEY, OVERLAY_LOCAL_OPTION_KEYS,
@@ -1752,7 +1752,7 @@ let captureConfigRevision = 0;
 let captureConfigTail = Promise.resolve();
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[OPTIONS_KEY]) return;
+  if (!HOST_CAPABILITIES.mediaCapture || area !== "local" || !changes[OPTIONS_KEY]) return;
   const previous = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].oldValue).mediaCapture;
   const mediaCapture = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].newValue).mediaCapture;
   if (sameJsonValue(previous, mediaCapture)) return;
@@ -2080,9 +2080,15 @@ chrome.tabs?.onRemoved?.addListener(tabId => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
-  const operation = ["hd_capture_register", "hd_capture_host_stopped"].includes(message.type) || CAPTURE_CONTROL_TYPES.has(message.type)
-    ? handleCaptureControl(message, sender)
-    : handleCaptureContent(message, sender);
+  let operation;
+  if (!HOST_CAPABILITIES.mediaCapture) {
+    operation = Promise.reject(new Error("Media capture is unavailable in this overlay."));
+  } else if (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type)
+      || CAPTURE_CONTROL_TYPES.has(message.type)) {
+    operation = handleCaptureControl(message, sender);
+  } else {
+    operation = handleCaptureContent(message, sender);
+  }
   Promise.resolve(operation).then(
     result => sendResponse(workerReply(message, result)),
     error => sendResponse(failureReply(message, error)),
@@ -2377,6 +2383,12 @@ async function handleWorkerRequest(message, sender) {
   const type = typeof message.type === "string" ? message.type : "";
   if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
+  }
+  if (type === "hd_backup_download" && !HOST_CAPABILITIES.backupExport) {
+    return failureReply(message, new Error("Backup export is unavailable in this overlay."));
+  }
+  if (type === "hd_open_external" && !HOST_CAPABILITIES.customLinks) {
+    return failureReply(message, new Error("Custom toolbar links are unavailable in this overlay."));
   }
   await sharingReady;
   if (["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)) await sharingTransitionTail;

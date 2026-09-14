@@ -14,7 +14,7 @@ import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { applyPageTheme, setStatusOutput } from "./settings-dom.js";
-import { MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
@@ -265,7 +265,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  if (activeSection === "design") {
+  if (activeSection === "design" && HOST_CAPABILITIES.customLinks) {
     customLinkController ??= createCustomLinkSettings({ document,
       readLinks: () => options.customLinks,
       saveLinks: links => { options.customLinks = links; writeOptions(); },
@@ -299,6 +299,7 @@ function updateKeybindSettings() {
     readAudioSources: () => options.audioSources,
     getBrowserCommands: () => chrome.commands.getAll(),
     openBrowserShortcuts: () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }),
+    browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
   });
   keybindController.render();
 }
@@ -354,8 +355,14 @@ function updateSharingSettings() {
 
 function renderMediaSettings() {
   const capture = options.mediaCapture;
+  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
+  element("media-heading-help").textContent = HOST_CAPABILITIES.mediaCapture
+    ? "Optional local recording for Anki notes. Changes save automatically."
+    : "Saved Chrome recorder settings, inactive in this overlay.";
+  element("media-browser-help").hidden = !HOST_CAPABILITIES.mediaCapture;
+  element("media-template-help").hidden = !HOST_CAPABILITIES.mediaCapture;
   const values = {
-    "opt-media-enabled": capture.enabled,
+    "opt-media-enabled": HOST_CAPABILITIES.mediaCapture && capture.enabled,
     "opt-media-animation": capture.includeAnimation,
     "opt-media-audio": capture.includeCapturedAudio,
     "opt-media-native-cues": capture.page.nativeCues,
@@ -377,14 +384,25 @@ function renderMediaSettings() {
     const input = element(id);
     if (input !== document.activeElement) input.value = String(value);
   }
-  element("opt-media-auto-area").disabled = !capture.page.domText;
-  element("opt-media-texthooker-format").disabled = !capture.texthooker.enabled;
+  if (!HOST_CAPABILITIES.mediaCapture) {
+    for (const control of document.querySelectorAll("#media button, #media input, #media select")) {
+      control.disabled = true;
+    }
+  } else {
+    element("opt-media-auto-area").disabled = !capture.page.domText;
+    element("opt-media-texthooker-format").disabled = !capture.texthooker.enabled;
+  }
 }
 
 async function updateMediaSettings() {
   if (activeSection !== "media") return;
   renderMediaSettings();
   const epoch = ++mediaStatusEpoch;
+  if (!HOST_CAPABILITIES.mediaCapture) {
+    mediaRuntimeState = "unavailable";
+    setStatusOutput(element("media-runtime-status"), "Media capture is unavailable in this overlay.");
+    return;
+  }
   try {
     const reply = await send("hd_capture_status", {}, CAPTURE_TARGET);
     if (epoch !== mediaStatusEpoch) return;
@@ -405,6 +423,10 @@ async function updateMediaSettings() {
 }
 
 async function editMediaCapture(mutator, { immediate = false } = {}) {
+  if (!HOST_CAPABILITIES.mediaCapture) {
+    renderMediaSettings();
+    return false;
+  }
   let recording = mediaRuntimeState === "recording";
   if (!immediate) {
     try {
@@ -438,6 +460,7 @@ function updateBackupSettings() {
   backupController ??= createBackupSettingsController({
     document, send,
     download: () => send("hd_backup_download", {}, WORKER_TARGET),
+    exportAvailable: HOST_CAPABILITIES.backupExport,
     checkReady() {
       if (importing || installingRecommended || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
@@ -479,7 +502,8 @@ function updateDesignPreview() {
   }
   if (frame.style.width !== `${options.popupWidthPx + 96}px`
       || frame.style.height !== `${options.popupHeightPx + 216}px`) resizeDesignPreview();
-  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
+  const previewOptions = HOST_CAPABILITIES.customLinks ? options : { ...options, customLinks: [] };
+  frame.contentWindow.HDDesignPreview?.update(previewOptions, dictionaryState);
 }
 
 function resizeDesignPreview() {
@@ -2718,6 +2742,7 @@ function attachHandlers() {
     writeOptions();
   });
   element("media-open-capture").addEventListener("click", async () => {
+    if (!HOST_CAPABILITIES.mediaCapture) return;
     try {
       const reply = await send("hd_capture_open", {}, CAPTURE_TARGET);
       if (!reply.ok) throw new Error(reply.error || "The capture page could not be opened.");
@@ -3028,7 +3053,13 @@ async function flushOptionsUntilIdle() {
 async function start() {
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
   element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
-  createLocalFileAccessController({ document, container: element("settings-local-file-access") });
+  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
+  element("custom-links-settings").disabled = !HOST_CAPABILITIES.customLinks;
+  element("custom-links-overlay-help").hidden = HOST_CAPABILITIES.customLinks;
+  element("backup-export-overlay-help").hidden = HOST_CAPABILITIES.backupExport;
+  if (HOST_CAPABILITIES.localFileAccessPrompt) {
+    createLocalFileAccessController({ document, container: element("settings-local-file-access") });
+  }
   attachSettingsNavigation();
   renderRecommendedCatalogue();
   attachHandlers();
