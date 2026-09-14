@@ -136,6 +136,9 @@ function indexedNotes(value, models) {
     if (!model) throw new Error("AnkiConnect returned notes outside the requested note types.");
     const fields = noteFields(info);
     const names = new Map(Object.keys(fields).map(field => [nameKey(field), field]));
+    if (model.fields.some(field => !names.has(field))) {
+      throw new Error("AnkiConnect returned invalid note details.");
+    }
     return { noteId: info.noteId, model, fields, names };
   });
 }

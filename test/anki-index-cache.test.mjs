@@ -22,7 +22,7 @@ function fixture(saved) {
     fields: { expression: "Expression" },
   } });
   let state = copy(saved), clock = 1_800_000, rows = [["猫", true, [9, 7]]];
-  let held = null, failure = null, storageTail = Promise.resolve(), writing = false;
+  let held = null, failure = null, writeFailure = false, storageTail = Promise.resolve(), writing = false;
   const refreshes = [], lookups = [], alarms = new Map();
   const dependencies = {
     async fetchRows(source) {
@@ -43,6 +43,7 @@ function fixture(saved) {
         writing = true;
         try {
           const next = await update({ options: copy(options), state: copy(state) });
+          if (writeFailure) throw new Error("storage unavailable");
           if (next !== undefined) state = copy(next);
           return copy(state);
         } finally {
@@ -63,6 +64,7 @@ function fixture(saved) {
   const service = createAnkiDuplicateIndex(dependencies);
   return {
     service,
+    dependencies,
     alarms,
     refreshes,
     lookups,
@@ -71,6 +73,7 @@ function fixture(saved) {
     get state() { return copy(state); },
     setRows(value) { rows = copy(value); },
     fail(value = new Error("Anki closed")) { failure = value; },
+    failWrites(value = true) { writeFailure = value; },
     hold() { return held = deferred(); },
     due() { clock += ANKI_INDEX_REFRESH_MS; },
     async change(patch, notify = true) {
@@ -86,6 +89,20 @@ function fixture(saved) {
     },
   };
 }
+
+test("cold maturity checks stay cache-only while one refresh supplies every later lookup", async () => {
+  const f = fixture(), hold = f.hold();
+  const refresh = f.service.reconcile();
+  while (!f.refreshes.length) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(await f.service.has(f.options.anki, "猫"), false);
+  assert.equal(f.lookups.length, 0);
+  hold.resolve();
+  await refresh;
+  for (let index = 0; index < 5; index++) assert.equal(await f.service.has(f.options.anki, "猫"), true);
+  assert.equal(await f.service.has(f.options.anki, "犬"), false);
+  assert.equal(f.refreshes.length, 1);
+  assert.equal(f.lookups.length, 0, "an unrelated absent word must not query Anki for maturity");
+});
 
 test("warm hits return sorted note IDs without Anki, while an absent word is never negatively cached", async () => {
   const f = fixture();
@@ -168,6 +185,54 @@ test("the complete index refreshes every 30 minutes and retries if a post-write 
   assert.equal(f.refreshes.length, 3);
 });
 
+test("refreshes retain the previous snapshot through pending, offline, malformed and failed-storage outcomes", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const original = f.state.snapshot;
+
+  f.due();
+  const hold = f.hold(), refresh = f.service.reconcile();
+  while (f.refreshes.length < 2) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(await f.service.has(f.options.anki, "猫"), true);
+  f.setRows([["犬", false, [20]]]);
+  hold.resolve();
+  await refresh;
+  assert.equal(await f.service.has(f.options.anki, "犬"), false);
+  assert.equal(f.state.snapshot.rows[0][0], "犬");
+
+  f.due();
+  f.fail();
+  await f.service.reconcile();
+  assert.equal(f.state.snapshot.rows[0][0], "犬");
+  f.fail(null);
+  f.due();
+  f.setRows([["invalid"]]);
+  await f.service.reconcile();
+  assert.equal(f.state.snapshot.rows[0][0], "犬");
+
+  f.due();
+  f.setRows([["鳥", true, [30]]]);
+  f.failWrites();
+  await f.service.reconcile();
+  assert.equal(f.state.snapshot.rows[0][0], "犬");
+  assert.notDeepEqual(f.state.snapshot, original);
+});
+
+test("a restarted worker restores the snapshot and missing alarm without repeating a recent failed pull", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  f.due();
+  f.fail();
+  await f.service.reconcile();
+  const calls = f.refreshes.length;
+  f.alarms.clear();
+  const restarted = createAnkiDuplicateIndex(f.dependencies);
+  await restarted.reconcile();
+  assert.equal(await restarted.has(f.options.anki, "猫"), true);
+  assert.equal(f.refreshes.length, calls);
+  assert.equal(f.alarms.get(ANKI_INDEX_ALARM).scheduledTime, 5_400_000);
+});
+
 test("scope changes invalidate membership and schedule an immediate replacement, while policy changes retain it", async () => {
   const f = fixture();
   await f.service.reconcile();
@@ -180,4 +245,19 @@ test("scope changes invalidate membership and schedule an immediate replacement,
   assert.equal(await f.service.has(f.options.anki, "猫"), false);
   await f.service.reconcile();
   assert.equal(f.refreshes.length, 2);
+});
+
+test("endpoint changes make the old collection ineligible before the replacement refresh completes", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  assert.equal(await f.service.has(f.options.anki, "猫"), true);
+  const next = { ...f.options.anki, url: "http://127.0.0.1:9876" };
+  const hold = f.hold();
+  const change = f.change({ anki: next });
+  while (f.refreshes.length < 2) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(await f.service.has(next, "猫"), false);
+  f.setRows([["犬", true, [15]]]);
+  hold.resolve();
+  await change;
+  assert.equal(await f.service.has(next, "犬"), true);
 });

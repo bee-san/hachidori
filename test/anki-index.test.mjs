@@ -59,6 +59,11 @@ test("index identity keeps the direct expression mapping and exact Hachidori wor
   assert.equal(await ankiIndexSource(baseConfig({
     fieldTemplates: { Front: template("<b>{expression}</b>") },
   })), null);
+  for (const field of ["note", "Deck", "is", "prop", "re", "mid", "has-cd"]) {
+    assert.equal(await ankiIndexSource(baseConfig({
+      fieldTemplates: { [field]: template("{expression}") },
+    })), null);
+  }
 });
 
 test("a complete refresh stores compact sorted rows across recognized note types and aggregates maturity", async () => {
@@ -141,4 +146,52 @@ test("cached note inspection selects only an exact configured-type overwrite tar
   ], source, "猫", [8]);
   assert.equal(changed.stale, true);
   assert.equal(changed.target, null);
+});
+
+test("compact rows retain stored HTML and Unicode while folding only ASCII case", async () => {
+  const source = await ankiIndexSource(baseConfig());
+  const values = [
+    [1, "HELLO"],
+    [2, "É"],
+    [3, "が"],
+    [4, "は\u3099"],
+    [5, "<b>猫</b>"],
+  ];
+  const rows = await fetchAnkiIndex(async action => action === "notesInfo"
+    ? values.map(([noteId, value]) => note(noteId, "Japanese", { Expression: value }))
+    : [1, 4], source);
+  assert.deepEqual(rows, [
+    ["<b>猫</b>", false, [5]],
+    ["hello", true, [1]],
+    ["É", false, [2]],
+    ["が", false, [3]],
+    ["は\u3099", true, [4]],
+  ]);
+  assert.equal(ankiWordKey("HeLLo"), "hello");
+  assert.equal(ankiWordKey("é"), "é");
+  assert.equal(ankiWordKey("か\u3099"), "が");
+  assert.equal(rows.some(([word]) => word === "ば"), false, "stored NFD is not normalized into a new match");
+});
+
+test("malformed bulk and live replies reject instead of publishing partial index rows", async () => {
+  const source = await ankiIndexSource(baseConfig());
+  const invalid = [
+    null,
+    {},
+    [null],
+    [{}],
+    [{ ...note(1, "Japanese", { Expression: "猫" }), noteId: "1" }],
+    [note(1, "Other", { Expression: "猫" })],
+    [{ ...note(1, "Japanese", { Expression: "猫" }), fields: [] }],
+    [note(1, "Japanese", {})],
+    [note(1, "Japanese", { Expression: 12 })],
+  ];
+  for (const result of invalid) {
+    await assert.rejects(fetchAnkiIndex(async action => action === "notesInfo" ? result : [], source),
+      /invalid note|outside the requested note types/iu);
+  }
+  await assert.rejects(fetchAnkiIndex(async action => action === "notesInfo"
+    ? [note(1, "Japanese", { Expression: "猫" })] : [0], source), /invalid mature note IDs/u);
+  await assert.rejects(lookupAnkiIndex(async action => action === "notesInfo" ? invalid[4] : [], source, "猫"),
+    /invalid note/iu);
 });

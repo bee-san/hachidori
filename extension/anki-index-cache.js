@@ -256,6 +256,7 @@ export function createAnkiDuplicateIndex({
 
   return {
     reconcile,
+    source: ankiIndexSource,
     lookup: (config, expression, invoke) => find(config, expression, invoke, false),
     repair: (config, expression, invoke) => find(config, expression, invoke, true),
     async recordWrite(config, expression, noteId, { mature = false } = {}) {

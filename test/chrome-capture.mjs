@@ -771,9 +771,7 @@ async function main() {
         captureAudio: "",
         screenshot: "",
       },
-      checkForDuplicates: true,
-      duplicateScope: "collection",
-      duplicateScopeCheckAllModels: false,
+      duplicateScope: "model",
       duplicateBehavior: "prevent",
       captureScreenshot: true,
       fieldTemplates: {
