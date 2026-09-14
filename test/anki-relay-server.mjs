@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 // Resolves with `{ port, close() }`; the process prints the port it bound,
 // which is how port 0 is learned.
-export async function startAnkiRelayServer({ port = 0, pingMs = 20_000 } = {}) {
-  const server = fileURLToPath(new URL("../extension/anki-relay/server.py", import.meta.url));
-  const child = spawn("python3", [server, "--port", String(port), "--ping-seconds", String(pingMs / 1000)], { stdio: ["ignore", "pipe", "inherit"] });
+export async function startAnkiRelayServer({ port = 0, pingMs = 20_000,
+  serverPath = fileURLToPath(new URL("../extension/anki-relay/server.py", import.meta.url)) } = {}) {
+  const child = spawn("python3", [serverPath, "--port", String(port), "--ping-seconds", String(pingMs / 1000)], { stdio: ["ignore", "pipe", "inherit"] });
   let exitCode = null;
   const exited = new Promise((resolveExit) => child.once("exit", (code, signal) => {
     exitCode = code ?? signal;
@@ -21,6 +21,7 @@ export async function startAnkiRelayServer({ port = 0, pingMs = 20_000 } = {}) {
   });
   return {
     port: boundPort,
+    serverPath,
     // Set once the process is gone; a relay that died mid-run is a failure.
     get exitCode() { return exitCode; },
     close() {

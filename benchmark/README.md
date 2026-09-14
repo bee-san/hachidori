@@ -69,6 +69,31 @@ The lookup benchmark intentionally excludes web-page scanning, the configured
 hover delay, and popup rendering. It measures the extension's backend lookup
 path without injecting benchmark code into the engine.
 
+## Linked-browser relay latency
+
+The existing two-browser Sharing suite can record healthy linked-browser lookup
+latency using its real imported fixture and host WASM engine. It reuses the six
+queries in `fixture.json`, excludes ten warmup passes, and records fifty measured
+passes (300 requests). Every reply is checked for the expected hit/miss and
+stable results. Timing uses the linked page's clock around `chrome.runtime` and
+includes both workers, the Python relay and the host engine; it excludes setup,
+hover delay, popup rendering and CDP evaluation overhead.
+
+```sh
+HACHIDORI_RELAY_SERVER=/path/to/baseline/extension/anki-relay/server.py \
+HACHIDORI_SHARING_BENCHMARK="$PWD/benchmark/results/relay-before-1.json" \
+  npm --prefix test/tooling run test:sharing
+HACHIDORI_SHARING_BENCHMARK="$PWD/benchmark/results/relay-after-1.json" \
+  npm --prefix test/tooling run test:sharing
+```
+
+Use the same Python and pinned browser/tooling for both runs. Repeat at least
+three pairs in alternating order; each run starts fresh profiles. The JSON keeps
+every timing, per-query summaries, reply sizes, result signatures, the relay and
+fixture/WASM hashes, extension commit and environment. Each output filename must
+be new. The relay override changes only the Python source launched by the test,
+allowing a comparison against another checkout with identical browser code.
+
 ## Clicked-kanji selected dictionary lookup
 
 `kanji-click.mjs` isolates the production `hd_lookup_dictionary` route used
