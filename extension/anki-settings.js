@@ -242,6 +242,15 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       fieldNames.get(config.fields[key].toLowerCase()));
   }
 
+  function renderFormControls(config) {
+    for (const [key, id] of controls) {
+      const control = element(id);
+      if (control === document.activeElement) continue;
+      if (control.type === "checkbox") control.checked = config[key];
+      else control.value = key === "tags" ? config.tags.join(" ") : config[key];
+    }
+  }
+
   function render() {
     const config = readConfig();
     if (!findingSetup && setupSnapshot !== null && setupSnapshot !== JSON.stringify(config)) {
@@ -260,12 +269,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const url = element("opt-anki-url");
     if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
     renderBasicMappings(config, fields);
-    for (const [key, id] of controls) {
-      const control = element(id);
-      if (control === document.activeElement) continue;
-      if (control.type === "checkbox") control.checked = config[key];
-      else control.value = key === "tags" ? config.tags.join(" ") : config[key];
-    }
+    renderFormControls(config);
     const resolved = resolveAnkiTemplates(config, fields);
     renderStatus(config, resolved);
     renderTemplates(config, resolved);
