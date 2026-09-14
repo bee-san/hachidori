@@ -26,7 +26,7 @@ function linkedStatus(overrides = {}) {
     host: CHROME, error: null, ...overrides } });
 }
 
-function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }) } = {}) {
+function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }), download = async () => {} } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { pretendToBeVisual: true, url: "https://extension.test/settings.html" });
   const { document } = dom.window;
@@ -40,7 +40,7 @@ function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori an
   const controller = createSharingSettingsController({ document,
     send: async (type, fields = {}) => { requests.push({ type, ...fields }); return replies[type](fields); },
     setStatus: (message, tone) => statuses.push([message, tone]),
-    downloadAddon: async () => { downloads.push(true); },
+    downloadAddon: async () => { downloads.push(true); await download(); },
     copy: async text => { copied.push(text); },
     reload: () => reloads.push(true) });
   t.after(() => { controller.stop(); dom.window.close(); });
@@ -79,6 +79,41 @@ test("a fresh install waits for dictionaries, offers the add-on, and looks for a
   await settle();
   assert.deepEqual(f.downloads, [true]);
   assert.deepEqual(f.lastStatus(), ["Saved hachidori-relay.ankiaddon to your downloads. Double-click it to install it in Anki, then restart Anki.", "ready"]);
+});
+
+test("a pending download keeps its progress through polls, reports failure, and allows retry", async t => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  let rejectDownload;
+  let attempts = 0;
+  const f = fixture(t, { download: () => {
+    attempts += 1;
+    if (attempts === 1) return new Promise((_resolve, reject) => { rejectDownload = reject; });
+  } });
+  f.controller.start();
+  await settle();
+  const button = f.el("sharing-addon-download");
+  button.click();
+  button.click();
+  assert.deepEqual(f.downloads, [true], "only one download runs at a time");
+  assert.equal(button.disabled, true);
+  assert.deepEqual(f.lastStatus(), ["Downloading the Anki add-on from GitHub…", undefined]);
+  now += 60_000;
+  f.controller.render();
+  assert.deepEqual(f.lastStatus(), ["Downloading the Anki add-on from GitHub…", undefined]);
+
+  rejectDownload(new Error("Network offline."));
+  await settle();
+  assert.equal(button.disabled, false);
+  assert.deepEqual(f.lastStatus(), ["Could not download the add-on: Network offline.", "error"]);
+  f.controller.render();
+  assert.deepEqual(f.lastStatus(), ["Could not download the add-on: Network offline.", "error"]);
+
+  button.click();
+  await settle();
+  assert.deepEqual(f.downloads, [true, true]);
+  assert.equal(button.disabled, false);
+  assert.equal(f.lastStatus()[1], "ready");
 });
 
 test("waiting for Anki, a refusal by another host, and sharing are told apart", async t => {

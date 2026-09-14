@@ -57,9 +57,9 @@ the service worker and both engine runtimes run the same code.
   fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media. `anki-mining.js`
   and `anki-worker.js` are the mining service in the service worker.
-  `anki-offscreen.js` and `anki-maturity-worker.js` parse bulk note data off
-  the main threads for `anki-maturity.js` and `anki-maturity-cache.js`, which
-  supply the mature words behind definition blur.
+  `anki-index.js` and `anki-index-cache.js` provide the shared scoped duplicate
+  and maturity index. `anki-offscreen.js` launches `anki-index-worker.js` for
+  complete refreshes without moving note fields through the service worker.
 - **Pronunciation.** `audio-sources.js`, `audio-repository.js`,
   `audio-cache.js` and `audio-player.js` fetch, keep and play audio in the
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
@@ -77,9 +77,10 @@ the service worker and both engine runtimes run the same code.
   `backup-settings.js` the controls.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
-  worker; `sharing-settings.js` is the Settings section. `anki-relay/` is the
-  Hachidori Relay add-on for Anki, in Python, and `anki-addon.js` packages it
-  into the `.ankiaddon` that Settings hands out.
+  worker; `sharing-settings.js` is the Settings section. `anki-addon.js` pins
+  and downloads the compatible `.ankiaddon` release from
+  [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
+  Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `keybind-settings.js`, `custom-link-settings.js` and `external-links.js`
   the keybinds and the custom links in the popup; `local-file-access.js` the

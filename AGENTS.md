@@ -73,7 +73,7 @@ When implementing the dictionary-only scope from issue #9:
 ## Repository map
 
 - `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer; `extension/README.md` maps its files.
-- `extension/anki-relay/` is the Hachidori Relay add-on for Anki: the sharing relay in Python, shipped as the `.ankiaddon` that Settings → Sharing builds from that folder.
+- [hachidori-anki](https://github.com/bee-san/hachidori-anki) develops and releases the Hachidori Relay add-on for Anki. `extension/anki-addon.js` pins the release that Settings → Sharing downloads.
 - `wasm/bindings.cpp` is the JavaScript-facing boundary around the hoshidicts engine.
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
 - `extension/vendor/hoshidicts.{mjs,wasm}` is committed build output. Update it with its source change; otherwise leave it alone.
@@ -86,8 +86,8 @@ Run the narrowest existing checks that exercise the change:
 - Documentation-only changes: inspect the rendered Markdown, links, and final diff; code tests are not required.
 - Fixture, C ABI, or WebAssembly changes: rebuild when needed, then run `node test/make-fixture.mjs` and `node test/node-smoke.mjs`.
 - Extension runtime or renderer changes: run `node test/make-fixture.mjs` and `node test/extension-smoke.mjs`.
-- Sharing relay changes (`extension/anki-relay/`): run `node --test test/sharing-relay.test.mjs`, which needs `python3`; with Anki installed, also `python3 test/anki-relay-desktop.py`.
-- Sharing protocol, relay, host, client, Settings or startup-page changes: also run `node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` and `node test/chrome-sharing.mjs`, which needs a network address beyond loopback.
+- Relay source, packaging, socket and installed-Anki checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki). Run that repository's checks for relay changes.
+- Sharing protocol, host, client, Settings, startup-page or pinned add-on version changes: also run `node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` and `node test/chrome-sharing.mjs`. The browser suite needs `python3`, a network address beyond loopback, and access to the pinned GitHub release; `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` supplies a local artifact for offline or coordinated changes.
 - Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`.
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.

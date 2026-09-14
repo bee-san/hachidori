@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 13 September 2026.
+Last updated: 14 September 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -45,6 +45,12 @@ install dictionary updates. Providers receive ordinary network information,
 including your IP address and the requested resource. Dictionary downloads do
 not send the text you look up to those providers.
 
+**Anki relay download.** Choosing **Download the Anki add-on** under
+Settings → Sharing downloads a pinned Hachidori Relay release from GitHub and
+its download hosts. They receive ordinary network information, including your
+IP address and the requested resource. The download does not send your
+dictionaries, lookup text, settings, or Anki data to GitHub.
+
 **Pronunciation.** Playing or listing pronunciations, testing an audio source,
 and mining a note with pronunciation audio can send the word and/or reading to
 configured audio providers. Automatic playback does this when enabled.
@@ -61,14 +67,15 @@ defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
 server, it receives the metadata requests, API key and selected note content.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
-metadata. Optional mature-word blur retrieves mature expressions from the
-configured note type every 30 minutes while enabled. Its local cache stores
-those expressions, refresh times and an identifier for the selected configuration;
-turning the feature off keeps the last snapshot. Duplicate checks also query
-your collection through that server. These checks do not create notes. Explicit
-mining sends the content selected by your field mappings, such as a word,
-definition, sentence, page
-title, image or audio, and creates or updates a note according to your settings.
+metadata. Hachidori refreshes a local duplicate index every 30 minutes for the
+scope selected in Anki settings. Each compact row stores a word, whether any
+matching note is mature, and matching note IDs; it does not store note fields,
+note-type names, deck names or card data. A missing word triggers a scoped
+Anki lookup during mining and a found result repairs the local index. Mature-card
+definition blur reads only that index. These reads and checks do not create
+notes. Explicit mining sends the content selected by your field mappings, such
+as a word, definition, sentence, page title, image or audio, and creates or
+updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
 **Texthookers.** Optional media-capture texthookers receive text and timing from
@@ -132,7 +139,7 @@ storage.
 
 An exported backup is an **unencrypted file** containing dictionaries, personal
 entries, settings and lookup statistics. It can include custom URLs and your
-AnkiConnect API key. The derived mature-word cache is not included. Export the
+AnkiConnect API key. The derived Anki duplicate index is not included. Export the
 backup only to a location you trust. Hachidori does not upload backups to a cloud
 service. You control any later sharing or syncing of
 that file. Delete downloaded backups and already-created Anki notes/media
