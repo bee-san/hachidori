@@ -15,6 +15,8 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   let requestSequence = 0;
   let requestedKey = null;
   let loading = false;
+  let findingSetup = false;
+  let setupSnapshot = null;
   const templateRows = new Map();
   let nextTemplateId = 0;
   const connectionKey = config => JSON.stringify([config.model, config.apiKey, config.url]);
@@ -156,6 +158,43 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
+  function setupStatus(message, tone) {
+    const status = element("anki-setup-status");
+    status.hidden = message === "";
+    setStatusOutput(status, message, tone);
+  }
+
+  async function findSetup() {
+    if (findingSetup || commitConnectionUrl() === null) return;
+    const config = readConfig();
+    const snapshot = JSON.stringify(config);
+    findingSetup = true;
+    element("anki-find-setup").disabled = true;
+    setupStatus("Finding your Anki setup…", "working");
+    try {
+      const reply = await send("hd_anki_setup", { anki: config });
+      if (snapshot !== JSON.stringify(readConfig())) {
+        throw new Error("Anki settings changed while checking. Your changes were kept; retry to check them.");
+      }
+      if (!reply.ok) throw new Error(reply.error || "Anki setup discovery did not reply.");
+      const { proposal, outcome } = reply;
+      if (proposal?.status === "configured") {
+        change({ model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates });
+        setupStatus(`Found ${outcome.model} in deck ‘${outcome.deck}’. Changes save automatically.`, "ready");
+      } else if (outcome.status === "already-configured") {
+        setupStatus(`Your saved ${outcome.model} setup for deck ‘${outcome.deck}’ is ready.`, "ready");
+      } else {
+        setupStatus(outcome.detail, "error");
+      }
+    } catch (error) {
+      setupStatus(error.message, "error");
+    } finally {
+      findingSetup = false;
+      setupSnapshot = JSON.stringify(readConfig());
+      element("anki-find-setup").disabled = false;
+    }
+  }
+
   async function refresh() {
     const config = readConfig();
     const key = connectionKey(config);
@@ -203,8 +242,21 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       fieldNames.get(config.fields[key].toLowerCase()));
   }
 
+  function renderFormControls(config) {
+    for (const [key, id] of controls) {
+      const control = element(id);
+      if (control === document.activeElement) continue;
+      if (control.type === "checkbox") control.checked = config[key];
+      else control.value = key === "tags" ? config.tags.join(" ") : config[key];
+    }
+  }
+
   function render() {
     const config = readConfig();
+    if (!findingSetup && setupSnapshot !== null && setupSnapshot !== JSON.stringify(config)) {
+      setupSnapshot = null;
+      setupStatus("");
+    }
     if (pendingPreset && pendingPreset.key !== connectionKey(config)) pendingPreset = null;
     if (presetModel !== config.model) {
       presetModel = config.model;
@@ -217,12 +269,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const url = element("opt-anki-url");
     if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
     renderBasicMappings(config, fields);
-    for (const [key, id] of controls) {
-      const control = element(id);
-      if (control === document.activeElement) continue;
-      if (control.type === "checkbox") control.checked = config[key];
-      else control.value = key === "tags" ? config.tags.join(" ") : config[key];
-    }
+    renderFormControls(config);
     const resolved = resolveAnkiTemplates(config, fields);
     renderStatus(config, resolved);
     renderTemplates(config, resolved);
@@ -280,6 +327,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     // A changed URL starts discovery through render; don't start it twice.
     if (commitConnectionUrl() === false) void refresh();
   });
+  element("anki-find-setup").addEventListener("click", () => { void findSetup(); });
   element("anki-preset").addEventListener("change", () => { pendingPreset = null; });
   element("anki-apply-preset").addEventListener("click", () => {
     pendingPreset = null;

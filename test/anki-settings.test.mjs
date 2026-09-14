@@ -30,6 +30,60 @@ function discovery(request, patch = {}) {
     model: request.model, fields: ["Front", "Back"], errors: [], ...patch });
 }
 
+test("Settings explicitly retries setup discovery and applies its proposal through the existing config editor", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  discovery(f.sent[0]);
+  await tick();
+  const button = f.el("anki-find-setup");
+  button.click();
+  button.click();
+  const find = f.sent.filter(request => request.type === "hd_anki_setup");
+  assert.equal(find.length, 1);
+  assert.equal(button.disabled, true);
+  find[0].resolve({ ok: true, proposal: null,
+    outcome: { status: "unavailable", detail: "Open Anki with AnkiConnect.", model: null, deck: null } });
+  await tick();
+  assert.equal(button.disabled, false);
+  assert.match(f.el("anki-setup-status").textContent, /Open Anki/u);
+  assert.equal(f.edits.length, 0);
+  button.click();
+  const templates = { Expression: { value: "{expression}", overwriteMode: "overwrite" } };
+  f.sent.at(-1).resolve({ ok: true,
+    proposal: { status: "configured", model: "Kiku", deck: "Mining", fieldTemplates: templates },
+    outcome: { status: "configured", model: "Kiku", deck: "Mining", detail: null } });
+  await tick();
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().model, "Kiku");
+  assert.equal(f.read().deck, "Mining");
+  assert.deepEqual(f.read().fieldTemplates, templates);
+  assert.match(f.el("anki-setup-status").textContent, /Found Kiku/u);
+});
+
+test("a setup proposal cannot replace intervening Settings edits, and a verified mapping is never rewritten", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  discovery(f.sent[0]);
+  await tick();
+  f.el("anki-find-setup").click();
+  const pending = f.sent.at(-1);
+  f.adopt({ model: "Basic", deck: "Words" });
+  pending.resolve({ ok: true, proposal: { status: "configured", model: "Kiku", deck: "Mining", fieldTemplates: {} },
+    outcome: { status: "configured", model: "Kiku", deck: "Mining" } });
+  await tick();
+  assert.equal(f.read().model, "Basic");
+  assert.equal(f.edits.length, 0);
+  assert.match(f.el("anki-setup-status").textContent, /changes were kept/u);
+  f.el("anki-find-setup").click();
+  f.sent.at(-1).resolve({ ok: true, proposal: { status: "already-configured" },
+    outcome: { status: "already-configured", model: "Basic", deck: "Words", detail: null } });
+  await tick();
+  assert.equal(f.edits.length, 0);
+  assert.match(f.el("anki-setup-status").textContent, /saved Basic setup/u);
+  f.adopt({ deck: "Changed after the check" });
+  assert.equal(f.el("anki-setup-status").hidden, true);
+});
+
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
   const f = fixture(t);
   assert.equal(f.el("anki-status").classList.contains("operational-status"), true);

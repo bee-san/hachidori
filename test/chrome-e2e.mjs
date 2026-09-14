@@ -230,6 +230,7 @@ const PLANNED = [
   "the reader refuses to run on Settings even when its own scripts are loaded there",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
+  "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
@@ -4701,6 +4702,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     calls.push({ action, params, version });
     // Two notes live in Mining and one in the child deck, so Mining wins.
     const result = action === "modelNamesAndIds" ? { Basic: 1, "Kiku v2": 2, "My Kiku": 3 }
+      : action === "modelNames" ? ["Basic", "Kiku v2", "My Kiku"]
+        : action === "deckNames" ? ["Default", "Mining", "Mining::Old"]
       : action === "modelFieldNames" ? (params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"])
         : action === "findNotes" ? [21, 22, 23]
           : action === "findCards" ? [211, 212, 221, 231]
@@ -4713,6 +4716,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
   const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki setup");
   const saved = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
   let startup = null;
+  let settingsRecovery = null;
   try {
     // Setup returns to the Anki stage with no outcome yet; the dictionary stage
     // is already behind it, so the page checks Anki as soon as it opens.
@@ -4850,7 +4854,46 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
       JSON.stringify({ headingLog, progressChoices: [...progressChoices], progressDwell, configured, ready, detected, calls }),
     );
+
+    await startup.close();
+    startup = null;
+    await page.evaluate(async previous => {
+      const { options } = await chrome.storage.local.get("options");
+      await chrome.storage.local.set({ setupState: previous.setupState,
+        options: { ...previous.options, revision: options.revision + 1 } });
+    }, saved);
+    const beforeRecovery = await page.evaluate(() => chrome.storage.local.get(["setupState", "options"]));
+    route.fail = "ConnectionRefused";
+    settingsRecovery = await browser.newPage();
+    await settingsRecovery.goto(new URL("settings.html#anki", startupUrl).href, { waitUntil: "domcontentloaded" });
+    await settingsRecovery.bringToFront();
+    await settingsRecovery.waitForSelector("#anki-find-setup");
+    await settingsRecovery.click("#anki-find-setup");
+    await settingsRecovery.waitForFunction(() => document.getElementById("anki-setup-status").textContent.includes("Open Anki")
+      && !document.getElementById("anki-find-setup").disabled);
+    delete route.fail;
+    await settingsRecovery.click("#anki-find-setup");
+    await settingsRecovery.waitForFunction(async () => {
+      const { options } = await chrome.storage.local.get("options");
+      return options.anki?.model === "Kiku v2" && document.getElementById("options-status").textContent === "Saved.";
+    });
+    const recovered = await settingsRecovery.evaluate(() => chrome.storage.local.get(["setupState", "options"]));
+    await settingsRecovery.click("#anki-find-setup");
+    await settingsRecovery.waitForFunction(() => document.getElementById("anki-setup-status").textContent.includes("Your saved Kiku v2 setup")
+      && !document.getElementById("anki-find-setup").disabled);
+    const checked = await settingsRecovery.evaluate(() => chrome.storage.local.get(["setupState", "options"]));
+    check("Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
+      recovered.options.revision === beforeRecovery.options.revision + 1
+        && recovered.options.anki.deck === "Mining"
+        && recovered.options.anki.fieldTemplates.Expression.value === "{expression}"
+        && JSON.stringify(recovered.setupState) === JSON.stringify(beforeRecovery.setupState)
+        && JSON.stringify(checked) === JSON.stringify(recovered), JSON.stringify({ beforeRecovery, recovered, checked }));
+    if (process.env.HACHIDORI_ANKI_SETUP_SCREENSHOT) {
+      await settingsRecovery.setViewport({ width: 1280, height: 1000 });
+      await settingsRecovery.screenshot({ path: process.env.HACHIDORI_ANKI_SETUP_SCREENSHOT });
+    }
   } finally {
+    await settingsRecovery?.close().catch(() => {});
     if (startup !== null) await startup.close().catch(() => {});
     await session.detach().catch(() => {});
     // The remaining Anki checks expect the unconfigured mapping and a completed setup.
