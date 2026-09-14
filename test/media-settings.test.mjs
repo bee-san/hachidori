@@ -17,15 +17,21 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
+  window.settingsReplies = {
+    hd_capture_status: { ok: true, state: "stopped" },
+    hd_capture_open: { ok: true },
+  };
   window.chrome = {
-    runtime: { sendMessage(message, callback) { callback({ ok: true, state: "stopped" }); } },
+    runtime: { sendMessage(message) {
+      return Promise.resolve(window.settingsReplies[message.type] ?? { ok: true, state: "stopped" });
+    } },
     storage: { onChanged: { addListener() {} } },
   };
   window.eval(extension("reader-options.js"));
   window.eval(extension("dictionary-group-state.js"));
   for (const [file, exports] of [
     ["recommended-install-client.js", ["createRecommendedInstallClient"]],
-    ["settings-dom.js", ["applyPageTheme"]],
+    ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
   ]) {
@@ -36,7 +42,9 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   window.eval(source.replace(/start\(\);\s*$/u, `
     attachHandlers();
     renderMediaSettings();
+    activeSection = "media";
     globalThis.readMediaSettings = () => options.mediaCapture;
+    globalThis.refreshMediaStatus = updateMediaSettings;
   `));
   const el = id => window.document.getElementById(id);
   const endpoint = el("opt-media-texthooker-url"), enabled = el("opt-media-texthooker");
@@ -52,4 +60,33 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   await tick();
   assert.equal(window.readMediaSettings().texthooker.enabled, true);
   assert.equal(el("opt-media-texthooker-format").disabled, false);
+
+  assert.equal(el("media-runtime-status").classList.contains("operational-status"), true);
+  assert.equal(el("media-runtime-status").getAttribute("aria-atomic"), "true");
+  await window.refreshMediaStatus();
+  assert.equal(el("media-runtime-status").textContent.trim(), "Stopped");
+  assert.equal(el("media-runtime-status").classList.contains("is-ready"), false);
+  assert.equal(el("media-runtime-status").classList.contains("is-error"), false);
+
+  window.settingsReplies.hd_capture_status = {
+    ok: true,
+    state: "recording",
+    mediaSource: { name: "Reading tab" },
+    linkedPage: { title: "Novel" },
+  };
+  await window.refreshMediaStatus();
+  assert.equal(el("media-runtime-status").textContent, "Recording · Reading tab · linked to Novel");
+  assert.equal(el("media-runtime-status").classList.contains("is-ready"), true);
+
+  window.settingsReplies.hd_capture_open = { ok: false, error: "display capture is unavailable" };
+  el("media-open-capture").click();
+  await tick();
+  assert.match(el("media-runtime-status").textContent, /display capture is unavailable/u);
+  assert.equal(el("media-runtime-status").classList.contains("is-error"), true);
+
+  window.settingsReplies.hd_capture_open = { ok: true };
+  el("media-open-capture").click();
+  await tick();
+  assert.equal(el("media-runtime-status").textContent, "Capture controls opened in a separate tab.");
+  assert.equal(el("media-runtime-status").classList.contains("is-error"), false);
 });

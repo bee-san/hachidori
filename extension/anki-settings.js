@@ -2,7 +2,7 @@
 import { ankiAvailability } from "./anki.js";
 import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_TEMPLATE_MARKERS, ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
-import { reorderSettingsRows } from "./settings-dom.js";
+import { reorderSettingsRows, setStatusOutput } from "./settings-dom.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send, capabilities = { screenshot: true } }) {
   const { ANKI_FIELDS, ANKI_OVERWRITE_MODES, normaliseAnkiConnectUrl } = document.defaultView.HDReaderOptions;
@@ -156,17 +156,16 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     let state = "Not connected";
     if (discovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
     const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
-    if (status.textContent !== message) status.textContent = message;
     const invalid = !loading && errors.length > 0;
-    if (status.classList.contains("is-error") !== invalid) status.classList.toggle("is-error", invalid);
+    const tone = loading ? "working" : invalid ? "error" : discovery?.connected ? "ready" : undefined;
+    setStatusOutput(status, message, tone);
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
-  function setupStatus(message, error = false) {
+  function setupStatus(message, tone) {
     const status = element("anki-setup-status");
     status.hidden = message === "";
-    status.textContent = message;
-    status.classList.toggle("is-error", error);
+    setStatusOutput(status, message, tone);
   }
 
   async function findSetup() {
@@ -175,7 +174,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const snapshot = JSON.stringify(config);
     findingSetup = true;
     element("anki-find-setup").disabled = true;
-    setupStatus("Finding your Anki setup…");
+    setupStatus("Finding your Anki setup…", "working");
     try {
       const reply = await send("hd_anki_setup", { anki: config });
       if (snapshot !== JSON.stringify(readConfig())) {
@@ -185,14 +184,14 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       const { proposal, outcome } = reply;
       if (proposal?.status === "configured") {
         change({ model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates });
-        setupStatus(`Found ${outcome.model} in deck ‘${outcome.deck}’. Changes save automatically.`);
+        setupStatus(`Found ${outcome.model} in deck ‘${outcome.deck}’. Changes save automatically.`, "ready");
       } else if (outcome.status === "already-configured") {
-        setupStatus(`Your saved ${outcome.model} setup for deck ‘${outcome.deck}’ is ready.`);
+        setupStatus(`Your saved ${outcome.model} setup for deck ‘${outcome.deck}’ is ready.`, "ready");
       } else {
-        setupStatus(outcome.detail, true);
+        setupStatus(outcome.detail, "error");
       }
     } catch (error) {
-      setupStatus(error.message, true);
+      setupStatus(error.message, "error");
     } finally {
       findingSetup = false;
       setupSnapshot = JSON.stringify(readConfig());

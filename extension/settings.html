@@ -820,7 +820,7 @@
             <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
           </div>
           <div class="options-feedback-slot"></div>
-          <output id="media-runtime-status" class="anki-status" aria-live="polite">
+          <output id="media-runtime-status" class="operational-status" aria-live="polite" aria-atomic="true">
             Capture is stopped.
           </output>
           <p class="section-note">
@@ -938,13 +938,13 @@
           </div>
           <div class="options-feedback-slot"></div>
           <div class="anki-connection-summary">
-            <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
+            <output id="anki-status" class="operational-status" aria-live="polite" aria-atomic="true">Open Anki to discover your decks and note types.</output>
             <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki.</p>
             <div class="sharing-actions">
               <button id="anki-find-setup" type="button" class="ghost">Find existing setup</button>
               <span class="field-hint">Find your most-used Kiku, Lapis or Senren setup, or check your saved mapping. Open Anki and retry if it was unavailable.</span>
             </div>
-            <output id="anki-setup-status" class="anki-status" aria-live="polite" hidden></output>
+            <output id="anki-setup-status" class="operational-status" aria-live="polite" aria-atomic="true" hidden></output>
           </div>
           <fieldset class="lookup-group">
             <legend>Destination</legend>
@@ -1008,7 +1008,7 @@
             <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
             <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
-          <output id="sharing-status" class="anki-status" aria-live="polite"></output>
+          <output id="sharing-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
           <p id="sharing-overlay-preferences" class="section-note" hidden>Lookup activation, source highlighting and popup size/layout are saved locally for this overlay while linked. Other settings are saved on the shared Hachidori.</p>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
