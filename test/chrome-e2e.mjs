@@ -1155,6 +1155,8 @@ async function popupReader(page, depth = 0) {
         const primaryEntry = this.querySelector(".gsm-hoshidicts-entry");
         const primaryHeader = this.querySelector(".gsm-hoshidicts-primary-header");
         const primaryFrequencies = this.querySelector(".gsm-hoshidicts-primary-frequencies");
+        const lookupCount = this.querySelector(".gsm-hoshidicts-lookup-stats:not([hidden])");
+        const lookupCountRect = lookupCount?.getBoundingClientRect();
         const capsuleRect = metadataCapsule?.getBoundingClientRect();
         const entryRect = primaryEntry?.getBoundingClientRect();
         const capsuleStyle = metadataCapsule ? getComputedStyle(metadataCapsule) : null;
@@ -1252,6 +1254,8 @@ async function popupReader(page, depth = 0) {
             outsideHeader: !primaryHeader?.contains(metadataCapsule),
             insideResult: Boolean(capsuleRect && entryRect
               && capsuleRect.top >= entryRect.top - 1 && capsuleRect.bottom <= entryRect.bottom + 1),
+            besideLookupCount: Boolean(capsuleRect && lookupCountRect && !metadataCapsule.hidden
+              && Math.abs(capsuleRect.top - lookupCountRect.top) <= 1 && capsuleRect.left >= lookupCountRect.right),
             plain: Boolean(capsuleStyle
               && capsuleStyle.borderTopStyle === "none"
               && capsuleStyle.backgroundColor === "rgba(0, 0, 0, 0)"),
@@ -6222,7 +6226,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
       && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchRubies === 0
       && hidden.metadata.defaultFrequencyPill && hidden.metadata.defaultFrequencyLabel === "Freq:"
-      && hidden.metadata.frequencyText.startsWith("Freq: ")
+      && hidden.metadata.frequencyText.startsWith("Freq: ") && hidden.metadata.besideLookupCount
       && defaultNarrow.metadata.defaultFrequencyPill && !defaultNarrow.metadata.clippedFrequencies
       && before.metadata.capsuleAria === "Entry metadata"
       && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
