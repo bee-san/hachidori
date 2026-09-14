@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createSharingSettingsController } from "../extension/sharing-settings.js";
+import { setStatusOutput } from "../extension/settings-dom.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -26,7 +27,7 @@ function linkedStatus(overrides = {}) {
     host: CHROME, error: null, ...overrides } });
 }
 
-function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }) } = {}) {
+function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }), download = async () => {} } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { pretendToBeVisual: true, url: "https://extension.test/settings.html" });
   const { document } = dom.window;
@@ -39,8 +40,11 @@ function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori an
   const reloads = [];
   const controller = createSharingSettingsController({ document,
     send: async (type, fields = {}) => { requests.push({ type, ...fields }); return replies[type](fields); },
-    setStatus: (message, tone) => statuses.push([message, tone]),
-    downloadAddon: async () => { downloads.push(true); },
+    setStatus: (message, tone) => {
+      statuses.push([message, tone]);
+      setStatusOutput(el("sharing-status"), message, tone);
+    },
+    downloadAddon: async () => { downloads.push(true); await download(); },
     copy: async text => { copied.push(text); },
     reload: () => reloads.push(true) });
   t.after(() => { controller.stop(); dom.window.close(); });
@@ -55,6 +59,8 @@ function fixture(t, { probe = () => ({ ok: false, error: "No shared Hachidori an
 
 test("a fresh install waits for dictionaries, offers the add-on, and looks for a shared Hachidori on this computer", async t => {
   const f = fixture(t);
+  assert.equal(f.el("sharing-status").classList.contains("operational-status"), true);
+  assert.equal(f.el("sharing-status").getAttribute("aria-atomic"), "true");
   assert.equal(f.el("sharing-host-enabled").disabled, true, "the switch waits for the first status");
   f.controller.start();
   await settle();
@@ -74,11 +80,48 @@ test("a fresh install waits for dictionaries, offers the add-on, and looks for a
   assert.equal(f.el("sharing-client-use").hidden, true);
   assert.equal(f.el("sharing-client-remote").hidden, false);
   assert.deepEqual(f.lastStatus(), ["Sharing starts once this Hachidori has dictionaries.", undefined]);
+  assert.equal(f.el("sharing-status").classList.contains("is-ready"), false);
+  assert.equal(f.el("sharing-status").classList.contains("is-error"), false);
 
   f.el("sharing-addon-download").click();
   await settle();
   assert.deepEqual(f.downloads, [true]);
   assert.deepEqual(f.lastStatus(), ["Saved hachidori-relay.ankiaddon to your downloads. Double-click it to install it in Anki, then restart Anki.", "ready"]);
+});
+
+test("a pending download keeps its progress through polls, reports failure, and allows retry", async t => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  let rejectDownload;
+  let attempts = 0;
+  const f = fixture(t, { download: () => {
+    attempts += 1;
+    if (attempts === 1) return new Promise((_resolve, reject) => { rejectDownload = reject; });
+  } });
+  f.controller.start();
+  await settle();
+  const button = f.el("sharing-addon-download");
+  button.click();
+  button.click();
+  assert.deepEqual(f.downloads, [true], "only one download runs at a time");
+  assert.equal(button.disabled, true);
+  assert.deepEqual(f.lastStatus(), ["Downloading the Anki add-on from GitHub…", undefined]);
+  now += 60_000;
+  f.controller.render();
+  assert.deepEqual(f.lastStatus(), ["Downloading the Anki add-on from GitHub…", undefined]);
+
+  rejectDownload(new Error("Network offline."));
+  await settle();
+  assert.equal(button.disabled, false);
+  assert.deepEqual(f.lastStatus(), ["Could not download the add-on: Network offline.", "error"]);
+  f.controller.render();
+  assert.deepEqual(f.lastStatus(), ["Could not download the add-on: Network offline.", "error"]);
+
+  button.click();
+  await settle();
+  assert.deepEqual(f.downloads, [true, true]);
+  assert.equal(button.disabled, false);
+  assert.equal(f.lastStatus()[1], "ready");
 });
 
 test("waiting for Anki, a refusal by another host, and sharing are told apart", async t => {
@@ -95,6 +138,7 @@ test("waiting for Anki, a refusal by another host, and sharing are told apart", 
   f.controller.start();
   await settle();
   assert.deepEqual(f.lastStatus(), ["Sharing is on, but another browser on this computer is already sharing through Anki.", "error"]);
+  assert.equal(f.el("sharing-status").classList.contains("is-error"), true);
   assert.equal(f.sent("hd_sharing_client_probe").length, 2);
   assert.equal(f.el("sharing-client-found").textContent, "Another browser on this computer is sharing: the Hachidori in Chrome on this computer (5 dictionaries).");
   assert.equal(f.el("sharing-client-use").hidden, false);
@@ -105,6 +149,8 @@ test("waiting for Anki, a refusal by another host, and sharing are told apart", 
   f.controller.start();
   await settle();
   assert.deepEqual(f.lastStatus(), ["Sharing through Anki.", "ready"]);
+  assert.equal(f.el("sharing-status").classList.contains("is-ready"), true);
+  assert.equal(f.el("sharing-status").classList.contains("is-error"), false);
   assert.equal(f.el("sharing-addon").hidden, true);
   assert.equal(f.el("sharing-client-nearby").hidden, true, "the host is not offered itself");
   assert.equal(f.sent("hd_sharing_client_probe").length, 2, "and does not probe");

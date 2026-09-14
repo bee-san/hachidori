@@ -380,7 +380,10 @@ answered. `startup.js` takes the complete dependency order from the manifest's
 `reader-options.js`, which the startup module already loaded. This includes
 new reader dependencies such as the media-capture collector without maintaining
 a second static list. `content.css` comes with the page; no reader scripts load
-during the dictionary or Anki stages. Hover instructions follow
+during the dictionary or Anki stages. Script loading also waits for the reader's
+`HDReaderReady` promise: its initial dictionary/options snapshot must be adopted
+before the automatic selection, or that late snapshot could invalidate the
+example lookup immediately after it starts. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
 sentence and selects that word through the reader’s existing exact-selection
 route, so it also works from the keyboard. When the final step first becomes
@@ -736,47 +739,57 @@ rule. Its subject is the logical request's first canonical expression, retained
 through tab projections, Show more, Note refresh and Back. Native kanji entries
 remain outside term blur.
 
-The worker answers `hd_anki_maturity` from a local `Set`, independently of the
-Anki mutation queue and dictionary engine. The `ankiMaturityCache` storage key
-holds one compact snapshot, the last refresh attempt and a configuration revision.
-The worker hydrates the Set once; individual lookups never query Anki or scan
-the saved collection.
-The cache is derived state and is excluded from backups.
+The worker answers both duplicate membership and `hd_anki_maturity` from one
+local index, independently of the Anki mutation queue and dictionary engine.
+The `ankiDuplicateIndex` storage key holds a snapshot, refresh attempt and
+revision counters. Each word row is exactly `[wordKey, maturityFlag,
+sortedNoteIds]`; rows never retain note fields, note-type names, deck names or
+card data. The index is derived state and is excluded from backups.
 
-The dedicated `hachidori-anki-maturity` alarm schedules a refresh when enabled
-or when the note type, eligible expression fields, or API key changes, then
-every 30 minutes while the feature is enabled. Recording the attempt and next
-alarm before network I/O prevents worker restarts from repeatedly retrying an
-unavailable Anki. Startup restores a missing alarm without resetting its due
-time; an overdue attempt runs once. Disabling clears the alarm and invalidates
-pending publication, while retaining the previous snapshot for re-enabling.
-Triggers share one in-flight refresh; a changed source waits for the old pull
-to settle before starting its own.
+The selected scope is one of the exact configured note type across all decks,
+the exact configured deck and its subdecks across recognized note types, or all
+of Anki across recognized note types. The configured destination is always
+recognized; Kiku, Lapis and Senren-compatible note types are recognized from
+their actual fields and templates. Only direct plain `{expression}` fields
+enter the index. Operator-named fields remain excluded.
 
-Each refresh makes one read-only AnkiConnect `notesInfo` request, selecting the
-configured note type across all decks with `is:review -is:learn prop:ivl>=21`.
-This implements [Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
-Only eligible dedicated plain `{expression}` fields enter the cache. Stored
-HTML stays literal, ASCII case is folded as in Anki's ordinary field search,
-and lookup expressions use Anki's default NFC query normalization. Custom
-Anki configurations with `normalize_note_text=false` are not mirrored by this
-bulk API. Operator-named fields remain excluded. Refresh requests have a
-25-second timeout; ordinary Anki operations keep their existing timeout.
+![The dynamic duplicate scope and duplicate policy selectors](assets/anki-duplicate-index-settings.png)
 
-A short-lived dedicated worker launched by the existing Anki offscreen service
-fetches, parses and extracts the complete response. It returns only the compact
-word list, then terminates, keeping the large JSON allocation off both the
-service-worker request thread and the dictionary engine thread.
-The refresh builds a complete replacement outside the background storage queue,
-then rechecks the effective configuration, enablement and reserved configuration
-revision inside the queue before persisting and publishing it. All options writes
-bump that revision and clear the attempt in the same transaction when the enabled
-source changes. Delayed storage events only reconcile scheduling; they cannot
-invalidate a new pull or allow an old pull to publish after an off/on toggle.
-Failures retain the previous successful snapshot; before any successful refresh,
-the Anki criterion returns false promptly.
-A successful empty result clears the cached words. Current visits retain their
-original decision when a snapshot changes, including visits retained for Back.
+The dedicated `hachidori-anki-index` alarm refreshes the complete index when
+the source changes and every 30 minutes while Anki mining remains configured.
+Recording the attempt and next alarm before network I/O prevents worker
+restarts from repeatedly retrying unavailable Anki. Startup restores a missing
+alarm without resetting its due time; an overdue attempt runs once. Triggers
+share one in-flight refresh. Source changes invalidate old membership
+immediately, while policy-only changes retain it.
+
+A refresh resolves the scoped IDs and mature subset with `findNotes`, then
+loads those IDs through `notesInfo`. Maturity means a review card outside
+relearning with an interval of at least 21 days, matching
+[Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
+A short-lived worker launched by the existing Anki offscreen service performs
+that work and returns only compact rows. The complete replacement is built
+outside the background storage queue, then its source and reserved revisions
+are rechecked before publication. A repaired miss or confirmed write that
+races a pull causes an immediate replacement refresh instead of losing the
+new row. Failures retain the previous successful snapshot; a successful empty
+result clears it.
+
+Every mining flow uses the same lookup. A warm hit returns cached note IDs. A
+miss performs the normal scoped Anki lookup, verifies the direct fields against
+Hachidori's exact word key, calculates aggregate maturity and inserts a found
+row; a true miss creates no negative row. Submission repeats that lookup inside
+the mutation queue. Confirmed adds and overwrites update the row immediately.
+View in Anki browses cached IDs directly. Overwrite alone reads `notesInfo` to
+select an exact configured-note-type target; stale IDs trigger the normal live
+repair. Cross-type matches may be viewed or prevented but are never overwrite
+targets.
+
+Stored HTML stays literal, ASCII case is folded as in Anki's ordinary field
+search, and lookup expressions use Anki's default NFC query normalization.
+Maturity blur performs cache-only membership checks, including misses, so an
+unrelated absent word never contacts Anki. Current visits retain their original
+decision when a later snapshot changes, including visits retained for Back.
 
 Each request owns one blur decision and the original first-display deadline.
 Pending rules hide definitions immediately, and qualifying evidence can settle
@@ -1972,9 +1985,12 @@ computer and, when the host asks, on the person's other computers. Extensions
 cannot listen for connections, so a relay does: one WebSocket listener
 (`127.0.0.1:8771` by default) with a `/host` role and a `/link` role, and
 both Hachidoris connect out to it. The Hachidori Relay add-on in
-`extension/anki-relay/` runs the relay inside Anki; Settings → Sharing builds
-the `.ankiaddon` in the browser from those files (`extension/anki-addon.js`,
-zip.js, stored) so the add-on always matches the extension. Chrome keeps the
+[hachidori-anki](https://github.com/bee-san/hachidori-anki) runs the relay
+inside Anki. `extension/anki-addon.js` pins its compatible release version
+independently of the extension version. Settings → Sharing fetches that
+`.ankiaddon` from GitHub and saves it through a blob download, including in
+Electron hosts. The Python source and packaging live in the add-on repository.
+Chrome keeps the
 host's service worker alive while its socket carries traffic; the relay pings
 both sides every 20 s.
 
@@ -1983,7 +1999,7 @@ Settings and startup pages: the default port, the `/host` and `/link` paths,
 `parseLinkAddress` (a host, `host:port` or a ws:// URL, with the `display`
 form a person sees), `browserName` (what an install calls itself, from
 `navigator.userAgentData`), the table of forwardable requests and the frame
-validators. `extension/anki-relay/server.py` keeps the host, its clients and
+validators. The add-on's [`addon/server.py`](https://github.com/bee-san/hachidori-anki/blob/v0.0.3/addon/server.py) keeps the host, its clients and
 the frames between them behind one lock; its `Listener` owns the listening
 socket and swaps it between `127.0.0.1` and every interface, because Linux
 refuses a wildcard bind beside a loopback listener. Towards the host the relay
@@ -2111,7 +2127,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
-| `hd_anki_maturity` | Read whether the first term's expression has a mature card in the configured Anki note type; independent of engine and mutation queues |
+| `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |

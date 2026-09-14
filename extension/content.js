@@ -3644,23 +3644,29 @@
 
   function start() {
     void loadOverlayMode();
+    // Startup awaits this snapshot before demonstrating its first selection.
+    let storageReady;
+    globalThis.HDReaderReady = new Promise(resolve => { storageReady = resolve; });
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
       // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
       chrome.runtime.onMessage?.addListener(onReaderCommand);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
-        if (disposed || chrome.runtime.lastError) {
-          return;
+        try {
+          if (disposed || chrome.runtime.lastError) return;
+          const optionsAdoption = adoptOptions(stored && stored.options);
+          const adoption = adoptDictionaryState(stored && stored.dictionaryState);
+          adoptLookupStatsDescriptor(stored && stored.lookupStats);
+          if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
+            invalidateStoredState(adoption.dictionaryChanged);
+          } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
+        } finally {
+          storageReady();
         }
-        const optionsAdoption = adoptOptions(stored && stored.options);
-        const adoption = adoptDictionaryState(stored && stored.dictionaryState);
-        adoptLookupStatsDescriptor(stored && stored.lookupStats);
-        if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
-          invalidateStoredState(adoption.dictionaryChanged);
-        } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
       });
     } catch {
       // Without storage access the defaults are still usable.
+      storageReady();
     }
     // Capture so a page that stops propagation on its own text still gets
     // scanned; passive so the hot pointer and scroll paths can never delay the
