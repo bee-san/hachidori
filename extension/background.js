@@ -44,7 +44,7 @@ import {
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
-  RECOMMENDED_SELECTIONS_KEY,
+  RECOMMENDED_SELECTIONS_KEY, OVERLAY_LOCAL_OPTION_KEYS,
   advanceSetupState, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
@@ -143,8 +143,11 @@ function getSharingHost() {
 // synchronously by the interception points below after `sharingReady`.
 let sharingClient;
 let sharingLinked = false;
+let sharingEpoch = 0;
 let sharingReady = Promise.resolve();
 const WORKER_FORWARDS = FORWARDED_REQUESTS[WORKER_TARGET];
+const SHARING_OPTIONS_VERSION_KEY = "sharingOptionsVersion";
+const OVERLAY_OPTIONS_STORAGE_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY];
 
 function engineSender(sender) {
   return sender?.id === chrome.runtime.id && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT);
@@ -172,10 +175,36 @@ function stateStore(sender) {
 // Mirrored values bypass writeLocalState(): their revisions and cache
 // invalidation belong to the host. This is the only other writer of shared
 // keys, and only while linked.
-async function applyMirror(changes) {
+function composeOverlayOptions(shared, local, revision) {
+  const preferences = normaliseOptions(local);
+  return { ...projectStoredOptions(shared),
+    ...Object.fromEntries(OVERLAY_LOCAL_OPTION_KEYS.map(key => [key, preferences[key]])), revision };
+}
+
+// The offset keeps one increasing revision for existing readers and Settings,
+// while retaining the host's actual CAS revision for forwarded writes.
+function overlayHostOptionsValues(shared, stored, snapshot = false) {
+  const previous = stored[SHARING_OPTIONS_VERSION_KEY];
+  const hostRevision = optionsRevision(shared);
+  if (previous && !snapshot && shared !== null && hostRevision < previous.hostRevision) return {};
+  const revision = optionsRevision(stored[OPTIONS_KEY]);
+  const offset = !previous || hostRevision < previous.hostRevision
+    ? Math.max(previous?.offset ?? 0, revision + 1 - hostRevision) : previous.offset;
+  return {
+    [OPTIONS_KEY]: composeOverlayOptions(shared, stored[SHARING_LOCAL_STATE_KEY]?.options ?? stored[OPTIONS_KEY], hostRevision + offset),
+    [SHARING_OPTIONS_VERSION_KEY]: { hostRevision, offset },
+  };
+}
+
+async function applyMirror(changes, snapshot = false) {
   const values = {};
   const removals = [];
+  if (OVERLAY_MODE && Object.hasOwn(changes, OPTIONS_KEY)) {
+    Object.assign(values, overlayHostOptionsValues(changes[OPTIONS_KEY],
+      await chrome.storage.local.get(OVERLAY_OPTIONS_STORAGE_KEYS), snapshot));
+  }
   for (const [key, value] of Object.entries(changes)) {
+    if (OVERLAY_MODE && key === OPTIONS_KEY) continue;
     if (value === null) removals.push(key);
     else values[key] = value;
   }
@@ -186,10 +215,10 @@ async function applyMirror(changes) {
 function getSharingClient() {
   sharingClient ??= createSharingClient({
     WebSocket: globalThis.WebSocket,
-    applyBatch: (changes, isCurrent) => serialiseStorage(() => {
+    applyBatch: (changes, isCurrent, snapshot) => serialiseStorage(() => {
       // Unlink or a replacement connection may have retired this batch while
       // it waited behind the restoration's storage writes.
-      if (sharingLinked && isCurrent()) return applyMirror(changes);
+      if (sharingLinked && isCurrent()) return applyMirror(changes, snapshot);
     }),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
@@ -956,33 +985,10 @@ const WORKER_HANDLERS = {
 
   async hd_options_write(message) {
     const patch = validateOptionsPatch(message.options);
-    if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
-      throw new Error("the options write request carried no valid base revision");
-    }
     const { state, options: currentOptions } = await readDictionaryStorage();
-    assertDictionaryState(state);
-    const revision = optionsRevision(currentOptions);
-    const current = { ...projectStoredOptions(currentOptions), revision };
-    if (message.baseRevision !== revision) {
-      return checkedOptionsResult(message, {
-        ok: false,
-        conflict: true,
-        error: "Settings changed in another page. Review your changes before saving again.",
-        options: current,
-      });
-    }
-    // Patch only edited fields; revision is owned here, never by the caller.
-    const patched = { ...current, ...patch, revision };
-    const options = state === null
-      ? patched
-      : normaliseDictionarySelections(patched, state.dictionaries);
-    const changed = !sameJsonValue(options, { ...currentOptions, revision });
-    if (changed) options.revision += 1;
-    // Check the exact prospective reply, including its final revision, before
-    // committing. An oversized success must never become a post-commit error.
-    const result = checkedOptionsResult(message, { options });
-    if (changed) {
-      await writeLocalState({ [OPTIONS_KEY]: options });
+    const result = optionsWriteResult(message, patch, state, currentOptions);
+    if (result.ok !== false && result.options.revision !== optionsRevision(currentOptions)) {
+      await writeLocalState({ [OPTIONS_KEY]: result.options });
     }
     return result;
   },
@@ -1034,15 +1040,23 @@ const WORKER_HANDLERS = {
       throw new Error("the setup record names an unknown catalogue source");
     }
     const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY, RECOMMENDED_SELECTIONS_KEY]);
+    const store = stateStore(sender);
+    const library = store === chrome.storage.local ? stored : await store.get([DICTIONARY_STATE_KEY, OPTIONS_KEY]);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
     const previousSelections = stored[RECOMMENDED_SELECTIONS_KEY] ?? current?.dictionaries.selectionsApplied ?? [];
-    const selections = firstInstallSelections(previousSelections, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
+    const selections = firstInstallSelections(previousSelections, outcomes, library[DICTIONARY_STATE_KEY], library[OPTIONS_KEY]);
     const state = recordSetupDictionaries(message.recordSetup === false ? null : current, {
       runId: message.runId, outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
     });
     const values = state === null ? {} : { [SETUP_STATE_KEY]: state };
     if (selections.applied.length > 0) values[RECOMMENDED_SELECTIONS_KEY] = [...new Set([...previousSelections, ...selections.applied])];
-    if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
+    if (selections.options !== null) {
+      if (store === chrome.storage.local) values[OPTIONS_KEY] = selections.options;
+      else {
+        const captured = (await chrome.storage.local.get(SHARING_LOCAL_STATE_KEY))[SHARING_LOCAL_STATE_KEY];
+        values[SHARING_LOCAL_STATE_KEY] = { ...captured, options: selections.options };
+      }
+    }
     if (Object.keys(values).length > 0) await writeLocalState(values);
     return { state };
   },
@@ -1050,6 +1064,89 @@ const WORKER_HANDLERS = {
 
 function startupSender(sender) {
   return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
+}
+
+function optionsWriteConflict(message, options) {
+  return checkedOptionsResult(message, { ok: false, conflict: true,
+    error: "Settings changed in another page. Review your changes before saving again.", options });
+}
+
+function optionsWriteResult(message, patch, state, storedOptions) {
+  if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
+    throw new Error("the options write request carried no valid base revision");
+  }
+  assertDictionaryState(state);
+  const revision = optionsRevision(storedOptions);
+  const current = { ...projectStoredOptions(storedOptions), revision };
+  if (message.baseRevision !== revision) return optionsWriteConflict(message, current);
+  const patched = { ...current, ...patch };
+  const options = state === null ? patched : normaliseDictionarySelections(patched, state.dictionaries);
+  if (!sameJsonValue(options, { ...storedOptions, revision })) options.revision += 1;
+  return checkedOptionsResult(message, { options });
+}
+
+function localOverlayOptionsValues(options, patch, stored) {
+  const changed = options.revision - optionsRevision(stored[OPTIONS_KEY]);
+  if (changed === 0) return {};
+  const version = stored[SHARING_OPTIONS_VERSION_KEY];
+  const values = { [OPTIONS_KEY]: options,
+    [SHARING_OPTIONS_VERSION_KEY]: { ...version, offset: version.offset + changed } };
+  const captured = stored[SHARING_LOCAL_STATE_KEY];
+  if (captured) values[SHARING_LOCAL_STATE_KEY] = { ...captured,
+    options: { ...captured.options, ...patch, revision: optionsRevision(captured.options) + 1 } };
+  return values;
+}
+
+async function prepareOverlayOptionsWrite(message) {
+  if (!sharingLinked) return { reply: workerReply(message, await WORKER_HANDLERS.hd_options_write(message)) };
+  const patch = validateOptionsPatch(message.options);
+  const stored = await chrome.storage.local.get(OVERLAY_OPTIONS_STORAGE_KEYS);
+  const result = optionsWriteResult(message, patch, stored[DICTIONARY_STATE_KEY] ?? null, stored[OPTIONS_KEY]);
+  if (result.ok === false) return { reply: workerReply(message, result) };
+  const local = {}, shared = {};
+  for (const [key, value] of Object.entries(patch)) {
+    (OVERLAY_LOCAL_OPTION_KEYS.includes(key) ? local : shared)[key] = value;
+  }
+  if (Object.keys(shared).length === 0) {
+    const values = localOverlayOptionsValues(result.options, local, stored);
+    if (Object.keys(values).length > 0) await writeLocalState(values);
+    return { reply: workerReply(message, result) };
+  }
+  return { local, shared, version: stored[SHARING_OPTIONS_VERSION_KEY], epoch: sharingEpoch };
+}
+
+async function finishOverlayOptionsWrite(message, prepared, reply) {
+  const stored = await chrome.storage.local.get(OVERLAY_OPTIONS_STORAGE_KEYS);
+  // Link/Unlink and local edits remain available during the network wait. A
+  // reply for the former owner must not change the newly selected installation.
+  if (!sharingLinked || prepared.epoch !== sharingEpoch) {
+    return workerReply(message, optionsWriteConflict(message, stored[OPTIONS_KEY]));
+  }
+  if (!reply.options) return reply;
+  const version = stored[SHARING_OPTIONS_VERSION_KEY];
+  const values = overlayHostOptionsValues(reply.options, stored);
+  const current = values[OPTIONS_KEY] ?? stored[OPTIONS_KEY];
+  let result;
+  if (reply.ok !== false && (version.offset !== prepared.version.offset || optionsRevision(reply.options) < version.hostRevision)) {
+    result = workerReply(message, optionsWriteConflict(message, current));
+  } else {
+    let options = current;
+    if (reply.ok !== false) {
+      options = { ...current, ...prepared.local };
+      if (Object.entries(prepared.local).some(([key, value]) => current[key] !== value)) options.revision += 1;
+      Object.assign(values, localOverlayOptionsValues(options, prepared.local, { ...stored, ...values }));
+    }
+    result = checkedOptionsResult(message, { ...reply, options });
+  }
+  if (Object.keys(values).length > 0) await writeLocalState(values);
+  return result;
+}
+
+async function writeLinkedOverlayOptions(message) {
+  const prepared = await serialiseStorage(() => prepareOverlayOptionsWrite(message));
+  if (prepared.reply) return prepared.reply;
+  const reply = await forwardToHost({ ...message, options: prepared.shared, baseRevision: prepared.version.hostRevision });
+  return serialiseStorage(() => finishOverlayOptionsWrite(message, prepared, reply));
 }
 
 // Ordinary absence is a connection that never answered; an answer that refused
@@ -2137,7 +2234,6 @@ async function handleWorkerRequest(message, sender) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   await sharingReady;
-  if (sharingLinked && !engineSender(sender) && WORKER_FORWARDS.has(type)) return forwardToHost(message);
   // The host owns the lookup-count rows a linked engine would otherwise prune.
   if (sharingLinked && type === "hd_lookup_stats_cleanup") return workerReply(message, {});
   if (type === "hd_options_write") {
@@ -2152,6 +2248,10 @@ async function handleWorkerRequest(message, sender) {
     }
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
+  if (sharingLinked && !engineSender(sender) && WORKER_FORWARDS.has(type)) {
+    return OVERLAY_MODE && type === "hd_options_write"
+      ? writeLinkedOverlayOptions(message).catch(error => failureReply(message, error)) : forwardToHost(message);
+  }
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const operation = [
     "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
@@ -2276,12 +2376,14 @@ const SHARING_HANDLERS = {
         if (!config?.client?.address) {
           values[SHARING_LOCAL_STATE_KEY] = Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null]));
         }
+        if (OVERLAY_MODE) values[SHARING_OPTIONS_VERSION_KEY] = null;
         await chrome.storage.local.set(values);
         // Publish routing at the confirmed commit, before another storage job
         // can let the local engine see (or clean up against) the host inventory.
         sharingLinked = true;
+        sharingEpoch += 1;
         getSharingClient().link(address);
-        await applyMirror(hello.snapshot);
+        await applyMirror(hello.snapshot, true);
       });
     } catch (error) {
       if (hosting.enabled && !sharingLinked) host.enable({ port: hosting.port, network: hosting.network.enabled });
@@ -2320,8 +2422,9 @@ const SHARING_HANDLERS = {
       // both the snapshot and linked routing until restoration has succeeded.
       await chrome.storage.local.set({ [SHARING_KEY]: { ...stored[SHARING_KEY], client: null } });
       sharingLinked = false;
+      sharingEpoch += 1;
       getSharingClient().unlink();
-      await chrome.storage.local.remove(SHARING_LOCAL_STATE_KEY).catch(error => {
+      await chrome.storage.local.remove(OVERLAY_MODE ? [SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY] : SHARING_LOCAL_STATE_KEY).catch(error => {
         console.warn("hachidori: could not clean up the restored sharing snapshot:", describe(error));
       });
     });
@@ -2369,6 +2472,10 @@ async function initialiseSharing() {
   const address = stored[SHARING_KEY]?.client?.address;
   if (typeof address === "string" && address !== "") {
     sharingLinked = true;
+    if (OVERLAY_MODE) await serialiseStorage(async () => {
+      const current = await chrome.storage.local.get(OVERLAY_OPTIONS_STORAGE_KEYS);
+      if (!current[SHARING_OPTIONS_VERSION_KEY]) await applyMirror({ options: current[OPTIONS_KEY] ?? null }, true);
+    });
     getSharingClient().link(address);
   }
 }
@@ -2463,7 +2570,7 @@ async function toggleLookupsFromCommand() {
     return { target: WORKER_TARGET, type: "hd_options_write", requestId: null,
       baseRevision: optionsRevision(options), options: { hoverEnabled: !normaliseOptions(options).hoverEnabled } };
   };
-  if (sharingLinked) return forwardToHost(await toggle());
+  if (sharingLinked) return OVERLAY_MODE ? writeLinkedOverlayOptions(await toggle()) : forwardToHost(await toggle());
   return serialiseStorage(async () => WORKER_HANDLERS.hd_options_write(await toggle()));
 }
 

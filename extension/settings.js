@@ -14,6 +14,7 @@ import { ANKI_ADDON_FILE_NAME, buildAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { applyPageTheme } from "./settings-dom.js";
+import { MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
@@ -306,6 +307,7 @@ function updateKeybindSettings() {
 function updateAnkiSettings() {
   if (activeSection !== "anki" || optionsRevision < 0) return;
   ankiController ??= createAnkiSettingsController({ document, readConfig: () => options.anki,
+    capabilities: MINING_CAPABILITIES,
     editConfig: config => { options.anki = config; writeOptions(); },
     send: (type, fields) => send(type, fields, WORKER_TARGET),
   });
@@ -316,6 +318,7 @@ function updateAnkiSettings() {
 function renderSharingLink(value) {
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
   const linked = sharingLinkedAddress !== null;
+  element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
   element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;
   element("import-drop-zone").hidden = linked;
@@ -3003,6 +3006,8 @@ async function flushOptions() {
 }
 
 async function start() {
+  element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
+  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
   createLocalFileAccessController({ document, container: element("settings-local-file-access") });
   attachSettingsNavigation();
   renderRecommendedCatalogue();

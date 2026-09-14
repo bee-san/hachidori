@@ -4,7 +4,7 @@ import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_TEMPLATE_MARKERS, ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 import { reorderSettingsRows } from "./settings-dom.js";
 
-export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
+export function createAnkiSettingsController({ document, readConfig, editConfig, send, capabilities = { screenshot: true } }) {
   const { ANKI_FIELDS, ANKI_OVERWRITE_MODES, normaliseAnkiConnectUrl } = document.defaultView.HDReaderOptions;
   const element = id => document.getElementById(id);
   const selects = new WeakMap();
@@ -20,6 +20,10 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   const templateRows = new Map();
   let nextTemplateId = 0;
   const connectionKey = config => JSON.stringify([config.model, config.apiKey, config.url]);
+  if (!capabilities.screenshot) {
+    element("opt-anki-screenshot").disabled = true;
+    element("anki-screenshot-help").textContent = "Page screenshots are unavailable in this overlay. Screenshot fields stay empty.";
+  }
 
   function change(patch) {
     if (Object.hasOwn(patch, "fields") || Object.hasOwn(patch, "fieldTemplates")) pendingPreset = null;
@@ -248,7 +252,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     for (const [key, id] of controls) {
       const control = element(id);
       if (control === document.activeElement) continue;
-      if (control.type === "checkbox") control.checked = config[key];
+      if (control.type === "checkbox") control.checked = key === "captureScreenshot" ? capabilities.screenshot && config[key] : config[key];
       else control.value = key === "tags" ? config.tags.join(" ") : config[key];
     }
     for (const id of ["opt-anki-duplicate-scope", "opt-anki-duplicate-behavior", "opt-anki-check-all-models"]) {

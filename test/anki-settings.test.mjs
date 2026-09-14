@@ -11,13 +11,14 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t) {
+function fixture(t, capabilities) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
   window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
   let config = window.HDReaderOptions.normaliseOptions({}).anki;
   const edits = [], sent = [];
   const controller = createAnkiSettingsController({ document: window.document, readConfig: () => config,
+    capabilities,
     editConfig(value) { config = value; edits.push(value); },
     send(type, fields) { return new Promise(resolve => sent.push({ type, ...fields, resolve })); } });
   const el = id => window.document.getElementById(id);
@@ -29,6 +30,17 @@ function discovery(request, patch = {}) {
   request.resolve({ ok: true, connected: true, decks: ["Default"], models: ["A", "B"],
     model: request.model, fields: ["Front", "Back"], errors: [], ...patch });
 }
+
+test("overlay screenshot controls show the effective capability while preserving saved mappings", async t => {
+  const f = fixture(t, { screenshot: false });
+  f.adopt({ captureScreenshot: true, fields: { ...f.read().fields, screenshot: "Picture" } });
+  assert.equal(f.el("opt-anki-screenshot").disabled, true);
+  assert.equal(f.el("opt-anki-screenshot").checked, false);
+  assert.match(f.el("anki-screenshot-help").textContent, /unavailable in this overlay/u);
+  assert.equal(f.read().captureScreenshot, true);
+  assert.equal(f.read().fields.screenshot, "Picture");
+  assert.equal(f.edits.length, 0);
+});
 
 test("Settings explicitly retries setup discovery and applies its proposal through the existing config editor", async t => {
   const f = fixture(t);

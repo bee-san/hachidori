@@ -74,7 +74,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
     switch (frame.kind) {
       case "hello":
         host = { version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount };
-        await applyBatch(frame.snapshot, () => socket === current);
+        await applyBatch(frame.snapshot, () => socket === current, true);
         if (socket !== current) return;
         ready = true;
         error = null;
