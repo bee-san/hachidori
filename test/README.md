@@ -718,25 +718,20 @@ What it proves, in order:
    setup record or tab, and leaves later edits and carried options alone (see
    [overlay mode](../docs/overlay-mode.md)).
 
-### Definition blur and Anki maturity
+### Anki duplicate index and maturity blur
 
-`node --test test/anki-maturity.test.mjs` exercises the production snapshot
-extractor with an injected gateway. It pins one `notesInfo` query for the
-configured note type across all decks, review state excluding relearning,
-an interval of at least 21 days, and the 25-second refresh timeout. Cases cover
-eligible expression fields and source identity, exact stored HTML, ASCII-only
-case folding, Anki's default query NFC normalization, deduplication, empty
-results and rejection of malformed replies without publishing partial words.
+`node --test test/anki-index.test.mjs` exercises production scope construction,
+recognized note types, direct `{expression}` fields, exact word keys, compact
+rows, multiple note IDs, aggregate maturity, configured-deck filtering and
+stale cached-ID inspection. It also rejects malformed partial Anki replies.
 
-`node --test test/anki-maturity-cache.test.mjs` checks local worker membership
-without Anki calls, cold-cache behavior, retained snapshots during failed or
-pending refreshes, successful empty replacements, and failed persistence.
-Controlled clocks, alarms and serialized storage exercise the 30-minute
-schedule, worker restart, concurrent triggers, configuration changes and
-disable/re-enable publication rules. The offscreen service test also verifies
-refresh-worker termination after successful, failed and worker-error replies.
-These focused suites never contact an
-Anki collection.
+`node --test test/anki-index-cache.test.mjs test/anki-index-integration.test.mjs`
+checks warm hits without Anki, miss repair without negative rows, a second
+zero-request hit, immediate post-write updates, forced stale replacement,
+30-minute full refreshes, retained snapshots through failures, worker restart
+and cache-only maturity membership. The offscreen service test verifies that
+the refresh worker returns only compact rows and terminates after success or
+failure. These focused suites never contact an Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, autoplay held until the hover reveal
@@ -751,13 +746,13 @@ ownership coverage.
 
 The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
 service-worker target (mining controls) and offscreen target (including its
-dedicated maturity refresh worker). It checks
+dedicated index refresh worker). It checks
 source persistence, a responsive cold-cache popup during a held refresh,
 cached mature results without repeated Anki calls, and pronunciation that
 waits for the hover reveal.
 Real alarm delivery verifies that a refresh changes new lookups while keeping
-the open popup intact; disable/re-enable refuses pending publication, and
-unavailable Anki retains the last successful snapshot. A real worker restart
+the open popup intact; the index continues refreshing while blur is disabled,
+and unavailable Anki retains the last successful snapshot. A real worker restart
 restores cached membership and a missing alarm without retrying a recent
 failure. Independent count blur and autoplay remain covered. These are
 fixtures, never the user's actual notes or scheduling data.

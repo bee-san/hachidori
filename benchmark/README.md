@@ -420,11 +420,11 @@ Chrome's sandbox remains enabled by default. `allowNoSandbox: true` or
 where sandboxed Chrome cannot start; do not use it for untrusted archives.
 
 
-## Anki maturity refresh contention
+## Anki duplicate index
 
-The focused [maturity cache diagnostic](../docs/anki-maturity-cache-benchmark.md#dedicated-worker-regression-check)
-compares two unpacked extension revisions with an identical 138 MB synthetic
-Anki response, production scheduled refreshes and concurrent maturity requests.
-It uses the existing external Chrome/Puppeteer installation and never contacts
-the user's Anki collection. Run its dedicated driver as documented there; the
-dictionary-import benchmark above measures a different production path.
+The focused [duplicate-index benchmark](../docs/anki-duplicate-index-benchmark.md)
+alternates two equivalent production lookup paths for the same known duplicate:
+a normal scoped Anki lookup returning exact note IDs and a warm local-index hit
+returning those IDs. Setup, refresh, cold-cache and cache-miss work is excluded.
+The driver refuses AnkiConnect's standard port and verifies the isolated
+profile's media directory before measuring.

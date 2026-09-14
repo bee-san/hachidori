@@ -56,9 +56,9 @@ the service worker and both engine runtimes run the same code.
   fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media. `anki-mining.js`
   and `anki-worker.js` are the mining service in the service worker.
-  `anki-offscreen.js` and `anki-maturity-worker.js` parse bulk note data off
-  the main threads for `anki-maturity.js` and `anki-maturity-cache.js`, which
-  supply the mature words behind definition blur.
+  `anki-index.js` and `anki-index-cache.js` provide the shared scoped duplicate
+  and maturity index. `anki-offscreen.js` launches `anki-index-worker.js` for
+  complete refreshes without moving note fields through the service worker.
 - **Pronunciation.** `audio-sources.js`, `audio-repository.js`,
   `audio-cache.js` and `audio-player.js` fetch, keep and play audio in the
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
