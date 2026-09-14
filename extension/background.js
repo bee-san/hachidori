@@ -44,7 +44,7 @@ import {
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
-  advanceSetupState, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
+  advanceSetupState, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
 const {
@@ -201,11 +201,9 @@ function forwardToHost(message) {
   return getSharingClient().forward(message).catch(error => failureReply(message, error));
 }
 
-// An overlay host has no chrome.tabs.captureVisibleTab, and its see-through
-// page would not show the game anyway, so mining never asks for a screenshot.
 async function readAnkiOptions() {
   const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
-  return OVERLAY_MODE ? { ...options, anki: { ...options.anki, captureScreenshot: false } } : options;
+  return OVERLAY_MODE ? overlayAnkiOptions(options) : options;
 }
 
 // Called within the background storage queue. Options and cache invalidation

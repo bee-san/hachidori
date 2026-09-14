@@ -8,7 +8,7 @@ function fixture() {
   const updates = [], uploads = [];
   let fields = { front: "猫", back: "oldnew", audio: "" };
   let downloads = 0;
-  const context = { request: {}, config: { audioSources: [] }, noteId: 12,
+  const context = { request: {}, config: { audioSources: [{ id: "a", type: "custom", enabled: true, url: "https://audio.test/%w", voice: "" }] }, noteId: 12,
     resolved: { templates: { Front: template("{expression}"), Back: template("new{audio}", "append"), Audio: template("{audio}") } },
     existingFields: { front: "猫", back: "old", audio: "" }, appliedFields: { front: "猫", back: "oldnew" },
     resources: { media: [], audioPrepared: false },
@@ -59,6 +59,14 @@ test("preserved audio fields skip downloading and a checked first-field audio pl
   assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
   assert.equal(f.downloads, 0);
   assert.equal(f.uploads[0].filename, "checked.wav");
+});
+
+test("with no enabled audio source the pronunciation fields stay empty without a warning", async () => {
+  const f = fixture();
+  f.context.config.audioSources = [];
+  assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
+  assert.equal(f.downloads, 0);
+  assert.deepEqual(f.updates, []);
 });
 
 test("a renamed media upload warns without changing the checked first-field identity", async () => {

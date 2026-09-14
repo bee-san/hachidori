@@ -5,11 +5,11 @@ import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 
-function fixture(firstAudio = false, overwrite = false) {
+function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const calls = [], audioRequests = [];
   let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
   let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
-  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default",
+  const options = globalThis.HDReaderOptions.normaliseOptions({ ...(audioSources && { audioSources }), anki: { model: "Basic", deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
       Audio: { value: overwrite ? "pronunciation{audio}" : "{audio}", overwriteMode: "overwrite" } } } });
@@ -129,6 +129,18 @@ test("unavailable first-field audio cannot silently change duplicate identity to
   await assert.rejects(f.service.submit(f.request), /chosen pronunciation is unavailable/u);
   assert.equal(f.calls.includes("canAddNotesWithErrorDetail"), false);
   assert.equal(f.calls.includes("addNote"), false);
+});
+
+// An overlay host keeps only downloadable sources, which can leave none.
+test("with no enabled audio source first-field audio is left out instead of blocking the note", async () => {
+  const f = fixture(true, false, { audioSources: [] });
+  f.request.configKey = (await f.service.status()).configKey;
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "added");
+  assert.deepEqual(result.warnings, []);
+  assert.equal(f.calls.includes("hd_anki_audio"), false);
+  assert.equal(f.fields.Front, "猫");
+  assert.equal(f.fields.Audio, "");
 });
 
 function captureFixture({

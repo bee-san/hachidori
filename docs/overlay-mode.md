@@ -46,6 +46,10 @@ normal first-install preferences plus:
 - **Screenshot:** seeding the option off only keeps the Settings checkbox honest
   on a fresh profile. The worker reads `anki.captureScreenshot` as `false` in
   every overlay profile, so `{screenshot}` fields stay empty without a warning.
+- **Pronunciation:** no media capture host runs in an overlay, so browser
+  text-to-speech cannot be recorded. Mining skips text-to-speech audio sources.
+  With no downloadable source left,
+  `{audio}` fields stay empty without a warning; add one under Audio to fill them.
 
 Everything else behaves exactly as in Chrome. In particular, the page scan is
 layout-unaware like Yomitan's default: an overlay may box every glyph in its own
