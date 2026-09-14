@@ -85,12 +85,13 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
-function failedResponse(message, error) {
+function failedResponse(message, error, errorCode = null) {
   return boundResponseFailure({
     type: `${message?.type || "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
     ok: false,
     error,
+    ...(errorCode === null ? {} : { errorCode }),
   });
 }
 
@@ -119,7 +120,7 @@ function failEngine(error) {
   engineError = describe(error) || "the Hoshidicts engine stopped";
   console.error(`hoshidicts: engine failed: ${engineError}`);
   for (const [id, request] of pending) {
-    finishRequest(id, failedResponse(request.message, engineError));
+    finishRequest(id, failedResponse(request.message, engineError, "engine-start-failed"));
   }
 }
 
@@ -242,7 +243,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // first-run installer, so both see one engine queue.
 function dispatchEngine(message, sendResponse) {
   if (engineError !== null) {
-    sendResponse(failedResponse(message, engineError));
+    sendResponse(failedResponse(message, engineError, "engine-start-failed"));
     return;
   }
   if (message.type === "hd_status"
@@ -258,7 +259,7 @@ function dispatchEngine(message, sendResponse) {
   const activeMutation = pending.get(activeMutationRequestId)?.message;
   const cancelsBackup = message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
   if (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup) {
-    sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
+    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
     return;
   }
   // One serialized download release and one token-scoped backup cancellation
@@ -283,7 +284,7 @@ function dispatchEngine(message, sendResponse) {
     }
     worker.postMessage({ channel: "engine-request", id, message });
     return undefined;
-  }).catch((error) => finishRequest(id, failedResponse(message, describe(error))));
+  }).catch((error) => finishRequest(id, failedResponse(message, describe(error), "engine-start-failed")));
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

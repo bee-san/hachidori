@@ -1896,6 +1896,7 @@
     let toolbarPosition = options.toolbarPosition === "bottom" ? "bottom" : "top";
     let currentToolbar = null;
     let currentFeedback = null;
+    let currentLookupFailure = null;
     let customLinks = options.customLinks || [];
     let currentNoteControls = null;
     let renderRevision = 0;
@@ -2121,15 +2122,16 @@
     windowRef.addEventListener("resize", onWindowResize);
 
     function applyToolbarLayout() {
-      if (!currentToolbar) return;
+      if (!currentToolbar && !currentLookupFailure) return;
       const noteForm = currentNoteControls?.form ?? null;
       const bottom = toolbarPosition === "bottom";
       const controls = (bottom
-        ? [noteForm, currentFeedback, currentToolbar]
-        : [currentToolbar, currentFeedback, noteForm]).filter(Boolean);
+        ? [currentLookupFailure, noteForm, currentFeedback, currentToolbar]
+        : [currentToolbar, currentFeedback, noteForm, currentLookupFailure]).filter(Boolean);
+      const edge = controls[bottom ? controls.length - 1 : 0];
       const atEdge = controls.every((node, index) => !controls[index + 1]
         || node.nextElementSibling === controls[index + 1])
-        && (bottom ? popup.lastElementChild === currentToolbar : popup.firstElementChild === currentToolbar);
+        && (bottom ? popup.lastElementChild === edge : popup.firstElementChild === edge);
       if (atEdge) return;
       const focused = popup.getRootNode().activeElement;
       const children = [...popup.children];
@@ -2205,6 +2207,7 @@
       currentSourceHighlight = null;
       currentToolbar = null;
       currentFeedback = null;
+      currentLookupFailure = null;
       masonryObserver?.disconnect();
       const retainedForm = currentNoteControls?.form;
       // Keep the scroller mounted so a retained repaint does not discard its
@@ -2558,6 +2561,43 @@
       primaryHeader.className = "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";
       primaryHeader.appendChild(currentNoteControls.actions);
       mountResultChrome(createResultChrome(primaryHeader), notice);
+    }
+
+    function renderLookupFailure(state, { preserveView = false } = {}) {
+      currentLookupFailure?.remove();
+      currentLookupFailure = null;
+      if (!preserveView) clear();
+      const failure = documentRef.createElement("div");
+      failure.className = "gsm-hoshidicts-lookup-failure";
+      failure.dataset.kind = state.kind;
+      failure.setAttribute("role", "alert");
+      const copy = documentRef.createElement("div");
+      copy.className = "gsm-hoshidicts-lookup-failure-copy";
+      const title = documentRef.createElement("strong");
+      title.className = "gsm-hoshidicts-lookup-failure-title";
+      title.textContent = state.title;
+      const detail = documentRef.createElement("span");
+      detail.className = "gsm-hoshidicts-lookup-failure-detail";
+      detail.textContent = state.detail;
+      copy.append(title, detail);
+      failure.appendChild(copy);
+      if (typeof state.onAction === "function" && typeof state.actionLabel === "string") {
+        const action = documentRef.createElement("button");
+        action.type = "button";
+        action.className = "gsm-hoshidicts-lookup-failure-action gsm-hoshidicts-text-action-button";
+        action.textContent = state.actionLabel;
+        action.addEventListener("click", () => {
+          action.disabled = true;
+          Promise.resolve(state.onAction()).catch(() => {
+            if (action.isConnected) action.disabled = false;
+          });
+        });
+        failure.appendChild(action);
+      }
+      currentLookupFailure = failure;
+      popup.appendChild(failure);
+      applyToolbarLayout();
+      return failure;
     }
 
     function appendMetadata(
@@ -3811,6 +3851,7 @@
       closeNoteForm() {
         return currentNoteControls?.close() === true;
       },
+      renderLookupFailure,
       renderNotice,
       renderResults,
       renderKanji,
@@ -3839,6 +3880,7 @@
         currentResultPanel = null;
         captureTermView = null;
         pendingScrollRestoration = null;
+        currentLookupFailure = null;
         options.cancelMasonry?.(layoutMasonry);
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);
