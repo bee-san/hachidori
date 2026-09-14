@@ -4,6 +4,12 @@
 
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_SHARING_PORT = 8771;
+// Nearby discovery must not offer this installation's own host or replace a link.
+export function canDiscoverSharingHost(sharing) {
+  return sharing != null && sharing.client?.linked !== true
+    && !(sharing.enabled === true && sharing.connected === true);
+}
+
 const HOST_PATH = "/host";
 const LINK_PATH = "/link";
 

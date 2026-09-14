@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+export function applyPageTheme(document, options) {
+  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
+}
+
 export function reorderSettingsRows(container, ordered) {
   if (ordered.length === container.children.length && ordered.every((row, index) => container.children[index] === row)) return;
   const focused = ordered.find(row => row.contains(container.ownerDocument.activeElement));

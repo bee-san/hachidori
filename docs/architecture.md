@@ -187,9 +187,13 @@ Extension updates, browser starts and service-worker restarts only run
 `warmUp()`; they cannot reopen setup or reset preferences. Setup state is not
 part of a backup: it describes this installation's onboarding, not user data.
 
-`startup.html` links `settings.css` for its palette, typography, controls,
+`startup.html` links the shared `render/reader.css` palettes and `settings.css` for typography, controls,
 focus rings and reduced-motion rules, and adds only layout in `startup.css`. The
-page reads `setupState`, `dictionaryState` and `options` from storage, adopts
+same `applyPageTheme` helper used by Settings applies the saved popup theme on
+initial options load and each newer options revision. Before nearby Sharing
+discovery, startup checks the current Sharing status with Settings' shared
+eligibility rule: a hosting or already-linked installation never probes itself.
+The page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
 a **Dictionaries → Anki (optional) → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
