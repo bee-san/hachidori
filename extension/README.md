@@ -76,9 +76,10 @@ the service worker and both engine runtimes run the same code.
   `backup-settings.js` the controls.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
-  worker; `sharing-settings.js` is the Settings section. `anki-relay/` is the
-  Hachidori Relay add-on for Anki, in Python, and `anki-addon.js` packages it
-  into the `.ankiaddon` that Settings hands out.
+  worker; `sharing-settings.js` is the Settings section. `anki-addon.js` pins
+  and downloads the compatible `.ankiaddon` release from
+  [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
+  Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `keybind-settings.js`, `custom-link-settings.js` and `external-links.js`
   the keybinds and the custom links in the popup; `local-file-access.js` the
