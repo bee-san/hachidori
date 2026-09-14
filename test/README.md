@@ -677,8 +677,8 @@ These focused suites never contact an
 Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
-decision when both criteria are enabled, held autoplay, silent hover reveal
-and later tab bindings, first-count retention, stale replies, mapping changes,
+decision when both criteria are enabled, autoplay held until the hover reveal
+and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,
 lookup before initial options, and pending/completed evidence retained for Back
 across Anki mapping edits. Settings exercises the Off / Lookup count / Mature
 Anki cards / Either condition selector, its mapping to the existing booleans,
@@ -691,7 +691,8 @@ The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
 service-worker target (mining controls) and offscreen target (including its
 dedicated maturity refresh worker). It checks
 source persistence, a responsive cold-cache popup during a held refresh,
-cached mature results without repeated Anki calls, and silent hover reveal.
+cached mature results without repeated Anki calls, and pronunciation that
+waits for the hover reveal.
 Real alarm delivery verifies that a refresh changes new lookups while keeping
 the open popup intact; disable/re-enable refuses pending publication, and
 unavailable Anki retains the last successful snapshot. A real worker restart

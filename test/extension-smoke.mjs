@@ -11376,32 +11376,32 @@ async function contentNoteStage() {
       harness.popup.append(button);
       harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
         audioButtons: [{ button, result: harness.term("成熟") }], miningActions: [] });
-      outcomes["Anki maturity blurs without counts and preserves hover reveal and silent tab rebinds"] =
-        pending && blurred && harness.blurState() === "revealed" && plays() === 0;
+      outcomes["Anki maturity blurs without counts, plays the held result on hover reveal and never replays it on rebind"] =
+        pending && blurred && harness.blurState() === "revealed" && plays() === 1;
 
       harness.reply(await lookup("若い"), { mature: false });
       await harness.settle();
-      const young = harness.blurState() === "revealed" && plays() === 1;
+      const young = harness.blurState() === "revealed" && plays() === 2;
       harness.reply(await lookup("オフライン"), { error: "Anki unavailable" }, false);
       await harness.settle();
       outcomes["nonmature and unavailable Anki fail open and release autoplay once"] =
-        young && harness.blurState() === "revealed" && plays() === 2;
+        young && harness.blurState() === "revealed" && plays() === 3;
 
       const stale = await lookup("古い"), current = await lookup("現在");
       harness.reply(stale, { mature: true });
       await harness.settle();
-      const untouched = harness.blurState() === "pending" && plays() === 2;
+      const untouched = harness.blurState() === "pending" && plays() === 3;
       harness.reply(current, { mature: false });
       await harness.settle();
       outcomes["a retired lookup's Anki result cannot settle the current lookup's blur or autoplay"] =
-        untouched && harness.blurState() === "revealed" && plays() === 3;
+        untouched && harness.blurState() === "revealed" && plays() === 4;
 
       const changed = await lookup("設定");
       harness.emitOptions({ ...options, anki: { ...options.anki, model: "Other" } });
       harness.reply(changed, { mature: true });
       await harness.settle();
       outcomes["changing the Anki mapping releases a pending visit and rejects its late mature result"] =
-        harness.blurState() === "revealed" && plays() === 4;
+        harness.blurState() === "revealed" && plays() === 5;
 
       const combined = { ...options, showLookupCounts: true, definitionBlurEnabled: true, definitionBlurThreshold: 5 };
       harness.emitOptions(combined);
@@ -11410,7 +11410,7 @@ async function contentNoteStage() {
       harness.reply(count, { descriptor: { generation: "statistics", revision: 1 },
         statistics: { term: count.request.term, reading: count.request.reading, lookupCount: 5 } });
       await harness.settle();
-      const countWins = harness.blurState() === "blurred" && plays() === 4;
+      const countWins = harness.blurState() === "blurred" && plays() === 5;
       harness.reply(byCount, { mature: false });
       await harness.settle();
       const byAnki = await lookup("暗記");
@@ -11418,11 +11418,11 @@ async function contentNoteStage() {
       harness.reply(lowCount, { descriptor: { generation: "statistics", revision: 2 },
         statistics: { term: lowCount.request.term, reading: lowCount.request.reading, lookupCount: 1 } });
       await harness.settle();
-      const waiting = harness.blurState() === "pending" && plays() === 4;
+      const waiting = harness.blurState() === "pending" && plays() === 5;
       harness.reply(byAnki, { mature: true });
       await harness.settle();
       outcomes["either the first count or Anki maturity qualifies without waiting for the other signal"] =
-        countWins && waiting && harness.blurState() === "blurred" && plays() === 4;
+        countWins && waiting && harness.blurState() === "blurred" && plays() === 5;
 
       const firstCount = await lookup("最初");
       const firstCountRequest = harness.take("hd_lookup_stats_record");
@@ -11434,7 +11434,7 @@ async function contentNoteStage() {
       harness.reply(firstCount, { mature: false });
       await harness.settle();
       outcomes["waiting for Anki preserves the first count's autoplay decision despite later row events"] =
-        harness.blurState() === "revealed" && plays() === 5;
+        harness.blurState() === "revealed" && plays() === 6;
     } finally { harness.close(); }
 
     const early = await createHarness(null, { deferInitialStorage: true, options: { ...options,
@@ -11505,7 +11505,7 @@ async function contentNoteStage() {
         && harness.render().context.definitionBlurState === "pending";
       answer(first, 5);
       await harness.settle();
-      outcomes["a qualifying count blurs pending definitions and never auto-plays"] =
+      outcomes["a qualifying count blurs pending definitions and keeps autoplay held"] =
         held && harness.blurState() === "blurred" && plays() === 0;
       // A dictionary tab rebinds the first result under a new autoplay key.
       const retab = () => {
@@ -11520,36 +11520,36 @@ async function contentNoteStage() {
       harness.hoverDefinitions();
       harness.render().context.onDictionaryTabSelected(null);
       retab();
-      outcomes["a blurred lookup stays silent across dictionary tabs, even after a hover reveal"] =
-        blurredTabSilent && plays() === 0;
+      outcomes["a blurred lookup stays silent across dictionary tabs and a hover reveal plays the current tab once"] =
+        blurredTabSilent && plays() === 1;
       harness.hoverDefinitions();
       const revealed = harness.blurState() === "revealed";
       harness.emitLookupStats({ generation: "statistics", revision: 6 },
         { term: first.request.term, reading: first.request.reading, lookupCount: 6 });
-      outcomes["hovering definitions reveals and a later count never reblurs or plays"] =
-        revealed && harness.blurState() === "revealed" && plays() === 0;
+      outcomes["hovering definitions reveals and a later count never reblurs or plays again"] =
+        revealed && harness.blurState() === "revealed" && plays() === 1;
 
       const second = await lookup("一回");
-      const heldAgain = harness.blurState() === "pending" && plays() === 0;
+      const heldAgain = harness.blurState() === "pending" && plays() === 1;
       answer(second, 1);
       await harness.settle();
       outcomes["a non-qualifying count reveals and releases one held autoplay"] =
-        heldAgain && harness.blurState() === "revealed" && plays() === 1;
+        heldAgain && harness.blurState() === "revealed" && plays() === 2;
 
       const third = await lookup("失敗");
       harness.reply(third, { error: "lost committed reply" }, false);
       await harness.settle();
       outcomes["an unavailable count fails open and releases autoplay"] =
-        harness.blurState() === "revealed" && plays() === 2;
+        harness.blurState() === "revealed" && plays() === 3;
 
       harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3 });
       const fourth = await lookup("零回");
       answer(fourth, 0);
       await harness.settle();
-      const belowBlurred = harness.blurState() === "blurred" && plays() === 2;
+      const belowBlurred = harness.blurState() === "blurred" && plays() === 3;
       harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
-      outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
-        belowBlurred && harness.blurState() === "revealed" && plays() === 2;
+      outcomes["Below blurs a zero count and disabling blur reveals and plays the held result"] =
+        belowBlurred && harness.blurState() === "revealed" && plays() === 4;
 
       // A retained view replays the same request while its decision is pending:
       // retiring the level must not spend the held first visit.
@@ -11560,22 +11560,22 @@ async function contentNoteStage() {
       harness.popup.append(replayButton);
       harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
         audioButtons: [{ button: replayButton, result: harness.term("再生") }], miningActions: [] });
-      const replayHeld = plays() === 2;
+      const replayHeld = plays() === 4;
       answer(replayed, 1, 8);
       await harness.settle();
       outcomes["retiring a held view before its replay keeps the first visit for the decision"] =
-        replayHeld && harness.blurState() === "revealed" && plays() === 3;
+        replayHeld && harness.blurState() === "revealed" && plays() === 5;
 
       // A stale lookup's late count must not settle the current lookup's autoplay.
       const stale = await lookup("古い");
       const current = await lookup("現在");
       answer(stale, 9, 9);
       await harness.settle();
-      const currentStillPending = harness.blurState() === "pending" && plays() === 3;
+      const currentStillPending = harness.blurState() === "pending" && plays() === 5;
       answer(current, 1, 10);
       await harness.settle();
       outcomes["a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count"] =
-        currentStillPending && harness.blurState() === "revealed" && plays() === 4;
+        currentStillPending && harness.blurState() === "revealed" && plays() === 6;
     } finally { harness.close(); }
 
     const timed = await createHarness(undefined, { holdLookupStats: true,
