@@ -771,10 +771,11 @@ original decision when a snapshot changes, including visits retained for Back.
 Each request owns one blur decision and the original first-display deadline.
 Pending rules hide definitions immediately, and qualifying evidence can settle
 the combined decision without waiting for the other rule. Otherwise both
-enabled rules must finish before releasing the held first audio result.
-The first count snapshot controls that visit's autoplay; later statistics rows
-cannot reverse it. A qualifying visit suppresses every later autoplay bind,
-even after hover or timed reveal. Manual pronunciation remains available.
+enabled rules must finish before revealing. The first count snapshot controls
+that visit's blur; later statistics rows cannot reverse it. The first audio
+result stays held while definitions are pending or blurred, and the reveal,
+whether from the decision, hover, the deadline or disabling blur, releases it
+once. A manual play while blurred spends it.
 Navigating away cancels only the live timer; Back and persisted `pageshow`
 re-arm its remaining time. Revealed requests never reblur. Anki option changes
 invalidate pending and completed maturity evidence through an options epoch,
