@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:f
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ANKI_ADDON_FILES, ANKI_ADDON_FILE_NAME } from "../extension/anki-addon.js";
+import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_URL, ANKI_ADDON_VERSION } from "../extension/anki-addon.js";
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_TITLE } from "../extension/custom-dictionary.js";
 import { BlobReader, TextWriter, ZipReader } from "../extension/vendor/zip.js";
 import { startAnkiRelayServer } from "./anki-relay-server.mjs";
@@ -27,6 +27,8 @@ const CUSTOM_SOURCE = "共有語, きょうゆうご, saved through the link\n";
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 // Set to a directory to save the documentation screenshots from this real run.
 const SCREENSHOTS = process.env.HACHIDORI_SHARING_SCREENSHOTS || "";
+// Use a locally built archive for offline runs or coordinated add-on changes.
+const LOCAL_ADDON = process.env.HACHIDORI_ANKI_ADDON || "";
 
 function scratchPath(value, prefix) {
   const resolved = resolve(value);
@@ -76,7 +78,7 @@ const PUPPETEER = process.env.HACHIDORI_PUPPETEER || PUPPETEER_CANDIDATES.find(e
 const puppeteer = await import(`file://${PUPPETEER}`);
 
 const CHECKS = [
-  "the host's Sharing page saves the Anki add-on as a valid archive while Anki is not yet connected",
+  "the host's Sharing page saves the pinned Anki release as a valid archive while Anki is not yet connected",
   "the host imports the fixture and shares through Anki's relay on the chosen port",
   "the second browser's startup page offers the shared Hachidori, and one click links it and completes setup",
   "an options edit made on the linked browser is committed by the host and pushed back",
@@ -84,6 +86,7 @@ const CHECKS = [
   "closing the host fails linked lookups, and relaunching it reconnects the linked browser by itself",
   "unlinking restores the linked browser's own empty state",
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",
+  "a failed add-on download reports the error, saves no file, and enables retry",
   "overlapping Sharing actions from two Settings tabs preserve local personal entries, settings and dictionary files",
 ];
 const results = [];
@@ -217,31 +220,66 @@ async function enableSharing(page) {
   return connected;
 }
 
-// The add-on the Sharing page hands out, saved into the host profile.
+async function failAddonDownload(page, session, file) {
+  let paused = null;
+  session.once("Fetch.requestPaused", request => { paused = request; });
+  await session.send("Fetch.enable", { patterns: [{ urlPattern: ANKI_ADDON_URL, requestStage: "Request" }] });
+  await page.click("#sharing-addon-download");
+  const request = await until(() => paused, "the pinned add-on request", 10_000);
+  await page.waitForFunction(() => document.getElementById("sharing-addon-download").disabled
+    && document.getElementById("sharing-status").textContent === "Downloading the Anki add-on from GitHub…", { timeout: 10_000 });
+  await screenshot(page, "sharing-addon-downloading.png");
+  await session.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 503, body: "" });
+  await session.send("Fetch.disable");
+  await page.waitForFunction(() => document.getElementById("sharing-status").textContent.includes("HTTP 503"), { timeout: 10_000 });
+  const failed = await page.evaluate(() => ({
+    message: document.getElementById("sharing-status").textContent,
+    disabled: document.getElementById("sharing-addon-download").disabled,
+  }));
+  check(CHECKS[8], !existsSync(file) && !failed.disabled
+    && failed.message === "Could not download the add-on: GitHub returned HTTP 503. Try again.", JSON.stringify(failed));
+  await screenshot(page, "sharing-addon-error.png");
+}
+
+// Retry the failed download using the real pinned release (or the explicit local archive).
 async function downloadAddon(page) {
   const downloads = resolve(HOST_PROFILE, "downloads");
   mkdirSync(downloads, { recursive: true });
+  const file = resolve(downloads, ANKI_ADDON_FILE_NAME);
   const session = await page.createCDPSession();
-  await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloads, eventsEnabled: true });
-  await showSection(page, "sharing");
-  await page.waitForFunction(() => document.getElementById("sharing-addon")?.hidden === false && !document.getElementById("sharing-addon-download").disabled,
-    { timeout: 15_000, polling: 100 });
-  await page.bringToFront();
-  await page.click("#sharing-addon-download");
-  const bytes = await until(async () => {
-    const file = resolve(downloads, ANKI_ADDON_FILE_NAME);
-    if (!existsSync(file) || readdirSync(downloads).some((name) => name.endsWith(".crdownload"))) return null;
-    return readFileSync(file);
-  }, "the add-on download to finish", 30_000);
-  await page.waitForFunction(() => document.getElementById("sharing-status")?.textContent.startsWith("Saved hachidori-relay.ankiaddon"), { timeout: 10_000, polling: 100 });
-  const status = await statusText(page);
-  await session.detach();
-  const archive = new ZipReader(new BlobReader(new Blob([bytes])));
-  const entries = await archive.getEntries();
-  const manifestEntry = entries.find((entry) => entry.filename === "manifest.json");
-  const manifest = manifestEntry ? JSON.parse(await manifestEntry.getData(new TextWriter())) : null;
-  await archive.close();
-  return { size: bytes.length, files: entries.map((entry) => entry.filename), manifest, status };
+  try {
+    await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloads, eventsEnabled: true });
+    await showSection(page, "sharing");
+    await page.waitForFunction(() => document.getElementById("sharing-addon")?.hidden === false && !document.getElementById("sharing-addon-download").disabled,
+      { timeout: 15_000, polling: 100 });
+    await page.bringToFront();
+    await failAddonDownload(page, session, file);
+    if (LOCAL_ADDON) {
+      const body = readFileSync(LOCAL_ADDON).toString("base64");
+      session.once("Fetch.requestPaused", async request => {
+        await session.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200,
+          responseHeaders: [{ name: "Content-Type", value: "application/octet-stream" }], body });
+      });
+      await session.send("Fetch.enable", { patterns: [{ urlPattern: ANKI_ADDON_URL, requestStage: "Request" }] });
+    }
+    const requested = page.waitForRequest(request => request.url() === ANKI_ADDON_URL);
+    await page.click("#sharing-addon-download");
+    await requested;
+    const bytes = await until(async () => {
+      if (!existsSync(file) || readdirSync(downloads).some((name) => name.endsWith(".crdownload"))) return null;
+      return readFileSync(file);
+    }, "the add-on download to finish", 30_000);
+    await page.waitForFunction(() => document.getElementById("sharing-status")?.textContent.startsWith("Saved hachidori-relay.ankiaddon"), { timeout: 10_000, polling: 100 });
+    const status = await statusText(page);
+    const archive = new ZipReader(new BlobReader(new Blob([bytes])));
+    const entries = await archive.getEntries();
+    const manifestEntry = entries.find((entry) => entry.filename === "manifest.json");
+    const manifest = manifestEntry ? JSON.parse(await manifestEntry.getData(new TextWriter())) : null;
+    await archive.close();
+    return { file, size: bytes.length, files: entries.map((entry) => entry.filename), manifest, status };
+  } finally {
+    await session.detach();
+  }
 }
 
 async function screenshot(page, name, { section = "sharing", element = "sharing" } = {}) {
@@ -282,10 +320,7 @@ function report() {
 if (!existsSync(CHROME)) fatal(`Chrome not found; set HACHIDORI_CHROME (tried ${CHROME || "nothing"})`);
 if (!existsSync(FIXTURE)) fatal(`missing ${FIXTURE}; run node test/make-fixture.mjs first`);
 for (const path of [HOST_PROFILE, CLIENT_PROFILE]) rmSync(path, { recursive: true, force: true });
-const relay = await startAnkiRelayServer({ port: PORT, serverPath: process.env.HACHIDORI_RELAY_SERVER });
-console.log(`     relay listening on 127.0.0.1:${relay.port}`);
-const EXTENSION_VERSION = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8")).version;
-
+let relay = null;
 let hostBrowser = null;
 let clientBrowser = null;
 try {
@@ -298,10 +333,13 @@ try {
   // Until Anki carries the connection the page offers the add-on; the host is still trying the default port.
   const addon = await downloadAddon(hostPage);
   check(CHECKS[0],
-    addon.files.join(",") === ANKI_ADDON_FILES.join(",") && addon.manifest?.package === "hachidori-relay"
-      && addon.manifest.human_version === EXTENSION_VERSION && Number.isInteger(addon.manifest.mod) && addon.size > 1000
+    ["__init__.py", "server.py", "config.json"].every(name => addon.files.includes(name)) && addon.manifest?.package === "hachidori-relay"
+      && addon.manifest.human_version === ANKI_ADDON_VERSION && Number.isInteger(addon.manifest.mod) && addon.size > 1000
       && addon.status === "Saved hachidori-relay.ankiaddon to your downloads. Double-click it to install it in Anki, then restart Anki.",
     JSON.stringify(addon));
+
+  relay = await startAnkiRelayServer({ archive: addon.file, port: PORT, serverPath: process.env.HACHIDORI_RELAY_SERVER });
+  console.log(`     downloaded relay v${addon.manifest.human_version} listening on 127.0.0.1:${relay.port}`);
 
   const hostSharing = await enableSharing(hostPage);
   const hostState = await stored(hostPage, ["dictionaryState", "options"]);
@@ -536,7 +574,7 @@ try {
   await message(secondPage, "hachidori-sharing", "hd_sharing_client_unlink");
   const localAfter = await stored(clientPage, ["dictionaryState", "options", CUSTOM_DICTIONARY_SOURCE_KEY, "sharingLocalState"]);
   const personalLookup = await lookup(clientPage, "私語");
-  check(CHECKS[8],
+  check(CHECKS[9],
     localEdit?.ok && concurrentLinks.every(reply => reply?.ok) && concurrentUnlinks.every(reply => reply?.ok && !reply.sharing.client.linked)
       && keptLocal?.customDictionarySource?.text === localText && keptLocal.options?.scanLength === 11
       && localAfter.customDictionarySource?.text === localText && localAfter.options?.scanLength === 11
@@ -551,6 +589,6 @@ try {
 } finally {
   await hostBrowser?.close().catch(() => {});
   await clientBrowser?.close().catch(() => {});
-  await relay.close();
+  await relay?.close();
   report();
 }
