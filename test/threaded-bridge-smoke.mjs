@@ -182,8 +182,69 @@ for (const type of ["hd_backup_prepare", "hd_custom_save"]) {
   await Promise.all(saturated.map(entry => entry.promise));
 }
 
+const stagedImport = request("hd_import", "staged-import");
+await tick();
+const stagedImportMessage = engine.messages.at(-1);
+assert.equal(stagedImportMessage.message.type, "hd_import");
+const stagedStatus = await send("hd_status", "status-during-staging");
+assert.equal(stagedStatus.loading, true);
+assert.equal(stagedStatus.threaded, true);
+assert.equal(stagedStatus.storageBackend, "opfs");
+const stagedLookup = request("hd_lookup", "lookup-during-staging");
+await tick();
+const stagedLookupMessage = engine.messages.at(-1);
+assert.equal(stagedLookupMessage.message.type, "hd_lookup", "reads reach the engine while an import downloads");
+engine.emit("message", {
+  channel: "engine-response",
+  id: stagedLookupMessage.id,
+  response: { type: "hd_lookup_result", requestId: "lookup-during-staging", ok: true, results: [] },
+});
+assert.equal((await stagedLookup.promise).ok, true);
+assert.match((await send("hd_remove", "remove-during-staging")).error, /busy mutating/);
+engine.emit("message", {
+  channel: "engine-progress",
+  progress: {
+    requestId: "staged-import",
+    phase: "downloading",
+    receivedBytes: 4,
+    totalBytes: 8,
+  },
+});
+const secondStagedLookup = request("hd_lookup", "second-lookup-during-staging");
+await tick();
+const secondStagedLookupMessage = engine.messages.at(-1);
+assert.equal(secondStagedLookupMessage.message.type, "hd_lookup");
+engine.emit("message", {
+  channel: "engine-response",
+  id: secondStagedLookupMessage.id,
+  response: { type: "hd_lookup_result", requestId: "second-lookup-during-staging", ok: true, results: [] },
+});
+assert.equal((await secondStagedLookup.promise).ok, true);
+engine.emit("message", {
+  channel: "engine-progress",
+  id: 73,
+  progress: {
+    requestId: "staged-import",
+    phase: "installing",
+    receivedBytes: 8,
+    totalBytes: 8,
+  },
+});
+assert.deepEqual(engine.messages.at(-1), {
+  channel: "engine-progress-ack",
+  id: 73,
+  ok: true,
+  error: null,
+});
+assert.match((await send("hd_lookup", "lookup-during-install")).error, /busy mutating/);
+engine.emit("message", {
+  channel: "engine-response",
+  id: stagedImportMessage.id,
+  response: { type: "hd_import_result", requestId: "staged-import", ok: true },
+});
+assert.equal((await stagedImport.promise).ok, true);
+
 const mutationTypes = [
-  "hd_import",
   "hd_apply_state",
   "hd_reload",
   "hd_remove",
@@ -288,6 +349,7 @@ const localRequests = [];
 let configured = false;
 let started = false;
 let statusError = null;
+let localReportProgress = null;
 globalThis.bridgeFallbackFixture = {
   loading: serviceLoading.resolve,
   loaded: serviceLoad.promise,
@@ -296,6 +358,7 @@ globalThis.bridgeFallbackFixture = {
     assert.equal(typeof options.createHoshidicts, "function");
     assert.equal(options.storageBackend, "idbfs");
     assert.equal(options.lowRam, true);
+    localReportProgress = options.reportProgress;
     configured = true;
   },
   startEngine() {
@@ -367,6 +430,32 @@ try {
   const realStatus = await send("hd_status", "local-ready");
   assert.equal(realStatus.ready, true);
   assert.equal(realStatus.generation, 7);
+
+  const localImport = request("hd_import", "local-staged-import");
+  await tick();
+  assert.equal(localRequests[0].message.type, "hd_import");
+  const localStagedStatus = await send("hd_status", "local-staged-status");
+  assert.equal(localStagedStatus.loading, true);
+  const localStagedLookup = request("hd_lookup", "local-staged-lookup");
+  await tick();
+  assert.equal(localRequests[1].message.type, "hd_lookup");
+  localRequests[1].resolve({ type: "hd_lookup_result", requestId: "local-staged-lookup", ok: true });
+  localRequests.splice(1, 1);
+  assert.equal((await localStagedLookup.promise).ok, true);
+  assert.match((await send("hd_remove", "local-remove-during-staging")).error, /busy mutating/);
+  localReportProgress({
+    requestId: "local-staged-import",
+    phase: "installing",
+    receivedBytes: 8,
+    totalBytes: 8,
+  });
+  assert.match((await send("hd_lookup", "local-lookup-during-install")).error, /busy mutating/);
+  localRequests.shift().resolve({
+    type: "hd_import_result",
+    requestId: "local-staged-import",
+    ok: true,
+  });
+  assert.equal((await localImport.promise).ok, true);
 
   for (const fails of [false, true]) {
     statusError = fails ? "test reload failure" : null;
