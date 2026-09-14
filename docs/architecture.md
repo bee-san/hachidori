@@ -370,7 +370,10 @@ answered. `startup.js` takes the complete dependency order from the manifest's
 `reader-options.js`, which the startup module already loaded. This includes
 new reader dependencies such as the media-capture collector without maintaining
 a second static list. `content.css` comes with the page; no reader scripts load
-during the dictionary or Anki stages. Hover instructions follow
+during the dictionary or Anki stages. Script loading also waits for the reader's
+`HDReaderReady` promise: its initial dictionary/options snapshot must be adopted
+before the automatic selection, or that late snapshot could invalidate the
+example lookup immediately after it starts. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
 sentence and selects that word through the reader’s existing exact-selection
 route, so it also works from the keyboard. When the final step first becomes
