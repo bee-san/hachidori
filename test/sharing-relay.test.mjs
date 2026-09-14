@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { connect } from "node:net";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { startAnkiRelayServer } from "./anki-relay-server.mjs";
 
 const EXTENSION_ORIGIN = "chrome-extension://hachidorirelaytestextensionid";
@@ -107,7 +108,15 @@ async function connectClient(t, port, path, origin = EXTENSION_ORIGIN, host = "1
   return {
     status,
     closed,
+    pause() { socket.pause(); },
+    resume() { socket.resume(); },
     send(text) { socket.write(encodeClientFrame(0x1, Buffer.from(text, "utf8"))); },
+    async ping(text) {
+      socket.write(encodeClientFrame(0x9, Buffer.from(text, "utf8")));
+      let frame = await frames.next("a pong frame");
+      while (frame.opcode !== 0xA) frame = await frames.next("a pong frame");
+      assert.equal(frame.payload.toString("utf8"), text);
+    },
     async json(what = "a frame") {
       const frame = await frames.next(what);
       assert.equal(frame.opcode, 0x1, `expected a text frame, got opcode ${frame.opcode}`);
@@ -253,4 +262,89 @@ test("losing the host returns the relay to this computer", async (t) => {
   await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u);
   const next = await connectClient(t, port, "/host");
   assert.deepEqual(await next.json(), listening(port));
+});
+
+test("an idle accept timeout keeps the relay available for the next connection", async (t) => {
+  const relay = await server(t);
+  await delay(1250);
+  assert.equal(relay.exitCode, null, "the listener must survive its one-second accept timeout");
+  const host = await connectClient(t, relay.port, "/host");
+  assert.deepEqual(await host.json(), listening(relay.port));
+});
+
+// Larger than the TCP send/receive buffers while a peer is paused. These are
+// real sockets: no replacement send method can accidentally hide backpressure.
+const largeReply = () => "大きな".repeat(Math.ceil(16 * 1024 * 1024 / 9));
+function sendReply(host, clientId, reply) {
+  host.send(JSON.stringify({ kind: "send", clientId, text: JSON.stringify(reply) }));
+}
+
+test("a stalled peer leaves healthy requests and pings responsive, then receives large frames in order", { timeout: 20000 }, async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const slow = await connectClient(t, port, "/link");
+  const { clientId: slowId } = await untilKind(host, "client-open");
+  const healthy = await connectClient(t, port, "/link");
+  const { clientId: healthyId } = await untilKind(host, "client-open");
+  slow.pause();
+  const text = largeReply();
+  sendReply(host, slowId, { kind: "large", sequence: 1, text });
+  host.send(JSON.stringify({ kind: "broadcast", text: JSON.stringify({ kind: "marker", sequence: 2 }) }));
+  assert.equal((await untilKind(healthy, "marker")).sequence, 2, "the host can broadcast past a stalled send");
+  healthy.send("healthy lookup");
+  const request = await untilKind(host, "client-text");
+  assert.equal(request.clientId, healthyId);
+  assert.equal(request.text, "healthy lookup");
+  sendReply(host, healthyId, { kind: "reply", text: "healthy result" });
+  assert.equal((await untilKind(healthy, "reply")).text, "healthy result");
+  await healthy.ping("healthy control ping");
+  assert.deepEqual(await untilKind(healthy, "ping"), { kind: "ping" });
+  sendReply(host, slowId, { kind: "large", sequence: 3, text });
+  slow.resume();
+  const first = await untilKind(slow, "large");
+  assert.equal(first.sequence, 1);
+  assert.ok(first.text === text, "the first large UTF-8 frame arrives intact");
+  assert.equal((await untilKind(slow, "marker")).sequence, 2);
+  const last = await untilKind(slow, "large");
+  assert.equal(last.sequence, 3);
+  assert.ok(last.text === text, "the queued large UTF-8 frame arrives intact after the broadcast");
+});
+
+test("network disable and host loss interrupt stalled sends and release their connections", { timeout: 20000 }, async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  const remote = await connectClient(t, port, "/link", EXTENSION_ORIGIN, address);
+  const { clientId: remoteId } = await untilKind(host, "client-open");
+  const healthy = await connectClient(t, port, "/link");
+  await untilKind(host, "client-open");
+  remote.pause();
+  const text = largeReply();
+  sendReply(host, remoteId, { kind: "large", text });
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  assert.equal((await untilKind(host, "network")).enabled, false);
+  assert.equal((await untilKind(host, "client-close")).clientId, remoteId);
+  remote.resume();
+  await remote.closed;
+  healthy.send("still local");
+  assert.equal((await untilKind(host, "client-text")).text, "still local");
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u);
+
+  const slow = await connectClient(t, port, "/link");
+  const { clientId: slowId } = await untilKind(host, "client-open");
+  slow.pause();
+  sendReply(host, slowId, { kind: "large", text });
+  // An acknowledgement after the large frame proves the host processed it.
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  await untilKind(host, "network");
+  host.destroy();
+  await healthy.closeFrame();
+  await healthy.closed;
+  slow.resume();
+  await slow.closed;
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port), "host loss releases the host slot too");
 });
