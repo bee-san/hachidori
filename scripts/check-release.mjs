@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
-const MANIFEST_VERSION = /^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)){0,3}$/u;
+const MANIFEST_VERSION_COMPONENT = /^(0|[1-9]\d*)$/u;
+const MAX_MANIFEST_VERSION_COMPONENT = 65_535;
 
 function fail(message) {
   throw new Error(message);
@@ -18,7 +19,11 @@ function fail(message) {
 export function chromeVersion(value, label) {
   const match = CHROME_VERSION.exec(value);
   if (match === null) fail(`${label} must be an exact four-part Chrome version`);
-  return match.slice(1).map(Number);
+  const components = match.slice(1).map(Number);
+  if (!components.every(Number.isSafeInteger)) {
+    fail(`${label} contains a version component that is too large`);
+  }
+  return components;
 }
 
 export function compareVersions(left, right) {
@@ -30,7 +35,11 @@ export function compareVersions(left, right) {
 }
 
 export function validateReleaseContract(manifest, tooling, tag = null) {
-  if (!MANIFEST_VERSION.test(manifest?.version ?? "")) {
+  const versionComponents = String(manifest?.version ?? "").split(".");
+  if (versionComponents.length < 1 || versionComponents.length > 4
+      || !versionComponents.every((component) =>
+        MANIFEST_VERSION_COMPONENT.test(component)
+          && Number(component) <= MAX_MANIFEST_VERSION_COMPONENT)) {
     fail("manifest.version is not a Chrome-compatible release version");
   }
   if (!/^(0|[1-9]\d*)$/u.test(manifest?.minimum_chrome_version ?? "")) {
@@ -61,12 +70,11 @@ function readJson(path) {
 }
 
 function commandLineTag(arguments_) {
-  const index = arguments_.indexOf("--tag");
-  if (index < 0) return null;
-  if (index + 1 >= arguments_.length || arguments_[index + 1] === "") {
-    fail("--tag requires a value");
+  if (arguments_.length === 0) return null;
+  if (arguments_.length !== 2 || arguments_[0] !== "--tag" || arguments_[1] === "") {
+    fail("usage: node scripts/check-release.mjs [--tag v<manifest.version>]");
   }
-  return arguments_[index + 1];
+  return arguments_[1];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

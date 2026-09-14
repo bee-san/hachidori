@@ -13,7 +13,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(t, { exportAvailable = true } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"));
   const { window } = dom;
-  const sent = [], statuses = [], revoked = [];
+  const sent = [], statuses = [], revoked = [], tracked = [], cancelled = [];
   let blocked = false, downloads = 0;
   window.URL.createObjectURL = () => "blob:selected-backup";
   window.URL.revokeObjectURL = url => revoked.push(url);
@@ -23,6 +23,8 @@ function fixture(t, { exportAvailable = true } = {}) {
     send: (type, fields) => new Promise(resolve => sent.push({ type, ...fields, resolve })),
     download: async () => { downloads += 1; return { ok: true, downloadId: 7 }; },
     exportAvailable,
+    trackPreparation: (token, active) => tracked.push({ token, active }),
+    cancelPreparation: token => cancelled.push(token),
     checkReady() { if (blocked) throw new Error("Save your changes first"); },
     setBusy() {}, status: (...args) => statuses.push(args),
     refresh: async () => { throw new Error("refresh failed after commit"); },
@@ -40,7 +42,7 @@ function fixture(t, { exportAvailable = true } = {}) {
       dictionaries: [{ title: "<b>private dictionary</b>", enabled: false }], customEntryCount: 2 });
     await tick();
   }
-  return { el, window, sent, statuses, revoked, prepare, block() { blocked = true; },
+  return { el, window, sent, statuses, revoked, tracked, cancelled, prepare, block() { blocked = true; },
     get downloads() { return downloads; } };
 }
 
@@ -59,6 +61,10 @@ test("backup Settings previews safe text and requires explicit confirmation for 
   f.el("backup-restore").click();
   assert.equal(f.sent.length, 2);
   assert.equal(f.sent[1].token, "prepared-token");
+  assert.deepEqual(f.tracked, [
+    { token: "prepared-token", active: true },
+    { token: "prepared-token", active: false },
+  ]);
   f.sent[1].resolve({ ok: true, restored: true });
   await tick();
   assert.equal(f.el("backup-preview").hidden, true);
@@ -74,6 +80,7 @@ test("cancelling a prepared restore remains possible with unrelated unsaved edit
   assert.equal(f.sent.at(-1).type, "hd_backup_cancel");
   f.sent.at(-1).resolve({ ok: true });
   await tick();
+  assert.deepEqual(f.tracked.at(-1), { token: "prepared-token", active: false });
   assert.equal(f.el("backup-preview").hidden, true);
   assert.match(f.statuses.at(-1)[0], /not changed/u);
 });
@@ -91,8 +98,10 @@ test("leaving Settings cancels late preparation and does not revive a preview on
     else { await f.prepare(); leave(); }
     assert.equal(f.sent.at(-1).type, "hd_backup_cancel");
     assert.equal(f.sent.at(-1).token, "prepared-token");
+    assert.equal(f.cancelled.at(-1), "prepared-token");
     f.sent.at(-1).resolve({ ok: true });
     await tick();
+    assert.deepEqual(f.tracked.at(-1), { token: "prepared-token", active: false });
     assert.equal(f.el("backup-preview").hidden, true);
     assert.equal(f.el("backup-restore").disabled, true);
     assert.equal(f.el("backup-confirm").checked, false);

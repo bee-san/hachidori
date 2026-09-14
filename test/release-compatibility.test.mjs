@@ -47,6 +47,14 @@ test("release validation rejects browser drift and a tag that does not match the
     () => validateReleaseContract(manifest, tooling, "v9.9.9"),
     /must be v0\.1\.0/u,
   );
+  assert.throws(
+    () => validateReleaseContract({ ...manifest, version: "0.65536.0" }, tooling),
+    /not a Chrome-compatible release version/u,
+  );
+  assert.throws(
+    () => validateReleaseContract({ ...manifest, version: "0.01.0" }, tooling),
+    /not a Chrome-compatible release version/u,
+  );
 });
 
 test("CI checks both supported-browser edges and packages every release candidate", () => {
@@ -63,11 +71,15 @@ test("tag and manual release runs verify and publish the checksummed package pai
   const workflow = read(".github/workflows/release.yml");
   assert.match(workflow, /tags: \['v\*'\]/u);
   assert.match(workflow, /workflow_dispatch:/u);
+  assert.match(workflow, /permissions:\n  contents: read/u);
   assert.match(workflow, /node scripts\/check-release\.mjs --tag/u);
+  assert.match(workflow, /git merge-base --is-ancestor/u);
   assert.match(workflow, /python3 scripts\/package-store\.py/u);
   assert.match(workflow, /sha256sum -c/u);
+  assert.match(workflow, /publish:[\s\S]*needs: package[\s\S]*permissions:\n      contents: write/u);
   assert.match(workflow, /gh release create/u);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
+  assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
 });
 
 test("public compatibility copy agrees with the tested manifest minimum", () => {

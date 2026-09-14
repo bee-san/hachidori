@@ -132,12 +132,25 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const leaving = await browser.newPage();
   const workerTarget = await browser.waitForTarget(target => target.type() === "service_worker"
     && target.url().startsWith(`chrome-extension://${new URL(page.url()).host}/`));
-  const worker = await workerTarget.worker();
+  const workerSession = await workerTarget.createCDPSession();
+  await workerSession.send("Runtime.enable");
+  const workerEvaluate = async pageFunction => {
+    const { result, exceptionDetails } = await workerSession.send("Runtime.evaluate", {
+      expression: `(${pageFunction.toString()})()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    if (exceptionDetails !== undefined) {
+      throw new Error(exceptionDetails.exception?.description
+        ?? exceptionDetails.text ?? "backup service-worker evaluation failed");
+    }
+    return result.value;
+  };
   try {
     await leaving.goto(page.url());
     await leaving.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready")
       && !document.getElementById("backup-export").disabled);
-    await worker.evaluate(() => {
+    await workerEvaluate(() => {
       const original = chrome.storage.local.get.bind(chrome.storage.local);
       let reached;
       globalThis.backupStagingReached = new Promise(resolve => { reached = resolve; });
@@ -156,12 +169,12 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     await (await leaving.$("#backup-file")).uploadFile(downloaded.filename);
     // Preparation has written/validated fresh files and is restoring the live
     // loaded set, but Settings does not yet know the engine's reply.
-    await worker.evaluate(() => globalThis.backupStagingReached);
+    await workerEvaluate(() => globalThis.backupStagingReached);
     leaving.on("dialog", dialog => dialog.accept());
     const closed = new Promise(resolve => leaving.once("close", resolve));
     await leaving.close({ runBeforeUnload: true });
     await closed;
-    await worker.evaluate(() => globalThis.releaseBackupStaging());
+    await workerEvaluate(() => globalThis.releaseBackupStaging());
     await page.waitForFunction(async () => {
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
       return reply.ok && reply.ready && !reply.loading;
@@ -174,14 +187,27 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
       await new Promise(resolve => setTimeout(resolve, 25));
       closingRoots = await roots();
     }
+    const closingSnapshot = await read();
+    const closingStatus = await status();
     check(BACKUP_CHROME_CHECKS[4], JSON.stringify(closingRoots) === JSON.stringify(stableRoots)
-      && JSON.stringify(await read()) === JSON.stringify(restored) && (await status()).generation === stableGeneration);
+      && JSON.stringify(closingSnapshot) === JSON.stringify(restored) && closingStatus.generation === stableGeneration,
+    JSON.stringify({
+      stableRoots,
+      closingRoots,
+      snapshotMatches: JSON.stringify(closingSnapshot) === JSON.stringify(restored),
+      stableGeneration,
+      closingGeneration: closingStatus.generation,
+    }));
   } finally {
-    await worker.evaluate(() => {
-      globalThis.releaseBackupStaging?.();
-      delete globalThis.releaseBackupStaging;
-      delete globalThis.backupStagingReached;
-    });
+    try {
+      await workerEvaluate(() => {
+        globalThis.releaseBackupStaging?.();
+        delete globalThis.releaseBackupStaging;
+        delete globalThis.backupStagingReached;
+      });
+    } finally {
+      await workerSession.detach().catch(() => {});
+    }
     if (!leaving.isClosed()) await leaving.close();
   }
   await cdp.send("Browser.setDownloadBehavior", { behavior: "default" });

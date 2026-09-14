@@ -531,6 +531,89 @@ function waitForRunningServiceWorker(session, scriptUrl, timeout = 30_000) {
   });
 }
 
+async function activeExtensionWorker(browser, page, label, timeout = 10_000) {
+  const scriptUrl = await page.evaluate(() => chrome.runtime.getURL("background.js"));
+  const serviceWorkerCdp = await page.createCDPSession();
+  try {
+    await serviceWorkerCdp.send("ServiceWorker.enable");
+    await serviceWorkerCdp.send("ServiceWorker.startWorker", {
+      scopeURL: new URL(".", scriptUrl).href,
+    });
+  } finally {
+    await serviceWorkerCdp.detach();
+  }
+  await page.evaluate(() => {
+    void chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_read",
+      requestId: "e2e-wake-service-worker",
+    }).catch(() => {});
+  });
+  const deadline = Date.now() + timeout;
+  const bounded = async (promise, milliseconds) => {
+    let timer;
+    try {
+      return await Promise.race([
+        promise.catch(() => null),
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve(null), milliseconds);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  while (Date.now() < deadline) {
+    const targets = browser.targets().filter(
+      (candidate) => candidate.type() === "service_worker" && candidate.url() === scriptUrl,
+    ).reverse();
+    for (const target of targets) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const session = await bounded(target.createCDPSession(), Math.min(1_000, remaining));
+      if (session === null) continue;
+      const responsive = await bounded((async () => {
+        await session.send("Runtime.enable");
+        const { result, exceptionDetails } = await session.send("Runtime.evaluate", {
+          expression: "true",
+          awaitPromise: true,
+          returnByValue: true,
+        });
+        return exceptionDetails === undefined && result.value === true;
+      })(), Math.min(1_000, deadline - Date.now()));
+      if (responsive !== true) {
+        await session.detach().catch(() => {});
+        continue;
+      }
+      return {
+        async evaluate(pageFunction, ...args) {
+          const serializedArgs = args.map((argument) => {
+            if (argument === undefined) return "undefined";
+            const value = JSON.stringify(argument);
+            if (value === undefined) throw new Error(`${label} could not serialize an evaluation argument`);
+            return value;
+          }).join(",");
+          const { result, exceptionDetails } = await session.send("Runtime.evaluate", {
+            expression: `(${pageFunction.toString()})(${serializedArgs})`,
+            awaitPromise: true,
+            returnByValue: true,
+          });
+          if (exceptionDetails !== undefined) {
+            throw new Error(exceptionDetails.exception?.description
+              ?? exceptionDetails.text ?? `${label} service-worker evaluation failed`);
+          }
+          return result.value;
+        },
+        detach() {
+          return session.detach().catch(() => {});
+        },
+      };
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  throw new Error(`${label} service-worker target did not become active`);
+}
+
 async function listOpfsPaths(page) {
   return page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -1599,8 +1682,7 @@ async function checkExternalLinks(browser, settings, tab, popup) {
   const fixture = externalLinksFixture(destinationUrl);
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
   await installMediaArchive(settings, fixture.archive);
-  const worker = await (await browser.waitForTarget(target => target.type() === "service_worker"
-    && target.url().startsWith("chrome-extension://"))).worker();
+  const worker = await activeExtensionWorker(browser, settings, "external links");
   await worker.evaluate(() => {
     const probe = { requests: [], creates: [], pending: [], create: chrome.tabs.create };
     probe.listener = message => {
@@ -1655,12 +1737,16 @@ async function checkExternalLinks(browser, settings, tab, popup) {
       const page = await target.page();
       if (page && !page.isClosed()) await page.close();
     }
-    await worker.evaluate(() => {
-      const probe = globalThis.__externalLinksProbe;
-      chrome.tabs.create = probe.create;
-      chrome.runtime.onMessage.removeListener(probe.listener);
-      delete globalThis.__externalLinksProbe;
-    });
+    try {
+      await worker.evaluate(() => {
+        const probe = globalThis.__externalLinksProbe;
+        chrome.tabs.create = probe.create;
+        chrome.runtime.onMessage.removeListener(probe.listener);
+        delete globalThis.__externalLinksProbe;
+      });
+    } finally {
+      await worker.detach?.();
+    }
     const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen", type: "hd_remove", title,
     }), fixture.title);
@@ -1819,7 +1905,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     }));
     require(childExpected.length > 1 && childExpected[0].expression === fixture.child
       && childExpected.some(entry => entry.dictionaries.includes(GENERIC_KANJI_TITLE)), "E8 genuine child prefix input");
-    worker = await installMediaReplyProbe(browser);
+    worker = await installMediaReplyProbe(browser, settings);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
     await tab.setViewport({ width: 1880, height: 960 });
     await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
@@ -2209,7 +2295,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       require(await settings.$eval(`#${id}`, control => control.disabled), `E10 ${id} did not disable after blur`);
       await editSettingsControls(settings, { "opt-compact-summary": true });
     }
-    worker = await installMediaReplyProbe(browser);
+    worker = await installMediaReplyProbe(browser, settings);
     await show(fixture.query);
     await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E10 shared held image");
     const initial = await summaries();
@@ -2351,9 +2437,9 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = true; });
     await write({ popupImageSource: { kind: "dictionary", title: fixture.plain } });
     await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E11 focused alternate image");
-    const focusedPending = await popup.imagePreview(1);
-    require(focusedPending.focusedImage === 1 && focusedPending.preview === null,
-      "E11 changing the image URL lost keyboard focus or retained stale preview bytes");
+    const focusedPending = await until(() => popup.imagePreview(1),
+      value => value.focusedImage === 1 && value.preview === null,
+      "E11 changing the image URL preserves focus and clears stale preview bytes");
     await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.held.splice(0)) release(); });
     const focusedLoaded = await until(() => popup.imagePreview(1), value => value.focusedImage === 1
       && value.preview?.width === 16, "E11 focused alternate preview resumes");
@@ -2718,7 +2804,7 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
         ? { ...dictionary, favorite: true } : dictionary) });
   }, fixture.title);
   if (!favorite.ok) throw new Error(favorite.error);
-  const worker = await installMediaReplyProbe(browser);
+  const worker = await installMediaReplyProbe(browser, settings);
   const evidence = [];
   const hold = () => worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
   const waitHeld = () => worker.evaluate(async () => {
@@ -2795,10 +2881,8 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
   }
 }
 
-async function installMediaReplyProbe(browser) {
-  const workerTarget = await browser.waitForTarget((target) => target.type() === "service_worker"
-    && target.url().startsWith("chrome-extension://"));
-  const worker = await workerTarget.worker();
+async function installMediaReplyProbe(browser, page) {
+  const worker = await activeExtensionWorker(browser, page, "media reply probe");
   // Let the real offscreen/WASM operation finish, then delay only delivery of
   // its reply. Other messages and the mutation queue remain production paths.
   await worker.evaluate(() => {
@@ -2839,13 +2923,17 @@ async function installMediaReplyProbe(browser) {
 }
 
 async function restoreMediaReplyProbe(worker) {
-  await worker.evaluate(() => {
-    const probe = globalThis.__ownedMediaProbe;
-    chrome.runtime.sendMessage = probe.original;
-    for (const release of probe.held) release();
-    for (const release of probe.heldLookups) release();
-    delete globalThis.__ownedMediaProbe;
-  });
+  try {
+    await worker.evaluate(() => {
+      const probe = globalThis.__ownedMediaProbe;
+      chrome.runtime.sendMessage = probe.original;
+      for (const release of probe.held) release();
+      for (const release of probe.heldLookups) release();
+      delete globalThis.__ownedMediaProbe;
+    });
+  } finally {
+    await worker.detach?.();
+  }
 }
 
 async function mediaOwnershipChrome({ browser, page, tab, popup }) {
@@ -2860,7 +2948,7 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
     }], 1, ""],
   ], mediaEntries: [["media/owned.png", bytes]] });
   const install = (bytes) => installMediaArchive(page, archive(bytes));
-  const worker = await installMediaReplyProbe(browser);
+  const worker = await installMediaReplyProbe(browser, page);
   async function waitForImage(predicate) {
     const deadline = Date.now() + 10_000;
     do {
@@ -2937,7 +3025,7 @@ async function boundedMediaChrome({ browser, page, tab, popup }) {
     mediaEntries: paths.map((path) => [path, png]),
   });
   await installMediaArchive(page, archive);
-  const worker = await installMediaReplyProbe(browser);
+  const worker = await installMediaReplyProbe(browser, page);
   try {
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdAll = true; });
     await tab.evaluate(() => { document.getElementById("verb").textContent = "並列画像"; });
@@ -2996,7 +3084,7 @@ async function boundedMediaChrome({ browser, page, tab, popup }) {
 async function imagePreviewChrome({ browser, page, tab, popup }) {
   const fixture = imagePreviewFixture();
   await installMediaArchive(page, fixture.archive);
-  const worker = await installMediaReplyProbe(browser);
+  const worker = await installMediaReplyProbe(browser, page);
   const expected = [...fixture.images, fixture.images[1]];
   async function waitForPreview(predicate, index = 0) {
     const deadline = Date.now() + 6000;
@@ -4427,7 +4515,12 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   }
   await startup.keyboard.press("Escape");
   const automaticEscaped = await popup.waitForHidden();
-  await startup.evaluate(() => getSelection().removeAllRanges());
+  await startup.evaluate(() => new Promise(resolveSelection => {
+    document.addEventListener("selectionchange", () => {
+      requestAnimationFrame(resolveSelection);
+    }, { once: true });
+    getSelection().removeAllRanges();
+  }));
   // The visible control remains keyboard-operable after the automatic example.
   let keyboardReached = false;
   for (let attempt = 0; attempt < 15; attempt += 1) {
@@ -6089,7 +6182,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await settings.waitForFunction((titles) => titles.every((title) =>
       [...document.getElementById("opt-frequency-dictionary").options].some((option) => option.value === title)),
     { timeout: 10_000 }, installed);
-    worker = await installMediaReplyProbe(browser);
+    worker = await installMediaReplyProbe(browser, settings);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
     await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
     await editSettingsControls(settings, { "opt-max-results": "1" });
@@ -6204,7 +6297,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     }
     await editSettingsControls(settings, { "opt-popup-width": "560", "opt-popup-toolbar": "top" });
     await expectState(value => value.rect.width === 560 && value.toolbar === "top");
-    worker = await installMediaReplyProbe(browser);
+    worker = await installMediaReplyProbe(browser, settings);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
     await popup.click(".gsm-hoshidicts-note-button");
     await popup.writeNote({ definition: "Keep the metadata draft" });
@@ -6350,7 +6443,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-hover-delay",
   ]);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
-  const worker = await installMediaReplyProbe(browser);
+  const worker = await installMediaReplyProbe(browser, settings);
   await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
   const lookups = () => worker.evaluate(() => globalThis.__ownedMediaProbe.lookups);
   const pause = () => tab.evaluate(() => new Promise((done) => setTimeout(done, 200)));
