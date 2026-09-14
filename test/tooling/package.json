@@ -22,7 +22,7 @@
     "install:chrome": "node ../run.mjs install-chrome"
   },
   "devDependencies": {
-    "@puppeteer/browsers": "3.2.1",
+    "@puppeteer/browsers": "3.2.2",
     "jsdom": "30.0.1",
     "puppeteer-core": "25.9.0"
   }
