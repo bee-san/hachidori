@@ -13,10 +13,10 @@ import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
+import { applyPageTheme, setStatusOutput } from "./settings-dom.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
-import { setStatusOutput } from "./settings-dom.js";
 import {
   createDictionaryProgressList,
   installEntryState,
@@ -1412,10 +1412,6 @@ function renderThemeChoices() {
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
-function applySettingsTheme() {
-  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
-}
-
 function renderCustomCss(force = false) {
   const editor = element("opt-custom-popup-css");
   if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
@@ -1425,7 +1421,7 @@ function renderCustomCss(force = false) {
 }
 
 function renderOptions() {
-  applySettingsTheme();
+  applyPageTheme(document, options);
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     if (input !== document.activeElement) {
@@ -2938,7 +2934,7 @@ function setOptionsStatus(message, completed = false) {
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
-  applySettingsTheme();
+  applyPageTheme(document, options);
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

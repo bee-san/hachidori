@@ -25,6 +25,7 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
+import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
 import { lookupAnkiIndex } from "../extension/anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
@@ -2960,6 +2961,7 @@ function loadSettingsScript(window, { recommendedInstall = async () => ({ ok: tr
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
@@ -7003,6 +7005,8 @@ async function settingsNavigationStage() {
 }
 
 function loadStartupScript(window) {
+  window.canDiscoverSharingHost = canDiscoverSharingHost;
+  window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, ""));
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
@@ -7022,6 +7026,7 @@ function loadStartupScript(window) {
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
+    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol)\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
@@ -7364,7 +7369,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { probe = null, link = null, setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
+function startupCase(jsdom, { sharing = { enabled: true, connected: false, client: { linked: false } }, probe = null, link = null, setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -7392,6 +7397,7 @@ function startupCase(jsdom, { probe = null, link = null, setup, dictionaries = [
             ...(status === null ? {} : status(message)) };
         }
         // The welcome page looks around this computer once; nothing answers unless the case says so.
+        if (message.type === "hd_sharing_status") return { ok: true, sharing };
         if (message.type === "hd_sharing_client_probe") {
           return probe === null
             ? { type: "hd_sharing_client_probe_result", requestId: message.requestId, ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }
@@ -7421,6 +7427,10 @@ function startupCase(jsdom, { probe = null, link = null, setup, dictionaries = [
     record(setupState) {
       stored.setup = setupState;
       storageListener({ setupState: { newValue: structuredClone(setupState) } }, "local");
+    },
+    preferences(value) {
+      stored.options = value;
+      storageListener({ options: { newValue: structuredClone(value) } }, "local");
     },
     // A dictionary-state write the page learns about through a storage event.
     library(next) {
@@ -7531,14 +7541,23 @@ async function startupWelcomeStage() {
   const accepted = { ...setup, stage: "dictionaries", revision: 2 };
   const reply = () => ({ runId: "accepted-run", sequence: 1, finished: false, entries: [] });
   let saveReply;
-  const page = startupCase(jsdom, { setup, reply, cas: () => new Promise((done) => { saveReply = done; }) });
+  const page = startupCase(jsdom, { setup, reply, options: { revision: 2, popupTheme: "dracula" },
+    cas: () => new Promise((done) => { saveReply = done; }) });
   let resumed;
   let manual;
   let offered;
   try {
     await page.load();
+    const themeRoot = page.document.documentElement;
+    const initialTheme = themeRoot.dataset.hoshidictsTheme === "dracula"
+      && page.document.querySelector('link[href="render/reader.css"]') !== null;
+    page.document.getElementById("setup-start").focus();
+    page.preferences({ revision: 3, popupTheme: "light" });
+    page.preferences({ revision: 2, popupTheme: "dark" });
+    const themed = initialTheme && themeRoot.dataset.hoshidictsTheme === "light"
+      && page.document.activeElement?.id === "setup-start" && page.saves().length === 0;
     const introduction = page.document.getElementById("setup-body").textContent;
-    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().join(",") === "hd_sharing_client_probe"
+    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().join(",") === "hd_sharing_status,hd_sharing_client_probe"
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0
       && introduction === "Click Start Setup to automatically set up Hachidori"
@@ -7594,7 +7613,17 @@ async function startupWelcomeStage() {
     await offered.until(() => offered.heading() === "Setup is complete.", "the linked setup to complete");
     const used = offerShown && linkRequest?.target === "hachidori-sharing" && linkRequest.address === "ws://127.0.0.1:8771/link"
       && offered.saves().length === 1 && offered.saves()[0].stage === "complete" && offered.installs().length === 0;
-    return { quiet, refused, started, resumes, skipped, offered: used };
+    const discoverySkipped = [];
+    for (const sharing of [{ enabled: true, connected: true, client: { linked: false } },
+      { enabled: false, connected: false, client: { linked: true } }]) {
+      const existing = startupCase(jsdom, { setup, reply, sharing });
+      try {
+        await existing.load();
+        discoverySkipped.push(existing.requestTypes().join(",") === "hd_sharing_status"
+          && !existing.actionIds().includes("setup-use-shared"));
+      } finally { existing.window.close(); }
+    }
+    return { quiet, refused, started, resumes, skipped, offered: used, themed, discoverySkipped: discoverySkipped.every(Boolean) };
   } finally {
     page.window.close();
     resumed?.window.close();

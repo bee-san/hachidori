@@ -31,7 +31,7 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   window.eval(extension("dictionary-group-state.js"));
   for (const [file, exports] of [
     ["recommended-install-client.js", ["createRecommendedInstallClient"]],
-    ["settings-dom.js", ["setStatusOutput"]],
+    ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
   ]) {

@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+export function applyPageTheme(document, options) {
+  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
+}
+
 const STATUS_CLASSES = {
   working: "is-working",
   ready: "is-ready",

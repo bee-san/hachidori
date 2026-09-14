@@ -18,6 +18,8 @@ import {
   formatSeconds,
 } from "./dictionary-progress.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
+import { applyPageTheme } from "./settings-dom.js";
+import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
@@ -133,6 +135,7 @@ function adoptOptions(value) {
   if (revision <= optionsRevision) return false;
   optionsRevision = revision;
   options = normaliseOptions(value);
+  applyPageTheme(document, options);
   return true;
 }
 
@@ -806,8 +809,10 @@ function practiceView() {
 // late answer re-renders it with the offer.
 async function findSharedHachidori() {
   try {
+    const status = await send("hd_sharing_status", {}, SHARING_TARGET);
+    if (!status.ok || !canDiscoverSharingHost(status.sharing)) return;
     const reply = await send("hd_sharing_client_probe", { address: "" }, SHARING_TARGET);
-    if (!reply.ok) return;
+    if (!reply.ok || setupState?.stage !== "welcome") return;
     sharedHost = { address: reply.address, host: reply.host };
     if (!saving) render();
   } catch {
