@@ -1655,9 +1655,10 @@ function checkedOptionsResult(message, result) {
 
 function failureReply(message, error) {
   const description = describe(error);
-  const errorCode = typeof error?.code === "string"
-    ? error.code
-    : description === NOT_REACHABLE ? "sharing-disconnected" : null;
+  let errorCode = typeof error?.code === "string" ? error.code : null;
+  if (errorCode === null && description === NOT_REACHABLE) {
+    errorCode = "sharing-disconnected";
+  }
   return boundResponseFailure({
     type: `${message?.type ?? "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,

@@ -2310,9 +2310,10 @@ function failurePayload(type) {
 
 function engineFailureReply(type, requestId, error) {
   const description = describe(error);
-  const errorCode = error === bootError
-    ? "engine-start-failed"
-    : description === "the dictionary engine is still starting" ? "engine-starting" : null;
+  let errorCode = error === bootError ? "engine-start-failed" : null;
+  if (errorCode === null && description === "the dictionary engine is still starting") {
+    errorCode = "engine-starting";
+  }
   return boundResponseFailure({
     type: `${type}_result`, requestId, ok: false, error: description,
     ...(errorCode === null ? {} : { errorCode }),
