@@ -159,7 +159,8 @@ node test/chrome-fallback.mjs
 For a release including media capture, follow the additional browser/platform
 checks in [the capture test guide](../test/README.md#chrome-capturemjs), including
 actual Anki playback. Verify the claimed Chrome/OS support; the manifest's Chrome
-118 minimum alone does not prove every capture feature on every platform.
+128 minimum and its automated browser check do not prove every capture feature
+on every platform.
 These are release instructions. The pull request records which checks were run
 for its exact changes and any test-environment limitations.
 
@@ -190,6 +191,13 @@ location with `--cache-dir /path/to/cache` if needed. The source archive needs
 no private GitHub access after download. `SOURCE.json` in the Chrome ZIP binds
 it to the source archive's name and SHA-256. Make that archive accessible and
 put its public download location in the listing before distribution.
+
+The **Release** workflow can package any selected ref without publishing when
+run manually. For publication, commit a new manifest version and push the exact
+tag `v<manifest.version>`. The tag run validates the version and browser
+contract, rebuilds and checksum-verifies the same three files, preserves them as
+a workflow artifact, and creates the corresponding GitHub release. Do not move
+or reuse a published version tag.
 
 Extract the Chrome ZIP into a temporary directory and load that directory in a
 fresh Chrome profile to check the exact upload contents. Verify setup, lookup,

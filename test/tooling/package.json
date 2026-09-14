@@ -10,7 +10,8 @@
   },
   "packageManager": "npm@10.9.8",
   "config": {
-    "chrome": "152.0.7977.75"
+    "chrome": "152.0.7977.75",
+    "minimumChrome": "128.0.6613.137"
   },
   "scripts": {
     "test": "node ../run.mjs node",

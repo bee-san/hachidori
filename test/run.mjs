@@ -15,12 +15,13 @@ const CACHE = resolve(ROOT, "test/tmp/browsers");
 const require = createRequire(resolve(TOOLING, "package.json"));
 const { config } = JSON.parse(readFileSync(resolve(TOOLING, "package.json"), "utf8"));
 const { Browser, computeExecutablePath, install } = await import(require.resolve("@puppeteer/browsers"));
+const chromeBuild = process.env.HACHIDORI_CHROME_BUILD || config.chrome;
 const env = {
   ...process.env,
   HACHIDORI_JSDOM: process.env.HACHIDORI_JSDOM || TOOLING,
   HACHIDORI_PUPPETEER: process.env.HACHIDORI_PUPPETEER || require.resolve("puppeteer-core"),
   HACHIDORI_CHROME: process.env.HACHIDORI_CHROME
-    || computeExecutablePath({ cacheDir: CACHE, browser: Browser.CHROME, buildId: config.chrome }),
+    || computeExecutablePath({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild }),
 };
 
 async function run(name, args, overrides = {}) {
@@ -47,9 +48,9 @@ const suite = process.argv[2];
 mkdirSync(OUTPUT, { recursive: true });
 try {
   if (suite === "install-chrome") {
-    const browser = await install({ cacheDir: CACHE, browser: Browser.CHROME, buildId: config.chrome,
+    const browser = await install({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild,
       installDeps: process.argv.includes("--install-deps") });
-    console.log(`Chrome ${config.chrome}: ${browser.executablePath}`);
+    console.log(`Chrome ${chromeBuild}: ${browser.executablePath}`);
   } else if (suite === "node") {
     const tests = ["test", "benchmark"].flatMap(directory => readdirSync(resolve(ROOT, directory))
       .filter(file => file.endsWith(".test.mjs")).sort().map(file => `${directory}/${file}`));

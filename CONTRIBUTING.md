@@ -42,8 +42,10 @@ npm --prefix test/tooling run test:chrome
 Sharing changes also need `npm --prefix test/tooling run test:sharing` and a
 usable non-loopback network address. The Runtime tests workflow runs Node
 contracts, both WASM smoke variants, the extension smoke suite, and four real
-Chrome suites on pull requests. Test tooling stays under `test/tooling` and the
-browser under ignored `test/tmp/browsers`; neither ships in the extension.
+Chrome suites on pull requests. It separately runs the primary suite on the
+manifest-minimum Chrome build and builds and verifies the checksummed release
+pair. Test tooling stays under `test/tooling` and the browser under ignored
+`test/tmp/browsers`; neither ships in the extension.
 [The test harness guide](test/README.md) contains the exact CI commands, browser
 dependencies, external-tooling overrides, and what each suite proves.
 

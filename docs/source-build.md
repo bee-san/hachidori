@@ -104,3 +104,9 @@ ZIP paths, timestamps, order and permissions are normalized, giving identical
 bytes when repeated with the same commit and Python/zlib version. ZIP integrity
 is checked before checksums are written. Load unpacked from an extracted Chrome
 ZIP to check the exact staged runtime before uploading it.
+
+CI runs this packaging command and verifies the checksums for every release
+candidate. The **Release** workflow also supports a non-publishing manual run
+for a selected ref. Pushing `v<manifest.version>` packages that exact tag and
+creates its GitHub release only after the version, minimum/current Chrome pins,
+archive integrity, and checksums pass.

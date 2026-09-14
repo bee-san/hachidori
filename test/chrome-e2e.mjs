@@ -7058,6 +7058,7 @@ async function main() {
     fixtures: new Map(RECOMMENDED_DICTIONARIES.map((entry) => [entry.downloadUrl, {
       entry, body: buildRecommendedZip({ ...entry, paddingBytes: entry.sourceId === "jmnedict" ? 0 : SETUP_PADDING_BYTES }),
     }])),
+    routes: null,
     requests: [],
     attempts: new Map(),
     sessions: [],
@@ -7066,6 +7067,27 @@ async function main() {
     held: null,
   };
   setupArchives.held = new Promise((resolve) => { setupArchives.release = resolve; });
+  setupArchives.routes = new Map([...setupArchives.fixtures].map(([url, fixture]) => [url, {
+    requests: 0,
+    async respond() {
+      const attempt = (setupArchives.attempts.get(fixture.entry.sourceId) ?? 0) + 1;
+      setupArchives.attempts.set(fixture.entry.sourceId, attempt);
+      setupArchives.requests.push(fixture.entry.sourceId);
+      if (fixture.entry.sourceId === "jitendex" && attempt === 1) await setupArchives.held;
+      return fixture.entry.sourceId === "jmnedict" && attempt === 1
+        ? {
+            status: 503,
+            contentType: "text/plain",
+            body: "mocked publisher failure",
+          }
+        : {
+            status: 200,
+            contentType: "application/zip",
+            body: fixture.body,
+            contentLength: fixture.entry.sourceId !== "bees-ultimate-kanji-dictionary",
+          };
+    },
+  }]));
   async function interceptSetupArchives(target) {
     if (!setupArchives.enabled || !target.url().endsWith("offscreen.html") || setupArchives.attached.has(target)) return;
     setupArchives.attached.add(target);
@@ -7074,37 +7096,39 @@ async function main() {
       setupArchives.sessions.push(session);
       session.on("Fetch.requestPaused", (event) => {
         void (async () => {
-          const route = setupArchives.fixtures.get(event.request.url);
+          const route = setupArchives.routes?.get(event.request.url);
           if (!route) {
             await session.send("Fetch.continueRequest", { requestId: event.requestId });
             return;
           }
-          const attempt = (setupArchives.attempts.get(route.entry.sourceId) ?? 0) + 1;
-          setupArchives.attempts.set(route.entry.sourceId, attempt);
-          setupArchives.requests.push(route.entry.sourceId);
-          if (route.entry.sourceId === "jitendex" && attempt === 1) await setupArchives.held;
+          route.requests += 1;
+          const response = route.respond ? await route.respond(event.request) : route;
+          const body = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body);
           const responseHeaders = [
             { name: "Access-Control-Allow-Origin", value: "*" },
-            { name: "Content-Type", value: "application/zip" },
+            { name: "Content-Type", value: response.contentType },
             { name: "Cross-Origin-Resource-Policy", value: "cross-origin" },
           ];
-          if (route.entry.sourceId === "jmnedict" && attempt === 1) {
-            await session.send("Fetch.fulfillRequest", { requestId: event.requestId, responseCode: 503, responseHeaders,
-              body: Buffer.from("mocked publisher failure").toString("base64") });
-            return;
+          if (response.contentLength !== false) {
+            responseHeaders.push({ name: "Content-Length", value: String(body.length) });
           }
-          if (route.entry.sourceId !== "bees-ultimate-kanji-dictionary") {
-            responseHeaders.push({ name: "Content-Length", value: String(route.body.length) });
-          }
-          await session.send("Fetch.fulfillRequest", { requestId: event.requestId, responseCode: 200, responseHeaders,
-            body: Buffer.from(route.body).toString("base64") });
+          await session.send("Fetch.fulfillRequest", {
+            requestId: event.requestId,
+            responseCode: response.status,
+            responseHeaders,
+            body: body.toString("base64"),
+          });
         })().catch(async (error) => {
           diagnostics.push(`[setup archive mock] ${error?.stack ?? error}`);
           await session.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "Failed" }).catch(() => {});
         });
       });
       await session.send("Fetch.enable", {
-        patterns: [...setupArchives.fixtures.keys()].map((urlPattern) => ({ urlPattern, requestStage: "Request" })),
+        patterns: [
+          ...setupArchives.fixtures.keys(),
+          MANAGED_DOWNLOAD_URL,
+          GENERIC_MANAGED_DOWNLOAD_URL,
+        ].map((urlPattern) => ({ urlPattern, requestStage: "Request" })),
       });
     } catch (error) {
       diagnostics.push(`[setup archive mock] could not attach: ${error?.message ?? error}`);
@@ -7910,11 +7934,7 @@ async function main() {
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
   const setupRequestsAfterSetup = setupArchives.requests.length;
-  setupArchives.enabled = false;
-  for (const session of setupArchives.sessions) {
-    await session.send("Fetch.disable").catch(() => {});
-    await session.detach().catch(() => {});
-  }
+  setupArchives.routes = null;
 
   await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
@@ -8050,8 +8070,7 @@ async function main() {
         : { status: 200, contentType: "application/zip", body: buildRecommendedZip(entry) };
     },
   }]));
-  const recommendedSession = await interceptFetches(
-    await browser.waitForTarget(target => target.url().endsWith("/offscreen.html")), recommendedRoutes, "recommended install");
+  setupArchives.routes = recommendedRoutes;
 
   await page.click("#install-recommended");
   await page.waitForFunction(() => document.getElementById("import-state")?.textContent.includes("You can close this page."));
@@ -8213,8 +8232,7 @@ async function main() {
     return dictionaryState?.dictionaries?.length === 0
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
-  await recommendedSession.send("Fetch.disable");
-  await recommendedSession.detach();
+  setupArchives.routes = null;
 
   // ------------------------------------------------------------------ import
   await showSettingsSection(page, "add-dictionaries");
@@ -10092,11 +10110,6 @@ async function main() {
       && target.url() === `chrome-extension://${extensionId}/background.js`,
     { timeout: 30_000 },
   );
-  const updateOffscreenTarget = await browser.waitForTarget(
-    (target) => target.url() === `chrome-extension://${extensionId}/offscreen.html`,
-    { timeout: 30_000 },
-  );
-
   const fixtureIndexRoute = { requests: 0 };
   const genericIndexRoute = { requests: 0 };
   const fixtureArchiveRoute = { requests: 0 };
@@ -10120,19 +10133,15 @@ async function main() {
     [GENERIC_MANAGED_DOWNLOAD_URL, genericArchiveRoute],
   ]);
 
-  // Indexes are fetched by background.js; archives are fetched below the
-  // offscreen document, whose Fetch domain also covers its dedicated module
-  // worker. Attaching to engine-worker.js itself is both unnecessary and racy.
+  // Indexes are fetched by background.js. Archive routes use the offscreen
+  // session attached before its dedicated engine worker started. Chrome 128
+  // does not apply a later offscreen Fetch attachment to that existing worker.
   const updateIndexSession = await interceptFetches(
     updateWorkerTarget,
     indexRoutes,
     "managed index",
   );
-  const updateArchiveSession = await interceptFetches(
-    updateOffscreenTarget,
-    archiveRoutes,
-    "managed archive",
-  );
+  setupArchives.routes = archiveRoutes;
 
   await showSettingsSection(page, "updates");
   await page.bringToFront();
@@ -10530,14 +10539,9 @@ async function main() {
   { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
     .then(() => true)
     .catch(() => false);
-  await Promise.all([
-    updateIndexSession.send("Fetch.disable"),
-    updateArchiveSession.send("Fetch.disable"),
-  ]);
-  await Promise.all([
-    updateIndexSession.detach(),
-    updateArchiveSession.detach(),
-  ]);
+  setupArchives.routes = null;
+  await updateIndexSession.send("Fetch.disable");
+  await updateIndexSession.detach();
   const updateWorkerDiagnostics = watchedServiceWorkers.get(updateWorkerTarget);
   if (updateWorkerDiagnostics) {
     await updateWorkerDiagnostics.client.detach();
