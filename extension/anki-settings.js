@@ -2,7 +2,7 @@
 import { ankiAvailability } from "./anki.js";
 import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_TEMPLATE_MARKERS, ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
-import { reorderSettingsRows } from "./settings-dom.js";
+import { reorderSettingsRows, setStatusOutput } from "./settings-dom.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
   const { ANKI_FIELDS, ANKI_OVERWRITE_MODES, normaliseAnkiConnectUrl } = document.defaultView.HDReaderOptions;
@@ -150,9 +150,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     let state = "Not connected";
     if (discovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
     const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
-    if (status.textContent !== message) status.textContent = message;
     const invalid = !loading && errors.length > 0;
-    if (status.classList.contains("is-error") !== invalid) status.classList.toggle("is-error", invalid);
+    const tone = loading ? "working" : invalid ? "error" : discovery?.connected ? "ready" : undefined;
+    setStatusOutput(status, message, tone);
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
