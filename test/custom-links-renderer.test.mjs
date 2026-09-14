@@ -41,7 +41,9 @@ function fixture(t) {
 
 test("named toolbar links use the current projected word, reading and source sentence", t => {
   const f = fixture(t);
-  f.view.renderResults([result("食べる", "たべる", "A"), result("飲む", "のむ", "B")], f.candidate);
+  f.view.renderResults([result("食べる", "たべる", "A"), result("飲む", "のむ", "B")], f.candidate, {
+    dictionaryPresentation: [{ title: "A", favorite: true }, { title: "B", favorite: true }],
+  });
   assert.equal(f.link().textContent, "Look up");
   f.link().click();
   let url = new URL(f.opened[0].url);
@@ -49,7 +51,9 @@ test("named toolbar links use the current projected word, reading and source sen
   assert.equal(url.searchParams.get("reading"), "たべる");
   assert.equal(url.searchParams.get("sentence"), f.candidate.sentence);
   assert.equal(f.opened[0].active, true);
-  f.popup.querySelectorAll('[role="tab"]')[2].click();
+  const tab = [...f.popup.querySelectorAll('[role="tab"]')].find(element => element.textContent === "B");
+  assert.ok(tab, "the second favourite dictionary has a tab");
+  tab.click();
   f.link().dispatchEvent(new f.window.MouseEvent("auxclick", { button: 1, bubbles: true }));
   url = new URL(f.opened[1].url);
   assert.equal(url.searchParams.get("word"), "飲む");

@@ -2,6 +2,60 @@
 
 # Hachidori test harness
 
+## Reproducible setup and CI
+
+Use Node **22.23.1** (`.node-version`) and npm **10.9.8**. The bridge suite needs
+Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**.
+Ordinary JavaScript tests use the committed WASM bundles and need no build or
+submodule checkout.
+
+From the repository root, these are the same commands CI runs:
+
+```sh
+npm ci --prefix test/tooling
+npm --prefix test/tooling test                 # all test/*.test.mjs and benchmark/*.test.mjs
+npm --prefix test/tooling run test:smoke        # both WASM variants, bridge, extension
+npm --prefix test/tooling run install:chrome    # Chrome for Testing 152.0.7977.75
+npm --prefix test/tooling run test:chrome       # primary OPFS path and UI
+npm --prefix test/tooling run test:sharing      # two browsers and the Python relay
+npm --prefix test/tooling run test:fallback     # IDBFS path
+npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
+```
+
+`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.9.0**,
+the browser installer **3.2.1**, and their transitive dependencies. The small
+`test/run.mjs` launcher supplies the existing environment overrides, generates
+fixtures, runs each existing suite in a separate Node process, and propagates
+every nonzero exit or signal. It selects the exact Chrome build from
+`test/tooling/package.json` rather than whichever browser happens to be newest
+in a developer's cache. Dependencies are isolated from the extension under
+`test/tooling/node_modules`; the browser is ignored under `test/tmp/browsers`.
+The launcher ignores a machine-wide `CHROME_BIN` (GitHub runners set it to their
+system browser). Use `HACHIDORI_CHROME` for an intentional browser override.
+
+On Ubuntu/Debian, install the browser's system dependencies with
+`sudo "$(command -v node)" test/run.mjs install-chrome --install-deps` and install
+`fonts-noto-cjk` for Japanese text. CI uses Ubuntu 24.04 with these dependencies.
+For a Linux container that cannot run Chrome's sandbox, set
+`HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
+non-loopback network address for its other-computer checks.
+
+`.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, and
+all four browser suites on every PR and push to `main`, or manually. The browser
+matrix runs independently so one failing suite cannot hide the others. Logs are
+saved to `test/tmp/ci`; failing CI jobs upload them, the available screenshots,
+and the browser profiles retained by failed suites, for seven days. The same
+commands reproduce the failure locally. The optional native/submodule checks
+below and headful media-capture suites remain separate checks for their domains.
+
+Direct `node test/...` commands below still support the external cache and
+`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a
+focused jsdom test with the locked tooling directly:
+
+```sh
+HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
+```
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
@@ -74,9 +128,9 @@ that real run.
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.
 
-Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
-`extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
-`puppeteer-core`; those dependencies stay outside the repository.
+The lower-level checks can also be run individually in this order. Node suites
+use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
+`puppeteer-core`; the launcher above supplies the locked tooling automatically.
 
 ```sh
 cd /path/to/hachidori
@@ -251,7 +305,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-116 checks, ordered by dependency. Exits 0 on success,
+117 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -373,7 +427,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 496 checks, all of
+full request→reply round trip per contract-C message type. 498 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -704,15 +758,15 @@ fixtures, never the user's actual notes or scheduling data.
 
 ### jsdom
 
-The renderer integration stage needs jsdom. It is not a repo dependency — it lives in the same
-out-of-repo tree as `puppeteer-core`, so a checkout carries neither:
+The renderer integration stage needs jsdom. The reproducible setup above installs
+it in `test/tooling`. Direct commands can also use an external dependency tree:
 
 ```sh
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$CACHE_ROOT/hachidori-e2e"
 cd "$CACHE_ROOT/hachidori-e2e"
-npm install jsdom puppeteer-core
-./node_modules/.bin/browsers install chrome@stable --path "$CACHE_ROOT/hachidori-browsers"
+npm install --save-exact jsdom@30.0.1 puppeteer-core@25.9.0 @puppeteer/browsers@3.2.1
+./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
 That path is the built-in default, so `node test/extension-smoke.mjs` finds it
@@ -783,9 +837,9 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 198 predeclared checks in a browser. Chrome and `puppeteer-core`
-live outside the repo so a checkout does not carry a browser. The setup command
-above installs Chrome for Testing in the default cache; the harness also checks
+The primary-path test runs 200 predeclared checks in a browser. The reproducible
+launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
+external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
 `HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
 naming the variable if either is missing.

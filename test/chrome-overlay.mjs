@@ -121,7 +121,7 @@ function launch() {
     "--disable-dev-shm-usage",
   ];
   if (process.env.HACHIDORI_ALLOW_NO_SANDBOX === "1") args.push("--no-sandbox");
-  return puppeteer.launch({ executablePath: CHROME, userDataDir: PROFILE, headless: true, args });
+  return puppeteer.launch({ executablePath: CHROME, enableExtensions: true, userDataDir: PROFILE, headless: true, args });
 }
 
 async function extensionId(browser) {
