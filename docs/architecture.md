@@ -306,6 +306,9 @@ onboarding outcome. An unavailable result can be retried after opening Anki.
 Settings applies a new proposal only while the Anki draft it checked is still
 current, using its ordinary revision-checked options save; saved mappings are
 verified and preserved. Connection refresh remains the lighter metadata check.
+While linked, Settings first commits any pending Anki draft to the host and the
+host runs both checks from its saved mapping, URL and API key; no client
+endpoint or mapping is admitted by the sharing request.
 
 After the welcome disclosure and **Start setup**, the Anki stage checks for an
 existing mining setup by itself. The startup page
@@ -2037,12 +2040,17 @@ when that preference is on and keeps the relay's answer (`network.active`,
 `network.addresses`) in its status. A forwarded request is dispatched by its
 target through `relayEngineRequest`, `handleWorkerRequest`,
 `handleUpdatesRequest`, or through the allowlisted linked-Anki dispatcher with
-a synthetic sender; the reply goes back verbatim, including its `requestId`.
+a synthetic sender. Ordinary requests must still appear in the protocol's
+forwarding table. A reply goes back verbatim, including its `requestId`, only
+while the exact relay socket and client incarnation that sent it remain
+current; a reused client ID after reconnect cannot receive an older operation's
+reply.
 The Anki dispatcher accepts only status, preflight, submit, browse and maturity
 operations, rebuilds the operation-specific request shape, and never admits an
 endpoint URL, API key or screenshot-capture operation from the client. Settings
-discovery has a separate allowlist: the client may name the prospective note
-type, while the host reads its own saved URL and API key. Every
+checks have separate allowlists: discovery may name the prospective note type,
+while full setup detection carries no client configuration at all. The host
+reads its own saved mapping, URL and API key for both. Every
 `chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
@@ -2099,12 +2107,13 @@ offers to use it; that link then advances setup to `complete`. See
 
 Linked Anki mining is split at the browser boundary. The reading browser keeps
 `hd_anki_screenshot`/discard and its capture session local, while
-Settings discovery, `hd_anki_status`, preflight, submit, browse and maturity go
-to the host. A browser-speech source is planned against the host's mirrored
-configuration but verified and recorded with the reading browser's selected
-voice and capture session. Just before submit, the reading browser's singleton
-Anki worker exports that final speech WAV, the pending screenshot and the ready
-capture job into an internal `clientMedia` envelope. The envelope carries the
+Settings discovery and existing-setup detection, `hd_anki_status`, preflight,
+submit, browse and maturity go to the host. A browser-speech source is planned
+against the host's mirrored configuration but verified and recorded with the
+reading browser's selected voice and capture session. Just before submit, the
+reading browser's singleton Anki worker exports that final speech WAV, the
+pending screenshot and the ready capture job into an internal `clientMedia`
+envelope. The envelope carries the
 screenshot token/name/JPEG bytes; capture job ID, warnings and final AVIF/WAV
 assets; and the speech source identity, canonical filename, declared length and
 WAV bytes. Both ends validate the request-bound identities and names, base64,

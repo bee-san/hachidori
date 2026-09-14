@@ -309,9 +309,9 @@ function updateAnkiSettings() {
     capabilities: MINING_CAPABILITIES,
     editConfig: config => { options.anki = config; writeOptions(); },
     send: async (type, fields) => {
-      // A linked discovery cannot forward draft endpoint credentials. Commit
-      // them to the host first, then let the host read its own saved copy.
-      if (type === "hd_anki_discover" && sharingLinkedAddress !== null) {
+      // Linked checks cannot forward draft endpoint credentials or mappings.
+      // Commit them to the host first, then let the host read its saved copy.
+      if (["hd_anki_discover", "hd_anki_setup"].includes(type) && sharingLinkedAddress !== null) {
         await flushOptionsUntilIdle();
       }
       return send(type, fields, WORKER_TARGET);

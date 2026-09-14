@@ -70,8 +70,9 @@ defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
 server, it receives the metadata requests, API key and selected note content.
 When this browser is linked to another Hachidori, that host makes these
 requests with its own saved URL and API key; the linked browser's endpoint is
-not used as a fallback. Anki Settings discovery also runs on the host after
-pending linked settings have been saved there.
+not used as a fallback. Anki Settings discovery and existing-setup checks also
+run on the host after pending linked settings have been saved there; linked
+requests do not supply the mapping, endpoint or key used for those checks.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
 metadata. Hachidori refreshes a local duplicate index every 30 minutes for the
@@ -110,10 +111,11 @@ and its settings, presentation and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
 unlinks. An explicit mining action also sends its selected note context and
 final screenshot, captured AVIF/WAV, or browser-speech WAV bytes through the
-relay. The host validates them and performs Settings discovery, availability
-checks, duplicate checks, generation validation, media uploads, note writes and
-browsing through the host's AnkiConnect configuration. Endpoint credentials
-included in a linked request are ignored.
+relay. The host validates them and performs Settings discovery and setup
+checks, availability checks, duplicate checks, generation validation, media
+uploads, note writes and browsing through the host's AnkiConnect
+configuration. Endpoint credentials or mappings included in a linked request
+are ignored.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,

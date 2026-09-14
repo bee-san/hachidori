@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
-  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, assertLinkedAnkiFrame, browserName,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, parseClientFrame, parseHostFrame,
   parseLinkAddress,
 } from "../extension/sharing-protocol.js";
@@ -141,6 +142,24 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
   assert.throws(() => allowLinkedAnkiDiscoveryRequest({
     target: "hoshidicts-worker", type: "hd_anki_discover", model: "x".repeat(4097),
   }), /unsupported linked Anki discovery request/u);
+  assert.deepEqual(allowLinkedAnkiSetupRequest({
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "setup-1",
+    anki: {
+      model: "Client model",
+      deck: "Client deck",
+      url: "https://client.invalid/anki",
+      apiKey: "client-secret",
+    },
+  }), {
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "setup-1",
+  });
+  assert.throws(() => allowLinkedAnkiSetupRequest({
+    target: "hoshidicts-worker", type: "hd_setup_anki",
+  }), /unsupported linked Anki setup request/u);
 });
 
 test("linked Anki submissions have one 16 MiB UTF-8 frame limit", () => {

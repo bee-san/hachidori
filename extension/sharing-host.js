@@ -59,42 +59,54 @@ export function createSharingHost({
     };
   }
 
-  function post(frame) {
-    if (socket === null || socket.readyState !== 1) return;
+  function postTo(target, frame) {
+    if (socket !== target || target.readyState !== 1) return false;
     try {
-      socket.send(JSON.stringify(frame));
+      target.send(JSON.stringify(frame));
+      return true;
     } catch (sendError) {
       console.warn("hachidori: could not reach the sharing relay:", describe(sendError));
+      return false;
     }
   }
 
-  function send(clientId, frame) {
-    post({ kind: "send", clientId, text: JSON.stringify(frame) });
+  function post(frame) {
+    if (socket !== null) postTo(socket, frame);
   }
 
-  async function handleClientText(clientId, text) {
+  function sendTo(target, clientId, client, frame) {
+    if (clients.get(clientId) !== client) return false;
+    return postTo(target, { kind: "send", clientId, text: JSON.stringify(frame) });
+  }
+
+  async function handleClientText(target, clientId, text) {
+    const client = clients.get(clientId);
+    if (socket !== target || client === undefined) return;
     let frame;
     try {
       frame = parseClientFrame(text);
     } catch (parseError) {
-      send(clientId, { kind: "bye", reason: describe(parseError) });
-      post({ kind: "close", clientId });
+      if (sendTo(target, clientId, client, { kind: "bye", reason: describe(parseError) })) {
+        postTo(target, { kind: "close", clientId });
+      }
       return;
     }
     if (frame.kind === "hello") {
-      const client = clients.get(clientId);
-      if (client) Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities });
+      Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
-      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, capabilities, snapshot });
+      sendTo(target, clientId, client,
+        { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, capabilities, snapshot });
       return;
     }
     if (frame.kind === "request") {
-      send(clientId, { kind: "reply", id: frame.id, response: await dispatch(frame.message, clientId) });
+      const response = await dispatch(frame.message, clientId);
+      sendTo(target, clientId, client, { kind: "reply", id: frame.id, response });
     }
   }
 
-  function onRelayMessage(text) {
+  function onRelayMessage(target, text) {
+    if (socket !== target) return;
     let message;
     try {
       message = JSON.parse(text);
@@ -127,7 +139,7 @@ export function createSharingHost({
         clients.delete(message.clientId);
         return;
       case "client-text":
-        void handleClientText(message.clientId, String(message.text));
+        void handleClientText(target, message.clientId, String(message.text));
         return;
       case "ping":
         return;
@@ -163,9 +175,7 @@ export function createSharingHost({
     }
     socket = next;
     listeningPort = null;
-    next.onmessage = (event) => {
-      if (socket === next) onRelayMessage(String(event.data));
-    };
+    next.onmessage = (event) => onRelayMessage(next, String(event.data));
     next.onclose = () => {
       if (socket !== next) return;
       socket = null;

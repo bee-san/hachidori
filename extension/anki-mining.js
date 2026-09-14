@@ -363,6 +363,10 @@ export function createAnkiMiningService({
   async function browse(request) {
     const config = await readConfig();
     const value = typeof request === "string" ? { expression: request } : request;
+    if (typeof value?.configKey === "string") {
+      const configKey = await ankiDigest(new TextEncoder().encode(JSON.stringify(config)));
+      if (value.configKey !== configKey) throw new Error(CONFIG_CHANGED);
+    }
     const query = Array.isArray(value?.noteIds) && value.noteIds.length
       ? ankiNoteIdsQuery(value.noteIds) : ankiBrowseQuery(value?.expression ?? "");
     const invoke = invokeFor(config);

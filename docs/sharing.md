@@ -107,10 +107,10 @@ After linking, the page reloads, and from then on:
 - this browser's own dictionary state, settings, personal source, update
   schedule and lookup counts are kept aside untouched, and its engine keeps
   reading and committing them, so no local dictionary file is ever removed;
-- Anki Settings discovery, availability, preflight, generation validation,
-  duplicate checks, writes and browsing use the host's AnkiConnect URL, API
-  key, deck and note type. The linked browser never falls back to its own Anki,
-  and its duplicate-index refresh is suspended while linked;
+- Anki Settings discovery and existing-setup checks, availability, preflight,
+  generation validation, duplicate checks, writes and browsing use the host's
+  AnkiConnect URL, API key, deck and note type. The linked browser never falls
+  back to its own Anki, and its duplicate-index refresh is suspended while linked;
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
@@ -137,12 +137,16 @@ overwrite restored settings or personal entries. Link waits for Anki work that
 already began under the old role—including local media export for a linked
 submission—and for an admitted duplicate-index refresh; Unlink also waits for
 the linked transaction it is retiring. New Anki requests wait for either
-transition. Restarting a linked browser restores that role before local Anki or
-update alarms can run. Switching to another host fails requests owned by the old
-connection instead of leaving them hung. Each host worker also gives mining and
-browse requests a host-specific configuration key, so a result or note ID from
-another host, the local browser or a pre-restart worker is rejected even if its
-generation number and Anki settings happen to match.
+transition, and duplicate-index alarms or settings changes wait for it before
+deciding whether local Anki is active. Restarting a linked browser restores that
+role before local Anki or update alarms can run. Switching to another host fails
+requests owned by the old connection instead of leaving them hung. Each host
+worker also gives mining and browse requests a host-specific configuration key,
+so a result or note ID from another host, the local browser, a pre-restart
+worker or an older host Anki configuration is rejected even if its generation
+number happens to match. The host drops a late reply if its relay socket or
+client session has since been replaced, even when the relay later reuses the
+same client ID.
 
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
@@ -162,9 +166,10 @@ runtime needs nothing beyond the WebSocket.
 - Note appends, settings and presentation edits, update checks and installs,
   recommended-dictionary installs and removals made in a linked browser, which
   the host commits through its ordinary revisioned transactions;
-- Anki Settings discovery, status, preflight, duplicate and generation checks,
-  note writes and browsing. Endpoint credentials supplied by a linked request
-  are ignored; only the host's saved Anki configuration is used.
+- Anki Settings discovery and existing-setup checks, status, preflight,
+  duplicate and generation checks, note writes and browsing. Endpoint
+  credentials or mappings supplied by a linked request are ignored; only the
+  host's saved Anki configuration is used.
 
 Local-file imports and backups happen on the host. Pronunciation playback and
 external links run in each browser. During mining, URL pronunciation providers
@@ -215,8 +220,9 @@ service worker's side against fake sockets. `node test/chrome-sharing.mjs`
 runs two real Chromes: the host imports a fixture, handles a simulated failed
 add-on download, then retries the actual pinned GitHub release from Settings
 and runs its relay. The second browser links, looks a word up, edits shared
-state, captures a page-local JPEG and mines it through a mocked host
-AnkiConnect while a healthy client endpoint remains unused. The suite also
+state, runs Settings discovery/setup checks, captures a page-local JPEG and
+mines it through a mocked host AnkiConnect while a healthy client endpoint
+remains unused. The suite also
 rejects a stale generation and host Anki failure, survives the host closing
 and relaunching, unlinks back to its own state, and links again through this
 machine's network address until the host stops sharing on the network.

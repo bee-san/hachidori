@@ -93,10 +93,12 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 them.
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
+test/sharing-host.test.mjs
 test/anki-client-media.test.mjs test/sharing-settings.test.mjs
 test/anki-addon.test.mjs` checks the sharing wire contract (addresses as a
 person types them, browser names, capability negotiation, the forwarding and
-Anki allowlists, host switching, frame and client-media limits). The relay's raw-socket,
+Anki mining/Settings allowlists, host switching and retired-session replies,
+frame and client-media limits). The relay's raw-socket,
 archive, paused-peer, ordered large-frame, shutdown and optional Anki Desktop
 checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
@@ -112,9 +114,9 @@ URL, binary preservation, and HTTP/network errors. The extension smoke suite's
 sharing-host and sharing-client stages cover the service worker's side,
 including hosting that waits for dictionaries, the network exchange, linking
 that turns hosting off, a linked install's kept state, draining old-role Anki
-work before the route changes, linked Settings discovery, local media/TTS
-ownership, host-specific mining keys, duplicate-index suspension and restart
-ordering.
+work before the route changes, linked Settings discovery/setup checks, local
+media/TTS ownership, host-specific mining keys, duplicate-index suspension and
+restart ordering.
 
 `node test/chrome-sharing.mjs` launches two real Chromes: the host imports
 the fixture, handles a simulated HTTP 503 add-on download, and retries the
@@ -124,10 +126,11 @@ manifest's independent add-on version, unpacks that exact archive with Python's
 (`HACHIDORI_SHARING_PORT`, default 18771). The host moves its
 sharing to that port; the second browser's startup page offers the shared
 Hachidori and links with one click, looks a word up through the link, writes
-an option and a personal entry that the host commits and pushes back, then
-mines a client-coloured real JPEG through a mocked host AnkiConnect while a
-separate healthy client endpoint remains unused. It also checks host generation
-rejection, Settings discovery, browsing and Anki unavailability, loses the host when it closes and
+an option and a personal entry that the host commits and pushes back, runs
+Settings discovery and existing-setup checks on the host, then mines a
+client-coloured real JPEG through a mocked host AnkiConnect while a separate
+healthy client endpoint remains unused. It also checks host generation
+rejection, browsing and Anki unavailability, loses the host when it closes and
 reconnects when it relaunches, unlinks back to its own empty state, and links
 again through this machine's network address (the machine needs one beyond
 loopback) until the host stops sharing on the network. Two Settings tabs then
@@ -136,7 +139,7 @@ personal dictionary and settings. A third browser loads the actual overlay-mode
 extension, checks local Settings autosave and mixed shared/local saves, survives
 host disconnection and full browser restart, unlinks with its edited local
 geometry, and verifies the effective screenshot and browser-speech capability
-explanations through DOM assertions. Eleven predeclared checks; profiles are
+explanations through DOM assertions. Twelve predeclared checks; profiles are
 kept on failure. The suite needs `python3` and access to the pinned GitHub
 release. For offline runs or coordinated add-on changes,
 `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` serves that local

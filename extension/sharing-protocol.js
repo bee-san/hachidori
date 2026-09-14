@@ -177,6 +177,22 @@ export function allowLinkedAnkiDiscoveryRequest(message) {
   };
 }
 
+// Full setup detection reads the host's saved mapping as well as its endpoint.
+// The client therefore supplies no configuration fields at all.
+export function allowLinkedAnkiSetupRequest(message) {
+  if (!message || typeof message !== "object" || message.target !== "hoshidicts-worker"
+      || message.type !== "hd_anki_setup") {
+    throw new Error("unsupported linked Anki setup request");
+  }
+  const requestId = typeof message.requestId === "string" || Number.isFinite(message.requestId)
+    ? message.requestId : null;
+  return {
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId,
+  };
+}
+
 // A frame a client sends to the host.
 export function parseClientFrame(text) {
   const frame = parseJsonObject(text);

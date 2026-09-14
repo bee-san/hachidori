@@ -733,6 +733,13 @@ try {
   // operation must still use the host's endpoint and key.
   await setLocalAnkiEndpoint(startup, clientAnki.url, "client-secret");
   const clientEndpoint = (await stored(startup, ["options"])).options.anki;
+  const ankiSetup = await message(clientPage, "hoshidicts-worker", "hd_anki_setup", {
+    anki: {
+      ...clientEndpoint,
+      model: "Client model",
+      deck: "Client deck",
+    },
+  });
   const ankiDiscovery = await message(clientPage, "hoshidicts-worker", "hd_anki_discover", {
     model: "Basic",
     url: clientAnki.url,
@@ -811,6 +818,8 @@ try {
   const centre = screenshotProof?.centre ?? [];
   check(CHECKS[5],
     mirroredAnki.url === hostAnki.url && clientEndpoint.url === clientAnki.url
+      && ankiSetup?.ok === true && ankiSetup.outcome?.status === "already-configured"
+      && ankiSetup.outcome.model === "Basic" && ankiSetup.outcome.deck === "Default"
       && ankiDiscovery?.ok === true && ankiDiscovery.connected === true
       && JSON.stringify(ankiDiscovery.decks) === JSON.stringify(["Default"])
       && JSON.stringify(ankiDiscovery.models) === JSON.stringify(["Basic"])
@@ -836,6 +845,7 @@ try {
       mirroredUrl: mirroredAnki.url,
       clientUrl: clientEndpoint.url,
       status: ankiStatus,
+      setup: ankiSetup,
       discovery: ankiDiscovery,
       preflight,
       captured: { ok: captured?.ok, filename: captured?.filename },

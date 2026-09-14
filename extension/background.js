@@ -10,7 +10,8 @@ import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-ho
 import { SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
   FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED,
-  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, browserName, forwardableRequest, parseLinkAddress,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  browserName, forwardableRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
@@ -166,6 +167,7 @@ let sharingClient;
 let sharingLinked = false;
 let sharingEpoch = 0;
 let sharingReady = Promise.resolve();
+let sharingTransitionTail = Promise.resolve();
 const WORKER_FORWARDS = FORWARDED_REQUESTS[WORKER_TARGET];
 const SHARING_OPTIONS_VERSION_KEY = "sharingOptionsVersion";
 const OVERLAY_OPTIONS_STORAGE_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY];
@@ -1601,11 +1603,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void reconcileAnkiIndex();
 });
 
-async function reconcileAnkiIndex() {
-  await sharingReady;
+async function applyAnkiIndexRole() {
   const index = getAnkiDuplicateIndex();
   if (sharingLinked) await index.suspend();
   else await index.resume();
+}
+
+async function reconcileAnkiIndex() {
+  await sharingReady;
+  // A link suspends the old role before publishing the new one. An options
+  // event or alarm in that interval must not resume local Anki behind it.
+  await sharingTransitionTail;
+  await applyAnkiIndexRole();
 }
 
 const UPDATE_HANDLERS = {
@@ -2370,13 +2379,14 @@ async function handleWorkerRequest(message, sender) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   await sharingReady;
-  if (["hd_anki_discover", "hd_setup_anki"].includes(type)) await sharingTransitionTail;
-  if (sharingLinked && type === "hd_anki_discover") {
+  if (["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)) await sharingTransitionTail;
+  if (sharingLinked && ["hd_anki_discover", "hd_anki_setup"].includes(type)) {
     try {
       if (!ankiSettingsSender(sender)) {
-        throw new Error("Anki discovery is available only from Hachidori Settings");
+        throw new Error(`${type === "hd_anki_setup" ? "Anki setup discovery" : "Anki discovery"} is available only from Hachidori Settings`);
       }
-      const allowed = allowLinkedAnkiDiscoveryRequest(message);
+      const allowed = type === "hd_anki_setup"
+        ? allowLinkedAnkiSetupRequest(message) : allowLinkedAnkiDiscoveryRequest(message);
       return await getSharingClient().forward(allowed, { capability: LINKED_ANKI_CAPABILITY });
     } catch (error) {
       return failureReply(message, error);
@@ -2451,9 +2461,16 @@ const SHARING_TARGET = "hachidori-sharing";
 
 async function dispatchSharedRequest(message, clientId) {
   const sender = { id: chrome.runtime.id, url: `hachidori-sharing://client/${clientId}` };
+  const ordinary = () => {
+    if (!forwardableRequest(message)) {
+      throw new Error(`unsupported shared request ${JSON.stringify(message.target)} ${JSON.stringify(message.type)}`);
+    }
+  };
   try {
     switch (message.target) {
-      case TARGET: return await relayEngineRequest(message);
+      case TARGET:
+        ordinary();
+        return await relayEngineRequest(message);
       case WORKER_TARGET:
         if (message.type === "hd_anki_discover") {
           const allowed = allowLinkedAnkiDiscoveryRequest(message);
@@ -2463,9 +2480,19 @@ async function dispatchSharedRequest(message, clientId) {
             () => ankiGateway.discover({ ...options.anki, model: allowed.model }),
           ));
         }
+        if (message.type === "hd_anki_setup") {
+          const allowed = allowLinkedAnkiSetupRequest(message);
+          const options = await readAnkiOptions();
+          return workerReply(allowed, await trackAnkiOperation(() => checkAnkiSetup(options.anki)));
+        }
+        ordinary();
         return await handleWorkerRequest(message, sender);
-      case UPDATE_TARGET: return await handleUpdatesRequest(message);
-      case SETUP_TARGET: return await handleRecommendedInstall(message, sender, true);
+      case UPDATE_TARGET:
+        ordinary();
+        return await handleUpdatesRequest(message);
+      case SETUP_TARGET:
+        ordinary();
+        return await handleRecommendedInstall(message, sender, true);
       case "hachidori-anki": return await trackAnkiOperation(
         () => answerAnkiRequest(allowLinkedAnkiRequest(message), sender, true),
       );
@@ -2492,8 +2519,6 @@ function linkTarget(text) {
 // Own the whole user action, including its probe, independently of storage.
 // Network waits must leave the storage queue free for engine callbacks and
 // local edits, and a failed action must not block the next Settings tab.
-let sharingTransitionTail = Promise.resolve();
-
 function serialiseSharingTransition(job) {
   const run = sharingTransitionTail.then(() => sharingReady).then(job);
   sharingTransitionTail = run.catch(() => {});
@@ -2555,7 +2580,7 @@ const SHARING_HANDLERS = {
       throw error;
     }
     await reconcileUpdateAlarm();
-    await reconcileAnkiIndex();
+    await applyAnkiIndexRole();
     return { sharing: sharingStatus() };
   },
   // Restored values outrank the mirror in every reader's revision comparison,
@@ -2598,7 +2623,7 @@ const SHARING_HANDLERS = {
       });
     });
     await reconcileUpdateAlarm();
-    await reconcileAnkiIndex();
+    await applyAnkiIndexRole();
     return { sharing: sharingStatus() };
   },
   async hd_sharing_host_enable(message) {

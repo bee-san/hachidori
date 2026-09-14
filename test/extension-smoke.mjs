@@ -806,7 +806,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ANKI_INDEX_ALARM,
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
-    createAnkiDuplicateIndex,
+    createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
   });
   const context = createContext(sandbox);
@@ -1176,6 +1176,21 @@ async function sharingHostStage() {
   const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
   const chrome = makeChrome("sharing-host-worker", bus, storage, alarms);
   const hostAnkiCalls = [];
+  const hostSetupCalls = [];
+  const hostSetupFetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    hostSetupCalls.push({ url, action: request.action, key: request.key ?? "", params: request.params });
+    const results = {
+      modelNamesAndIds: { Basic: 1 },
+      deckNames: ["Default"],
+      modelFieldNames: ["Front", "Back"],
+    };
+    return {
+      ok: true,
+      status: 200,
+      async json() { return { result: results[request.action], error: null }; },
+    };
+  };
   const hostAnkiService = {
     status() { hostAnkiCalls.push(["status"]); return { available: true, configKey: "host-config" }; },
     preflightClient(request) {
@@ -1203,7 +1218,7 @@ async function sharingHostStage() {
     sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, results: [{ matched: message.text }] });
     return true;
   });
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
+  loadBackgroundScript({ chrome, console, fetch: hostSetupFetch, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
     createAnkiWorkerService: () => hostAnkiService });
   const settle = async (predicate = () => false) => {
     for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
@@ -1280,15 +1295,53 @@ async function sharingHostStage() {
   clientText(socket, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
   await settle(() => sent(socket).length >= 4);
   const refused = sent(socket)[3];
-  check("a forwarded options write commits on the host and every linked browser receives that storage batch, while local-only keys stay home",
+  clientText(socket, JSON.stringify({ kind: "request", id: "r4",
+    message: { target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-1", url: "https://client.invalid/" } }));
+  await settle(() => sent(socket).length >= 5);
+  const refusedWorker = sent(socket)[4];
+  check("the host accepts only forwardable linked requests, commits shared writes and keeps local-only actions home",
     written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
       && storage.raw.get("options")?.hoverEnabled === false
       && broadcast?.kind === "storage" && JSON.stringify(Object.keys(broadcast.changes)) === JSON.stringify(["options"])
       && broadcast.changes.options.revision === written.response.options.revision
       && broadcasts(socket).length === 1
       && refused?.kind === "reply" && refused.id === "r3" && refused.response?.ok === false
-      && /unsupported shared request target/u.test(refused.response.error),
-    JSON.stringify({ written, broadcasts: broadcasts(socket), refused }));
+      && /unsupported shared request target/u.test(refused.response.error)
+      && refusedWorker?.kind === "reply" && refusedWorker.id === "r4" && refusedWorker.response?.ok === false
+      && /unsupported shared request/u.test(refusedWorker.response.error),
+    JSON.stringify({ written, broadcasts: broadcasts(socket), refused, refusedWorker }));
+
+  const currentOptions = storage.raw.get("options");
+  const setupAnki = {
+    ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
+    model: "Basic",
+    deck: "Default",
+    url: "https://host.example/anki",
+    apiKey: "host-secret",
+    fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "coalesce" },
+      Back: { value: "{definition}", overwriteMode: "coalesce" },
+    },
+  };
+  await storage.api().local.set({ options: {
+    ...currentOptions,
+    anki: setupAnki,
+    revision: currentOptions.revision + 1,
+  } });
+  const beforeSetup = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "anki-setup", message: {
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "host-hd_anki_setup",
+    anki: {
+      model: "Client model",
+      deck: "Client deck",
+      url: "https://client.invalid/anki",
+      apiKey: "client-secret",
+    },
+  } }));
+  await settle(() => sent(socket).length > beforeSetup);
+  const linkedSetup = sent(socket).at(-1);
 
   const ankiRequest = {
     term: { expression: "猫", reading: "ねこ" },
@@ -1325,8 +1378,15 @@ async function sharingHostStage() {
   });
   const hostScreenshot = await askAnki("anki-screenshot", "hd_anki_screenshot");
   const submitted = hostAnkiCalls.find(call => call[0] === "submitClient");
-  check("linked Anki requests use the host singleton and allowlist while page-local screenshots are refused",
-    ankiStatus.response?.available === true && /^linked:[0-9a-f-]+:host-config$/u.test(ankiStatus.response.configKey)
+  check("linked Anki Settings and mining use the host configuration and singleton while page-local screenshots are refused",
+    linkedSetup?.kind === "reply" && linkedSetup.id === "anki-setup"
+      && linkedSetup.response?.ok === true && linkedSetup.response.outcome?.status === "already-configured"
+      && linkedSetup.response.outcome.model === "Basic" && linkedSetup.response.outcome.deck === "Default"
+      && JSON.stringify(hostSetupCalls.map(call => call.action)) === JSON.stringify([
+        "modelNamesAndIds", "deckNames", "modelFieldNames",
+      ])
+      && hostSetupCalls.every(call => call.url === "https://host.example/anki" && call.key === "host-secret")
+      && ankiStatus.response?.available === true && /^linked:[0-9a-f-]+:host-config$/u.test(ankiStatus.response.configKey)
       && staleHostKey.response?.ok === false && /configuration changed/u.test(staleHostKey.response.error)
       && ankiPreflight.response?.state === "addable" && ankiSubmit.response?.state === "added"
       && ankiBrowse.response?.opened === true && ankiMaturity.response?.mature === true
@@ -1336,8 +1396,8 @@ async function sharingHostStage() {
       && submitted?.[1]?.url === undefined && submitted?.[1]?.apiKey === undefined && submitted?.[1]?.anki === undefined
       && submitted?.[1]?.configKey === "host-config"
       && submitted?.[1]?.term?.expression === "猫" && JSON.stringify(submitted?.[2]) === JSON.stringify({}),
-    JSON.stringify({ ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse, staleBrowse, ankiMaturity,
-      hostScreenshot, hostAnkiCalls }));
+    JSON.stringify({ linkedSetup, hostSetupCalls, ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse,
+      staleBrowse, ankiMaturity, hostScreenshot, hostAnkiCalls }));
 
   socket.drop();
   await settle();
@@ -1698,7 +1758,30 @@ async function sharingClientStage() {
     errors: [],
   } });
   const discovered = await discovering;
-  check("linked Anki Settings discovery runs on the host without forwarding the reading browser's endpoint credentials",
+  const beforeSetup = socket.requests().length;
+  const checkingSetup = bus.sendMessage("sharing-client-settings", {
+    target: "hoshidicts-worker",
+    type: "hd_anki_setup",
+    requestId: "client-anki-setup",
+    anki: {
+      model: "Client model",
+      deck: "Client deck",
+      url: "https://client.invalid/anki",
+      apiKey: "client-secret",
+    },
+  }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html#anki") });
+  await settle(() => socket.requests().length > beforeSetup);
+  const forwardedSetup = socket.requests().at(-1);
+  socket.receive({ kind: "reply", id: forwardedSetup.id, response: {
+    type: "hd_anki_setup_result",
+    requestId: "client-anki-setup",
+    ok: true,
+    error: null,
+    proposal: { status: "already-configured" },
+    outcome: { status: "already-configured", detail: null, model: "Basic", deck: "Default" },
+  } });
+  const setup = await checkingSetup;
+  check("linked Anki Settings checks run on the host without forwarding the reading browser's endpoint, key or mapping",
     JSON.stringify(forwardedDiscovery.message) === JSON.stringify({
       target: "hoshidicts-worker",
       type: "hd_anki_discover",
@@ -1706,8 +1789,15 @@ async function sharingClientStage() {
       model: "Basic",
     })
       && discovered.ok === true && discovered.connected === true
-      && JSON.stringify(discovered.fields) === JSON.stringify(["Front", "Back"]),
-    JSON.stringify({ forwardedDiscovery, discovered }));
+      && JSON.stringify(discovered.fields) === JSON.stringify(["Front", "Back"])
+      && JSON.stringify(forwardedSetup.message) === JSON.stringify({
+        target: "hoshidicts-worker",
+        type: "hd_anki_setup",
+        requestId: "client-anki-setup",
+      })
+      && setup.ok === true && setup.outcome?.status === "already-configured"
+      && setup.outcome.model === "Basic" && setup.outcome.deck === "Default",
+    JSON.stringify({ forwardedDiscovery, discovered, forwardedSetup, setup }));
 
   // This install's own engine keeps its pre-link state.
   const engineRead = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_read", requestId: "engine-read" }, engineSender);
@@ -1783,7 +1873,7 @@ async function sharingTransitionStage() {
     }
     throw new Error("sharing transition did not settle");
   };
-  async function fixture({ overlayMode = false, initial = null, ankiService = null } = {}) {
+  async function fixture({ overlayMode = false, initial = null, ankiService = null, ankiIndex = null } = {}) {
     const bus = makeBus(), storage = makeStorage();
     const chrome = makeChrome("sharing-transitions-worker", bus, storage);
     const text = "私語,しご,my personal entry\n";
@@ -1806,6 +1896,7 @@ async function sharingTransitionStage() {
     }
     const sandbox = { chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket };
     if (ankiService !== null) sandbox.createAnkiWorkerService = () => ankiService;
+    if (ankiIndex !== null) sandbox.createAnkiDuplicateIndex = () => ankiIndex;
     const context = loadBackgroundScript(sandbox, { overlayMode });
     const send = (type, fields = {}, target = "hachidori-sharing", sender) => bus.sendMessage("sharing-settings-tab",
       { target, type, requestId: `transition-${type}`, ...fields }, sender);
@@ -1861,13 +1952,26 @@ async function sharingTransitionStage() {
       id: f.chrome.runtime.id,
       url: f.chrome.runtime.getURL("settings.html#anki"),
     });
+    const oldSetup = await f.send("hd_anki_setup", {
+      anki: {
+        model: "Basic",
+        deck: "Default",
+        url: "https://client.invalid/anki",
+        apiKey: "client-secret",
+      },
+    }, "hoshidicts-worker", {
+      id: f.chrome.runtime.id,
+      url: f.chrome.runtime.getURL("settings.html#anki"),
+    });
     check("an old host keeps linked dictionaries available but reports host-owned Anki mining unavailable without sending a request",
       oldAnki.ok === true && oldAnki.available === false
         && oldAnki.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && oldDiscovery.ok === false
         && oldDiscovery.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
+        && oldSetup.ok === false
+        && oldSetup.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && keptSocket.requests().length === requestsBeforeOldAnki,
-      JSON.stringify({ oldAnki, oldDiscovery, requests: keptSocket.requests() }));
+      JSON.stringify({ oldAnki, oldDiscovery, oldSetup, requests: keptSocket.requests() }));
     const writes = f.storage.sets.length, sockets = f.sockets.length;
     await f.finishLinks([f.link()]);
     check("a repeated Link returns the current link without probing or replacing its saved state",
@@ -1885,6 +1989,52 @@ async function sharingTransitionStage() {
         && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
         && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
   } finally { f.dispose(); }
+
+  const indexCalls = [];
+  const indexRace = await fixture({ ankiIndex: {
+    async suspend() { indexCalls.push("suspend"); },
+    async resume() { indexCalls.push("resume"); },
+    async source() { return null; },
+    async lookup() { return { wordKey: null, mature: false, noteIds: [], cached: false }; },
+    async repair() { return { wordKey: null, mature: false, noteIds: [], cached: false }; },
+    async recordWrite() {},
+    async has() { return false; },
+  } });
+  const originalIndexSet = indexRace.chrome.storage.local.set;
+  try {
+    await until(() => indexCalls.includes("resume"));
+    for (let idle = 0; idle < 3; idle += 1) await tick();
+    indexCalls.length = 0;
+    const enteredCommit = Promise.withResolvers();
+    const releaseCommit = Promise.withResolvers();
+    let holdCommit = true;
+    indexRace.chrome.storage.local.set = async values => {
+      if (holdCommit && values.sharing?.client?.address) {
+        holdCommit = false;
+        enteredCommit.resolve();
+        await releaseCommit.promise;
+      }
+      return originalIndexSet(values);
+    };
+    const finishingLink = indexRace.finishLinks([indexRace.link()]);
+    await enteredCommit.promise;
+    indexRace.chrome.alarms.onAlarm.fire({ name: ANKI_INDEX_ALARM });
+    await tick();
+    await tick();
+    const duringTransition = [...indexCalls];
+    releaseCommit.resolve();
+    const [linked] = await finishingLink;
+    await tick();
+    await tick();
+    check("an index alarm during Link cannot resume the reading browser's local Anki behind the suspended transition",
+      linked.ok && duringTransition.length === 1 && duringTransition[0] === "suspend"
+        && indexCalls.filter(call => call === "suspend").length >= 2
+        && !indexCalls.includes("resume"),
+      JSON.stringify({ duringTransition, indexCalls, linked }));
+  } finally {
+    indexRace.chrome.storage.local.set = originalIndexSet;
+    indexRace.dispose();
+  }
 
   const failure = await fixture();
   try {
@@ -6592,14 +6742,19 @@ async function main() {
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
   const linkedAnkiSettings = await settingsLinkedAnkiDiscoveryStage();
-  check("linked Anki Settings saves endpoint drafts on the host before refreshing host-owned discovery",
+  check("linked Anki Settings saves endpoint drafts on the host before running host-owned discovery or setup checks",
     linkedAnkiSettings?.discoveriesBeforeSave === 1
+      && linkedAnkiSettings.setupChecksBeforeSave === 0
       && linkedAnkiSettings.writeIndex >= 0
       && linkedAnkiSettings.discoveryIndex > linkedAnkiSettings.writeIndex
+      && linkedAnkiSettings.setupIndex > linkedAnkiSettings.writeIndex
       && linkedAnkiSettings.savedUrl === "https://host-new.example/anki"
       && linkedAnkiSettings.discoveryUrl === "https://host-new.example/anki"
       && linkedAnkiSettings.discoveryApiKey === ""
-      && linkedAnkiSettings.discoveryModel === "Basic",
+      && linkedAnkiSettings.discoveryModel === "Basic"
+      && linkedAnkiSettings.setupUrl === "https://host-new.example/anki"
+      && linkedAnkiSettings.setupApiKey === ""
+      && linkedAnkiSettings.setupModel === "Basic",
     JSON.stringify(linkedAnkiSettings));
   const welcome = await startupWelcomeStage();
   check("first-run setup waits for a saved Start, resumes it and permits manual setup",
@@ -7540,6 +7695,11 @@ async function settingsLinkedAnkiDiscoveryStage() {
         fields: ["Front", "Back"],
         errors: [],
       };
+      if (message.type === "hd_anki_setup") return {
+        ok: true,
+        proposal: { status: "already-configured" },
+        outcome: { status: "already-configured", detail: null, model: "Basic", deck: "Default" },
+      };
       if (message.type === "hd_options_write") {
         return new Promise(resolveReply => {
           pendingWrite = { message: structuredClone(message), requestIndex: requests.length - 1, resolveReply };
@@ -7570,19 +7730,28 @@ async function settingsLinkedAnkiDiscoveryStage() {
     url.value = "https://host-new.example/anki";
     url.dispatchEvent(new window.Event("change", { bubbles: true }));
     await until(() => pendingWrite !== null);
+    document.getElementById("anki-find-setup").click();
     const discoveriesBeforeSave = requests.filter(request => request.type === "hd_anki_discover").length;
+    const setupChecksBeforeSave = requests.filter(request => request.type === "hd_anki_setup").length;
     const savedOptions = { ...storedOptions, ...pendingWrite.message.options, revision: 2 };
     pendingWrite.resolveReply({ ok: true, options: savedOptions });
     await until(() => requests.filter(request => request.type === "hd_anki_discover").length === 2);
+    await until(() => requests.filter(request => request.type === "hd_anki_setup").length === 1);
     const discovery = requests.filter(request => request.type === "hd_anki_discover").at(-1);
+    const setup = requests.find(request => request.type === "hd_anki_setup");
     return {
       discoveriesBeforeSave,
+      setupChecksBeforeSave,
       writeIndex: pendingWrite.requestIndex,
       discoveryIndex: requests.lastIndexOf(discovery),
+      setupIndex: requests.indexOf(setup),
       savedUrl: pendingWrite.message.options?.anki?.url,
       discoveryUrl: discovery.url,
       discoveryApiKey: discovery.apiKey,
       discoveryModel: discovery.model,
+      setupUrl: setup.anki?.url,
+      setupApiKey: setup.anki?.apiKey,
+      setupModel: setup.anki?.model,
     };
   } finally {
     window.close();
