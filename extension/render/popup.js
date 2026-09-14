@@ -2829,7 +2829,8 @@
             label.className = "gsm-hoshidicts-primary-frequency-label";
             label.textContent = "Freq:";
             label.setAttribute("aria-hidden", "true");
-            frequencies.append(label, " ");
+            // Inside the first tag, so a wrap never leaves the label alone.
+            frequencyTags[0].prepend(label, " ");
           }
           frequencies.append(...frequencyTags);
           capsule.prepend(frequencies);
@@ -3147,13 +3148,20 @@
           entry.appendChild(renderedHeader.element);
         }
 
+        // The lookup count and the frequency share one line.
+        const primaryMetadataRow = resultIndex === 0 ? documentRef.createElement("div") : null;
+        if (primaryMetadataRow) {
+          primaryMetadataRow.className = "gsm-hoshidicts-primary-metadata-row";
+          entry.appendChild(primaryMetadataRow);
+        }
+
         if (resultIndex === 0 && renderContext.lookupStatsSlot === true) {
           lookupStats = documentRef.createElement("div");
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.setAttribute("role", "status");
           lookupStats.setAttribute("aria-live", "polite");
           lookupStats.hidden = true;
-          entry.appendChild(lookupStats);
+          primaryMetadataRow.appendChild(lookupStats);
         }
 
         if (resultIndex === 0 && primaryMetadataCapsule) {
@@ -3167,7 +3175,7 @@
             renderContext.averageFrequency === true,
             renderContext.showFrequencyDictionaryNames === true
           );
-          entry.appendChild(primaryMetadataCapsule);
+          primaryMetadataRow.appendChild(primaryMetadataCapsule);
         }
 
         const metadata = appendMetadata(

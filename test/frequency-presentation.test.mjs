@@ -62,7 +62,7 @@ test("the default Jiten frequency is a labelled pill that preserves the kana mar
     const frequencies = capsule.querySelector(".gsm-hoshidicts-primary-frequencies");
     assert.equal(capsule.textContent, "Freq: 14.2k㋕ · 191");
     assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
-    assert.equal(capsule.parentElement, entry);
+    assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-header").contains(capsule), false);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
@@ -89,7 +89,7 @@ test("live display choices keep frequency and grammar in the primary result and 
   const f = fixture(t);
   const defaults = f.options.normaliseOptions({});
   const capsule = f.render(defaults);
-  const entry = capsule.parentElement;
+  const entry = capsule.closest(".gsm-hoshidicts-entry");
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   const form = f.popup.querySelector("form");
@@ -102,7 +102,7 @@ test("live display choices keep frequency and grammar in the primary result and 
   assert.equal(capsule.textContent, "Freq: 14.2k㋕ · 191");
   assert.ok(capsule.querySelector(".gsm-hoshidicts-primary-frequencies-default"));
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
-  assert.equal(capsule.parentElement, entry);
+  assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
   assert.equal(f.popup.querySelector("form"), form);
   assert.equal(form.elements.definition.value, "keep my draft");
@@ -143,7 +143,7 @@ test("opt-in grammar stays visible without frequency or dictionary tabs and hide
   const result = { ...RESULT, term: { ...RESULT.term, glossaries: [], frequencies: [] } };
   const capsule = f.render({ ...defaults, hidePopupGrammarTags: false }, result);
   assert.equal(capsule.hidden, false);
-  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-entry"));
+  assert.ok(capsule.closest(".gsm-hoshidicts-entry"));
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
@@ -168,5 +168,5 @@ test("the lower metadata strip exists only for dictionary tabs", t => {
   assert.equal(strip.children.length, 1);
   assert.ok(strip.firstElementChild.classList.contains("gsm-hoshidicts-tab-list"));
   assert.equal(strip.contains(capsule), false);
-  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-entry"));
+  assert.ok(capsule.closest(".gsm-hoshidicts-entry"));
 });

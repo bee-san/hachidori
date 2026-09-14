@@ -1312,12 +1312,22 @@ html[data-hoshidicts-theme="girlypop"],
   touch-action: pan-x pan-y;
 }
 
-.gsm-hoshidicts-primary-metadata-capsule {
-  display: inline-flex;
+.gsm-hoshidicts-primary-metadata-row {
+  display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  width: fit-content;
-  max-width: 100%;
+  column-gap: 6px;
+}
+
+/* Starts at zero and grows to its natural width, so it stays beside the
+   lookup count and wraps its own tags; only a tag too wide for that space
+   moves it below. */
+.gsm-hoshidicts-primary-metadata-capsule {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  max-width: max-content;
   margin: 7px 0 0;
   color: var(--text-color-light1);
   font-size: 12px;
@@ -1342,7 +1352,8 @@ html[data-hoshidicts-theme="girlypop"],
   max-width: 100%;
   padding: 3px 7px;
   border: 1px solid var(--hoshidicts-border);
-  border-radius: 999px;
+  /* A pill on one line, a rounded box when its tags wrap. */
+  border-radius: 13px;
   background: var(--hoshidicts-card-background);
   color: var(--hoshidicts-text);
   font-size: 13px;
@@ -1352,16 +1363,17 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-primary-frequency-label {
   flex: 0 0 auto;
+  margin-right: 4px;
   color: inherit;
 }
 
-.gsm-hoshidicts-primary-frequency-label + .gsm-hoshidicts-tag-frequency {
-  margin-left: 4px;
+.gsm-hoshidicts-primary-frequencies-default > .gsm-hoshidicts-tag-frequency {
+  line-height: inherit;
 }
 
 .gsm-hoshidicts-primary-metadata-capsule .gsm-hoshidicts-tag-frequency {
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: max-content;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2186,7 +2198,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-lookup-stats {
   display: inline-block;
-  margin: 7px 6px 2px 0;
+  margin: 7px 0 2px;
   padding: 3px 7px;
   border: 1px solid var(--hoshidicts-border);
   border-radius: 999px;

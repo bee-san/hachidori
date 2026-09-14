@@ -9283,7 +9283,7 @@ async function designPreviewStage() {
     const query = selector => popup.querySelector(selector);
     const card = query(".gsm-hoshidicts-glossary-card");
     const sample = popup.textContent.includes("食べる")
-      && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"]')?.textContent === "120 · 240"
+      && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"] .gsm-hoshidicts-frequency-values')?.textContent === "120 · 240"
       && !query(".gsm-hoshidicts-frequency-source")
       && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
       && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
