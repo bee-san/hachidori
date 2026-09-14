@@ -115,9 +115,8 @@ Before opening the pull request:
 
 Before merging a pull request:
 
-- Wait for GitHub Copilot's review comments before manually requesting Codex. Reserve manual Codex requests for meaningful code changes; batch review fixes and finish documentation, screenshots, and minor cleanup before requesting the final exact-head review.
 - Require a successful completed CI check and a clean merge state for the exact head SHA.
-- Require the current Codex review summary to be Completed for that exact head. Fix every substantive finding and resolve every review thread.
+- Fix every substantive review finding and resolve every review thread.
 - Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
 - Re-run the gate after every follow-up commit, including documentation-only fixes, then merge through GitHub and fast-forward the local `main` checkout.
 
