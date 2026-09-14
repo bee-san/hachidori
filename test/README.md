@@ -93,7 +93,8 @@ node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
 HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
 node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 13. optional native cross-check
+node test/chrome-overlay.mjs     # 13. overlay mode's glyph selection and host events in real Chrome
+./test/baseline.sh               # 14. optional native cross-check
 ```
 
 Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
