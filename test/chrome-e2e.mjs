@@ -1551,7 +1551,9 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.detailsRect)
       && fitsWidth(expanded.popupRect, expanded.listRect)
       && fitsWidth(expanded.popupRect, expanded.noteRect)
-      && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
+      // Responsive action buttons can wrap as the expanded headword gets wider;
+      // the whole Note button must still be visible and usable.
+      && expanded.noteRect.top >= expanded.popupRect.top && expanded.noteRect.bottom <= expanded.popupRect.bottom
       && note?.open === true && note.noteInputFocused && note.noteInputReachable
       && lastStep?.open === true && Math.abs(lastStep.toolbarScrollTop) > 0 && lastStep.lastStepReachable
       && lastStep.lastStepRect.top >= lastStep.popupRect.top
@@ -6894,6 +6896,7 @@ async function main() {
 
   const launchArgs = {
     executablePath: CHROME,
+    enableExtensions: true,
     dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
     userDataDir: PROFILE,
@@ -9712,6 +9715,20 @@ async function main() {
     sourcePrefix: CUSTOM_SETTINGS_SOURCE,
     definition: CUSTOM_TERM_NOTE_DEFINITION,
   }).then((handle) => handle.jsonValue()).catch(() => null);
+  let refreshedTermNote = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = await popup.state();
+    if (popup.visible(state)
+        && state?.noteOpen === false
+        && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
+      refreshedTermNote = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+
+  // The storage commit precedes generation cleanup. The refreshed popup is the
+  // existing barrier proving that the save completed and lookups are available.
   const customGlobalTermLookup = await page.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-offscreen",
     type: "hd_lookup",
@@ -9725,17 +9742,6 @@ async function main() {
       primaryReading: "",
     },
   }));
-  let refreshedTermNote = null;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const state = await popup.state();
-    if (popup.visible(state)
-        && state?.noteOpen === false
-        && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
-      refreshedTermNote = state;
-      break;
-    }
-    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
-  }
 
   const clickedCustomKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   let customKanjiView = null;

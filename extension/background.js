@@ -185,7 +185,11 @@ async function applyMirror(changes) {
 function getSharingClient() {
   sharingClient ??= createSharingClient({
     WebSocket: globalThis.WebSocket,
-    applyBatch: changes => serialiseStorage(() => applyMirror(changes)),
+    applyBatch: (changes, isCurrent) => serialiseStorage(() => {
+      // Unlink or a replacement connection may have retired this batch while
+      // it waited behind the restoration's storage writes.
+      if (sharingLinked && isCurrent()) return applyMirror(changes);
+    }),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
   });
@@ -2206,6 +2210,17 @@ function linkTarget(text) {
   return parseLinkAddress(trimmed === "" ? `127.0.0.1:${getSharingHost().status().port}` : trimmed);
 }
 
+// Own the whole user action, including its probe, independently of storage.
+// Network waits must leave the storage queue free for engine callbacks and
+// local edits, and a failed action must not block the next Settings tab.
+let sharingTransitionTail = Promise.resolve();
+
+function serialiseSharingTransition(job) {
+  const run = sharingTransitionTail.then(() => sharingReady).then(job);
+  sharingTransitionTail = run.catch(() => {});
+  return run;
+}
+
 const SHARING_HANDLERS = {
   hd_sharing_status() {
     return { sharing: sharingStatus() };
@@ -2222,26 +2237,37 @@ const SHARING_HANDLERS = {
   // place under the live keys.
   async hd_sharing_client_link(message) {
     const { address } = linkTarget(message.address);
+    const config = (await serialiseStorage(() => chrome.storage.local.get(SHARING_KEY)))[SHARING_KEY];
+    if (config?.client?.address === address) return { sharing: sharingStatus() };
     const host = getSharingHost();
     const hosting = host.status();
     if (hosting.enabled) host.disable();
-    let hello;
     try {
-      hello = await getSharingClient().probe(address);
+      const hello = await getSharingClient().probe(address);
+      await serialiseStorage(async () => {
+        const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
+        if (!sameJsonValue(stored[SHARING_KEY], config)) {
+          throw new Error("Sharing changed while linking. Try again.");
+        }
+        const values = {
+          [SHARING_KEY]: { ...config, host: { ...config?.host, enabled: false }, client: { address } },
+        };
+        // Switching hosts keeps the original local state too. Only an install
+        // that is currently unlinked may capture the live keys as local data.
+        if (!config?.client?.address) {
+          values[SHARING_LOCAL_STATE_KEY] = Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null]));
+        }
+        await chrome.storage.local.set(values);
+        // Publish routing at the confirmed commit, before another storage job
+        // can let the local engine see (or clean up against) the host inventory.
+        sharingLinked = true;
+        getSharingClient().link(address);
+        await applyMirror(hello.snapshot);
+      });
     } catch (error) {
-      if (hosting.enabled) host.enable({ port: hosting.port, network: hosting.network.enabled });
+      if (hosting.enabled && !sharingLinked) host.enable({ port: hosting.port, network: hosting.network.enabled });
       throw error;
     }
-    await serialiseStorage(async () => {
-      const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
-      await chrome.storage.local.set({
-        [SHARING_LOCAL_STATE_KEY]: Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null])),
-        [SHARING_KEY]: { host: { ...stored[SHARING_KEY]?.host, enabled: false }, client: { address } },
-      });
-      await applyMirror(hello.snapshot);
-    });
-    sharingLinked = true;
-    getSharingClient().link(address);
     await reconcileUpdateAlarm();
     await reconcileAnkiMaturity();
     return { sharing: sharingStatus() };
@@ -2249,26 +2275,36 @@ const SHARING_HANDLERS = {
   // Restored values outrank the mirror in every reader's revision comparison,
   // and the host's lookup-count rows leave with it.
   async hd_sharing_client_unlink() {
-    getSharingClient().unlink();
-    sharingLinked = false;
     await serialiseStorage(async () => {
       const stored = await chrome.storage.local.get(null);
-      const captured = stored[SHARING_LOCAL_STATE_KEY] ?? {};
-      const values = {};
-      const removals = [SHARING_LOCAL_STATE_KEY];
-      for (const key of SHARED_STATE_KEYS) {
-        const local = captured[key];
-        if (local === null || local === undefined) {
-          if (stored[key] !== undefined) removals.push(key);
-          continue;
+      // client:null is the durable completion marker. A repeated Unlink must
+      // not restore an old snapshot even if its final cleanup failed.
+      if (!stored[SHARING_KEY]?.client?.address) return;
+      const captured = stored[SHARING_LOCAL_STATE_KEY];
+      if (captured) {
+        const values = {};
+        const removals = [];
+        for (const key of SHARED_STATE_KEYS) {
+          const local = captured[key];
+          if (local === null || local === undefined) {
+            if (stored[key] !== undefined) removals.push(key);
+            continue;
+          }
+          values[key] = { ...local, revision: Math.max(optionsRevision(local), optionsRevision(stored[key])) + 1 };
         }
-        values[key] = { ...local, revision: Math.max(optionsRevision(local), optionsRevision(stored[key])) + 1 };
+        const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
+        removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));
+        await writeLocalState(values);
+        if (removals.length > 0) await chrome.storage.local.remove(removals);
       }
-      const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
-      removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));
-      values[SHARING_KEY] = { ...stored[SHARING_KEY], client: null };
-      await chrome.storage.local.set(values);
-      await chrome.storage.local.remove(removals);
+      // An absent snapshot never authorizes deleting live user data. Keep
+      // both the snapshot and linked routing until restoration has succeeded.
+      await chrome.storage.local.set({ [SHARING_KEY]: { ...stored[SHARING_KEY], client: null } });
+      sharingLinked = false;
+      getSharingClient().unlink();
+      await chrome.storage.local.remove(SHARING_LOCAL_STATE_KEY).catch(error => {
+        console.warn("hachidori: could not clean up the restored sharing snapshot:", describe(error));
+      });
     });
     await reconcileUpdateAlarm();
     await reconcileAnkiMaturity();
@@ -2292,7 +2328,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = typeof message.type === "string" ? message.type : "";
   Promise.resolve().then(() => {
     if (!Object.hasOwn(SHARING_HANDLERS, type)) throw new Error(`unknown sharing request type ${JSON.stringify(type)}`);
-    return SHARING_HANDLERS[type](message, sender);
+    const invoke = () => SHARING_HANDLERS[type](message, sender);
+    return ["hd_sharing_status", "hd_sharing_client_probe"].includes(type)
+      ? sharingReady.then(invoke) : serialiseSharingTransition(invoke);
   }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
   return true;
 });

@@ -1976,7 +1976,7 @@ Settings and startup pages: the default port, the `/host` and `/link` paths,
 `parseLinkAddress` (a host, `host:port` or a ws:// URL, with the `display`
 form a person sees), `browserName` (what an install calls itself, from
 `navigator.userAgentData`), the table of forwardable requests and the frame
-validators. The add-on's [`addon/server.py`](https://github.com/bee-san/hachidori-anki/blob/v0.0.2/addon/server.py) keeps the host, its clients and
+validators. The add-on's [`addon/server.py`](https://github.com/bee-san/hachidori-anki/blob/v0.0.3/addon/server.py) keeps the host, its clients and
 the frames between them behind one lock; its `Listener` owns the listening
 socket and swaps it between `127.0.0.1` and every interface, because Linux
 refuses a wildcard bind beside a loopback listener. Towards the host the relay

@@ -9,7 +9,8 @@ import vm from "node:vm";
 import { createCaptureTimeline, resolveCaptureInterval } from "../extension/capture-timeline.js";
 
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [resolve(homedir(), ".cache/hachidori-e2e")] }));
+const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+  || resolve(homedir(), ".cache/hachidori-e2e")] }));
 const extension = file => readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8");
 const flush = () => new Promise(resolve => setImmediate(resolve));
 

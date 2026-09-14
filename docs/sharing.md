@@ -22,7 +22,7 @@ dictionaries. **Settings → Sharing** says *Waiting for Anki* and offers
 `hachidori-relay.ankiaddon` (or use **Tools → Add-ons → Install from file…**
 in Anki), restart Anki, and the line becomes *Sharing through Anki.* The
 button downloads the compatible
-[v0.0.2 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.2)
+[v0.0.3 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.3)
 from GitHub, so downloading needs an internet connection. It shows progress
 while fetching and an error with a retryable button if the download fails.
 The add-on has its own version; this extension pins the version it was tested
@@ -115,6 +115,12 @@ every open page adopts it, and removes the host's lookup-count rows. Pages open
 in the linked browser before linking keep their previous reader options until
 they reload; their lookups go to the host straight away.
 
+Sharing actions from multiple Settings tabs run in order, including the initial
+connection probe. Repeating **Link** keeps the original local snapshot; repeating
+**Unlink** keeps the first successful restoration. A failed restoration retains
+the saved state for retry, and late messages from the old connection cannot
+overwrite restored settings or personal entries.
+
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
 reachable* and the Sharing section says so; the linked browser reconnects by
@@ -151,6 +157,14 @@ computers reach it at, found from the routes to Tailscale's resolver and to the
 default route without sending anything. In a checkout of that repository,
 run it without Anki with `python3 addon/server.py --port 8771`.
 
+Socket writes never wait while holding the shared relay state lock. A healthy
+connection sends directly; a socket that fills its send buffer queues the rest
+of that frame and later frames in order, with its own drain thread. Other
+browsers can keep looking up words and receiving keep-alives while it catches
+up. Turning network sharing off or losing the host interrupts stalled sends;
+a partly sent frame ends with transport shutdown rather than a malformed close
+frame inserted into its payload.
+
 ## Tests
 
 `node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs
@@ -159,6 +173,8 @@ with jsdom, and verifies pinned binary downloads, HTTP/network failures,
 progress across polls, and retry. The relay's raw-socket, packaging, and
 optional installed-Anki checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
+Release v0.0.3 includes the slow-peer isolation and Python 3.9 idle-timeout
+regressions previously verified here.
 
 The extension smoke suite's sharing-host and sharing-client stages cover the
 service worker's side against fake sockets. `node test/chrome-sharing.mjs`

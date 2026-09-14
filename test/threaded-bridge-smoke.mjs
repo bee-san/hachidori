@@ -74,9 +74,14 @@ globalThis.chrome = {
 await import(`../extension/offscreen.js?threaded-bridge-smoke=${Date.now()}`);
 await tick();
 
-assert.equal(runtimeListeners.length, 2);
 assert.equal(engineWorkers.length, 0);
-let relay = (...args) => runtimeListeners.some(listener => listener(...args) === true);
+// Each fresh offscreen import registers its own engine, audio, capture and
+// setup listeners. Route through that import's listeners, not a fixed index.
+function importedRuntime() {
+  const listeners = runtimeListeners.splice(0);
+  return (...args) => listeners.some(listener => listener(...args) === true);
+}
+let relay = importedRuntime();
 
 function request(type, requestId, fields = {}) {
   const responses = [];
@@ -261,7 +266,7 @@ assert.match((await send("hd_status", "failed-worker-status")).error, /unreadabl
 
 FakeWorker.creationError = new Error("test engine selection failure");
 await import(`../extension/offscreen.js?failed-selection=${Date.now()}`);
-relay = runtimeListeners.at(-1);
+relay = importedRuntime();
 const failedSelection = request("hd_lookup", "failed-selection-lookup");
 const failedSelectionMutation = request("hd_import", "failed-selection-mutation");
 capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
@@ -325,7 +330,7 @@ const hooks = registerHooks({
 try {
   Object.defineProperty(globalThis, "crossOriginIsolated", { configurable: true, value: false });
   await import(`../extension/offscreen.js?fallback-bridge-smoke=${Date.now()}`);
-  relay = runtimeListeners.at(-1);
+  relay = importedRuntime();
   await serviceLoading.promise;
   const loading = Array.from({ length: 129 }, (_, index) => request("hd_lookup", `local-${index}`));
   await tick();

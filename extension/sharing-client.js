@@ -17,8 +17,8 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
-// `applyBatch(changes)` writes one host storage batch locally; `version` and
-// `name` introduce this install to the host.
+// `applyBatch(changes, isCurrent)` writes one host storage batch locally, checking
+// isCurrent inside its storage queue; `version` and `name` introduce this install.
 export function createSharingClient({ WebSocket, applyBatch, version, name }) {
   const pending = new Map();
   const waiting = new Set();
@@ -63,6 +63,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
   }
 
   async function handleFrame(current, text) {
+    if (socket !== current) return;
     let frame;
     try {
       frame = parseHostFrame(text);
@@ -73,7 +74,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
     switch (frame.kind) {
       case "hello":
         host = { version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount };
-        await applyBatch(frame.snapshot);
+        await applyBatch(frame.snapshot, () => socket === current);
         if (socket !== current) return;
         ready = true;
         error = null;
@@ -88,7 +89,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
         return;
       }
       case "storage":
-        await applyBatch(frame.changes);
+        await applyBatch(frame.changes, () => socket === current);
         return;
       case "ping":
         current.send(JSON.stringify({ kind: "pong" }));

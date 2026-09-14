@@ -6,7 +6,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { buildAnkiResourceFields } from "../extension/anki-resources.js";
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [resolve(homedir(), ".cache/hachidori-e2e")] }));
+const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+  || resolve(homedir(), ".cache/hachidori-e2e")] }));
 
 function fixture(t) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>");

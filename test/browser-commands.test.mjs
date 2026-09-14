@@ -12,6 +12,9 @@ function worker(stored) {
   const writes = [], queued = [], errors = [], tabMessages = [];
   let onCommand = null, openedSettings = 0;
   const context = vm.createContext({
+    sharingReady: Promise.resolve(),
+    sharingLinked: false,
+    WORKER_TARGET: "hoshidicts-worker",
     readDictionaryStorage: async () => ({ state: null, options: stored }),
     optionsRevision: options => Number.isInteger(options?.revision) ? options.revision : 0,
     normaliseOptions: globalThis.HDReaderOptions.normaliseOptions,
@@ -28,6 +31,12 @@ function worker(stored) {
   vm.runInContext(background.slice(background.indexOf("// Yomitan's native browser shortcuts"),
     background.indexOf("// Alarms may be cleared across browser restarts")), context);
   return { writes, queued, errors, tabMessages, command: (name, tab) => onCommand(name, tab),
+    settle: async () => {
+      // The toggle first waits for sharing initialization before joining the queue.
+      await new Promise(resolveDone => setImmediate(resolveDone));
+      await Promise.all(queued);
+      assert.deepEqual(errors, []);
+    },
     openedSettings: () => openedSettings };
 }
 
@@ -37,13 +46,13 @@ test("browser commands toggle lookups through the queued revisioned write and op
 
   const enabled = worker({ revision: 7, hoverEnabled: true });
   enabled.command("toggleTextScanning");
-  await Promise.all(enabled.queued);
-  assert.deepEqual(JSON.parse(JSON.stringify(enabled.writes)), [{ type: "hd_options_write", requestId: null,
+  await enabled.settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(enabled.writes)), [{ target: "hoshidicts-worker", type: "hd_options_write", requestId: null,
     baseRevision: 7, options: { hoverEnabled: false } }]);
 
   const legacy = worker(undefined);
   legacy.command("toggleTextScanning");
-  await Promise.all(legacy.queued);
+  await legacy.settle();
   assert.deepEqual(JSON.parse(JSON.stringify(legacy.writes[0].options)), { hoverEnabled: false }, "missing options toggle the default");
   assert.equal(legacy.writes[0].baseRevision, 0);
 

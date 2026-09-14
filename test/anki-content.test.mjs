@@ -8,7 +8,8 @@ import "../extension/reader-options.js";
 import "../extension/anki-content.js";
 import { createCaptureSession } from "../extension/capture-session.js";
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [resolve(homedir(), ".cache/hachidori-e2e")] }));
+const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+  || resolve(homedir(), ".cache/hachidori-e2e")] }));
 const configured = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS, anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, model: "Basic" } };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function until(predicate) {
