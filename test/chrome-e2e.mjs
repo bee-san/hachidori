@@ -1223,7 +1223,7 @@ async function popupReader(page, depth = 0) {
               primaryFrequencies?.classList.contains("gsm-hoshidicts-primary-frequencies-default")
               && primaryFrequencyStyle
               && primaryFrequencyStyle.borderTopStyle === "solid"
-              && primaryFrequencyStyle.borderRadius === "999px"
+              && primaryFrequencyStyle.borderRadius === "13px"
               && primaryFrequencyStyle.backgroundColor !== "rgba(0, 0, 0, 0)"
             ),
             clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
@@ -1251,7 +1251,7 @@ async function popupReader(page, depth = 0) {
               .every(node => node.parentElement === metadataCapsule),
             grammarInsideCapsule: [...this.querySelectorAll(".gsm-hoshidicts-primary-grammar")]
               .every(node => node.parentElement === metadataCapsule),
-            insidePrimaryEntry: metadataCapsule?.parentElement === primaryEntry,
+            insidePrimaryEntry: Boolean(metadataCapsule) && metadataCapsule.closest(".gsm-hoshidicts-entry") === primaryEntry,
             outsideHeader: !primaryHeader?.contains(metadataCapsule),
             insideResult: Boolean(capsuleRect && entryRect
               && capsuleRect.top >= entryRect.top - 1 && capsuleRect.bottom <= entryRect.bottom + 1),
