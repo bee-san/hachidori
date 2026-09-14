@@ -1313,12 +1313,12 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-primary-metadata-capsule {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: baseline;
   width: fit-content;
   max-width: 100%;
-  margin: 7px 0 2px;
+  margin: 7px 0 0;
   color: var(--text-color-light1);
   font-size: 12px;
   line-height: 1.45;
@@ -2186,7 +2186,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-lookup-stats {
   display: inline-block;
-  margin: 7px 0 2px;
+  margin: 7px 6px 2px 0;
   padding: 3px 7px;
   border: 1px solid var(--hoshidicts-border);
   border-radius: 999px;
