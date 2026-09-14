@@ -1551,7 +1551,9 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.detailsRect)
       && fitsWidth(expanded.popupRect, expanded.listRect)
       && fitsWidth(expanded.popupRect, expanded.noteRect)
-      && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
+      // Responsive action buttons can wrap as the expanded headword gets wider;
+      // the whole Note button must still be visible and usable.
+      && expanded.noteRect.top >= expanded.popupRect.top && expanded.noteRect.bottom <= expanded.popupRect.bottom
       && note?.open === true && note.noteInputFocused && note.noteInputReachable
       && lastStep?.open === true && Math.abs(lastStep.toolbarScrollTop) > 0 && lastStep.lastStepReachable
       && lastStep.lastStepRect.top >= lastStep.popupRect.top
