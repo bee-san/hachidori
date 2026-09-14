@@ -20,6 +20,13 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
+function requestFailure(failure, entry) {
+  if (!entry.sent || !entry.mutation) return failure;
+  const unknown = new Error(OUTCOME_UNKNOWN);
+  unknown.outcomeUnknown = true;
+  return unknown;
+}
+
 // `applyBatch(changes, isCurrent, snapshot)` writes one host storage batch locally, checking
 // isCurrent inside its storage queue; `version` and `name` introduce this install.
 export function createSharingClient({ WebSocket, applyBatch, version, name, capabilities = SHARING_CAPABILITIES }) {
@@ -49,13 +56,6 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
       else waiter.fail(failure ?? new Error(NOT_REACHABLE));
     }
     waiting.clear();
-  }
-
-  function requestFailure(failure, entry) {
-    if (!entry.sent || !entry.mutation) return failure;
-    const unknown = new Error(OUTCOME_UNKNOWN);
-    unknown.outcomeUnknown = true;
-    return unknown;
   }
 
   function rejectPending(failure) {
