@@ -16435,6 +16435,63 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]);
   check("compact summaries skip Jitendex ⟶ redirects", JSON.stringify(redirect?.items) === JSON.stringify(["vicious"]),
     JSON.stringify(redirect));
+  // Sanseido-style senses (sankoku, 新明解) keep only each 語釈's English half:
+  // no sense numbers, labels, examples, furigana, ⇨ references or link lists.
+  const named = (name, content, tag = "span") => ({ tag, data: { name }, content });
+  const sanseido = (...senses) => JSON.stringify([{ type: "structured-content", content: [
+    named("見出部", named("見出仮名", "あ")), named("解説部", named("大語義", senses, "div"), "div"),
+  ] }]);
+  const usage = named("用例G", ["「", named("用例", ["━", "、久しぶり"]), "」"], "div");
+  const furigana = named("ルビG", named("ルビ", "(かんとく)"));
+  const spacer = named("分書");
+  const sanseidoItems = (glossary) => HDPopup.extractCompactDefinitionSummary([{ dictionary: "sankoku", glossary }], null, 6)?.items;
+  const sanseidoSummaries = {
+    numbered: sanseidoItems(sanseido(
+      named("語義", [named("語義番号", "①"), named("専門G", ["〘", named("専門", "映画"), "〙"]),
+        named("語釈", ["An art director", furigana, ".", " ", "美術監督", furigana, "。"]), usage], "div"),
+      named("語義", [named("語義番号", "②"), named("参照G", [named("参照矢印", "⇨"),
+        named("参照", { tag: "a", href: "?query=監督", content: "監督" })]), usage], "div"),
+      named("語義", [named("語義番号", "③"), named("語釈", ["A passageway with a rounded roof.", " ", "まるい屋根のある通路。"])], "div"),
+    )),
+    unnumbered: sanseidoItems(sanseido(named("語義", [named("使用域G", ["〔", named("使用域", "俗"), "〕"]),
+      named("語釈", ["…you know. …yeah.", " ", "…よ。…ぜ。"]), usage], "div"))),
+    subSenses: sanseidoItems(sanseido(named("語義", [named("語義番号", "①"),
+      named("語釈", ["The act of going up. In particular,", " ", "上がること。特に、"]),
+      named("副義", [named("語義番号", "ⓐ"), named("語釈", ["The act of being completed.", " ", "完成すること。"]), usage], "div"),
+      named("副義", [named("語義番号", "ⓑ"), named("語釈", ["The act of becoming higher.", " ", "高くなること。"])], "div"),
+    ], "div"))),
+    groupGloss: sanseidoItems(sanseido(named("語釈", ["The symbol “＠.”", " ", "「＠」の記号。"]))),
+    spacing: sanseidoItems(sanseido(named("語義", named("語釈", [
+      "An", spacer, " inter", spacer, "change  of 「“　”」 marks.", " ", "インター", spacer, "チェンジ。",
+    ]), "div"))),
+    englishOnly: sanseidoItems(sanseido(named("語義", named("語釈", ["The ",
+      named("言換G", ["〈", named("言換", "act of succeeding"), "／", named("言換", "successor"), "〉"]), " ",
+      named("言換G", ["〈", named("言換", "title"), "／", named("言換", "estate"), "〉"]), "."]), "div"))),
+    fullWidthJapanese: sanseidoItems(sanseido(named("語義", named("語釈", ["Stitches crossed in the shape of ",
+      named("横", "Ｘ"), ".", " ", named("横", "Ｘ"), "の形に交差させたステッチ。"]), "div"))),
+    japaneseOnly: sanseidoItems(sanseido(named("語義", named("語釈", "あせび。"), "div"),
+      named("語義", named("語釈", ["かなしみの", furigana, "感じ。"]), "div"))),
+  };
+  const sanseidoSkipped = HDPopup.extractCompactDefinitionSummary([
+    { dictionary: "sankoku", glossary: JSON.stringify([{ type: "structured-content",
+      content: { tag: "a", href: "?query=ああ言えばこう言う", content: "ああ言えばこう言う" } }]) },
+    { dictionary: "sankoku", glossary: sanseido(named("語義", [named("参照G", [named("参照矢印", "⇨"),
+      named("参照", { tag: "a", href: "?query=指示語", content: "指示語" })]), usage], "div")) },
+    { dictionary: "Jitendex", glossary: JSON.stringify(["like that"]) },
+  ]);
+  check("compact summaries keep only the English gloss of Sanseido-style senses",
+    JSON.stringify(sanseidoSummaries) === JSON.stringify({
+      numbered: ["An art director.", "A passageway with a rounded roof."],
+      unnumbered: ["…you know. …yeah."],
+      subSenses: ["The act of going up. In particular,", "The act of being completed.", "The act of becoming higher."],
+      groupGloss: ["The symbol “＠.”"],
+      spacing: ["An interchange of 「“ ”」 marks."],
+      englishOnly: ["The 〈act of succeeding／successor〉 〈title／estate〉."],
+      fullWidthJapanese: ["Stitches crossed in the shape of Ｘ."],
+      japaneseOnly: ["あせび。", "かなしみの感じ。"],
+    })
+      && sanseidoSkipped?.dictionary === "Jitendex" && JSON.stringify(sanseidoSkipped?.items) === JSON.stringify(["like that"]),
+    JSON.stringify({ sanseidoSummaries, sanseidoSkipped }));
 
   const aggregateResult = { term: { frequencies: [
     { dictionary: "Rank A", frequencies: [{ value: 1234, displayValue: "1,234" }, { value: 1 }] },

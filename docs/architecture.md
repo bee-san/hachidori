@@ -1059,6 +1059,15 @@ expose hidden child lists or suppress a following leading image; wrapper-selecte
 text takes precedence over an incidental tag or unused content field.
 Ruby annotations and their fallback delimiters are omitted from the plain summary;
 the complete definition retains its native ruby markup.
+Sanseido-style dictionaries (三省堂国語辞典, 新明解国語辞典 and bilingual
+conversions such as sankoku en-jp) name sections with `data.name`. The same
+discovery pass that finds marked glossary sections finds their 語義 senses; after
+marked sections, each sense contributes only its 語釈 gloss, so sense numbers,
+labels, examples and ルビG furigana stay out. A bilingual 語釈 is English, a bare
+space child, then the original Japanese; the summary keeps the English half when
+the text after that space opens with Japanese. Senses holding only a ⇨ reference
+and index entries that are bare sub-headword links contribute nothing, so the
+summary moves on as it does for Jitendex redirects.
 Existing display/traversal bounds
 apply only to this preview; native results and complete glossary bytes remain
 unchanged. Default-off rendering does not run summary extraction.
