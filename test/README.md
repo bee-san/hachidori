@@ -120,7 +120,9 @@ an option and a personal entry that the host commits and pushes back, loses the
 host when it closes and reconnects when it relaunches, unlinks back to its own
 empty state, and links again through this machine's network address (the
 machine needs one beyond loopback) until the host stops sharing on the
-network. Eight predeclared checks; profiles are kept on failure.
+network. Two Settings tabs then issue overlapping Link and Unlink requests,
+preserving a compiled local personal dictionary and settings. Nine predeclared
+checks; profiles are kept on failure.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 

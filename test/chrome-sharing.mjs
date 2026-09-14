@@ -84,6 +84,7 @@ const CHECKS = [
   "closing the host fails linked lookups, and relaunching it reconnects the linked browser by itself",
   "unlinking restores the linked browser's own empty state",
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",
+  "overlapping Sharing actions from two Settings tabs preserve local personal entries, settings and dictionary files",
 ];
 const results = [];
 const diagnostics = [];
@@ -492,6 +493,53 @@ try {
     JSON.stringify({ networkOn: networkOn?.ok, hostNetwork, shown, remoteLinked, remoteLookup: { ok: remoteLookup?.ok, error: remoteLookup?.error, first: remoteLookup?.results?.[0]?.deinflected },
       remoteClients, remoteStatus, networkOff: networkOff?.ok, dropped, hostAfterOff: { network: hostAfterOff.network, connected: hostAfterOff.connected, clients: hostAfterOff.clients.length },
       cleanup: cleanup?.ok, stillThere: stillThere?.ok, relayExit: relay.exitCode }));
+
+  const localText = "私語,しご,local personal entry preserved across sharing\n";
+  const localBase = await message(clientPage, "hoshidicts-worker", "hd_custom_read");
+  const localSave = await message(clientPage, "hoshidicts-offscreen", "hd_custom_save",
+    { baseDocumentRevision: localBase.document.revision, text: localText });
+  if (!localSave?.ok) throw new Error(`local personal entry could not be saved: ${localSave?.error}`);
+  const localOptions = (await stored(clientPage, ["options"])).options;
+  const localEdit = await message(clientPage, "hoshidicts-worker", "hd_options_write",
+    { baseRevision: localOptions.revision, options: { scanLength: 11 } });
+  const localBefore = await stored(clientPage, ["dictionaryState", "options", CUSTOM_DICTIONARY_SOURCE_KEY]);
+  const secondPage = await openSettings(clientBrowser, clientId, "client-second-tab", "sharing");
+  // Hold the host's hello snapshot until both real Settings tabs have sent Link.
+  // The sockets, worker handlers and browser storage remain the production path.
+  const hostWorker = await (await hostBrowser.waitForTarget(target => target.type() === "service_worker")).worker();
+  await hostWorker.evaluate(() => {
+    const get = chrome.storage.local.get.bind(chrome.storage.local);
+    let release;
+    const held = new Promise(resolveHeld => { release = resolveHeld; });
+    chrome.storage.local.get = async keys => {
+      if (Array.isArray(keys) && keys.length === 5 && keys.includes("customDictionarySource") && keys.includes("lookupStats")) await held;
+      return get(keys);
+    };
+    globalThis.releaseSharingHello = () => { chrome.storage.local.get = get; release(); };
+  });
+  try {
+    await Promise.all([clientPage, secondPage].map(page => page.evaluate(address => {
+      globalThis.sharingLinkReply = chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_client_link", address });
+    }, ADDRESS)));
+  } finally {
+    await hostWorker.evaluate(() => { globalThis.releaseSharingHello(); delete globalThis.releaseSharingHello; });
+  }
+  const concurrentLinks = await Promise.all([clientPage, secondPage].map(page => page.evaluate(() => globalThis.sharingLinkReply)));
+  await until(async () => (await sharingStatus(clientPage)).sharing.client.connected, "the concurrent link to connect");
+  const keptLocal = (await stored(clientPage, ["sharingLocalState"])).sharingLocalState;
+  const concurrentUnlinks = await Promise.all([clientPage, secondPage].map(page => message(page, "hachidori-sharing", "hd_sharing_client_unlink")));
+  await message(secondPage, "hachidori-sharing", "hd_sharing_client_unlink");
+  const localAfter = await stored(clientPage, ["dictionaryState", "options", CUSTOM_DICTIONARY_SOURCE_KEY, "sharingLocalState"]);
+  const personalLookup = await lookup(clientPage, "私語");
+  check(CHECKS[8],
+    localEdit?.ok && concurrentLinks.every(reply => reply?.ok) && concurrentUnlinks.every(reply => reply?.ok && !reply.sharing.client.linked)
+      && keptLocal?.customDictionarySource?.text === localText && keptLocal.options?.scanLength === 11
+      && localAfter.customDictionarySource?.text === localText && localAfter.options?.scanLength === 11
+      && localAfter.customDictionarySource.revision > localBefore.customDictionarySource.revision
+      && JSON.stringify(localAfter.dictionaryState?.dictionaries) === JSON.stringify(localBefore.dictionaryState?.dictionaries)
+      && localAfter.sharingLocalState === undefined && personalLookup?.ok && personalLookup.results?.[0]?.term?.expression === "私語",
+    JSON.stringify({ concurrentLinks, concurrentUnlinks, keptLocal, localBefore, localAfter, personalLookup }));
+  await secondPage.close();
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

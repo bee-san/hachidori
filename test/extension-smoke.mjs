@@ -1594,6 +1594,13 @@ async function sharingTransitionStage() {
       !partial.ok && partialStatus.sharing.client.linked && retained && retried.ok
         && failure.storage.raw.get("customDictionarySource")?.text === failure.local.customDictionarySource.text,
       JSON.stringify({ partial, partialStatus, retained, retried }));
+    await failure.finishLinks([failure.link()]);
+    await remove("sharingLocalState");
+    const withoutSnapshot = JSON.stringify(Object.fromEntries([...failure.storage.raw].filter(([key]) => key !== "sharing")));
+    const missing = await failure.send("hd_sharing_client_unlink");
+    check("a linked install with no saved snapshot unlinks without deleting its current user data",
+      missing.ok && !missing.sharing.client.linked
+        && withoutSnapshot === JSON.stringify(Object.fromEntries([...failure.storage.raw].filter(([key]) => key !== "sharing"))));
   } finally { failure.dispose(); }
 
   const late = await fixture();
