@@ -2,3 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const OVERLAY_MODE = false;
+
+export const MINING_CAPABILITIES = Object.freeze({
+  screenshot: !OVERLAY_MODE,
+  browserSpeech: !OVERLAY_MODE,
+});

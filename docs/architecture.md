@@ -2065,7 +2065,20 @@ Update-alarm and maturity-cache reconciliation clear their alarms while linked.
 Unlinking restores the kept values with `max(kept, mirrored) + 1` revisions and
 removes the host's `lookupStats:` rows. The local-only `sharing` key holds
 `{ host: { enabled, port, network } | null, client: { address } | null }` and
-neither it nor `sharingLocalState` is part of backups. The startup page's
+neither it nor `sharingLocalState` is part of backups. For an overlay client,
+activation/scanning, source highlighting and popup geometry are composed from
+the kept local options. Its private `sharingOptionsVersion` stores the host
+revision and an offset for one increasing live revision; it is also excluded
+from backups. Local-only writes commit the live and kept options together,
+including while disconnected. Shared writes translate the CAS revision; mixed
+writes apply local fields only after the host accepts the shared fields and
+the link/local revision still match. A changed link or local edit during that
+network wait reports a conflict rather than overwriting it. Unlink remains
+available, restores the edited local preferences and clears the version record.
+An installer started locally before linking records its selections against
+that same kept local library rather than the host mirror.
+
+The startup page's
 welcome view probes this computer once and, when a shared Hachidori answers,
 offers to use it; that link then advances setup to `complete`. See
 [sharing](sharing.md) for use.

@@ -1506,7 +1506,7 @@ async function sharingTransitionStage() {
     }
     throw new Error("sharing transition did not settle");
   };
-  async function fixture() {
+  async function fixture({ overlayMode = false, initial = null } = {}) {
     const bus = makeBus(), storage = makeStorage();
     const chrome = makeChrome("sharing-transitions-worker", bus, storage);
     const text = "私語,しご,my personal entry\n";
@@ -1515,23 +1515,27 @@ async function sharingTransitionStage() {
       dictionaryState: { schemaVersion: 1, revision: 2, dictionaries: [genericPackage({
         id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE, revision: semanticRevision,
       })], groups: [] },
-      options: { hoverEnabled: true, revision: 3 },
+      options: { hoverEnabled: true, revision: 3, ...(overlayMode ? {
+        lookupMode: "hover", sourceHighlightEnabled: false, popupWidthPx: 420, popupTheme: "sunset",
+      } : {}) },
       customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
       dictionaryUpdates: null, lookupStats: null,
     };
-    await chrome.storage.local.set({ sharing: { host: null },
+    await chrome.storage.local.set(initial ?? { sharing: { host: null },
       ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)) });
     const sockets = [];
     class Socket extends FakeSharingSocket {
       constructor(url) { super(url); sockets.push(this); }
     }
-    const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket });
+    const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket }, { overlayMode });
     const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-settings-tab",
       { target, type, requestId: `transition-${type}`, ...fields });
     await send("hd_sharing_status");
     const hello = { kind: "hello", protocol: 1, version: "1", name: "Host", dictionaryCount: 1, snapshot: {
       dictionaryState: { schemaVersion: 1, revision: 9, dictionaries: [genericPackage({ id: "host" })], groups: [] },
-      options: { hoverEnabled: false, revision: 10 }, customDictionarySource: null,
+      options: { hoverEnabled: false, revision: 10, ...(overlayMode ? {
+        lookupMode: "activationSticky", sourceHighlightEnabled: true, popupWidthPx: 1000, popupTheme: "light",
+      } : {}) }, customDictionarySource: null,
       dictionaryUpdates: { revision: 5, schedule: "off", lastCheckedAt: null }, lookupStats: null,
     } };
     async function finishLinks(requests) {
@@ -1549,6 +1553,9 @@ async function sharingTransitionStage() {
       return replies;
     }
     return { chrome, storage, local, sockets, send, hello, finishLinks,
+      record: outcomes => bus.sendMessage("local-installer", { target: "hoshidicts-worker", type: "hd_setup_record",
+        runId: "local-linked-run", recordSetup: false, outcomes },
+      { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") }),
       link: () => send("hd_sharing_client_link", { address: "127.0.0.1:9100" }),
       dispose: () => runInContext("getSharingClient().unlink()", context) };
   }
@@ -1652,6 +1659,111 @@ async function sharingTransitionStage() {
         && pending.storage.raw.get("customDictionarySource")?.text === pending.local.customDictionarySource.text
         && !pending.storage.raw.has("sharingLocalState"), JSON.stringify({ replies, status }));
   } finally { pending.dispose(); }
+
+  const overlay = await fixture({ overlayMode: true });
+  let restarted;
+  let legacy;
+  try {
+    await overlay.finishLinks([overlay.link()]);
+    const socket = overlay.sockets.at(-1);
+    const current = () => overlay.storage.raw.get("options");
+    const write = (patch, baseRevision = current().revision) => overlay.send("hd_options_write",
+      { baseRevision, options: patch }, "hoshidicts-worker");
+    const initial = structuredClone(current());
+    const local = await write({ hoverEnabled: false, popupWidthPx: 480 });
+    const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
+    socket.receive({ kind: "storage", changes: { options: rawHost } });
+    await until(() => current().popupTheme === "dracula");
+    const mirrored = structuredClone(current());
+    socket.receive({ kind: "storage", changes: { options: overlay.hello.snapshot.options } });
+    await tick();
+    check("a linked overlay keeps activation, highlighting and geometry local through host option batches",
+      initial.hoverEnabled && initial.lookupMode === "hover" && !initial.sourceHighlightEnabled
+        && initial.popupWidthPx === 420 && initial.popupTheme === "light"
+        && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
+        && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
+        && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
+        && current().revision === mirrored.revision && current().popupTheme === "dracula"
+        && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480,
+      JSON.stringify({ initial, local, mirrored, current: current() }));
+
+    async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
+      await until(() => socket.requests().length === expectedCount);
+      const request = socket.requests().at(-1);
+      socket.receive({ kind: "reply", id: request.id, response: { type: "hd_options_write_result", requestId: request.message.requestId,
+        ok, error: ok ? null : "host changed", ...(ok ? {} : { conflict: true }), options: hostOptions } });
+      return { request: request.message, reply: await promise };
+    }
+    const shared = await answerWrite(write({ popupTheme: "forest" }), { ...rawHost, revision: 12, popupTheme: "forest" }, 1);
+    const mixedHost = { ...rawHost, revision: 13, popupTheme: "light" };
+    const mixed = await answerWrite(write({ popupTheme: "light", popupWidthPx: 520 }), mixedHost, 2);
+    const afterMixed = structuredClone(current());
+    socket.receive({ kind: "storage", changes: { options: mixedHost } });
+    await tick();
+    const stale = await write({ popupWidthPx: 900 }, initial.revision);
+    check("overlay saves translate host revisions, split mixed patches and reject stale local edits",
+      shared.request.baseRevision === 11 && shared.reply.ok && shared.reply.options.popupWidthPx === 480
+        && shared.reply.options.revision === 13
+        && mixed.request.baseRevision === 12 && JSON.stringify(mixed.request.options) === JSON.stringify({ popupTheme: "light" })
+        && mixed.reply.ok && mixed.reply.options.popupWidthPx === 520 && mixed.reply.options.revision === 15
+        && JSON.stringify(current()) === JSON.stringify(afterMixed)
+        && stale.ok === false && stale.conflict === true && socket.requests().length === 2,
+      JSON.stringify({ shared, mixed, afterMixed, current: current(), stale }));
+
+    const conflictHost = { ...mixedHost, revision: 14, popupTheme: "dark" };
+    const conflict = await answerWrite(write({ popupTheme: "forest", popupWidthPx: 600 }), conflictHost, 3, false);
+    const pendingShared = write({ popupTheme: "forest", popupWidthPx: 700 });
+    await until(() => socket.requests().length === 4);
+    const concurrent = await write({ popupWidthPx: 640 });
+    const raced = await answerWrite(pendingShared, { ...conflictHost, revision: 15, popupTheme: "forest" }, 4);
+    check("host conflicts and concurrent local edits preserve the overlay draft boundary",
+      !conflict.reply.ok && conflict.reply.conflict && conflict.reply.options.popupWidthPx === 520
+        && concurrent.ok && raced.reply.ok === false && raced.reply.conflict
+        && current().popupWidthPx === 640 && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 640,
+      JSON.stringify({ conflict, concurrent, raced, current: current() }));
+
+    const localCapture = structuredClone(overlay.storage.raw.get("sharingLocalState"));
+    const installedTitle = "Jitendex.org [2026-08-11]";
+    localCapture.dictionaryState.dictionaries.push(genericPackage({ id: "local-jitendex", title: installedTitle, sourceId: "jitendex" }));
+    await overlay.chrome.storage.local.set({ sharingLocalState: localCapture });
+    const beforeRecord = JSON.stringify(current());
+    const recorded = await overlay.record({ jitendex: { status: "installed", seconds: 1 } });
+    check("a local installer settling after Link updates its kept selections rather than the host mirror",
+      recorded.ok && overlay.storage.raw.get("sharingLocalState").options.compactDefinitionSummaryDictionary === installedTitle
+        && JSON.stringify(current()) === beforeRecord && !overlay.storage.raw.has("setupState"));
+
+    const restartState = structuredClone(Object.fromEntries(overlay.storage.raw));
+    const legacyState = structuredClone(restartState);
+    delete legacyState.sharingOptionsVersion;
+    legacyState.options = { ...conflictHost, revision: 15, popupWidthPx: 1200 };
+    legacy = await fixture({ overlayMode: true, initial: legacyState });
+    check("an existing linked overlay restores its kept preferences before the host reconnects",
+      legacy.storage.raw.get("options").popupWidthPx === 640
+        && legacy.storage.raw.get("options").lookupMode === "hover"
+        && !legacy.storage.raw.get("options").sourceHighlightEnabled
+        && legacy.storage.raw.get("options").revision > 15
+        && legacy.storage.raw.get("options").popupTheme === "dark");
+    restarted = await fixture({ overlayMode: true, initial: restartState });
+    const offline = await restarted.send("hd_options_write", { baseRevision: restarted.storage.raw.get("options").revision,
+      options: { popupWidthPx: 680 } }, "hoshidicts-worker");
+    const offlineRestored = await restarted.send("hd_sharing_client_unlink");
+    check("overlay-local edits survive worker restart, work while disconnected and remain after Unlink",
+      offline.ok && restarted.sockets.every(item => item.requests().length === 0) && offlineRestored.ok
+        && restarted.storage.raw.get("options").popupWidthPx === 680
+        && restarted.storage.raw.get("options").popupTheme === "sunset"
+        && !restarted.storage.raw.has("sharingOptionsVersion"), JSON.stringify({ offline, offlineRestored }));
+
+    const lateWrite = write({ popupTheme: "light", popupWidthPx: 750 });
+    await until(() => socket.requests().length === 5);
+    const unlinked = await overlay.send("hd_sharing_client_unlink");
+    const lateReply = await lateWrite;
+    socket.receive({ kind: "storage", changes: { options: { revision: 100, popupWidthPx: 1100 } } });
+    await tick();
+    check("Unlink can complete during an overlay shared save and its late reply cannot overwrite local preferences",
+      unlinked.ok && lateReply.ok === false && current().popupWidthPx === 640 && current().popupTheme === "sunset"
+        && current().revision > restartState.options.revision && !overlay.storage.raw.has("sharingLocalState")
+        && !overlay.storage.raw.has("sharingOptionsVersion"), JSON.stringify({ unlinked, lateReply, current: current() }));
+  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); }
 }
 
 async function firstRunBackgroundStage() {
@@ -2938,7 +3050,9 @@ async function customEngineStage() {
   );
 }
 
-function loadSettingsScript(window, { recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
+function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
+  window.OVERLAY_MODE = overlayMode;
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   // Most Settings scenarios have no active offscreen batch. The installation
   // scenario supplies the real shared runner through this same transport.
   const originalSend = window.chrome.runtime.sendMessage.bind(window.chrome.runtime);
@@ -2983,6 +3097,7 @@ function loadSettingsScript(window, { recommendedInstall = async () => ({ ok: tr
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/^import .* from "\.\/overlay-mode\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")

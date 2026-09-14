@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +42,8 @@ function scratchPath(value, prefix) {
 
 const HOST_PROFILE = scratchPath(process.env.HACHIDORI_SHARING_HOST_PROFILE || `${tmpdir()}/hachidori-sharing-host-${process.pid}`, "hachidori-sharing-host-");
 const CLIENT_PROFILE = scratchPath(process.env.HACHIDORI_SHARING_CLIENT_PROFILE || `${tmpdir()}/hachidori-sharing-client-${process.pid}`, "hachidori-sharing-client-");
+const OVERLAY_PROFILE = scratchPath(`${tmpdir()}/hachidori-sharing-overlay-${process.pid}`, "hachidori-sharing-overlay-");
+const OVERLAY_EXTENSION = scratchPath(`${tmpdir()}/hachidori-sharing-extension-${process.pid}`, "hachidori-sharing-extension-");
 
 function cachedChrome() {
   const suffixes = process.platform === "linux" ? [["chrome-linux64", "chrome"]]
@@ -88,6 +90,7 @@ const CHECKS = [
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",
   "a failed add-on download reports the error, saves no file, and enables retry",
   "overlapping Sharing actions from two Settings tabs preserve local personal entries, settings and dictionary files",
+  "a real linked overlay keeps local preferences through host edits, disconnection, restart and Unlink and explains mining capabilities",
 ];
 const results = [];
 const diagnostics = [];
@@ -105,13 +108,13 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : `\n       ${detail}`}`);
 }
 
-function launch(profile) {
+function launch(profile, extension = EXTENSION) {
   return puppeteer.launch({
     executablePath: CHROME,
     enableExtensions: true,
     userDataDir: profile,
     headless: true,
-    args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
       "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
   });
 }
@@ -306,20 +309,119 @@ function report() {
   }
   console.log(`\n${results.length - failed.length}/${CHECKS.length} checks passed`);
   if (failed.length > 0) {
-    console.log(`profiles kept for inspection: ${HOST_PROFILE} ${CLIENT_PROFILE}`);
+    console.log(`profiles kept for inspection: ${HOST_PROFILE} ${CLIENT_PROFILE} ${OVERLAY_PROFILE}`);
     console.log("\nfailures:");
     for (const entry of failed) console.log(`  - ${entry.name}\n      ${entry.detail}`);
     console.log("\ndiagnostics:");
     for (const line of diagnostics) console.log(`  ${line}`);
     process.exitCode = 1;
   } else {
-    for (const path of [HOST_PROFILE, CLIENT_PROFILE]) rmSync(path, { recursive: true, force: true });
+    for (const path of [HOST_PROFILE, CLIENT_PROFILE, OVERLAY_PROFILE, OVERLAY_EXTENSION]) rmSync(path, { recursive: true, force: true });
   }
+}
+
+async function writeOptions(page, options) {
+  const { options: current } = await stored(page, ["options"]);
+  const reply = await message(page, "hoshidicts-worker", "hd_options_write", { baseRevision: current.revision, options });
+  if (!reply.ok) throw new Error(`options save failed: ${reply.error}`);
+  return reply;
+}
+
+async function checkOverlaySharing(hostPage) {
+  cpSync(EXTENSION, OVERLAY_EXTENSION, { recursive: true });
+  const flagPath = resolve(OVERLAY_EXTENSION, "overlay-mode.js");
+  writeFileSync(flagPath, readFileSync(flagPath, "utf8").replace("OVERLAY_MODE = false;", "OVERLAY_MODE = true;"));
+  let overlayBrowser = await launch(OVERLAY_PROFILE, OVERLAY_EXTENSION);
+  try {
+    const id = await extensionId(overlayBrowser);
+    let page = await openSettings(overlayBrowser, id, "overlay", "sharing");
+    const initial = (await stored(page, ["options"])).options;
+    await writeOptions(page, { popupWidthPx: 440, popupTheme: "sunset",
+      anki: { ...initial.anki, captureScreenshot: true } });
+    await writeOptions(hostPage, { lookupMode: "activationSticky", activationKey: "Control", sourceHighlightEnabled: true,
+      popupWidthPx: 1000, popupTheme: "dracula" });
+    const linked = await message(page, "hachidori-sharing", "hd_sharing_client_link", { address: ADDRESS });
+    if (!linked.ok) throw new Error(linked.error);
+    await until(async () => (await sharingStatus(page)).sharing.client.connected, "the overlay link");
+    const afterLink = (await stored(page, ["options"])).options;
+    const sharedLookup = await lookup(page);
+    const notice = await page.$eval("#sharing-overlay-preferences", node => !node.hidden);
+
+    // Exercise the actual Settings autosave, not just its worker endpoint.
+    await showSection(page, "design");
+    await page.$eval("#opt-popup-width", input => {
+      input.value = "480";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+    const afterLocal = (await stored(page, ["options"])).options;
+    const hostAfterLocal = (await stored(hostPage, ["options"])).options;
+    await writeOptions(hostPage, { popupWidthPx: 1150, popupTheme: "light" });
+    await page.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "light");
+    const afterHost = (await stored(page, ["options"])).options;
+    const mixed = await writeOptions(page, { popupWidthPx: 520, popupTheme: "forest" });
+    const hostAfterMixed = (await stored(hostPage, ["options"])).options;
+    const stale = await message(page, "hoshidicts-worker", "hd_options_write", {
+      baseRevision: afterLink.revision, options: { popupWidthPx: 900 },
+    });
+
+    await hostBrowser.close();
+    hostBrowser = null;
+    await until(async () => !(await sharingStatus(page)).sharing.client.connected, "the disconnected overlay");
+    const offline = await writeOptions(page, { popupWidthPx: 680 });
+    hostBrowser = await launch(HOST_PROFILE);
+    hostPage = await openSettings(hostBrowser, await extensionId(hostBrowser), "host-after-overlay", "sharing");
+    await until(async () => (await sharingStatus(page)).sharing.client.connected, "overlay reconnection");
+    await overlayBrowser.close();
+    overlayBrowser = await launch(OVERLAY_PROFILE, OVERLAY_EXTENSION);
+    page = await openSettings(overlayBrowser, id, "overlay-restart", "sharing");
+    await until(async () => (await sharingStatus(page)).sharing.client.connected, "the restarted overlay link");
+    const afterRestart = (await stored(page, ["options"])).options;
+    const unlinked = await message(page, "hachidori-sharing", "hd_sharing_client_unlink");
+    const afterUnlink = await stored(page, ["options", "dictionaryState"]);
+
+    // Keep the capability UI check independent of a developer's running Anki.
+    const worker = await overlayBrowser.waitForTarget(target => target.type() === "service_worker");
+    const cdp = await worker.createCDPSession();
+    cdp.on("Fetch.requestPaused", request => {
+      void cdp.send("Fetch.failRequest", { requestId: request.requestId, errorReason: "ConnectionRefused" });
+    });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "http://127.0.0.1:8765*" }] });
+    await showSection(page, "anki");
+    await page.waitForFunction(() => document.getElementById("opt-anki-screenshot").disabled);
+    const screenshot = await page.evaluate(() => ({ disabled: document.getElementById("opt-anki-screenshot").disabled,
+      checked: document.getElementById("opt-anki-screenshot").checked,
+      help: document.getElementById("anki-screenshot-help").textContent }));
+    if (process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT) {
+      await page.setViewport({ width: 1280, height: 1200 });
+      await page.$eval("#opt-anki-screenshot", input => input.scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT });
+    }
+    await showSection(page, "audio");
+    const speech = await page.evaluate(() => ({ visible: !document.getElementById("audio-mining-help").hidden,
+      help: document.getElementById("audio-mining-help").textContent,
+      captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
+    await cdp.detach();
+    check(CHECKS.at(-1),
+      afterLink.lookupMode === "hover" && afterLink.sourceHighlightEnabled === false && afterLink.popupWidthPx === 440
+        && afterLink.popupTheme === "dracula" && sharedLookup.ok && notice
+        && afterLocal.popupWidthPx === 480 && hostAfterLocal.popupWidthPx === 1000
+        && afterHost.popupWidthPx === 480 && mixed.options.popupWidthPx === 520
+        && hostAfterMixed.popupWidthPx === 1150 && hostAfterMixed.popupTheme === "forest"
+        && stale.ok === false && stale.conflict && offline.options.popupWidthPx === 680
+        && afterRestart.popupWidthPx === 680 && unlinked.ok && afterUnlink.options.popupWidthPx === 680
+        && afterUnlink.options.popupTheme === "sunset" && afterUnlink.dictionaryState.dictionaries.length === 0
+        && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
+        && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
+        && speech.help.includes("cannot be recorded into Anki"),
+      JSON.stringify({ afterLink, afterLocal, hostAfterLocal, afterHost, mixed, hostAfterMixed, stale, offline, afterRestart,
+        afterUnlink, screenshot, speech, notice }));
+  } finally { await overlayBrowser?.close().catch(() => {}); }
 }
 
 if (!existsSync(CHROME)) fatal(`Chrome not found; set HACHIDORI_CHROME (tried ${CHROME || "nothing"})`);
 if (!existsSync(FIXTURE)) fatal(`missing ${FIXTURE}; run node test/make-fixture.mjs first`);
-for (const path of [HOST_PROFILE, CLIENT_PROFILE]) rmSync(path, { recursive: true, force: true });
+for (const path of [HOST_PROFILE, CLIENT_PROFILE, OVERLAY_PROFILE, OVERLAY_EXTENSION]) rmSync(path, { recursive: true, force: true });
 let relay = null;
 let hostBrowser = null;
 let clientBrowser = null;
@@ -599,6 +701,7 @@ try {
       && localAfter.sharingLocalState === undefined && personalLookup?.ok && personalLookup.results?.[0]?.term?.expression === "私語",
     JSON.stringify({ concurrentLinks, concurrentUnlinks, keptLocal, localBefore, localAfter, personalLookup }));
   await secondPage.close();
+  await checkOverlaySharing(hostPage);
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

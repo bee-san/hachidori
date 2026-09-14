@@ -799,6 +799,7 @@
           </div>
           <div class="options-feedback-slot"></div>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
+          <p id="audio-mining-help" class="section-note" hidden>Browser speech can play in this overlay, but cannot be recorded into Anki. Add a downloadable pronunciation source to fill <code>{audio}</code> fields.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
@@ -806,7 +807,7 @@
             <summary>Help</summary>
             <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code>, URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
             <p class="field-hint">Shift-click or right-click the popup's audio button to choose a pronunciation.</p>
-            <p class="field-hint">To add browser speech to Anki, start Media capture with shared audio.</p>
+            <p id="audio-speech-capture-help" class="field-hint">To add browser speech to Anki, start Media capture with shared audio.</p>
             <p class="field-hint">Sources receive the word and reading. Remote URLs need HTTPS; localhost may use HTTP. Some system voices are online.</p>
           </details>
         </section>
@@ -961,8 +962,8 @@
               <button id="anki-apply-preset" class="ghost" type="button">Apply preset</button>
             </div>
             <div id="anki-fields" class="fields"></div>
-            <label class="lookup-enable"><span>Screenshot the page when mining</span><input id="opt-anki-screenshot" type="checkbox"></label>
-            <p class="field-hint">Adds the visible page to fields using <code>{screenshot}</code>.</p>
+            <label class="lookup-enable"><span>Screenshot the page when mining</span><input id="opt-anki-screenshot" type="checkbox" aria-describedby="anki-screenshot-help"></label>
+            <p id="anki-screenshot-help" class="field-hint">Adds the visible page to fields using <code>{screenshot}</code>.</p>
             <label class="lookup-enable"><span>Edit field templates directly</span><input id="opt-anki-advanced" type="checkbox"></label>
             <p class="field-hint">Combine text with markers such as <code>{expression}</code> and <code>{glossary}</code>.</p>
             <details class="anki-marker-reference"><summary>Available markers</summary><p id="anki-markers" class="anki-markers"></p><p class="field-hint">Dictionary-specific values also use <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code>.</p></details>
@@ -1008,6 +1009,7 @@
             <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
           <output id="sharing-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
+          <p id="sharing-overlay-preferences" class="section-note" hidden>Lookup activation, source highlighting and popup size/layout are saved locally for this overlay while linked. Other settings are saved on the shared Hachidori.</p>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
             <p class="field-hint">Your other browsers then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own. Anki carries the connection: install the Hachidori Relay add-on once and keep Anki open.</p>

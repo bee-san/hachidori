@@ -125,7 +125,11 @@ host when it closes and reconnects when it relaunches, unlinks back to its own
 empty state, and links again through this machine's network address (the
 machine needs one beyond loopback) until the host stops sharing on the
 network. Two Settings tabs then issue overlapping Link and Unlink requests,
-preserving a compiled local personal dictionary and settings. Ten predeclared
+preserving a compiled local personal dictionary and settings. A third browser
+loads the actual overlay-mode extension, checks local Settings autosave and
+mixed shared/local saves, survives host disconnection and full browser restart,
+unlinks with its edited local geometry, and verifies the effective screenshot
+and browser-speech capability explanations through DOM assertions. Eleven predeclared
 checks; profiles are kept on failure. The suite
 needs `python3` and access to the pinned GitHub release. For offline runs or
 coordinated add-on changes, `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon`
