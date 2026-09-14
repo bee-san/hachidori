@@ -235,6 +235,10 @@ function forwardToHost(message) {
   return getSharingClient().forward(message).catch(error => failureReply(message, error));
 }
 
+function forwardWorkerRequest(message) {
+  return OVERLAY_MODE && message.type === "hd_options_write" ? writeLinkedOverlayOptions(message) : forwardToHost(message);
+}
+
 async function readAnkiOptions() {
   const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
   return OVERLAY_MODE ? overlayAnkiOptions(options) : options;
@@ -2246,8 +2250,7 @@ async function handleWorkerRequest(message, sender) {
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
   if (sharingLinked && !engineSender(sender) && WORKER_FORWARDS.has(type)) {
-    return OVERLAY_MODE && type === "hd_options_write"
-      ? writeLinkedOverlayOptions(message).catch(error => failureReply(message, error)) : forwardToHost(message);
+    return forwardWorkerRequest(message).catch(error => failureReply(message, error));
   }
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const operation = [
@@ -2567,7 +2570,7 @@ async function toggleLookupsFromCommand() {
     return { target: WORKER_TARGET, type: "hd_options_write", requestId: null,
       baseRevision: optionsRevision(options), options: { hoverEnabled: !normaliseOptions(options).hoverEnabled } };
   };
-  if (sharingLinked) return OVERLAY_MODE ? writeLinkedOverlayOptions(await toggle()) : forwardToHost(await toggle());
+  if (sharingLinked) return forwardWorkerRequest(await toggle());
   return serialiseStorage(async () => WORKER_HANDLERS.hd_options_write(await toggle()));
 }
 
