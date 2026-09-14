@@ -533,10 +533,11 @@ const offscreenState = { created: 0, exists: false, concurrent: 0, peakConcurren
 function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
   const onInstalled = makeEvent();
   const onStartup = makeEvent();
+  const onConnect = makeEvent();
   return {
     alarms: alarms.api,
     downloads: { onChanged: makeEvent() },
-    __events: { onInstalled, onStartup },
+    __events: { onInstalled, onStartup, onConnect },
     runtime: {
       id: "hachidorismokeextensionid",
       lastError: undefined,
@@ -557,6 +558,7 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
       },
       onInstalled,
       onStartup,
+      onConnect,
       sendMessage(message, callback) {
         const promise = bus.sendMessage(owner, message, {
           id: "hachidorismokeextensionid",
@@ -2918,19 +2920,72 @@ async function backupRelayStage() {
     } else await startup;
     const cancelled = send("hd_backup_cancel");
     const otherCancelled = send("hd_backup_cancel", "stale-preview");
-    for (let i = 0; i < 20 && !releaseCancel; i++) await Promise.resolve();
-    if (!releaseCancel) throw new Error("Backup cancellation did not reach the engine");
-    const serialized = sent.filter(type => type === "hd_backup_cancel").length === 1;
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    const waitedForPreparation = sent.filter(type => type === "hd_backup_cancel").length === 0;
     if (retry) backoffs.shift()();
     else releaseStartup();
     const reply = await pending;
+    for (let i = 0; i < 20 && !releaseCancel; i++) await Promise.resolve();
+    if (!releaseCancel) throw new Error("Backup cancellation did not reach the engine");
+    const serialized = sent.filter(type => type === "hd_backup_cancel").length === 1;
     releaseCancel();
     await Promise.all([cancelled, otherCancelled]);
-    results.push(serialized && reply.status === "cancelled"
+    results.push(waitedForPreparation && serialized && reply.status === "cancelled"
       && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
       && sent.filter(type => type === "hd_backup_cancel").length === 2);
   }
   check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
+}
+
+async function backupLifecyclePortStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("backup-lifecycle", bus, storage);
+  chrome.runtime.getContexts = async () => [{}];
+  const sent = [];
+  let releasePreparation;
+  chrome.runtime.sendMessage = message => {
+    sent.push(message.type);
+    if (message.type === "hd_backup_prepare") {
+      return new Promise(resolve => { releasePreparation = () => resolve({ ok: true }); });
+    }
+    return Promise.resolve({ ok: true });
+  };
+  loadBackgroundScript({ chrome, console, clearTimeout, setTimeout, Promise, Error });
+
+  const onMessage = makeEvent(), onDisconnect = makeEvent();
+  chrome.__events.onConnect.fire({
+    name: "hachidori-backup-settings",
+    sender: { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") },
+    onMessage,
+    onDisconnect,
+    disconnect() {},
+  });
+  onMessage.fire({ type: "track", token: "departed-page", active: true });
+  const pending = bus.sendMessage("backup-settings", {
+    target: "hoshidicts-offscreen", type: "hd_backup_prepare", token: "departed-page",
+  });
+  for (let i = 0; i < 20 && !releasePreparation; i++) await Promise.resolve();
+  if (!releasePreparation) throw new Error("Backup preparation did not reach the engine");
+  onDisconnect.fire();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  const waitedForPreparation = sent.filter(type => type === "hd_backup_cancel").length === 0;
+  releasePreparation();
+  await pending;
+  for (let i = 0; i < 20 && sent.filter(type => type === "hd_backup_cancel").length === 0; i++) {
+    await Promise.resolve();
+  }
+
+  let refused = false;
+  chrome.__events.onConnect.fire({
+    name: "hachidori-backup-settings",
+    sender: { id: chrome.runtime.id, url: chrome.runtime.getURL("startup.html") },
+    onMessage: makeEvent(),
+    onDisconnect: makeEvent(),
+    disconnect() { refused = true; },
+  });
+  check("Settings backup ownership cleans prepared files on port disconnect and refuses other extension pages",
+    waitedForPreparation && sent.filter(type => type === "hd_backup_cancel").length === 1 && refused,
+    JSON.stringify({ sent, waitedForPreparation, refused }));
 }
 
 async function audioRelayStage() {
@@ -3597,6 +3652,10 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     mediaCapture: !overlayMode,
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.chrome.runtime.connect ??= () => ({
+    postMessage() {},
+    onDisconnect: { addListener() {} },
+  });
   // Most Settings scenarios have no active offscreen batch. The installation
   // scenario supplies the real shared runner through this same transport.
   const originalSend = window.chrome.runtime.sendMessage.bind(window.chrome.runtime);
@@ -4241,6 +4300,7 @@ async function main() {
   await sharingTransitionStage();
   await firstRunAnkiStage();
   await backupRelayStage();
+  await backupLifecyclePortStage();
   await managedScheduleStage();
   await lookupStatsStage();
   await audioRelayStage();
