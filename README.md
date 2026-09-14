@@ -80,6 +80,10 @@ It can even use anki.
 
 Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer. Same dictionaries and settings used across multiple Hachidoris.
 
+Install [Hachidori Relay for Anki](https://github.com/bee-san/hachidori-anki)
+from **Settings → Sharing → Download the Anki add-on**, then follow the
+[sharing guide](docs/sharing.md) to link your other browsers.
+
 # Optionated
 
 Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.

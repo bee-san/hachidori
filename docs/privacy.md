@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 13 September 2026.
+Last updated: 14 September 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -44,6 +44,12 @@ enabled update schedules contact these sources; scheduled runs can download and
 install dictionary updates. Providers receive ordinary network information,
 including your IP address and the requested resource. Dictionary downloads do
 not send the text you look up to those providers.
+
+**Anki relay download.** Choosing **Download the Anki add-on** under
+Settings → Sharing downloads a pinned Hachidori Relay release from GitHub and
+its download hosts. They receive ordinary network information, including your
+IP address and the requested resource. The download does not send your
+dictionaries, lookup text, settings, or Anki data to GitHub.
 
 **Pronunciation.** Playing or listing pronunciations, testing an audio source,
 and mining a note with pronunciation audio can send the word and/or reading to

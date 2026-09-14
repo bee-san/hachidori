@@ -21,8 +21,21 @@ dictionaries. **Settings → Sharing** says *Waiting for Anki* and offers
 **Download the Anki add-on**. Double-click the downloaded
 `hachidori-relay.ankiaddon` (or use **Tools → Add-ons → Install from file…**
 in Anki), restart Anki, and the line becomes *Sharing through Anki.* The
-add-on has no settings to visit; it is built from the files this extension
-ships, so the button always hands out the version that matches.
+button downloads the compatible
+[v0.0.2 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.2)
+from GitHub, so downloading needs an internet connection. It shows progress
+while fetching and an error with a retryable button if the download fails.
+The add-on has its own version; this extension pins the version it was tested
+with, including in GameSentenceMiner's vendored copy.
+
+![Downloading the Anki add-on from GitHub](assets/sharing-addon-downloading.png)
+
+![A failed add-on download with the button ready to retry](assets/sharing-addon-error.png)
+
+To update an existing GitHub-installed relay, install the file offered by
+Settings again and restart Anki. It uses the same `hachidori-relay` package ID,
+so Anki updates that add-on and keeps its saved configuration. GitHub installs
+do not update automatically through AnkiWeb.
 
 **In a second browser on the same computer** the startup page that opens on
 install finds the shared Hachidori by itself: *Chrome on this computer already
@@ -123,7 +136,8 @@ capture and external links run in each browser with the shared settings.
 
 ## The relay
 
-`extension/anki-relay/` is the add-on: a few hundred lines of Python on Anki's
+[hachidori-anki](https://github.com/bee-san/hachidori-anki) owns the add-on:
+a few hundred lines of Python on Anki's
 own runtime, with the port as its only setting. The host connects to `/host`,
 linked browsers to `/link`, and the relay forwards text frames between them
 without reading them. Its rules are few: a handshake's `Origin` must be a
@@ -134,28 +148,30 @@ no password or token. On the host's `network` frame the relay swaps its
 listening socket between this computer and every interface (Linux refuses a
 wildcard bind beside a loopback listener) and answers with the addresses other
 computers reach it at, found from the routes to Tailscale's resolver and to the
-default route without sending anything. Run it without Anki with
-`python3 extension/anki-relay/server.py --port 8771`.
+default route without sending anything. In a checkout of that repository,
+run it without Anki with `python3 addon/server.py --port 8771`.
 
 ## Tests
 
-`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs
-test/sharing-settings.test.mjs test/anki-addon.test.mjs` checks the wire
-contract, drives the add-on's relay as a `python3` process over raw sockets
-(the `Origin` rule, the loopback-only host, clients refused without a host, a
-second host turned away, whole-frame relaying in both directions, broadcast,
-pings, closes, host loss, and the network listener opened, linked through this
-machine's own address and closed again), covers the Settings section with
-jsdom, and builds the add-on archive and reads it back with Python's
-`zipfile`. With Anki installed, `python3 test/anki-relay-desktop.py` starts a
-separate Anki on a temporary base with only the add-on installed and runs the
-same host, network and refusal exchange against it. The extension smoke
-suite's sharing-host and sharing-client stages cover the service worker's
-side against fake sockets. `node test/chrome-sharing.mjs` runs two real
-Chromes with the add-on's relay: the host imports a fixture, saves the add-on
-from its Sharing page and shares; the second browser's startup page offers
-that Hachidori and links with one click, looks a word up through it, edits a
-shared setting and saves a personal entry that the host commits and pushes
-back, survives the host closing and relaunching, unlinks back to its own
-state, and links again through this machine's network address until the host
-stops sharing on the network.
+`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs
+test/anki-addon.test.mjs` checks the wire contract, covers the Settings section
+with jsdom, and verifies pinned binary downloads, HTTP/network failures,
+progress across polls, and retry. The relay's raw-socket, packaging, and
+optional installed-Anki checks live in
+[hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
+
+The extension smoke suite's sharing-host and sharing-client stages cover the
+service worker's side against fake sockets. `node test/chrome-sharing.mjs`
+runs two real Chromes: the host imports a fixture, handles a simulated failed
+add-on download, then retries the actual pinned GitHub release from Settings.
+The suite unpacks that downloaded archive and runs its relay with `python3`.
+The second browser's startup page offers that Hachidori and links with one
+click, looks a word up through it, edits a shared setting and saves a personal
+entry that the host commits and pushes back, survives the host closing and
+relaunching, unlinks back to its own state, and links again through this
+machine's network address until the host stops sharing on the network.
+
+For offline testing or a coordinated add-on change, set
+`HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a locally
+built archive at the pinned URL in the test browser. Otherwise the suite
+downloads the live release. See the [test harness guide](../test/README.md).
