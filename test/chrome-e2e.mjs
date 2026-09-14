@@ -222,6 +222,7 @@ const PLANNED = [
   "the all-installed result advances immediately before setup checks for Anki",
   "startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
   "startup screenshot capture resolves its own live extension document",
+  "startup practice waits for reader storage before its automatic lookup",
   "the startup reader exception keeps Settings and the static preview excluded",
   "saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
   "startup practice without a usable dictionary retains recovery and completion controls",
@@ -1117,6 +1118,9 @@ async function popupReader(page, depth = 0) {
       functionDeclaration: function (action, key) {
         const root = this.getRootNode();
         const scroll = this.querySelector(".gsm-hoshidicts-content-scroll");
+        // A retired child shell is reused while its next lookup is pending.
+        // Polling must wait for its content, just as for an absent popup.
+        if (action === "read" && scroll === null) return null;
         const tabs = [...this.querySelectorAll('[role="tab"]')];
         if (action === "scroll") scroll.scrollTop = key;
         const tabKey = button => button.dataset.dictionary ? `dictionary:${button.dataset.dictionary}`
@@ -3738,7 +3742,7 @@ async function checkPopupAudio(settings, tab, popup, browser) {
   const session = await interceptFetches(target, routes, "popup-audio");
   const native = await target.createCDPSession();
   const evaluate = async expression => {
-    const reply = await native.send("Runtime.evaluate", { expression, returnByValue: true });
+    const reply = await native.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
     if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.text);
     return reply.result.value;
   };
@@ -3834,14 +3838,23 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     await write({ audioSources: [source("current", "custom", base + "tokyo.wav")] });
     await popup.audio("play");
     await until(state => state?.audioState === "playing");
+    // Loop this clip so natural completion cannot stand in for cancellation.
+    await evaluate("__e20Audio.at(-1).loop = true");
     await tab.reload({ waitUntil: "load" });
-    const navigated = await evaluate("__e20Audio.at(-1).paused && __e20Audio.at(-1).getAttribute('src') === null");
+    const navigated = await evaluate(`(async () => {
+      const audio = __e20Audio.at(-1), deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (audio.paused && audio.getAttribute('src') === null) return true;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      return false;
+    })()`);
     const status = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
     check("Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
       dismissed && changed && navigated && status.generation === original.status.generation,
       JSON.stringify({ dismissed, changed, navigated, status }));
   } finally {
-    await evaluate("globalThis.Audio = __e20NativeAudio; delete globalThis.__e20NativeAudio; delete globalThis.__e20Audio");
+    await evaluate("for (const audio of __e20Audio) audio.pause(); globalThis.Audio = __e20NativeAudio; delete globalThis.__e20NativeAudio; delete globalThis.__e20Audio");
     await native.detach();
     await session.detach();
     await write({ audioSources: original.options.audioSources, audioAutoplay: original.options.audioAutoplay ?? false,
@@ -4380,8 +4393,23 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   // exact URL so a fresh reader must accept the fragment, not an earlier reader
   // that was already running at the bare URL.
   await startup.goto(`${startupUrl}#setup-heading`);
+  const hydrationProbe = await startup.evaluateOnNewDocument(() => {
+    const get = chrome.storage.local.get.bind(chrome.storage.local);
+    chrome.storage.local.get = (keys, callback) => {
+      if (typeof callback !== "function") return get(keys);
+      return get(keys, stored => {
+        window.completeReaderStorage = () => { chrome.storage.local.get = get; callback(stored); };
+      });
+    };
+  });
   await startup.reload({ waitUntil: "networkidle0" });
+  await startup.removeScriptToEvaluateOnNewDocument(hydrationProbe.identifier);
   await startup.bringToFront();
+  await startup.waitForFunction(() => typeof window.completeReaderStorage === "function");
+  const waitingForStorage = await startup.evaluate(() => document.getElementById("setup-practice-lookup").disabled
+    && getSelection().toString() === "");
+  await startup.evaluate(() => { window.completeReaderStorage(); delete window.completeReaderStorage; });
+  check("startup practice waits for reader storage before its automatic lookup", waitingForStorage);
   await startup.waitForSelector("#setup-practice-lookup:not([disabled])");
   const popup = await popupReader(startup);
   const automatic = await popup.waitForVisible();
@@ -10633,7 +10661,9 @@ async function main() {
   }, boundedArchive.toString("base64"));
   await page.waitForFunction(async (title) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
-    return dictionaryState?.dictionaries?.some((entry) => entry.title === title);
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return dictionaryState?.dictionaries?.some((entry) => entry.title === title)
+      && status.ok && status.ready && !status.loading;
   }, { timeout: 90_000, polling: 100 }, boundedTitle);
   const boundedReplies = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({
