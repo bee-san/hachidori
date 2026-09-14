@@ -104,6 +104,7 @@ function check(name, ok, detail = "") {
 function launch(profile) {
   return puppeteer.launch({
     executablePath: CHROME,
+    enableExtensions: true,
     userDataDir: profile,
     headless: true,
     args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`,

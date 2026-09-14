@@ -19,7 +19,7 @@ const env = {
   ...process.env,
   HACHIDORI_JSDOM: process.env.HACHIDORI_JSDOM || TOOLING,
   HACHIDORI_PUPPETEER: process.env.HACHIDORI_PUPPETEER || require.resolve("puppeteer-core"),
-  HACHIDORI_CHROME: process.env.HACHIDORI_CHROME || process.env.CHROME_BIN
+  HACHIDORI_CHROME: process.env.HACHIDORI_CHROME
     || computeExecutablePath({ cacheDir: CACHE, browser: Browser.CHROME, buildId: config.chrome }),
 };
 

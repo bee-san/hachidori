@@ -6896,6 +6896,7 @@ async function main() {
 
   const launchArgs = {
     executablePath: CHROME,
+    enableExtensions: true,
     dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
     userDataDir: PROFILE,

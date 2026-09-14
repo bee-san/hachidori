@@ -30,6 +30,8 @@ every nonzero exit or signal. It selects the exact Chrome build from
 `test/tooling/package.json` rather than whichever browser happens to be newest
 in a developer's cache. Dependencies are isolated from the extension under
 `test/tooling/node_modules`; the browser is ignored under `test/tmp/browsers`.
+The launcher ignores a machine-wide `CHROME_BIN` (GitHub runners set it to their
+system browser). Use `HACHIDORI_CHROME` for an intentional browser override.
 
 On Ubuntu/Debian, install the browser's system dependencies with
 `sudo "$(command -v node)" test/run.mjs install-chrome --install-deps` and install
