@@ -128,6 +128,22 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     selects.set(select, key);
   }
 
+  function renderDuplicateScope(config) {
+    const select = element("opt-anki-duplicate-scope");
+    if (select === document.activeElement) return;
+    const choices = [
+      ["model", `Note type: ${config.model || "Choose a note type"}`],
+      ["deck", `Deck: ${config.deck || "Choose a deck"}`],
+      ["all", "All of Anki"],
+    ];
+    const key = JSON.stringify(choices);
+    if (selects.get(select) !== key) {
+      select.replaceChildren(...choices.map(([value, label]) => new document.defaultView.Option(label, value)));
+      selects.set(select, key);
+    }
+    select.value = config.duplicateScope;
+  }
+
   function renderStatus(config, resolved) {
     const status = element("anki-status");
     const errors = ankiAvailability(config, discovery, resolved);
@@ -178,7 +194,6 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   const controls = [
     ["tags", "opt-anki-tags"], ["apiKey", "opt-anki-api-key"],
     ["duplicateScope", "opt-anki-duplicate-scope"], ["duplicateBehavior", "opt-anki-duplicate-behavior"],
-    ["checkForDuplicates", "opt-anki-check-duplicates"], ["duplicateScopeCheckAllModels", "opt-anki-check-all-models"],
     ["captureScreenshot", "opt-anki-screenshot"],
   ];
   function renderBasicMappings(config, fields) {
@@ -197,6 +212,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     }
     selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
     selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
+    renderDuplicateScope(config);
     const fields = currentFields();
     const url = element("opt-anki-url");
     if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
@@ -206,10 +222,6 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       if (control === document.activeElement) continue;
       if (control.type === "checkbox") control.checked = config[key];
       else control.value = key === "tags" ? config.tags.join(" ") : config[key];
-    }
-    for (const id of ["opt-anki-duplicate-scope", "opt-anki-duplicate-behavior", "opt-anki-check-all-models"]) {
-      const control = element(id);
-      if (control.disabled === config.checkForDuplicates) control.disabled = !config.checkForDuplicates;
     }
     const resolved = resolveAnkiTemplates(config, fields);
     renderStatus(config, resolved);

@@ -3,23 +3,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate,
-  findAnkiDuplicateNotes, findAnkiOverwriteTarget } from "../extension/anki-duplicates.js";
+  findAnkiDuplicateNotes, findAnkiOverwriteTarget, validateAnkiNote } from "../extension/anki-duplicates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
   model: "Basic", deck: "Japanese::Words", ...patch });
 const note = patch => ({ deckName: "Japanese::Words", modelName: "Basic", fields: { Front: "猫", Back: "cat" },
   options: ankiNoteOptions(config()), tags: ["hachidori"], ...patch });
 
-test("duplicate options distinguish exact deck, root descendants, all models and disabled checking", () => {
+test("duplicate options keep Anki's race guard on the configured type while the index owns broad scopes", () => {
   assert.deepEqual(ankiNoteOptions(config()), { allowDuplicate: false, duplicateScope: "collection",
     duplicateScopeOptions: { deckName: null, checkChildren: false, checkAllModels: false } });
-  assert.deepEqual(ankiNoteOptions(config({ duplicateScope: "deck-root", duplicateScopeCheckAllModels: true })),
-    { allowDuplicate: false, duplicateScope: "deck", duplicateScopeOptions: { deckName: "Japanese", checkChildren: true, checkAllModels: true } });
-  assert.equal(ankiNoteOptions(config({ duplicateScope: "deck" })).duplicateScopeOptions.checkChildren, false);
+  assert.deepEqual(ankiNoteOptions(config({ duplicateScope: "deck" })),
+    { allowDuplicate: false, duplicateScope: "deck",
+      duplicateScopeOptions: { deckName: "Japanese::Words", checkChildren: true, checkAllModels: false } });
+  assert.equal(ankiNoteOptions(config({ duplicateScope: "all" })).duplicateScopeOptions.checkAllModels, false);
   assert.equal(ankiNoteOptions(config({ duplicateBehavior: "overwrite" })).allowDuplicate, false);
-  for (const patch of [{ duplicateBehavior: "new" }, { checkForDuplicates: false }]) {
-    assert.equal(ankiNoteOptions(config(patch)).allowDuplicate, true);
-  }
+  assert.equal(ankiNoteOptions(config({ duplicateBehavior: "new" })).allowDuplicate, true);
 });
 
 test("browse searches encode literal HTML and neutralize Anki query syntax", () => {
@@ -41,7 +40,7 @@ test("all overwrite modes preserve empty values and defer audio-only fields unti
   assert.equal(overwriteAnkiFields({}, existing, templates)["coalesce-new"], "old");
 });
 
-test("preflight retains cloze fields while distinguishing duplicates from invalid notes and bypassing disabled checks", async () => {
+test("preflight retains cloze fields while distinguishing duplicates from invalid notes", async () => {
   const calls = [];
   let result = [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
   const invoke = async (action, params) => { calls.push({ action, params }); return result; };
@@ -56,10 +55,9 @@ test("preflight retains cloze fields while distinguishing duplicates from invali
   assert.equal((await checkAnkiDuplicate(invoke, value, config())).duplicate, false);
   result = [];
   await assert.rejects(checkAnkiDuplicate(invoke, value, config()), /invalid duplicate/u);
-  const before = calls.length;
-  assert.deepEqual(await checkAnkiDuplicate(invoke, value, config({ checkForDuplicates: false })),
-    { duplicate: false, addable: true, error: null });
-  assert.equal(calls.length, before);
+  result = [{ canAdd: true, error: null }];
+  assert.deepEqual(await validateAnkiNote(invoke, value), { addable: true, error: null });
+  assert.equal(calls.at(-1).params.notes[0].options.allowDuplicate, true);
 });
 
 test("legacy duplicate checks fall back only for the documented unsupported action", async () => {
@@ -89,11 +87,10 @@ test("overwrite target retains Anki order but requires the same model and author
     return [{ note: 6, deckName: "Japanese::Words" }, { note: 7, deckName: "Japanese::Words::Child" },
       { note: 8, deckName: "Outside" }, { note: 9, deckName: "Japanese::Words" }];
   };
-  const exact = await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck", duplicateScopeCheckAllModels: true }));
-  assert.deepEqual(exact, { noteId: 6, fields: { Front: "猫" } });
+  const exact = await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck" }));
+  assert.deepEqual(exact, { noteId: 7, fields: { Front: "猫" } });
   assert.deepEqual(calls.map(call => call.action), ["modelNamesAndIds", "findNotes", "notesInfo", "cardsInfo"]);
   assert.equal(calls[1].params.query, '"dupe:123,猫"');
-  assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck-root" }))).noteId, 7);
   assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config())).noteId, 8);
 });
 
@@ -118,8 +115,8 @@ test("duplicate discovery returns every exact scoped note across configured mode
     throw new Error(`Unexpected ${action}`);
   };
   const found = await findAnkiDuplicateNotes(invoke, note(), "Front",
-    config({ duplicateScope: "deck-root", duplicateScopeCheckAllModels: true }));
-  assert.deepEqual(found.map(value => [value.noteId, value.modelName]), [[9, "Basic"], [8, "Basic"], [7, "Other"]]);
+    config({ duplicateScope: "deck" }), { allModels: true });
+  assert.deepEqual(found.map(value => [value.noteId, value.modelName]), [[8, "Basic"], [7, "Other"]]);
   assert.deepEqual(calls.filter(call => call.action === "findNotes").map(call => call.params.query),
     ['"dupe:123,猫"', '"dupe:456,猫"']);
 });

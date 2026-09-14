@@ -62,7 +62,7 @@ export function createAnkiWorkerService({
   engine,
   offscreen,
   capture = null,
-  maturityCache,
+  duplicateIndex,
 }) {
   const confirmedCaptureUploads = new Map();
 
@@ -266,6 +266,7 @@ export function createAnkiWorkerService({
     beforeMutation,
     afterConfirmed: completeCapture,
     afterRejected: releaseScreenshot,
+    duplicateIndex,
     enrich: context => enrichAnkiNote(context, { audio, render, media: async (item, generation) => {
       const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
       if (!reply.dataUrl) throw new Error("The dictionary image is no longer available.");
@@ -318,7 +319,7 @@ export function createAnkiWorkerService({
     try {
       const options = await readOptions();
       return { mature: options.definitionBlurAnkiMature === true
-        && await maturityCache.has(options.anki, request?.term?.expression) };
+        && await duplicateIndex.has(options.anki, request?.term?.expression) };
     } catch {
       // Missing local evidence never prevents dictionary lookup.
       return { mature: false };

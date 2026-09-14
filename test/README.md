@@ -5,8 +5,8 @@
 ## Reproducible setup and CI
 
 Use Node **22.23.1** (`.node-version`) and npm **10.9.8**. The bridge suite needs
-Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**
-and runs the relay socket suite separately on **Python 3.9.25**.
+Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**.
+The add-on repository tests each packaged release on **Python 3.9**.
 Ordinary JavaScript tests use the committed WASM bundles and need no build or
 submodule checkout.
 
@@ -23,8 +23,8 @@ npm --prefix test/tooling run test:fallback     # IDBFS path
 npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
 ```
 
-`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.9.0**,
-the browser installer **3.2.1**, and their transitive dependencies. The small
+`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.10.0**,
+the browser installer **3.2.2**, and their transitive dependencies. The small
 `test/run.mjs` launcher supplies the existing environment overrides, generates
 fixtures, runs each existing suite in a separate Node process, and propagates
 every nonzero exit or signal. It selects the exact Chrome build from
@@ -92,33 +92,32 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
-`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs
-test/sharing-settings.test.mjs test/anki-addon.test.mjs` checks the sharing
+`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs
+test/anki-addon.test.mjs` checks the sharing
 wire contract (addresses as a person types them, browser names, the forwarding
-table, frame validation), drives the Anki add-on's `extension/anki-relay/server.py`
-as a `python3` process over raw sockets (`test/anki-relay-server.mjs` starts
-it): the `Origin` rule, the loopback-only host, clients refused without a host,
-a second host turned away, large UTF-8 frames relayed whole in both directions,
-broadcast, pings, closes, host loss, and the network listener opened on the
-host's `network` frame, linked through this machine's own address, closed
-again and dropped with the host. It also pauses a real client during 16 MiB
-UTF-8 replies, checks healthy requests and pings, resumes to verify frame order,
-and interrupts stalled writes on network disable and host loss. The idle accept
-timeout is checked on Python 3.9 as well as the CI interpreter.
+table, frame validation). The relay's raw-socket tests, archive tests, and
+optional Anki Desktop check live in
+[hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
+That suite retains the paused-peer, ordered large-frame, shutdown and idle
+timeout regressions in release v0.0.3.
 `sharing-settings.test.mjs` covers the
 Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
 sharing states, the add-on download, the network switch with the addresses it
 lists and copies, the offer to use the Hachidori found on this computer, an
 address for another computer, the linked state and unlinking.
-`anki-addon.test.mjs` builds the `.ankiaddon` the page hands out and reads it
-back with zip.js and with Python's `zipfile`. The extension smoke suite's
+It also verifies download progress surviving polls, one pending download,
+failure feedback, and retry. `anki-addon.test.mjs` checks the pinned GitHub
+URL, binary preservation, and HTTP/network errors. The extension smoke suite's
 sharing-host and sharing-client stages cover the service worker's side,
 including hosting that waits for dictionaries, the network exchange, linking
 that turns hosting off and a linked install's kept state.
 
-`node test/chrome-sharing.mjs` launches two real Chromes and the add-on's
-relay on a test-only port (`HACHIDORI_SHARING_PORT`, default 18771): the host
-imports the fixture, saves the add-on from its Sharing page and moves its
+`node test/chrome-sharing.mjs` launches two real Chromes: the host imports
+the fixture, handles a simulated HTTP 503 add-on download, and retries the
+live pinned release from its Sharing page. The suite checks the downloaded
+manifest's independent add-on version, unpacks that exact archive with Python's
+`zipfile`, and runs its relay (`test/anki-relay-server.mjs`) on a test-only port
+(`HACHIDORI_SHARING_PORT`, default 18771). The host moves its
 sharing to that port; the second browser's startup page offers the shared
 Hachidori and links with one click, looks a word up through the link, writes
 an option and a personal entry that the host commits and pushes back, loses the
@@ -126,8 +125,12 @@ host when it closes and reconnects when it relaunches, unlinks back to its own
 empty state, and links again through this machine's network address (the
 machine needs one beyond loopback) until the host stops sharing on the
 network. Two Settings tabs then issue overlapping Link and Unlink requests,
-preserving a compiled local personal dictionary and settings. Nine predeclared
-checks; profiles are kept on failure.
+preserving a compiled local personal dictionary and settings. Ten predeclared
+checks; profiles are kept on failure. The suite
+needs `python3` and access to the pinned GitHub release. For offline runs or
+coordinated add-on changes, `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon`
+serves that local archive at the pinned URL in the browser; no release is
+downloaded in that mode. The unpacked relay is temporary and removed on exit.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 
@@ -718,25 +721,20 @@ What it proves, in order:
    setup record or tab, and leaves later edits and carried options alone (see
    [overlay mode](../docs/overlay-mode.md)).
 
-### Definition blur and Anki maturity
+### Anki duplicate index and maturity blur
 
-`node --test test/anki-maturity.test.mjs` exercises the production snapshot
-extractor with an injected gateway. It pins one `notesInfo` query for the
-configured note type across all decks, review state excluding relearning,
-an interval of at least 21 days, and the 25-second refresh timeout. Cases cover
-eligible expression fields and source identity, exact stored HTML, ASCII-only
-case folding, Anki's default query NFC normalization, deduplication, empty
-results and rejection of malformed replies without publishing partial words.
+`node --test test/anki-index.test.mjs` exercises production scope construction,
+recognized note types, direct `{expression}` fields, exact word keys, compact
+rows, multiple note IDs, aggregate maturity, configured-deck filtering and
+stale cached-ID inspection. It also rejects malformed partial Anki replies.
 
-`node --test test/anki-maturity-cache.test.mjs` checks local worker membership
-without Anki calls, cold-cache behavior, retained snapshots during failed or
-pending refreshes, successful empty replacements, and failed persistence.
-Controlled clocks, alarms and serialized storage exercise the 30-minute
-schedule, worker restart, concurrent triggers, configuration changes and
-disable/re-enable publication rules. The offscreen service test also verifies
-refresh-worker termination after successful, failed and worker-error replies.
-These focused suites never contact an
-Anki collection.
+`node --test test/anki-index-cache.test.mjs test/anki-index-integration.test.mjs`
+checks warm hits without Anki, miss repair without negative rows, a second
+zero-request hit, immediate post-write updates, forced stale replacement,
+30-minute full refreshes, retained snapshots through failures, worker restart
+and cache-only maturity membership. The offscreen service test verifies that
+the refresh worker returns only compact rows and terminates after success or
+failure. These focused suites never contact an Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, autoplay held until the hover reveal
@@ -751,13 +749,13 @@ ownership coverage.
 
 The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
 service-worker target (mining controls) and offscreen target (including its
-dedicated maturity refresh worker). It checks
+dedicated index refresh worker). It checks
 source persistence, a responsive cold-cache popup during a held refresh,
 cached mature results without repeated Anki calls, and pronunciation that
 waits for the hover reveal.
 Real alarm delivery verifies that a refresh changes new lookups while keeping
-the open popup intact; disable/re-enable refuses pending publication, and
-unavailable Anki retains the last successful snapshot. A real worker restart
+the open popup intact; the index continues refreshing while blur is disabled,
+and unavailable Anki retains the last successful snapshot. A real worker restart
 restores cached membership and a missing alarm without retrying a recent
 failure. Independent count blur and autoplay remain covered. These are
 fixtures, never the user's actual notes or scheduling data.
@@ -772,7 +770,7 @@ it in `test/tooling`. Direct commands can also use an external dependency tree:
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$CACHE_ROOT/hachidori-e2e"
 cd "$CACHE_ROOT/hachidori-e2e"
-npm install --save-exact jsdom@30.0.1 puppeteer-core@25.9.0 @puppeteer/browsers@3.2.1
+npm install --save-exact jsdom@30.0.1 puppeteer-core@25.10.0 @puppeteer/browsers@3.2.2
 ./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
@@ -1539,16 +1537,18 @@ physical sleep/wake behavior or audio availability on other operating systems.
 
 ### Installed Anki Desktop relay
 
-`anki-relay-desktop.py` is an optional check that the Hachidori Relay add-on
-starts inside the installed Anki. Run it with the Python interpreter that can
-import the installed `anki` and `aqt` packages:
+The optional `test/anki-relay-desktop.py` check now lives in
+[hachidori-anki](https://github.com/bee-san/hachidori-anki). In that checkout,
+run it with the Python interpreter that can import the installed `anki` and
+`aqt` packages:
 
 ```sh
-python3 test/anki-relay-desktop.py
+python3 scripts/package-addon.py
+python3 test/anki-relay-desktop.py dist/hachidori-relay.ankiaddon
 ```
 
-Each run creates a fresh temporary Anki base with only `extension/anki-relay/`
-installed, configured through the add-on's `meta.json` to a test-only port
+Each run creates a fresh temporary Anki base with the packaged archive
+extracted there, configured through the add-on's `meta.json` to a test-only port
 (18772, or `--port`), starts a separate Anki instance on it, and connects to
 the relay over raw WebSockets: a `/host` handshake with an extension `Origin`
 must answer 101 and the `listening` frame with the port; the host's `network`
