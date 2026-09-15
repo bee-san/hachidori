@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { extensionApi as chrome, IS_FIREFOX } from "./browser-api.js";
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
@@ -14,7 +15,7 @@ import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { applyPageTheme, setStatusOutput } from "./settings-dom.js";
-import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_BROWSER, HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
@@ -50,7 +51,14 @@ const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
 const SHARING_TARGET = "hachidori-sharing";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
-const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki", keybinds: "Keybinds" };
+const OPTION_SECTIONS = {
+  lookup: "Reading",
+  design: "Design",
+  audio: "Audio",
+  ...(!IS_FIREFOX ? { media: "Media capture" } : {}),
+  anki: "Anki",
+  keybinds: "Keybinds",
+};
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
@@ -186,6 +194,24 @@ function element(id) {
   return document.getElementById(id);
 }
 
+function configureBrowserUi() {
+  if (!IS_FIREFOX) return;
+  const media = element("media");
+  media.dataset.settingsUnavailable = "true";
+  media.hidden = true;
+  const mediaOption = element("settings-section").querySelector('option[value="media"]');
+  mediaOption.hidden = true;
+  mediaOption.disabled = true;
+  document.querySelector('.settings-nav a[href="#media"]').closest(".nav-item").hidden = true;
+
+  element("audio-mining-help").textContent =
+    "Firefox can play browser speech, but Hachidori does not record it into Anki. Add a downloadable pronunciation source to fill {audio} fields.";
+  const shortcutHelp = element("browser-shortcuts").querySelector(".field-hint");
+  shortcutHelp.textContent =
+    "Firefox runs these on any page. Popup actions need an open popup. Change them in Firefox’s Manage Extension Shortcuts page.";
+  element("browser-shortcuts-open").textContent = "Change in Firefox";
+}
+
 function sectionHasPendingWork(id) {
   switch (id) {
     case "import-state": return importing || installingRecommended;
@@ -243,7 +269,7 @@ function showSettingsSection(focus = false) {
   settingsSearch?.clear();
   const fragment = window.location.hash.slice(1);
   const requested = fragment === "settings-content" ? activeSection : fragment;
-  const sections = [...document.querySelectorAll("main > section")];
+  const sections = [...document.querySelectorAll("main > section:not([data-settings-unavailable='true'])")];
   activeSection = sections.some((section) => section.id === requested) ? requested : "dictionaries";
   pendingManagementFocus = null;
   for (const section of sections) section.hidden = section.id !== activeSection;
@@ -309,7 +335,9 @@ function updateKeybindSettings() {
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
     getBrowserCommands: () => chrome.commands.getAll(),
-    openBrowserShortcuts: () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }),
+    openBrowserShortcuts: () => chrome.tabs.create({
+      url: IS_FIREFOX ? "about:addons" : "chrome://extensions/shortcuts",
+    }),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
   });
   keybindController.render();
@@ -472,6 +500,7 @@ function updateBackupSettings() {
     document, send,
     download: () => send("hd_backup_download", {}, WORKER_TARGET),
     exportAvailable: HOST_CAPABILITIES.backupExport,
+    browserName: HOST_BROWSER === "firefox" ? "Firefox" : "Chrome",
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {
       if (backupLifecycleTokens.has(token)) postBackupLifecycle({ type: "cancel", token });
@@ -3224,6 +3253,7 @@ async function flushOptionsUntilIdle() {
 }
 
 async function start() {
+  configureBrowserUi();
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
   element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
   element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;

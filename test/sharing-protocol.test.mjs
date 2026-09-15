@@ -34,6 +34,7 @@ test("a browser names itself by its brand", () => {
   assert.equal(browserName(brands("Chromium", "Not=A?Brand")), "Chromium");
   assert.equal(browserName(brands("Microsoft Edge", "Not;A=Brand", "Chromium")), "Microsoft Edge");
   assert.equal(browserName(brands()), "another browser");
+  assert.equal(browserName({ userAgent: "Mozilla/5.0 Firefox/153.0" }), "Firefox");
   assert.equal(browserName({}), "another browser");
   assert.equal(browserName(undefined), "another browser");
 });
