@@ -40,24 +40,34 @@ test("Automatic and named presets materialize only discovered fields with visibl
   const aliases = applyAnkiPreset(config(), ["ExpressionReading", "Reading", "ExpressionAudio", "WordAudio"], "automatic");
   assert.equal(aliases.fieldTemplates.Reading.value, "");
   assert.equal(aliases.fieldTemplates.WordAudio.value, "");
-  for (const preset of ["kiku", "lapis"]) {
-    const result = applyAnkiPreset(config(),
-      ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort", "SentenceAudio"], preset);
+  const stockFields = ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort",
+    "SentenceFurigana", "SentenceAudio", "Picture"];
+  const kiku = applyAnkiPreset(config(), stockFields, "kiku");
+  const lapis = applyAnkiPreset(config(), stockFields, "lapis");
+  for (const result of [kiku, lapis]) {
     assert.equal(result.fieldTemplates.ExpressionFurigana.value, "{furigana-plain}");
     assert.equal(result.fieldTemplates.MainDefinition.value, "{main-definition}");
     assert.equal(result.fieldTemplates.PitchPosition.value, "{pitch-accent-positions}");
     assert.equal(result.fieldTemplates.FreqSort.value, "{frequency-harmonic-rank}");
     assert.equal(result.fieldTemplates.SentenceAudio.value, "");
-    assert.equal(Object.keys(result.fieldTemplates).length, 6);
+    assert.equal(result.fieldTemplates.Picture.value, "{screenshot}");
+    assert.equal(Object.keys(result.fieldTemplates).length, stockFields.length);
   }
+  assert.equal(kiku.fieldTemplates.SentenceFurigana.value, "{sentence-furigana-plain}");
+  assert.equal(lapis.fieldTemplates.SentenceFurigana.value, "");
   const senren = applyAnkiPreset(config(),
-    ["word", "definition", "wordAudio", "pitchPositions", "sentenceAudio", "sentenceTranslation"], "senren");
+    ["word", "sentence", "sentenceFurigana", "definition", "wordAudio", "pitchPositions", "sentenceAudio",
+      "sentenceTranslation", "picture"], "senren");
   assert.equal(senren.fieldTemplates.word.value, "{expression}");
+  assert.equal(senren.fieldTemplates.sentence.value,
+    '<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>');
+  assert.equal(senren.fieldTemplates.sentenceFurigana.value, '<span class="group">{sentence-furigana}</span>');
   assert.equal(senren.fieldTemplates.definition.value, "{main-definition}");
   assert.equal(senren.fieldTemplates.wordAudio.value, "{audio}");
   assert.equal(senren.fieldTemplates.pitchPositions.value, "{pitch-accent-positions}");
   assert.equal(senren.fieldTemplates.sentenceAudio.value, "");
   assert.equal(senren.fieldTemplates.sentenceTranslation.value, "");
+  assert.equal(senren.fieldTemplates.picture.value, "{screenshot}");
 });
 
 test("resolved saved templates never migrate a blank SentenceAudio field", () => {
