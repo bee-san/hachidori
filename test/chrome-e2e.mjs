@@ -43,6 +43,7 @@ import {
 } from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
+import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -205,6 +206,7 @@ const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json
   .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const PLANNED = [
+  "dictionary pointer reorder and confirmed bulk removal persist across reload",
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
@@ -9202,6 +9204,9 @@ async function main() {
     dictionaryId: FIXTURE_ID,
     revision: aliasBlurAction.revision,
   });
+
+  await dictionaryManagementScenarios(page);
+  check("dictionary pointer reorder and confirmed bulk removal persist across reload", true);
 
   await showSettingsSection(page, "dictionary-groups");
   const groupManagement = await page.evaluate(async ({ fixtureId, genericId }) => {
