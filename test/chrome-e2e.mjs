@@ -297,6 +297,7 @@ const PLANNED = [
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
+  "Japanese-only mixed numeral lookups retain native matches and exact source highlights",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
@@ -344,7 +345,7 @@ const PLANNED = [
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
-  "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "a multiline match anchors the popup to the scanned line fragment",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
@@ -1976,7 +1977,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.dictionaryTabs("select", studyKey);
     await tab.setViewport({ width: 1880, height: 240 });
     const inherited = await openChild();
-    require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
     await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
@@ -2184,7 +2184,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E8 genuine child Show more");
     const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2)
       && value.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 complete child expansion");
     require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
@@ -2399,7 +2398,6 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     await until(() => child.compactSummaries(), value => value[0]?.items[0] === "Text before the image."
       && value[0].image.length === 0, "E10 child late-image negative");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
@@ -6876,6 +6874,50 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     check("Japanese-only preferences change automatic scanning in an already-open tab",
       japaneseOnly && latinRequests.length === 1 && latinRequests[0].text === "hello world" && gatedAgain,
       JSON.stringify({ japaneseOnly, latinRequests, gatedAgain }));
+    const title = "mixed-numeral-fixture";
+    const terms = ["第1", "第１", "第一", "1扉", "１扉", "3月", "３月"];
+    await installMediaArchive(settings, buildTitledZip(title, {
+      terms: terms.map((term, index) => [term, "だいいち", "", "", 100, ["mixed numeral match"], index + 1, ""]),
+    }));
+    const mixed = [];
+    try {
+      for (const [text, offset, match] of [
+        ["第1。", 0, "第1"], ["第１。", 0, "第１"], ["第一。", 0, "第一"],
+        ["第1扉。", 1, "1扉"], ["第１扉。", 1, "１扉"], ["3月。", 0, "3月"], ["３月。", 0, "３月"],
+      ]) {
+        await dismiss();
+        await tab.$eval("#verb", (element, value) => { element.textContent = value; }, text);
+        const point = await tab.$eval("#verb", (element, start) => {
+          const range = document.createRange();
+          range.setStart(element.firstChild, start);
+          range.setEnd(element.firstChild, start + 1);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.x + rect.width / 4, y: rect.y + rect.height / 2 };
+        }, offset);
+        await tab.mouse.move(point.x, point.y);
+        await pause();
+        const state = await popup.state();
+        const highlighted = await tab.evaluate(name =>
+          [...(CSS.highlights.get(name) ?? [])].map(range => range.toString()).join(""), HIGHLIGHT_NAME);
+        const lookup = await settings.evaluate(text => chrome.runtime.sendMessage({
+          target: "hoshidicts-offscreen", type: "hd_lookup", text, maxResults: 32, scanLength: 16,
+        }), text.slice(offset));
+        mixed.push({ text, offset, highlighted, visible: popup.visible(state),
+          matched: lookup.results?.some(result => result.term?.expression === match && result.matched === match),
+          correct: highlighted === match && state?.plain.includes("mixed numeral match") });
+        if (text === "第1。" && process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT) {
+          await tab.screenshot({ path: process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT });
+        }
+      }
+    } finally {
+      await dismiss();
+      const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    check("Japanese-only mixed numeral lookups retain native matches and exact source highlights",
+      mixed.length === 7 && mixed.every(value => value.visible && value.matched && value.correct), JSON.stringify(mixed));
   } finally {
     await dismiss();
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
@@ -9591,12 +9633,12 @@ async function main() {
     style: element.getAttribute("style"),
   }));
   await tab.$eval("#verb", element => {
-    element.innerHTML = '<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
+    element.innerHTML = '\u524d\u524d\u524d\u524d\u524d\u524d\u524d\u524d<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
     element.style.cssText = [
       "position: fixed",
       "top: 10px",
-      "left: 20px",
-      "width: 3em",
+      "left: 600px",
+      "width: 11em",
       "word-break: break-all",
     ].join(";");
   });
@@ -9607,20 +9649,37 @@ async function main() {
     const ranges = highlight ? [...highlight] : [];
     const rects = ranges.flatMap(range => [...range.getClientRects()]);
     if (rects.length === 0) return null;
+    const start = document.createRange();
+    const startNode = document.getElementById("placement-start").firstChild;
+    start.setStart(startNode, 0);
+    start.setEnd(startNode, 1);
+    const active = start.getBoundingClientRect();
     return {
+      active: { bottom: active.bottom, left: active.left, top: active.top },
       bottom: Math.max(...rects.map(rect => rect.bottom)),
+      left: Math.min(...rects.map(rect => rect.left)),
       rectCount: rects.length,
       text: ranges.map(range => range.toString()).join(""),
       top: Math.min(...rects.map(rect => rect.top)),
+      viewportWidth: innerWidth,
     };
   }, HIGHLIGHT_NAME);
+  if (process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT) {
+    await tab.screenshot({ path: process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT });
+  }
+  const wrappedExpectedLeft = wrappedPopupState && wrappedSource
+    ? Math.max(6, Math.min(Math.round(wrappedSource.active.left),
+      wrappedSource.viewportWidth - wrappedPopupState.rect.width - 6))
+    : null;
   check(
-    "the popup opens below the complete wrapped match instead of the hovered glyph",
+    "a multiline match anchors the popup to the scanned line fragment",
     wrappedPopupState !== null
       && wrappedSource?.text === "\u98df\u3079\u305f\u304b\u3063\u305f"
       && wrappedSource.rectCount > 1
-      && wrappedPopupState.rect.top >= wrappedSource.bottom + 3,
-    JSON.stringify({ popup: wrappedPopupState?.rect, source: wrappedSource }),
+      && wrappedSource.active.left > wrappedSource.left + 50
+      && Math.abs(wrappedPopupState.rect.left - wrappedExpectedLeft) <= 1
+      && Math.abs(wrappedPopupState.rect.top - (wrappedSource.active.bottom + 4)) <= 1,
+    JSON.stringify({ expectedLeft: wrappedExpectedLeft, popup: wrappedPopupState?.rect, source: wrappedSource }),
   );
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
