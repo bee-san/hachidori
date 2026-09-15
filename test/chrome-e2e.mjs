@@ -2017,7 +2017,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
     await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
       && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 close child lookup");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
       parent: (await rootState()).selected };
@@ -2070,7 +2070,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && protectedDraft.inputFocused && protectedDraft.draft === draft.draft && equal(protectedDraft.selection, [2, 7]), "E8 live Note and child protect their original projection");
     await tab.keyboard.press("Escape");
     require((await popup.state()).noteOpen === false, "E8 Note must close before child retirement");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 protected child retirement");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 protected child retirement");
     await popup.dictionaryTabs("focus", studyKey);
     const flushed = await until(rootState, value => selectedReady(studyKey)(value)
       && equal(value.entries[0].cards.map(card => card.dictionary), [links]), "E8 safe presentation flush");
@@ -2398,7 +2398,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E10 child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
 
     await show(fixture.broken);
     await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
@@ -2790,7 +2790,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await child.sourcePaint("cover-parent");
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const covered = await popup.sourcePaint();
-      await child.click(".gsm-hoshidicts-kanji-back");
+      await child.click(".gsm-hoshidicts-popup-close");
       await child.waitForHidden();
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const after = await popup.sourcePaint("forget");

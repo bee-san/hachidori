@@ -793,13 +793,13 @@
     if (startNode.nodeType !== Node.TEXT_NODE) {
       return null;
     }
-    const glossary = startNode.parentElement?.closest(
-      ".gsm-hoshidicts-glossary-content"
+    const lookupText = startNode.parentElement?.closest(
+      ".gsm-hoshidicts-glossary-content, .gsm-hoshidicts-compact-definition-summary"
     );
     if (
-      !glossary ||
-      !level.popup.contains(glossary) ||
-      !glossary.contains(startNode)
+      !lookupText ||
+      !level.popup.contains(lookupText) ||
+      !lookupText.contains(startNode)
     ) {
       return null;
     }
@@ -817,7 +817,7 @@
       ) {
         return null;
       }
-      if (current === glossary) {
+      if (current === lookupText) {
         break;
       }
       if (current === level.popup) {
@@ -827,7 +827,7 @@
     let entries = collectScanEntries(
       startNode,
       Math.min(caretRange.startOffset, (startNode.nodeValue || "").length),
-      glossary,
+      lookupText,
       options.scanLength,
       styleCache
     );
@@ -848,7 +848,7 @@
     let matchOffset;
     let anchorRange;
     try {
-      matchOffset = rangeOffsetWithin(glossary, first.node, first.offset);
+      matchOffset = rangeOffsetWithin(lookupText, first.node, first.offset);
       anchorRange = document.createRange();
       anchorRange.setStart(first.node, first.offset);
       anchorRange.setEnd(
@@ -862,15 +862,15 @@
       return null;
     }
     return {
-      anchor: glossary,
+      anchor: lookupText,
       anchorRange,
       matchOffset,
       query,
       scanEntries: entries,
-      sentence: glossary.textContent || "",
+      sentence: lookupText.textContent || "",
       sourceDepth: level.depth,
-      sourceElements: [glossary],
-      vertical: computedStyleFor(glossary, styleCache)
+      sourceElements: [lookupText],
+      vertical: computedStyleFor(lookupText, styleCache)
         .writingMode.startsWith("vertical"),
     };
   }
@@ -2429,7 +2429,7 @@
   function backRenderOptions(request, level = rootLevel) {
     return request?.previous
       ? { onBack: () => restoreTermRender(request.previous, request.returnFocus, level) }
-      : level === rootLevel ? {} : { onBack: () => hide(level) };
+      : level === rootLevel ? {} : { onClose: () => hide(level) };
   }
 
   function renderTerms(
@@ -2480,9 +2480,10 @@
     level.activeHighlightText = matchedText;
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
-    if (!replayOptions?.preserveViewControls && typeof renderOptions.onBack === "function"
+    if (!replayOptions?.preserveViewControls
+        && (typeof renderOptions.onBack === "function" || typeof renderOptions.onClose === "function")
         && (level === rootLevel || request?.previous || level.focusLinkedBack)) {
-      focusPopupControl(".gsm-hoshidicts-kanji-back", level);
+      focusPopupControl(renderOptions.onClose ? ".gsm-hoshidicts-popup-close" : ".gsm-hoshidicts-kanji-back", level);
     }
     acceptLookupStatistics(results, request, level);
     return true;
@@ -2999,7 +3000,7 @@
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
     const popupLevel = activePointerLevel(pointer);
-    if (hasProtectedNote() || popupHasFocus()) {
+    if (hasProtectedNote()) {
       cancelCandidateScan();
       if (popupLevel) cancelPendingHover(popupLevel);
       clearHideTimer();
@@ -3075,6 +3076,11 @@
     pointerLevel = level;
     clearTransferTimer();
     clearHideTimer();
+    if (level.noteEditing) {
+      cancelPendingHover(level);
+      clearScanTimer();
+      return;
+    }
     const link = popupLinkAt(event.target, level);
     if (link) {
       cancelPendingHover(level);
@@ -3083,7 +3089,7 @@
       else scheduleDescendantPrune(level);
       return;
     }
-    if (hasProtectedNote() || popupHasFocus()) {
+    if (level.noteEditing) {
       cancelPendingHover(level);
       clearScanTimer();
       return;

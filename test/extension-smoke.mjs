@@ -13114,7 +13114,7 @@ async function contentNoteStage() {
     const childBack = harness.driver.viewRequest(1) === currentChild && harness.driver.viewRequest() === parent;
     harness.driver.popupAt(1).tabIndex = -1;
     harness.driver.popupAt(1).focus();
-    await harness.render(1).context.onBack();
+    await harness.render(1).context.onClose();
     const returned = !harness.driver.popupAt(1) && harness.driver.viewRequest() === parent
       && childAnchor.getRootNode().activeElement === childAnchor;
     ancestorLayouts = 0;
@@ -13175,7 +13175,7 @@ async function contentNoteStage() {
       await child;
       checks.push(harness.render(1).context.dictionaryTabGroups.length === 0 && !harness.driver.snapshot(1).popupHidden);
       const flushes = harness.presentationFlushes();
-      harness.render(1).context.onBack();
+      harness.render(1).context.onClose();
       checks.push(!harness.driver.popupAt(1) && harness.callbacks().canProjectDictionaryPresentation?.() === true
         && harness.presentationFlushes() > flushes);
       const resizeChild = harness.internalLink({ query: "resize child" });
@@ -13444,7 +13444,7 @@ async function contentNoteStage() {
       views.push(retiringView);
       retiringView.scheduleMasonry();
       const childQueued = frames.size === 1;
-      harness.render(1).context.onBack();
+      harness.render(1).context.onClose();
       const retiredCancelled = frames.size === 0;
       const replacement = harness.internalLink({ query: "same depth" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });
@@ -13632,7 +13632,7 @@ async function contentNoteStage() {
       } else {
         harness.edit(false);
         const retained = source.isConnected && harness.driver.snapshot(1).noteEditing;
-        if (navigation === "back") harness.render(1).context.onBack();
+        if (navigation === "back") harness.render(1).context.onClose();
         else if (navigation === "lower") harness.emitOptions({ popupNestingMaxDepth: 0 });
         else harness.edit(false, 1);
         const refresh = harness.take("hd_lookup");
