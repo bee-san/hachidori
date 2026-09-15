@@ -11307,6 +11307,7 @@ async function settingsConflictStage() {
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  let removeHandler = null;
   const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
@@ -11396,6 +11397,7 @@ async function settingsConflictStage() {
           return { ok: true, options: structuredClone(message.options) };
         }
         if (message.type === "hd_remove") {
+          if (removeHandler) return removeHandler(message);
           removeStarted = true;
           return new Promise((resolveRemove) => {
             releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
@@ -11891,6 +11893,57 @@ async function settingsConflictStage() {
     queuedRenameError,
     queuedRenameRequestCount,
   };
+  await navigateSettingsSection(window, "dictionaries");
+  search.value = "";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  acceptState([
+    genericPackage({ id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE }),
+    ...managementDictionaries.slice(0, 3),
+  ]);
+  const bulkRemove = window.document.getElementById("dict-bulk-remove");
+  const removalCalls = [];
+  let finishFirst;
+  removeHandler = async (message) => {
+    removalCalls.push(message.id);
+    if (removalCalls.length === 1) await new Promise(resolve => { finishFirst = resolve; });
+    if (message.id === ids.hiddenOne) throw new window.Error("simulated bulk failure");
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  selectAll.click();
+  window.confirm = () => false;
+  bulkRemove.click();
+  if (removalCalls.length) throw new Error("cancelled bulk removal sent a request");
+  let confirmations = 0;
+  window.confirm = () => { confirmations += 1; return true; };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.join() !== ids.alpha || !bulkRemove.disabled
+      || !window.document.getElementById("import-file").disabled) {
+    throw new Error("bulk removal did not serialize requests and disable competing controls");
+  }
+  finishFirst();
+  const removalDeadline = Date.now() + 2000;
+  while (bulkRemove.disabled && Date.now() < removalDeadline) {
+    await new Promise(done => window.setTimeout(done, 5));
+  }
+  if (confirmations !== 1 || removalCalls.join() !== [ids.alpha, ids.hiddenOne, ids.beta].join()
+      || state.dictionaries.map(entry => entry.id).join() !== [CUSTOM_DICTIONARY_ID, ids.hiddenOne].join()
+      || !rowFor(ids.hiddenOne).querySelector(".dict-selected").checked
+      || !window.document.getElementById("engine-status").textContent.includes("simulated bulk failure")) {
+    throw new Error("bulk removal lost custom protection, partial failure, selection or continuation");
+  }
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.at(-1) !== ids.hiddenOne || !bulkRemove.disabled
+      || state.dictionaries.length !== 1 || state.dictionaries[0].id !== CUSTOM_DICTIONARY_ID) {
+    throw new Error("bulk retry did not remove only the failed package and protect the personal dictionary");
+  }
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
@@ -14974,6 +15027,7 @@ async function contentNoteStage() {
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
+    window.Range.prototype.getClientRects = () => [];
     const document = window.document;
     const block = document.createElement("p");
     block.style.display = "block";
@@ -14995,6 +15049,19 @@ async function contentNoteStage() {
     const unrestricted = scan(block.firstChild)?.query === "hello world";
     harness.emitOptions({ onlyScanJapaneseText: true });
     const gatedAgain = scan(block.firstChild) === null;
+    const mixedNumerals = [];
+    for (const text of ["第1", "第１", "第一", "第1扉", "第１扉", "第一扉", "3月", "３月", "第1。", "第１、"]) {
+      block.textContent = text;
+      const fromJapanese = scan(block.firstChild);
+      const fromNumeral = scan(block.firstChild, 1);
+      const suffix = text.slice(1);
+      mixedNumerals.push(fromJapanese?.query === text
+        && (/[一扉月]/u.test(suffix) ? fromNumeral?.query === suffix : fromNumeral === null));
+    }
+    const rejected = ["123", "１２３", "hello", "hello 日本語", "1。日本語"].every((text) => {
+      block.textContent = text;
+      return scan(block.firstChild) === null;
+    });
     const controls = [];
     for (const tag of ["button", "select", "textarea", "input", "span"]) {
       block.innerHTML = '<b style="display:inline">食</b>';
@@ -15069,6 +15136,8 @@ async function contentNoteStage() {
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
+      "Japanese-only scanning accepts mixed numeral compounds from Japanese or numeral characters":
+        (mixedNumerals.every(Boolean) && rejected) || { mixedNumerals, rejected },
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
       "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
@@ -15423,14 +15492,14 @@ async function contentNoteStage() {
       });
       const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
 
-      async function latinLookup(onlyScanJapaneseText) {
+      async function definitionLookup(onlyScanJapaneseText, text) {
         const language = await createHarness(
           { title: "Generic", kind: "term" },
           { options: { onlyScanJapaneseText } },
         );
         try {
           await language.initialLookup();
-          const latin = appendGlossary(language, "hello");
+          const latin = appendGlossary(language, text);
           language.popup.ownerDocument.caretPositionFromPoint = () => ({
             offsetNode: latin.textNode,
             offset: 0,
@@ -15449,8 +15518,9 @@ async function contentNoteStage() {
           language.close();
         }
       }
-      const japaneseOnly = await latinLookup(true) === null;
-      const unrestrictedText = await latinLookup(false);
+      const japaneseOnly = await definitionLookup(true, "hello ") === null;
+      const unrestrictedText = await definitionLookup(false, "hello ");
+      const mixedNumeral = (await definitionLookup(true, "第1"))?.startsWith("第1です") === true;
       const firstDetails = {
         context,
         deduplicated,
@@ -15458,6 +15528,7 @@ async function contentNoteStage() {
         explicitLink,
         glossaryOnly,
         japaneseOnly,
+        mixedNumeral,
         linkBoundary,
         missPreservedParent,
         nativeCaret,
@@ -17955,7 +18026,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const moved = view.focusEntry({ offset: 1 });
     layout();
     const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
-      && scrolls.at(-1).behavior === "smooth";
+      && scrolls.at(-1).behavior === "instant";
     const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
     scrollTop = 30; // Beta is now the most visible card of the first entry.
@@ -17968,8 +18039,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const reset = view.currentEntryIndex() === 0 && view.focusEntry({ dictionary: 1 }) === false;
     view.renderNotice("No results", candidate);
     const empty = view.focusEntry("last") === false;
-    check("keybind entry navigation expands Show more, clamps, follows clicks and moves between dictionary cards",
-      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty,
+    check("keybind entry navigation expands Show more, clamps, follows clicks and moves instantly between dictionary cards",
+      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty
+        && scrolls.every(scroll => scroll.behavior === "instant"),
       JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
         expanded, scrolls, current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }
@@ -18629,12 +18701,12 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
       onBack() {},
     };
     view.renderResults(results, candidate, context);
-    await settle();
     const primary = disclosure();
     const primaryOutsidePanel = primary !== null
       && popup.querySelector(".gsm-hoshidicts-primary-header").contains(primary)
       && !popup.querySelector(".gsm-hoshidicts-tab-panel").contains(primary);
     const lazy = popup.querySelectorAll(".gsm-hoshidicts-deinflection").length === 1;
+    await settle();
     const beforeOpening = layouts;
     if (primary) primary.open = true;
     await settle();
