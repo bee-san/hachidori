@@ -87,9 +87,9 @@ from **Settings → Sharing → Download the Anki add-on**, then follow the
 <img width="775" height="471" alt="Screenshot 2026-09-14 at 14 19 41" src="https://github.com/user-attachments/assets/991d570a-599e-4277-8736-c72b2f371ed0" />
 
 
-# Optionated
+# Opinionated
 
-Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
+Hachidori is an opinionated program. If it does not benefit me, the creator, personally than I will not add that feature.
 
 I do this because I am a pretty average learner, and if I make this tool great for myself than I am making it great for the average Japanese learner.
 
