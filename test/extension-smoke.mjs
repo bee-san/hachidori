@@ -18629,12 +18629,12 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
       onBack() {},
     };
     view.renderResults(results, candidate, context);
-    await settle();
     const primary = disclosure();
     const primaryOutsidePanel = primary !== null
       && popup.querySelector(".gsm-hoshidicts-primary-header").contains(primary)
       && !popup.querySelector(".gsm-hoshidicts-tab-panel").contains(primary);
     const lazy = popup.querySelectorAll(".gsm-hoshidicts-deinflection").length === 1;
+    await settle();
     const beforeOpening = layouts;
     if (primary) primary.open = true;
     await settle();

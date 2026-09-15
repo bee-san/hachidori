@@ -3321,7 +3321,7 @@
 
       // Fills the queued glossaries on the next task, once the first entry has
       // had a chance to paint. Fills inline without a timer available.
-      function flushDeferredGlossaries() {
+      function flushDeferredGlossaries(immediate = false) {
         if (deferredGlossaryFills.length === 0) {
           restoreViewportAfterFill();
           return;
@@ -3332,10 +3332,10 @@
             if (!isCurrent()) return;
             fill();
           }
-          positionIfCurrent();
+          if (!immediate) positionIfCurrent();
           restoreViewportAfterFill();
         };
-        if (typeof windowRef.setTimeout === "function") {
+        if (!immediate && typeof windowRef.setTimeout === "function") {
           windowRef.setTimeout(() => runRenderAction(isCurrent, renderContext, run), 0);
         } else {
           run();
@@ -3347,6 +3347,7 @@
       flushDeferredGlossaries();
 
       if (results.length > visibleCount) {
+        let nextResultIndex = visibleCount;
         const showMore = documentRef.createElement("button");
         showMore.type = "button";
         showMore.className = "gsm-hoshidicts-show-more";
@@ -3359,14 +3360,36 @@
           }
           showMore.remove();
           expanded = true;
-          results.slice(visibleCount).forEach((result, resultIndex) => {
-            appendResult(result, resultIndex + visibleCount);
-          });
+          while (nextResultIndex < results.length) {
+            appendResult(results[nextResultIndex], nextResultIndex++);
+          }
           flushDeferredGlossaries();
           onResultsExpanded({ audioButtons, miningActions });
           positionPopup();
         }));
         panel.appendChild(showMore);
+        function scheduleNextResult() {
+          windowRef.requestAnimationFrame(() => {
+            windowRef.setTimeout(() => runRenderAction(isCurrent, renderContext, () => {
+              if (nextResultIndex >= results.length) return;
+              const deadline = windowRef.performance.now() + 8;
+              do {
+                appendResult(results[nextResultIndex], nextResultIndex++);
+                flushDeferredGlossaries(true);
+              } while (nextResultIndex < results.length && windowRef.performance.now() < deadline);
+              expanded = true;
+              onResultsExpanded({ audioButtons, miningActions });
+              if (nextResultIndex === results.length) showMore.remove();
+              else {
+                showMore.textContent = `Show ${results.length - nextResultIndex} more`;
+                panel.appendChild(showMore);
+                scheduleNextResult();
+              }
+              positionPopup();
+            }), 0);
+          });
+        }
+        scheduleNextResult();
       }
 
       currentSourceHighlight = {
