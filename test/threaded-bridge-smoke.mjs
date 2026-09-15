@@ -249,7 +249,6 @@ const mutationTypes = [
   "hd_reload",
   "hd_remove",
   "hd_custom_save",
-  "hd_custom_append",
   "hd_backup_export",
   "hd_backup_prepare",
   "hd_backup_restore",
@@ -298,6 +297,22 @@ for (const [index, type] of mutationTypes.entries()) {
   });
   assert.equal((await mutating).ok, true);
 }
+
+const appending = request("hd_custom_append", "concurrent-custom-append");
+await tick();
+const appendMessage = engine.messages.at(-1);
+assert.equal(appendMessage.message.type, "hd_custom_append");
+const lookupDuringAppend = request("hd_lookup", "lookup-during-custom-append");
+await tick();
+const lookupDuringAppendMessage = engine.messages.at(-1);
+assert.equal(lookupDuringAppendMessage.message.type, "hd_lookup", "lookups reach the engine while a custom append compiles");
+engine.emit("message", { channel: "engine-response", id: lookupDuringAppendMessage.id,
+  response: { type: "hd_lookup_result", requestId: "lookup-during-custom-append", ok: true, results: [] } });
+assert.equal((await lookupDuringAppend.promise).ok, true);
+assert.match((await send("hd_remove", "remove-during-custom-append")).error, /busy mutating/);
+engine.emit("message", { channel: "engine-response", id: appendMessage.id,
+  response: { type: "hd_custom_append_result", requestId: "concurrent-custom-append", ok: true } });
+assert.equal((await appending.promise).ok, true);
 
 engine.dispatchError = new Error("test dispatch failure");
 const failedDispatch = request("hd_custom_append", "failed-dispatch");
@@ -471,7 +486,13 @@ try {
     assert.equal(status.storageBackend, "idbfs");
     assert.equal(status.dictionaryCount, 3);
     assert.equal(status.generation, 7);
-    assert.match((await send("hd_lookup", "local-busy-lookup")).error, /busy mutating/);
+    const localBusyLookup = request("hd_lookup", "local-busy-lookup");
+    await tick();
+    assert.equal(localRequests.length, 2);
+    const lookupEntry = localRequests.pop();
+    assert.equal(lookupEntry.message.type, "hd_lookup");
+    lookupEntry.resolve({ type: "hd_lookup_result", requestId: "local-busy-lookup", ok: true });
+    assert.equal((await localBusyLookup.promise).ok, true);
     assert.match((await send("hd_remove", "local-busy-remove")).error, /busy mutating/);
     const entry = localRequests.shift();
     if (fails) entry.reject(new Error("test local failure"));

@@ -41,12 +41,12 @@ const MUTATION_TYPES = new Set([
   "hd_reload",
   "hd_remove",
   "hd_custom_save",
-  "hd_custom_append",
   "hd_backup_export",
   "hd_backup_prepare",
   "hd_backup_restore",
   "hd_backup_cancel",
 ]);
+const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
 const IMPORT_READ_TYPES = new Set([
   "hd_lookup",
   "hd_lookup_dictionary",
@@ -77,6 +77,7 @@ let localEngine = null;
 let nextRequestId = 0;
 let engineError = null;
 let activeMutationRequestId = null;
+let activeStagedMutationRequestId = null;
 let activeImportRequestId = null;
 let lastEngineStatus = {
   ok: true,
@@ -108,6 +109,7 @@ function finishRequest(id, response) {
   if (request === undefined) return;
   pending.delete(id);
   if (id === activeMutationRequestId) activeMutationRequestId = null;
+  if (id === activeStagedMutationRequestId) activeStagedMutationRequestId = null;
   if (id === activeImportRequestId) activeImportRequestId = null;
   if (response?.type === "hd_status_result") {
     lastEngineStatus = {
@@ -282,6 +284,7 @@ function dispatchEngine(message, sendResponse) {
   }
   if (message.type === "hd_status"
       && (activeMutationRequestId !== null
+        || activeStagedMutationRequestId !== null
         || activeImportRequestId !== null
         || pending.size >= MAX_PENDING_REQUESTS)) {
     sendResponse({
@@ -289,6 +292,7 @@ function dispatchEngine(message, sendResponse) {
       requestId: message.requestId ?? null,
       ...lastEngineStatus,
       loading: activeMutationRequestId !== null
+        || activeStagedMutationRequestId !== null
         || activeImportRequestId !== null
         || lastEngineStatus.loading,
     });
@@ -297,6 +301,12 @@ function dispatchEngine(message, sendResponse) {
   const activeMutation = pending.get(activeMutationRequestId)?.message;
   const cancelsBackup = message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
   if (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup) {
+    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
+    return;
+  }
+  if (activeStagedMutationRequestId !== null
+      && !IMPORT_READ_TYPES.has(message.type)
+      && message.type !== "hd_status") {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
     return;
   }
@@ -320,6 +330,7 @@ function dispatchEngine(message, sendResponse) {
   pending.set(id, { message, sendResponse });
   if (message.type === "hd_import") activeImportRequestId = id;
   else if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = id;
+  else if (STAGED_MUTATION_TYPES.has(message.type)) activeStagedMutationRequestId = id;
   engineSelection.then(() => {
     if (!pending.has(id)) return undefined;
     if (worker === null) {
