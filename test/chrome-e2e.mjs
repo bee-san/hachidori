@@ -1977,7 +1977,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.dictionaryTabs("select", studyKey);
     await tab.setViewport({ width: 1880, height: 240 });
     const inherited = await openChild();
-    require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
     await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
@@ -2194,7 +2193,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E8 genuine child Show more");
     const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2)
       && value.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 complete child expansion");
     require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
@@ -2409,7 +2407,6 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     await until(() => child.compactSummaries(), value => value[0]?.items[0] === "Text before the image."
       && value[0].image.length === 0, "E10 child late-image negative");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
