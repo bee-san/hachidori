@@ -17973,7 +17973,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const moved = view.focusEntry({ offset: 1 });
     layout();
     const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
-      && scrolls.at(-1).behavior === "smooth";
+      && scrolls.at(-1).behavior === "instant";
     const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
     scrollTop = 30; // Beta is now the most visible card of the first entry.
@@ -17986,8 +17986,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const reset = view.currentEntryIndex() === 0 && view.focusEntry({ dictionary: 1 }) === false;
     view.renderNotice("No results", candidate);
     const empty = view.focusEntry("last") === false;
-    check("keybind entry navigation expands Show more, clamps, follows clicks and moves between dictionary cards",
-      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty,
+    check("keybind entry navigation expands Show more, clamps, follows clicks and moves instantly between dictionary cards",
+      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty
+        && scrolls.every(scroll => scroll.behavior === "instant"),
       JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
         expanded, scrolls, current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }
