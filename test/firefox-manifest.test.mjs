@@ -4,7 +4,10 @@ import { readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import { resolve } from "node:path";
 
-import { prepareFirefoxExtension } from "../scripts/prepare-firefox.mjs";
+import {
+  FIREFOX_EXCLUDED_FILES,
+  prepareFirefoxExtension,
+} from "../scripts/prepare-firefox.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const readJson = path => readFile(resolve(ROOT, path), "utf8").then(JSON.parse);
@@ -62,5 +65,9 @@ test("preparation replaces only the staged manifest", async t => {
   assert.deepEqual(JSON.parse(await readFile(resolve(output, "manifest.json"), "utf8")), firefoxManifest);
   await assert.rejects(readFile(resolve(output, "manifest.firefox.json")), /ENOENT/u);
   assert.match(await readFile(resolve(output, "chrome-offscreen.js"), "utf8"), /ensureChromeOffscreen/u);
+  for (const path of FIREFOX_EXCLUDED_FILES) {
+    await assert.rejects(readFile(resolve(output, path)), /ENOENT/u, path);
+  }
+  assert.match(await readFile(resolve(output, "media-limits.js"), "utf8"), /MAX_WAV_BYTES/u);
   assert.deepEqual(await readJson("extension/manifest.json"), chromeManifest);
 });

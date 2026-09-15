@@ -9,6 +9,25 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = resolve(ROOT, "extension");
 export const DEFAULT_FIREFOX_EXTENSION = resolve(ROOT, "test/tmp/firefox-extension");
+export const FIREFOX_EXCLUDED_FILES = Object.freeze([
+  "avif-sequence.js",
+  "capture-audio-worklet.js",
+  "capture-buffer.js",
+  "capture-content.js",
+  "capture-encoder-client.js",
+  "capture-encoder-worker.js",
+  "capture-frame-client.js",
+  "capture-frame-worker.js",
+  "capture-host.js",
+  "capture-session.js",
+  "capture-speech.js",
+  "capture-timeline.js",
+  "capture.css",
+  "capture.html",
+  "capture.js",
+  "vendor/avif-encoder.mjs",
+  "vendor/avif-encoder.wasm",
+]);
 
 function outputArgument(arguments_) {
   if (arguments_.length === 0) return DEFAULT_FIREFOX_EXTENSION;
@@ -28,6 +47,7 @@ export async function prepareFirefoxExtension(output = DEFAULT_FIREFOX_EXTENSION
   const firefoxManifest = await readFile(resolve(SOURCE, "manifest.firefox.json"), "utf8");
   await writeFile(resolve(output, "manifest.json"), firefoxManifest);
   await rm(resolve(output, "manifest.firefox.json"));
+  await Promise.all(FIREFOX_EXCLUDED_FILES.map(path => rm(resolve(output, path))));
   return output;
 }
 
