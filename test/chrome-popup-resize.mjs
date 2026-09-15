@@ -80,6 +80,13 @@ export async function checkPopupResize(settings, tab) {
     && expanded.left >= 0 && expanded.top >= 0, JSON.stringify({ expanded, viewport }));
   assert.deepEqual(await settings.evaluate(() => chrome.storage.local.get('options')), stored,
     'resizing never writes persistent design options');
+  await tab.evaluate(() => {
+    dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  });
+  const restored = await read();
+  assert.ok(Math.abs(restored.width - before.width) < 3 && Math.abs(restored.height - before.height) < 3,
+    'cached-page restoration resets session dimensions');
   await tab.reload({ waitUntil: 'load' });
   await open();
   const reset = await read();

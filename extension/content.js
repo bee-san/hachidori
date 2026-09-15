@@ -3603,6 +3603,8 @@
   }
 
   function onPageHide() {
+    stopPopupResize();
+    sessionPopupSize = null;
     // Navigation can destroy the content owner without blurring the tab.
     // Retire while runtime messaging is alive; a BFCache return can reuse UI.
     audio?.retire();
@@ -3612,6 +3614,7 @@
 
   function onPageShow(event) {
     if (!event.persisted) return;
+    positionPopup();
     // The absolute deadline kept running while the page was cached.
     for (const level of levels) {
       const request = level.currentViewRequest;
