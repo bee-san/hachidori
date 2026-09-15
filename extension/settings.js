@@ -136,6 +136,10 @@ let pendingDictionaryCommits = 0;
 let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
+// A pending reorder can reuse the existing rows: only their order and the
+// index-dependent controls change, not the package set or per-package metadata.
+// Any other queued change clears this so a coalesced render rebuilds instead.
+let reorderReuseHint = false;
 let pendingManagementFocus = null;
 let managementPointerDown = false;
 let dictionarySearch = "";
@@ -1864,17 +1868,46 @@ function bindDictionaryEnabled(row, entry) {
   });
 }
 
-function bindDictionaryOrder(row, entry, index) {
+// The rank badge, up/down enablement, and position input all depend on where a
+// package sits in the list, so a reorder must refresh them. Everything here is
+// idempotent value-setting with no listeners, so it is also what a reused row
+// needs after a reorder instead of a full rebuild.
+function refreshDictionaryOrder(row, entry, index) {
   const fixed = isManagedCustomDictionary(entry);
   const minimumIndex = isManagedCustomDictionary(dictionaries[0]) ? 1 : 0;
+  row.querySelector(".dict-rank").textContent = String(index + 1);
   const up = row.querySelector(".dict-up");
   const down = row.querySelector(".dict-down");
-  up.setAttribute("aria-label", `Move ${entry.title} up`);
   up.title = `Move ${entry.title} up`;
-  down.setAttribute("aria-label", `Move ${entry.title} down`);
   down.title = `Move ${entry.title} down`;
   up.dataset.pinnedDisabled = String(fixed || index <= minimumIndex);
   down.dataset.pinnedDisabled = String(fixed || index === dictionaries.length - 1);
+
+  const position = row.querySelector(".dict-position-input");
+  const move = row.querySelector(".dict-move");
+  position.value = String(index + 1);
+  position.min = String(minimumIndex + 1);
+  position.max = String(dictionaries.length);
+  position.dataset.pinnedDisabled = String(fixed);
+  move.dataset.pinnedDisabled = String(fixed);
+  move.title = `Move ${dictionaryLabel(entry)} to position`;
+  if (fixed) {
+    up.setAttribute("aria-label", `Move ${entry.title} up (managed; fixed first)`);
+    down.setAttribute("aria-label", `Move ${entry.title} down (managed; fixed first)`);
+    position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)} (managed; fixed first)`);
+    move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} (managed; fixed first)`);
+  } else {
+    up.setAttribute("aria-label", `Move ${entry.title} up`);
+    down.setAttribute("aria-label", `Move ${entry.title} down`);
+    position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)}`);
+    move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} to position`);
+  }
+}
+
+function bindDictionaryOrder(row, entry, index) {
+  refreshDictionaryOrder(row, entry, index);
+  const up = row.querySelector(".dict-up");
+  const down = row.querySelector(".dict-down");
   up.addEventListener("click", () => {
     moveDictionary(entry.id, { step: -1 });
   });
@@ -1884,29 +1917,19 @@ function bindDictionaryOrder(row, entry, index) {
 
   const position = row.querySelector(".dict-position-input");
   const move = row.querySelector(".dict-move");
-  position.value = String(index + 1);
-  position.min = String(minimumIndex + 1);
-  position.max = String(dictionaries.length);
-  position.dataset.pinnedDisabled = String(fixed);
-  move.dataset.pinnedDisabled = String(fixed);
-  position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)}`);
-  move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} to position`);
-  move.title = `Move ${dictionaryLabel(entry)} to position`;
-  if (fixed) {
-    up.setAttribute("aria-label", `Move ${entry.title} up (managed; fixed first)`);
-    down.setAttribute("aria-label", `Move ${entry.title} down (managed; fixed first)`);
-    position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)} (managed; fixed first)`);
-    move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} (managed; fixed first)`);
-  }
+  // Read the live index and bounds so a reused row keeps working after the
+  // package moves; only the entry id is stable across reorders.
   const moveToPosition = () => {
+    if (isManagedCustomDictionary(entry)) return;
+    const currentIndex = dictionaries.findIndex((candidate) => candidate.id === entry.id);
+    const minimumIndex = isManagedCustomDictionary(dictionaries[0]) ? 1 : 0;
     const target = Number(position.value);
-    if (!fixed
-        && Number.isInteger(target)
+    if (Number.isInteger(target)
         && target >= minimumIndex + 1
         && target <= dictionaries.length) {
       moveDictionary(entry.id, { position: target });
     } else {
-      position.value = String(index + 1);
+      position.value = String(currentIndex + 1);
     }
   };
   position.addEventListener("keydown", (event) => {
@@ -1925,7 +1948,6 @@ function renderDictionaryRow(template, entry, index) {
   row.querySelector(".dict-details-toggle").setAttribute("aria-label", `Details for ${entry.title}`);
   row.querySelector(".dict-pinned").hidden = !isManagedCustomDictionary(entry);
   row.classList.toggle("is-off", !entry.enabled);
-  row.querySelector(".dict-rank").textContent = String(index + 1);
   bindDictionarySelection(row, entry);
   bindDictionaryDrag(row, entry);
 
@@ -1970,7 +1992,21 @@ function renderDictionaryRow(template, entry, index) {
 }
 
 function renderDictionaries(reuseRows = false) {
+  // A queued reorder changes only the order and the index-dependent controls,
+  // so its rows can be reappended in the new order and refreshed instead of
+  // rebuilt from the template. The hint is single-use per render.
+  const reorderReuse = reorderReuseHint;
+  reorderReuseHint = false;
   const list = element("dict-list");
+  const visible = visibleDictionaries();
+  // A failed or conflicting commit can restore a different set than the one
+  // being reordered, so only reuse when the rows on screen still match the
+  // packages about to be shown (the same visible set, only reordered).
+  const domIds = new Set([...list.children].map((row) => row.dataset.dictionaryId));
+  const sameSet = domIds.size === visible.length
+    && visible.every((entry) => domIds.has(entry.id));
+  const reorderReuseSafe = reorderReuse && sameSet;
+  reuseRows = reuseRows || reorderReuseSafe;
   const reusableRows = new Map();
   // Retain disclosure state by package identity, including temporarily filtered rows.
   for (const row of list.children) {
@@ -1985,7 +2021,6 @@ function renderDictionaries(reuseRows = false) {
     if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
   }
   const template = element("dict-row-template");
-  const visible = visibleDictionaries();
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
   draggedDictionaryId = null;
   if (reusableRows.size > 0) clearDictionaryDropTargets();
@@ -1995,7 +2030,14 @@ function renderDictionaries(reuseRows = false) {
     if (!visibleIds.has(entry.id)) {
       return;
     }
-    list.appendChild(reusableRows.get(entry.id) ?? renderDictionaryRow(template, entry, index));
+    const reused = reusableRows.get(entry.id);
+    if (reused) {
+      // The package set and metadata are unchanged; only its position moved.
+      if (reorderReuseSafe) refreshDictionaryOrder(reused, entry, index);
+      list.appendChild(reused);
+    } else {
+      list.appendChild(renderDictionaryRow(template, entry, index));
+    }
   });
 
   element("dict-controls").hidden = dictionaries.length === 0;
@@ -2031,7 +2073,7 @@ function moveDictionary(id, move) {
     const minimumIndex = isManagedCustomDictionary(current[0]) ? 1 : 0;
     const target = Math.max(minimumIndex, dictionaryMoveTarget(current, index, move));
     return moveListItem(current, index, target);
-  }, true);
+  }, true, { reorder: true });
 }
 
 async function restoreAuthoritativeState(reply) {
@@ -2152,10 +2194,14 @@ async function commitDictionaryStateChange(update, reloadEngine) {
   }
 }
 
-function queueDictionaryStateChange(update, reloadEngine) {
+function queueDictionaryStateChange(update, reloadEngine, { reorder = false } = {}) {
   if (pendingDictionaryCommits === 0) {
     dictionaryCommitFailed = false;
   }
+  // The next render can reuse the existing rows only if every change coalesced
+  // into it was a reorder: reorders touch just the order and index-dependent
+  // controls, while any other change can alter per-package metadata.
+  reorderReuseHint = reorder && (pendingDictionaryCommits === 0 || reorderReuseHint);
   pendingDictionaryCommits += 1;
   committing = true;
   pendingManagementFocus = focusedManagementControl() ?? pendingManagementFocus;
@@ -2183,11 +2229,11 @@ function queueDictionaryStateChange(update, reloadEngine) {
   return settled;
 }
 
-function commitDictionaries(update, reloadEngine) {
+function commitDictionaries(update, reloadEngine, options) {
   return queueDictionaryStateChange((current) => {
     const dictionaries = update(current.dictionaries);
     return dictionaries === null ? null : { ...current, dictionaries };
-  }, reloadEngine);
+  }, reloadEngine, options);
 }
 
 function commitGroups(update) {

@@ -6872,6 +6872,8 @@ async function main() {
         ["Alpha alias", "Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Hidden one", "Hidden two"],
       ])
       && settingsConflict.management.hiddenOrderPreserved === true
+      && settingsConflict.management.reorderReusedRowNode === true
+      && settingsConflict.management.reorderRankFollowsPosition === true
       && settingsConflict.management.searchAfterOperations === " ＡｌＰｈＡ "
       && settingsConflict.management.selectedAfterOperations?.join(",") === settingsConflict.management.visibleIds.join(",")
       && settingsConflict.management.selectedAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -11536,8 +11538,15 @@ async function settingsConflictStage() {
   storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   casRequests.splice(4);
 
+  // A settled local reorder reuses the moved row's DOM node instead of
+  // rebuilding it from the template, and refreshes its rank to the new
+  // position. Capturing the node before and finding it after proves reuse.
+  const betaRowBeforeReorder = rowFor(ids.beta);
   rowFor(ids.beta).querySelector(".dict-up").click();
   await waitForRequestCount(5);
+  const reorderReusedRowNode = betaRowBeforeReorder === rowFor(ids.beta);
+  const reorderRankFollowsPosition = rowFor(ids.beta).querySelector(".dict-rank").textContent
+    === String(state.dictionaries.findIndex((entry) => entry.id === ids.beta) + 1);
 
   rowFor(ids.gamma).querySelector(".dict-details-toggle").click();
   const position = rowFor(ids.gamma).querySelector(".dict-position-input");
@@ -11556,7 +11565,6 @@ async function settingsConflictStage() {
 
   rowFor(ids.gamma).querySelector(".dict-down").click();
   await waitForRequestCount(8);
-
   const orderRequests = casRequests.slice(4);
   const orderTitles = orderRequests.map((request) =>
     request.dictionaries.map((dictionary) => dictionary.displayName || dictionary.title));
@@ -11591,6 +11599,8 @@ async function settingsConflictStage() {
     orderRequests,
     orderTitles,
     hiddenOrderPreserved,
+    reorderReusedRowNode,
+    reorderRankFollowsPosition,
     searchAfterOperations,
     selectedAfterOperations,
     selectedAfterExternalChange: selectedRowIds(),
