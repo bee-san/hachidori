@@ -1,7 +1,9 @@
 // Explicit complete backup/restore controls; the engine owns preparation tokens.
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { downloadBlob } from "./blob-download.js";
+
 export function createBackupSettingsController({
-  document, send, download, checkReady, setBusy, status, refresh, exportAvailable = true,
+  document, send, download, checkReady, setBusy, status, refresh,
   trackPreparation = () => {}, cancelPreparation = () => {},
 }) {
   const element = id => document.getElementById(id);
@@ -11,7 +13,7 @@ export function createBackupSettingsController({
   let pageEpoch = 0;
 
   function render() {
-    element("backup-export").disabled = busy || !exportAvailable;
+    element("backup-export").disabled = busy;
     element("backup-file").disabled = busy;
     element("backup-cancel").disabled = busy;
     element("backup-restore").disabled = busy || !prepared || !element("backup-confirm").checked;
@@ -49,8 +51,22 @@ export function createBackupSettingsController({
   }
 
   element("backup-export").addEventListener("click", () => {
-    if (!exportAvailable) return;
     void run("Creating the backup archive…", async () => {
+      if (!download) {
+        const exported = await send("hd_backup_export");
+        if (!exported.ok) throw new Error(exported.error || "Could not create the backup.");
+        let blob;
+        try {
+          const response = await window.fetch(exported.blobUrl);
+          if (!response.ok) throw new Error("Could not read the backup archive.");
+          blob = await response.blob();
+        } finally {
+          await send("hd_backup_release", { blobUrl: exported.blobUrl });
+        }
+        downloadBlob(document, blob, `hachidori-backup-${new Date().toISOString().slice(0, 10)}.zip`);
+        status("Save requested. Choose where to save the backup in your app’s save dialog.", "ready", true);
+        return;
+      }
       const reply = await download();
       if (!reply.ok) throw new Error(reply.error || "Could not create the backup.");
       status(reply.warning || "Download started. Check Chrome’s downloads for progress.", reply.warning ? "" : "ready", true);

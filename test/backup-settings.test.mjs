@@ -10,7 +10,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { exportAvailable = true } = {}) {
+function fixture(t, { chromeDownloads = true } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"));
   const { window } = dom;
   const sent = [], statuses = [], revoked = [], tracked = [], cancelled = [];
@@ -21,8 +21,7 @@ function fixture(t, { exportAvailable = true } = {}) {
   const el = id => window.document.getElementById(id);
   createBackupSettingsController({ document: window.document,
     send: (type, fields) => new Promise(resolve => sent.push({ type, ...fields, resolve })),
-    download: async () => { downloads += 1; return { ok: true, downloadId: 7 }; },
-    exportAvailable,
+    download: chromeDownloads ? async () => { downloads += 1; return { ok: true, downloadId: 7 }; } : null,
     trackPreparation: (token, active) => tracked.push({ token, active }),
     cancelPreparation: token => cancelled.push(token),
     checkReady() { if (blocked) throw new Error("Save your changes first"); },
@@ -109,12 +108,38 @@ test("leaving Settings cancels late preparation and does not revive a preview on
 });
 
 test("backup export remains available without Chrome downloads while preserving restore", async t => {
-  const f = fixture(t, { exportAvailable: false });
+  const f = fixture(t, { chromeDownloads: false });
+  const blob = new Blob(["backup archive bytes"]);
+  const clicked = [];
+  f.window.fetch = async url => {
+    assert.equal(url, "blob:engine-backup");
+    return { ok: true, blob: async () => blob };
+  };
+  f.window.URL.createObjectURL = value => {
+    assert.equal(value, blob);
+    return "blob:settings-backup";
+  };
+  f.window.HTMLAnchorElement.prototype.click = function () {
+    clicked.push({ href: this.href, download: this.download });
+  };
   assert.equal(f.el("backup-export").disabled, false);
   assert.equal(f.el("backup-file").disabled, false);
   f.el("backup-export").click();
+  f.el("backup-export").click();
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.sent[0].type, "hd_backup_export");
+  f.sent[0].resolve({ ok: true, blobUrl: "blob:engine-backup" });
   await tick();
-  assert.equal(f.downloads, 1);
+  assert.equal(f.sent[1].type, "hd_backup_release");
+  assert.equal(f.sent[1].blobUrl, "blob:engine-backup");
+  f.sent[1].resolve({ ok: true });
+  await tick();
+  assert.equal(clicked.length, 1);
+  assert.equal(clicked[0].href, "blob:settings-backup");
+  assert.match(clicked[0].download, /^hachidori-backup-\d{4}-\d{2}-\d{2}\.zip$/u);
+  assert.match(f.statuses.at(-1)[0], /Save requested/u);
+  assert.equal(f.downloads, 0);
+  f.window.URL.createObjectURL = () => "blob:selected-backup";
   await f.prepare();
   assert.equal(f.el("backup-preview").hidden, false);
 });

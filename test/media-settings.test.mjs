@@ -20,7 +20,6 @@ function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
   const requests = [];
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
-    backupExport: !overlayMode,
     browserShortcuts: !overlayMode,
     customLinks: !overlayMode,
     localFileAccessPrompt: !overlayMode,

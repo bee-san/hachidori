@@ -2456,8 +2456,8 @@ async function handleWorkerRequest(message, sender) {
   if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
-  if (type === "hd_backup_download" && !HOST_CAPABILITIES.backupExport) {
-    return failureReply(message, new Error("Backup export is unavailable in this overlay."));
+  if (type === "hd_backup_download" && typeof chrome.downloads?.download !== "function") {
+    return failureReply(message, new Error("Chrome downloads are unavailable. Export the backup from Hachidori Settings."));
   }
   if (type === "hd_open_external" && !HOST_CAPABILITIES.customLinks) {
     return failureReply(message, new Error("Custom toolbar links are unavailable in this overlay."));

@@ -11,7 +11,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text; with no entry for it, the popup offers the pencil to add your own definition.
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - Hachidori's **screen recorder** is unavailable. GameSentenceMiner owns game screenshots, recordings and sentence audio instead.
-- Chrome-owned pages and downloads are unavailable, so **browser shortcut management**, the **local-file access prompt**, **custom toolbar links**, and **backup export** are disabled. Page/popup keybinds and backup restore still work.
+- Chrome-owned pages are unavailable, so **browser shortcut management**, the **local-file access prompt**, and **custom toolbar links** are disabled. Page/popup keybinds still work. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -70,7 +70,7 @@ turn an Electron-only control back on remotely.
 | Audio | Downloadable pronunciation and browser-speech playback work. Browser speech and captured audio are not recorded for mining. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
 | Design | Appearance, layout and custom CSS work. Custom toolbar links are disabled and omitted from the live/reader popup because Electron cannot open their tabs. |
-| Backup & restore | Restore works. Export is disabled because Electron does not expose Chrome's downloads API. |
+| Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
 | Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission. |
 
 `overlay-mode.js` is the single capability source used by Settings, the toolbar,
@@ -158,11 +158,22 @@ once and never opens setup" check covers:
 
 Its "overlay mode never takes a mining screenshot, even when the stored option
 is on" check asks the worker for a screenshot from a profile that has it on. It
-also verifies that recorder, backup-export and custom-link requests fail before
-opening a tab, download or capture host.
+also verifies that recorder and custom-link requests fail before opening a tab
+or capture host, and that the worker download endpoint checks the actual API.
 
 `node test/chrome-overlay.mjs` loads a copy of the extension with the flag set
 into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
 does. It checks the Settings capability matrix and backend guards before
 checking glyph selection, the pencil for an unknown selection, and the host
 events around a drag.
+
+`test/electron-backup.cjs` exercises export, download cancellation and restore in
+a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1
+installed outside the extension, run `NODE_PATH=/path/to/node_modules xvfb-run -a
+/path/to/electron test/electron-backup.cjs`. It saves real ZIPs, restores deleted
+dictionaries and settings, and compares native payload bytes, media and styles.
+`HACHIDORI_BACKUP_BASELINE=<base-sha>` repeats the enabled-button assertion with
+the original Settings files in an isolated copy. Logs, ZIPs, screenshots and
+disposable profiles remain under ignored `test/tmp/electron-backup`.
+The harness uses Electron pointer input and `DownloadItem.setSavePath`/`cancel`,
+not the OS save dialog or a packaged GameSentenceMiner installation.
