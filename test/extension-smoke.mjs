@@ -4189,6 +4189,18 @@ const RECOMMENDED_DICTIONARIES = [
     revision: "2026.09.10",
     capabilities: ["term"],
   },
+  {
+    sourceId: "sankoku8-eng",
+    name: "Sankoku 8 English",
+    publisherUrl: "https://github.com/shoui520/sankoku8-eng",
+    downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip",
+    indexUrl: null,
+    githubRepositoryId: "1371843420",
+    requiredCapability: "term",
+    title: "sankoku8-gpt-5.6-luna",
+    revision: "sankoku8-gpt-5.6-luna",
+    capabilities: ["term"],
+  },
 ];
 
 function checkRecommendedDictionaries() {
@@ -4223,7 +4235,7 @@ function checkRecommendedDictionaries() {
   const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
-    "the catalogue names exactly five trusted recommendations and their publishers",
+    "the catalogue names exactly six trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
@@ -7116,15 +7128,15 @@ async function main() {
       // The scenario injects exactly two failures: jmnedict fails to download and
       // the kanji dictionary fails to import. The rest succeed.
       && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, true, false, false])
+        === JSON.stringify([false, true, true, false, false, false])
       && recommendedSettings.partial.state
         === `Finished ${RECOMMENDED_DICTIONARIES.length} of ${RECOMMENDED_DICTIONARIES.length}`
-          + " recommended dictionaries — 3 imported, 2 failed."
+          + " recommended dictionaries — 4 imported, 2 failed."
       && recommendedSettings.starterHiddenAfterFirst === false
       && recommendedSettings.partial.starterHidden === false
       && recommendedSettings.partial.retryHidden === false
       && JSON.stringify(recommendedSettings.partial.sourceIds)
-        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary"])
+        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
@@ -8047,6 +8059,7 @@ async function startupPageStage() {
   let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
     { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
     { id: "grammar", title: "Bee's Ultimate Grammar Dictionary", sourceId: "bees-ultimate-grammar-dictionary", enabled: true },
+    { id: "sankoku", title: "sankoku8-gpt-5.6-luna", sourceId: "sankoku8-eng", enabled: true },
     { id: "names", title: "JMnedict [2026-01-01]", indexUrl: catalogue("jmnedict").indexUrl, enabled: true },
     // A display name is not a trusted identity.
     { id: "lookalike", title: "Jitendex", displayName: "Jitendex", enabled: true },
@@ -8123,7 +8136,7 @@ async function startupPageStage() {
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]]);
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").focus();
@@ -8136,7 +8149,7 @@ async function startupPageStage() {
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
       && status().textContent === "Installing default dictionaries…";
@@ -8168,13 +8181,14 @@ async function startupPageStage() {
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
         jmnedict: { status: "already-installed", seconds: null, error: null }, "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null },
-        "bees-ultimate-grammar-dictionary": { status: "already-installed", seconds: null, error: null } } } };
+        "bees-ultimate-grammar-dictionary": { status: "already-installed", seconds: null, error: null },
+        "sankoku8-eng": { status: "already-installed", seconds: null, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event(runA(7, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })], true));
     const failureView = heading() === "Some dictionaries could not be installed"
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
       && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
       && document.getElementById("setup-countdown-label") === null && installs().length === 2;
 
@@ -8665,12 +8679,14 @@ async function startupReconcileStage() {
       "bees-ultimate-kanji-dictionary": outcome("failed", { error: "could not read bees.zip: HTTP 503" }),
       jiten: outcome("failed", { error: "could not read jiten-frequency.zip: HTTP 503" }),
       "bees-ultimate-grammar-dictionary": outcome("already-installed"),
+      "sankoku8-eng": outcome("already-installed"),
     }, totalSeconds: 4, continued: false, selectionsApplied: ["jitendex"], recordedRuns: ["run-a"] } };
   const installed = (sourceId, title) => ({ id: sourceId, title, sourceId, enabled: true });
   // Everything but Jiten is in the library: Bee's arrived from Settings after its failure.
   const dictionaries = [installed("jitendex", "Jitendex.org [2026-08-11]"), installed("jmnedict", "JMnedict [2026-01-01]"),
     installed("bees-ultimate-kanji-dictionary", "Bee's Ultimate Kanji Dictionary"),
-    installed("bees-ultimate-grammar-dictionary", "Bee's Ultimate Grammar Dictionary")];
+    installed("bees-ultimate-grammar-dictionary", "Bee's Ultimate Grammar Dictionary"),
+    installed("sankoku8-eng", "sankoku8-gpt-5.6-luna")];
   const page = startupCase(jsdom, { setup, dictionaries,
     reply: () => ({ runId: "run-b", sequence: 1, finished: false,
       entries: [{ sourceId: "bees-ultimate-kanji-dictionary", phase: "waiting", receivedBytes: 0, totalBytes: null, seconds: null, error: null }] }) });
@@ -11308,6 +11324,7 @@ async function settingsConflictStage() {
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  let removeHandler = null;
   const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
@@ -11397,6 +11414,7 @@ async function settingsConflictStage() {
           return { ok: true, options: structuredClone(message.options) };
         }
         if (message.type === "hd_remove") {
+          if (removeHandler) return removeHandler(message);
           removeStarted = true;
           return new Promise((resolveRemove) => {
             releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
@@ -11892,6 +11910,57 @@ async function settingsConflictStage() {
     queuedRenameError,
     queuedRenameRequestCount,
   };
+  await navigateSettingsSection(window, "dictionaries");
+  search.value = "";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  acceptState([
+    genericPackage({ id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE }),
+    ...managementDictionaries.slice(0, 3),
+  ]);
+  const bulkRemove = window.document.getElementById("dict-bulk-remove");
+  const removalCalls = [];
+  let finishFirst;
+  removeHandler = async (message) => {
+    removalCalls.push(message.id);
+    if (removalCalls.length === 1) await new Promise(resolve => { finishFirst = resolve; });
+    if (message.id === ids.hiddenOne) throw new window.Error("simulated bulk failure");
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  selectAll.click();
+  window.confirm = () => false;
+  bulkRemove.click();
+  if (removalCalls.length) throw new Error("cancelled bulk removal sent a request");
+  let confirmations = 0;
+  window.confirm = () => { confirmations += 1; return true; };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.join() !== ids.alpha || !bulkRemove.disabled
+      || !window.document.getElementById("import-file").disabled) {
+    throw new Error("bulk removal did not serialize requests and disable competing controls");
+  }
+  finishFirst();
+  const removalDeadline = Date.now() + 2000;
+  while (bulkRemove.disabled && Date.now() < removalDeadline) {
+    await new Promise(done => window.setTimeout(done, 5));
+  }
+  if (confirmations !== 1 || removalCalls.join() !== [ids.alpha, ids.hiddenOne, ids.beta].join()
+      || state.dictionaries.map(entry => entry.id).join() !== [CUSTOM_DICTIONARY_ID, ids.hiddenOne].join()
+      || !rowFor(ids.hiddenOne).querySelector(".dict-selected").checked
+      || !window.document.getElementById("engine-status").textContent.includes("simulated bulk failure")) {
+    throw new Error("bulk removal lost custom protection, partial failure, selection or continuation");
+  }
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.at(-1) !== ids.hiddenOne || !bulkRemove.disabled
+      || state.dictionaries.length !== 1 || state.dictionaries[0].id !== CUSTOM_DICTIONARY_ID) {
+    throw new Error("bulk retry did not remove only the failed package and protect the personal dictionary");
+  }
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
@@ -17974,7 +18043,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const moved = view.focusEntry({ offset: 1 });
     layout();
     const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
-      && scrolls.at(-1).behavior === "smooth";
+      && scrolls.at(-1).behavior === "instant";
     const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
     scrollTop = 30; // Beta is now the most visible card of the first entry.
@@ -17987,8 +18056,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const reset = view.currentEntryIndex() === 0 && view.focusEntry({ dictionary: 1 }) === false;
     view.renderNotice("No results", candidate);
     const empty = view.focusEntry("last") === false;
-    check("keybind entry navigation expands Show more, clamps, follows clicks and moves between dictionary cards",
-      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty,
+    check("keybind entry navigation expands Show more, clamps, follows clicks and moves instantly between dictionary cards",
+      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty
+        && scrolls.every(scroll => scroll.behavior === "instant"),
       JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
         expanded, scrolls, current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }

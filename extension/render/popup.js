@@ -2104,7 +2104,7 @@
       const top = index === 0 && target === currentEntry ? 0
         : (target.getBoundingClientRect().top - contentScroll.getBoundingClientRect().top) * getPageZoom()
           + contentScroll.scrollTop;
-      contentScroll.scrollTo({ top, behavior: "smooth" });
+      contentScroll.scrollTo({ top, behavior: "instant" });
       return true;
     }
 
