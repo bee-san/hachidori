@@ -2481,6 +2481,7 @@
       form.appendChild(formActions);
 
       let editing = false;
+      let accepted = false;
 
       function close(restoreFocus = true) {
         if (form.hidden) return false;
@@ -2499,6 +2500,7 @@
       }
 
       function open() {
+        accepted = false;
         const prefill = readPrefill() || {};
         term.value = String(prefill.term || "");
         reading.value = String(prefill.reading || "");
@@ -2526,6 +2528,7 @@
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (accepted) return;
         const entry = {
           term: term.value,
           reading: reading.value,
@@ -2541,6 +2544,7 @@
         error.textContent = "";
         try {
           onAddCustomEntry(entry);
+          accepted = true;
           close();
         } catch (appendError) {
           error.textContent = typeof appendError?.message === "string"

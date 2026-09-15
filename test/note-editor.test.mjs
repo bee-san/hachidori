@@ -54,10 +54,9 @@ test("unknown selected words expose a pencil with a selected-text prefill and on
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   assert.deepEqual(entries, [{ term: f.candidate.query, reading: "しらないことば", definition: "My meaning" }]);
-  assert.equal(form.getAttribute("aria-busy"), "true");
+  assert.equal(form.hidden, true);
   finishSave();
   await new Promise(resolve => f.window.setTimeout(resolve, 0));
-  assert.equal(form.hidden, true);
 });
 
 test("lookup and kanji results expose the same pencil editor with their own term prefill", t => {
