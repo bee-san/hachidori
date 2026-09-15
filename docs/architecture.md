@@ -1119,7 +1119,9 @@ response, preserving whitespace and repeated steps with text-only DOM nodes.
 Equal or missing endpoints and traces without a nonempty step name produce no
 disclosure. This presentation does not change normalization, the result object,
 Note prefill, or the trace available to future consumers. Existing native trace
-and response bounds apply; the renderer does not add character truncation.
+and response bounds apply. The renderer independently limits each visible value
+to 4 KiB of UTF-8 and shows at most 31 named steps followed by an omission
+marker, so a malformed response cannot create an unbounded popup tree.
 
 The visible summary is the endpoint path. Accessibility labels use the browser's
 English, Japanese, or Ukrainian base language, with English for other languages;
