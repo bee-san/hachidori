@@ -107,6 +107,34 @@
           </label>
         </div>
       </section>
+
+      <section class="card" aria-labelledby="anki-heading">
+        <div class="card-head">
+          <h2 id="anki-heading">Anki</h2>
+          <p class="hint">Connect to AnkiConnect and choose the deck and note type future mining actions will use.</p>
+        </div>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">AnkiConnect URL</span>
+            <input id="anki-url" type="url" />
+          </label>
+          <label class="field">
+            <span class="field-label">API key</span>
+            <input id="anki-api-key" type="password" autocomplete="off" />
+          </label>
+          <button id="anki-connect" type="button">Connect</button>
+          <p id="anki-status" role="status" aria-live="polite"></p>
+          <label class="field">
+            <span class="field-label">Deck</span>
+            <select id="anki-deck"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Note type</span>
+            <select id="anki-model"></select>
+          </label>
+          <p><strong>Fields:</strong> <span id="anki-fields">Connect to read fields.</span></p>
+        </div>
+      </section>
     </main>
 
     <template id="dict-row-template">

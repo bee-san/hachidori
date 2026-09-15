@@ -5,6 +5,7 @@
  */
 
 const TARGET = "hoshidicts-offscreen";
+const WORKER_TARGET = "hoshidicts-worker";
 const KINDS = ["term", "freq", "pitch", "kanji"];
 const MODIFIERS = ["none", "shift", "ctrl", "alt"];
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
@@ -35,6 +36,7 @@ let options = { ...DEFAULT_OPTIONS };
 let importing = false;
 let statusTimer = null;
 let requestCounter = 0;
+let ankiConfig = null;
 
 function element(id) {
   return document.getElementById(id);
@@ -58,6 +60,19 @@ async function send(type, fields = {}) {
   if (!reply) {
     throw new Error("the extension's service worker did not reply");
   }
+  return reply;
+}
+
+async function sendWorker(type, fields = {}) {
+  requestCounter += 1;
+  const reply = await chrome.runtime.sendMessage({
+    target: WORKER_TARGET,
+    type,
+    requestId: `${type.replace(/^hd_/, "")}-${requestCounter}`,
+    ...fields,
+  });
+  if (!reply) throw new Error("the extension's service worker did not reply");
+  if (!reply.ok) throw new Error(reply.error ?? "the Anki request failed");
   return reply;
 }
 
@@ -248,6 +263,56 @@ function renderOptions() {
     order.value = options.frequencyOrder;
   }
   renderFrequencyChoices();
+}
+
+function replaceChoices(select, values, selected, emptyLabel) {
+  select.textContent = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = emptyLabel;
+  select.appendChild(empty);
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+  select.value = values.includes(selected) ? selected : "";
+}
+
+function renderAnkiConfig(discovery = null) {
+  element("anki-url").value = ankiConfig.url;
+  element("anki-api-key").value = ankiConfig.apiKey;
+  replaceChoices(element("anki-deck"), discovery?.decks ?? [], ankiConfig.deck, "Choose a deck");
+  replaceChoices(element("anki-model"), discovery?.models ?? [], ankiConfig.model, "Choose a note type");
+  const fields = discovery?.fields ?? [];
+  element("anki-fields").textContent = fields.length > 0 ? fields.join(", ") : "Connect to read fields.";
+}
+
+async function readAnkiConfig() {
+  const reply = await sendWorker("hd_anki_config_read");
+  ankiConfig = reply.config;
+  renderAnkiConfig();
+}
+
+async function saveAnkiConfig() {
+  const reply = await sendWorker("hd_anki_config_write", { config: ankiConfig });
+  ankiConfig = reply.config;
+}
+
+async function discoverAnki() {
+  const output = element("anki-status");
+  output.textContent = "Connecting…";
+  try {
+    ankiConfig = { ...ankiConfig, url: element("anki-url").value,
+      apiKey: element("anki-api-key").value };
+    await saveAnkiConfig();
+    const reply = await sendWorker("hd_anki_discover", { config: ankiConfig });
+    renderAnkiConfig(reply.discovery);
+    output.textContent = `Connected to AnkiConnect ${reply.discovery.version}.`;
+  } catch (error) {
+    output.textContent = describe(error);
+  }
 }
 
 function renderDictionaries() {
@@ -449,6 +514,17 @@ function attachHandlers() {
     writeOptions();
   });
 
+  element("anki-connect").addEventListener("click", discoverAnki);
+  element("anki-deck").addEventListener("change", async event => {
+    ankiConfig.deck = event.target.value;
+    await saveAnkiConfig();
+  });
+  element("anki-model").addEventListener("change", async event => {
+    ankiConfig.model = event.target.value;
+    await saveAnkiConfig();
+    await discoverAnki();
+  });
+
   window.addEventListener("beforeunload", (event) => {
     if (!importing) {
       return;
@@ -497,6 +573,7 @@ async function start() {
   attachHandlers();
   renderDictionaries();
   renderOptions();
+  await readAnkiConfig();
   if (!stored.options) {
     await writeOptions();
   }

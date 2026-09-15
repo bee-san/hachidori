@@ -634,8 +634,15 @@ async function main() {
   globalThis.chrome = offscreenChrome;
 
   const swChrome = makeChrome("sw", bus, storage);
-  loadClassicScript(resolve(EXTENSION, "background.js"), {
+  const ankiConfig = await import(`file://${resolve(EXTENSION, "anki-config.js").replace(/\\/gu, "/")}`);
+  const ankiConnect = await import(`file://${resolve(EXTENSION, "anki-connect.js").replace(/\\/gu, "/")}`);
+  const backgroundSource = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/^import .*\n/gmu, "");
+  const backgroundPath = resolve(EXTENSION, "background.js");
+  const context = createContext({
     chrome: swChrome,
+    createAnkiConnectClient: ankiConnect.createAnkiConnectClient,
+    normaliseAnkiConfig: ankiConfig.normaliseAnkiConfig,
     console,
     setTimeout,
     clearTimeout,
@@ -651,6 +658,8 @@ async function main() {
     Math,
     Date,
   });
+  context.globalThis = context;
+  runInContext(backgroundSource, context, { filename: backgroundPath });
 
   const pageChrome = makeChrome("page", bus, storage);
   let counter = 0;
@@ -663,6 +672,28 @@ async function main() {
       ...fields,
     });
   }
+  async function workerRequest(type, fields = {}) {
+    counter += 1;
+    return pageChrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type,
+      requestId: `${type.replace(/^hd_/u, "")}-${counter}`,
+      ...fields,
+    });
+  }
+
+  const initialAnki = await workerRequest("hd_anki_config_read");
+  check(initialAnki.ok && initialAnki.config.schemaVersion === 1,
+    "versioned Anki configuration defaults are owned by the service worker");
+  const configuredAnki = await workerRequest("hd_anki_config_write", { config: {
+    schemaVersion: 1, url: "http://localhost:9999/anki#ignored", apiKey: "key", deck: "Mining", model: "Japanese",
+  } });
+  check(configuredAnki.ok && configuredAnki.config.url === "http://localhost:9999/anki"
+      && storage.raw.get("ankiConfig").deck === "Mining",
+    "Anki configuration writes are normalised and persisted");
+  const invalidAnki = await workerRequest("hd_anki_discover", { config: { url: "file:///tmp/anki" } });
+  check(!invalidAnki.ok && /valid HTTP or HTTPS/u.test(invalidAnki.error),
+    "Anki discovery rejects invalid configured endpoints before fetch");
 
   await import(`file://${mjs.replace(/\\/gu, "/")}`); // fail fast if the bundle is broken
   const engineService = await import(
@@ -755,7 +786,7 @@ async function main() {
     "threaded",
     "type",
   ]);
-  check("hd_status echoes the requestId", status.requestId === "status-1", JSON.stringify(status));
+  check("hd_status echoes the requestId", status.requestId === "status-4", JSON.stringify(status));
   check(
     "the fallback reports single-thread IDBFS",
     status.storageBackend === "idbfs" && status.threaded === false,

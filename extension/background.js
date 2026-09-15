@@ -1,3 +1,6 @@
+import { createAnkiConnectClient } from "./anki-connect.js";
+import { normaliseAnkiConfig } from "./anki-config.js";
+
 /*
  * Service worker for Hachidori.
  *
@@ -23,6 +26,8 @@ const TARGET = "hoshidicts-offscreen";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
+const ANKI_CONFIG_KEY = "ankiConfig";
+const ankiConnect = createAnkiConnectClient();
 
 const DICTIONARIES_KEY = "dictionaries";
 
@@ -141,6 +146,23 @@ const WORKER_HANDLERS = {
     }
     await chrome.storage.local.set({ [DICTIONARIES_KEY]: message.dictionaries });
     return {};
+  },
+
+  async hd_anki_config_read() {
+    const stored = await chrome.storage.local.get(ANKI_CONFIG_KEY);
+    return { config: normaliseAnkiConfig(stored[ANKI_CONFIG_KEY]) };
+  },
+
+  async hd_anki_config_write(message) {
+    const config = normaliseAnkiConfig(message?.config);
+    await chrome.storage.local.set({ [ANKI_CONFIG_KEY]: config });
+    return { config };
+  },
+
+  async hd_anki_discover(message) {
+    const config = normaliseAnkiConfig(message?.config);
+    if (!config.url) throw new Error("Enter a valid HTTP or HTTPS AnkiConnect URL.");
+    return { discovery: await ankiConnect.discover(config) };
   },
 };
 
