@@ -87,3 +87,41 @@ jobs:
             --verify-tag \
             --generate-notes \
             --title "Hachidori ${GITHUB_REF_NAME#v}"
+
+  chrome-web-store:
+    name: Submit Chrome Web Store update
+    if: github.event_name == 'push'
+    needs: [package, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CHROME_WEBSTORE_PUBLISHER_ID: ${{ vars.CHROME_WEBSTORE_PUBLISHER_ID }}
+      CHROME_WEBSTORE_EXTENSION_ID: ${{ vars.CHROME_WEBSTORE_EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hachidori-release-${{ github.run_id }}
+          path: ${{ runner.temp }}/hachidori-release/
+      - name: Upload package and submit it for review
+        env:
+          CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON: ${{ secrets.CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          packages=( "$RUNNER_TEMP"/hachidori-release/*-chrome.zip )
+          if [[ ${#packages[@]} -ne 1 || ! -f "${packages[0]}" ]]; then
+            echo "Expected exactly one verified Chrome package." >&2
+            exit 1
+          fi
+          version="$(node -p "require('./extension/manifest.json').version")"
+          node scripts/chrome-web-store.mjs \
+            --package "${packages[0]}" \
+            --publisher-id "$CHROME_WEBSTORE_PUBLISHER_ID" \
+            --item-id "$CHROME_WEBSTORE_EXTENSION_ID" \
+            --expected-version "$version" \
+            --publish-type DEFAULT_PUBLISH

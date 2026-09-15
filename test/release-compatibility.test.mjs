@@ -80,6 +80,12 @@ test("tag and manual release runs verify and publish the checksummed package pai
   assert.match(workflow, /gh release create/u);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
   assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
+  assert.match(workflow, /chrome-web-store:[\s\S]*needs: \[package, publish\]/u);
+  assert.match(workflow, /secrets\.CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON/u);
+  assert.match(workflow, /vars\.CHROME_WEBSTORE_PUBLISHER_ID/u);
+  assert.match(workflow, /vars\.CHROME_WEBSTORE_EXTENSION_ID/u);
+  assert.match(workflow, /node scripts\/chrome-web-store\.mjs/u);
+  assert.match(workflow, /--publish-type DEFAULT_PUBLISH/u);
 });
 
 test("public compatibility copy agrees with the tested manifest minimum", () => {
