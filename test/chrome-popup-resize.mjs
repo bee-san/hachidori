@@ -90,6 +90,8 @@ export async function checkPopupResize(settings, tab) {
     && expanded.left >= 0 && expanded.top >= 0, JSON.stringify({ expanded, viewport }));
   assert.deepEqual(await settings.evaluate(() => chrome.storage.local.get('options')), stored,
     'resizing never writes persistent design options');
+  await tab.reload({ waitUntil: 'load' });
+  await open();
   await setScale(150);
   await new Promise(done => setTimeout(done, 200));
   const scaled = await read();
@@ -98,6 +100,7 @@ export async function checkPopupResize(settings, tab) {
     && Math.abs(scaledDrag.height - scaled.height + 45) < 3,
     JSON.stringify({ scaled, scaledDrag }));
   await setScale(stored.options?.popupScalePercent ?? 100);
+  await new Promise(done => setTimeout(done, 200));
   await tab.evaluate(() => {
     dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
