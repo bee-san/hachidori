@@ -126,6 +126,7 @@ test("backup export remains available without Chrome downloads while preserving 
   assert.equal(f.el("backup-file").disabled, false);
   f.el("backup-export").click();
   f.el("backup-export").click();
+  await tick();
   assert.equal(f.sent.length, 1);
   assert.equal(f.sent[0].type, "hd_backup_export");
   f.sent[0].resolve({ ok: true, blobUrl: "blob:engine-backup" });
@@ -142,4 +143,39 @@ test("backup export remains available without Chrome downloads while preserving 
   f.window.URL.createObjectURL = () => "blob:selected-backup";
   await f.prepare();
   assert.equal(f.el("backup-preview").hidden, false);
+});
+
+test("a failed archive release is retried before the next export and on leaving Settings", async t => {
+  const f = fixture(t, { chromeDownloads: false });
+  f.window.fetch = async () => ({ ok: true, blob: async () => new Blob(["bytes"]) });
+  f.window.HTMLAnchorElement.prototype.click = function () {};
+  f.el("backup-export").click();
+  await tick();
+  assert.equal(f.sent[0].type, "hd_backup_export");
+  f.sent[0].resolve({ ok: true, blobUrl: "blob:first-backup" });
+  await tick();
+  assert.equal(f.sent[1].type, "hd_backup_release");
+  assert.equal(f.sent[1].blobUrl, "blob:first-backup");
+  f.sent[1].resolve({ ok: false, error: "engine unreachable" });
+  await tick();
+  assert.match(f.statuses.at(-1)[0], /engine unreachable/u);
+
+  f.el("backup-export").click();
+  await tick();
+  assert.equal(f.sent[2].type, "hd_backup_release");
+  assert.equal(f.sent[2].blobUrl, "blob:first-backup", "the unreleased archive from the failed attempt must be retried first");
+  f.sent[2].resolve({ ok: true });
+  await tick();
+  assert.equal(f.sent[3].type, "hd_backup_export");
+  f.sent[3].resolve({ ok: true, blobUrl: "blob:second-backup" });
+  await tick();
+  assert.equal(f.sent[4].type, "hd_backup_release");
+  assert.equal(f.sent[4].blobUrl, "blob:second-backup");
+  f.sent[4].resolve({ ok: false, error: "engine unreachable" });
+  await tick();
+
+  f.window.dispatchEvent(new f.window.Event("pagehide"));
+  await tick();
+  assert.equal(f.sent.at(-1).type, "hd_backup_release");
+  assert.equal(f.sent.at(-1).blobUrl, "blob:second-backup");
 });
