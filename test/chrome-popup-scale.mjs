@@ -12,7 +12,8 @@ const root = resolve("extension");
 const server = createServer(async (request, response) => {
   try {
     const path = resolve(root, `.${request.url}`);
-    const mime = path.endsWith(".js") ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html";
+    const mime = path.endsWith(".js") ? "text/javascript" : path.endsWith(".css") ? "text/css"
+      : path.endsWith(".svg") ? "image/svg+xml" : "text/html";
     response.setHeader("Content-Type", mime);
     response.end(await readFile(path));
   } catch { response.writeHead(404).end(); }
@@ -59,6 +60,22 @@ try {
   await update(125);
   const narrow = await measure();
   assert.ok(narrow.rect.left >= 0 && narrow.rect.top >= 0 && narrow.rect.right <= 320 && narrow.rect.bottom <= 300);
+  await page.setViewport({ width: 1000, height: 900 });
+  for (const scale of [75, 100, 125, 200]) {
+    await page.reload();
+    await page.waitForFunction(() => !!window.HDDesignPreview);
+    await update(scale);
+    await page.waitForFunction(() => [...document.getElementById("preview-host").shadowRoot.querySelectorAll(".gloss-image-link img")]
+      .some(image => image.complete && image.naturalWidth > 0));
+    await page.evaluate(() => [...document.getElementById("preview-host").shadowRoot.querySelectorAll(".gloss-image-link")]
+      .find(link => link.getBoundingClientRect().width > 0 && link.querySelector("img")?.complete)
+      .dispatchEvent(new MouseEvent("mouseenter")));
+    await page.waitForFunction(() => document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-image-hover-preview"));
+    const preview = await page.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .querySelector(".gsm-hoshidicts-image-hover-preview").getBoundingClientRect().toJSON());
+    assert.ok(preview.left >= 0 && preview.top >= 0 && preview.right <= 1000 && preview.bottom <= 900,
+      JSON.stringify({ scale, preview }));
+  }
   console.log("PASS: fractional popup scale, real pointer hit testing, retained cards, viewport containment");
 } finally {
   await browser.close();

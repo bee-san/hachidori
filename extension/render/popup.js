@@ -2024,6 +2024,8 @@
     function positionImagePreview(anchorRect = imagePreview.image.getBoundingClientRect()) {
       const preview = imagePreview.element;
       const zoom = getCoordinateScale();
+      preview.firstElementChild.style.maxWidth = `${Math.max(1, windowRef.innerWidth * zoom - 16)}px`;
+      preview.firstElementChild.style.maxHeight = `${Math.max(1, windowRef.innerHeight * zoom - 16)}px`;
       const position = calculatePopupPosition(scaleRect(anchorRect, zoom), scaleRect(preview.getBoundingClientRect(), zoom), {
         width: windowRef.innerWidth * zoom, height: windowRef.innerHeight * zoom,
       }, { gap: 8, padding: 8, vertical: true });
