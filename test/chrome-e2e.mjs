@@ -43,6 +43,7 @@ import {
 } from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
+import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -9785,6 +9786,7 @@ async function main() {
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
+  await checkCompactSummaryLayout(browser);
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
