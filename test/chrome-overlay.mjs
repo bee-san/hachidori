@@ -111,6 +111,29 @@ function prepareExtension() {
   const flagged = readFileSync(flagPath, "utf8").replace("OVERLAY_MODE = false;", "OVERLAY_MODE = true;");
   assert.notEqual(flagged, readFileSync(flagPath, "utf8"), "overlay-mode.js exposes the flag to set");
   writeFileSync(flagPath, flagged);
+
+  // Test-copy-only instrumentation: retain the exact runtime lookup requests
+  // made after a physical pointer event without changing the source extension.
+  const contentPath = resolve(TEST_EXTENSION, "content.js");
+  const content = readFileSync(contentPath, "utf8");
+  const instrumented = content.replace(
+    "  function sendRequest(type, payload, target = TARGET) {\n",
+    "  function sendRequest(type, payload, target = TARGET) {\n"
+      + "    const __traceRequests = JSON.parse(document.documentElement.dataset.hachidoriPhysicalClickRequests || '[]');\n"
+      + "    __traceRequests.push({ type, payload: structuredClone(payload ?? null), target });\n"
+      + "    document.documentElement.dataset.hachidoriPhysicalClickRequests = JSON.stringify(__traceRequests);\n"
+      + "    const __kanjiFailure = document.documentElement.dataset.hachidoriKanjiFailure;\n"
+      + "    if (type === 'hd_kanji' && __kanjiFailure === 'empty') return Promise.resolve({ kanji: null });\n"
+      + "    if (type === 'hd_kanji' && __kanjiFailure === 'malformed') return Promise.resolve({ kanji: { character: payload.character, entries: [{}] } });\n"
+      + "    if (type === 'hd_kanji' && __kanjiFailure === 'runtime') return Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'));\n"
+      + "    if (type === 'hd_kanji' && __kanjiFailure === 'slow-runtime') return new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Could not establish connection. Receiving end does not exist.')), 500));\n",
+  ).replace(
+    "  function showKanji(character, _result, _candidate, sourceLink, level = rootLevel) {\n",
+    "  function showKanji(character, _result, _candidate, sourceLink, level = rootLevel) {\n"
+      + "    document.documentElement.dataset.hachidoriShowKanjiCalls = JSON.stringify([...(JSON.parse(document.documentElement.dataset.hachidoriShowKanjiCalls || '[]')), { character, active: !!level.activeCandidate, depth: level.depth }]);\n",
+  );
+  assert.notEqual(instrumented, content, "content.js exposes sendRequest for test-copy instrumentation");
+  writeFileSync(contentPath, instrumented);
 }
 
 function launch() {
@@ -154,17 +177,17 @@ async function editSettingsControls(settings, values) {
     return { id: owner.id, hidden: owner.hidden };
   }, Object.keys(values)[0]);
   if (section.hidden) await showSection(settings, section.id);
-  await settings.evaluate((changes) => {
-    for (const [id, value] of Object.entries(changes)) {
-      const input = document.getElementById(id);
+  for (const [id, value] of Object.entries(values)) {
+    await settings.evaluate(([controlId, controlValue]) => {
+      const input = document.getElementById(controlId);
       for (let parent = input.closest("details"); parent; parent = parent.parentElement.closest("details")) parent.open = true;
-      if (input.type === "checkbox") input.checked = value;
-      else input.value = value;
+      if (input.type === "checkbox") input.checked = controlValue;
+      else input.value = controlValue;
       input.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-  }, values);
-  await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
-    { polling: 100, timeout: 10_000 });
+    }, [id, value]);
+    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+      { polling: 100, timeout: 10_000 });
+  }
 }
 
 async function openSettings(browser, id) {
@@ -235,6 +258,10 @@ async function popupReader(page) {
       customLinks: this.querySelectorAll(".gsm-hoshidicts-external-link-button").length,
       noteOpen: noteForm !== null && !noteForm.hidden,
       noteTerm: noteForm?.querySelector('[name="term"]')?.value ?? null,
+      kanjiBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
+      kanjiGlyph: this.querySelector(".gsm-hoshidicts-kanji-glyph")?.textContent ?? null,
+      failureKind: this.querySelector(".gsm-hoshidicts-lookup-failure")?.dataset.kind ?? null,
+      failureText: this.querySelector(".gsm-hoshidicts-lookup-failure")?.textContent ?? null,
     };
   }`);
   const visible = (current) => Boolean(current) && !current.hidden && current.height > 0 && current.plain !== "";
@@ -261,7 +288,42 @@ async function popupReader(page) {
     element.click();
     return true;
   }`, [selector]);
-  return { state, visible, waitForVisible, waitForHidden, click };
+  const rect = selector => call(`function (target) {
+    const element = this.querySelector(target);
+    if (!element) return null;
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+      text: element.textContent };
+  }`, [selector]);
+  const physicalTrace = selector => call(`function (target) {
+    const element = this.querySelector(target);
+    if (!element) return null;
+    const bounds = element.getBoundingClientRect();
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    const describe = node => node ? {
+      className: typeof node.className === "string" ? node.className : "",
+      label: node.getAttribute?.("aria-label") ?? "",
+      localName: node.localName ?? "",
+      text: node.textContent ?? "",
+    } : null;
+    const trace = { x, y, element: describe(element), shadowPointTarget: describe(this.getRootNode().elementFromPoint(x, y)),
+      documentPointTarget: describe(document.elementFromPoint(x, y)), events: [] };
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      element.addEventListener(type, event => trace.events.push({ type, target: describe(event.target),
+        composedPath: event.composedPath().slice(0, 4).map(describe) }), { once: true });
+    }
+    globalThis.__hachidoriPhysicalClickTrace = trace;
+    document.documentElement.dataset.hachidoriPhysicalClickRequests = "[]";
+    document.documentElement.dataset.hachidoriShowKanjiCalls = "[]";
+    return trace;
+  }`, [selector]);
+  const trace = () => call(`function () {
+    return { trace: globalThis.__hachidoriPhysicalClickTrace ?? null,
+      requests: JSON.parse(document.documentElement.dataset.hachidoriPhysicalClickRequests || "[]"),
+      showKanjiCalls: JSON.parse(document.documentElement.dataset.hachidoriShowKanjiCalls || "[]") };
+  }`);
+  return { state, visible, waitForVisible, waitForHidden, click, rect, physicalTrace, trace };
 }
 
 const server = createServer((_request, response) => {
@@ -385,7 +447,12 @@ try {
     "overlay mode opens no startup page");
   // A long hover delay keeps a press from racing the hover lookup, so the
   // drag below provably starts with no popup open.
-  await editSettingsControls(settings, { "opt-hover-delay": "1500" });
+  await editSettingsControls(settings, {
+    "opt-hover-delay": "1500",
+    "opt-blur-count": false,
+    "opt-blur-anki": false,
+    "opt-blur-frequency": false,
+  });
   await settings.evaluate(async () => {
     const stored = await chrome.storage.local.get("options");
     const options = HDReaderOptions.normaliseOptions(stored.options);
@@ -419,13 +486,131 @@ try {
   const selected = () => tab.evaluate(() => window.getSelection().toString());
   const events = () => tab.evaluate(() => window.__hostEvents.splice(0));
   const settle = (ms = 250) => new Promise((done) => setTimeout(done, ms));
+  const setKanjiFailure = mode => tab.evaluate(value => {
+    if (value === null) delete document.documentElement.dataset.hachidoriKanjiFailure;
+    else document.documentElement.dataset.hachidoriKanjiFailure = value;
+  }, mode);
 
   // Hovering still works, with the overlay's own delay.
   await tab.mouse.move(...middle(boxes[0]));
   const hovered = await popup.waitForVisible(10_000);
   assert.ok(hovered?.plain.includes("食べる"), `hover reads the boxed word: ${JSON.stringify(hovered)}`);
+  const kanjiLink = await popup.rect(".gsm-hoshidicts-kanji-link");
+  assert.ok(kanjiLink?.width > 0, `the popup exposes a physical kanji target: ${JSON.stringify(kanjiLink)}`);
+
+  // A clicked-kanji transition is speculative until its reply can render. A
+  // miss, malformed reply, or runtime messaging failure must retain the term
+  // view and the host's popup claim instead of looking like an intentional
+  // close. Exercise the real closed-shadow button with physical pointer input.
+  for (const failure of ["empty", "malformed", "runtime"]) {
+    await setKanjiFailure(failure);
+    const beforeFailureEvents = await events();
+    assert.deepEqual(beforeFailureEvents, failure === "empty" ? ["shown"] : []);
+    const target = await popup.rect(".gsm-hoshidicts-kanji-link");
+    await tab.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+    await tab.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
+    await settle();
+    const retained = await popup.state();
+    assert.ok(retained && !retained.hidden && retained.plain.includes("食べる")
+      && retained.failureText?.includes("Kanji"),
+    `${failure} kanji failure retains the current popup with an inline error: ${JSON.stringify(retained)}`);
+    assert.deepEqual(await events(), [], `${failure} kanji failure does not publish an intentional close`);
+  }
+  await setKanjiFailure(null);
+
+  // GSM can move native focus while an interactive lookup is still in flight.
+  // A genuine top-level blur at that point must not discard the term view.
+  await setKanjiFailure("slow-runtime");
+  const guardedLink = await popup.rect(".gsm-hoshidicts-kanji-link");
+  await tab.mouse.move(guardedLink.x + guardedLink.width / 2, guardedLink.y + guardedLink.height / 2);
+  await tab.mouse.click(guardedLink.x + guardedLink.width / 2, guardedLink.y + guardedLink.height / 2);
+  await settings.bringToFront();
+  await settle(750);
+  const afterInteractiveBlur = await popup.state();
+  assert.ok(afterInteractiveBlur && !afterInteractiveBlur.hidden && afterInteractiveBlur.plain.includes("食べる")
+    && afterInteractiveBlur.failureText?.includes("Kanji"),
+    `window blur during popup interaction retains the view: ${JSON.stringify(afterInteractiveBlur)}`);
+  assert.deepEqual(await events(), [], "interactive blur does not publish an intentional close");
+  await setKanjiFailure(null);
+  await tab.bringToFront();
+  await settings.bringToFront();
+  assert.equal(await popup.waitForHidden(), true, "a later genuine blur closes after the interaction settles");
+  assert.deepEqual(await events(), ["hidden"], "the later blur publishes one intentional close");
+  await tab.bringToFront();
+  await tab.mouse.move(2, 2);
+  await tab.mouse.move(...middle(boxes[0]));
+  await popup.waitForVisible(10_000);
+  await events();
+
+  const physicalBefore = await popup.physicalTrace(".gsm-hoshidicts-kanji-link");
+  await tab.mouse.click(kanjiLink.x + kanjiLink.width / 2, kanjiLink.y + kanjiLink.height / 2);
+  const kanjiDeadline = Date.now() + 5_000;
+  let kanjiView = await popup.state();
+  while (kanjiView?.kanjiGlyph !== "食" && Date.now() < kanjiDeadline) {
+    await settle(50);
+    kanjiView = await popup.state();
+  }
+  const physicalAfter = await popup.trace();
+  assert.equal(kanjiView?.kanjiGlyph, "食",
+    `a real pointer click on ${kanjiLink?.text} opens its kanji view: ${JSON.stringify({ kanjiView, physicalBefore, physicalAfter })}`);
+  assert.deepEqual(physicalAfter.requests.filter(request => ["hd_lookup_dictionary", "hd_kanji"].includes(request.type)), [
+    { type: "hd_kanji", payload: { character: "食" }, target: "hoshidicts-offscreen" },
+  ], `physical kanji lookup request: ${JSON.stringify(physicalAfter)}`);
+  console.log(`physical kanji trace ${JSON.stringify({ before: physicalBefore, after: physicalAfter })}`);
+  await popup.click(".gsm-hoshidicts-kanji-back");
+  await popup.waitForVisible();
+
+  // The same physical path must survive the blur reveal boundary. Keep the
+  // lookup open while enabling a qualifying count condition, then create a new
+  // popup so this click starts from genuinely blurred definitions.
+  await tab.keyboard.press("Escape");
+  assert.equal(await popup.waitForHidden(), true);
+  await settings.evaluate(async () => {
+    const stored = (await chrome.storage.local.get("options")).options;
+    const optionRevision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_options_write",
+      requestId: "overlay-blur-physical-click",
+      baseRevision: optionRevision,
+      options: {
+        showLookupCounts: true,
+        definitionBlurEnabled: true,
+        definitionBlurDirection: "atLeast",
+        definitionBlurThreshold: 1,
+        definitionBlurReveal: "hover",
+      },
+    });
+    if (!reply.ok) throw new Error(reply.error);
+  });
+  await tab.bringToFront();
+  await tab.mouse.move(2, 2);
+  await tab.mouse.move(...middle(boxes[0]));
+  const blurred = await popup.waitForVisible(10_000);
+  assert.ok(blurred?.plain.includes("食べる"), `blurred hover reads the boxed word: ${JSON.stringify(blurred)}`);
+  const blurredLink = await popup.rect(".gsm-hoshidicts-kanji-link");
+  assert.ok(blurredLink?.width > 0, `blurred popup exposes a physical kanji target: ${JSON.stringify(blurredLink)}`);
+  const blurredBefore = await popup.physicalTrace(".gsm-hoshidicts-kanji-link");
+  await tab.mouse.move(blurredLink.x + blurredLink.width / 2, blurredLink.y + blurredLink.height / 2);
+  await settle(100);
+  await tab.mouse.click(blurredLink.x + blurredLink.width / 2, blurredLink.y + blurredLink.height / 2);
+  const blurredDeadline = Date.now() + 5_000;
+  let blurredKanji = await popup.state();
+  while (blurredKanji?.kanjiGlyph !== "食" && Date.now() < blurredDeadline) {
+    await settle(50);
+    blurredKanji = await popup.state();
+  }
+  const blurredAfter = await popup.trace();
+  assert.equal(blurredKanji?.kanjiGlyph, "食",
+    `a real pointer reveal and click opens the kanji view: ${JSON.stringify({ blurredKanji, blurredBefore, blurredAfter })}`);
+  assert.deepEqual(blurredAfter.requests.filter(request => ["hd_lookup_dictionary", "hd_kanji"].includes(request.type)), [
+    { type: "hd_kanji", payload: { character: "食" }, target: "hoshidicts-offscreen" },
+  ], `blurred physical kanji lookup request: ${JSON.stringify(blurredAfter)}`);
+  console.log(`blurred physical kanji trace ${JSON.stringify({ before: blurredBefore, after: blurredAfter })}`);
+  await popup.click(".gsm-hoshidicts-kanji-back");
+  await popup.waitForVisible();
   assert.equal(hovered.customLinks, 0, "stored or remotely shared custom links stay out of the overlay popup");
-  assert.deepEqual(await events(), ["shown"]);
+  assert.deepEqual(await events(), ["hidden", "shown"]);
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true, "Escape closes the hover popup");
   assert.deepEqual(await events(), ["hidden"]);

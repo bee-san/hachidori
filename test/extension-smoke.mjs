@@ -13180,6 +13180,26 @@ async function contentNoteStage() {
       const harness = await createHarness(route);
       try {
         await harness.initialLookup();
+        if (route) {
+          const termHit = harness.driver.showKanji("食");
+          harness.reply(harness.take("hd_lookup_dictionary"), {
+            results: [harness.term("食", "Generic")],
+          });
+          await termHit;
+          harness.driver.onWindowBlur();
+          outcomes["successful selected-term kanji navigation allows later blur"] = harness.popup.hidden;
+          await harness.initialLookup();
+        }
+        const pendingBlur = harness.driver.showKanji("食");
+        const pendingBlurRequest = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
+        harness.driver.onWindowBlur();
+        const firstBlurGuarded = !harness.popup.hidden;
+        harness.driver.onWindowBlur();
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} guards only the interaction blur`] =
+          firstBlurGuarded && harness.popup.hidden;
+        harness.reply(pendingBlurRequest, route ? { results: [] } : { kanji: null });
+        await pendingBlur;
+        await harness.initialLookup();
         const operation = harness.driver.showKanji("食");
         if (route) {
           harness.reply(harness.take("hd_lookup_dictionary"), { results: [] });
@@ -13187,7 +13207,12 @@ async function contentNoteStage() {
         }
         harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [] } });
         await operation;
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss retires the old popup`] = harness.popup.hidden;
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss preserves the old popup`] = !harness.popup.hidden
+          && harness.render().kind === "failure"
+          && harness.render().value.kind === "kanji"
+          && harness.render().value.title === "Kanji lookup failed.";
+        harness.driver.onWindowBlur();
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} settled interaction allows later blur`] = harness.popup.hidden;
         await harness.initialLookup();
         const stale = harness.driver.showKanji("食");
         const held = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
