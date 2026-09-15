@@ -6860,24 +6860,28 @@ async function main() {
         request.type === (index < 2 ? "hd_apply_state" : "hd_state_cas"))
       && settingsConflict.management.bulkHiddenUntouched === true
       && settingsConflict.management.bulkValues?.join(",") === "false,false,false,true,true,true,true,true,true,false,false,false"
-      && JSON.stringify(settingsConflict.management.queuedOrderTitles) === JSON.stringify([
-        ["ＡＬＰＨＡ", "Hidden one", "Alpha alias", "Ａｌｐｈａ notes", "Hidden two"],
-        ["ＡＬＰＨＡ", "Hidden one", "Ａｌｐｈａ notes", "Alpha alias", "Hidden two"],
-      ])
+      && settingsConflict.management.queuedOrderTitles?.length === 2
+      && settingsConflict.management.queuedOrderTitles[0].indexOf("Ａｌｐｈａ notes") === 10
+      && settingsConflict.management.queuedOrderTitles[1].indexOf("Ａｌｐｈａ notes") === 9
+      && settingsConflict.management.queuedOrderTitles
+        .every((titles) => titles.length === 12 && new Set(titles).size === 12)
       && settingsConflict.management.orderRequests?.every((request) => request.type === "hd_apply_state")
-      && JSON.stringify(settingsConflict.management.orderTitles) === JSON.stringify([
-        ["ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two", "Ａｌｐｈａ notes"],
-        ["Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two"],
-        ["Ａｌｐｈａ notes", "Alpha alias", "ＡＬＰＨＡ", "Hidden one", "Hidden two"],
-        ["Alpha alias", "Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Hidden one", "Hidden two"],
-      ])
+      && settingsConflict.management.orderTitles?.length === 3
+      && settingsConflict.management.orderTitles[0][0] === "Ａｌｐｈａ notes"
+      && settingsConflict.management.orderTitles[1][0] === "ＡＬＰＨＡ"
+      && settingsConflict.management.orderTitles[1][11] === "Ａｌｐｈａ notes"
+      && settingsConflict.management.orderTitles[2][0] === "Hidden one"
+      && settingsConflict.management.orderTitles
+        .every((titles) => titles.length === 12 && new Set(titles).size === 12)
       && settingsConflict.management.hiddenOrderPreserved === true
+      && settingsConflict.management.directPositionMovedTwelfthToFirst === true
+      && settingsConflict.management.directPositionPreservedMetadata === true
       && settingsConflict.management.reorderReusedRowNode === true
       && settingsConflict.management.reorderRankFollowsPosition === true
       && settingsConflict.management.searchAfterOperations === " ＡｌＰｈＡ "
       && settingsConflict.management.selectedAfterOperations?.join(",") === settingsConflict.management.visibleIds.join(",")
-      && settingsConflict.management.selectedAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      && settingsConflict.management.visibleAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      && settingsConflict.management.selectedAfterExternalChange?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,cccccccccccccccccccccccccccccccc"
+      && settingsConflict.management.visibleAfterExternalChange?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccc",
     JSON.stringify(settingsConflict?.management),
   );
   const settingsBatch = await settingsBatchImportStage();
@@ -11431,23 +11435,38 @@ async function settingsConflictStage() {
     hiddenOne: "11111111111111111111111111111111",
     hiddenTwo: "22222222222222222222222222222222",
   };
-  const managementDictionaries = [
-    genericPackage({ id: ids.alpha, title: "ＡＬＰＨＡ", path: "/dicts/ＡＬＰＨＡ" }),
-    genericPackage({ id: ids.hiddenOne, title: "Hidden one", path: "/dicts/Hidden one" }),
-    genericPackage({
-      id: ids.beta,
-      title: "Beta",
-      displayName: "Alpha alias",
-      path: "/dicts/Beta",
-    }),
-    genericPackage({ id: ids.hiddenTwo, title: "Hidden two", path: "/dicts/Hidden two" }),
-    genericPackage({
-      id: ids.gamma,
-      title: "Gamma",
-      displayName: "Ａｌｐｈａ notes",
-      path: "/dicts/Gamma",
-    }),
-  ];
+  const managementDictionaries = Array.from({ length: 12 }, (_, index) => genericPackage({
+    id: String(index + 1).padStart(32, "0"),
+    title: `Library ${index + 1}`,
+    path: `/dicts/Library ${index + 1}`,
+  }));
+  Object.assign(managementDictionaries[0], {
+    id: ids.alpha,
+    title: "ＡＬＰＨＡ",
+    path: "/dicts/ＡＬＰＨＡ",
+  });
+  Object.assign(managementDictionaries[1], {
+    id: ids.hiddenOne,
+    title: "Hidden one",
+    path: "/dicts/Hidden one",
+  });
+  Object.assign(managementDictionaries[2], {
+    id: ids.beta,
+    title: "Beta",
+    displayName: "Alpha alias",
+    path: "/dicts/Beta",
+  });
+  Object.assign(managementDictionaries[3], {
+    id: ids.hiddenTwo,
+    title: "Hidden two",
+    path: "/dicts/Hidden two",
+  });
+  Object.assign(managementDictionaries[11], {
+    id: ids.gamma,
+    title: "Gamma",
+    displayName: "Ａｌｐｈａ notes",
+    path: "/dicts/Gamma",
+  });
   state = {
     schemaVersion: 1,
     revision: state.revision + 1,
@@ -11541,17 +11560,23 @@ async function settingsConflictStage() {
   // A settled local reorder reuses the moved row's DOM node instead of
   // rebuilding it from the template, and refreshes its rank to the new
   // position. Capturing the node before and finding it after proves reuse.
-  const betaRowBeforeReorder = rowFor(ids.beta);
-  rowFor(ids.beta).querySelector(".dict-up").click();
-  await waitForRequestCount(5);
-  const reorderReusedRowNode = betaRowBeforeReorder === rowFor(ids.beta);
-  const reorderRankFollowsPosition = rowFor(ids.beta).querySelector(".dict-rank").textContent
-    === String(state.dictionaries.findIndex((entry) => entry.id === ids.beta) + 1);
-
-  rowFor(ids.gamma).querySelector(".dict-details-toggle").click();
+  const gammaRowBeforeReorder = rowFor(ids.gamma);
+  const gammaMetadataBeforeReorder = structuredClone(state.dictionaries.find((entry) => entry.id === ids.gamma));
   const position = rowFor(ids.gamma).querySelector(".dict-position-input");
   position.value = "1";
   position.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  await waitForRequestCount(5);
+  const directPositionMovedTwelfthToFirst = state.dictionaries[0]?.id === ids.gamma
+    && state.dictionaries.slice(1).every((entry, index) => entry.id === managementDictionaries[index].id);
+  const directPositionPreservedMetadata = Object.keys(gammaMetadataBeforeReorder)
+    .every((key) => JSON.stringify(state.dictionaries[0][key]) === JSON.stringify(gammaMetadataBeforeReorder[key]));
+  const reorderReusedRowNode = gammaRowBeforeReorder === rowFor(ids.gamma);
+  const reorderRankFollowsPosition = rowFor(ids.gamma).querySelector(".dict-rank").textContent === "1";
+
+  rowFor(ids.gamma).querySelector(".dict-details-toggle").click();
+  const secondPosition = rowFor(ids.gamma).querySelector(".dict-position-input");
+  secondPosition.value = "12";
+  secondPosition.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
   await waitForRequestCount(6);
 
   const dragStart = new window.Event("dragstart", { bubbles: true, cancelable: true });
@@ -11599,6 +11624,8 @@ async function settingsConflictStage() {
     orderRequests,
     orderTitles,
     hiddenOrderPreserved,
+    directPositionMovedTwelfthToFirst,
+    directPositionPreservedMetadata,
     reorderReusedRowNode,
     reorderRankFollowsPosition,
     searchAfterOperations,
