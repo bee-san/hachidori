@@ -172,15 +172,25 @@
   ]);
   const DEINFLECTION_TEXT_MAX_BYTES = 4096;
   const DEINFLECTION_STEP_MAX_COUNT = 31;
+  const DEINFLECTION_STEP_INSPECTION_MAX_COUNT = DEINFLECTION_STEP_MAX_COUNT + 1;
   const DEINFLECTION_OMITTED_MARKER = "…";
 
   function utf8Length(value) {
-    return typeof TextEncoder === "function"
-      ? new TextEncoder().encode(value).length
-      : unescape(encodeURIComponent(value)).length;
+    let length = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      const codeUnit = value.charCodeAt(index);
+      if (codeUnit <= 0x7F) length += 1;
+      else if (codeUnit <= 0x7FF) length += 2;
+      else if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+        length += 4;
+        index += 1;
+      } else length += 3;
+    }
+    return length;
   }
 
   function truncateUtf8(value, maxBytes = DEINFLECTION_TEXT_MAX_BYTES) {
+    value = value.toWellFormed();
     if (utf8Length(value) <= maxBytes) return value;
     let low = 0;
     let high = value.length;
@@ -204,12 +214,25 @@
       : [];
   }
 
+  function boundedDeinflectionSteps(result) {
+    if (!Array.isArray(result.trace)) return { omitted: false, steps: [] };
+    const steps = [];
+    const inspected = Math.min(result.trace.length, DEINFLECTION_STEP_INSPECTION_MAX_COUNT);
+    for (let index = 0; index < inspected; index += 1) {
+      const step = result.trace[index];
+      if (typeof step?.name === "string" && step.name.length > 0) steps.push(step);
+    }
+    return {
+      omitted: result.trace.length > inspected || steps.length > DEINFLECTION_STEP_MAX_COUNT,
+      steps: steps.slice(0, DEINFLECTION_STEP_MAX_COUNT),
+    };
+  }
+
   function buildDeinflectionDisclosure(documentRef, result, locale) {
     const { matched, deinflected } = result;
     if (typeof matched !== "string" || !matched
         || typeof deinflected !== "string" || !deinflected || matched === deinflected) return null;
-    const allSteps = deinflectionSteps(result);
-    const steps = allSteps.slice(0, DEINFLECTION_STEP_MAX_COUNT);
+    const { omitted: hasOmittedSteps, steps } = boundedDeinflectionSteps(result);
     if (steps.length === 0) return null;
 
     const strings = DEINFLECTION_STRINGS.get(locale.toLowerCase().split("-")[0])
@@ -252,7 +275,7 @@
       }
       list.appendChild(item);
     }
-    if (steps.length < allSteps.length) {
+    if (hasOmittedSteps) {
       const omitted = documentRef.createElement("li");
       omitted.textContent = DEINFLECTION_OMITTED_MARKER;
       list.appendChild(omitted);

@@ -18393,6 +18393,30 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
         && bounded.querySelectorAll(".gsm-hoshidicts-deinflection-step-name").length === 31,
       bounded?.outerHTML ?? "missing disclosure");
 
+    let inspectedTraceSlots = 0;
+    const sparseTrace = new Proxy(new Array(1_000_000), {
+      get(target, property) {
+        if (property !== "length" && ++inspectedTraceSlots > 64) throw new Error("trace scan was not bounded");
+        return Reflect.get(target, property);
+      },
+    });
+    sparseTrace[0] = { name: "first", description: "kept" };
+    sparseTrace[999_999] = { name: "last", description: "omitted" };
+    const malformedUnicode = `${"a".repeat(4095)}\uD83D\uDE00\uD800`;
+    let boundedMalformed = false;
+    try {
+      view.renderResults([{ ...raw, matched: malformedUnicode, trace: sparseTrace }], candidate, { hidePopupGrammarTags: false });
+      const sparseDisclosure = disclosure();
+      const renderedEndpoint = sparseDisclosure.querySelector(".gsm-hoshidicts-deinflection-endpoint").textContent;
+      boundedMalformed = inspectedTraceSlots <= 64
+        && new TextEncoder().encode(renderedEndpoint).byteLength <= 4096
+        && !renderedEndpoint.endsWith("\uD83D")
+        && sparseDisclosure.querySelectorAll(".gsm-hoshidicts-deinflection-step-name").length === 1
+        && sparseDisclosure.querySelector("ol > li:last-child").textContent === "…";
+    } catch {}
+    check("sparse malformed traces bound inspection and truncate Unicode without splitting surrogate pairs",
+      boundedMalformed, JSON.stringify({ inspectedTraceSlots, boundedMalformed }));
+
     const first = entry("First", "First match");
     const second = entry("Second", "Second match");
     const results = [first, second];
