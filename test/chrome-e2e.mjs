@@ -44,6 +44,7 @@ import {
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 import { checkPopupResize } from "./chrome-popup-resize.mjs";
+import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -189,6 +190,11 @@ const RECOMMENDED_FIXTURE_METADATA = {
     revision: "2026.09.10",
     capabilities: ["term"],
   },
+  "sankoku8-eng": {
+    title: "sankoku8-gpt-5.6-luna",
+    revision: "sankoku8-gpt-5.6-luna",
+    capabilities: ["term"],
+  },
 };
 const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
@@ -206,6 +212,7 @@ const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json
   .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const PLANNED = [
+  "dictionary pointer reorder and confirmed bulk removal persist across reload",
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
@@ -303,7 +310,7 @@ const PLANNED = [
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
-  "settings page renders exactly five safe recommended dictionary links",
+  "settings page renders exactly six safe recommended dictionary links",
   "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
@@ -7732,6 +7739,7 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
         ["jiten", "Waiting", null, null],
         ["bees-ultimate-grammar-dictionary", "Waiting", null, null],
+        ["sankoku8-eng", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
       && startupShell.status === "Installing default dictionaries…"
@@ -7872,6 +7880,7 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
         ["jiten", "Installed in N seconds"],
         ["bees-ultimate-grammar-dictionary", "Installed in N seconds"],
+        ["sankoku8-eng", "Installed in N seconds"],
       ])
       && JSON.stringify(runOutcome.actions) === JSON.stringify([["setup-retry", "Retry missing dictionaries"], ["setup-continue", "Continue setup"]])
       && runOutcome.countdown === null && runOutcome.importLink
@@ -7890,7 +7899,7 @@ async function main() {
       && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
       && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
-      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
+      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
       && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
       && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
       && afterRun.setupState.stage === "dictionaries"
@@ -8261,7 +8270,7 @@ async function main() {
   });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
-    "settings page renders exactly five safe recommended dictionary links",
+    "settings page renders exactly six safe recommended dictionary links",
     JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),
@@ -8427,7 +8436,7 @@ async function main() {
         return entry
           && dictionary.title === entry.title
           && dictionary.revision === entry.revision
-          && dictionary.isUpdatable === true
+          && dictionary.isUpdatable === (entry.indexUrl !== null)
           && dictionary.indexUrl === entry.indexUrl
           && dictionary.downloadUrl === entry.downloadUrl;
       }),
@@ -9204,6 +9213,9 @@ async function main() {
     dictionaryId: FIXTURE_ID,
     revision: aliasBlurAction.revision,
   });
+
+  await dictionaryManagementScenarios(page);
+  check("dictionary pointer reorder and confirmed bulk removal persist across reload", true);
 
   await showSettingsSection(page, "dictionary-groups");
   const groupManagement = await page.evaluate(async ({ fixtureId, genericId }) => {
