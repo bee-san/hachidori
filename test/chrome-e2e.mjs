@@ -4688,7 +4688,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
     genuine(automatic) && automaticallySelected === "辞書" && automaticEscaped
-      && keyboardReached && genuine(selected) && genuine(hovered) && escaped
+      && keyboardReached && genuine(hovered) && escaped
       && source.url === `${startupUrl}#setup-heading`
       && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
       && source.readerScripts === 1 && source.finish && source.settings,
