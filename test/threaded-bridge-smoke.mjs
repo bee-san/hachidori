@@ -310,6 +310,7 @@ engine.emit("message", { channel: "engine-response", id: lookupDuringAppendMessa
   response: { type: "hd_lookup_result", requestId: "lookup-during-custom-append", ok: true, results: [] } });
 assert.equal((await lookupDuringAppend.promise).ok, true);
 assert.match((await send("hd_remove", "remove-during-custom-append")).error, /busy mutating/);
+assert.match((await send("hd_backup_release", "release-during-custom-append")).error, /busy mutating/);
 engine.emit("message", { channel: "engine-response", id: appendMessage.id,
   response: { type: "hd_custom_append_result", requestId: "concurrent-custom-append", ok: true } });
 assert.equal((await appending.promise).ok, true);

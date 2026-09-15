@@ -55,6 +55,13 @@ const IMPORT_READ_TYPES = new Set([
   "hd_media",
   "hd_backup_release",
 ]);
+const STAGED_MUTATION_READ_TYPES = new Set([
+  "hd_lookup",
+  "hd_lookup_dictionary",
+  "hd_kanji",
+  "hd_styles",
+  "hd_media",
+]);
 
 function supportsSharedWasmMemory() {
   if (globalThis.crossOriginIsolated !== true
@@ -305,7 +312,7 @@ function dispatchEngine(message, sendResponse) {
     return;
   }
   if (activeStagedMutationRequestId !== null
-      && !IMPORT_READ_TYPES.has(message.type)
+      && !STAGED_MUTATION_READ_TYPES.has(message.type)
       && message.type !== "hd_status") {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
     return;
