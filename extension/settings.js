@@ -1991,6 +1991,11 @@ function renderDictionaryRow(template, entry, index) {
   return row;
 }
 
+function dictionaryRowsMatch(list, visible) {
+  const domIds = new Set([...list.children].map((row) => row.dataset.dictionaryId));
+  return domIds.size === visible.length && visible.every((entry) => domIds.has(entry.id));
+}
+
 function renderDictionaries(reuseRows = false) {
   // A queued reorder changes only the order and the index-dependent controls,
   // so its rows can be reappended in the new order and refreshed instead of
@@ -2002,11 +2007,8 @@ function renderDictionaries(reuseRows = false) {
   // A failed or conflicting commit can restore a different set than the one
   // being reordered, so only reuse when the rows on screen still match the
   // packages about to be shown (the same visible set, only reordered).
-  const domIds = new Set([...list.children].map((row) => row.dataset.dictionaryId));
-  const sameSet = domIds.size === visible.length
-    && visible.every((entry) => domIds.has(entry.id));
-  const reorderReuseSafe = reorderReuse && sameSet;
-  if (reorderReuseSafe) reuseRows = true;
+  const reorderReuseSafe = reorderReuse && dictionaryRowsMatch(list, visible);
+  reuseRows = reuseRows || reorderReuseSafe;
   const reusableRows = new Map();
   // Retain disclosure state by package identity, including temporarily filtered rows.
   for (const row of list.children) {
