@@ -112,6 +112,14 @@ export async function checkSettingsFeedback(browser, settingsUrl, check, screens
     await pending();
     await release();
     await saved();
+    await page.$eval("#opt-media-texthooker-url", input => {
+      input.value = "https://example.com";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const validation = await measure("validation");
+    if (!validation.status.includes("Texthooker must use") || validation.height <= initial.height) {
+      throw new Error(`Rejected edits must retain prominent feedback: ${JSON.stringify(validation)}`);
+    }
   } finally {
     await page.evaluate(() => window.__feedbackProbe?.release?.()).catch(() => {});
     await page.close();
