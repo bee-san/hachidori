@@ -164,6 +164,22 @@ const WORKER_HANDLERS = {
     if (!config.url) throw new Error("Enter a valid HTTP or HTTPS AnkiConnect URL.");
     return { discovery: await ankiConnect.discover(config) };
   },
+
+  async hd_anki_add(message) {
+    const stored = await chrome.storage.local.get(ANKI_CONFIG_KEY);
+    const config = normaliseAnkiConfig(stored[ANKI_CONFIG_KEY]);
+    if (!config.url || !config.deck || !config.model) {
+      throw new Error("Configure an AnkiConnect URL, deck and note type first.");
+    }
+    return await ankiConnect.add(message?.note, config);
+  },
+
+  async hd_anki_view(message) {
+    const stored = await chrome.storage.local.get(ANKI_CONFIG_KEY);
+    const config = normaliseAnkiConfig(stored[ANKI_CONFIG_KEY]);
+    await ankiConnect.view(message?.noteId, config);
+    return {};
+  },
 };
 
 // One read-then-write at a time, so the check above cannot be overtaken by

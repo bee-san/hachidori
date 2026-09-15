@@ -686,6 +686,33 @@
     });
   }
 
+  function sendWorkerRequest(type, payload) {
+    return new Promise((resolve, reject) => {
+      const requestId = `${type.replace(/^hd_/u, "")}-${nextRequestId += 1}`;
+      try {
+        chrome.runtime.sendMessage({
+          ...payload,
+          requestId,
+          target: "hoshidicts-worker",
+          type,
+        }, (reply) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message || "sendMessage failed"));
+          } else if (!reply || reply.type !== `${type}_result` || reply.requestId !== requestId) {
+            reject(new Error(`unexpected reply for ${type}`));
+          } else if (reply.ok !== true) {
+            reject(new Error(reply.error || `${type} failed`));
+          } else {
+            resolve(reply);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
   function resolveMedia({ dictionary, generation, path }) {
     const key = `${generation}\u0000${dictionary}\u0000${path}`;
     let pending = mediaCache.get(key);
@@ -977,6 +1004,12 @@
       dictionaryTabGroups: [],
       generation: currentGeneration,
       hidePopupGrammarTags: false,
+      onMine(note) {
+        return sendWorkerRequest("hd_anki_add", { note });
+      },
+      onView(noteId) {
+        return sendWorkerRequest("hd_anki_view", { noteId });
+      },
       onInternalLink,
       resolveMedia,
       showCompactDefinitionSummary: false,

@@ -131,3 +131,77 @@ test("AnkiConnect timeout remains active while the response body is read", async
     url: "http://127.0.0.1:8765", apiKey: "",
   }), /timed out/u);
 });
+
+test("Anki mining checks the collection before adding and can view the existing note", async () => {
+  const actions = [];
+  const results = { findNotes: [], addNote: 42, guiBrowse: [42] };
+  const client = createAnkiConnectClient({ fetch: async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request);
+    return response({ result: results[request.action], error: null });
+  } });
+  const config = {
+    url: "http://127.0.0.1:8765", apiKey: "", deck: "Mining", model: "Japanese",
+  };
+  const note = {
+    expression: "食べる", reading: "たべる",
+    sentence: "昨日は寿司を食べる夢を見た。", definition: "to eat",
+  };
+
+  assert.deepEqual(await client.add(note, config), { added: true, noteId: 42 });
+  assert.deepEqual(actions.map(({ action }) => action), ["findNotes", "addNote"]);
+  assert.deepEqual(actions[0].params, { query: '"expression:食べる"' });
+  assert.deepEqual(actions[1].params.note, {
+    deckName: "Mining",
+    modelName: "Japanese",
+    fields: {
+      Expression: "食べる", Reading: "たべる",
+      Sentence: "昨日は寿司を食べる夢を見た。", Definition: "to eat",
+    },
+    options: { allowDuplicate: false },
+    tags: ["hachidori"],
+  });
+  results.findNotes = [42];
+  assert.deepEqual(await client.add(note, config), { added: false, noteId: 42 });
+  await client.view(42, config);
+  assert.equal(actions.at(-1).action, "guiBrowse");
+  assert.deepEqual(actions.at(-1).params, { query: "nid:42" });
+});
+
+test("collection-wide duplicate queries escape Anki search metacharacters", async () => {
+  const requests = [];
+  const client = createAnkiConnectClient({ fetch: async (_url, options) => {
+    const request = JSON.parse(options.body);
+    requests.push(request);
+    return response({ result: request.action === "findNotes" ? [42] : null, error: null });
+  } });
+  const config = { url: "http://127.0.0.1:8765", apiKey: "", deck: "Mining", model: "Japanese" };
+
+  await client.add({ expression: 'a"b*c_d:e\\f', reading: "", sentence: "", definition: "" }, config);
+
+  assert.deepEqual(requests[0].params, { query: '"expression:a\\"b\\*c\\_d\\:e\\\\f"' });
+});
+
+test("concurrent Anki mining serialises the collection-wide duplicate decision", async () => {
+  const actions = [];
+  let noteId = null;
+  const client = createAnkiConnectClient({ fetch: async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request.action);
+    if (request.action === "findNotes") return response({ result: noteId === null ? [] : [noteId], error: null });
+    if (request.action === "addNote") {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      noteId = 42;
+      return response({ result: noteId, error: null });
+    }
+    throw new Error(`unexpected ${request.action}`);
+  } });
+  const config = { url: "http://127.0.0.1:8765", apiKey: "", deck: "Mining", model: "Japanese" };
+  const note = { expression: "食べる", reading: "たべる", sentence: "食べる。", definition: "to eat" };
+
+  assert.deepEqual(await Promise.all([client.add(note, config), client.add(note, config)]), [
+    { added: true, noteId: 42 },
+    { added: false, noteId: 42 },
+  ]);
+  assert.deepEqual(actions, ["findNotes", "addNote", "findNotes"]);
+});

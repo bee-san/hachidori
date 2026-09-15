@@ -9,8 +9,8 @@ lines; the repository's root `LICENSE` has the full GNU GPL version 3 text.
   `glossary.js` is extracted from `GSM_Overlay/features/hoshidicts/reader.js`
   (structured-content renderer, furigana segmentation, pitch-accent ruby,
   dictionary style scoping). `popup.js` is
-  `GSM_Overlay/features/hoshidicts/popup.js` with the Anki mining, custom
-  definition, and audio surfaces removed. `reader.css` is
+  `GSM_Overlay/features/hoshidicts/popup.js` with a browser-native minimal Anki
+  Add/View surface and without custom-definition or audio surfaces. `reader.css` is
   `GSM_Overlay/features/hoshidicts/reader.css`. GameSentenceMiner is licensed
   under GPL-3.0-or-later.
 
@@ -32,7 +32,7 @@ lines; the repository's root `LICENSE` has the full GNU GPL version 3 text.
 
 - **[Yomitan GSM](https://github.com/bpwhelan/yomitan-gsm)** — the dark popup
   palette adapted by `reader.css`. Licensed under GPL-3.0-or-later. Its Anki
-  icons are *not* copied here; the mining surface they belonged to was removed.
+  icons are *not* copied here.
 
 Dictionary archives are not redistributed. Imported dictionaries keep whatever
 source, license, and attribution metadata their own index carries, and any CSS a
