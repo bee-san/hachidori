@@ -2481,17 +2481,6 @@
       form.appendChild(formActions);
 
       let editing = false;
-      let pending = false;
-
-      function setPending(value) {
-        pending = value;
-        form.setAttribute("aria-busy", String(pending));
-        save.textContent = pending ? "Saving…" : "Save";
-        for (const control of [term, reading, definition, cancel, save]) {
-          control.disabled = pending;
-        }
-        button.disabled = pending;
-      }
 
       function close(restoreFocus = true) {
         if (form.hidden) return false;
@@ -2535,9 +2524,8 @@
           event.stopPropagation();
         }
       });
-      form.addEventListener("submit", async (event) => {
+      form.addEventListener("submit", (event) => {
         event.preventDefault();
-        if (pending) return;
         const entry = {
           term: term.value,
           reading: reading.value,
@@ -2551,21 +2539,16 @@
         }
         error.hidden = true;
         error.textContent = "";
-        setPending(true);
-        let saved = false;
         try {
-          await onAddCustomEntry(entry);
-          saved = true;
+          onAddCustomEntry(entry);
+          close();
         } catch (appendError) {
           error.textContent = typeof appendError?.message === "string"
             ? appendError.message
             : String(appendError);
           error.hidden = false;
           positionPopup();
-        } finally {
-          setPending(false);
         }
-        if (saved) close();
       });
 
       return { close, open, form };
