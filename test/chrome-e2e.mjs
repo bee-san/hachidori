@@ -349,7 +349,7 @@ const PLANNED = [
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
-  "the content script attached its closed-shadow host to the page",
+  "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "dictionary cards render open under a plain title with no disclosure control",
