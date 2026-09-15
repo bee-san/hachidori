@@ -87,6 +87,7 @@
     popupTheme: "default",
     popupToolbarPosition: "auto",
     customPopupCss: "",
+    customPopupJavascript: "",
     customLinks: [],
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     audioAutoplay: false,
@@ -152,7 +153,7 @@
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "customLinks", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",

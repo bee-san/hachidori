@@ -1521,6 +1521,14 @@ function renderCustomCss(force = false) {
   element("custom-css-count").textContent = `${numberFormat.format(editor.value.length)} characters`;
 }
 
+function renderCustomJavascript(force = false) {
+  const editor = element("opt-custom-popup-javascript");
+  if ((force || editor !== document.activeElement) && editor.value !== options.customPopupJavascript) {
+    editor.value = options.customPopupJavascript;
+  }
+  element("custom-javascript-count").textContent = `${numberFormat.format(editor.value.length)} characters`;
+}
+
 function renderOptions() {
   applyPageTheme(document, options);
   for (const field of NUMBER_FIELDS) {
@@ -1536,6 +1544,7 @@ function renderOptions() {
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   renderThemeChoices();
   renderCustomCss();
+  renderCustomJavascript();
   customLinkController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
@@ -2774,6 +2783,7 @@ function attachHandlers() {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
     customLinkController?.reset();
     renderCustomCss(true);
+    renderCustomJavascript(true);
     renderOptions();
     writeOptions();
   });
@@ -2787,6 +2797,17 @@ function attachHandlers() {
   element("reset-custom-css").addEventListener("click", () => {
     options.customPopupCss = DEFAULT_OPTIONS.customPopupCss;
     renderCustomCss(true);
+    writeOptions();
+  });
+  element("opt-custom-popup-javascript").addEventListener("input", event => {
+    optionsEditRevision ??= Math.max(0, optionsRevision);
+    options.customPopupJavascript = event.target.value;
+    renderCustomJavascript();
+    writeOptions();
+  });
+  element("reset-custom-javascript").addEventListener("click", () => {
+    options.customPopupJavascript = DEFAULT_OPTIONS.customPopupJavascript;
+    renderCustomJavascript(true);
     writeOptions();
   });
   for (const field of METADATA_FIELDS) {
@@ -2937,6 +2958,7 @@ function attachHandlers() {
     section.addEventListener("focusout", (event) => {
       optionsEditRevision = null;
       if (event.target.id === "opt-custom-popup-css") renderCustomCss(true);
+      if (event.target.id === "opt-custom-popup-javascript") renderCustomJavascript(true);
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
@@ -2964,6 +2986,7 @@ function attachHandlers() {
     optionsSaveFailed = false;
     renderCurrentOptions();
     renderCustomCss(true);
+    renderCustomJavascript(true);
     setOptionsStatus("Using saved settings.");
   });
 
