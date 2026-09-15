@@ -50,12 +50,10 @@ normal first-install preferences plus:
   overlay profile. Settings also shows the effective off/disabled capability
   when a carried or shared configuration has the stored option on. It preserves
   that configuration and its field mappings.
-- **Pronunciation:** no media capture host runs in an overlay, so browser
-  text-to-speech cannot be recorded. Mining skips text-to-speech audio sources.
-  With no downloadable source left,
-  `{audio}` fields stay empty without a warning; add one under Audio to fill them.
-  Audio Settings explains this playback-only speech capability and hides the
-  browser instruction to start capture for speech recording.
+- **Pronunciation:** browser speech keeps working in the popup, and mining
+  writes Anki's native Japanese TTS directive for `{audio}` fields. Anki
+  generates that speech when the card plays, so the overlay needs no media
+  capture host. Downloadable sources keep their normal stored-media behavior.
 
 ## Settings capabilities
 
@@ -67,7 +65,7 @@ turn an Electron-only control back on remotely.
 | --- | --- |
 | Media capture | Every recorder control and the toolbar Record button are disabled. The service worker also rejects capture requests and does not wake a capture host. |
 | Anki screenshot | The switch is effectively off and disabled; existing mappings and the stored choice are preserved. |
-| Audio | Downloadable pronunciation and browser-speech playback work. Browser speech and captured audio are not recorded for mining. |
+| Audio | Downloadable pronunciation and browser-speech playback work. Mining delegates browser-speech fields to native Anki TTS without recording them. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
 | Design | Appearance, layout and custom CSS work. Custom toolbar links are disabled and omitted from the live/reader popup because Electron cannot open their tabs. |
 | Backup & restore | Restore works. Export is disabled because Electron does not expose Chrome's downloads API. |

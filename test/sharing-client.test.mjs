@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSharingClient } from "../extension/sharing-client.js";
-import { LINKED_ANKI_CAPABILITY } from "../extension/sharing-protocol.js";
+import { LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY } from "../extension/sharing-protocol.js";
 
 class Socket {
   static instances = [];
@@ -47,11 +47,11 @@ async function linked(capabilities) {
   return { client, socket };
 }
 
-test("an old host keeps dictionary sharing but refuses capability-gated Anki requests before send", async () => {
-  const { client, socket } = await linked([]);
+test("a new client keeps v1-host dictionary sharing but refuses incompatible Anki mining before send", async () => {
+  const { client, socket } = await linked([LEGACY_LINKED_ANKI_CAPABILITY]);
   await assert.rejects(client.forward({
     target: "hachidori-anki", type: "hd_anki_status", requestId: "status",
-  }, { capability: LINKED_ANKI_CAPABILITY }), /does not support host-owned Anki mining/u);
+  }, { capability: LINKED_ANKI_CAPABILITY }), /does not support the current host-owned Anki mining protocol/u);
   assert.equal(socket.sent.some(frame => frame.kind === "request"), false);
 
   const lookup = client.forward({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup", text: "猫" });

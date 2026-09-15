@@ -16,5 +16,4 @@ export const HOST_CAPABILITIES = Object.freeze({
 
 export const MINING_CAPABILITIES = Object.freeze({
   screenshot: !OVERLAY_MODE,
-  browserSpeech: !OVERLAY_MODE,
 });

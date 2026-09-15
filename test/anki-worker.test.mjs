@@ -34,8 +34,11 @@ function testIndex(resolve = async () => []) {
 function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const calls = [], audioRequests = [];
   let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
-  let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
-  const options = globalThis.HDReaderOptions.normaliseOptions({ ...(audioSources && { audioSources }), anki: { model: "Basic", deck: "Default",
+  let generation = 3, changeDuringCheck = false, audioUnavailable = false;
+  const configuredSources = audioSources ?? [
+    { id: "file", enabled: true, type: "custom", url: "https://audio.test/word.wav", voice: "" },
+  ];
+  const options = globalThis.HDReaderOptions.normaliseOptions({ audioSources: configuredSources, anki: { model: "Basic", deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
       Audio: { value: overwrite ? "pronunciation{audio}" : "{audio}", overwriteMode: "overwrite" } } } });
@@ -63,24 +66,11 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
       if (message.type === "hd_anki_audio") {
         audioRequests.push(message);
         const source = message.sources.find(candidate => candidate.type.startsWith("text-to-speech"));
-        if (message.clientSpeechProbe) {
-          return { recordingRequired: true, clientSpeech: {
-            sourceId: source.id,
-            sourceKey: JSON.stringify(source),
-            expression: message.term.expression,
-            reading: message.term.reading,
-          } };
-        }
-        if (source?.id === "remote-tts") {
-          if (message.recordSpeech === false) return { recordingRequired: true };
-          return {
-            filename: `hachidori_${"a".repeat(64)}.wav`,
-            data: "UklGRg==",
-            sourceId: source.id,
-          };
-        }
         if (audioUnavailable) throw new Error("The chosen pronunciation is unavailable");
-        if (deferAllSpeech || (deferSpeech && message.recordSpeech === false)) return { recordingRequired: true };
+        if (source) return {
+          fieldValue: `[anki:tts lang=ja_JP cloze_blank="[...]"]${message.term.reading || message.term.expression}[/anki:tts]`,
+          sourceId: source.id,
+        };
         return { filename: "checked.wav", data: "YXVkaW8=" };
       }
       assert.deepEqual(message.dictionaryPaths, { A: "/dicts/generation/A" });
@@ -92,8 +82,7 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
     generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫", documentTitle: "Test",
     dictionaryAliases: {}, frequencyDictionaries: [] };
   return { service, calls, audioRequests, request, changedGeneration() { generation++; },
-    duringCheck() { changeDuringCheck = true; }, deferSpeech() { deferSpeech = true; },
-    deferAllSpeech() { deferAllSpeech = true; },
+    duringCheck() { changeDuringCheck = true; },
     failAudio() { audioUnavailable = true; }, get fields() { return fields; } };
 }
 
@@ -120,95 +109,35 @@ test("first-field audio is resolved before duplicate checking and its exact prep
   assert.equal(f.fields.Audio, "[sound:checked.wav]");
 });
 
-test("first-field browser speech stays silent during preflight and records once on authoritative submit", async () => {
-  const f = fixture(true);
-  f.deferSpeech();
-  f.request.configKey = (await f.service.status()).configKey;
-  const preflight = await f.service.preflight(f.request);
-  assert.equal(preflight.deferred, true);
-  assert.equal(preflight.canAdd, true);
-  assert.equal(f.calls.includes("canAddNotesWithErrorDetail"), false);
-  assert.equal(f.audioRequests[0].recordSpeech, false);
-  const result = await f.service.submit(f.request);
-  assert.equal(result.state, "added");
-  assert.deepEqual(f.audioRequests.map(request => request.recordSpeech), [false, true]);
-  assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 1);
-  assert.equal(f.fields.Front, "猫[sound:checked.wav]");
-});
-
-test("authoritative first-field speech cannot write the silent preflight placeholder", async () => {
-  const f = fixture(true);
-  f.deferAllSpeech();
-  f.request.configKey = (await f.service.status()).configKey;
-  assert.equal((await f.service.preflight(f.request)).deferred, true);
-  await assert.rejects(f.service.submit(f.request), /was not recorded/u);
-  assert.equal(f.calls.includes("addNote"), false);
-});
-
-test("linked browser speech is planned by the host, recorded by the reading browser, and reused for the host write", async () => {
-  const source = { id: "remote-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+test("first-field browser speech uses deterministic host TTS during preflight and submission", async () => {
+  const source = { id: "host-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
   const f = fixture(true, false, { audioSources: [source] });
   f.request.configKey = (await f.service.status()).configKey;
-  const preflight = await f.service.preflightClient(f.request);
-  assert.equal(preflight.deferred, true);
-  assert.deepEqual({
-    ...preflight.clientSpeech,
-    sourceKey: undefined,
-  }, {
-    sourceId: source.id,
-    sourceKey: undefined,
-    expression: "猫",
-    reading: "ねこ",
-  });
-  assert.deepEqual(JSON.parse(preflight.clientSpeech.sourceKey), source);
-  f.request.clientSpeech = preflight.clientSpeech;
-  await f.service.preflightClientSpeech(f.request);
-  const media = await f.service.clientMedia(f.request);
-  assert.deepEqual(media, {
-    speech: {
-      ...preflight.clientSpeech,
-      filename: `hachidori_${"a".repeat(64)}.wav`,
-      byteLength: 4,
-      data: "UklGRg==",
-    },
-  });
-  const result = await f.service.submitClient(f.request, media);
+  const preflight = await f.service.preflight(f.request);
+  assert.equal(preflight.state, "addable");
+  assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 1);
+  assert.equal(f.audioRequests.length, 1);
+  const result = await f.service.submit(f.request);
   assert.equal(result.state, "added");
-  assert.equal(f.fields.Front, `猫[sound:hachidori_${"a".repeat(64)}.wav]`);
-  assert.deepEqual(f.audioRequests.map(request => ({
-    probe: request.clientSpeechProbe === true,
-    supplied: request.clientSpeech !== undefined,
-    record: request.recordSpeech,
-  })), [
-    { probe: true, supplied: false, record: false },
-    { probe: false, supplied: false, record: false },
-    { probe: false, supplied: false, record: true },
-    { probe: false, supplied: true, record: true },
-  ]);
+  assert.equal(f.fields.Front, "猫[anki:tts lang=ja_JP cloze_blank=\"[...]\"]ねこ[/anki:tts]");
+  assert.equal(f.fields.Audio, "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]ねこ[/anki:tts]");
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+  assert.equal(f.audioRequests.some(request => Object.hasOwn(request, "recordSpeech")), false);
 });
 
-test("linked browser speech is also planned for deferred pronunciation enrichment", async () => {
-  const source = { id: "remote-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
-  const f = fixture(false, false, { audioSources: [source] });
-  f.request.configKey = (await f.service.status()).configKey;
-  const preflight = await f.service.preflightClient(f.request);
-  assert.equal(preflight.deferred, undefined);
-  assert.equal(preflight.clientSpeech.sourceId, source.id);
-  f.request.clientSpeech = preflight.clientSpeech;
-  await f.service.preflightClientSpeech(f.request);
-  const media = await f.service.clientMedia(f.request);
-  const result = await f.service.submitClient(f.request, media);
-  assert.equal(result.state, "added");
-  assert.equal(f.fields.Audio, `[sound:hachidori_${"a".repeat(64)}.wav]`);
-  assert.deepEqual(f.audioRequests.map(request => ({
-    probe: request.clientSpeechProbe === true,
-    supplied: request.clientSpeech !== undefined,
-  })), [
-    { probe: true, supplied: false },
-    { probe: false, supplied: false },
-    { probe: false, supplied: false },
-    { probe: false, supplied: true },
-  ]);
+test("linked mining leaves browser speech on the host and transfers no speech media", async () => {
+  const source = { id: "host-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+  for (const firstAudio of [true, false]) {
+    const f = fixture(firstAudio, false, { audioSources: [source] });
+    f.request.configKey = (await f.service.status()).configKey;
+    const preflight = await f.service.preflightClient(f.request);
+    assert.equal(preflight.clientSpeech, undefined);
+    assert.deepEqual(await f.service.clientMedia(f.request), {});
+    const result = await f.service.submitClient(f.request, {});
+    assert.equal(result.state, "added");
+    assert.equal(f.fields.Audio, "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]ねこ[/anki:tts]");
+    assert.equal(f.calls.includes("storeMediaFile"), false);
+  }
 });
 
 test("mixed text/audio overwrite restores pronunciation when its final value matches the original note", async () => {
@@ -241,7 +170,7 @@ test("unavailable first-field audio cannot silently change duplicate identity to
   assert.equal(f.calls.includes("addNote"), false);
 });
 
-// An overlay host keeps only downloadable sources, which can leave none.
+// An explicitly empty source list leaves pronunciation fields optional.
 test("with no enabled audio source first-field audio is left out instead of blocking the note", async () => {
   const f = fixture(true, false, { audioSources: [] });
   f.request.configKey = (await f.service.status()).configKey;

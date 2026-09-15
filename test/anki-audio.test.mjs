@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAudioRepository } from "../extension/audio-repository.js";
-import { exportAnkiAudio } from "../extension/anki-audio.js";
+import { ankiAudioFieldValue, exportAnkiAudio } from "../extension/anki-audio.js";
 
 const term = { expression: "猫", reading: "ねこ" };
 const source = { id: "json", enabled: true, type: "custom-json", url: "https://example.test/list", voice: "" };
@@ -50,53 +50,45 @@ test("Anki exports the first decodable pronunciation without playback and reuses
   } finally { f.repository.clear(); }
 });
 
-test("selected TTS records the exact browser voice through active capture without substituting another source", async () => {
+test("Anki delegates browser-speech sources to native Japanese TTS without capture or downloads", async () => {
   const f = fixture();
-  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
-  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "Automatic Japanese", url: null };
-  const recordings = [];
-  const result = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
-    new AbortController().signal, { recordSpeechAudio: async (selected, selectedTerm, _signal, options) => {
-      recordings.push({ selected, selectedTerm, options });
-      return { data: new Uint8Array([1, 2, 3, 4]),
-        candidate: { name: "Japanese", text: "ねこ", voice: "", index: 0 } };
-    } });
-  assert.equal(result.sourceId, speech.id);
-  assert.equal(result.candidate.text, "ねこ");
-  assert.equal(Buffer.from(result.data, "base64").toString("hex"), "01020304");
-  assert.match(result.filename, /^hachidori_[0-9a-f]{64}\.wav$/u);
-  assert.deepEqual(recordings, [{ selected: speech, selectedTerm: term, options: { record: true } }]);
+  const reading = { ...source, id: "reading-tts", type: "text-to-speech-reading", url: "", voice: "browser-voice" };
+  const result = await exportAnkiAudio(f.window, f.repository, { term, sources: [reading, source] },
+    new AbortController().signal);
+  assert.deepEqual(result, {
+    fieldValue: "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]ねこ[/anki:tts]",
+    sourceId: reading.id,
+  });
+
+  const expression = { ...reading, id: "term-tts", type: "text-to-speech" };
+  const hostile = { expression: "猫 [...] & [/anki:tts]<b>", reading: "" };
+  const escaped = await exportAnkiAudio(f.window, f.repository, { term: hostile, sources: [expression] },
+    new AbortController().signal);
+  assert.equal(escaped.fieldValue,
+    "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]猫 &#91;...&#93; &amp; &#91;/anki:tts&#93;&lt;b&gt;[/anki:tts]");
   assert.deepEqual(f.downloads, []);
   assert.deepEqual(f.probes, []);
 });
 
-test("silent TTS preflight defers exact audio while recording failures fall through to URL sources", async () => {
+test("a selected TTS source stays bound to its current source and candidate", async () => {
   const f = fixture();
-  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
-  const deferred = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], recordSpeech: false },
-    new AbortController().signal, { recordSpeechAudio: async (_source, _term, _signal, { record }) => {
-      assert.equal(record, false);
-      return { recordingRequired: true };
-    } });
-  assert.deepEqual(deferred, { recordingRequired: true });
-  assert.deepEqual(f.downloads, [], "preflight must not choose a lower-priority source than submission");
-  const fallback = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source] },
-    new AbortController().signal, { recordSpeechAudio: async () => {
-      throw new Error("The active media capture has no shared audio.");
-    } });
-  assert.equal(fallback.sourceId, source.id);
-  assert.equal(fallback.candidate.name, "Tokyo");
+  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "", voice: "" };
+  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term,
+    index: 0, name: "Automatic Japanese", url: null };
+  const result = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
+    new AbortController().signal);
+  assert.equal(result.fieldValue, "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]ねこ[/anki:tts]");
+  await assert.rejects(exportAnkiAudio(f.window, f.repository, {
+    term, sources: [speech, source], selection: { ...selection, name: "Changed" },
+  }, new AbortController().signal), /choices changed/u);
+  assert.deepEqual(f.downloads, []);
 });
 
-test("selected TTS reports active-capture failures instead of substituting a different pronunciation", async () => {
-  const f = fixture();
-  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
-  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "Automatic Japanese", url: null };
-  await assert.rejects(exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
-    new AbortController().signal, { recordSpeechAudio: async () => {
-      throw new Error("Start media capture with shared audio before attaching browser text-to-speech to Anki.");
-    } }), /Start media capture with shared audio/u);
-  assert.deepEqual(f.downloads, []);
+test("Anki audio values distinguish native TTS directives from stored media", () => {
+  assert.equal(ankiAudioFieldValue({ fieldValue: "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]猫[/anki:tts]" }),
+    "[anki:tts lang=ja_JP cloze_blank=\"[...]\"]猫[/anki:tts]");
+  assert.equal(ankiAudioFieldValue({ filename: "word.wav" }), "[sound:word.wav]");
+  assert.throws(() => ankiAudioFieldValue({}), /no Anki audio value/u);
 });
 
 test("cancelling Anki media encoding aborts its reader and releases the playback-independent lease", { timeout: 1000 }, async () => {

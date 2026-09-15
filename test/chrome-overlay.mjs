@@ -338,7 +338,7 @@ try {
   await showSection(settings, "audio");
   const audioSettings = await settings.evaluate(() => ({
     sourceEditorEnabled: !document.getElementById("audio-source-add").disabled,
-    speechHelpVisible: !document.getElementById("audio-mining-help").hidden,
+    ttsHelp: document.getElementById("audio-anki-tts-help").textContent,
   }));
   await showSection(settings, "anki");
   await settings.waitForFunction(() => document.getElementById("opt-anki-screenshot").disabled);
@@ -371,7 +371,9 @@ try {
   assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
   assert.deepEqual(designSettings, { customLinksDisabled: true, customLinksHelpVisible: true, themeEnabled: true });
   assert.deepEqual(backupSettings, { exportDisabled: true, exportHelpVisible: true, restoreEnabled: true });
-  assert.deepEqual(audioSettings, { sourceEditorEnabled: true, speechHelpVisible: true });
+  assert.equal(audioSettings.sourceEditorEnabled, true);
+  assert.match(audioSettings.ttsHelp, /Anki generates Japanese speech/u);
+  assert.match(audioSettings.ttsHelp, /Media capture is not required/u);
   assert.equal(ankiSettings.screenshotDisabled, true);
   assert.equal(ankiSettings.screenshotEnabled, false);
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);

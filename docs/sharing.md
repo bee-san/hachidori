@@ -115,10 +115,10 @@ After linking, the page reloads, and from then on:
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
   them as part of its ordinary queued Anki transaction;
-- browser text-to-speech is planned by the host but verified and recorded with
-  the linked browser's own voice and capture session. Only that final WAV is
-  sent; URL pronunciation providers run on the host, so their `localhost`
-  addresses refer to the host computer;
+- browser text-to-speech is written as Anki's native Japanese TTS directive by
+  the host. Anki generates it when the card plays, so no browser-speech WAV is
+  recorded or sent; URL pronunciation providers still run on the host, so their
+  `localhost` addresses refer to the host computer;
 - the Import and Backup sections show that archives and backups belong to the
   host; recommended dictionaries can still be installed from here.
 
@@ -156,10 +156,12 @@ The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
 reachable* and the Sharing section says so; the linked browser reconnects by
 itself once they are back. Mining also requires AnkiConnect and the selected
-deck/note type on the host. A host from before linked mining support keeps
-dictionary sharing working but reports mining unavailable until it is updated.
-The GameSentenceMiner overlay's Hachidori links the same way; its Electron
-runtime needs nothing beyond the WebSocket.
+deck/note type on the host. Current clients require the host's
+`linked-anki-v2` capability because v1 expected the reading browser to record
+speech. A v1-only or older host keeps dictionary sharing working but reports
+mining unavailable until it is updated. New hosts also advertise v1 so older
+clients can continue mining. The GameSentenceMiner overlay's Hachidori links
+the same way; its Electron runtime needs nothing beyond the WebSocket.
 
 ## What the host shares
 
@@ -176,10 +178,11 @@ runtime needs nothing beyond the WebSocket.
   host's saved Anki configuration is used.
 
 Local-file imports and backups happen on the host. Pronunciation playback and
-external links run in each browser. During mining, URL pronunciation providers
-run on the host while browser speech, screenshots and continuous-capture
-ownership stay in the reading browser. Their explicitly submitted final media
-and the complete Anki transaction go through the host.
+external links run in each browser. During mining, URL pronunciation providers run on the host, and browser-speech
+sources become native Anki TTS directives there. The Anki device reviewing the
+card synthesizes them later. Screenshots and continuous-capture ownership stay
+in the reading browser; their explicitly submitted final media and the complete
+Anki transaction go through the host.
 
 ## The relay
 

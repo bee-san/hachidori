@@ -191,6 +191,7 @@ function configureAnki(page, url, apiKey) {
         Front: template("{expression}"),
         Back: template("{sentence}"),
         Picture: template("{screenshot}"),
+        Audio: template("{audio}"),
       },
     };
     return chrome.runtime.sendMessage({
@@ -198,7 +199,7 @@ function configureAnki(page, url, apiKey) {
       type: "hd_options_write",
       requestId: "sharing-suite-configure-anki",
       baseRevision: options.revision,
-      options: { anki, audioSources: [] },
+      options: { anki, audioSources: HDReaderOptions.normaliseOptions({}).audioSources },
     });
   }, { url, apiKey });
 }
@@ -279,7 +280,7 @@ async function startMockAnkiConnect(apiKey) {
       if (action === "deckNames") result = ["Default"];
       else if (action === "modelNames") result = ["Basic"];
       else if (action === "modelNamesAndIds") result = { Basic: 1 };
-      else if (action === "modelFieldNames") result = ["Front", "Back", "Picture"];
+      else if (action === "modelFieldNames") result = ["Front", "Back", "Picture", "Audio"];
       else if (action === "canAddNotesWithErrorDetail") {
         result = params.notes.map(note => {
           const duplicate = [...state.notes.values()].some(existing => existing.fields.Front === note.fields.Front);
@@ -560,9 +561,9 @@ async function checkOverlaySharing(hostPage) {
       checked: document.getElementById("opt-anki-screenshot").checked,
       help: document.getElementById("anki-screenshot-help").textContent }));
     await showSection(page, "audio");
-    const speech = await page.evaluate(() => ({ visible: !document.getElementById("audio-mining-help").hidden,
-      help: document.getElementById("audio-mining-help").textContent,
-      captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
+    const speech = await page.evaluate(() => ({
+      help: document.getElementById("audio-anki-tts-help").textContent,
+    }));
     await showSection(page, "media");
     const media = await page.evaluate(() => ({
       allDisabled: [...document.querySelectorAll("#media button, #media input, #media select")]
@@ -612,8 +613,9 @@ async function checkOverlaySharing(hostPage) {
         && afterUnlink.options.popupTheme === "sunset" && afterUnlink.dictionaryState.dictionaries.length === 0
         && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
         && afterUnlink.options.mediaCapture.enabled && afterUnlink.options.customLinks[0]?.label === "Local link"
-        && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
-        && speech.help.includes("cannot be recorded into Anki")
+        && screenshot.help.includes("unavailable in this overlay")
+        && speech.help.includes("Anki generates Japanese speech")
+        && speech.help.includes("Media capture is not required")
         && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
         && shortcuts.browserDisabled && shortcuts.pageEnabled && links.disabled && links.helpVisible
         && backup.exportDisabled && backup.restoreEnabled
@@ -717,6 +719,7 @@ try {
       && linked.enabled === false && linked.client.address === ADDRESS && linked.client.display === "this computer"
       && linked.client.host?.name === hostName && linked.client.host.dictionaryCount === hostState.dictionaryState.dictionaries.length
       && linked.client.host.capabilities?.includes("linked-anki-v1")
+      && linked.client.host.capabilities?.includes("linked-anki-v2")
       && JSON.stringify(mirror.dictionaryState) === JSON.stringify(hostAfterLink.dictionaryState)
       && JSON.stringify(mirror.options) === JSON.stringify(hostAfterLink.options)
       // The fresh browser's own library, empty whether or not its engine had committed it yet, is what is kept aside.
@@ -725,6 +728,7 @@ try {
       && linkedLookup?.ok === true && linkedLookup.results?.[0]?.deinflected === "食べる"
       && hostClients.length === 1 && hostClients[0].local === true && hostClients[0].name === hostName
       && hostClients[0].capabilities?.includes("linked-anki-v1")
+      && hostClients[0].capabilities?.includes("linked-anki-v2")
       && statusCards.every(card => card.display === "grid" && card.fontSize >= 16 && card.height >= 56
         && card.fullWidth && card.marker.includes("✓") && card.ready),
     JSON.stringify({ probe, offer, setup: setup.setupState?.stage, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },
@@ -867,12 +871,14 @@ try {
       && ankiDiscovery?.ok === true && ankiDiscovery.connected === true
       && JSON.stringify(ankiDiscovery.decks) === JSON.stringify(["Default"])
       && JSON.stringify(ankiDiscovery.models) === JSON.stringify(["Basic"])
-      && JSON.stringify(ankiDiscovery.fields) === JSON.stringify(["Front", "Back", "Picture"])
+      && JSON.stringify(ankiDiscovery.fields) === JSON.stringify(["Front", "Back", "Picture", "Audio"])
       && ankiStatus?.ok === true && ankiStatus.available === true && typeof ankiStatus.configKey === "string"
       && preflight?.ok === true && preflight.state === "addable" && preflight.canAdd === true && preflight.screenshot === true
       && captured?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(captured.filename ?? "")
       && submitted?.ok === true && submitted.state === "added" && Number.isInteger(submitted.noteId)
       && note?.fields?.Front === request.term.expression && note.fields.Back.includes("食べたかった")
+      && note.fields.Audio === `[anki:tts lang=ja_JP cloze_blank="[...]"]${request.term.reading}[/anki:tts]`
+      && [...hostAnki.state.media.keys()].every(filename => !filename.endsWith(".wav"))
       && screenshotFilename === captured.filename && typeof screenshotData === "string"
       && Buffer.from(screenshotData, "base64").subarray(0, 3).toString("hex") === "ffd8ff"
       && screenshotProof?.width === 640 && screenshotProof.height === 480

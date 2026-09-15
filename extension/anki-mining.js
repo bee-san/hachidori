@@ -172,7 +172,6 @@ export function createAnkiMiningService({
   beforeMutation = async () => {},
   afterConfirmed = async () => {},
   afterRejected = async () => {},
-  preflightExtra = async () => ({}),
   validateCapture = async () => {},
   enrich,
   duplicateIndex,
@@ -211,7 +210,7 @@ export function createAnkiMiningService({
     const current = requestConfiguration(configured, request);
     if (request.configKey !== current.configKey) throw new Error(CONFIG_CHANGED);
     if (current.errors.length) throw new Error(current.errors.join("\n"));
-    const resources = await buildFields(request, current, { preflight: !fresh });
+    const resources = await buildFields(request, current);
     const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) throw new Error(`The first Anki field, “${firstField}”, is empty for this result.`);
@@ -222,26 +221,10 @@ export function createAnkiMiningService({
 
   async function preflight(request) {
     const prepared = await prepare(request, false);
-    if (prepared.resources.deferDuplicateCheck === true) {
-      const capture = captureForApplication(request, prepared.resolved.templates);
-      if (capture) await validateCapture({ request, prepared, capture });
-      const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
-      return {
-        state: "addable",
-        canAdd: true,
-        error: null,
-        deferred: true,
-        capture,
-        screenshot: prepared.config.captureScreenshot === true
-          && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
-        ...(extra ?? {}),
-      };
-    }
     const result = await decision(prepared, request, duplicateIndex);
     const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
     const capture = applied ? captureForApplication(request, applied.templates) : null;
     if (capture) await validateCapture({ request, prepared, capture });
-    const extra = await preflightExtra({ request, prepared, applied, deferred: false });
     return {
       state: result.state,
       canAdd: result.canAdd,
@@ -256,7 +239,6 @@ export function createAnkiMiningService({
       // write and may then apply a field this one would have kept.
       screenshot: prepared.config.captureScreenshot === true
         && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
-      ...(extra ?? {}),
     };
   }
 

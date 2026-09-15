@@ -10,9 +10,10 @@ export function canDiscoverSharingHost(sharing) {
     && !(sharing.enabled === true && sharing.connected === true);
 }
 
-export const LINKED_ANKI_CAPABILITY = "linked-anki-v1";
-export const SHARING_CAPABILITIES = Object.freeze([LINKED_ANKI_CAPABILITY]);
-export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support host-owned Anki mining. Update it and try again.";
+export const LEGACY_LINKED_ANKI_CAPABILITY = "linked-anki-v1";
+export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
+export const SHARING_CAPABILITIES = Object.freeze([LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
+export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support the current host-owned Anki mining protocol. Update it and try again.";
 export const MAX_LINKED_ANKI_FRAME_BYTES = 16 * 1024 * 1024;
 const HOST_PATH = "/host";
 const LINK_PATH = "/link";
@@ -140,7 +141,6 @@ const MINING_REQUEST_FIELDS = [
   "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
   "searchQuery", "documentTitle", "audioSelection", "capturePin", "dictionaryAliases",
   "frequencyDictionaries", "configKey", "screenshot", "captureJobId", "captureUnavailable",
-  "clientSpeech",
 ];
 
 function selectedFields(value, fields) {

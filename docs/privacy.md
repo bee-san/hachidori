@@ -56,14 +56,15 @@ and mining a note with pronunciation audio can send the word and/or reading to
 configured audio providers. Automatic playback does this when enabled.
 Provider responses may identify additional media hosts. HTTP localhost
 audio servers are supported; use HTTPS for services on other computers. Browser
-speech uses your selected browser/operating-system voice, which may be provided
-by an online service. If active Media capture is used to attach that speech to
-Anki, its transient shared-audio PCM is read locally and only the mined WAV is
-sent to the configured AnkiConnect endpoint. When linked, mining requests to URL
-audio providers are made by the host (`localhost` means the host computer), but
-browser speech is still produced and recorded in the reading browser; only its
-final WAV crosses the relay. Hachidori does not guarantee that every voice works
-offline or that every selected share captures browser speech.
+speech uses your selected browser/operating-system voice for popup playback,
+which may be provided by an online service. When mining from a browser-speech
+source, Hachidori writes Anki's native Japanese text-to-speech directive instead
+of recording that browser voice. Anki (or the device reviewing the card) chooses
+and generates its Japanese voice when the card plays; no speech PCM or WAV is
+captured or transferred. When linked, URL audio providers are contacted by the
+host (`localhost` means the host computer), and the host writes the native Anki
+TTS directive. Hachidori does not guarantee that every browser or Anki voice
+works offline.
 
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
@@ -109,9 +110,10 @@ relay while it runs, as with AnkiConnect. **Share this Hachidori** in Settings
 turns it off. A browser linked to a shared Hachidori sends the text it looks up
 and its settings, presentation and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
-unlinks. An explicit mining action also sends its selected note context and
-final screenshot, captured AVIF/WAV, or browser-speech WAV bytes through the
-relay. The host validates them and performs Settings discovery and setup
+unlinks. An explicit mining action also sends its selected note context and final
+screenshot or captured AVIF/WAV through the relay. Browser-speech sources need
+no client media because the host writes Anki's native TTS directive. The host
+validates transferred media and performs Settings discovery and setup
 checks, availability checks, duplicate checks, generation validation, media
 uploads, note writes and browsing through the host's AnkiConnect
 configuration. Endpoint credentials or mappings included in a linked request

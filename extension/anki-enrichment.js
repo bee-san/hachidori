@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiAudioFieldValue } from "./anki-audio.js";
 import { canonicalAnkiFields, overwriteAnkiFields } from "./anki-duplicates.js";
 import { readAnkiNoteFields, verifyAnkiFields } from "./anki-mining.js";
 
@@ -38,8 +39,9 @@ export async function enrichAnkiNote(context, { audio, render, media }) {
   if (!Object.keys(templates).length || (!resources.audioPrepared && !context.config.audioSources.length)) return warnings;
   try {
     const file = resources.audioPrepared ? resources.audio : await audio(request, context.config);
-    await store(file);
-    const rendered = await render(request, templates, `[sound:${file.filename}]`, resources);
+    const value = ankiAudioFieldValue(file);
+    if (file.fieldValue === undefined) await store(file);
+    const rendered = await render(request, templates, value, resources);
     const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true }) : rendered.fields;
     // Audio work may have taken seconds. Re-read just before updating; never
     // clobber an external edit or append to our already-applied text a second

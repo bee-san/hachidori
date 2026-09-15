@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
+import { ankiAudioFieldValue } from "./anki-audio.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
 import {
   CAPTURE_FILENAMES, CAPTURE_LIMITS, MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
@@ -51,7 +52,6 @@ export function createAnkiWorkerService({
 }) {
   const confirmedCaptureUploads = new Map();
   const linkedClientMedia = new WeakMap();
-  const linkedClientPreflights = new WeakSet();
 
   function isLinkedSubmission(request) {
     return linkedClientMedia.has(request);
@@ -63,18 +63,12 @@ export function createAnkiWorkerService({
       throw new Error("The dictionary generation changed or is being updated. Look up this result again before adding it.");
     }
   }
-  const audio = (request, config, { recordSpeech = true } = {}) => {
-    const clientSpeech = linkedClientMedia.get(request)?.speech;
-    return offscreen({
-      type: "hd_anki_audio",
-      term: request.term,
-      selection: request.audioSelection,
-      sources: config.audioSources,
-      recordSpeech,
-      ...(linkedClientPreflights.has(request) ? { clientSpeechProbe: true } : {}),
-      ...(clientSpeech ? { clientSpeech } : {}),
-    });
-  };
+  const audio = (request, config) => offscreen({
+    type: "hd_anki_audio",
+    term: request.term,
+    selection: request.audioSelection,
+    sources: config.audioSources,
+  });
   const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
     dictionaryPaths: resources.dictionaryPaths });
 
@@ -240,58 +234,28 @@ export function createAnkiWorkerService({
         mediaCapture: options.mediaCapture,
       };
     },
-    buildFields: async (request, current, { preflight = false } = {}) => {
+    buildFields: async (request, current) => {
       if (!Number.isSafeInteger(request?.generation) || request.generation < 0
           || typeof request.term?.expression !== "string" || !request.term.expression
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
       await currentGeneration(request);
       const dictionaries = await readDictionaries();
       const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.path])), audioPrepared: false, audio: null, deferDuplicateCheck: false };
+        .map(item => [item.title, item.path])), audioPrepared: false, audio: null };
       const first = current.resolved.templates[current.discovery.fields[0]];
       if (ankiTemplateMarkerNames(first.value).includes("audio") && current.config.audioSources.length) {
         // Audio in the first field is part of Anki's duplicate identity. A
         // failed/stale selection must not turn that identity into text-only.
-        // Browser speech is audible work, so preflight verifies only that the
-        // active capture can record it and defers the exact duplicate identity
-        // until the user submits.
-        const prepared = await audio(request, current.config, { recordSpeech: !preflight });
-        if (prepared?.recordingRequired === true) {
-          if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
-          if (prepared.clientSpeech) resources.clientSpeech = prepared.clientSpeech;
-          resources.deferDuplicateCheck = true;
-        }
-        else {
-          resources.audioPrepared = true;
-          resources.audio = prepared;
-        }
+        resources.audio = await audio(request, current.config);
+        resources.audioPrepared = true;
       }
-      const pronunciation = resources.audio ? `[sound:${resources.audio.filename}]`
-        : resources.deferDuplicateCheck ? "[sound:hachidori_pending_speech.wav]" : "";
+      const pronunciation = resources.audio ? ankiAudioFieldValue(resources.audio) : "";
       const built = await render(request, current.resolved.templates, pronunciation, resources);
       return { ...resources, ...built };
     },
     validateCapture,
     beforeWrite: prepareCapture,
     beforeMutation,
-    preflightExtra: async ({ request, prepared, applied }) => {
-      if (!linkedClientPreflights.has(request)) return {};
-      if (prepared.resources.clientSpeech) return { clientSpeech: prepared.resources.clientSpeech };
-      if (prepared.resources.audioPrepared || !applied
-          || !Object.values(applied.templates).some(template =>
-            ankiTemplateMarkerNames(template.value).includes("audio"))
-          || prepared.config.audioSources.length === 0) return {};
-      try {
-        const planned = await audio(request, prepared.config, { recordSpeech: false });
-        return planned?.recordingRequired === true && planned.clientSpeech
-          ? { clientSpeech: planned.clientSpeech }
-          : {};
-      } catch {
-        // Non-first-field pronunciation remains best-effort. Submission will
-        // report the ordinary warning if no configured source is available.
-        return {};
-      }
-    },
     afterConfirmed: completeCapture,
     afterRejected: releaseScreenshot,
     duplicateIndex,
@@ -357,67 +321,11 @@ export function createAnkiWorkerService({
     }
   }
 
-  async function preflightClient(request) {
-    linkedClientPreflights.add(request);
-    try {
-      return await mining.preflight(request);
-    } finally {
-      linkedClientPreflights.delete(request);
-    }
-  }
+  const preflightClient = request => mining.preflight(request);
 
-  async function resolveClientSpeech(request, recordSpeech) {
-    const plan = request?.clientSpeech;
-    if (!plan || typeof plan !== "object" || Array.isArray(plan)
-        || typeof request.term?.expression !== "string" || typeof request.term.reading !== "string"
-        || plan.expression !== request.term.expression || plan.reading !== request.term.reading) {
-      throw new Error("The linked browser-speech request is invalid or stale.");
-    }
-    const options = await readOptions();
-    const sources = options.audioSources.filter(source => source.enabled);
-    const source = sources.find(candidate => candidate.id === plan.sourceId
-      && JSON.stringify(candidate) === plan.sourceKey
-      && typeof candidate.type === "string" && candidate.type.startsWith("text-to-speech"));
-    if (!source) throw new Error("The browser-speech source changed. Check Audio Settings and try again.");
-    if (request.audioSelection !== undefined
-        && (request.audioSelection?.sourceId !== source.id || request.audioSelection.sourceKey !== plan.sourceKey)) {
-      throw new Error("The selected pronunciation changed before browser speech could be recorded.");
-    }
-    const file = await offscreen({
-      type: "hd_anki_audio",
-      term: request.term,
-      selection: request.audioSelection,
-      sources: [source],
-      recordSpeech,
-    });
-    if (!recordSpeech) {
-      if (file?.recordingRequired !== true) {
-        throw new Error("Browser text-to-speech preflight returned an unexpected result.");
-      }
-      return { available: true };
-    }
-    const byteLength = decodedBase64Length(file?.data);
-    if (file?.sourceId !== source.id || typeof file.filename !== "string"
-        || byteLength === null || byteLength < 1) {
-      throw new Error("Browser text-to-speech produced no transferable WAV data.");
-    }
-    return {
-      sourceId: plan.sourceId,
-      sourceKey: plan.sourceKey,
-      expression: plan.expression,
-      reading: plan.reading,
-      filename: file.filename,
-      byteLength,
-      data: file.data,
-    };
-  }
-
-  const clientSpeech = request => resolveClientSpeech(request, true);
-  const preflightClientSpeech = request => resolveClientSpeech(request, false);
-
-  // The reading browser owns these bytes. Export them only when submission is
-  // about to cross the sharing socket, without consulting its local engine or
-  // Anki endpoint.
+  // The reading browser owns these page-media bytes. Export them only when
+  // submission is about to cross the sharing socket, without consulting its
+  // local engine or Anki endpoint.
   async function clientMedia(request) {
     const value = {};
     if (request?.screenshot && !request.captureUnavailable?.includes("screenshot")) {
@@ -450,7 +358,6 @@ export function createAnkiWorkerService({
         assets,
       };
     }
-    if (request?.clientSpeech) value.speech = await clientSpeech(request);
     return validateLinkedAnkiClientMedia(request, value);
   }
 
@@ -466,7 +373,7 @@ export function createAnkiWorkerService({
     return { settled: true };
   }
 
-  return { ...mining, preflightClient, preflightClientSpeech, submit: submitRequest, submitClient,
+  return { ...mining, preflightClient, submit: submitRequest, submitClient,
     clientMedia, settleClientMedia,
     screenshot, discardScreenshot, async maturity(request) {
     try {

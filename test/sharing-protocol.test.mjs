@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
+  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
+  MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
   assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
@@ -36,6 +37,13 @@ test("a browser names itself by its brand", () => {
   assert.equal(browserName(brands()), "another browser");
   assert.equal(browserName({}), "another browser");
   assert.equal(browserName(undefined), "another browser");
+});
+
+test("new hosts advertise legacy and native-TTS mining capabilities while current clients require v2", () => {
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
+  assert.equal(LEGACY_LINKED_ANKI_CAPABILITY, "linked-anki-v1");
+  assert.equal(LINKED_ANKI_CAPABILITY, "linked-anki-v2");
+  assert.equal(Object.isFrozen(SHARING_CAPABILITIES), true);
 });
 
 test("only host-owned plain-message requests forward; screenshots and blob imports stay local", () => {
@@ -113,6 +121,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     generation: 3,
     trace: [],
     configKey: "host-config",
+    clientSpeech: { sourceId: "forged-client-speech" },
     url: "https://client.invalid/anki",
     apiKey: "client-secret",
     anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },

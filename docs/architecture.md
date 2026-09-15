@@ -1714,15 +1714,14 @@ bind to committed generation paths. First-field audio is resolved before the
 duplicate check without playback or uploads. Confirmed text is followed by
 best-effort media uploads and a field readback before pronunciation updates;
 external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS can be attached while an active
-media-capture share supplies audio: the selected voice is spoken only after the
-mining action, read back from the transient PCM ring with short leading/trailing
-padding, encoded as WAV, and uploaded through the same pronunciation path.
-Silent preflight checks only recording availability and defers first-field
-duplicate identity until the authoritative submission. Missing, incomplete or
-effectively silent capture falls through to later URL sources; an explicit TTS
-choice reports the capture failure instead. Sentence-furigana markers use the
-GSM fallback when its optional native tokenizer is unavailable.
+read/write interval is not atomic. Browser-speech sources render an escaped,
+deterministic `[anki:tts lang=ja_JP cloze_blank="[...]"]…[/anki:tts]` value. Anki generates the
+Japanese voice when the card plays, so preflight needs no audible work, Media
+capture, WAV encoding or upload. URL sources retain the existing decoded media
+path. Brackets and HTML metacharacters in dictionary text are entity-encoded so
+they remain spoken text instead of nesting another Anki directive.
+Sentence-furigana markers use the GSM fallback when its optional native
+tokenizer is unavailable.
 
 Capture markers are prepared through the same Anki queue rather than a second
 gateway. Before rendering either preflight or the authoritative submission,
@@ -2042,8 +2041,11 @@ network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,
 browser name, dictionary count, capabilities and a snapshot of the five shared
 keys), `request` carrying an ordinary runtime message, and `pong` to the
-relay's `ping`. `linked-anki-v1` advertises the host-owned Anki transaction
-described below; omitting capabilities remains valid for older hosts.
+relay's `ping`. `linked-anki-v1` advertises the original host-owned Anki
+transaction with client-recorded browser speech. `linked-anki-v2` advertises
+native Anki TTS instead. New hosts advertise both so v1 clients keep working;
+current clients require v2 for Anki requests and refuse a v1-only host before
+send. Omitting capabilities remains valid for older dictionary-sharing hosts.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
@@ -2122,25 +2124,24 @@ offers to use it; that link then advances setup to `complete`. See
 [sharing](sharing.md) for use.
 
 Linked Anki mining is split at the browser boundary. The reading browser keeps
-`hd_anki_screenshot`/discard and its capture session local, while
-Settings discovery and existing-setup detection, `hd_anki_status`, preflight,
-submit, browse and maturity go to the host. A browser-speech source is planned
-against the host's mirrored configuration but verified and recorded with the
-reading browser's selected voice and capture session. Just before submit, the
-reading browser's singleton Anki worker exports that final speech WAV, the
-pending screenshot and the ready capture job into an internal `clientMedia`
-envelope. The envelope carries the
-screenshot token/name/JPEG bytes; capture job ID, warnings and final AVIF/WAV
-assets; and the speech source identity, canonical filename, declared length and
-WAV bytes. Both ends validate the request-bound identities and names, base64,
-the 6 MiB JPEG, 4 MiB AVIF and 1 MiB WAV limits; the complete UTF-8 submit frame
-is limited to 16 MiB. The host passes the validated envelope to the same
-singleton Anki worker used by local pages, preserving its mutation queue,
-host-engine generation checks and host-only AnkiConnect configuration. URL
-pronunciation providers, dictionary media and AnkiConnect requests run from the
-host; `localhost` in those configured URLs therefore means the host machine.
-External media follows the ordinary upload/write/readback path, but the host
-does not consult or complete its own capture session. Status wraps the ordinary
+`hd_anki_screenshot`/discard and its capture session local, while Settings
+discovery and existing-setup detection, `hd_anki_status`, preflight, submit,
+browse and maturity go to the host. Browser-speech sources are resolved by that
+host into native Anki TTS directives. Just before submit, the reading browser's
+singleton Anki worker exports only its pending screenshot and ready capture job
+into an internal `clientMedia` envelope. The envelope carries the screenshot
+token/name/JPEG bytes and capture job ID, warnings and final AVIF/WAV assets.
+Both ends validate the request-bound identities and names, base64, the 6 MiB
+JPEG, 4 MiB AVIF and 1 MiB WAV limits; the complete UTF-8 submit frame is limited
+to 16 MiB. The host passes the validated envelope to the same singleton Anki
+worker used by local pages, preserving its mutation queue, host-engine
+generation checks and host-only AnkiConnect configuration. URL pronunciation
+providers, dictionary media and AnkiConnect requests run from the host;
+`localhost` in configured URLs therefore means the host computer. The host
+writes browser-speech sources as native Anki TTS directives, and the Anki device
+reviewing the card synthesizes them later. External media follows the ordinary
+upload/write/readback path, but the host does not consult or complete its own
+capture session. Status wraps the ordinary
 Anki configuration digest in a host-worker-specific key; preflight, submit and
 browse must return that exact wrapper before the host restores the internal digest.
 Consequently, a result from local Anki, another sharing host or an earlier host
@@ -2152,7 +2153,7 @@ complete its capture job; a definitive duplicate, invalid or failed host reply
 discards/cancels them. A frame rejected before `WebSocket.send()` remains
 retryable. Once send succeeds, a closed connection or malformed reply is
 `uncertain`: neither side automatically retries it and client media stays
-available for the person to reconcile. Hosts without `linked-anki-v1` keep
+available for the person to reconcile. Hosts without `linked-anki-v2` keep
 ordinary dictionary sharing but return Anki unavailable before a mining request
 is sent.
 

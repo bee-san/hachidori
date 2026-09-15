@@ -13,16 +13,16 @@ same pinned interval:
 
 Pronunciation `{audio}` remains separate. Media-mining templates use
 `{capture-animation}` and `{capture-audio}`. When `{audio}` resolves to browser
-text-to-speech, an active capture with shared audio can record the exact selected
-voice at mining time and attach its WAV to Anki. This does not reuse the pinned
-sentence clip. A downloadable pronunciation source remains the fallback when
-speech is not captured.
+text-to-speech, Hachidori writes Anki's native
+`[anki:tts lang=ja_JP cloze_blank="[...]"]…[/anki:tts]` directive. Anki generates the Japanese
+speech when the card plays, so Media capture is not required and no
+pronunciation WAV is recorded. Downloadable pronunciation sources still attach
+their media files normally.
 
-When linked to another Hachidori, the host chooses the browser-speech source
-from its saved mining configuration, but the reading browser verifies its own
-voice and shared-audio capture and records the exact WAV locally. Transient PCM
-never crosses the relay; only the final bounded WAV accompanies the submission
-to the host.
+When linked to another Hachidori, the host chooses the pronunciation source and
+writes the native Anki TTS directive. Page screenshots and continuous-capture
+clips still come from the reading browser; browser speech does not cross the
+relay.
 
 ## Setup
 

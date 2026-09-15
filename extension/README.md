@@ -56,8 +56,8 @@ the service worker and both engine runtimes run the same code.
   `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
   fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
-  `anki-client-media.js` validates final screenshot, capture and browser-speech
-  media crossing a linked-browser boundary. `anki-mining.js` and
+  `anki-client-media.js` validates final screenshot and capture media crossing
+  a linked-browser boundary. `anki-mining.js` and
   `anki-worker.js` are the mining service in the
   service worker. `anki-index.js` and `anki-index-cache.js` provide the shared
   scoped duplicate and maturity index. `anki-offscreen.js` launches
@@ -68,9 +68,9 @@ the service worker and both engine runtimes run the same code.
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
   text-to-speech.
 - **Media capture.** `capture-host.js` is the offscreen recorder.
-  `capture-session.js`, `capture-buffer.js`, `capture-timeline.js` and
-  `capture-speech.js` are its bounded buffers, occurrence timeline and speech
-  detection. `capture-audio-worklet.js`, `capture-frame-client.js` with
+  `capture-session.js`, `capture-buffer.js` and `capture-timeline.js` are its
+  bounded buffers and occurrence timeline. `capture-audio-worklet.js`,
+  `capture-frame-client.js` with
   `capture-frame-worker.js`, and `capture-encoder-client.js` with
   `capture-encoder-worker.js` move audio sampling, frame grabbing and animated
   AVIF encoding (`avif-sequence.js`) off the main thread.

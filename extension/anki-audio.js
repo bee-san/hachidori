@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { selectedAudioPlan } from "./audio-repository.js";
 import { ankiMediaFilename } from "./anki-resources.js";
+import { escapeAnkiHtml } from "./anki-templates.js";
 
 const MIME_EXTENSIONS = { "audio/aac": "aac", "audio/flac": "flac", "audio/mp4": "m4a", "audio/mpeg": "mp3",
   "audio/ogg": "ogg", "audio/wav": "wav", "audio/webm": "webm", "audio/x-wav": "wav", "application/ogg": "ogg" };
@@ -61,44 +62,31 @@ async function candidateFile(window, repository, candidate, signal) {
   }
 }
 
-async function speechFile(window, recording, signal) {
-  signal.throwIfAborted();
-  if (!(recording?.data instanceof Uint8Array) || recording.data.length === 0) {
-    throw new Error("Browser text-to-speech produced no captured WAV data.");
-  }
-  const filename = await ankiMediaFilename(recording.data, "wav");
-  if (recording.filename !== undefined && recording.filename !== filename) {
-    throw new Error("The linked browser-speech filename does not match its WAV data.");
-  }
-  const data = await base64(window, new Blob([recording.data], { type: "audio/wav" }), signal);
-  signal.throwIfAborted();
-  return { filename, data, candidate: recording.candidate };
+function ankiTtsField(source, term) {
+  const text = source.type === "text-to-speech-reading" ? term.reading || term.expression : term.expression;
+  const escaped = escapeAnkiHtml(text).replaceAll("[", "&#91;").replaceAll("]", "&#93;");
+  return `[anki:tts lang=ja_JP cloze_blank="[...]"]${escaped}[/anki:tts]`;
 }
 
-// Read-only discovery/decoding, separate from the playback owner. The returned
-// exact bytes and digest stay paired through duplicate check and later upload.
+export function ankiAudioFieldValue(audio) {
+  if (typeof audio?.fieldValue === "string" && audio.fieldValue !== "") return audio.fieldValue;
+  if (typeof audio?.filename === "string" && audio.filename !== "") return `[sound:${audio.filename}]`;
+  throw new Error("The pronunciation source returned no Anki audio value.");
+}
+
+// Read-only planning stays separate from popup playback. Native TTS returns a
+// deterministic Anki field value; downloadable bytes and their digest stay
+// paired through duplicate checking and later upload.
 export async function exportAnkiAudio(window, repository, {
   sources,
   term,
   selection,
-  recordSpeech = true,
-}, signal, { recordSpeechAudio } = {}) {
+}, signal) {
   const plan = selection ? await selectedAudioPlan(repository, sources, term, selection, signal) : { sources };
   let failure;
   for (const source of plan.sources) {
     if (source.type.startsWith("text-to-speech")) {
-      try {
-        if (typeof recordSpeechAudio !== "function") {
-          throw new Error("Browser text-to-speech recording is unavailable.");
-        }
-        const recorded = await recordSpeechAudio(source, term, signal, { record: recordSpeech });
-        if (recorded?.recordingRequired === true) return recorded;
-        return { ...await speechFile(window, recorded, signal), sourceId: source.id };
-      } catch (error) {
-        signal.throwIfAborted();
-        failure = error;
-      }
-      continue;
+      return { fieldValue: ankiTtsField(source, term), sourceId: source.id };
     }
     try {
       const candidates = plan.candidate ? [plan.candidate] : await repository.candidates(source, term, signal);

@@ -6,7 +6,7 @@ import {
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
 
-test("overlay mining never takes a screenshot or records browser speech or captured media", () => {
+test("overlay mining disables page capture while preserving host-side TTS sources", () => {
   const stored = globalThis.HDReaderOptions.normaliseOptions({
     anki: { captureScreenshot: true },
     mediaCapture: { enabled: true },
@@ -19,7 +19,7 @@ test("overlay mining never takes a screenshot or records browser speech or captu
   const overlay = overlayAnkiOptions(stored);
   assert.equal(overlay.anki.captureScreenshot, false);
   assert.equal(overlay.mediaCapture.enabled, false);
-  assert.deepEqual(overlay.audioSources.map(source => source.id), ["jpod"]);
+  assert.deepEqual(overlay.audioSources.map(source => source.id), ["tts", "reading", "jpod"]);
   assert.equal(stored.anki.captureScreenshot, true, "the stored options are not changed");
   assert.equal(stored.mediaCapture.enabled, true);
   assert.equal(stored.audioSources.length, 3);

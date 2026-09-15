@@ -3163,8 +3163,6 @@ async function flushOptionsUntilIdle() {
 }
 
 async function start() {
-  element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
-  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
   element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
   element("custom-links-settings").disabled = !HOST_CAPABILITIES.customLinks;
   element("custom-links-overlay-help").hidden = HOST_CAPABILITIES.customLinks;

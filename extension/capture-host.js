@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createCaptureSession } from "./capture-session.js";
 import { createCaptureFrameEncoder } from "./capture-frame-client.js";
-import { recordCapturedSpeech } from "./capture-speech.js";
-import { resolveSpeech } from "./speech.js";
 import {
   MAX_TEXTHOOKER_FRAME_LENGTH,
   MAX_TEXTHOOKER_TEXT_LENGTH,
@@ -619,15 +617,6 @@ function bytesToBase64(data) {
     binary += String.fromCodePoint(...data.subarray(offset, offset + 0x8000));
   }
   return btoa(binary);
-}
-
-export async function recordSpeechAudio(source, term, signal, { record = true } = {}) {
-  session.assertAudioCapture();
-  if (!record) {
-    await resolveSpeech(globalThis, source, term, signal);
-    return { recordingRequired: true };
-  }
-  return recordCapturedSpeech(globalThis, session, source, term, signal, { now: timestamp });
 }
 
 export async function handleCaptureMessage(message) {

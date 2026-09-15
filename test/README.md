@@ -124,8 +124,8 @@ sharing-host and sharing-client stages cover the service worker's side,
 including hosting that waits for dictionaries, the network exchange, linking
 that turns hosting off, a linked install's kept state, draining old-role Anki
 work before the route changes, linked Settings discovery/setup checks, local
-media/TTS ownership, host-specific mining keys, duplicate-index suspension and
-restart ordering. The focused sharing-client checks also pin link generations:
+page/capture media ownership, host-generated native TTS directives,
+host-specific mining keys, duplicate-index suspension and restart ordering. The focused sharing-client checks also pin link generations:
 an unsent edit cannot move to a replacement host, an already-sent write reports
 an unknown outcome, and an obsolete reply cannot settle the new link's request.
 
@@ -150,7 +150,7 @@ personal dictionary and settings. A third browser loads the actual overlay-mode
 extension, checks local Settings autosave and mixed shared/local saves, survives
 host disconnection and full browser restart, unlinks with its edited local
 geometry, and verifies that remote recorder/link options cannot reactivate
-Electron-only controls alongside the screenshot and browser-speech capability
+Electron-only controls alongside the screenshot and native-Anki-TTS
 explanations. Twelve predeclared checks; profiles are kept on failure. The suite
 needs `python3` and access to the pinned GitHub
 release. For offline runs or coordinated add-on changes,
@@ -869,12 +869,12 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
-test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
+test/anki-{audio,offscreen-audio}.test.mjs`
 runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession, first-use voice loading, automatic Japanese voice selection,
-unavailable selected voices, captured-TTS WAV export and silent preflight,
-document-scoped cancellation,
+unavailable selected voices, escaped native Anki TTS fields without media
+capture or upload, document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
 including delayed initial options without repeating a manual play, quiet success
@@ -886,7 +886,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 200 predeclared checks in a browser. The reproducible
+The primary-path test runs 204 predeclared checks in a browser. The reproducible
 launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
 external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,

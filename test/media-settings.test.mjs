@@ -26,7 +26,7 @@ function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode };
   window.settingsReplies = {
     hd_capture_status: { ok: true, state: "stopped" },
     hd_capture_open: { ok: true },

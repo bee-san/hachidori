@@ -2132,14 +2132,7 @@ async function handleAnkiRequest(message, sender) {
       if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
       if (["hd_anki_status", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
         try {
-          const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
-          if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
-            await getAnkiMining().preflightClientSpeech({
-              ...message.request,
-              clientSpeech: reply.clientSpeech,
-            });
-          }
-          return reply;
+          return await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
         } catch (error) {
           if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
             return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
