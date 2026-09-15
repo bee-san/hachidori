@@ -141,6 +141,10 @@ sent by the host to its configured AnkiConnect server.
 can include everything visible on that source and its audio when available.
 Hachidori does not request microphone recording.
 
+The Firefox desktop draft does not include continuous media capture or
+browser-speech-to-WAV recording. It keeps ordinary pronunciation playback and
+the explicit page screenshot described above.
+
 The reading-page picker uses tab titles and URLs to identify a page to link.
 While recording, recent frames, source audio and text/timing stay in temporary
 memory. Closing the capture controls leaves recording active. **Stop capture**

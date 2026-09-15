@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 export function createBackupSettingsController({
   document, send, download, checkReady, setBusy, status, refresh, exportAvailable = true,
-  trackPreparation = () => {}, cancelPreparation = () => {},
+  trackPreparation = () => {}, cancelPreparation = () => {}, browserName = "Chrome",
 }) {
   const element = id => document.getElementById(id);
   const window = document.defaultView;
@@ -53,7 +53,7 @@ export function createBackupSettingsController({
     void run("Creating the backup archive…", async () => {
       const reply = await download();
       if (!reply.ok) throw new Error(reply.error || "Could not create the backup.");
-      status(reply.warning || "Download started. Check Chrome’s downloads for progress.", reply.warning ? "" : "ready", true);
+      status(reply.warning || `Download started. Check ${browserName}’s downloads for progress.`, reply.warning ? "" : "ready", true);
     });
   });
 

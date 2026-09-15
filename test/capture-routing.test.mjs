@@ -62,7 +62,7 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
   const handlers = background.slice(background.indexOf('const CAPTURE_CONTROL_TYPES'),
     background.indexOf('function clearNavigatedCaptureDocument'));
   const contentCommands = background.slice(background.indexOf('async function commandCaptureContent'),
-    background.indexOf('async function offscreenExists'));
+    background.indexOf('async function ensureOffscreen'));
   vm.runInContext(helpers + contentCommands + handlers, context);
   return { context, messages, contentMessages, optionsListener, readerLinked: () => readerLinked };
 }

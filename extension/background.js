@@ -1,3 +1,6 @@
+import { extensionApi as chrome, IS_FIREFOX } from "./browser-api.js";
+import { ensureChromeOffscreen } from "./chrome-offscreen.js";
+import { waitForFirefoxOffscreen } from "./firefox-host.js";
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
@@ -46,11 +49,11 @@ import { sameJsonValue } from "./json-value.js";
 import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
-import { HOST_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
   RECOMMENDED_SELECTIONS_KEY, OVERLAY_LOCAL_OPTION_KEYS,
-  advanceSetupState, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
+  advanceSetupState, capabilityAnkiOptions, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
 const {
@@ -283,7 +286,11 @@ function forwardWorkerRequest(message) {
 
 async function readAnkiOptions() {
   const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
-  return OVERLAY_MODE ? overlayAnkiOptions(options) : options;
+  return capabilityAnkiOptions(options, {
+    screenshot: MINING_CAPABILITIES.screenshot,
+    browserSpeech: MINING_CAPABILITIES.browserSpeech,
+    mediaCapture: HOST_CAPABILITIES.mediaCapture,
+  });
 }
 
 // Called within the background storage queue. Options and index invalidation
@@ -329,7 +336,6 @@ const RELAY_ATTEMPTS = 5;
 const RELAY_BACKOFF_MS = 40;
 const NOT_LISTENING = /Receiving end does not exist|Could not establish connection/i;
 
-let creating = null;
 let latestAudioOperation = null;
 let capturePage = null;
 let captureRecovery = null;
@@ -488,49 +494,16 @@ async function unlinkCaptureContent() {
   }
 }
 
-async function offscreenExists() {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ["OFFSCREEN_DOCUMENT"],
-    documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT)],
-  });
-  return contexts.length > 0;
-}
-
-async function createOffscreen() {
-  try {
-    await chrome.offscreen.createDocument({
-      url: OFFSCREEN_DOCUMENT,
-      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK", "DISPLAY_MEDIA"],
-      justification:
-        "Runs the dictionary engine and pronunciation audio, and owns explicitly started local display capture across control-page closure.",
-    });
-  } catch (error) {
-    // Another extension context may have won the race; only a genuine absence
-    // is a failure.
-    if (!(await offscreenExists())) {
-      throw error;
-    }
-  } finally {
-    creating = null;
-  }
-}
-
 // createDocument() rejects when called while another call is in flight, so every
 // caller waits on the same promise.
 async function ensureOffscreen() {
-  if (typeof chrome.runtime.getContexts !== "function"
-      || typeof chrome.offscreen?.createDocument !== "function") {
-    // Some extension hosts keep this page alive themselves instead of exposing
-    // Chrome's offscreen-document lifecycle API.
+  if (IS_FIREFOX) {
+    await waitForFirefoxOffscreen();
     return;
   }
-  if (await offscreenExists()) {
-    return;
-  }
-  if (creating === null) {
-    creating = createOffscreen();
-  }
-  await creating;
+  // Some extension hosts keep this page alive themselves instead of exposing
+  // Chrome's offscreen-document lifecycle API.
+  await ensureChromeOffscreen(OFFSCREEN_DOCUMENT);
 }
 
 async function relay(message, stillCurrent = null) {
@@ -1679,11 +1652,12 @@ const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight",
 // second waits once rather than losing its screenshot.
 const CAPTURE_VISIBLE_RETRY_MS = 600;
 
-// Startup messages can include or omit sender.tab. Chrome's live extension contexts
-// bind either shape to the same document before and after capture.
+// Startup messages can include or omit sender.tab. Chrome's live extension
+// contexts bind either shape to the same document; Firefox supplies the tab on
+// the extension-page sender and has no getContexts equivalent.
 async function screenshotOwnedTab(sender, startup) {
   let tabId = sender.tab?.id;
-  if (startup) {
+  if (startup && typeof chrome.runtime.getContexts === "function") {
     const [context] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentIds: [sender.documentId] });
     if (!context) throw new Error("The reading document changed before the screenshot.");
     tabId = context.tabId;
@@ -2092,7 +2066,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
   let operation;
   if (!HOST_CAPABILITIES.mediaCapture) {
-    operation = Promise.reject(new Error("Media capture is unavailable in this overlay."));
+    operation = Promise.reject(new Error(
+      IS_FIREFOX ? "Media capture is unavailable in Firefox."
+        : "Media capture is unavailable in this overlay.",
+    ));
   } else if (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type)
       || CAPTURE_CONTROL_TYPES.has(message.type)) {
     operation = handleCaptureControl(message, sender);
