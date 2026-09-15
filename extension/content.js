@@ -2185,6 +2185,7 @@
       document.body.appendChild(host);
     }
     level.popup.hidden = false;
+    level.popup.inert = false;
     level.view.scrollElement.scrollTop = 0;
     syncHostAttention();
   }
@@ -2250,6 +2251,7 @@
     rootLevel.lookupToken += 1;
     if (rootLevel.popup) {
       rootLevel.popup.hidden = true;
+      rootLevel.popup.inert = false;
       rootLevel.view.clear();
       highlighter.clearAll();
     }
@@ -2571,6 +2573,16 @@
     mining?.retire(level);
     const token = (level.lookupToken += 1);
     level.retainedView = replayOptions?.preserveViewControls === true;
+    if (level.popup && !level.popup.hidden && request !== level.currentViewRequest) {
+      pruneLevels(level.depth + 1, false);
+      clearDefinitionBlurTimer(level);
+      level.popup.inert = true;
+      level.currentViewRequest = null;
+      level.activeTermRender = null;
+      level.deferredRefresh = null;
+      level.deferredDictionaryInvalidationRevision = -1;
+      level.noteEditing = false;
+    }
     level.view?.hideImagePreview();
     let reply, capturePin;
     const capturePinPromise = request.capturePinPromise ?? Promise.resolve(rootLevel.capturePin);
@@ -2697,10 +2709,12 @@
       }
       return pending?.promise;
     }
-    pruneLevels(level.depth + 1, false);
-    const child = createLevelState(level.depth + 1);
-    levels.push(child);
-    buildLevelUi(child);
+    pruneLevels(level.depth + 2, false);
+    const child = existing ?? createLevelState(level.depth + 1);
+    if (!existing) {
+      levels.push(child);
+      buildLevelUi(child);
+    }
     child.primaryReading = primaryReading;
     child.focusLinkedBack = focusChild;
     child.activeCandidate = candidate;
@@ -2953,6 +2967,10 @@
 
   function cancelCandidateScan() {
     clearScanTimer();
+    if (rootLevel.popup?.inert) {
+      hide();
+      return;
+    }
     // Retaining a rendered popup during transfer must not invalidate its media
     // or deferred glossary. Only an unfinished candidate loses ownership.
     if (pendingCandidateLookup?.token === rootLevel.lookupToken) rootLevel.lookupToken += 1;
@@ -2964,7 +2982,7 @@
     if (
       !child ||
       child.pendingHover?.token !== child.lookupToken ||
-      !child.popup?.hidden
+      (!child.popup?.hidden && !child.popup?.inert)
     ) {
       return;
     }
@@ -3121,7 +3139,7 @@
       return;
     }
     if (
-      rootLevel.popup && !rootLevel.popup.hidden &&
+      rootLevel.popup && !rootLevel.popup.hidden && !rootLevel.popup.inert &&
       rootLevel.activeSignature === signature &&
       sameAnchorNode(candidate, rootLevel.activeCandidate)
     ) {
@@ -3129,9 +3147,6 @@
       return;
     }
     clearHideTimer();
-    // A new valid pointer lookup owns this popup. Retire the previous view
-    // rather than leave its expired glossary/media and Note controls usable.
-    if (rootLevel.popup && !rootLevel.popup.hidden) hide();
     lookupCandidate(candidate, signature);
   }
 
@@ -3421,7 +3436,7 @@
       return true;
     }
     const level = levels.findLast((item) => item.popup && !item.popup.hidden);
-    if (!level?.view) return false;
+    if (!level?.view || level.popup.inert) return false;
     const entry = level.view.currentEntryIndex();
     switch (action) {
       case "nextEntry":
@@ -3598,6 +3613,10 @@
     if (!hasProtectedNote()) activeSelectionCandidate = null;
     for (const level of levels) {
       level.view?.hideImagePreview();
+      if (level.popup?.inert) {
+        hide(level);
+        return;
+      }
       level.lookupToken += 1;
       level.retainedView = Boolean(level.currentViewRequest && !level.popup.hidden);
       if (dictionaryChanged && level.popup && !level.popup.hidden) {

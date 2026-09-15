@@ -14132,10 +14132,30 @@ async function contentNoteStage() {
     });
     await retry;
     const invalidatedPendingRetried = retryRequest?.request.maxResults === 4
-      && obsoletePopup !== replacementPopup && obsoletePendingIgnored
+      && obsoletePopup === replacementPopup && obsoletePendingIgnored
       && optionsRace.driver.viewRequest(1)?.payload.options.primaryReading === "reading"
       && optionsRace.render(1).context.isCurrentRequest();
     optionsRace.close();
+    const savingChild = await createHarness();
+    await savingChild.initialLookup();
+    const opened = savingChild.internalLink({ query: "old child" });
+    savingChild.reply(savingChild.take("hd_lookup"), { dictionaryCount: 1, results: [savingChild.term("old child")] });
+    await opened;
+    const shell = savingChild.driver.popupAt(1);
+    savingChild.edit(true, 1);
+    const saved = savingChild.callbacks(1).onAddCustomEntry({ term: "old child", reading: "", definition: "saved" });
+    const append = savingChild.take("hd_custom_append");
+    const replaced = savingChild.internalLink({ query: "new child" });
+    const replacementLookup = savingChild.take("hd_lookup");
+    const retiredNote = !savingChild.driver.snapshot(1).noteEditing && savingChild.driver.viewRequest(1) === null;
+    savingChild.reply(append, { state: { schemaVersion: 1, revision: 0, dictionaries: [] } });
+    await saved;
+    const noOldReplay = savingChild.take("hd_lookup") === null;
+    savingChild.reply(replacementLookup, { dictionaryCount: 1, results: [savingChild.term("new child")] });
+    await replaced;
+    const savedChildReused = retiredNote && noOldReplay && shell === savingChild.driver.popupAt(1)
+      && savingChild.driver.viewRequest(1)?.payload.text === "new child";
+    savingChild.close();
     const generations = [];
     for (const generation of [3, 1]) {
       const race = await createHarness();
@@ -14157,7 +14177,7 @@ async function contentNoteStage() {
       race.close();
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
-      retiredIgnored && detachedIgnored && invalidatedPendingRetried && generations.every(Boolean) };
+      retiredIgnored && detachedIgnored && invalidatedPendingRetried && savedChildReused && generations.every(Boolean) };
   }
 
   async function retainedParentNavigationCase() {
@@ -15780,7 +15800,9 @@ async function contentNoteStage() {
     move();
     fire(75);
     const supersededPointer = harness.take("hd_lookup");
-    const oldViewRetired = harness.driver.snapshot().popupHidden && !oldViewContext.isCurrentRequest();
+    const oldViewRetired = !harness.driver.snapshot().popupHidden && harness.popup.inert
+      && !oldViewContext.isCurrentRequest() && !oldViewContext.isCurrentView()
+      && harness.driver.viewRequest() === null;
     const rendersBeforeNote = harness.renders.length;
     harness.driver.setScanCandidate(null);
     move();
@@ -15793,11 +15815,22 @@ async function contentNoteStage() {
     harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
     move();
     fire(75);
-    result["a new pointer candidate retires the old view while an open Note prevents replacement"] =
+    result["a new pointer candidate retains an inert old view while an open Note prevents replacement"] =
       supersededPointer !== null && oldViewRetired && cancelledReplacement
         && harness.driver.snapshot().noteEditing && harness.render().context.isCurrentRequest()
         && harness.take("hd_lookup") === null && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
+
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "settings race" });
+    move();
+    fire(75);
+    const settingsLookup = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, lookupMode: "hover", maxResults: 4 });
+    harness.reply(settingsLookup, { dictionaryCount: 1, results: [harness.term("obsolete settings")] });
+    await harness.settle();
+    result["settings invalidate a pending replacement without stranding an inert visible view"] =
+      harness.driver.snapshot().popupHidden;
+    await harness.initialLookup();
 
     const focusedControl = window.document.createElement("button");
     focusedControl.textContent = "Back";
