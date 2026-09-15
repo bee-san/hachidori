@@ -9,6 +9,8 @@ Source attribution and the compatible text-receiver protocol remain intact.
 Lookup history and definition blur live in **Reading**. **Design** concentrates
 on appearance and definition presentation, with wider selectors, compact numeric
 rows and a live preview that is always shown. Reset Design preserves the Reading rules.
+Definition blur presents lookup count, mature Anki and frequency threshold as
+independent conditions, with one shared reveal policy.
 The selected lookup theme now colours the complete Settings document as well as
 the lookup and preview.
 Threshold/reveal details and custom CSS use native disclosures. Narrow windows

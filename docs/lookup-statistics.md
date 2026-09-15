@@ -35,14 +35,14 @@ and safe JSON integer representation still apply.
 ## Definition blur
 
 Settings → Reading → Definition blur hides definitions, compact summaries and
-reading furigana behind a blur until you recall the word. Both rules are off by
-default and can be enabled independently; a match from either rule qualifies.
-**Blur definitions by lookup count** needs lookup counts. Choose **At least**
+reading furigana behind a blur until you recall the word. Its three conditions
+are off by default and can be enabled independently; a match from any checked
+condition qualifies. **Lookup count** needs lookup counts. Choose **At least**
 to blur words looked up the threshold number of times (default 5) or more, or
 **Below** to blur words looked up fewer times. Zero is a valid Below count. The decision uses the same count the popup displays, after
 the current lookup is recorded.
 
-**Blur definitions for mature Anki words** works even with lookup counts off.
+**Mature Anki card** works even with lookup counts off.
 It checks the first result's canonical expression against the configured Anki
 note type across all decks. A word qualifies if at least one matching card is
 in review with an interval of **21 days or more**, following
@@ -55,21 +55,34 @@ In Settings → Anki, map **Expression** to a dedicated field, or use a field
 template containing only `{expression}`. Templates that combine the expression
 with other text, readings or markup cannot identify the word through this check.
 A missing or unsupported mapping leaves maturity unavailable without changing
-the mapping. The Design preview uses a fixed mature sample with three lookups,
-without contacting Anki or recording history.
+the mapping.
 
-The check makes one read-only AnkiConnect `findCards` request after the result
-renders. It does not add or edit notes, cards or scheduling data. The existing
-AnkiConnect timeout bounds the wait; Anki being closed, denied access, malformed
-responses and other errors leave this rule unqualified. There is no persistent
-known-word cache: each new lookup checks again, and only the count rule remains
-available offline. Dictionary lookup never waits for Anki.
+The reader checks the compact local duplicate index described in
+[the architecture](architecture.md#lookup-statistics-and-definition-blur).
+That check does not add or edit notes, cards or scheduling data. Anki being
+closed leaves the last saved index available; an absent or unsupported source
+leaves this condition unqualified. Dictionary lookup never waits for Anki.
 
-![Lookup-count and mature-Anki definition blur controls](assets/anki-mature-blur-settings.png)
+**Frequency threshold** selects one enabled frequency dictionary. Automatic
+order treats rank-based dictionaries as ascending and occurrence-based or
+undeclared dictionaries as descending. Ascending qualifies when the lowest
+positive native value is at or below the threshold. Descending qualifies when
+the highest positive native value is at or above it. Display text is never
+parsed. Missing, disabled, unavailable and nonnumeric data fail open, while an
+unavailable saved selection remains visible so reinstalling the dictionary
+restores it.
 
-A new lookup renders blurred while an enabled rule is undecided. A qualifying
-rule keeps the blur; when neither qualifies, including unavailable checks,
-definitions reveal. Hovering a definition or the compact summary
+The Design preview uses fixed mature, count and native-frequency samples
+without contacting Anki, recording history or running another lookup.
+
+| Desktop | Narrow |
+| --- | --- |
+| ![Three independent definition-blur conditions and their thresholds](assets/anki-mature-blur-settings.png) | ![Definition-blur controls in narrow Settings](assets/definition-blur-settings-narrow.png) |
+
+A frequency-only match renders blurred immediately. When frequency does not
+qualify while count or Anki evidence is still pending, definitions stay
+pending; when no checked condition qualifies, including unavailable checks,
+they reveal. Hovering a definition or the compact summary
 reveals in either mode. With the timed reveal, one deadline runs from the
 first display: navigating to a kanji entry or another word cancels the live
 timer, and Back continues with the remaining time rather than restarting, as
@@ -81,16 +94,17 @@ Native kanji entries are outside term blur; term entries reached through a
 clicked kanji participate.
 
 Automatic pronunciation waits until the definitions are revealed, so the audio
-does not give the reading away while they are blurred. The first count snapshot
-and Anki result decide the blur once for the whole visit. A result that does not
-qualify reveals and plays at once; a blurred result plays once when hover, the
-deadline or disabling blur reveals it. Pressing the Audio button while blurred
-plays it then instead, and nothing replays at the reveal.
+does not give the reading away while they are blurred. The request-owned
+frequency groups, first count snapshot and Anki result decide the blur for the
+whole visit. A result that does not qualify reveals and plays at once; a
+blurred result plays once when hover, the deadline or disabling blur reveals
+it. Pressing the Audio button while blurred plays it then instead, and nothing
+replays at the reveal.
 
-Turning both rules off reveals open popups without touching a Note draft.
+Turning all three conditions off reveals open popups without touching a Note draft.
 Disabling lookup counts removes only the count rule. Changes to Anki settings
 invalidate pending and completed maturity evidence, including a word retained
 for Back; old replies cannot blur the current view.
 Revealed definitions never become blurred again during the same lookup. Other
-live edits apply to unrevealed popups from their original display time. With
-Anki blur off, the original count behavior and lookup path are unchanged.
+live edits apply to pending or blurred popups from their original display time.
+Frequency blur adds no engine, storage, Anki or network request.
