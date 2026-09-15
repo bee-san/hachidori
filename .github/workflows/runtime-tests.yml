@@ -83,6 +83,48 @@ jobs:
           cd "$output"
           sha256sum -c ./*-SHA256SUMS.txt
 
+  firefox-package:
+    name: Firefox draft smoke and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - run: npm ci --prefix test/tooling
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            test/tmp/browsers
+            test/tmp/geckodriver
+          key: firefox-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('test/tooling/package.json') }}
+      - name: Install the pinned Firefox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          npm --prefix test/tooling run install:firefox
+      - run: npm --prefix test/tooling run package:firefox
+      - name: Smoke-test the packaged XPI
+        run: |
+          version="$(node -p "require('./extension/manifest.json').version")"
+          HACHIDORI_FIREFOX_EXTENSION="$PWD/test/tmp/firefox-artifacts/hachidori-$version-firefox-unsigned.xpi" \
+            npm --prefix test/tooling run test:firefox
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: firefox-draft-failure
+          path: test/tmp/ci/
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: firefox-draft-unsigned-xpi
+          path: test/tmp/firefox-artifacts/*.xpi
+          if-no-files-found: error
+          retention-days: 14
+
   chrome:
     name: ${{ matrix.suite }}
     runs-on: ubuntu-24.04

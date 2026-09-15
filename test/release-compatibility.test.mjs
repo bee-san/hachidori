@@ -65,6 +65,11 @@ test("CI checks both supported-browser edges and packages every release candidat
   assert.match(runtime, /name: Release package/u);
   assert.match(runtime, /python3 scripts\/package-store\.py/u);
   assert.match(runtime, /sha256sum -c/u);
+  assert.match(runtime, /name: Firefox draft smoke and package/u);
+  assert.match(runtime, /npm --prefix test\/tooling run install:firefox/u);
+  assert.match(runtime, /npm --prefix test\/tooling run test:firefox/u);
+  assert.match(runtime, /npm --prefix test\/tooling run package:firefox/u);
+  assert.match(runtime, /name: firefox-draft-unsigned-xpi/u);
 });
 
 test("tag and manual release runs verify and publish the checksummed package pair", () => {

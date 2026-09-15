@@ -1,6 +1,9 @@
 # Architecture
 
-Hachidori is a Manifest V3 Chrome extension with a native C++ dictionary engine compiled to WebAssembly. Extension pages send typed runtime messages; the service worker routes them to an offscreen document whose lifetime is independent of service-worker idling.
+Hachidori shares one WebAssembly dictionary engine and extension codebase across
+Chrome and the Firefox desktop draft. Chrome uses a Manifest V3 service worker
+and offscreen document. Firefox uses a Manifest V2 persistent background page
+with the same offscreen page mounted as a hidden iframe.
 
 ## Runtime layout
 
@@ -12,12 +15,15 @@ web page
        └─ appends popup Note entries to the managed custom source
 
 settings.html / content.js
-  └─ chrome.runtime.sendMessage
-       └─ background.js (MV3 service worker)
+  └─ extension runtime messaging
+       └─ background.js
+            ├─ Chrome: MV3 service worker
+            ├─ Firefox: module loaded by persistent firefox-background.html
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one next-due alarm
-            ├─ creates or reconnects to offscreen.html
+            ├─ Chrome: creates or reconnects to offscreen.html
+            ├─ Firefox: waits for the authenticated persistent iframe
             └─ relays requests without holding engine state
                  └─ offscreen.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
@@ -27,7 +33,12 @@ settings.html / content.js
                            └─ single-thread Wasm + IDBFS
 ```
 
-The service worker can be terminated after an idle period without discarding loaded dictionaries. A later request recreates the routing context while the offscreen engine remains authoritative. Runtime requests carry explicit IDs, generations, and result message types so stale or malformed replies fail closed.
+Chrome’s service worker can be terminated after an idle period without
+discarding loaded dictionaries. A later request recreates the routing context
+while the offscreen engine remains authoritative. Firefox keeps both the
+background page and its hidden engine iframe alive. Runtime requests carry
+explicit IDs, generations, and result message types so stale or malformed
+replies fail closed.
 
 ## Primary engine path
 
