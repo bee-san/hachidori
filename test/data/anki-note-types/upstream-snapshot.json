@@ -1,0 +1,132 @@
+{
+  "mode": "pinned",
+  "checkedAt": "2026-09-15T08:44:26Z",
+  "attribution": {
+    "schemaSource": "Hachidori checksum-pinned upstream package run",
+    "readerAdaptedFrom": "Manabitan dev/anki-note-type-upstream.py",
+    "repository": "ManabiIO/manabitan",
+    "commit": "81b149f44426dbfa8bca6af57f3bef9a3af02620"
+  },
+  "results": [
+    {
+      "id": "kiku",
+      "repository": "youyoumu/kiku",
+      "revision": "v2.1.0",
+      "asset": "Kiku_v2.1.0.apkg",
+      "sha256": "e6a3f1d37ee530e07c02ea7f6d64d98f5702e9691c2ccc512ea288b372cef045",
+      "status": "downloaded",
+      "models": [
+        {
+          "name": "Basic",
+          "fields": [
+            "Front",
+            "Back"
+          ]
+        },
+        {
+          "name": "Kiku",
+          "fields": [
+            "Expression",
+            "ExpressionFurigana",
+            "ExpressionReading",
+            "ExpressionAudio",
+            "RelatedExpression",
+            "SelectionText",
+            "MainDefinition",
+            "DefinitionPicture",
+            "Sentence",
+            "SentenceFurigana",
+            "SentenceTranslation",
+            "SentenceAudio",
+            "Picture",
+            "Glossary",
+            "Hint",
+            "IsWordAndSentenceCard",
+            "IsClickCard",
+            "IsSentenceCard",
+            "IsAudioCard",
+            "PitchPosition",
+            "PitchCategories",
+            "Frequency",
+            "FreqSort",
+            "MiscInfo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lapis",
+      "repository": "donkuri/lapis",
+      "revision": "1.7.0",
+      "asset": "Lapis.apkg",
+      "sha256": "85984f8c6f1263e2882c364bbbfdee4bce9e1e03f053a0a5b0ccc6cd90de0088",
+      "status": "downloaded",
+      "models": [
+        {
+          "name": "Lapis",
+          "fields": [
+            "Expression",
+            "ExpressionFurigana",
+            "ExpressionReading",
+            "ExpressionAudio",
+            "SelectionText",
+            "MainDefinition",
+            "DefinitionPicture",
+            "Sentence",
+            "SentenceFurigana",
+            "SentenceAudio",
+            "Picture",
+            "Glossary",
+            "Hint",
+            "IsWordAndSentenceCard",
+            "IsClickCard",
+            "IsSentenceCard",
+            "IsAudioCard",
+            "PitchPosition",
+            "PitchCategories",
+            "Frequency",
+            "FreqSort",
+            "MiscInfo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "senren",
+      "repository": "BrenoAqua/Senren",
+      "revision": "v5.1.0",
+      "asset": "Senren.v5.1.0.apkg",
+      "sha256": "319367e09af9dfd698c3e1a953d404151222d6680ecf6b6acc5d68499578e659",
+      "status": "downloaded",
+      "models": [
+        {
+          "name": "Senren",
+          "fields": [
+            "word",
+            "reading",
+            "sentence",
+            "sentenceFurigana",
+            "sentenceTranslation",
+            "sentenceCard",
+            "audioCard",
+            "notes",
+            "hint",
+            "picture",
+            "wordAudio",
+            "sentenceAudio",
+            "selectionText",
+            "definition",
+            "glossary",
+            "pitchAccents",
+            "pitchPositions",
+            "pitchCategories",
+            "frequencies",
+            "freqSort",
+            "miscInfo",
+            "dictionaryPreference"
+          ]
+        }
+      ]
+    }
+  ]
+}

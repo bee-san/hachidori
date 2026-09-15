@@ -1,0 +1,87 @@
+name: Anki note type compatibility
+
+on:
+  pull_request:
+    paths:
+      - extension/anki-templates.js
+      - extension/anki-setup.js
+      - scripts/anki-note-type-compatibility.mjs
+      - scripts/anki-note-type-upstream.py
+      - test/anki-note-type-compatibility.test.mjs
+      - test/anki-templates.test.mjs
+      - test/anki-setup.test.mjs
+      - test/anki_note_type_upstream_test.py
+      - test/data/anki-note-types/**
+      - docs/anki-note-type-compatibility.md
+      - .github/workflows/anki-note-type-compatibility.yml
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anki-note-types-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Offline contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.2'
+      - name: Test production mappings and negative controls
+        run: node --test test/anki-note-type-compatibility.test.mjs test/anki-templates.test.mjs test/anki-setup.test.mjs
+      - name: Install the Zstandard reader
+        run: python -m pip install zstandard==0.25.0
+      - name: Test the bounded APKG reader
+        run: python -m unittest discover -s test -p 'anki_note_type_upstream_test.py' -v
+
+  compatibility:
+    name: Upstream packages (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pinned, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.2'
+      - name: Install the Zstandard reader
+        run: python -m pip install zstandard==0.25.0
+      - name: Download packages and extract schemas
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ matrix.mode }}
+        run: python scripts/anki-note-type-upstream.py --mode "$MODE" --output "anki-report-$MODE.json"
+      - name: Check every extracted field against production
+        if: ${{ !cancelled() }}
+        env:
+          MODE: ${{ matrix.mode }}
+        run: node scripts/anki-note-type-compatibility.mjs "anki-report-$MODE.json"
+      - name: Retain schemas and provenance only
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: anki-note-types-${{ matrix.mode }}
+          path: anki-report-${{ matrix.mode }}.json
+          if-no-files-found: error
+          retention-days: 30
