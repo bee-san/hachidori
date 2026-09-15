@@ -14156,6 +14156,24 @@ async function contentNoteStage() {
     const savedChildReused = retiredNote && noOldReplay && shell === savingChild.driver.popupAt(1)
       && savingChild.driver.viewRequest(1)?.payload.text === "new child";
     savingChild.close();
+    const movingAnchor = await createHarness();
+    await movingAnchor.initialLookup();
+    const newAnchor = movingAnchor.anchor.cloneNode(true);
+    movingAnchor.anchor.ownerDocument.body.append(newAnchor);
+    const nextRange = newAnchor.ownerDocument.createRange();
+    nextRange.selectNodeContents(newAnchor);
+    const nextCandidate = { ...movingAnchor.candidate, anchor: newAnchor, anchorRange: nextRange,
+      sourceElements: [newAnchor], scanEntries: movingAnchor.candidate.scanEntries.map(entry =>
+        ({ ...entry, node: newAnchor.firstChild })), query: "new anchor" };
+    const nextLookup = movingAnchor.driver.runLookup(nextCandidate);
+    const nextReply = movingAnchor.take("hd_lookup");
+    movingAnchor.anchor.remove();
+    movingAnchor.callbacks().positionPopup();
+    movingAnchor.reply(nextReply, { dictionaryCount: 1, results: [movingAnchor.term("new anchor")] });
+    await nextLookup;
+    const stalePositionIgnored = !movingAnchor.driver.snapshot().popupHidden
+      && movingAnchor.driver.viewRequest()?.payload.text === "new anchor";
+    movingAnchor.close();
     const generations = [];
     for (const generation of [3, 1]) {
       const race = await createHarness();
@@ -14177,7 +14195,8 @@ async function contentNoteStage() {
       race.close();
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
-      retiredIgnored && detachedIgnored && invalidatedPendingRetried && savedChildReused && generations.every(Boolean) };
+      retiredIgnored && detachedIgnored && invalidatedPendingRetried && savedChildReused
+        && stalePositionIgnored && generations.every(Boolean) };
   }
 
   async function retainedParentNavigationCase() {

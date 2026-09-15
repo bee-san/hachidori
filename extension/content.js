@@ -1583,7 +1583,7 @@
   }
 
   function positionPopup(fromLevel = rootLevel, resetToolbar = false) {
-    if (fromLevel.retired || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
+    if (fromLevel.retired || fromLevel.popup?.inert || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
     if (retireDetachedAncestor(fromLevel)) return;
@@ -1654,7 +1654,7 @@
   }
 
   function queueMasonry(level, layout) {
-    if (disposed || level.retired || level.popup.hidden) return;
+    if (disposed || level.retired || level.popup.hidden || level.popup.inert) return;
     popupLayouts.set(level, layout);
     if (popupLayoutFrame !== null) return;
     // Lay out every dirty pane before placing the chain once in this frame.
@@ -1665,7 +1665,7 @@
       popupLayoutFrame = null;
       let owner = null;
       for (const [level, layout] of layouts) {
-        if (level.retired || level.popup.hidden) continue;
+        if (level.retired || level.popup.hidden || level.popup.inert) continue;
         layout();
         if (!owner || level.depth < owner.depth) owner = level;
       }
