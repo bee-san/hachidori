@@ -14990,6 +14990,7 @@ async function contentNoteStage() {
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
+    window.Range.prototype.getClientRects = () => [];
     const document = window.document;
     const block = document.createElement("p");
     block.style.display = "block";
@@ -15011,6 +15012,19 @@ async function contentNoteStage() {
     const unrestricted = scan(block.firstChild)?.query === "hello world";
     harness.emitOptions({ onlyScanJapaneseText: true });
     const gatedAgain = scan(block.firstChild) === null;
+    const mixedNumerals = [];
+    for (const text of ["第1", "第１", "第一", "第1扉", "第１扉", "第一扉", "3月", "３月", "第1。", "第１、"]) {
+      block.textContent = text;
+      const fromJapanese = scan(block.firstChild);
+      const fromNumeral = scan(block.firstChild, 1);
+      const suffix = text.slice(1);
+      mixedNumerals.push(fromJapanese?.query === text
+        && (/[一扉月]/u.test(suffix) ? fromNumeral?.query === suffix : fromNumeral === null));
+    }
+    const rejected = ["123", "１２３", "hello", "hello 日本語", "1。日本語"].every((text) => {
+      block.textContent = text;
+      return scan(block.firstChild) === null;
+    });
     const controls = [];
     for (const tag of ["button", "select", "textarea", "input", "span"]) {
       block.innerHTML = '<b style="display:inline">食</b>';
@@ -15085,6 +15099,8 @@ async function contentNoteStage() {
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
+      "Japanese-only scanning accepts mixed numeral compounds from Japanese or numeral characters":
+        (mixedNumerals.every(Boolean) && rejected) || { mixedNumerals, rejected },
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
       "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
@@ -15439,14 +15455,14 @@ async function contentNoteStage() {
       });
       const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
 
-      async function latinLookup(onlyScanJapaneseText) {
+      async function definitionLookup(onlyScanJapaneseText, text) {
         const language = await createHarness(
           { title: "Generic", kind: "term" },
           { options: { onlyScanJapaneseText } },
         );
         try {
           await language.initialLookup();
-          const latin = appendGlossary(language, "hello");
+          const latin = appendGlossary(language, text);
           language.popup.ownerDocument.caretPositionFromPoint = () => ({
             offsetNode: latin.textNode,
             offset: 0,
@@ -15465,8 +15481,9 @@ async function contentNoteStage() {
           language.close();
         }
       }
-      const japaneseOnly = await latinLookup(true) === null;
-      const unrestrictedText = await latinLookup(false);
+      const japaneseOnly = await definitionLookup(true, "hello ") === null;
+      const unrestrictedText = await definitionLookup(false, "hello ");
+      const mixedNumeral = (await definitionLookup(true, "第1"))?.startsWith("第1です") === true;
       const firstDetails = {
         context,
         deduplicated,
@@ -15474,6 +15491,7 @@ async function contentNoteStage() {
         explicitLink,
         glossaryOnly,
         japaneseOnly,
+        mixedNumeral,
         linkBoundary,
         missPreservedParent,
         nativeCaret,
