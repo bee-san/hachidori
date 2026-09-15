@@ -59,8 +59,6 @@
 
   // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
   // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
-  const JAPANESE_TOKEN_PATTERN =
-    /^[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]+$/u;
   const JAPANESE_CHARACTER_PATTERN =
     /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
   const TOKEN_BOUNDARY_PATTERN = /[\p{White_Space}\p{Punctuation}\p{Symbol}]/u;
@@ -349,7 +347,7 @@
 
   function isJapaneseToken(text) {
     const token = text.split(TOKEN_BOUNDARY_PATTERN, 1)[0];
-    return token.length > 0 && JAPANESE_TOKEN_PATTERN.test(token);
+    return JAPANESE_CHARACTER_PATTERN.test(token);
   }
 
   function computedStyleFor(element, styleCache) {

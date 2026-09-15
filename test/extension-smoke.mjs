@@ -15439,14 +15439,14 @@ async function contentNoteStage() {
       });
       const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
 
-      async function latinLookup(onlyScanJapaneseText) {
+      async function definitionLookup(onlyScanJapaneseText, text) {
         const language = await createHarness(
           { title: "Generic", kind: "term" },
           { options: { onlyScanJapaneseText } },
         );
         try {
           await language.initialLookup();
-          const latin = appendGlossary(language, "hello");
+          const latin = appendGlossary(language, text);
           language.popup.ownerDocument.caretPositionFromPoint = () => ({
             offsetNode: latin.textNode,
             offset: 0,
@@ -15465,8 +15465,9 @@ async function contentNoteStage() {
           language.close();
         }
       }
-      const japaneseOnly = await latinLookup(true) === null;
-      const unrestrictedText = await latinLookup(false);
+      const japaneseOnly = await definitionLookup(true, "hello ") === null;
+      const unrestrictedText = await definitionLookup(false, "hello ");
+      const mixedNumeral = (await definitionLookup(true, "第1"))?.startsWith("第1です") === true;
       const firstDetails = {
         context,
         deduplicated,
@@ -15474,6 +15475,7 @@ async function contentNoteStage() {
         explicitLink,
         glossaryOnly,
         japaneseOnly,
+        mixedNumeral,
         linkBoundary,
         missPreservedParent,
         nativeCaret,

@@ -297,6 +297,7 @@ const PLANNED = [
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
+  "Japanese-only mixed numeral lookups retain native matches and exact source highlights",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
@@ -6876,6 +6877,50 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     check("Japanese-only preferences change automatic scanning in an already-open tab",
       japaneseOnly && latinRequests.length === 1 && latinRequests[0].text === "hello world" && gatedAgain,
       JSON.stringify({ japaneseOnly, latinRequests, gatedAgain }));
+    const title = "mixed-numeral-fixture";
+    const terms = ["第1", "第１", "第一", "1扉", "１扉", "3月", "３月"];
+    await installMediaArchive(settings, buildTitledZip(title, {
+      terms: terms.map((term, index) => [term, "だいいち", "", "", 100, ["mixed numeral match"], index + 1, ""]),
+    }));
+    const mixed = [];
+    try {
+      for (const [text, offset, match] of [
+        ["第1。", 0, "第1"], ["第１。", 0, "第１"], ["第一。", 0, "第一"],
+        ["第1扉。", 1, "1扉"], ["第１扉。", 1, "１扉"], ["3月。", 0, "3月"], ["３月。", 0, "３月"],
+      ]) {
+        await dismiss();
+        await tab.$eval("#verb", (element, value) => { element.textContent = value; }, text);
+        const point = await tab.$eval("#verb", (element, start) => {
+          const range = document.createRange();
+          range.setStart(element.firstChild, start);
+          range.setEnd(element.firstChild, start + 1);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.x + rect.width / 4, y: rect.y + rect.height / 2 };
+        }, offset);
+        await tab.mouse.move(point.x, point.y);
+        await pause();
+        const state = await popup.state();
+        const highlighted = await tab.evaluate(name =>
+          [...(CSS.highlights.get(name) ?? [])].map(range => range.toString()).join(""), HIGHLIGHT_NAME);
+        const lookup = await settings.evaluate(text => chrome.runtime.sendMessage({
+          target: "hoshidicts-offscreen", type: "hd_lookup", text, maxResults: 32, scanLength: 16,
+        }), text.slice(offset));
+        mixed.push({ text, offset, highlighted, visible: popup.visible(state),
+          matched: lookup.results?.some(result => result.term?.expression === match && result.matched === match),
+          correct: highlighted === match && state?.plain.includes("mixed numeral match") });
+        if (text === "第1。" && process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT) {
+          await tab.screenshot({ path: process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT });
+        }
+      }
+    } finally {
+      await dismiss();
+      const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    check("Japanese-only mixed numeral lookups retain native matches and exact source highlights",
+      mixed.length === 7 && mixed.every(value => value.visible && value.matched && value.correct), JSON.stringify(mixed));
   } finally {
     await dismiss();
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
