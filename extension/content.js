@@ -59,8 +59,6 @@
 
   // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
   // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
-  const JAPANESE_TOKEN_PATTERN =
-    /^[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]+$/u;
   const JAPANESE_CHARACTER_PATTERN =
     /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
   const TOKEN_BOUNDARY_PATTERN = /[\p{White_Space}\p{Punctuation}\p{Symbol}]/u;
@@ -351,7 +349,7 @@
 
   function isJapaneseToken(text) {
     const token = text.split(TOKEN_BOUNDARY_PATTERN, 1)[0];
-    return token.length > 0 && JAPANESE_TOKEN_PATTERN.test(token);
+    return JAPANESE_CHARACTER_PATTERN.test(token);
   }
 
   function computedStyleFor(element, styleCache) {
@@ -1428,6 +1426,18 @@
   function anchorRectFor(candidate) {
     if (candidate.anchorRange) {
       try {
+        const first = candidate.scanEntries?.[0];
+        if (first && !candidate.linkAnchor && candidate.exactSelection !== true) {
+          const origin = document.createRange();
+          origin.setStart(first.node, first.offset);
+          origin.setEnd(first.node, first.offset + first.sourceLength);
+          const glyph = origin.getBoundingClientRect();
+          const x = (glyph.left + glyph.right) / 2;
+          const y = (glyph.top + glyph.bottom) / 2;
+          const fragment = [...candidate.anchorRange.getClientRects()].find(rect =>
+            rect.left <= x && rect.right >= x && rect.top <= y && rect.bottom >= y);
+          if (fragment) return fragment;
+        }
         const rect = candidate.anchorRange.getBoundingClientRect();
         if (rect && Number.isFinite(rect.left) && (rect.width > 0 || rect.height > 0)) {
           return rect;
