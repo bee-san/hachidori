@@ -9703,12 +9703,10 @@ async function main() {
     "no .gsm-hoshidicts-popup appeared within 12 hover attempts");
   const hostPresent = verb === null ? false : await tab.evaluate(() => {
     const host = document.querySelector("hachidori-host");
-    // A closed root is invisible from here, which is the point: page script
-    // cannot reach into the popup either.
-    return !!host && host.isConnected && host.shadowRoot === null;
+    return !!host && host.isConnected && host.shadowRoot instanceof ShadowRoot;
   });
-  check("the content script attached its closed-shadow host to the page", hostPresent,
-    "no connected <hachidori-host> with a closed shadow root");
+  check("the content script attached its open-shadow host to the page", hostPresent,
+    "no connected <hachidori-host> with an open shadow root");
 
   // Read through a default rather than under an `if`: a popup that never appeared
   // must fail these three as well, not quietly remove them from the total.
