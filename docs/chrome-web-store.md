@@ -143,7 +143,8 @@ certification. Do not select “no user data” simply because most work is loca
 Review the preparation changes and follow the repository's review gates before
 merging the release candidate. Record the
 release commit and choose a manifest version higher than any previously uploaded
-version (`0.1.0` is the audited version, not an instruction to reuse it forever).
+version (`0.1.1` is the current manifest version, not an instruction to reuse it
+after it has been uploaded).
 
 Use the [test harness setup](../test/README.md) and run the release checks against
 that candidate, recording exact outcomes:
@@ -193,13 +194,22 @@ it to the source archive's name and SHA-256. Make that archive accessible and
 put its public download location in the listing before distribution.
 
 The **Release** workflow can package any selected ref without publishing when
-run manually. For publication, commit a new manifest version and push the exact
-tag `v<manifest.version>`. The tag run validates the version and browser
-contract, rebuilds and checksum-verifies the same three files, preserves them as
-a workflow artifact, creates the corresponding GitHub release, then uploads the
-Chrome ZIP and submits it for review. The store submission blocks on validation
-warnings and uses `DEFAULT_PUBLISH`, so an approved update becomes public
-without another workflow run. Do not move or reuse a published version tag.
+run manually. For automatic publication, commit a new manifest version and push
+the exact tag `v<manifest.version>`. The tag run validates the version and
+browser contract, rebuilds and checksum-verifies the same three files, preserves
+them as a workflow artifact, creates the corresponding GitHub release, then
+uploads the Chrome ZIP and submits it for review.
+
+For a manually created release such as `0.1.1`, first ensure its tag points to
+the selected commit on `main`, then run **Release** with that ref and
+**Publish** enabled. The workflow derives the bare release tag from
+`manifest.version`, verifies that it points to the packaged commit, uploads or
+replaces the three release assets, and submits the same Chrome ZIP. Manual runs
+leave **Publish** disabled by default and remain package checks only.
+
+Store submissions block on validation warnings and use `DEFAULT_PUBLISH`, so an
+approved update becomes public without another workflow run. Do not move or
+reuse a tag after its package has been submitted.
 
 Before the first automated release, link a service account to the publisher and
 configure these GitHub repository settings:
@@ -210,9 +220,8 @@ configure these GitHub repository settings:
   **Publisher → Settings** in the Developer Dashboard.
 - Actions variable `CHROME_WEBSTORE_EXTENSION_ID`: the existing store item ID.
 
-The workflow never publishes on `workflow_dispatch`; manual runs remain package
-checks only. Rotate credentials by replacing the GitHub secret, and never commit
-the JSON key.
+Rotate credentials by replacing the GitHub secret, and never commit the JSON
+key.
 
 Extract the Chrome ZIP into a temporary directory and load that directory in a
 fresh Chrome profile to check the exact upload contents. Verify setup, lookup,

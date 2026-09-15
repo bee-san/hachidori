@@ -6,9 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit, branch, or tag to package without publishing
+        description: Commit, branch, or tag to package
         required: true
         default: main
+      publish:
+        description: Upload assets to the matching release and submit to Chrome Web Store
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,6 +27,9 @@ jobs:
     name: Package release
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_commit: ${{ steps.release.outputs.release_commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,18 +47,35 @@ jobs:
           path: ~/.cache/hachidori-store-sources
           key: release-sources-${{ hashFiles('scripts/store-sources.json') }}
       - name: Validate version, browser support, and release tag
+        id: release
+        env:
+          MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: |
+          release_commit="$(git rev-parse HEAD)"
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             node scripts/check-release.mjs --tag "$GITHUB_REF_NAME"
-            release_commit="$(git rev-parse "$GITHUB_SHA^{commit}")"
-            git fetch --no-tags origin main
-            if ! git merge-base --is-ancestor "$release_commit" origin/main; then
-              echo "Release tags must point to a commit on main." >&2
+            release_tag="$GITHUB_REF_NAME"
+            event_commit="$(git rev-parse "$GITHUB_SHA^{commit}")"
+            if [[ "$release_commit" != "$event_commit" ]]; then
+              echo "The checked-out release commit does not match the tag event." >&2
               exit 1
             fi
+          elif [[ "$MANUAL_PUBLISH" == "true" ]]; then
+            node scripts/check-release.mjs
+            release_tag="$(node -p "require('./extension/manifest.json').version")"
           else
             node scripts/check-release.mjs
+            release_tag=""
           fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" || "$MANUAL_PUBLISH" == "true" ]]; then
+            git fetch --no-tags origin main
+            if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+              echo "Published releases must point to a commit on main." >&2
+              exit 1
+            fi
+          fi
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
       - name: Build and verify the release pair
         run: |
           output="$RUNNER_TEMP/hachidori-release"
@@ -65,14 +90,18 @@ jobs:
           retention-days: 30
 
   publish:
-    name: Publish GitHub release
-    if: github.event_name == 'push'
+    name: Publish GitHub release assets
+    if: github.event_name == 'push' || inputs.publish
     needs: package
     runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.release_commit }}
+          fetch-depth: 0
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: hachidori-release-${{ github.run_id }}
@@ -80,17 +109,34 @@ jobs:
       - name: Publish the verified package pair
         env:
           GH_TOKEN: ${{ github.token }}
+          MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' }}
+          RELEASE_TAG: ${{ needs.package.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ needs.package.outputs.release_commit }}
         run: |
           cd "$RUNNER_TEMP/hachidori-release"
-          gh release create "$GITHUB_REF_NAME" ./* \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --generate-notes \
-            --title "Hachidori ${GITHUB_REF_NAME#v}"
+          if [[ "$MANUAL_PUBLISH" == "true" ]]; then
+            git -C "$GITHUB_WORKSPACE" fetch --force --no-tags \
+              origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            tag_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse "$RELEASE_TAG^{commit}")"
+            if [[ "$tag_commit" != "$RELEASE_COMMIT" ]]; then
+              echo "Release tag $RELEASE_TAG points to $tag_commit, expected $RELEASE_COMMIT." >&2
+              exit 1
+            fi
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+            gh release upload "$RELEASE_TAG" ./* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" ./* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --generate-notes \
+              --title "Hachidori ${RELEASE_TAG#v}"
+          fi
 
   chrome-web-store:
     name: Submit Chrome Web Store update
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.publish
     needs: [package, publish]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -102,6 +148,8 @@ jobs:
       CHROME_WEBSTORE_EXTENSION_ID: ${{ vars.CHROME_WEBSTORE_EXTENSION_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.release_commit }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
