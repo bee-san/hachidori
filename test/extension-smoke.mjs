@@ -691,9 +691,20 @@ async function main() {
   check(configuredAnki.ok && configuredAnki.config.url === "http://localhost:9999/anki"
       && storage.raw.get("ankiConfig").deck === "Mining",
     "Anki configuration writes are normalised and persisted");
+  const malformedVersion = await workerRequest("hd_anki_config_write", { config: {
+    schemaVersion: "99", url: "https://example.test", deck: "Discarded",
+  } });
+  check(!malformedVersion.ok && storage.raw.get("ankiConfig").deck === "Mining",
+    "malformed Anki configuration versions cannot overwrite persisted settings");
   const invalidAnki = await workerRequest("hd_anki_discover", { config: { url: "file:///tmp/anki" } });
   check(!invalidAnki.ok && /valid HTTP or HTTPS/u.test(invalidAnki.error),
     "Anki discovery rejects invalid configured endpoints before fetch");
+
+  storage.raw.set("ankiConfig", { schemaVersion: "99", url: "https://example.test", deck: "Discarded" });
+  const malformedStoredVersion = await workerRequest("hd_anki_config_read");
+  check(!malformedStoredVersion.ok,
+    "malformed persisted Anki configuration versions fail closed when read");
+  storage.raw.set("ankiConfig", configuredAnki.config);
 
   await import(`file://${mjs.replace(/\\/gu, "/")}`); // fail fast if the bundle is broken
   const engineService = await import(
@@ -786,7 +797,7 @@ async function main() {
     "threaded",
     "type",
   ]);
-  check("hd_status echoes the requestId", status.requestId === "status-4", JSON.stringify(status));
+  check("hd_status echoes the requestId", status.requestId === `status-${counter}`, JSON.stringify(status));
   check(
     "the fallback reports single-thread IDBFS",
     status.storageBackend === "idbfs" && status.threaded === false,

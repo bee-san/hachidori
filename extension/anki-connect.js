@@ -4,9 +4,8 @@ export function createAnkiConnectClient({ fetch = globalThis.fetch, timeoutMs = 
   async function invoke(action, params, config) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let response;
     try {
-      response = await fetch(config.url, {
+      const response = await fetch(config.url, {
         method: "POST",
         credentials: "omit",
         redirect: "error",
@@ -19,21 +18,28 @@ export function createAnkiConnectClient({ fetch = globalThis.fetch, timeoutMs = 
           ...(config.apiKey ? { key: config.apiKey } : {}),
         }),
       });
-    } catch {
-      throw new Error(controller.signal.aborted
-        ? "AnkiConnect timed out. Check its URL, open Anki and retry."
-        : "Open Anki with the AnkiConnect add-on installed, then retry.");
+      if (!response.ok) throw new Error(`AnkiConnect returned HTTP ${response.status}.`);
+      const payload = await response.json();
+      if (!payload || Object.keys(payload).length !== 2 || !Object.hasOwn(payload, "result")
+          || !Object.hasOwn(payload, "error") || (payload.error !== null && typeof payload.error !== "string")) {
+        throw new Error("AnkiConnect returned an invalid response.");
+      }
+      if (payload.error !== null) throw new Error(`AnkiConnect: ${payload.error}`);
+      return payload.result;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error("AnkiConnect timed out. Check its URL, open Anki and retry.");
+      }
+      if (error instanceof SyntaxError) {
+        throw new Error("AnkiConnect returned an invalid response.");
+      }
+      if (error instanceof Error && error.message.startsWith("AnkiConnect")) {
+        throw error;
+      }
+      throw new Error("Open Anki with the AnkiConnect add-on installed, then retry.");
     } finally {
       clearTimeout(timer);
     }
-    if (!response.ok) throw new Error(`AnkiConnect returned HTTP ${response.status}.`);
-    const payload = await response.json().catch(() => null);
-    if (!payload || Object.keys(payload).length !== 2 || !Object.hasOwn(payload, "result")
-        || !Object.hasOwn(payload, "error") || (payload.error !== null && typeof payload.error !== "string")) {
-      throw new Error("AnkiConnect returned an invalid response.");
-    }
-    if (payload.error !== null) throw new Error(`AnkiConnect: ${payload.error}`);
-    return payload.result;
   }
 
   async function discover(config) {

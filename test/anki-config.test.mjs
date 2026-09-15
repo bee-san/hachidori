@@ -37,4 +37,7 @@ test("invalid endpoints and malformed stored values fail closed without changing
   }
   assert.throws(() => normaliseAnkiConfig({ schemaVersion: 99, url: "https://example.com" }),
     /newer Anki configuration/u);
+  for (const schemaVersion of [null, "1", 1.5, -1]) {
+    assert.throws(() => normaliseAnkiConfig({ schemaVersion }), /invalid Anki configuration version/u);
+  }
 });

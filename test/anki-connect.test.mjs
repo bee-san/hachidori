@@ -116,3 +116,18 @@ test("AnkiConnect requests time out with an actionable error", async () => {
     url: "http://127.0.0.1:8765", apiKey: "",
   }), /timed out/u);
 });
+
+test("AnkiConnect timeout remains active while the response body is read", async () => {
+  const client = createAnkiConnectClient({ timeoutMs: 5, fetch: async (_url, { signal }) => ({
+    ok: true,
+    status: 200,
+    async json() {
+      await new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    },
+  }) });
+  await assert.rejects(client.invoke("version", {}, {
+    url: "http://127.0.0.1:8765", apiKey: "",
+  }), /timed out/u);
+});

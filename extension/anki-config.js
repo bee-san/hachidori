@@ -23,7 +23,10 @@ function normaliseUrl(value) {
 
 export function normaliseAnkiConfig(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ...DEFAULT_ANKI_CONFIG };
-  if (Number.isInteger(value.schemaVersion) && value.schemaVersion > ANKI_CONFIG_SCHEMA_VERSION) {
+  if (!Number.isInteger(value.schemaVersion) || value.schemaVersion < 0) {
+    throw new Error("This profile has an invalid Anki configuration version.");
+  }
+  if (value.schemaVersion > ANKI_CONFIG_SCHEMA_VERSION) {
     throw new Error("This profile has a newer Anki configuration. Update Hachidori before changing it.");
   }
   const result = { ...DEFAULT_ANKI_CONFIG };

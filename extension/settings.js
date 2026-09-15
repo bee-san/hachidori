@@ -37,6 +37,7 @@ let importing = false;
 let statusTimer = null;
 let requestCounter = 0;
 let ankiConfig = null;
+let ankiDiscoveryGeneration = 0;
 
 function element(id) {
   return document.getElementById(id);
@@ -265,7 +266,7 @@ function renderOptions() {
   renderFrequencyChoices();
 }
 
-function replaceChoices(select, values, selected, emptyLabel) {
+function replaceChoices(select, values, selected, emptyLabel, missingLabel) {
   select.textContent = "";
   const empty = document.createElement("option");
   empty.value = "";
@@ -277,14 +278,20 @@ function replaceChoices(select, values, selected, emptyLabel) {
     option.textContent = value;
     select.appendChild(option);
   }
-  select.value = values.includes(selected) ? selected : "";
+  if (selected !== "" && !values.includes(selected)) {
+    const stale = document.createElement("option");
+    stale.value = selected;
+    stale.textContent = `${selected} (${missingLabel})`;
+    select.appendChild(stale);
+  }
+  select.value = selected;
 }
 
 function renderAnkiConfig(discovery = null) {
   element("anki-url").value = ankiConfig.url;
   element("anki-api-key").value = ankiConfig.apiKey;
-  replaceChoices(element("anki-deck"), discovery?.decks ?? [], ankiConfig.deck, "Choose a deck");
-  replaceChoices(element("anki-model"), discovery?.models ?? [], ankiConfig.model, "Choose a note type");
+  replaceChoices(element("anki-deck"), discovery?.decks ?? [], ankiConfig.deck, "Choose a deck", "not available");
+  replaceChoices(element("anki-model"), discovery?.models ?? [], ankiConfig.model, "Choose a note type", "not available");
   const fields = discovery?.fields ?? [];
   element("anki-fields").textContent = fields.length > 0 ? fields.join(", ") : "Connect to read fields.";
 }
@@ -301,16 +308,21 @@ async function saveAnkiConfig() {
 }
 
 async function discoverAnki() {
+  const generation = ++ankiDiscoveryGeneration;
   const output = element("anki-status");
   output.textContent = "Connecting…";
   try {
-    ankiConfig = { ...ankiConfig, url: element("anki-url").value,
+    const submitted = { ...ankiConfig, url: element("anki-url").value,
       apiKey: element("anki-api-key").value };
-    await saveAnkiConfig();
-    const reply = await sendWorker("hd_anki_discover", { config: ankiConfig });
+    const saved = await sendWorker("hd_anki_config_write", { config: submitted });
+    if (generation !== ankiDiscoveryGeneration) return;
+    ankiConfig = saved.config;
+    const reply = await sendWorker("hd_anki_discover", { config: saved.config });
+    if (generation !== ankiDiscoveryGeneration) return;
     renderAnkiConfig(reply.discovery);
     output.textContent = `Connected to AnkiConnect ${reply.discovery.version}.`;
   } catch (error) {
+    if (generation !== ankiDiscoveryGeneration) return;
     output.textContent = describe(error);
   }
 }
@@ -517,12 +529,22 @@ function attachHandlers() {
   element("anki-connect").addEventListener("click", discoverAnki);
   element("anki-deck").addEventListener("change", async event => {
     ankiConfig.deck = event.target.value;
-    await saveAnkiConfig();
+    try {
+      await saveAnkiConfig();
+    } catch (error) {
+      await readAnkiConfig();
+      element("anki-status").textContent = describe(error);
+    }
   });
   element("anki-model").addEventListener("change", async event => {
     ankiConfig.model = event.target.value;
-    await saveAnkiConfig();
-    await discoverAnki();
+    try {
+      await saveAnkiConfig();
+      await discoverAnki();
+    } catch (error) {
+      await readAnkiConfig();
+      element("anki-status").textContent = describe(error);
+    }
   });
 
   window.addEventListener("beforeunload", (event) => {
