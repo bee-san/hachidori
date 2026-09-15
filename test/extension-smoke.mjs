@@ -16976,7 +16976,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     }),
   );
   if (definitionInput) definitionInput.value = "A retained draft";
-  addNoteEntry = async () => {
+  addNoteEntry = () => {
     throw new Error("simulated append failure");
   };
   termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
@@ -16986,20 +16986,11 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     definition: definitionInput?.value,
     error: termNoteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent,
   };
-  let resolveNoteEntry;
-  addNoteEntry = () => new Promise((resolveNote) => {
-    resolveNoteEntry = resolveNote;
-  });
+  addNoteEntry = () => {};
   termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await new Promise((done) => window.setTimeout(done, 0));
-  const pendingNote = {
-    formBusy: termNoteForm?.getAttribute("aria-busy"),
-    saveText: termNoteForm?.querySelector(".gsm-hoshidicts-note-save")?.textContent,
-  };
-  resolveNoteEntry?.();
-  await new Promise((done) => window.setTimeout(done, 0));
   check(
-    "a rejected Note append retains its draft and a successful retry closes it",
+    "a rejected Note append retains its draft and an accepted retry closes immediately",
     rejectedDraft.hidden === false
       && rejectedDraft.definition === "A retained draft"
       && rejectedDraft.error?.includes("simulated append failure")
@@ -17009,8 +17000,6 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
         reading: "ぷろじぇくてっど",
         definition: "A retained draft",
       }))
-      && pendingNote.formBusy === "true"
-      && pendingNote.saveText === "Saving…"
       && termNoteForm?.hidden === true
       && shadow.activeElement === termNoteButton
       && noteEditingStates.join(",") === "true,false",
@@ -17019,7 +17008,6 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       hidden: termNoteForm?.hidden,
       noteEditingStates,
       noteEntries,
-      pendingNote,
       rejectedDraft,
     }),
   );
@@ -17849,7 +17837,6 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   let replays = 0;
   let selected = null;
   let replayIntent = null;
-  let finishAppend;
   let appends = 0;
   const linkPredicates = [];
   const originalResizeObserver = window.ResizeObserver;
@@ -17878,7 +17865,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     },
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
     onBeforeResultsRendered(intent) { if (!current) { replays += 1; replayIntent = intent; return false; } },
-    onAddCustomEntry() { appends += 1; return new Promise(resolve => { finishAppend = resolve; }); },
+    onAddCustomEntry() { appends += 1; },
   });
   const results = ["First", "Second"].map((dictionary) => ({ ...result, term: { ...result.term,
     glossaries: [{ dictionary, glossary: JSON.stringify([{ type: "structured-content", content: {
@@ -17940,17 +17927,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
         && definition.selectionStart === 2 && definition.selectionEnd === 7
         && !observer.takeRecords().some(record => [...record.removedNodes].includes(form)));
       observer.disconnect();
-      // A form opened before a replay and a pending save keep the same controls.
       form.elements.term.value = "saved";
       form.elements.reading.value = "reading";
       const beforeAppend = appends;
       form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
       view.renderResults(results, candidate, { ...context, preserveViewControls: true });
-      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-      preserved.push(popup.querySelector("form") === form && form.getAttribute("aria-busy") === "true"
-        && form.elements.definition.disabled && appends === beforeAppend + 1);
-      finishAppend();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      preserved.push(form.hidden && appends === beforeAppend + 1);
       const refreshed = [{ ...results[0], term: { ...results[0].term, expression: "new prefill", reading: "new reading" } }];
       view.renderResults(refreshed, candidate, { ...context, preserveViewControls: true });
       popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -17983,7 +17965,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     preserved.push(kanjiForm.elements.term.value === "食" && kanjiForm.elements.reading.value === "");
     view.renderResults(results, candidate, context);
     preserved.push(!kanjiForm.isConnected && !popup.querySelector("form"));
-    check("same-view refresh preserves mounted Note drafts, pending saves and response-time focus",
+    check("same-view refresh preserves mounted Note drafts and response-time focus",
       preserved.every(Boolean), JSON.stringify(preserved));
 
     view.renderResults(results, candidate, context);

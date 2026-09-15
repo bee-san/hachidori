@@ -2516,17 +2516,7 @@
       form.appendChild(formActions);
 
       let editing = false;
-      let pending = false;
-
-      function setPending(value) {
-        pending = value;
-        form.setAttribute("aria-busy", String(pending));
-        save.textContent = pending ? "Saving…" : "Save";
-        for (const control of [term, reading, definition, cancel, save]) {
-          control.disabled = pending;
-        }
-        button.disabled = pending;
-      }
+      let accepted = false;
 
       function close(restoreFocus = true) {
         if (form.hidden) return false;
@@ -2545,6 +2535,7 @@
       }
 
       function open() {
+        accepted = false;
         const prefill = readPrefill() || {};
         term.value = String(prefill.term || "");
         reading.value = String(prefill.reading || "");
@@ -2570,9 +2561,9 @@
           event.stopPropagation();
         }
       });
-      form.addEventListener("submit", async (event) => {
+      form.addEventListener("submit", (event) => {
         event.preventDefault();
-        if (pending) return;
+        if (accepted) return;
         const entry = {
           term: term.value,
           reading: reading.value,
@@ -2586,21 +2577,17 @@
         }
         error.hidden = true;
         error.textContent = "";
-        setPending(true);
-        let saved = false;
         try {
-          await onAddCustomEntry(entry);
-          saved = true;
+          onAddCustomEntry(entry);
+          accepted = true;
+          close();
         } catch (appendError) {
           error.textContent = typeof appendError?.message === "string"
             ? appendError.message
             : String(appendError);
           error.hidden = false;
           positionPopup();
-        } finally {
-          setPending(false);
         }
-        if (saved) close();
       });
 
       return { close, open, form };
