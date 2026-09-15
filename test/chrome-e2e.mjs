@@ -344,7 +344,7 @@ const PLANNED = [
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
-  "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "a multiline match anchors the popup to the scanned line fragment",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
@@ -9606,12 +9606,12 @@ async function main() {
     style: element.getAttribute("style"),
   }));
   await tab.$eval("#verb", element => {
-    element.innerHTML = '<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
+    element.innerHTML = '\u524d\u524d\u524d\u524d\u524d\u524d\u524d\u524d<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
     element.style.cssText = [
       "position: fixed",
       "top: 10px",
-      "left: 20px",
-      "width: 3em",
+      "left: 600px",
+      "width: 11em",
       "word-break: break-all",
     ].join(";");
   });
@@ -9622,20 +9622,37 @@ async function main() {
     const ranges = highlight ? [...highlight] : [];
     const rects = ranges.flatMap(range => [...range.getClientRects()]);
     if (rects.length === 0) return null;
+    const start = document.createRange();
+    const startNode = document.getElementById("placement-start").firstChild;
+    start.setStart(startNode, 0);
+    start.setEnd(startNode, 1);
+    const active = start.getBoundingClientRect();
     return {
+      active: { bottom: active.bottom, left: active.left, top: active.top },
       bottom: Math.max(...rects.map(rect => rect.bottom)),
+      left: Math.min(...rects.map(rect => rect.left)),
       rectCount: rects.length,
       text: ranges.map(range => range.toString()).join(""),
       top: Math.min(...rects.map(rect => rect.top)),
+      viewportWidth: innerWidth,
     };
   }, HIGHLIGHT_NAME);
+  if (process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT) {
+    await tab.screenshot({ path: process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT });
+  }
+  const wrappedExpectedLeft = wrappedPopupState && wrappedSource
+    ? Math.max(6, Math.min(Math.round(wrappedSource.active.left),
+      wrappedSource.viewportWidth - wrappedPopupState.rect.width - 6))
+    : null;
   check(
-    "the popup opens below the complete wrapped match instead of the hovered glyph",
+    "a multiline match anchors the popup to the scanned line fragment",
     wrappedPopupState !== null
       && wrappedSource?.text === "\u98df\u3079\u305f\u304b\u3063\u305f"
       && wrappedSource.rectCount > 1
-      && wrappedPopupState.rect.top >= wrappedSource.bottom + 3,
-    JSON.stringify({ popup: wrappedPopupState?.rect, source: wrappedSource }),
+      && wrappedSource.active.left > wrappedSource.left + 50
+      && Math.abs(wrappedPopupState.rect.left - wrappedExpectedLeft) <= 1
+      && Math.abs(wrappedPopupState.rect.top - (wrappedSource.active.bottom + 4)) <= 1,
+    JSON.stringify({ expectedLeft: wrappedExpectedLeft, popup: wrappedPopupState?.rect, source: wrappedSource }),
   );
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();

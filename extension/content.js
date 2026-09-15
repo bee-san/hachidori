@@ -1427,6 +1427,18 @@
   function anchorRectFor(candidate) {
     if (candidate.anchorRange) {
       try {
+        const first = candidate.scanEntries?.[0];
+        if (first && !candidate.linkAnchor && candidate.exactSelection !== true) {
+          const origin = document.createRange();
+          origin.setStart(first.node, first.offset);
+          origin.setEnd(first.node, first.offset + first.sourceLength);
+          const glyph = origin.getBoundingClientRect();
+          const x = (glyph.left + glyph.right) / 2;
+          const y = (glyph.top + glyph.bottom) / 2;
+          const fragment = [...candidate.anchorRange.getClientRects()].find(rect =>
+            rect.left <= x && rect.right >= x && rect.top <= y && rect.bottom >= y);
+          if (fragment) return fragment;
+        }
         const rect = candidate.anchorRange.getBoundingClientRect();
         if (rect && Number.isFinite(rect.left) && (rect.width > 0 || rect.height > 0)) {
           return rect;
