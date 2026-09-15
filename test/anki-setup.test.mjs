@@ -5,8 +5,8 @@ import { ankiSetupFamily, detectAnkiSetup } from "../extension/anki-setup.js";
 
 const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
   "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
-const SENREN_FIELDS = ["word", "reading", "sentence", "sentenceAudio", "definition", "wordAudio", "picture", "glossary",
-  "frequencies", "freqSort", "miscInfo"];
+const SENREN_FIELDS = ["word", "reading", "sentence", "sentenceFurigana", "sentenceAudio", "definition", "wordAudio",
+  "picture", "glossary", "frequencies", "freqSort", "miscInfo"];
 const baseConfig = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
 
 // A tiny collection: note IDs per model, cards per note, and each card's deck.
@@ -116,7 +116,10 @@ test("ties, zero usage, missing families and incompatible layouts ask for Settin
   const configured = await detectAnkiSetup(senren.invoke, baseConfig());
   assert.equal(configured.status, "configured");
   assert.deepEqual([configured.model, configured.deck, configured.fieldTemplates.word.value,
+    configured.fieldTemplates.sentence.value, configured.fieldTemplates.sentenceFurigana.value,
     configured.fieldTemplates.picture.value, configured.fieldTemplates.sentenceAudio.value],
-    ["Senren 3", "Words::Mined", "{expression}", "{screenshot}", ""]);
+    ["Senren 3", "Words::Mined", "{expression}",
+      '<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>',
+      '<span class="group">{sentence-furigana}</span>', "{screenshot}", ""]);
   await assert.rejects(detectAnkiSetup(async () => ["Kiku"], baseConfig()), /invalid note type list/u);
 });

@@ -789,6 +789,22 @@ failure. Independent count blur and autoplay remain covered. These are
 fixtures, never the user's actual notes or scheduling data.
 `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` captures the updated Settings controls.
 
+### Upstream Anki note-type contracts
+
+`node --test test/anki-note-type-compatibility.test.mjs
+test/anki-templates.test.mjs test/anki-setup.test.mjs` sends the complete
+reviewed Kiku, Lapis and Senren field schemas through production preset mapping.
+It checks exact field order, model selection, first-field identity, every
+mapping and overwrite mode, intentional blanks, markers and automatic-setup
+core detection. Negative controls cover schema and mapping drift.
+
+`python -m unittest discover -s test -p 'anki_note_type_upstream_test.py' -v`
+tests the bounded read-only APKG extractor, including legacy and modern SQLite,
+Zstandard collections, dummy legacy databases, corruption, ambiguous members,
+unsupported schemas, checksums, URLs and redirect credential stripping. See
+[Anki note-type compatibility](../docs/anki-note-type-compatibility.md) for the
+pinned/latest package commands and the schema-only boundary.
+
 ### jsdom
 
 The renderer integration stage needs jsdom. The reproducible setup above installs

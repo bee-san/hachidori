@@ -334,6 +334,13 @@ the specific reason. The winner's deck is chosen the same way from
 temporary filtered decks are excluded and the deck holding the most distinct
 notes wins. No write action is ever issued: nothing in the collection changes.
 
+The package-facing preset contract is checked independently against the
+complete Kiku 2.1.0, Lapis 1.7.0 and Senren 5.1.0 APKG schemas. The bounded
+read-only extractor and weekly pinned/latest workflow are documented in
+[Anki note-type compatibility](anki-note-type-compatibility.md). Schema checks
+cover field identity, order, values, overwrite modes, blanks and markers; they
+do not execute card templates or prove rendering and media playback.
+
 The worker records the outcome, and for a `configured` proposal it saves the
 model, deck and resolved field templates through the ordinary revisioned
 options write in the same storage write as the setup record. A mapping the user
@@ -1119,7 +1126,9 @@ response, preserving whitespace and repeated steps with text-only DOM nodes.
 Equal or missing endpoints and traces without a nonempty step name produce no
 disclosure. This presentation does not change normalization, the result object,
 Note prefill, or the trace available to future consumers. Existing native trace
-and response bounds apply; the renderer does not add character truncation.
+and response bounds apply. The renderer independently limits each visible value
+to 4 KiB of UTF-8 and shows at most 31 named steps followed by an omission
+marker, so a malformed response cannot create an unbounded popup tree.
 
 The visible summary is the endpoint path. Accessibility labels use the browser's
 English, Japanese, or Ukrainian base language, with English for other languages;

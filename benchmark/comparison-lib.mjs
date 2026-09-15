@@ -491,10 +491,14 @@ export function renderComparisonReadme(summary, docsPath = "docs/benchmarks.md")
 }
 
 export function renderComparisonMarkdown(summary) {
+  const outerWarmups = summary.schedule.warmupsPerCell;
+  const warmupDescription = outerWarmups === 0
+    ? "No outer warmups were configured; each adapter's lookup warmup is excluded."
+    : `Measured-sample values are medians \`[min–max]\`. ${outerWarmups} outer warmup${outerWarmups === 1 ? "" : "s"} per engine/corpus cell ${outerWarmups === 1 ? "is" : "are"} excluded, as is each adapter's lookup warmup.`;
   const lines = [
     "# Cross-engine benchmarks",
     "",
-    "Measured-sample values are medians `[min–max]`. The outer warmup for every engine/corpus cell and each adapter's lookup warmup are excluded.",
+    warmupDescription,
     "",
     "## Results",
     "",
@@ -547,7 +551,7 @@ export function renderComparisonMarkdown(summary) {
     "## Schedule and provenance",
     "",
     `- Seed: \`${summary.schedule.seed}\``,
-    `- Excluded outer warmups: \`${summary.schedule.warmupsPerCell}\` per engine/corpus cell`,
+    `- Configured outer warmups: \`${outerWarmups}\` per engine/corpus cell (${outerWarmups === 0 ? "none excluded" : "excluded from aggregates"})`,
     `- Measured samples: \`${summary.schedule.measuredSamplesPerCell}\` per engine/corpus cell`,
     `- Measured lookup passes: \`${summary.schedule.lookupPassesPerRun}\` per fresh-profile run`,
     `- Scheduled runs: \`${summary.schedule.scheduledRuns}\``,
