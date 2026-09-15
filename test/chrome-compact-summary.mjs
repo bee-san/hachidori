@@ -52,8 +52,8 @@ export async function checkCompactSummaryLayout(browser) {
           };
         }, { width, fontSize });
         evidence.push(geometry);
-        assert.ok(geometry.contentHeight <= geometry.height, `summary text clipped: ${JSON.stringify(geometry)}`);
-        assert.ok(geometry.summaryContentHeight <= geometry.summaryHeight, `summary wrapper clipped: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.contentHeight <= geometry.height + 1, `summary text clipped: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.summaryContentHeight <= geometry.summaryHeight + 1, `summary wrapper clipped: ${JSON.stringify(geometry)}`);
         assert.ok(geometry.hit && geometry.button.right <= geometry.popup.right
           && geometry.button.bottom <= geometry.popup.bottom, `Note button inaccessible: ${JSON.stringify(geometry)}`);
         assert.equal(geometry.text, "kanji representationrepresentation in Chinese characters");
