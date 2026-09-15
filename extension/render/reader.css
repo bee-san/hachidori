@@ -1751,7 +1751,6 @@ html[data-hoshidicts-theme="girlypop"],
   min-height: 36px;
   margin: 2px 0 0;
   padding: 0;
-  overflow: hidden;
   display: flex;
   flex: 1 1 180px;
   align-self: center;
@@ -1788,10 +1787,8 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-compact-definition-items {
   min-width: 0;
-  max-height: 2.7em;
   margin: 0;
   padding: 0;
-  overflow: hidden;
   list-style: none;
 }
 
