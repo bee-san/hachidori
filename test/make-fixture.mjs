@@ -602,7 +602,7 @@ export function frequencyRankingFixture() {
 }
 
 export function compactSummaryFixture() {
-  const query = '要約', child = '要約語', broken = '欠損図';
+  const query = '要約', child = '要約語', summaryLookup = '短い説明', broken = '欠損図';
   const illustrated = 'compact-summary-illustrated', plain = 'compact-summary-text';
   const image = path => ({ tag: 'img', path, width: 16, height: 16 });
   const leading = [{ type: 'structured-content', content: { tag: 'div', content: [
@@ -614,17 +614,19 @@ export function compactSummaryFixture() {
     { tag: 'a', href: `?query=${encodeURIComponent(child)}&primary_reading=${encodeURIComponent('ようやくご')}`,
       content: 'Open the related term' },
   ] } }];
-  return { query, child, broken, illustrated, plain, leading, dictionaries: [
+  return { query, child, summaryLookup, broken, illustrated, plain, leading, dictionaries: [
     { title: illustrated, archive: buildTitledZip(illustrated, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
       [query, 'ようやく', '', '', 0, leading, 1, ''],
       [child, 'ようやくご', '', '', 0, ['Text before the image.', image('media/kanji.png')], 2, ''],
-      [broken, 'けっそんず', '', '', 0, [image('media/missing.png'), 'The text remains available.'], 3, ''],
+      [summaryLookup, 'みじかいせつめい', '', '', 0, ['The compact summary lookup target.'], 3, ''],
+      [broken, 'けっそんず', '', '', 0, [image('media/missing.png'), 'The text remains available.'], 4, ''],
     ] }) },
     { title: plain, archive: buildTitledZip(plain, { mediaEntries: [
       ['media/missing.png', Buffer.concat([makePng(), Buffer.from([1])])],
       ['media/kanji.png', Buffer.concat([makePng(), Buffer.from([1])])],
     ], terms: [
       [query, 'ようやく', '', '', 0, ['Alternative first', 'Alternative second'], 1, ''],
+      [summaryLookup, 'みじかいせつめい', '', '', 0, ['Alternative compact summary target.'], 2, ''],
     ] }) },
   ] };
 }

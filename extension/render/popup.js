@@ -2947,6 +2947,7 @@
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
+        onClose = null,
         noteControls = null,
         feedback = null,
         onDeinflectionToggle = null,
@@ -2996,15 +2997,22 @@
         deinflection.addEventListener("toggle", onDeinflectionToggle);
         headword.appendChild(deinflection);
       }
-      if (primary && typeof onBack === "function") {
+      if (primary && (typeof onBack === "function" || typeof onClose === "function")) {
         const navigation = documentRef.createElement("div");
         navigation.className = "gsm-hoshidicts-kanji-navigation";
         const back = documentRef.createElement("button");
         back.type = "button";
-        back.className = "gsm-hoshidicts-kanji-back";
-        back.textContent = "Back";
-        back.setAttribute("aria-label", "Back to previous results");
-        back.addEventListener("click", onBack);
+        if (typeof onClose === "function") {
+          back.className = "gsm-hoshidicts-popup-close";
+          back.textContent = "×";
+          back.setAttribute("aria-label", "Close lookup");
+          back.addEventListener("click", onClose);
+        } else {
+          back.className = "gsm-hoshidicts-kanji-back";
+          back.textContent = "Back";
+          back.setAttribute("aria-label", "Back to previous results");
+          back.addEventListener("click", onBack);
+        }
         navigation.append(back, headword);
         header.appendChild(navigation);
       } else {
@@ -3160,6 +3168,7 @@
               ? renderContext.pitchAccentFuriganaDictionary
               : null,
           onBack: resultIndex === 0 ? renderContext.onBack : null,
+          onClose: resultIndex === 0 ? renderContext.onClose : null,
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
           feedback,
           onDeinflectionToggle: positionIfCurrent,

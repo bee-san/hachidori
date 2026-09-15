@@ -352,11 +352,16 @@ const PLANNED = [
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "dictionary cards render open under a plain title with no disclosure control",
+  "nested definition lookups use an accessible close control that dismisses the child popup",
+  "nested kanji navigation keeps Back and restores the term lookup close control",
+  "repeated keyboard activation returns focus to an existing child lookup close control",
+  "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
+  "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "external dictionary Enter activation creates one safe browser tab through the extension",
@@ -757,6 +762,10 @@ async function popupReader(page, depth = 0) {
             .map(el => el.tagName.toLowerCase() + ":" + flat(el)),
           tabs: Array.from(this.querySelectorAll(".gsm-hoshidicts-tab"), flat),
           hasBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
+          closeControl: (() => {
+            const control = this.querySelector(".gsm-hoshidicts-popup-close");
+            return control ? { label: control.getAttribute("aria-label"), text: flat(control) } : null;
+          })(),
           focusedClass: this.getRootNode().activeElement?.className || "",
           focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
             .indexOf(this.getRootNode().activeElement),
@@ -892,6 +901,34 @@ async function popupReader(page, depth = 0) {
               text: range.toString(),
             };
           }
+        }
+        return null;
+      }`,
+    });
+    return result.value ?? null;
+  }
+
+  async function compactSummaryTextRect(text) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: text }],
+      functionDeclaration: `function (text) {
+        const summary = this.querySelector(".gsm-hoshidicts-compact-definition-summary");
+        if (!summary) return null;
+        const walker = this.ownerDocument.createTreeWalker(summary, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const offset = (node.nodeValue || "").indexOf(text);
+          if (offset < 0) continue;
+          const first = String.fromCodePoint(text.codePointAt(0));
+          const range = this.ownerDocument.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, offset + first.length);
+          const rect = range.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          return { rect: rect.toJSON(), text: range.toString() };
         }
         return null;
       }`,
@@ -1514,7 +1551,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
+    anki, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -1982,7 +2019,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
     await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
       && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 close child lookup");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
       parent: (await rootState()).selected };
@@ -2035,7 +2072,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && protectedDraft.inputFocused && protectedDraft.draft === draft.draft && equal(protectedDraft.selection, [2, 7]), "E8 live Note and child protect their original projection");
     await tab.keyboard.press("Escape");
     require((await popup.state()).noteOpen === false, "E8 Note must close before child retirement");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 protected child retirement");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 protected child retirement");
     await popup.dictionaryTabs("focus", studyKey);
     const flushed = await until(rootState, value => selectedReady(studyKey)(value)
       && equal(value.entries[0].cards.map(card => card.dictionary), [links]), "E8 safe presentation flush");
@@ -2325,6 +2362,30 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && Buffer.from(encoded, "base64").equals(makePng()), "E10 one shared native media request and exact PNG bytes");
     evidence.sharedMedia = media.length;
     await tab.keyboard.press("Escape");
+    await popup.nested("blur");
+    const summarySource = await popup.compactSummaryTextRect(fixture.summaryLookup);
+    if (summarySource?.rect) {
+      await tab.mouse.move(summarySource.rect.x + summarySource.rect.width / 2,
+        summarySource.rect.y + summarySource.rect.height / 2);
+    }
+    const summaryDeadline = Date.now() + 1_000;
+    let summaryChild = null;
+    while (Date.now() < summaryDeadline) {
+      const state = await child.state();
+      if (child.visible(state) && state.plain.includes(fixture.summaryLookup)) {
+        summaryChild = state;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    const summaryDismissed = summaryChild
+      ? await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden()
+      : false;
+    evidence.compactLookup = { summarySource, summaryChild, summaryDismissed };
+    if (summaryChild && !summaryDismissed) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
     if (process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT) {
       const { x, y, width, height } = (await popup.dictionaryTabs()).rect;
       await tab.screenshot({ path: process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT, clip: { x, y, width, height } });
@@ -2340,7 +2401,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E10 child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
 
     await show(fixture.broken);
     await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
@@ -2520,6 +2581,11 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
   if (failure) throw failure;
   check("Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
     evidence.passed && evidence.sharedMedia === 1, JSON.stringify(evidence));
+  check("compact definition text opens a nested lookup with the same close contract",
+    evidence.compactLookup.summarySource?.text === fixture.summaryLookup[0]
+      && evidence.compactLookup.summaryChild?.closeControl?.label === "Close lookup"
+      && evidence.compactLookup.summaryChild.closeControl.text === "×"
+      && evidence.compactLookup.summaryDismissed, JSON.stringify(evidence.compactLookup));
   check("Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
     evidence.passed && evidence.imageSources?.focused === 1, JSON.stringify(evidence.imageSources));
 }
@@ -2572,6 +2638,12 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       state => state.plain.includes(fixture.child));
     const definitionParent = await popup.state();
     const definitionChildLayout = await child.nested();
+    const definitionClose = definitionChild?.closeControl;
+    const definitionClosed = await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden();
+    if (definitionClosed) {
+      await moveToDefinition(definitionSource);
+      await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    }
     const definitionGrandchildSource = await child.definitionTextRect(fixture.grandchild);
     await moveToDefinition(definitionGrandchildSource);
     const definitionGrandchild = await waitForPopupState(grandchild,
@@ -2627,6 +2699,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       definitionChain,
       definitionChild,
       definitionChildLayout,
+      definitionClose,
+      definitionClosed,
       definitionGrandchild,
       definitionGrandchildSource,
       definitionHighlights,
@@ -2659,6 +2733,21 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const repeatedKeyboardFocus = (await child.state()).focusedClass;
+    const existingGrandchild = await grandchild.state();
+    if (grandchild.visible(existingGrandchild)) {
+      await grandchild.click(".gsm-hoshidicts-popup-close");
+      await grandchild.waitForHidden();
+      await popup.nested("focus-link");
+      await tab.keyboard.press("Enter");
+    }
+    const focusedDefinitionSource = await child.definitionTextRect(fixture.grandchild);
+    await moveToDefinition(focusedDefinitionSource);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const focusedPointerChild = await child.state();
+    const focusedPointerGrandchild = await grandchild.state();
     const chain = await child.nested();
     await child.click(".gsm-hoshidicts-note-button");
     const draft = await child.writeNote({ definition: "child draft survives parent Note" });
@@ -2697,7 +2786,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     const kanji = await waitForPopupState(child, state => state.hasBack && !state.plain.includes("The referenced entry."));
     await child.click(".gsm-hoshidicts-kanji-back");
     const back = await waitForPopupState(child, state => state.plain.includes("The referenced entry."));
-    await child.click(".gsm-hoshidicts-kanji-back");
+    const returnedWithClose = await child.click(".gsm-hoshidicts-popup-close");
+    if (!returnedWithClose) await child.click(".gsm-hoshidicts-kanji-back");
     const returned = await child.waitForHidden();
     const retained = await popup.nested();
     const ancestorHighlight = await tab.evaluate(name => {
@@ -2718,7 +2808,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await child.sourcePaint("cover-parent");
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const covered = await popup.sourcePaint();
-      await child.click(".gsm-hoshidicts-kanji-back");
+      await child.click(".gsm-hoshidicts-popup-close");
       await child.waitForHidden();
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const after = await popup.sourcePaint("forget");
@@ -2738,8 +2828,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
-      second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled, refreshedControls };
+    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, repeatedKeyboardFocus,
+      focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
+      second, fullChain, limited, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
     await writeOptions({
       activationKey: originalOptions.activationKey ?? "Shift",
@@ -2777,6 +2868,24 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && definitionEvidence.activationGated
       && definitionEvidence.activationChild?.plain.includes(fixture.child),
     JSON.stringify(definitionEvidence));
+  check("nested definition lookups use an accessible close control that dismisses the child popup",
+    definitionEvidence.definitionClose?.label === "Close lookup"
+      && definitionEvidence.definitionClose.text === "×"
+      && definitionEvidence.definitionClosed, JSON.stringify(definitionEvidence));
+  check("nested kanji navigation keeps Back and restores the term lookup close control",
+    evidence.kanji?.hasBack && evidence.kanji.closeControl === null
+      && evidence.back?.closeControl?.label === "Close lookup"
+      && !evidence.back.hasBack && evidence.returnedWithClose && evidence.returned,
+    JSON.stringify({ kanji: evidence.kanji, back: evidence.back, returned: evidence.returned }));
+  check("repeated keyboard activation returns focus to an existing child lookup close control",
+    evidence.repeatedKeyboardFocus.includes("gsm-hoshidicts-popup-close"),
+    JSON.stringify({ focusedClass: evidence.repeatedKeyboardFocus }));
+  check("focused popup controls prevent incidental definition pointer lookups",
+    evidence.focusedDefinitionSource?.text === fixture.grandchild[0]
+      && evidence.focusedPointerChild?.plain.includes(fixture.child)
+      && !grandchild.visible(evidence.focusedPointerGrandchild),
+    JSON.stringify({ source: evidence.focusedDefinitionSource, child: evidence.focusedPointerChild,
+      grandchild: evidence.focusedPointerGrandchild }));
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
       && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn
