@@ -31,6 +31,7 @@
     KEYBIND_MODIFIERS,
     KEYBIND_MODIFIER_CODES,
     clampOption,
+    definitionBlurFrequencyEvidence,
     definitionBlurQualifies,
     normaliseActivationKey,
     projectContentOptions,
@@ -193,8 +194,11 @@
   let ankiMaturityEpoch = 0;
   let dictionaryStateRevision = -1;
   let lookupStatsDescriptor = { generation: null, revision: -1 };
-  const DEFINITION_BLUR_KEYS = ["definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurDirection", "definitionBlurThreshold",
-    "definitionBlurReveal", "definitionBlurDelayMs"];
+  const DEFINITION_BLUR_KEYS = [
+    "definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled",
+    "definitionBlurFrequencyDictionary", "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
+    "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
+  ];
 
   function extensionAlive() {
     try {
@@ -1988,8 +1992,26 @@
       });
   }
 
-  function definitionBlurActive() {
-    return (options.definitionBlurEnabled && options.showLookupCounts) || options.definitionBlurAnkiMature;
+  function definitionBlurActive(candidate = options) {
+    return (candidate.definitionBlurEnabled && candidate.showLookupCounts)
+      || candidate.definitionBlurAnkiMature || candidate.definitionBlurFrequencyEnabled;
+  }
+
+  function snapshotDefinitionBlurFrequency(results) {
+    const groups = Array.isArray(results?.[0]?.term?.frequencies) ? results[0].term.frequencies : [];
+    return {
+      groups: groups.flatMap(group => typeof group?.dictionary === "string" && Array.isArray(group.frequencies)
+        ? [{ dictionary: group.dictionary,
+            frequencies: group.frequencies.map(frequency => ({ value: frequency?.value })) }]
+        : []),
+      dictionaries: dictionaries
+        .filter(dictionary => dictionary.enabled !== false && dictionary.frequencyCount > 0)
+        .map(({ title, frequencyMode, frequencyCount }) => ({ title, frequencyMode, frequencyCount })),
+    };
+  }
+
+  function currentDefinitionBlurFrequency(blur, candidate = options) {
+    return definitionBlurFrequencyEvidence(candidate, blur.frequency.groups, blur.frequency.dictionaries);
   }
 
   function discardStaleAnkiMaturity(request, level) {
@@ -1998,8 +2020,6 @@
     blur.ankiCheck = null;
     blur.ankiMature = false;
     settleDefinitionBlur(request, level);
-    if (blur.state === "blurred" && !definitionBlurQualifies(options,
-      options.showLookupCounts ? currentLookupCount(request.lookupStats) : null)) revealDefinitions(request, level);
   }
 
   // Definition blur (issue #9 L5). The decision lives on the request, so tabs,
@@ -2043,17 +2063,19 @@
   // Before the stored settings arrive the decision stays pending, like the
   // audio controller's own options hold, so a first lookup cannot reveal or
   // auto-play against defaults that the stored settings then contradict.
-  function beginDefinitionBlur(request, level) {
+  function beginDefinitionBlur(request, level, results) {
     clearDefinitionBlurTimer(level);
     if (!request) return;
     if (!request.blur) {
       const awaitingOptions = optionsStorageRevision < 0;
       const active = awaitingOptions || definitionBlurActive();
       request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), awaitingOptions,
-        lookupCount: undefined, ankiMature: undefined, autoplayHeld: active };
+        lookupCount: undefined, ankiMature: undefined, autoplayHeld: active,
+        frequency: snapshotDefinitionBlurFrequency(results) };
     }
     if (!request.blur.awaitingOptions) {
       discardStaleAnkiMaturity(request, level);
+      settleDefinitionBlur(request, level);
       armDefinitionBlurTimer(request, level);
     }
   }
@@ -2074,26 +2096,37 @@
     audio?.settleAutoplay(level, request);
   }
 
-  // Either enabled signal can qualify immediately. A negative decision waits
-  // for both; failures fail open. Retain the first count while Anki is pending
-  // so later row events cannot change this visit's decision. Hover and the
-  // absolute deadline can reveal before either reply, without reblurring.
+  // Any enabled signal can qualify immediately. Frequency is synchronous,
+  // while a negative decision waits for enabled count and Anki evidence.
+  // Retain the first count while Anki is pending so later row events cannot
+  // change this visit's decision. Hover and the absolute deadline can reveal
+  // before either reply, without reblurring.
   function settleDefinitionBlur(request, level, lookupCount) {
     const blur = request.blur;
     if (!blur) return;
     if (blur.lookupCount === undefined && lookupCount !== undefined) blur.lookupCount = lookupCount;
-    if (blur.awaitingOptions) return;
+    if (blur.awaitingOptions || blur.state === "revealed") return;
     const countEnabled = options.definitionBlurEnabled && options.showLookupCounts;
-    const qualifies = definitionBlurQualifies(options, countEnabled ? blur.lookupCount : null, blur.ankiMature);
-    if (!qualifies && ((countEnabled && blur.lookupCount === undefined)
-        || (options.definitionBlurAnkiMature && blur.ankiMature === undefined))) return;
-    if (blur.state !== "pending") return;
+    const frequency = currentDefinitionBlurFrequency(blur);
+    const qualifies = definitionBlurQualifies(options, countEnabled ? blur.lookupCount : null,
+      blur.ankiMature, frequency.qualified);
+    const pending = !qualifies && ((countEnabled && blur.lookupCount === undefined)
+      || (options.definitionBlurAnkiMature && blur.ankiMature === undefined));
+    if (pending) {
+      if (blur.state !== "pending") {
+        blur.state = "pending";
+        applyDefinitionBlurState(request, level);
+      }
+      return;
+    }
     if (!qualifies) {
       revealDefinitions(request, level);
       return;
     }
-    blur.state = "blurred";
-    applyDefinitionBlurState(request, level);
+    if (blur.state !== "blurred") {
+      blur.state = "blurred";
+      applyDefinitionBlurState(request, level);
+    }
   }
 
   function ensureUi() {
@@ -2448,7 +2481,7 @@
     pruneLevels(level.depth + 1);
     const token = level.lookupToken;
     level.currentViewRequest = request ?? null;
-    beginDefinitionBlur(request, level);
+    beginDefinitionBlur(request, level, results);
     level.activeTermRender = {
       candidate,
       dictionaries,
@@ -3669,14 +3702,11 @@
         const blur = request?.blur;
         if (!blur) continue;
         discardStaleAnkiMaturity(request, level);
-        if (blur.state === "pending") checkDefinitionBlurMaturity(request, level);
         settleDefinitionBlur(request, level);
+        if (blur.state === "pending") checkDefinitionBlurMaturity(request, level);
         // Disabling reveals at once; other edits apply to unrevealed views
         // from their original display time. Note drafts are untouched.
         if (!definitionBlurActive()) {
-          revealDefinitions(request, level);
-        } else if (blur.state === "blurred" && !definitionBlurQualifies(next,
-          next.showLookupCounts ? currentLookupCount(request.lookupStats) : null, blur.ankiMature)) {
           revealDefinitions(request, level);
         } else armDefinitionBlurTimer(request, level);
       }

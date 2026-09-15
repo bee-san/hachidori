@@ -270,8 +270,9 @@ const PLANNED = [
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "local count and blur settings belong to Reading without external corpus controls",
   "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
+  "frequency blur uses native fixture values without recording counts or waiting for another signal",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
-  "the Anki maturity blur source persists independently of lookup counts",
+  "the Anki maturity blur condition persists independently of lookup counts",
   "a cold Anki duplicate index leaves the popup responsive while its first refresh is held",
   "cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
   "a scheduled index refresh preserves the current popup and updates only new lookups",
@@ -5431,7 +5432,7 @@ async function checkLookupStatistics({ settings, tab, popup }) {
 
     const localControls = await settings.evaluate(() => ({
       counts: document.getElementById("opt-lookup-counts").closest("section").id,
-      blur: document.getElementById("opt-blur-source").closest("section").id,
+      blur: document.getElementById("opt-blur-frequency").closest("section").id,
       external: document.querySelectorAll("#opt-corpus-url, #opt-corpus-seen").length,
     }));
     check("local count and blur settings belong to Reading without external corpus controls",
@@ -5465,8 +5466,9 @@ async function waitForDefinitionBlur(popup, predicate, timeoutMs = 10_000) {
 }
 
 async function checkDefinitionBlur({ settings, tab, popup }) {
-  const controls = ["opt-lookup-counts", "opt-blur-source", "opt-blur-direction", "opt-blur-threshold",
-    "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
+  const controls = ["opt-lookup-counts", "opt-blur-count", "opt-blur-anki", "opt-blur-frequency",
+    "opt-blur-frequency-dictionary", "opt-blur-frequency-order", "opt-blur-frequency-threshold",
+    "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
   const original = await readSettingsControls(settings, controls);
   const freshLookup = async () => {
     await tab.bringToFront();
@@ -5480,7 +5482,8 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     const before = await readLookupStatistics(settings);
     const threshold = before.statistics.lookupCount + 1;
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-source": "count",
+      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-count": true,
+      "opt-blur-anki": false, "opt-blur-frequency": false,
       "opt-blur-direction": "atLeast", "opt-blur-threshold": String(threshold), "opt-blur-reveal": "hover",
     });
     const qualifyingDefinition = await freshLookup();
@@ -5503,7 +5506,30 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
         && autoplayed?.audioAttempted,
       JSON.stringify({ threshold, qualifying, pendingOrBlurred, hovered, notQualifying, autoplayed }));
 
+    const beforeFrequency = await readLookupStatistics(settings);
     await updateSettingsControls(settings, {
+      "opt-lookup-counts": false, "opt-audio-autoplay": false, "opt-blur-count": false,
+      "opt-blur-anki": false, "opt-blur-frequency": true,
+      "opt-blur-frequency-dictionary": "hachidori-fixture", "opt-blur-frequency-order": "auto",
+      "opt-blur-frequency-threshold": "100", "opt-blur-reveal": "hover",
+    });
+    const frequencyDefinition = await freshLookup();
+    const frequencyBlurred = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
+    await updateSettingsControls(settings, { "opt-blur-frequency-threshold": "143" });
+    const outsideDefinition = await freshLookup();
+    const frequencyOpen = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const afterFrequency = await readLookupStatistics(settings);
+    check("frequency blur uses native fixture values without recording counts or waiting for another signal",
+      frequencyDefinition?.plain.includes("食べる") && frequencyBlurred?.state === "blurred"
+        && frequencyBlurred.definitionsState === "blurred" && frequencyBlurred.countText === ""
+        && outsideDefinition?.plain.includes("食べる") && frequencyOpen?.state === "revealed"
+        && beforeFrequency.ok && afterFrequency.ok
+        && beforeFrequency.descriptor.generation === afterFrequency.descriptor.generation
+        && beforeFrequency.descriptor.revision === afterFrequency.descriptor.revision,
+      JSON.stringify({ frequencyBlurred, frequencyOpen, beforeFrequency, afterFrequency }));
+
+    await updateSettingsControls(settings, {
+      "opt-lookup-counts": true, "opt-blur-count": true, "opt-blur-frequency": false,
       "opt-audio-autoplay": false, "opt-blur-direction": "atLeast", "opt-blur-threshold": "1",
       "opt-blur-reveal": "timed", "opt-blur-delay": "1",
     });
@@ -5516,7 +5542,7 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await freshLookup();
     const longBlurred = await decided();
     await popup.lookupStatistics("remember");
-    await updateSettingsControls(settings, { "opt-blur-source": "off" });
+    await updateSettingsControls(settings, { "opt-blur-count": false });
     const disabled = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
     const retained = await popup.lookupStatistics();
     check("blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
@@ -5539,8 +5565,11 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
 async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, watchedServiceWorkers }) {
   const alarmName = "hachidori-anki-index";
   const intervalMs = 30 * 60 * 1000;
-  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-source",
-    "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
+  const originalViewport = settings.viewport();
+  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-count", "opt-blur-anki",
+    "opt-blur-frequency", "opt-blur-frequency-dictionary", "opt-blur-frequency-order",
+    "opt-blur-frequency-threshold", "opt-blur-direction", "opt-blur-threshold",
+    "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
   const calls = [];
   const refreshCandidateQuery = "\"note:Basic\"";
@@ -5604,7 +5633,8 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await tab.keyboard.press("Escape");
     await popup.waitForHidden();
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": false, "opt-blur-source": "off", "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
+      "opt-lookup-counts": false, "opt-blur-count": false, "opt-blur-anki": false,
+      "opt-blur-frequency": false, "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
     });
     await settings.evaluate(async () => {
       const { options } = await chrome.storage.local.get("options");
@@ -5613,23 +5643,23 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         options: { anki: { ...defaults, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
       if (!reply.ok) throw new Error(reply.error);
     });
-    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
+    await updateSettingsControls(settings, { "opt-blur-anki": true });
     // Keep the main Settings page's custom source draft alive for later tests.
     const reloadedSettings = await browser.newPage();
     let persisted;
     try {
       await reloadedSettings.goto(settings.url(), { waitUntil: "domcontentloaded" });
       await reloadedSettings.reload({ waitUntil: "domcontentloaded" });
-      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-source").value === "anki");
+      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki").checked);
       persisted = await reloadedSettings.evaluate(async () => {
         const { options } = await chrome.storage.local.get("options");
         return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
-          source: document.getElementById("opt-blur-source").value,
+          checked: document.getElementById("opt-blur-anki").checked,
           revealDisabled: document.getElementById("opt-blur-reveal").disabled };
       });
     } finally { await reloadedSettings.close(); }
-    check("the Anki maturity blur source persists independently of lookup counts",
-      original["opt-blur-source"] === "off" && persisted.enabled && persisted.source === "anki"
+    check("the Anki maturity blur condition persists independently of lookup counts",
+      original["opt-blur-anki"] === false && persisted.enabled && persisted.checked
         && !persisted.counts && !persisted.countBlur && !persisted.revealDisabled,
       JSON.stringify({ original, persisted }));
 
@@ -5689,12 +5719,12 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await triggerRefresh();
     await waitForDefinitionBlur(popup, () => releaseIndex !== null);
     const heldOnDisable = releaseIndex !== null;
-    await updateSettingsControls(settings, { "opt-blur-source": "off" });
+    await updateSettingsControls(settings, { "opt-blur-anki": false });
     releaseRefresh();
     const refreshedWhileDisabled = await waitForSnapshot(true, emptyIndex.snapshot.refreshedAt);
     const disabledAlarm = await settings.evaluate(name => chrome.alarms.get(name), alarmName);
     const callsBeforeReenable = refreshCalls();
-    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
+    await updateSettingsControls(settings, { "opt-blur-anki": true });
     await freshLookup();
     const reenabled = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     const reenabledIndex = await readIndex();
@@ -5760,7 +5790,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         && JSON.stringify(restoredIndex) === JSON.stringify(restartState.index) && refreshCalls() === callsBeforeRestart,
       JSON.stringify({ stopped, cachedReply, restored, restoredIndex, restartState, callsBeforeRestart, calls }));
 
-    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-source": "either",
+    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-count": true,
       "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
     const cachedMiss = await settings.evaluate(() => chrome.runtime.sendMessage({
       target: "hachidori-anki", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
@@ -5779,15 +5809,29 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       JSON.stringify({ offline, retry, cachedMiss, countQualified, calls }));
 
 
-    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
-      await updateSettingsControls(settings, { "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5" });
+    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT
+        || process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT) {
+      await updateSettingsControls(settings, {
+        "opt-lookup-counts": true, "opt-blur-count": true, "opt-blur-anki": true,
+        "opt-blur-frequency": true, "opt-blur-frequency-dictionary": "hachidori-fixture",
+        "opt-blur-frequency-order": "auto", "opt-blur-frequency-threshold": "10000",
+        "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5",
+      });
       await settings.bringToFront();
-      await settings.setViewport({ width: 960, height: 900 });
       await showSettingsSection(settings, "lookup");
       const card = await settings.$("#definition-blur-settings");
-      await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
-      await settings.evaluate(() => new Promise(requestAnimationFrame));
-      await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+      if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
+        await settings.setViewport({ width: 960, height: 1100 });
+        await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+        await settings.evaluate(() => new Promise(requestAnimationFrame));
+        await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+      }
+      if (process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT) {
+        await settings.setViewport({ width: 420, height: 1600 });
+        await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+        await settings.evaluate(() => new Promise(requestAnimationFrame));
+        await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT });
+      }
     }
   } finally {
     releaseRefresh();
@@ -5801,6 +5845,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     // The restarted service worker can retire again before fixture cleanup.
     await session?.detach().catch(() => {});
     await refreshSession.detach().catch(() => {});
+    await settings.setViewport(originalViewport);
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }

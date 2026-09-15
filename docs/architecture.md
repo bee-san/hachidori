@@ -751,11 +751,21 @@ for local recording, revision adoption and backup behavior. Lookup counts never
 contact an external application; retired corpus connection settings are ignored.
 
 `definitionBlurEnabled` remains the count criterion and requires
-`showLookupCounts`. The independent, default-off `definitionBlurAnkiMature`
-criterion combines with it through the shared `definitionBlurQualifies` OR
-rule. Its subject is the logical request's first canonical expression, retained
-through tab projections, Show more, Note refresh and Back. Native kanji entries
-remain outside term blur.
+`showLookupCounts`. The independent, default-off
+`definitionBlurAnkiMature` and `definitionBlurFrequencyEnabled` criteria
+combine with it through the shared `definitionBlurQualifies` OR rule. Anki's
+subject is the logical request's first canonical expression. Frequency uses a
+request-owned snapshot of the primary result's canonical frequency groups, so
+tab projections, Show more, Note refresh and Back reuse the same evidence.
+Native kanji entries remain outside term blur.
+
+The pure `definitionBlurFrequencyEvidence` helper is shared by the reader and
+Design preview. It accepts only positive finite native `frequency.value`
+numbers from the selected enabled dictionary; rendered labels are never parsed.
+Automatic order maps `rank-based` to ascending and occurrence-based or
+undeclared metadata to descending. Ascending compares the minimum value at or
+below the threshold; descending compares the maximum value at or above it.
+Missing, disabled, unavailable and nonnumeric sources fail open.
 
 The worker answers both duplicate membership and `hd_anki_maturity` from one
 local index, independently of the Anki mutation queue and dictionary engine.
@@ -810,13 +820,13 @@ unrelated absent word never contacts Anki. Current visits retain their original
 decision when a later snapshot changes, including visits retained for Back.
 
 Each request owns one blur decision and the original first-display deadline.
-Pending rules hide definitions immediately, and qualifying evidence can settle
-the combined decision without waiting for the other rule. Otherwise both
-enabled rules must finish before revealing. The first count snapshot controls
-that visit's blur; later statistics rows cannot reverse it. The first audio
-result stays held while definitions are pending or blurred, and the reveal,
-whether from the decision, hover, the deadline or disabling blur, releases it
-once. A manual play while blurred spends it.
+Frequency can qualify synchronously before the first render. A nonqualifying
+frequency leaves enabled count or Anki evidence pending; otherwise the request
+fails open immediately. The first count snapshot controls that visit's blur;
+later statistics rows cannot reverse it. The first audio result stays held
+while definitions are pending or blurred, and the reveal, whether from the
+decision, hover, the deadline or disabling blur, releases it once. A manual
+play while blurred spends it.
 Navigating away cancels only the live timer; Back and persisted `pageshow`
 re-arm its remaining time. Revealed requests never reblur. Anki option changes
 invalidate pending and completed maturity evidence through an options epoch,
@@ -824,13 +834,15 @@ including requests retained for Back, so late replies cannot revive it or
 overwrite a current decision. The opt-in does not change the count-only path
 when disabled, and unavailable Anki never delays the local lookup.
 
-Settings uses the existing revisioned options queue. One source picker offers
-Off, Lookup count, Mature Anki cards and Either condition. It maps to the existing
-two booleans; there is no separate combination option. Count direction and threshold appear
-only for Lookup count or Either. A paused notice links to the count recording
-toggle when recording is disabled. Any active source shows the common reveal
-controls. The Design preview passes a fixed mature sample and a count of
-three through the same rule, hover and timer without making Anki requests.
+Settings uses the existing revisioned options queue. Three independent
+checkboxes enable lookup count, mature Anki and frequency threshold conditions;
+any checked condition can qualify. Count direction and threshold appear only
+for the count condition. Frequency exposes one enabled dictionary, automatic
+or explicit order and its threshold while retaining an unavailable saved
+selection. A paused notice links to the count recording toggle when recording
+is disabled. Any active condition shows the common reveal controls. The Design
+preview passes fixed count, maturity and native frequency samples through the
+same helpers, hover and timer without making lookups or Anki requests.
 
 ## Lookup response boundary
 

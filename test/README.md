@@ -463,7 +463,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 506 checks, all of
+full request→reply round trip per contract-C message type. 537 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -768,12 +768,15 @@ The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, autoplay held until the hover reveal
 and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,
 lookup before initial options, and pending/completed evidence retained for Back
-across Anki mapping edits. Settings exercises the Off / Lookup count / Mature
-Anki cards / Either condition selector, its mapping to the existing booleans,
-conditional controls, paused-count explanation and revision-bound drafts.
-The Design preview uses fixed maturity data and the shared reveal behavior.
-The existing count-only tests retain timed reveal, navigation, Note and audio
-ownership coverage.
+across Anki mapping edits. Frequency cases cover rank and occurrence boundaries,
+multiple native values, unavailable sources, immediate qualification, pending
+count evidence, no new message type, live edits, tabs, Note refresh, native
+kanji and Back. Settings exercises three independent condition checkboxes,
+conditional controls, unavailable frequency selections, paused-count
+explanation and revision-bound drafts. The Design preview uses fixed count,
+maturity and frequency data with the shared reveal behavior. The existing
+count-only tests retain timed reveal, navigation, Note and audio ownership
+coverage.
 
 The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
 service-worker target (mining controls) and offscreen target (including its
@@ -787,7 +790,10 @@ and unavailable Anki retains the last successful snapshot. A real worker restart
 restores cached membership and a missing alarm without retrying a recent
 failure. Independent count blur and autoplay remain covered. These are
 fixtures, never the user's actual notes or scheduling data.
-`HACHIDORI_DEFINITION_BLUR_SCREENSHOT` captures the updated Settings controls.
+The real-WASM fixture also verifies frequency-only blur from native value `142`
+while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
+`HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
+Settings controls.
 
 ### Upstream Anki note-type contracts
 
