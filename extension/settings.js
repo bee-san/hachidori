@@ -55,6 +55,7 @@ const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates",
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+  DEFINITION_BLUR_FREQUENCY_ORDERS,
   clampOption, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -71,6 +72,7 @@ const NUMBER_FIELDS = [
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
   { key: "definitionBlurThreshold", id: "opt-blur-threshold" },
+  { key: "definitionBlurFrequencyThreshold", id: "opt-blur-frequency-threshold" },
   { key: "popupWidthPx", id: "opt-popup-width", live: true },
   { key: "popupHeightPx", id: "opt-popup-height", live: true },
   { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
@@ -87,6 +89,7 @@ const APPEARANCE_CHOICES = [
   { key: "popupTheme", id: "opt-popup-theme" },
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
   { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
+  { key: "definitionBlurFrequencyOrder", id: "opt-blur-frequency-order", values: DEFINITION_BLUR_FREQUENCY_ORDERS },
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
 ];
 
@@ -804,6 +807,11 @@ function selectedFrequencyDictionary(title = options.frequencyDictionary) {
     && isAvailableFrequencyDictionary(dictionary));
 }
 
+function selectedDefinitionBlurFrequencyDictionary(title = options.definitionBlurFrequencyDictionary) {
+  return dictionaries.find((dictionary) => dictionary.title === title
+    && isAvailableFrequencyDictionary(dictionary));
+}
+
 function normaliseDictionarySelections() {
   let changed = false;
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
@@ -1299,6 +1307,24 @@ function renderFrequencyChoices() {
   select.value = previous;
 }
 
+function renderDefinitionBlurFrequencyChoices() {
+  const select = element("opt-blur-frequency-dictionary");
+  if (select === document.activeElement) return;
+  const previous = options.definitionBlurFrequencyDictionary;
+  select.disabled = !options.definitionBlurFrequencyEnabled;
+  select.replaceChildren(new Option("Choose an enabled frequency dictionary", ""));
+  const available = dictionaries.filter(isAvailableFrequencyDictionary);
+  for (const dictionary of available) select.add(new Option(dictionaryLabel(dictionary), dictionary.title));
+  if (previous !== "" && !available.some(dictionary => dictionary.title === previous)) {
+    const known = dictionaries.find(dictionary => dictionary.title === previous);
+    const status = known?.enabled === false ? "disabled" : "unavailable";
+    const stale = new Option(`${known ? dictionaryLabel(known) : previous} (${status})`, previous);
+    stale.disabled = true;
+    select.add(stale);
+  }
+  select.value = previous;
+}
+
 function renderCompactSummaryControls() {
   const enabled = options.showCompactDefinitionSummary;
   element("opt-compact-summary").checked = enabled;
@@ -1310,30 +1336,31 @@ function renderCompactSummaryControls() {
     "term", "Automatic — first available definition", enabled);
 }
 
-function definitionBlurSource() {
-  if (options.definitionBlurEnabled) return options.definitionBlurAnkiMature ? "either" : "count";
-  return options.definitionBlurAnkiMature ? "anki" : "off";
-}
-
-// Either blur rule uses the shared reveal controls. The delay field shows
+// All blur rules use the shared reveal controls. The delay field shows
 // seconds, fractions allowed, for the stored milliseconds.
 function renderDefinitionBlurControls() {
-  const source = element("opt-blur-source");
-  if (source !== document.activeElement) source.value = definitionBlurSource();
   const countEnabled = options.definitionBlurEnabled;
-  const enabled = countEnabled || options.definitionBlurAnkiMature;
+  const ankiEnabled = options.definitionBlurAnkiMature;
+  const frequencyEnabled = options.definitionBlurFrequencyEnabled;
+  const enabled = countEnabled || ankiEnabled || frequencyEnabled;
+  for (const [id, checked] of [["opt-blur-count", countEnabled], ["opt-blur-anki", ankiEnabled],
+    ["opt-blur-frequency", frequencyEnabled]]) element(id).checked = checked;
   // Hiding a focused native control can emit blur before its pending change.
   // Defer hiding until focusout so the change keeps its captured revision.
   for (const [id, hidden] of [["definition-blur-count-controls", !countEnabled],
-    ["definition-blur-reveal-controls", !enabled], ["definition-blur-delay-control", options.definitionBlurReveal !== "timed"]]) {
+    ["definition-blur-frequency-controls", !frequencyEnabled], ["definition-blur-reveal-controls", !enabled],
+    ["definition-blur-delay-control", options.definitionBlurReveal !== "timed"]]) {
     const group = element(id);
     if (!hidden || !group.contains(document.activeElement)) group.hidden = hidden;
   }
   element("definition-blur-count-paused").hidden = !countEnabled || options.showLookupCounts;
-  element("definition-blur-anki-help").hidden = !options.definitionBlurAnkiMature;
-  element("definition-blur-either-help").hidden = definitionBlurSource() !== "either";
+  element("definition-blur-anki-help").hidden = !ankiEnabled;
+  element("definition-blur-any-help").hidden = [countEnabled, ankiEnabled, frequencyEnabled].filter(Boolean).length < 2;
   element("definition-blur-help").hidden = !enabled;
+  renderDefinitionBlurFrequencyChoices();
   for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
+    ["opt-blur-frequency-order", "definitionBlurFrequencyOrder", frequencyEnabled],
+    ["opt-blur-frequency-threshold", "definitionBlurFrequencyThreshold", frequencyEnabled],
     ["opt-blur-reveal", "definitionBlurReveal", enabled], ["opt-blur-threshold", "definitionBlurThreshold", countEnabled]]) {
     const control = element(id);
     if (control === document.activeElement) continue;
@@ -1344,6 +1371,27 @@ function renderDefinitionBlurControls() {
   if (delay !== document.activeElement) {
     delay.value = String(options.definitionBlurDelayMs / 1000);
     delay.disabled = !enabled || options.definitionBlurReveal !== "timed";
+  }
+  const frequencyHelp = element("definition-blur-frequency-help");
+  frequencyHelp.hidden = !frequencyEnabled;
+  if (frequencyEnabled) {
+    const selected = selectedDefinitionBlurFrequencyDictionary();
+    if (!options.definitionBlurFrequencyDictionary) {
+      frequencyHelp.textContent = "Choose one enabled frequency dictionary. Missing frequency data leaves this condition unqualified.";
+    } else if (!selected) {
+      frequencyHelp.textContent = "The saved frequency dictionary is unavailable. This condition fails open until it is enabled or reinstalled.";
+    } else {
+      const automatic = options.definitionBlurFrequencyOrder === "auto";
+      const order = automatic && selected.frequencyMode === "rank-based"
+        ? "ascending" : automatic ? "descending" : options.definitionBlurFrequencyOrder;
+      const mode = automatic
+        ? selected.frequencyMode === "rank-based" ? "rank-based metadata"
+          : selected.frequencyMode === "occurrence-based" ? "occurrence-based metadata" : "undeclared metadata"
+        : "your manual order";
+      frequencyHelp.textContent = order === "ascending"
+        ? `Using ${mode}: values at or below the threshold qualify.`
+        : `Using ${mode}: values at or above the threshold qualify.`;
+    }
   }
 }
 
@@ -2751,9 +2799,22 @@ function attachHandlers() {
       writeOptions();
     });
   }
-  element("opt-blur-source").addEventListener("change", (event) => {
-    options.definitionBlurEnabled = ["count", "either"].includes(event.target.value);
-    options.definitionBlurAnkiMature = ["anki", "either"].includes(event.target.value);
+  for (const [id, key] of [["opt-blur-count", "definitionBlurEnabled"],
+    ["opt-blur-anki", "definitionBlurAnkiMature"],
+    ["opt-blur-frequency", "definitionBlurFrequencyEnabled"]]) {
+    element(id).addEventListener("change", (event) => {
+      options[key] = event.target.checked;
+      renderDefinitionBlurControls();
+      writeOptions();
+    });
+  }
+  element("opt-blur-frequency-dictionary").addEventListener("change", (event) => {
+    if (event.target.value && !selectedDefinitionBlurFrequencyDictionary(event.target.value)) {
+      event.target.value = options.definitionBlurFrequencyDictionary;
+      setOptionsStatus("That frequency dictionary is no longer available.");
+      return;
+    }
+    options.definitionBlurFrequencyDictionary = event.target.value;
     renderDefinitionBlurControls();
     writeOptions();
   });
@@ -2938,10 +2999,10 @@ function attachHandlers() {
       optionsEditRevision = null;
       if (event.target.id === "opt-custom-popup-css") renderCustomCss(true);
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
+      if (event.target.id === "opt-blur-frequency-dictionary") renderDefinitionBlurFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
       if (event.target.closest("#definition-blur-settings")) {
-        if (event.target.id === "opt-blur-source") event.target.value = definitionBlurSource();
         renderDefinitionBlurControls();
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
