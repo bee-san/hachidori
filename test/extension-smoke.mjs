@@ -1165,9 +1165,7 @@ async function overlayModeBackgroundStage() {
     chrome.__bus.sendMessage("overlay-settings", {
       target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-capture",
     }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
-    chrome.__bus.sendMessage("overlay-settings", {
-      target: "hoshidicts-worker", type: "hd_backup_download", requestId: "overlay-backup",
-    }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
+
     chrome.__bus.sendMessage("overlay-reader", {
       target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
       url: "https://example.test/", active: true,
@@ -3647,7 +3645,7 @@ async function customEngineStage() {
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
-    backupExport: !overlayMode,
+
     browserShortcuts: !overlayMode,
     customLinks: !overlayMode,
     localFileAccessPrompt: !overlayMode,
@@ -3672,7 +3670,9 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
-  const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
+  window.eval(readFileSync(resolve(EXTENSION, "blob-download.js"), "utf8").replace(/^export\s+/gmu, ""));
+  const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -3703,6 +3703,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/^import .* from "\.\/overlay-mode\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/blob-download\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")

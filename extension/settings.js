@@ -9,6 +9,7 @@ import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
+import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
@@ -347,12 +348,7 @@ function renderSharingLink(value) {
 // Save the pinned release through a blob download, including in Electron hosts.
 async function downloadAnkiAddon() {
   const archive = await fetchAnkiAddon();
-  const url = URL.createObjectURL(archive);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = ANKI_ADDON_FILE_NAME;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  downloadBlob(document, archive, ANKI_ADDON_FILE_NAME);
 }
 
 function updateSharingSettings() {
@@ -471,8 +467,8 @@ function updateBackupSettings() {
   if (activeSection !== "backup") return;
   backupController ??= createBackupSettingsController({
     document, send,
-    download: () => send("hd_backup_download", {}, WORKER_TARGET),
-    exportAvailable: HOST_CAPABILITIES.backupExport,
+    download: typeof chrome.downloads?.download === "function"
+      ? () => send("hd_backup_download", {}, WORKER_TARGET) : null,
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {
       if (backupLifecycleTokens.has(token)) postBackupLifecycle({ type: "cancel", token });
@@ -3279,7 +3275,6 @@ async function start() {
   element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
   element("custom-links-settings").disabled = !HOST_CAPABILITIES.customLinks;
   element("custom-links-overlay-help").hidden = HOST_CAPABILITIES.customLinks;
-  element("backup-export-overlay-help").hidden = HOST_CAPABILITIES.backupExport;
   if (HOST_CAPABILITIES.localFileAccessPrompt) {
     createLocalFileAccessController({ document, container: element("settings-local-file-access") });
   }
