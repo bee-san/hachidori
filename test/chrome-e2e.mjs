@@ -354,6 +354,8 @@ const PLANNED = [
   "dictionary cards render open under a plain title with no disclosure control",
   "nested definition lookups use an accessible close control that dismisses the child popup",
   "nested kanji navigation keeps Back and restores the term lookup close control",
+  "repeated keyboard activation returns focus to an existing child lookup close control",
+  "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
@@ -2360,6 +2362,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && Buffer.from(encoded, "base64").equals(makePng()), "E10 one shared native media request and exact PNG bytes");
     evidence.sharedMedia = media.length;
     await tab.keyboard.press("Escape");
+    await popup.nested("blur");
     const summarySource = await popup.compactSummaryTextRect(fixture.summaryLookup);
     if (summarySource?.rect) {
       await tab.mouse.move(summarySource.rect.x + summarySource.rect.width / 2,
@@ -2730,6 +2733,21 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const repeatedKeyboardFocus = (await child.state()).focusedClass;
+    const existingGrandchild = await grandchild.state();
+    if (grandchild.visible(existingGrandchild)) {
+      await grandchild.click(".gsm-hoshidicts-popup-close");
+      await grandchild.waitForHidden();
+      await popup.nested("focus-link");
+      await tab.keyboard.press("Enter");
+    }
+    const focusedDefinitionSource = await child.definitionTextRect(fixture.grandchild);
+    await moveToDefinition(focusedDefinitionSource);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const focusedPointerChild = await child.state();
+    const focusedPointerGrandchild = await grandchild.state();
     const chain = await child.nested();
     await child.click(".gsm-hoshidicts-note-button");
     const draft = await child.writeNote({ definition: "child draft survives parent Note" });
@@ -2810,7 +2828,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
+    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, repeatedKeyboardFocus,
+      focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
       second, fullChain, limited, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
     await writeOptions({
@@ -2858,6 +2877,15 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.back?.closeControl?.label === "Close lookup"
       && !evidence.back.hasBack && evidence.returnedWithClose && evidence.returned,
     JSON.stringify({ kanji: evidence.kanji, back: evidence.back, returned: evidence.returned }));
+  check("repeated keyboard activation returns focus to an existing child lookup close control",
+    evidence.repeatedKeyboardFocus.includes("gsm-hoshidicts-popup-close"),
+    JSON.stringify({ focusedClass: evidence.repeatedKeyboardFocus }));
+  check("focused popup controls prevent incidental definition pointer lookups",
+    evidence.focusedDefinitionSource?.text === fixture.grandchild[0]
+      && evidence.focusedPointerChild?.plain.includes(fixture.child)
+      && !grandchild.visible(evidence.focusedPointerGrandchild),
+    JSON.stringify({ source: evidence.focusedDefinitionSource, child: evidence.focusedPointerChild,
+      grandchild: evidence.focusedPointerGrandchild }));
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
       && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn

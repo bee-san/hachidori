@@ -13089,6 +13089,13 @@ async function contentNoteStage() {
     const count = harness.sent.length;
     await parentContext.onInternalLink({ query: "child", primaryReading: "reading", anchor: childAnchor });
     const deduped = harness.sent.length === count && harness.driver.viewRequest(1) === child;
+    const close = harness.anchor.ownerDocument.createElement("button");
+    close.className = "gsm-hoshidicts-popup-close";
+    childPopup.append(close);
+    await parentContext.onInternalLink({
+      query: "child", primaryReading: "reading", anchor: childAnchor, focusChild: true,
+    });
+    const reusedChildFocused = childAnchor.getRootNode().activeElement === close;
     await open("grandchild", 1);
     const grandchildContext = harness.render(2).context;
     await open("great-grandchild", 2);
@@ -13136,7 +13143,8 @@ async function contentNoteStage() {
     const noViewport = await open("no viewport") === null && !harness.driver.popupAt(1);
     harness.close();
     return {
-      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
+      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants":
+        deduped && reusedChildFocused && prunedOnlyBelow && reactivated && childBack && returned,
       "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner && rootOnlyScroll
         && disabled && limited && lowered && shrunk && noViewport,
     };

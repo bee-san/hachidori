@@ -2260,7 +2260,7 @@
   }
 
   function popupHasFocus() {
-    return levels.some((level) => level.popup?.contains(shadow?.activeElement));
+    return levels.some((level) => level.popup && !level.popup.hidden && level.popup.contains(shadow?.activeElement));
   }
 
   function hasProtectedNote(fromDepth = 0) {
@@ -2634,7 +2634,12 @@
       if (focusChild) {
         existing.focusLinkedBack = true;
         if (!existing.popup.hidden) {
-          focusPopupControl(".gsm-hoshidicts-kanji-back", existing);
+          focusPopupControl(
+            existing.currentViewRequest?.previous
+              ? ".gsm-hoshidicts-kanji-back"
+              : ".gsm-hoshidicts-popup-close",
+            existing
+          );
         }
       }
       return pending?.promise;
@@ -3000,7 +3005,7 @@
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
     const popupLevel = activePointerLevel(pointer);
-    if (hasProtectedNote()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       if (popupLevel) cancelPendingHover(popupLevel);
       clearHideTimer();
@@ -3076,7 +3081,7 @@
     pointerLevel = level;
     clearTransferTimer();
     clearHideTimer();
-    if (level.noteEditing) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelPendingHover(level);
       clearScanTimer();
       return;
@@ -3087,11 +3092,6 @@
       clearScanTimer();
       if (link.hasAttribute("data-hoshidicts-query")) clearDescendantTimer();
       else scheduleDescendantPrune(level);
-      return;
-    }
-    if (level.noteEditing) {
-      cancelPendingHover(level);
-      clearScanTimer();
       return;
     }
     if (selectionDragActive || !activationAllowed()) {
