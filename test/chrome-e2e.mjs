@@ -2021,6 +2021,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && value.rect.height === Math.min(480, value.viewport.height - 12),
       "E15 live child dimensions");
     evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
+    await optionsWrite({ popupScalePercent: 75 });
+    const scaledChild = await until(childState, value => value.rect.width === 480,
+      "scaled child dimensions");
+    require(scaledChild.rect.left >= 0 && scaledChild.rect.top >= 0
+      && scaledChild.rect.right <= scaledChild.viewport.width && scaledChild.rect.bottom <= scaledChild.viewport.height
+      && (await rootState()).rect.width === 480,
+      "fractional scale applies once to both root and nested popups");
+    await optionsWrite({ popupScalePercent: 100 });
+    await until(childState, value => value.rect.width === 640, "restore child scale");
     const automaticRoot = (await rootState()).toolbar;
     evidence.toolbarChild = true;
     for (const edge of ["bottom", "top", "auto"]) {
@@ -6038,6 +6047,12 @@ async function checkDesignAppearance(page, frame) {
     const restored = await frame.evaluate(() => [...CSS.highlights.get("gsm-hoshidicts-match")].map(range => range.toString()).join(""));
     await frame.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").click());
     const beforeReset = await page.evaluate(() => chrome.storage.local.get(["options", "dictionaryState", "dictionaryUpdates"]));
+    await editSettingsControls(page, { "opt-popup-scale": "75" });
+    await page.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupScalePercent === 75);
+    await drain();
+    const scaled = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .querySelector(".gsm-hoshidicts-popup").getBoundingClientRect().width);
+    if (scaled !== 540) throw new Error(`75% preview width: ${scaled}`);
     await page.$eval("#reset-design", button => button.click());
     await page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
     const reset = await page.evaluate(async before => {
@@ -9711,6 +9726,12 @@ async function main() {
     await chrome.tabs.setZoom(target.id, factor);
   }, pageUrl, zoomFactor);
   await setPageZoom(2);
+  await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupScalePercent: 75 } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   await tab.waitForFunction(() => window.devicePixelRatio === 2, { timeout: 5000 });
   // Selecting the word avoids depending on how synthetic pointer input maps
   // coordinates under browser zoom.
@@ -9718,7 +9739,7 @@ async function main() {
   const zoomedPopup = await popup.waitForVisible();
   let zoomed = null;
   if (zoomedPopup !== null) {
-    const widthPx = await page.evaluate(async () => (await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560);
+    const widthPx = await page.evaluate(async () => ((await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560) * 0.75);
     // The zoom factor arrives from the service worker alongside the lookup.
     for (let attempt = 0; attempt < 20; attempt += 1) {
       zoomed = { widthPx, rect: (await popup.dictionaryTabs()).rect,
@@ -9731,6 +9752,12 @@ async function main() {
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
   await setPageZoom(1);
+  await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupScalePercent: 100 } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   await tab.waitForFunction(() => window.devicePixelRatio === 1, { timeout: 5000 });
   check(
     "browser zoom keeps the popup at its configured on-screen size inside the viewport",

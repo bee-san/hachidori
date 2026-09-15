@@ -650,6 +650,14 @@
                     </span>
                   </label>
                 </div>
+                <label class="field">
+                  <span class="field-label">Scale</span>
+                  <span class="input-suffix">
+                    <input id="opt-popup-scale" type="number" min="25" max="500" step="1" />
+                    <span class="suffix">%</span>
+                  </span>
+                  <span class="field-hint">Scale the whole popup, including text and controls. 100% is the default.</span>
+                </label>
                 <p class="field-hint">Popups shrink to fit smaller windows.</p>
                 <label class="field">
                   <span class="field-label">Toolbar position</span>
@@ -1099,7 +1107,7 @@
             <div>
               <h2>Save a backup</h2>
               <p>Includes every dictionary, media and styles, your personal source, groups, and all saved settings.</p>
-              <p id="backup-export-overlay-help" class="field-hint" hidden>Electron cannot start Chrome downloads here. Restore remains available; export from Hachidori in Chrome.</p>
+
             </div>
             <button id="backup-export" class="ghost" type="button">Export backup</button>
           </div>

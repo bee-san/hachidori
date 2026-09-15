@@ -394,7 +394,7 @@ try {
   await showSection(settings, "backup");
   const backupSettings = await settings.evaluate(() => ({
     exportDisabled: document.getElementById("backup-export").disabled,
-    exportHelpVisible: !document.getElementById("backup-export-overlay-help").hidden,
+
     restoreEnabled: !document.getElementById("backup-file").disabled,
   }));
   await showSection(settings, "audio");
@@ -417,7 +417,7 @@ try {
   }));
   const guardedRequests = await settings.evaluate(() => Promise.all([
     chrome.runtime.sendMessage({ target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-ui-capture" }),
-    chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_download", requestId: "overlay-ui-backup" }),
+
     chrome.runtime.sendMessage({
       target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
       url: "https://example.test/", active: true,
@@ -432,7 +432,7 @@ try {
   });
   assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
   assert.deepEqual(designSettings, { customLinksDisabled: true, customLinksHelpVisible: true, themeEnabled: true });
-  assert.deepEqual(backupSettings, { exportDisabled: true, exportHelpVisible: true, restoreEnabled: true });
+  assert.deepEqual(backupSettings, { exportDisabled: false, restoreEnabled: true });
   assert.deepEqual(audioSettings, { sourceEditorEnabled: true, speechHelpVisible: true });
   assert.equal(ankiSettings.screenshotDisabled, true);
   assert.equal(ankiSettings.screenshotEnabled, false);
