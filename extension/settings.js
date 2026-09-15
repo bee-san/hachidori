@@ -2006,7 +2006,7 @@ function renderDictionaries(reuseRows = false) {
   const sameSet = domIds.size === visible.length
     && visible.every((entry) => domIds.has(entry.id));
   const reorderReuseSafe = reorderReuse && sameSet;
-  reuseRows = reuseRows || reorderReuseSafe;
+  if (reorderReuseSafe) reuseRows = true;
   const reusableRows = new Map();
   // Retain disclosure state by package identity, including temporarily filtered rows.
   for (const row of list.children) {
