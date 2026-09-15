@@ -16,6 +16,12 @@ where things are.
 
 ## Entry points
 
+Drag a lookup popup's bottom-right corner to resize it. The size is shared by
+subsequent and nested lookups in that page, including after closing and reopening
+the popup. Reloading or navigating the page (or restarting the browser) starts a
+new reading session with the saved Design dimensions. Dragging does not change
+those saved settings or other tabs.
+
 `manifest.json` names them.
 
 | File | Runs as | Role |

@@ -1942,6 +1942,17 @@
     const getCoordinateScale = () => popupCoordinateScale(getPageZoom(), options.getPopupScalePercent?.() ?? 100);
     const contentScroll = documentRef.createElement("div");
     contentScroll.className = "gsm-hoshidicts-content-scroll";
+    const resizeHandle = options.onResizeStart ? documentRef.createElement("div") : null;
+    if (resizeHandle) {
+      resizeHandle.className = "gsm-hoshidicts-resize-handle";
+      resizeHandle.title = "Resize popup";
+      resizeHandle.addEventListener("pointerdown", options.onResizeStart);
+      resizeHandle.addEventListener("pointermove", options.onResizeMove);
+      for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
+        resizeHandle.addEventListener(event, options.onResizeEnd);
+      }
+      popup.appendChild(resizeHandle);
+    }
     const appendExpressionRuby = options.appendExpressionRuby;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const appendStructuredImage = options.appendStructuredImage;
@@ -2318,7 +2329,7 @@
       // viewport. Keep a retained live form mounted for focus and selection too.
       contentScroll.replaceChildren();
       for (const child of [...popup.childNodes]) {
-        if (child !== contentScroll && child !== retainedForm) child.remove();
+        if (child !== contentScroll && child !== retainedForm && child !== resizeHandle) child.remove();
       }
       // A hidden retirement needs no layout; the next visible render resets it.
       if (!popup.hidden && !preserveViewControls) contentScroll.scrollTop = 0;
