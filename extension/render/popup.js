@@ -87,11 +87,13 @@
         else delete host.dataset.hoshidictsAudioButton;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
+          ["popupScalePercent", "scale", "%"],
         ]) {
           if (current[key] !== options[key]) host.style.setProperty(`--gsm-hoshidicts-popup-${variable}`, `${options[key]}${unit}`);
         }
         current = { popupTheme: options.popupTheme, popupWidthPx: options.popupWidthPx,
-          popupHeightPx: options.popupHeightPx, popupOpacityPercent: options.popupOpacityPercent };
+          popupHeightPx: options.popupHeightPx, popupOpacityPercent: options.popupOpacityPercent,
+          popupScalePercent: options.popupScalePercent };
         if (themeChanged) refreshHighlight();
       },
       refreshHighlight,
@@ -1896,6 +1898,10 @@
       bottom: rect.bottom * factor, width: rect.width * factor, height: rect.height * factor };
   }
 
+  function popupCoordinateScale(pageZoom, scalePercent) {
+    return pageZoom * 100 / scalePercent;
+  }
+
   function calculatePopupPosition(anchorRect, popupSize, viewport, { gap = 4, padding = 6, vertical = false } = {}) {
     const width = Math.min(popupSize.width, Math.max(1, viewport.width - padding * 2));
     const height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
@@ -1933,6 +1939,7 @@
     const windowRef = options.window;
     const popup = options.popup;
     const getPageZoom = options.getPageZoom ?? (() => 1);
+    const getCoordinateScale = () => popupCoordinateScale(getPageZoom(), options.getPopupScalePercent?.() ?? 100);
     const contentScroll = documentRef.createElement("div");
     contentScroll.className = "gsm-hoshidicts-content-scroll";
     const appendExpressionRuby = options.appendExpressionRuby;
@@ -2016,7 +2023,7 @@
 
     function positionImagePreview(anchorRect = imagePreview.image.getBoundingClientRect()) {
       const preview = imagePreview.element;
-      const zoom = getPageZoom();
+      const zoom = getCoordinateScale();
       const position = calculatePopupPosition(scaleRect(anchorRect, zoom), scaleRect(preview.getBoundingClientRect(), zoom), {
         width: windowRef.innerWidth * zoom, height: windowRef.innerHeight * zoom,
       }, { gap: 8, padding: 8, vertical: true });
@@ -2102,7 +2109,7 @@
     function scrollToEntry(nodes, index, target = nodes[index]) {
       currentEntry = nodes[index];
       const top = index === 0 && target === currentEntry ? 0
-        : (target.getBoundingClientRect().top - contentScroll.getBoundingClientRect().top) * getPageZoom()
+        : (target.getBoundingClientRect().top - contentScroll.getBoundingClientRect().top) * getCoordinateScale()
           + contentScroll.scrollTop;
       contentScroll.scrollTo({ top, behavior: "smooth" });
       return true;
@@ -4009,6 +4016,7 @@
     resolveToolbarPosition,
     calculatePopupPosition,
     scaleRect,
+    popupCoordinateScale,
     createDictionaryDisplayNames,
     createFrequencyTags,
     createPitchTag,
