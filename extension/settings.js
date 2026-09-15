@@ -1188,6 +1188,7 @@ function setControlsDisabled(disabled) {
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
+  element("dict-bulk-remove").disabled = blocked || !selectedRemovableDictionaries().length;
   renderUpdateControls();
   renderCustomDictionaryControls();
 }
@@ -2338,19 +2339,41 @@ async function removeDictionary(id, title) {
   if (!window.confirm(`Remove ${title}? Its imported data is deleted and has to be imported again.`)) {
     return;
   }
+  await removeDictionaries([{ id, title }]);
+}
+
+function selectedRemovableDictionaries() {
+  return dictionaries.filter((entry) => selectedDictionaryIds.has(entry.id)
+    && !isManagedCustomDictionary(entry));
+}
+
+async function removeSelectedDictionaries() {
+  const selected = selectedRemovableDictionaries();
+  if (!selected.length || !window.confirm(`Remove ${selected.length} selected dictionaries? Their imported data is deleted and has to be imported again. The personal dictionary is kept.`)) {
+    return;
+  }
+  await removeDictionaries(selected);
+}
+
+async function removeDictionaries(entries) {
   removing = true;
   setControlsDisabled(true);
+  const failures = [];
   try {
     await dictionaryCommitTail;
-    const reply = await send("hd_remove", { id, title });
-    if (!reply.ok) {
-      throw new Error(reply.error ?? "unknown error");
+    for (const { id, title } of entries) {
+      try {
+        const reply = await send("hd_remove", { id, title });
+        if (!reply.ok) throw new Error(reply.error ?? "unknown error");
+        selectedDictionaryIds.delete(id);
+      } catch (error) {
+        failures.push(`${title}: ${describe(error)}`);
+      }
     }
     if (await reloadDictionaries()) {
       await refreshStatus();
     }
-  } catch (error) {
-    setStatus(`Could not remove ${title}: ${describe(error)}`, "error");
+    if (failures.length) setStatus(`Could not remove ${failures.join("; ")}`, "error");
   } finally {
     removing = false;
     setControlsDisabled(importing);
@@ -2731,6 +2754,7 @@ function attachHandlers() {
   element("dict-bulk-unfavorite").addEventListener("click", () => {
     updateSelectedDictionaries("favorite", false, false);
   });
+  element("dict-bulk-remove").addEventListener("click", removeSelectedDictionaries);
 
   element("dict-group-create-form").addEventListener("submit", (event) => {
     event.preventDefault();

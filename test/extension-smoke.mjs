@@ -11307,6 +11307,7 @@ async function settingsConflictStage() {
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  let removeHandler = null;
   const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
@@ -11396,6 +11397,7 @@ async function settingsConflictStage() {
           return { ok: true, options: structuredClone(message.options) };
         }
         if (message.type === "hd_remove") {
+          if (removeHandler) return removeHandler(message);
           removeStarted = true;
           return new Promise((resolveRemove) => {
             releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
@@ -11891,6 +11893,57 @@ async function settingsConflictStage() {
     queuedRenameError,
     queuedRenameRequestCount,
   };
+  await navigateSettingsSection(window, "dictionaries");
+  search.value = "";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  acceptState([
+    genericPackage({ id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE }),
+    ...managementDictionaries.slice(0, 3),
+  ]);
+  const bulkRemove = window.document.getElementById("dict-bulk-remove");
+  const removalCalls = [];
+  let finishFirst;
+  removeHandler = async (message) => {
+    removalCalls.push(message.id);
+    if (removalCalls.length === 1) await new Promise(resolve => { finishFirst = resolve; });
+    if (message.id === ids.hiddenOne) throw new window.Error("simulated bulk failure");
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  selectAll.click();
+  window.confirm = () => false;
+  bulkRemove.click();
+  if (removalCalls.length) throw new Error("cancelled bulk removal sent a request");
+  let confirmations = 0;
+  window.confirm = () => { confirmations += 1; return true; };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.join() !== ids.alpha || !bulkRemove.disabled
+      || !window.document.getElementById("import-file").disabled) {
+    throw new Error("bulk removal did not serialize requests and disable competing controls");
+  }
+  finishFirst();
+  const removalDeadline = Date.now() + 2000;
+  while (bulkRemove.disabled && Date.now() < removalDeadline) {
+    await new Promise(done => window.setTimeout(done, 5));
+  }
+  if (confirmations !== 1 || removalCalls.join() !== [ids.alpha, ids.hiddenOne, ids.beta].join()
+      || state.dictionaries.map(entry => entry.id).join() !== [CUSTOM_DICTIONARY_ID, ids.hiddenOne].join()
+      || !rowFor(ids.hiddenOne).querySelector(".dict-selected").checked
+      || !window.document.getElementById("engine-status").textContent.includes("simulated bulk failure")) {
+    throw new Error("bulk removal lost custom protection, partial failure, selection or continuation");
+  }
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.at(-1) !== ids.hiddenOne || !bulkRemove.disabled
+      || state.dictionaries.length !== 1 || state.dictionaries[0].id !== CUSTOM_DICTIONARY_ID) {
+    throw new Error("bulk retry did not remove only the failed package and protect the personal dictionary");
+  }
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
