@@ -2057,9 +2057,12 @@ browser name, dictionary count, capabilities and a snapshot of the five shared
 keys), `request` carrying an ordinary runtime message, and `pong` to the
 relay's `ping`. `linked-anki-v1` advertises the original host-owned Anki
 transaction with client-recorded browser speech. `linked-anki-v2` advertises
-native Anki TTS instead. New hosts advertise both so v1 clients keep working;
-current clients require v2 for Anki requests and refuse a v1-only host before
-send. Omitting capabilities remains valid for older dictionary-sharing hosts.
+native Anki TTS instead. New hosts advertise both so v1 clients keep working.
+Current clients require v2 before status, preflight, submit, browse or linked
+Anki Settings requests and refuse those requests to a v1-only host before send.
+Maturity queries remain compatible with older hosts because they never carried
+speech media. Omitting capabilities remains valid for older dictionary-sharing
+hosts.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
