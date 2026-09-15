@@ -44,6 +44,7 @@ import {
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 import { checkPopupResize } from "./chrome-popup-resize.mjs";
+import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -243,6 +244,7 @@ const PLANNED = [
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
+  SETTINGS_FEEDBACK_CHECK,
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
@@ -8239,6 +8241,7 @@ async function main() {
   await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
   await checkSettingsAutosave(page, browser, settingsUrl);
+  await checkSettingsFeedback(browser, settingsUrl, check);
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
   await checkAudioSettings(page, browser);

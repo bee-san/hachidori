@@ -371,11 +371,14 @@ button,
   background: var(--surface-sunken);
   box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
 }
-#options-feedback:has(.is-ready) {
+#options-feedback:has(.is-quiet) {
   padding: 0;
   border: 0;
   background: var(--surface);
   box-shadow: none;
+}
+#options-status.is-quiet {
+  color: var(--text-dim);
 }
 #options-feedback:has(.is-error) {
   border-color: var(--error);

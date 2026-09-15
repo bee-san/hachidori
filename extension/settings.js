@@ -3184,6 +3184,8 @@ function setOptionsStatus(message, completed = false) {
   let tone = message === "Saved." ? "ready" : "";
   if (optionsSaveFailed) tone = "error";
   setSectionStatus("options-status", message, tone, completed);
+  element("options-status").classList.toggle("is-quiet", !optionsSaveFailed
+    && ["Saved.", "Saving…", "Unsaved changes…", "Using saved settings."].includes(message));
   element("options-conflict-actions").hidden = !optionsSaveFailed;
 }
 
