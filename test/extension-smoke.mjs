@@ -1238,6 +1238,7 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   const mediaRequests = [];
   const miningRequests = [];
   const viewRequests = [];
+  let viewAttempt = 0;
   let stats;
   try {
     stats = view.renderResults(lookup.results, candidate, {
@@ -1256,7 +1257,10 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
       },
       onView(noteId) {
         viewRequests.push(noteId);
-        return Promise.resolve();
+        viewAttempt += 1;
+        return viewAttempt === 1
+          ? Promise.reject(new Error("Open Anki before viewing this note."))
+          : Promise.resolve();
       },
     });
   } catch (error) {
@@ -1284,7 +1288,19 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   mineButton.click();
   await new Promise((done) => setTimeout(done, 0));
   equal("View invokes the saved note action", viewRequests, [42]);
+  check("failed View exposes its actionable error and permits retry",
+    mineButton?.textContent === "Retry" && mineButton.disabled === false
+      && mineButton.getAttribute("aria-label") === "Open Anki before viewing this note.",
+    mineButton?.outerHTML);
+  mineButton.click();
+  await new Promise((done) => setTimeout(done, 0));
+  equal("View retries the same saved note", viewRequests, [42, 42]);
+  check("successful View clears the stale error",
+    mineButton?.textContent === "View" && !mineButton.hasAttribute("title")
+      && mineButton.getAttribute("aria-label") === "View note in Anki",
+    mineButton?.outerHTML);
 
+  let addAttempt = 0;
   const failedView = HDPopup.createPopupView({
     document: dom.window.document,
     window: dom.window,
@@ -1295,7 +1311,12 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     positionPopup() {},
   });
   failedView.renderResults(lookup.results, candidate, {
-    onMine() { return Promise.reject(new Error("Open Anki and retry.")); },
+    onMine() {
+      addAttempt += 1;
+      return addAttempt === 1
+        ? Promise.reject(new Error("Open Anki and retry."))
+        : Promise.resolve({ added: true, noteId: 43 });
+    },
   });
   const retryButton = popup.querySelector(".gsm-hoshidicts-mine-button");
   retryButton?.click();
@@ -1303,6 +1324,12 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   check("failed Add exposes its actionable error and permits retry",
     retryButton?.textContent === "Retry" && retryButton.disabled === false
       && retryButton.getAttribute("aria-label") === "Open Anki and retry.",
+    retryButton?.outerHTML);
+  retryButton?.click();
+  await new Promise((done) => setTimeout(done, 0));
+  check("successful Add retry clears the stale error",
+    retryButton?.textContent === "View" && !retryButton.hasAttribute("title")
+      && retryButton.getAttribute("aria-label") === "View note in Anki",
     retryButton?.outerHTML);
 
   const headword = popup.querySelector(".gsm-hoshidicts-headword");

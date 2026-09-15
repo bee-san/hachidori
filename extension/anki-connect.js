@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+function escapeQueryValue(value) {
+  let escaped = String(value).replaceAll("\\", "\\\\");
+  for (const character of ['"', "*", "_", ":"]) escaped = escaped.replaceAll(character, `\\${character}`);
+  return escaped;
+}
+
 export function createAnkiConnectClient({ fetch = globalThis.fetch, timeoutMs = 1250 } = {}) {
   let mining = Promise.resolve();
-  function escapeQueryValue(value) {
-    let escaped = String(value).replaceAll("\\", "\\\\");
-    for (const character of ['"', "*", "_", ":"]) escaped = escaped.replaceAll(character, `\\${character}`);
-    return escaped;
-  }
   async function invoke(action, params, config) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

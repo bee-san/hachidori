@@ -1311,19 +1311,21 @@
           sentence: String(candidate?.sentence || "").trim(),
         });
         mine.addEventListener("click", async () => {
-          if (mine.dataset.noteId) {
-            if (typeof onView === "function") {
-              await onView(Number(mine.dataset.noteId));
-            }
-            return;
-          }
           mine.disabled = true;
           mine.dataset.state = "mining";
           try {
-            const response = await onMine(miningPayload);
-            mine.dataset.noteId = String(response.noteId);
-            mine.dataset.state = response.added ? "success" : "duplicate";
+            if (mine.dataset.noteId) {
+              if (typeof onView === "function") {
+                await onView(Number(mine.dataset.noteId));
+              }
+              mine.dataset.state = "success";
+            } else {
+              const response = await onMine(miningPayload);
+              mine.dataset.noteId = String(response.noteId);
+              mine.dataset.state = response.added ? "success" : "duplicate";
+            }
             mine.textContent = "View";
+            mine.removeAttribute("title");
             mine.setAttribute("aria-label", "View note in Anki");
           } catch (error) {
             mine.dataset.state = "error";
