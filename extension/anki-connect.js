@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export function createAnkiConnectClient({ fetch = globalThis.fetch, timeoutMs = 1250 } = {}) {
+  let mining = Promise.resolve();
+  function escapeQueryValue(value) {
+    let escaped = String(value).replaceAll("\\", "\\\\");
+    for (const character of ['"', "*", "_", ":"]) escaped = escaped.replaceAll(character, `\\${character}`);
+    return escaped;
+  }
   async function invoke(action, params, config) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -59,5 +65,41 @@ export function createAnkiConnectClient({ fetch = globalThis.fetch, timeoutMs = 
       : [];
     return { version, decks, models, model: config.model, fields };
   }
-  return { discover, invoke };
+
+  async function addNote(note, config) {
+    const query = `"expression:${escapeQueryValue(note.expression)}"`;
+    const matches = await invoke("findNotes", { query }, config);
+    if (!Array.isArray(matches) || matches.some(noteId => !Number.isInteger(noteId))) {
+      throw new Error("AnkiConnect returned an invalid findNotes list.");
+    }
+    if (matches.length > 0) return { added: false, noteId: matches[0] };
+    const noteId = await invoke("addNote", {
+      note: {
+        deckName: config.deck,
+        modelName: config.model,
+        fields: {
+          Expression: note.expression,
+          Reading: note.reading,
+          Sentence: note.sentence,
+          Definition: note.definition,
+        },
+        options: { allowDuplicate: false },
+        tags: ["hachidori"],
+      },
+    }, config);
+    if (!Number.isInteger(noteId)) throw new Error("AnkiConnect returned an invalid note identifier.");
+    return { added: true, noteId };
+  }
+
+  function add(note, config) {
+    const operation = mining.then(() => addNote(note, config));
+    mining = operation.catch(() => {});
+    return operation;
+  }
+
+  async function view(noteId, config) {
+    await invoke("guiBrowse", { query: `nid:${noteId}` }, config);
+  }
+
+  return { add, discover, invoke, view };
 }

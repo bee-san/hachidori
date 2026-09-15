@@ -700,6 +700,12 @@ async function main() {
   check(!invalidAnki.ok && /valid HTTP or HTTPS/u.test(invalidAnki.error),
     "Anki discovery rejects invalid configured endpoints before fetch");
 
+  const incompleteAdd = await workerRequest("hd_anki_add", { note: {
+    expression: "食べる", reading: "たべる", sentence: "食べたかった", definition: "to eat",
+  } });
+  check(!incompleteAdd.ok && /deck and note type/u.test(incompleteAdd.error),
+    "Anki Add fails clearly until the deck and note type are configured");
+
   storage.raw.set("ankiConfig", { schemaVersion: "99", url: "https://example.test", deck: "Discarded" });
   const malformedStoredVersion = await workerRequest("hd_anki_config_read");
   check(!malformedStoredVersion.ok,
@@ -1230,6 +1236,8 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   };
 
   const mediaRequests = [];
+  const miningRequests = [];
+  const viewRequests = [];
   let stats;
   try {
     stats = view.renderResults(lookup.results, candidate, {
@@ -1242,6 +1250,14 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
       showFrequencyDictionaryNames: true,
       showPitchAccentBadge: true,
       showPitchAccentFurigana: true,
+      onMine(request) {
+        miningRequests.push(request);
+        return Promise.resolve({ added: true, noteId: 42 });
+      },
+      onView(noteId) {
+        viewRequests.push(noteId);
+        return Promise.resolve();
+      },
     });
   } catch (error) {
     fail("renderResults accepts the engine's LookupResult verbatim", error.stack ?? error);
@@ -1250,6 +1266,44 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   pass("renderResults accepts the engine's LookupResult verbatim");
   check("renderResults asked the caller to position the popup", positioned > 0, `positioned ${positioned}`);
   check("renderResults returned its lookupStats slot", stats !== undefined && "lookupStats" in stats, JSON.stringify(stats));
+  const mineButton = popup.querySelector(".gsm-hoshidicts-mine-button");
+  check("term results expose the minimal Add action", mineButton?.textContent === "Add", JSON.stringify(mineButton?.textContent));
+  const renderedSentence = candidate.sentence;
+  candidate.sentence = "later page text";
+  mineButton?.click();
+  await new Promise((done) => setTimeout(done, 0));
+  candidate.sentence = renderedSentence;
+  const firstSense = JSON.parse(lookup.results[0].term.glossaries[0].glossary)[0];
+  equal("Add sends the visible term and source sentence", miningRequests, [{
+    definition: firstSense,
+    expression: lookup.results[0].term.expression,
+    reading: lookup.results[0].term.reading,
+    sentence: candidate.sentence,
+  }]);
+  check("a successful Add turns into View", mineButton?.textContent === "View", JSON.stringify(mineButton?.textContent));
+  mineButton.click();
+  await new Promise((done) => setTimeout(done, 0));
+  equal("View invokes the saved note action", viewRequests, [42]);
+
+  const failedView = HDPopup.createPopupView({
+    document: dom.window.document,
+    window: dom.window,
+    popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList,
+    positionPopup() {},
+  });
+  failedView.renderResults(lookup.results, candidate, {
+    onMine() { return Promise.reject(new Error("Open Anki and retry.")); },
+  });
+  const retryButton = popup.querySelector(".gsm-hoshidicts-mine-button");
+  retryButton?.click();
+  await new Promise((done) => setTimeout(done, 0));
+  check("failed Add exposes its actionable error and permits retry",
+    retryButton?.textContent === "Retry" && retryButton.disabled === false
+      && retryButton.getAttribute("aria-label") === "Open Anki and retry.",
+    retryButton?.outerHTML);
 
   const headword = popup.querySelector(".gsm-hoshidicts-headword");
   check(

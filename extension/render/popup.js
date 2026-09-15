@@ -1242,6 +1242,8 @@
         compactDefinitionSummaryDictionary = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
+        onMine = null,
+        onView = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -1294,6 +1296,50 @@
         }
       }
       header.appendChild(headword);
+      if (primary && typeof onMine === "function") {
+        const actions = documentRef.createElement("div");
+        actions.className = "gsm-hoshidicts-entry-actions";
+        const mine = documentRef.createElement("button");
+        mine.type = "button";
+        mine.className = "gsm-hoshidicts-mine-button";
+        mine.textContent = "Add";
+        mine.setAttribute("aria-label", "Add note to Anki");
+        const miningPayload = Object.freeze({
+          definition: extractCompactDefinitionSummary(result.term.glossaries, null, 1)?.items[0] || "",
+          expression: expressionText,
+          reading: readingText,
+          sentence: String(candidate?.sentence || "").trim(),
+        });
+        mine.addEventListener("click", async () => {
+          if (mine.dataset.noteId) {
+            if (typeof onView === "function") {
+              await onView(Number(mine.dataset.noteId));
+            }
+            return;
+          }
+          mine.disabled = true;
+          mine.dataset.state = "mining";
+          try {
+            const response = await onMine(miningPayload);
+            mine.dataset.noteId = String(response.noteId);
+            mine.dataset.state = response.added ? "success" : "duplicate";
+            mine.textContent = "View";
+            mine.setAttribute("aria-label", "View note in Anki");
+          } catch (error) {
+            mine.dataset.state = "error";
+            mine.textContent = "Retry";
+            mine.title = typeof error?.message === "string"
+              ? error.message
+              : "Could not add this note to Anki.";
+            mine.setAttribute("aria-label", mine.title);
+          } finally {
+            mine.disabled = false;
+            positionPopup();
+          }
+        });
+        actions.appendChild(mine);
+        header.appendChild(actions);
+      }
       return { element: header };
     }
 
@@ -1359,6 +1405,8 @@
             typeof renderContext.pitchAccentFuriganaDictionary === "string"
               ? renderContext.pitchAccentFuriganaDictionary
               : null,
+          onMine: renderContext.onMine,
+          onView: renderContext.onView,
         });
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
