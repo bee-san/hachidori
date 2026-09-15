@@ -14156,6 +14156,23 @@ async function contentNoteStage() {
     const savedChildReused = retiredNote && noOldReplay && shell === savingChild.driver.popupAt(1)
       && savingChild.driver.viewRequest(1)?.payload.text === "new child";
     savingChild.close();
+    const closingChild = await createHarness();
+    await closingChild.initialLookup();
+    const oldChild = closingChild.internalLink({ query: "old child" });
+    closingChild.reply(closingChild.take("hd_lookup"), { dictionaryCount: 1, results: [closingChild.term("old child")] });
+    await oldChild;
+    closingChild.edit(true, 1);
+    closingChild.setCloseNext(true, 1);
+    const closingShell = closingChild.driver.popupAt(1);
+    const closingReplacement = closingChild.internalLink({ query: "new child" });
+    const closingReply = closingChild.take("hd_lookup");
+    closingChild.driver.onKeyDown(new closingShell.ownerDocument.defaultView.KeyboardEvent("keydown", {
+      key: "Escape", code: "Escape", bubbles: true, cancelable: true,
+    }));
+    closingChild.reply(closingReply, { dictionaryCount: 1, results: [closingChild.term("new child")] });
+    await closingReplacement;
+    const pendingChildDismissed = !closingShell.isConnected && !closingChild.driver.popupAt(1);
+    closingChild.close();
     const movingAnchor = await createHarness();
     await movingAnchor.initialLookup();
     const newAnchor = movingAnchor.anchor.cloneNode(true);
@@ -14196,7 +14213,7 @@ async function contentNoteStage() {
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
       retiredIgnored && detachedIgnored && invalidatedPendingRetried && savedChildReused
-        && stalePositionIgnored && generations.every(Boolean) };
+        && pendingChildDismissed && stalePositionIgnored && generations.every(Boolean) };
   }
 
   async function retainedParentNavigationCase() {

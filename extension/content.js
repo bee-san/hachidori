@@ -3451,7 +3451,8 @@
     if (rootLevel.popup && !rootLevel.popup.hidden) {
       const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
       const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
-      if ((editing || focused || levels.at(-1)).view?.closeNoteForm?.() === true) {
+      const noteOwner = editing || focused || levels.at(-1);
+      if (!noteOwner.popup.inert && noteOwner.view?.closeNoteForm?.() === true) {
         event.preventDefault();
         event.stopPropagation();
         return true;
