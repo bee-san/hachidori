@@ -2481,6 +2481,7 @@
       form.appendChild(formActions);
 
       let editing = false;
+      let submitting = false;
 
       function close(restoreFocus = true) {
         if (form.hidden) return false;
@@ -2526,12 +2527,15 @@
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (submitting) return;
+        submitting = true;
         const entry = {
           term: term.value,
           reading: reading.value,
           definition: definition.value,
         };
         if (Object.values(entry).some((value) => value.trim() === "")) {
+          submitting = false;
           error.textContent = "Complete the term, reading, and definition.";
           error.hidden = false;
           positionPopup();
@@ -2543,6 +2547,7 @@
           onAddCustomEntry(entry);
           close();
         } catch (appendError) {
+          submitting = false;
           error.textContent = typeof appendError?.message === "string"
             ? appendError.message
             : String(appendError);
