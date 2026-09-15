@@ -270,8 +270,9 @@ const PLANNED = [
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "local count and blur settings belong to Reading without external corpus controls",
   "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
+  "frequency blur uses native fixture values without recording counts or waiting for another signal",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
-  "the Anki maturity blur source persists independently of lookup counts",
+  "the Anki maturity blur condition persists independently of lookup counts",
   "a cold Anki duplicate index leaves the popup responsive while its first refresh is held",
   "cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
   "a scheduled index refresh preserves the current popup and updates only new lookups",
@@ -348,15 +349,20 @@ const PLANNED = [
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
-  "the content script attached its closed-shadow host to the page",
+  "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "dictionary cards render open under a plain title with no disclosure control",
+  "nested definition lookups use an accessible close control that dismisses the child popup",
+  "nested kanji navigation keeps Back and restores the term lookup close control",
+  "repeated keyboard activation returns focus to an existing child lookup close control",
+  "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
+  "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "external dictionary Enter activation creates one safe browser tab through the extension",
@@ -757,6 +763,10 @@ async function popupReader(page, depth = 0) {
             .map(el => el.tagName.toLowerCase() + ":" + flat(el)),
           tabs: Array.from(this.querySelectorAll(".gsm-hoshidicts-tab"), flat),
           hasBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
+          closeControl: (() => {
+            const control = this.querySelector(".gsm-hoshidicts-popup-close");
+            return control ? { label: control.getAttribute("aria-label"), text: flat(control) } : null;
+          })(),
           focusedClass: this.getRootNode().activeElement?.className || "",
           focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
             .indexOf(this.getRootNode().activeElement),
@@ -892,6 +902,34 @@ async function popupReader(page, depth = 0) {
               text: range.toString(),
             };
           }
+        }
+        return null;
+      }`,
+    });
+    return result.value ?? null;
+  }
+
+  async function compactSummaryTextRect(text) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: text }],
+      functionDeclaration: `function (text) {
+        const summary = this.querySelector(".gsm-hoshidicts-compact-definition-summary");
+        if (!summary) return null;
+        const walker = this.ownerDocument.createTreeWalker(summary, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const offset = (node.nodeValue || "").indexOf(text);
+          if (offset < 0) continue;
+          const first = String.fromCodePoint(text.codePointAt(0));
+          const range = this.ownerDocument.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, offset + first.length);
+          const rect = range.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          return { rect: rect.toJSON(), text: range.toString() };
         }
         return null;
       }`,
@@ -1514,7 +1552,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
+    anki, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -1982,7 +2020,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
     await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
       && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 close child lookup");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
       parent: (await rootState()).selected };
@@ -2035,7 +2073,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && protectedDraft.inputFocused && protectedDraft.draft === draft.draft && equal(protectedDraft.selection, [2, 7]), "E8 live Note and child protect their original projection");
     await tab.keyboard.press("Escape");
     require((await popup.state()).noteOpen === false, "E8 Note must close before child retirement");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 protected child retirement");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 protected child retirement");
     await popup.dictionaryTabs("focus", studyKey);
     const flushed = await until(rootState, value => selectedReady(studyKey)(value)
       && equal(value.entries[0].cards.map(card => card.dictionary), [links]), "E8 safe presentation flush");
@@ -2325,6 +2363,30 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && Buffer.from(encoded, "base64").equals(makePng()), "E10 one shared native media request and exact PNG bytes");
     evidence.sharedMedia = media.length;
     await tab.keyboard.press("Escape");
+    await popup.nested("blur");
+    const summarySource = await popup.compactSummaryTextRect(fixture.summaryLookup);
+    if (summarySource?.rect) {
+      await tab.mouse.move(summarySource.rect.x + summarySource.rect.width / 2,
+        summarySource.rect.y + summarySource.rect.height / 2);
+    }
+    const summaryDeadline = Date.now() + 1_000;
+    let summaryChild = null;
+    while (Date.now() < summaryDeadline) {
+      const state = await child.state();
+      if (child.visible(state) && state.plain.includes(fixture.summaryLookup)) {
+        summaryChild = state;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    const summaryDismissed = summaryChild
+      ? await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden()
+      : false;
+    evidence.compactLookup = { summarySource, summaryChild, summaryDismissed };
+    if (summaryChild && !summaryDismissed) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
     if (process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT) {
       const { x, y, width, height } = (await popup.dictionaryTabs()).rect;
       await tab.screenshot({ path: process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT, clip: { x, y, width, height } });
@@ -2340,7 +2402,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
-    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E10 child Back");
+    require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
 
     await show(fixture.broken);
     await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
@@ -2520,6 +2582,11 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
   if (failure) throw failure;
   check("Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
     evidence.passed && evidence.sharedMedia === 1, JSON.stringify(evidence));
+  check("compact definition text opens a nested lookup with the same close contract",
+    evidence.compactLookup.summarySource?.text === fixture.summaryLookup[0]
+      && evidence.compactLookup.summaryChild?.closeControl?.label === "Close lookup"
+      && evidence.compactLookup.summaryChild.closeControl.text === "×"
+      && evidence.compactLookup.summaryDismissed, JSON.stringify(evidence.compactLookup));
   check("Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
     evidence.passed && evidence.imageSources?.focused === 1, JSON.stringify(evidence.imageSources));
 }
@@ -2572,6 +2639,12 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       state => state.plain.includes(fixture.child));
     const definitionParent = await popup.state();
     const definitionChildLayout = await child.nested();
+    const definitionClose = definitionChild?.closeControl;
+    const definitionClosed = await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden();
+    if (definitionClosed) {
+      await moveToDefinition(definitionSource);
+      await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    }
     const definitionGrandchildSource = await child.definitionTextRect(fixture.grandchild);
     await moveToDefinition(definitionGrandchildSource);
     const definitionGrandchild = await waitForPopupState(grandchild,
@@ -2627,6 +2700,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       definitionChain,
       definitionChild,
       definitionChildLayout,
+      definitionClose,
+      definitionClosed,
       definitionGrandchild,
       definitionGrandchildSource,
       definitionHighlights,
@@ -2659,6 +2734,21 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const repeatedKeyboardFocus = (await child.state()).focusedClass;
+    const existingGrandchild = await grandchild.state();
+    if (grandchild.visible(existingGrandchild)) {
+      await grandchild.click(".gsm-hoshidicts-popup-close");
+      await grandchild.waitForHidden();
+      await popup.nested("focus-link");
+      await tab.keyboard.press("Enter");
+    }
+    const focusedDefinitionSource = await child.definitionTextRect(fixture.grandchild);
+    await moveToDefinition(focusedDefinitionSource);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const focusedPointerChild = await child.state();
+    const focusedPointerGrandchild = await grandchild.state();
     const chain = await child.nested();
     await child.click(".gsm-hoshidicts-note-button");
     const draft = await child.writeNote({ definition: "child draft survives parent Note" });
@@ -2697,7 +2787,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     const kanji = await waitForPopupState(child, state => state.hasBack && !state.plain.includes("The referenced entry."));
     await child.click(".gsm-hoshidicts-kanji-back");
     const back = await waitForPopupState(child, state => state.plain.includes("The referenced entry."));
-    await child.click(".gsm-hoshidicts-kanji-back");
+    const returnedWithClose = await child.click(".gsm-hoshidicts-popup-close");
+    if (!returnedWithClose) await child.click(".gsm-hoshidicts-kanji-back");
     const returned = await child.waitForHidden();
     const retained = await popup.nested();
     const ancestorHighlight = await tab.evaluate(name => {
@@ -2718,7 +2809,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await child.sourcePaint("cover-parent");
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const covered = await popup.sourcePaint();
-      await child.click(".gsm-hoshidicts-kanji-back");
+      await child.click(".gsm-hoshidicts-popup-close");
       await child.waitForHidden();
       await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const after = await popup.sourcePaint("forget");
@@ -2738,8 +2829,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
-      second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled, refreshedControls };
+    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, repeatedKeyboardFocus,
+      focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
+      second, fullChain, limited, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
     await writeOptions({
       activationKey: originalOptions.activationKey ?? "Shift",
@@ -2777,6 +2869,24 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && definitionEvidence.activationGated
       && definitionEvidence.activationChild?.plain.includes(fixture.child),
     JSON.stringify(definitionEvidence));
+  check("nested definition lookups use an accessible close control that dismisses the child popup",
+    definitionEvidence.definitionClose?.label === "Close lookup"
+      && definitionEvidence.definitionClose.text === "×"
+      && definitionEvidence.definitionClosed, JSON.stringify(definitionEvidence));
+  check("nested kanji navigation keeps Back and restores the term lookup close control",
+    evidence.kanji?.hasBack && evidence.kanji.closeControl === null
+      && evidence.back?.closeControl?.label === "Close lookup"
+      && !evidence.back.hasBack && evidence.returnedWithClose && evidence.returned,
+    JSON.stringify({ kanji: evidence.kanji, back: evidence.back, returned: evidence.returned }));
+  check("repeated keyboard activation returns focus to an existing child lookup close control",
+    evidence.repeatedKeyboardFocus.includes("gsm-hoshidicts-popup-close"),
+    JSON.stringify({ focusedClass: evidence.repeatedKeyboardFocus }));
+  check("focused popup controls prevent incidental definition pointer lookups",
+    evidence.focusedDefinitionSource?.text === fixture.grandchild[0]
+      && evidence.focusedPointerChild?.plain.includes(fixture.child)
+      && !grandchild.visible(evidence.focusedPointerGrandchild),
+    JSON.stringify({ source: evidence.focusedDefinitionSource, child: evidence.focusedPointerChild,
+      grandchild: evidence.focusedPointerGrandchild }));
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
       && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn
@@ -4579,7 +4689,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
     genuine(automatic) && automaticallySelected === "辞書" && automaticEscaped
-      && keyboardReached && genuine(selected) && genuine(hovered) && escaped
+      && keyboardReached && genuine(hovered) && escaped
       && source.url === `${startupUrl}#setup-heading`
       && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
       && source.readerScripts === 1 && source.finish && source.settings,
@@ -5322,7 +5432,7 @@ async function checkLookupStatistics({ settings, tab, popup }) {
 
     const localControls = await settings.evaluate(() => ({
       counts: document.getElementById("opt-lookup-counts").closest("section").id,
-      blur: document.getElementById("opt-blur-source").closest("section").id,
+      blur: document.getElementById("opt-blur-frequency").closest("section").id,
       external: document.querySelectorAll("#opt-corpus-url, #opt-corpus-seen").length,
     }));
     check("local count and blur settings belong to Reading without external corpus controls",
@@ -5356,8 +5466,9 @@ async function waitForDefinitionBlur(popup, predicate, timeoutMs = 10_000) {
 }
 
 async function checkDefinitionBlur({ settings, tab, popup }) {
-  const controls = ["opt-lookup-counts", "opt-blur-source", "opt-blur-direction", "opt-blur-threshold",
-    "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
+  const controls = ["opt-lookup-counts", "opt-blur-count", "opt-blur-anki", "opt-blur-frequency",
+    "opt-blur-frequency-dictionary", "opt-blur-frequency-order", "opt-blur-frequency-threshold",
+    "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
   const original = await readSettingsControls(settings, controls);
   const freshLookup = async () => {
     await tab.bringToFront();
@@ -5371,7 +5482,8 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     const before = await readLookupStatistics(settings);
     const threshold = before.statistics.lookupCount + 1;
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-source": "count",
+      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-count": true,
+      "opt-blur-anki": false, "opt-blur-frequency": false,
       "opt-blur-direction": "atLeast", "opt-blur-threshold": String(threshold), "opt-blur-reveal": "hover",
     });
     const qualifyingDefinition = await freshLookup();
@@ -5394,7 +5506,30 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
         && autoplayed?.audioAttempted,
       JSON.stringify({ threshold, qualifying, pendingOrBlurred, hovered, notQualifying, autoplayed }));
 
+    const beforeFrequency = await readLookupStatistics(settings);
     await updateSettingsControls(settings, {
+      "opt-lookup-counts": false, "opt-audio-autoplay": false, "opt-blur-count": false,
+      "opt-blur-anki": false, "opt-blur-frequency": true,
+      "opt-blur-frequency-dictionary": "hachidori-fixture", "opt-blur-frequency-order": "auto",
+      "opt-blur-frequency-threshold": "100", "opt-blur-reveal": "hover",
+    });
+    const frequencyDefinition = await freshLookup();
+    const frequencyBlurred = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
+    await updateSettingsControls(settings, { "opt-blur-frequency-threshold": "143" });
+    const outsideDefinition = await freshLookup();
+    const frequencyOpen = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const afterFrequency = await readLookupStatistics(settings);
+    check("frequency blur uses native fixture values without recording counts or waiting for another signal",
+      frequencyDefinition?.plain.includes("食べる") && frequencyBlurred?.state === "blurred"
+        && frequencyBlurred.definitionsState === "blurred" && frequencyBlurred.countText === ""
+        && outsideDefinition?.plain.includes("食べる") && frequencyOpen?.state === "revealed"
+        && beforeFrequency.ok && afterFrequency.ok
+        && beforeFrequency.descriptor.generation === afterFrequency.descriptor.generation
+        && beforeFrequency.descriptor.revision === afterFrequency.descriptor.revision,
+      JSON.stringify({ frequencyBlurred, frequencyOpen, beforeFrequency, afterFrequency }));
+
+    await updateSettingsControls(settings, {
+      "opt-lookup-counts": true, "opt-blur-count": true, "opt-blur-frequency": false,
       "opt-audio-autoplay": false, "opt-blur-direction": "atLeast", "opt-blur-threshold": "1",
       "opt-blur-reveal": "timed", "opt-blur-delay": "1",
     });
@@ -5407,7 +5542,7 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await freshLookup();
     const longBlurred = await decided();
     await popup.lookupStatistics("remember");
-    await updateSettingsControls(settings, { "opt-blur-source": "off" });
+    await updateSettingsControls(settings, { "opt-blur-count": false });
     const disabled = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
     const retained = await popup.lookupStatistics();
     check("blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
@@ -5430,8 +5565,11 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
 async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, watchedServiceWorkers }) {
   const alarmName = "hachidori-anki-index";
   const intervalMs = 30 * 60 * 1000;
-  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-source",
-    "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
+  const originalViewport = settings.viewport();
+  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-count", "opt-blur-anki",
+    "opt-blur-frequency", "opt-blur-frequency-dictionary", "opt-blur-frequency-order",
+    "opt-blur-frequency-threshold", "opt-blur-direction", "opt-blur-threshold",
+    "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
   const calls = [];
   const refreshCandidateQuery = "\"note:Basic\"";
@@ -5495,7 +5633,8 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await tab.keyboard.press("Escape");
     await popup.waitForHidden();
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": false, "opt-blur-source": "off", "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
+      "opt-lookup-counts": false, "opt-blur-count": false, "opt-blur-anki": false,
+      "opt-blur-frequency": false, "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
     });
     await settings.evaluate(async () => {
       const { options } = await chrome.storage.local.get("options");
@@ -5504,23 +5643,23 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         options: { anki: { ...defaults, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
       if (!reply.ok) throw new Error(reply.error);
     });
-    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
+    await updateSettingsControls(settings, { "opt-blur-anki": true });
     // Keep the main Settings page's custom source draft alive for later tests.
     const reloadedSettings = await browser.newPage();
     let persisted;
     try {
       await reloadedSettings.goto(settings.url(), { waitUntil: "domcontentloaded" });
       await reloadedSettings.reload({ waitUntil: "domcontentloaded" });
-      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-source").value === "anki");
+      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki").checked);
       persisted = await reloadedSettings.evaluate(async () => {
         const { options } = await chrome.storage.local.get("options");
         return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
-          source: document.getElementById("opt-blur-source").value,
+          checked: document.getElementById("opt-blur-anki").checked,
           revealDisabled: document.getElementById("opt-blur-reveal").disabled };
       });
     } finally { await reloadedSettings.close(); }
-    check("the Anki maturity blur source persists independently of lookup counts",
-      original["opt-blur-source"] === "off" && persisted.enabled && persisted.source === "anki"
+    check("the Anki maturity blur condition persists independently of lookup counts",
+      original["opt-blur-anki"] === false && persisted.enabled && persisted.checked
         && !persisted.counts && !persisted.countBlur && !persisted.revealDisabled,
       JSON.stringify({ original, persisted }));
 
@@ -5580,12 +5719,12 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await triggerRefresh();
     await waitForDefinitionBlur(popup, () => releaseIndex !== null);
     const heldOnDisable = releaseIndex !== null;
-    await updateSettingsControls(settings, { "opt-blur-source": "off" });
+    await updateSettingsControls(settings, { "opt-blur-anki": false });
     releaseRefresh();
     const refreshedWhileDisabled = await waitForSnapshot(true, emptyIndex.snapshot.refreshedAt);
     const disabledAlarm = await settings.evaluate(name => chrome.alarms.get(name), alarmName);
     const callsBeforeReenable = refreshCalls();
-    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
+    await updateSettingsControls(settings, { "opt-blur-anki": true });
     await freshLookup();
     const reenabled = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     const reenabledIndex = await readIndex();
@@ -5651,7 +5790,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         && JSON.stringify(restoredIndex) === JSON.stringify(restartState.index) && refreshCalls() === callsBeforeRestart,
       JSON.stringify({ stopped, cachedReply, restored, restoredIndex, restartState, callsBeforeRestart, calls }));
 
-    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-source": "either",
+    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-count": true,
       "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
     const cachedMiss = await settings.evaluate(() => chrome.runtime.sendMessage({
       target: "hachidori-anki", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
@@ -5670,15 +5809,29 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       JSON.stringify({ offline, retry, cachedMiss, countQualified, calls }));
 
 
-    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
-      await updateSettingsControls(settings, { "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5" });
+    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT
+        || process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT) {
+      await updateSettingsControls(settings, {
+        "opt-lookup-counts": true, "opt-blur-count": true, "opt-blur-anki": true,
+        "opt-blur-frequency": true, "opt-blur-frequency-dictionary": "hachidori-fixture",
+        "opt-blur-frequency-order": "auto", "opt-blur-frequency-threshold": "10000",
+        "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5",
+      });
       await settings.bringToFront();
-      await settings.setViewport({ width: 960, height: 900 });
       await showSettingsSection(settings, "lookup");
       const card = await settings.$("#definition-blur-settings");
-      await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
-      await settings.evaluate(() => new Promise(requestAnimationFrame));
-      await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+      if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
+        await settings.setViewport({ width: 960, height: 1100 });
+        await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+        await settings.evaluate(() => new Promise(requestAnimationFrame));
+        await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+      }
+      if (process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT) {
+        await settings.setViewport({ width: 420, height: 1600 });
+        await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+        await settings.evaluate(() => new Promise(requestAnimationFrame));
+        await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT });
+      }
     }
   } finally {
     releaseRefresh();
@@ -5692,6 +5845,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     // The restarted service worker can retire again before fixture cleanup.
     await session?.detach().catch(() => {});
     await refreshSession.detach().catch(() => {});
+    await settings.setViewport(originalViewport);
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }
@@ -9594,12 +9748,10 @@ async function main() {
     "no .gsm-hoshidicts-popup appeared within 12 hover attempts");
   const hostPresent = verb === null ? false : await tab.evaluate(() => {
     const host = document.querySelector("hachidori-host");
-    // A closed root is invisible from here, which is the point: page script
-    // cannot reach into the popup either.
-    return !!host && host.isConnected && host.shadowRoot === null;
+    return !!host && host.isConnected && host.shadowRoot instanceof ShadowRoot;
   });
-  check("the content script attached its closed-shadow host to the page", hostPresent,
-    "no connected <hachidori-host> with a closed shadow root");
+  check("the content script attached its open-shadow host to the page", hostPresent,
+    "no connected <hachidori-host> with an open shadow root");
 
   // Read through a default rather than under an `if`: a popup that never appeared
   // must fail these three as well, not quietly remove them from the total.

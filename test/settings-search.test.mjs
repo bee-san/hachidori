@@ -116,14 +116,14 @@ test("result opens collapsed details and focuses the existing textarea without t
 
 test("hidden conditional results lead to their visible enable control without enabling the feature", t => {
   const f = fixture(t);
-  f.el("opt-blur-source").value = "off";
+  f.el("opt-blur-count").checked = false;
   f.query("threshold lookups");
   f.match("Threshold (lookups)").click();
   assert.equal(f.el("lookup").hidden, false);
-  assert.equal(f.document.activeElement, f.el("opt-blur-source"));
+  assert.equal(f.document.activeElement, f.el("opt-blur-count"));
   assert.equal(f.el("definition-blur-reveal-controls").hidden, true);
   assert.equal(f.el("definition-blur-count-controls").hidden, true);
-  assert.equal(f.el("opt-blur-source").value, "off");
+  assert.equal(f.el("opt-blur-count").checked, false);
   assert.equal(f.scrolled, f.el("definition-blur-settings"));
 });
 

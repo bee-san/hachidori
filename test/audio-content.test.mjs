@@ -114,6 +114,19 @@ test("candidate choice carries exact identity and closes with focus restoration"
   assert.equal(f.controller.selectionFor(v.item.result), null);
 });
 
+test("pagehide retires active playback while runtime messaging is still available", async t => {
+  const f = fixture(t), v = f.view();
+  v.bind();
+  v.item.button.click();
+  const play = f.sent.at(-1);
+  f.window.dispatchEvent(new f.window.Event("pagehide"));
+  assert.equal(f.sent.at(-1).type, "hd_audio_stop");
+  assert.equal(f.sent.at(-1).playRequestId, play.requestId);
+  play.resolveReply({ ok: true, status: "success" });
+  await settle();
+  assert.equal(v.item.button.getAttribute("aria-busy"), "false");
+});
+
 test("a failed explicit pronunciation is forgotten so normal Audio can try ordered fallback", async t => {
   const f = fixture(t), v = f.view();
   v.bind();

@@ -793,6 +793,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
     .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -810,6 +811,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
+    applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;
@@ -9400,6 +9402,25 @@ async function designPreviewStage() {
     update();
     await settle();
     blur &&= blurState() === "revealed";
+    options = { ...options, definitionBlurFrequencyEnabled: true,
+      definitionBlurFrequencyDictionary: "Sample ranks", definitionBlurFrequencyOrder: "auto",
+      definitionBlurFrequencyThreshold: 120, definitionBlurReveal: "hover" };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    query(".gsm-hoshidicts-definitions").dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+    options = { ...options, definitionBlurFrequencyThreshold: 119 };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed";
+    options = { ...options, definitionBlurFrequencyOrder: "descending", definitionBlurFrequencyThreshold: 240 };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred";
+    options = { ...options, definitionBlurFrequencyEnabled: false };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed";
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -9460,9 +9481,10 @@ async function designPreviewStage() {
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("Second") && query("form") === kanjiNote
       && kanjiNote.elements.definition.value === "Keep across source choices";
-    // Native kanji stays outside term blur even while the sample count qualifies.
-    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
-      definitionBlurReveal: "hover" };
+    // Native kanji stays outside term blur even while the sample frequency qualifies.
+    options = { ...options, definitionBlurEnabled: false, definitionBlurFrequencyEnabled: true,
+      definitionBlurFrequencyDictionary: "Sample ranks", definitionBlurFrequencyOrder: "auto",
+      definitionBlurFrequencyThreshold: 120, definitionBlurReveal: "hover" };
     update();
     await settle();
     blur &&= (popup.dataset.definitionBlurState ?? "revealed") === "revealed"
@@ -9471,7 +9493,7 @@ async function designPreviewStage() {
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
     blur &&= popup.dataset.definitionBlurState === "blurred";
-    options = { ...options, definitionBlurEnabled: false };
+    options = { ...options, definitionBlurFrequencyEnabled: false };
     update();
     await settle();
     const back = kanji && query('[role="tab"][aria-selected="true"]')?.dataset.dictionary === tab.dataset.dictionary;
@@ -9504,9 +9526,9 @@ async function settingsFrequencyStage() {
     storedOptions = { ...storedOptions, ...patch, revision: storedOptions.revision + 1 };
     listener({ options: { newValue: structuredClone(storedOptions) } }, "local");
   };
-  const emitDictionaries = (patch) => {
+  const emitDictionaries = (patch, title = "Rank") => {
     state = { ...state, revision: state.revision + 1,
-      dictionaries: state.dictionaries.map((dictionary) => dictionary.title === "Rank" ? { ...dictionary, ...patch } : dictionary) };
+      dictionaries: state.dictionaries.map((dictionary) => dictionary.title === title ? { ...dictionary, ...patch } : dictionary) };
     listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   };
   window.chrome = {
@@ -9734,62 +9756,69 @@ async function settingsFrequencyStage() {
       }
       metadataDetails.push(window.document.getElementById("opt-corpus-url") === null
         && window.document.getElementById("opt-lookup-counts").closest("section").id === "lookup"
-        && window.document.getElementById("opt-blur-source").closest("section").id === "lookup");
+        && window.document.getElementById("opt-blur-frequency").closest("section").id === "lookup");
       const blurControl = id => window.document.getElementById(id);
-      const blurSource = blurControl("opt-blur-source");
-      metadataDetails.push(blurSource.value === "off"
-        && [...blurSource.options].map(option => option.value).join(",") === "off,count,anki,either"
-        && ["definition-blur-count-controls", "definition-blur-anki-help", "definition-blur-reveal-controls"]
+      const countBlur = blurControl("opt-blur-count");
+      const ankiBlur = blurControl("opt-blur-anki");
+      const frequencyBlur = blurControl("opt-blur-frequency");
+      const frequencyDictionary = blurControl("opt-blur-frequency-dictionary");
+      metadataDetails.push(!countBlur.checked && !ankiBlur.checked && !frequencyBlur.checked
+        && ["definition-blur-count-controls", "definition-blur-anki-help",
+          "definition-blur-frequency-controls", "definition-blur-reveal-controls"]
           .every(id => blurControl(id).hidden)
-        && ["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
+        && ["opt-blur-direction", "opt-blur-threshold", "opt-blur-frequency-dictionary",
+          "opt-blur-frequency-order", "opt-blur-frequency-threshold", "opt-blur-reveal", "opt-blur-delay"]
         .every(id => blurControl(id).disabled)
         && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
+        && blurControl("opt-blur-frequency-order").value === "auto"
+        && blurControl("opt-blur-frequency-threshold").value === "10000"
         && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
-      await editControl(blurSource, "anki");
+      await editControl(ankiBlur, true);
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: true })
         && blurControl("definition-blur-count-controls").hidden && !blurControl("definition-blur-anki-help").hidden
         && blurControl("definition-blur-anki-help").textContent.includes("30 minutes")
         && blurControl("definition-blur-anki-help").textContent.includes("Anki is closed")
         && !blurControl("definition-blur-reveal-controls").hidden
         && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
-      await editControl(blurSource, "either");
+      await editControl(countBlur, true);
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurEnabled: true })
         && storedOptions.definitionBlurAnkiMature && !storedOptions.showLookupCounts
-        && !blurControl("definition-blur-either-help").hidden
+        && !blurControl("definition-blur-any-help").hidden
         && !blurControl("definition-blur-count-controls").hidden
         && !blurControl("definition-blur-count-paused").hidden && !blurControl("opt-blur-threshold").disabled);
-      await editControl(blurSource, "count");
-      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: false })
-        && blurControl("definition-blur-anki-help").hidden && blurControl("definition-blur-either-help").hidden);
       const beforeEnableCounts = writes.length;
       blurControl("definition-blur-count-paused").querySelector("label").click();
       await until(() => writes.length === beforeEnableCounts + 1 && status() === "Saved.");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ showLookupCounts: true })
         && blurControl("definition-blur-count-paused").hidden);
-      await editControl(blurSource, "off");
-      metadataDetails.push(storedOptions.definitionBlurEnabled === false && storedOptions.definitionBlurAnkiMature === false
-        && blurControl("definition-blur-count-controls").hidden && blurControl("definition-blur-reveal-controls").hidden);
-      await editControl(blurSource, "either");
-      metadataDetails.push(storedOptions.definitionBlurEnabled === true && storedOptions.definitionBlurAnkiMature === true);
-      blurSource.focus();
-      blurSource.value = "count";
-      blurSource.dispatchEvent(new window.Event("input", { bubbles: true }));
-      const blurRevision = storedOptions.revision;
-      emitOptions({ definitionBlurEnabled: false, definitionBlurAnkiMature: true });
-      metadataDetails.push(blurSource.value === "count");
-      blurSource.dispatchEvent(new window.Event("change", { bubbles: true }));
-      await until(() => status().includes("Could not save"));
-      metadataDetails.push(writes.at(-1).baseRevision === blurRevision
-        && writes.at(-1).options.definitionBlurEnabled === true && writes.at(-1).options.definitionBlurAnkiMature === false);
-      blurSource.blur();
-      window.document.getElementById("options-use-saved").click();
-      metadataDetails.push(blurSource.value === "anki" && blurControl("definition-blur-count-controls").hidden);
-      await editControl(blurSource, "count");
+      await editControl(frequencyBlur, true);
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyEnabled: true })
+        && !blurControl("definition-blur-frequency-controls").hidden && !frequencyDictionary.disabled
+        && frequencyDictionary.value === "" && blurControl("definition-blur-frequency-help").textContent.includes("Choose one")
+        && !blurControl("definition-blur-any-help").hidden);
+      await editControl(frequencyDictionary, "Occurrence");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options)
+        === JSON.stringify({ definitionBlurFrequencyDictionary: "Occurrence" })
+        && blurControl("definition-blur-frequency-help").textContent.includes("occurrence-based metadata")
+        && blurControl("definition-blur-frequency-help").textContent.includes("at or above"));
+      const beforeUnavailable = writes.length;
+      emitDictionaries({ enabled: false, displayName: "Dormant occurrence" }, "Occurrence");
+      metadataDetails.push(frequencyDictionary.value === "Occurrence"
+        && frequencyDictionary.selectedOptions[0].textContent.includes("disabled")
+        && blurControl("definition-blur-frequency-help").textContent.includes("fails open")
+        && writes.length === beforeUnavailable);
+      emitDictionaries({ enabled: true }, "Occurrence");
+      metadataDetails.push(frequencyDictionary.value === "Occurrence"
+        && !frequencyDictionary.selectedOptions[0].textContent.includes("disabled")
+        && blurControl("definition-blur-frequency-help").textContent.includes("occurrence-based metadata")
+        && writes.length === beforeUnavailable);
+      await editControl(ankiBlur, false);
+      await editControl(frequencyBlur, false);
       for (const { control, group, draft, external, key, saved, restore } of [
         { control: "opt-blur-threshold", group: "definition-blur-count-controls", draft: "7",
-          external: { definitionBlurEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-source", "count"] },
+          external: { definitionBlurEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-count", true] },
         { control: "opt-blur-reveal", group: "definition-blur-reveal-controls", draft: "hover",
-          external: { definitionBlurEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-source", "count"] },
+          external: { definitionBlurEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-count", true] },
         { control: "opt-blur-delay", group: "definition-blur-delay-control", draft: "2.5",
           external: { definitionBlurReveal: "hover" }, key: "definitionBlurDelayMs", saved: 2500, restore: ["opt-blur-reveal", "timed"] },
       ]) {
@@ -9808,6 +9837,33 @@ async function settingsFrequencyStage() {
         metadataDetails.push(blurControl(group).hidden && focusedControl.disabled);
         await editControl(blurControl(restore[0]), restore[1]);
       }
+      await editControl(countBlur, false);
+      await editControl(frequencyBlur, true);
+      const focusedFrequencyThreshold = blurControl("opt-blur-frequency-threshold");
+      focusedFrequencyThreshold.focus();
+      focusedFrequencyThreshold.value = "12000";
+      focusedFrequencyThreshold.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const frequencyRevision = storedOptions.revision;
+      emitOptions({ definitionBlurFrequencyEnabled: false });
+      metadataDetails.push(!blurControl("definition-blur-frequency-controls").hidden
+        && !focusedFrequencyThreshold.disabled && focusedFrequencyThreshold.value === "12000");
+      focusedFrequencyThreshold.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      metadataDetails.push(writes.at(-1).baseRevision === frequencyRevision
+        && writes.at(-1).options.definitionBlurFrequencyThreshold === 12000);
+      focusedFrequencyThreshold.blur();
+      window.document.getElementById("options-use-saved").click();
+      metadataDetails.push(blurControl("definition-blur-frequency-controls").hidden
+        && focusedFrequencyThreshold.disabled && frequencyDictionary.value === "Occurrence");
+      await editControl(frequencyBlur, true);
+      await editControl(blurControl("opt-blur-frequency-order"), "ascending");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options)
+        === JSON.stringify({ definitionBlurFrequencyOrder: "ascending" })
+        && blurControl("definition-blur-frequency-help").textContent.includes("at or below"));
+      await editControl(focusedFrequencyThreshold, "0");
+      metadataDetails.push(focusedFrequencyThreshold.value === "1"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyThreshold: 1 }));
+      await editControl(countBlur, true);
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));
@@ -12044,6 +12100,7 @@ async function contentNoteStage() {
         setSourceHighlightEnabled(enabled) { record.highlightEnabled = enabled; },
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
+          view.setDefinitionBlurState(context.definitionBlurState);
         },
         renderLookupFailure(value, options = {}) {
           recordRender({
@@ -12272,13 +12329,14 @@ async function contentNoteStage() {
       });
     }
 
-    function term(expression, dictionary = "Generic") {
+    function term(expression, dictionary = "Generic", frequencies = []) {
       return {
         matched: expression,
         term: {
           expression,
           reading: "\u3088\u307f",
           glossaries: [{ dictionary, glossary: "definition" }],
+          frequencies,
         },
       };
     }
@@ -12744,6 +12802,158 @@ async function contentNoteStage() {
     return outcomes;
   }
 
+  async function frequencyDefinitionBlurCase() {
+    const outcomes = {};
+    const frequencyGroup = (dictionary, values) => [{
+      dictionary,
+      frequencies: values.map(value => ({ value, displayValue: `display-${value}` })),
+    }];
+    const state = (revision, kanji = false) => ({ schemaVersion: 1, revision, dictionaries: [
+      genericPackage({ favorite: true, kanjiCount: kanji ? 1 : 0 }),
+      genericPackage({ id: "rank", title: "Rank", termCount: 0, frequencyCount: 2, frequencyMode: "rank-based" }),
+      genericPackage({ id: "occurrence", title: "Occurrence", termCount: 0, frequencyCount: 2,
+        frequencyMode: "occurrence-based" }),
+    ] });
+    let activeOptions = {
+      showLookupCounts: false,
+      definitionBlurEnabled: false,
+      definitionBlurAnkiMature: false,
+      definitionBlurFrequencyEnabled: true,
+      definitionBlurFrequencyDictionary: "Rank",
+      definitionBlurFrequencyOrder: "auto",
+      definitionBlurFrequencyThreshold: 120,
+      definitionBlurReveal: "hover",
+      definitionBlurDelayMs: 1000,
+      audioAutoplay: true,
+    };
+    const harness = await createHarness(null, { holdLookupStats: true, options: activeOptions });
+    const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+    const editOptions = patch => {
+      activeOptions = { ...activeOptions, ...patch };
+      harness.emitOptions(activeOptions);
+    };
+    const lookup = async (expression, frequencies) => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), {
+        dictionaryCount: 3,
+        results: [harness.term(expression, "Generic", frequencies)],
+      });
+      await operation;
+    };
+    try {
+      harness.emitState(state(2));
+      await lookup("順位", frequencyGroup("Rank", [120, 240]));
+      const runtimeTypes = harness.sent.map(request => request.type);
+      const immediate = harness.blurState() === "blurred" && harness.render().context.definitionBlurState === "blurred"
+        && plays() === 0;
+      harness.hoverDefinitions();
+      outcomes["a qualifying native rank blurs immediately and introduces no statistics, Anki or frequency request"] =
+        immediate && harness.blurState() === "revealed" && plays() === 1
+        && !runtimeTypes.some(type => type.startsWith("hd_lookup_stats") || type === "hd_anki_maturity"
+          || type.includes("frequency"));
+
+      await lookup("境界外", frequencyGroup("Rank", [121]));
+      outcomes["a nonqualifying frequency fails open and releases autoplay without pending evidence"] =
+        harness.blurState() === "revealed" && plays() === 2;
+
+      editOptions({ definitionBlurFrequencyDictionary: "Occurrence",
+        definitionBlurFrequencyThreshold: 10000 });
+      await lookup("出現", frequencyGroup("Occurrence", [9000, 10000]));
+      const occurrenceBlurred = harness.blurState() === "blurred" && plays() === 2;
+      editOptions({ definitionBlurFrequencyThreshold: 10001 });
+      const editedOpen = harness.blurState() === "revealed" && plays() === 3;
+      editOptions({ definitionBlurFrequencyThreshold: 10000 });
+      await lookup("再判定", frequencyGroup("Occurrence", [9000, 10000]));
+      const secondOccurrenceBlurred = harness.blurState() === "blurred" && plays() === 3;
+      editOptions({ definitionBlurAnkiMature: true, definitionBlurFrequencyThreshold: 10001 });
+      const liveMaturity = harness.take("hd_anki_maturity");
+      const waitsForLiveMaturity = Boolean(liveMaturity) && harness.blurState() === "pending";
+      harness.reply(liveMaturity, { mature: true });
+      await harness.settle();
+      const liveMaturityBlurred = harness.blurState() === "blurred" && plays() === 3;
+      editOptions({ definitionBlurAnkiMature: false });
+      editOptions({ definitionBlurFrequencyThreshold: 1 });
+      outcomes["occurrence auto order uses the inclusive maximum and live edits start pending evidence without reblurring a revealed visit"] =
+        occurrenceBlurred && editedOpen && secondOccurrenceBlurred && waitsForLiveMaturity
+        && liveMaturityBlurred && harness.blurState() === "revealed" && plays() === 4;
+
+      editOptions({
+        showLookupCounts: true,
+        definitionBlurEnabled: true,
+        definitionBlurThreshold: 5,
+        definitionBlurFrequencyDictionary: "Rank",
+        definitionBlurFrequencyThreshold: 100,
+      });
+      const playsBeforeCount = plays();
+      await lookup("併用", frequencyGroup("Rank", [200]));
+      const countRequest = harness.take("hd_lookup_stats_record");
+      const waitsForCount = Boolean(countRequest) && harness.blurState() === "pending" && plays() === playsBeforeCount;
+      harness.reply(countRequest, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: countRequest.request.term, reading: countRequest.request.reading, lookupCount: 5 } });
+      await harness.settle();
+      outcomes["a nonqualifying frequency retains the existing pending count decision and either condition can qualify"] =
+        waitsForCount && harness.blurState() === "blurred" && plays() === playsBeforeCount;
+
+      editOptions({
+        showLookupCounts: false,
+        definitionBlurEnabled: false,
+        definitionBlurFrequencyDictionary: "Rank",
+        definitionBlurFrequencyThreshold: 120,
+      });
+      await lookup("更新", frequencyGroup("Rank", [120]));
+      const lookupRequestsBeforeNote = harness.sent.filter(request => request.type === "hd_lookup").length;
+      const ankiRequestsBeforeNote = harness.sent.filter(request => request.type === "hd_anki_maturity").length;
+      harness.edit(true);
+      const append = harness.callbacks().onAddCustomEntry({ term: "更新", reading: "よみ", definition: "updated" });
+      harness.reply(harness.take("hd_custom_append"), {
+        document: { revision: 2, text: "", semanticRevision: "two" },
+        state: harness.state(3, "Note"),
+      });
+      await harness.settle();
+      const refresh = harness.take("hd_lookup");
+      harness.reply(refresh, { dictionaryCount: 3, results: [harness.term("更新")] });
+      await append;
+      const afterRefresh = harness.blurState() === "blurred"
+        && harness.sent.filter(request => request.type === "hd_lookup").length === lookupRequestsBeforeNote + 1;
+      harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+      harness.callbacks().onResultsRendered({
+        lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+        audioButtons: [],
+        miningActions: [],
+      });
+      outcomes["Note refresh and dictionary tabs reuse the request's frequency snapshot without a new evidence request"] =
+        afterRefresh && harness.blurState() === "blurred"
+        && harness.sent.filter(request => request.type === "hd_anki_maturity").length === ankiRequestsBeforeNote;
+    } finally { harness.close(); }
+
+    const navigation = await createHarness({ title: "Generic", kind: "kanji" }, {
+      holdLookupStats: true,
+      options: { ...activeOptions, showLookupCounts: false, definitionBlurEnabled: false,
+        definitionBlurFrequencyDictionary: "Rank", definitionBlurFrequencyThreshold: 120, audioAutoplay: false },
+    });
+    try {
+      navigation.emitState(state(2, true));
+      const operation = navigation.driver.runLookup(navigation.candidate);
+      navigation.reply(navigation.take("hd_lookup"), {
+        dictionaryCount: 3,
+        results: [navigation.term("戻る", "Generic", frequencyGroup("Rank", [120]))],
+      });
+      await operation;
+      const lookups = navigation.sent.filter(request => request.type === "hd_lookup").length;
+      const showKanji = navigation.driver.showKanji("食");
+      navigation.reply(navigation.take("hd_kanji"), {
+        kanji: { character: "食", entries: [{ dictionary: "Generic", meanings: ["eat"] }] },
+      });
+      await showKanji;
+      const nativeRevealed = navigation.blurState() === "revealed";
+      await navigation.render().context.onBack();
+      outcomes["native kanji stays unblurred and Back restores the same frequency-qualified visit without another lookup"] =
+        nativeRevealed && navigation.blurState() === "blurred"
+        && navigation.sent.filter(request => request.type === "hd_lookup").length === lookups;
+    } finally { navigation.close(); }
+    return outcomes;
+  }
+
   async function definitionBlurCase() {
     const outcomes = {};
     const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -13124,6 +13334,13 @@ async function contentNoteStage() {
     const count = harness.sent.length;
     await parentContext.onInternalLink({ query: "child", primaryReading: "reading", anchor: childAnchor });
     const deduped = harness.sent.length === count && harness.driver.viewRequest(1) === child;
+    const close = harness.anchor.ownerDocument.createElement("button");
+    close.className = "gsm-hoshidicts-popup-close";
+    childPopup.append(close);
+    await parentContext.onInternalLink({
+      query: "child", primaryReading: "reading", anchor: childAnchor, focusChild: true,
+    });
+    const reusedChildFocused = childAnchor.getRootNode().activeElement === close;
     await open("grandchild", 1);
     const grandchildContext = harness.render(2).context;
     await open("great-grandchild", 2);
@@ -13149,7 +13366,7 @@ async function contentNoteStage() {
     const childBack = harness.driver.viewRequest(1) === currentChild && harness.driver.viewRequest() === parent;
     harness.driver.popupAt(1).tabIndex = -1;
     harness.driver.popupAt(1).focus();
-    await harness.render(1).context.onBack();
+    await harness.render(1).context.onClose();
     const returned = !harness.driver.popupAt(1) && harness.driver.viewRequest() === parent
       && childAnchor.getRootNode().activeElement === childAnchor;
     ancestorLayouts = 0;
@@ -13171,7 +13388,8 @@ async function contentNoteStage() {
     const noViewport = await open("no viewport") === null && !harness.driver.popupAt(1);
     harness.close();
     return {
-      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
+      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants":
+        deduped && reusedChildFocused && prunedOnlyBelow && reactivated && childBack && returned,
       "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner && rootOnlyScroll
         && disabled && limited && lowered && shrunk && noViewport,
     };
@@ -13210,7 +13428,7 @@ async function contentNoteStage() {
       await child;
       checks.push(harness.render(1).context.dictionaryTabGroups.length === 0 && !harness.driver.snapshot(1).popupHidden);
       const flushes = harness.presentationFlushes();
-      harness.render(1).context.onBack();
+      harness.render(1).context.onClose();
       checks.push(!harness.driver.popupAt(1) && harness.callbacks().canProjectDictionaryPresentation?.() === true
         && harness.presentationFlushes() > flushes);
       const resizeChild = harness.internalLink({ query: "resize child" });
@@ -13479,7 +13697,7 @@ async function contentNoteStage() {
       views.push(retiringView);
       retiringView.scheduleMasonry();
       const childQueued = frames.size === 1;
-      harness.render(1).context.onBack();
+      harness.render(1).context.onClose();
       const retiredCancelled = frames.size === 0;
       const replacement = harness.internalLink({ query: "same depth" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });
@@ -13667,7 +13885,7 @@ async function contentNoteStage() {
       } else {
         harness.edit(false);
         const retained = source.isConnected && harness.driver.snapshot(1).noteEditing;
-        if (navigation === "back") harness.render(1).context.onBack();
+        if (navigation === "back") harness.render(1).context.onClose();
         else if (navigation === "lower") harness.emitOptions({ popupNestingMaxDepth: 0 });
         else harness.edit(false, 1);
         const refresh = harness.take("hd_lookup");
@@ -16270,7 +16488,8 @@ async function contentNoteStage() {
     keybinds: await keybindCase(),
     popupVisibility: await popupVisibilityCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
-    definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
+    definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
+      ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
@@ -16945,7 +17164,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     }),
   );
   if (definitionInput) definitionInput.value = "A retained draft";
-  addNoteEntry = async () => {
+  addNoteEntry = () => {
     throw new Error("simulated append failure");
   };
   termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
@@ -16955,20 +17174,11 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     definition: definitionInput?.value,
     error: termNoteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent,
   };
-  let resolveNoteEntry;
-  addNoteEntry = () => new Promise((resolveNote) => {
-    resolveNoteEntry = resolveNote;
-  });
+  addNoteEntry = () => {};
   termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await new Promise((done) => window.setTimeout(done, 0));
-  const pendingNote = {
-    formBusy: termNoteForm?.getAttribute("aria-busy"),
-    saveText: termNoteForm?.querySelector(".gsm-hoshidicts-note-save")?.textContent,
-  };
-  resolveNoteEntry?.();
-  await new Promise((done) => window.setTimeout(done, 0));
   check(
-    "a rejected Note append retains its draft and a successful retry closes it",
+    "a rejected Note append retains its draft and an accepted retry closes immediately",
     rejectedDraft.hidden === false
       && rejectedDraft.definition === "A retained draft"
       && rejectedDraft.error?.includes("simulated append failure")
@@ -16978,8 +17188,6 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
         reading: "ぷろじぇくてっど",
         definition: "A retained draft",
       }))
-      && pendingNote.formBusy === "true"
-      && pendingNote.saveText === "Saving…"
       && termNoteForm?.hidden === true
       && shadow.activeElement === termNoteButton
       && noteEditingStates.join(",") === "true,false",
@@ -16988,7 +17196,6 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       hidden: termNoteForm?.hidden,
       noteEditingStates,
       noteEntries,
-      pendingNote,
       rejectedDraft,
     }),
   );
@@ -17818,7 +18025,6 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   let replays = 0;
   let selected = null;
   let replayIntent = null;
-  let finishAppend;
   let appends = 0;
   const linkPredicates = [];
   const originalResizeObserver = window.ResizeObserver;
@@ -17847,7 +18053,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     },
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
     onBeforeResultsRendered(intent) { if (!current) { replays += 1; replayIntent = intent; return false; } },
-    onAddCustomEntry() { appends += 1; return new Promise(resolve => { finishAppend = resolve; }); },
+    onAddCustomEntry() { appends += 1; },
   });
   const results = ["First", "Second"].map((dictionary) => ({ ...result, term: { ...result.term,
     glossaries: [{ dictionary, glossary: JSON.stringify([{ type: "structured-content", content: {
@@ -17909,17 +18115,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
         && definition.selectionStart === 2 && definition.selectionEnd === 7
         && !observer.takeRecords().some(record => [...record.removedNodes].includes(form)));
       observer.disconnect();
-      // A form opened before a replay and a pending save keep the same controls.
       form.elements.term.value = "saved";
       form.elements.reading.value = "reading";
       const beforeAppend = appends;
       form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
       view.renderResults(results, candidate, { ...context, preserveViewControls: true });
-      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-      preserved.push(popup.querySelector("form") === form && form.getAttribute("aria-busy") === "true"
-        && form.elements.definition.disabled && appends === beforeAppend + 1);
-      finishAppend();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      preserved.push(form.hidden && appends === beforeAppend + 1);
       const refreshed = [{ ...results[0], term: { ...results[0].term, expression: "new prefill", reading: "new reading" } }];
       view.renderResults(refreshed, candidate, { ...context, preserveViewControls: true });
       popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -17952,7 +18153,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     preserved.push(kanjiForm.elements.term.value === "食" && kanjiForm.elements.reading.value === "");
     view.renderResults(results, candidate, context);
     preserved.push(!kanjiForm.isConnected && !popup.querySelector("form"));
-    check("same-view refresh preserves mounted Note drafts, pending saves and response-time focus",
+    check("same-view refresh preserves mounted Note drafts and response-time focus",
       preserved.every(Boolean), JSON.stringify(preserved));
 
     view.renderResults(results, candidate, context);
@@ -18338,6 +18539,29 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
     }
     check("deinflection disclosure preserves raw duplicate steps and localized literal text without empty explanations",
       failures.length === 0, JSON.stringify(failures));
+
+    const oversized = { ...raw,
+      matched: "前".repeat(5000),
+      deinflected: "後".repeat(5000),
+      trace: Array.from({ length: 40 }, (_, index) => ({
+        name: index === 0 ? "名".repeat(5000) : `step ${index}`,
+        description: index === 0 ? "説".repeat(5000) : `description ${index}`,
+      })),
+    };
+    Object.defineProperty(window.navigator, "language", { configurable: true, value: "fr-FR" });
+    view.renderResults([oversized], candidate, { hidePopupGrammarTags: false });
+    const bounded = disclosure();
+    const boundedItems = [...bounded.querySelectorAll("ol > li")];
+    const boundedEncoder = new TextEncoder();
+    check("oversized deinflection traces keep bounded nodes and UTF-8 text with a locale-neutral fallback",
+      boundedItems.length === 32
+        && boundedItems.at(-1).textContent === "…"
+        && bounded.querySelector("ol").getAttribute("aria-label") === "Deinflection steps"
+        && bounded.querySelector("summary").getAttribute("aria-label").startsWith("Why this matched:")
+        && [...bounded.querySelectorAll(".gsm-hoshidicts-deinflection-endpoint, .gsm-hoshidicts-deinflection-step-name, .gsm-hoshidicts-deinflection-step-description")]
+          .every((node) => boundedEncoder.encode(node.textContent).byteLength <= 4096)
+        && bounded.querySelectorAll(".gsm-hoshidicts-deinflection-step-name").length === 31,
+      bounded?.outerHTML ?? "missing disclosure");
 
     const first = entry("First", "First match");
     const second = entry("Second", "Second match");

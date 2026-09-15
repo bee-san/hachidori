@@ -82,7 +82,9 @@ matching note is mature, and matching note IDs; it does not store note fields,
 note-type names, deck names or card data. A missing word triggers a scoped
 Anki lookup during mining and a found result repairs the local index. Mature-card
 definition blur reads only that index. These reads and checks do not create
-notes. A linked browser suspends its own duplicate-index refresh and alarm; the
+notes. Frequency definition blur uses only native numeric values already
+returned by the selected local dictionary lookup; it adds no request or
+external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
 host owns duplicate and maturity checks. Explicit mining sends the content
 selected by your field mappings, such as a word, definition, sentence, page
 title, image or audio, and creates or updates a note according to your settings.

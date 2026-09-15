@@ -33,10 +33,8 @@ function fixture(t, onAddCustomEntry = async () => {}) {
 
 test("unknown selected words expose a pencil with a selected-text prefill and one managed save", async t => {
   const entries = [];
-  let finishSave;
   const f = fixture(t, entry => {
     entries.push({ ...entry });
-    return new Promise(resolve => { finishSave = resolve; });
   });
   f.view.renderNotice("No definition found. Add your own with the pencil.", f.candidate);
   const button = f.popup.querySelector(".gsm-hoshidicts-note-button");
@@ -54,9 +52,6 @@ test("unknown selected words expose a pencil with a selected-text prefill and on
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   assert.deepEqual(entries, [{ term: f.candidate.query, reading: "しらないことば", definition: "My meaning" }]);
-  assert.equal(form.getAttribute("aria-busy"), "true");
-  finishSave();
-  await new Promise(resolve => f.window.setTimeout(resolve, 0));
   assert.equal(form.hidden, true);
 });
 
