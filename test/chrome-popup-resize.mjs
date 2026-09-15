@@ -26,10 +26,14 @@ export async function checkPopupResize(settings, tab) {
   };
   const drag = async (dx, dy) => {
     const before = await read();
-    const scale = await tab.evaluate(() => devicePixelRatio);
-    await tab.mouse.move(before.right - 6 / scale, before.bottom - 6 / scale);
+    const point = await tab.evaluate(() => {
+      const rect = document.querySelector('hachidori-host').shadowRoot
+        .querySelector('.gsm-hoshidicts-resize-handle').getBoundingClientRect();
+      return { x: rect.x + rect.width * 0.65, y: rect.y + rect.height * 0.65 };
+    });
+    await tab.mouse.move(point.x, point.y);
     await tab.mouse.down();
-    await tab.mouse.move(before.right - 6 / scale + dx, before.bottom - 6 / scale + dy, { steps: 12 });
+    await tab.mouse.move(point.x + dx, point.y + dy, { steps: 12 });
     await tab.mouse.up();
     await new Promise(done => setTimeout(done, 200));
     return read();
@@ -75,11 +79,25 @@ export async function checkPopupResize(settings, tab) {
   await tab.waitForFunction(() => devicePixelRatio === 1);
   await new Promise(done => setTimeout(done, 300));
   const expanded = await drag(2000, 2000);
+  const setScale = value => settings.evaluate(async value => {
+    const { options } = await chrome.storage.local.get('options');
+    const reply = await chrome.runtime.sendMessage({ target: 'hoshidicts-worker', type: 'hd_options_write',
+      baseRevision: options.revision, options: { popupScalePercent: value } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, value);
   const viewport = await tab.evaluate(() => ({ width: innerWidth, height: innerHeight }));
   assert.ok(expanded.right <= viewport.width && expanded.bottom <= viewport.height
     && expanded.left >= 0 && expanded.top >= 0, JSON.stringify({ expanded, viewport }));
   assert.deepEqual(await settings.evaluate(() => chrome.storage.local.get('options')), stored,
     'resizing never writes persistent design options');
+  await setScale(150);
+  await new Promise(done => setTimeout(done, 200));
+  const scaled = await read();
+  const scaledDrag = await drag(-60, -45);
+  assert.ok(Math.abs(scaledDrag.width - scaled.width + 60) < 3
+    && Math.abs(scaledDrag.height - scaled.height + 45) < 3,
+    JSON.stringify({ scaled, scaledDrag }));
+  await setScale(stored.options?.popupScalePercent ?? 100);
   await tab.evaluate(() => {
     dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));

@@ -1691,9 +1691,10 @@
     if (!popupResize || event.pointerId !== popupResize.pointerId) return;
     if ((event.buttons & 1) === 0) { stopPopupResize(); return; }
     const drag = popupResize;
+    const factor = window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
     sessionPopupSize = {
-      width: Math.max(drag.minimum.width, drag.width + (event.clientX - drag.x) * pageZoom),
-      height: Math.max(drag.minimum.height, drag.height + (event.clientY - drag.y) * pageZoom),
+      width: Math.max(drag.minimum.width, drag.width + (event.clientX - drag.x) * factor),
+      height: Math.max(drag.minimum.height, drag.height + (event.clientY - drag.y) * factor),
     };
     const position = popupResizePosition();
     sessionPopupSize = { width: position.width, height: position.height };
