@@ -144,6 +144,7 @@
       activeTermRender: null, currentViewRequest: null, noteEditing: false,
       pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
       deferredRefresh: null, lookupToken: 0, pendingHover: null, pendingLink: null,
+      pendingPopupInteraction: null,
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
@@ -1471,7 +1472,7 @@
     return false;
   }
 
-  function lookupFailureState(error) {
+  function lookupFailureState(error, request = null) {
     const message = error instanceof Error ? error.message : String(error);
     if (error?.code === "engine-mutating" || message === "the dictionary engine is busy mutating") {
       return {
@@ -1501,6 +1502,13 @@
         detail: "Open Settings to check the engine status, then try again.",
       };
     }
+    if (request?.kind === "kanji") {
+      return {
+        kind: "kanji",
+        title: "Kanji lookup failed.",
+        detail: "The current definition is still available. Try again.",
+      };
+    }
     return null;
   }
 
@@ -1521,7 +1529,7 @@
   function handleLookupFailure(token, error, level = rootLevel, request = null, preserveView = false) {
     if (disposed || level.retired || token !== level.lookupToken) return false;
     console.debug("hachidori: lookup failed", error);
-    const state = lookupFailureState(error);
+    const state = lookupFailureState(error, request);
     if (state === null) {
       if (!preserveView) hide(level);
       return false;
@@ -2722,6 +2730,10 @@
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (level.lookupToken += 1);
+    level.pendingPopupInteraction = token;
+    const finishInteraction = () => {
+      if (level.pendingPopupInteraction === token) level.pendingPopupInteraction = null;
+    };
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
     let reply;
@@ -2730,9 +2742,11 @@
         ? await sendRequest("hd_lookup_dictionary", request.termPayload)
         : await sendRequest("hd_kanji", request.kanjiPayload);
     } catch (error) {
-      return handleRequestFailure(request, token, error, level, replayOptions);
+      finishInteraction();
+      return handleLookupFailure(token, error, level, request, true);
     }
     if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
+      finishInteraction();
       return false;
     }
     noteGeneration(reply.generation, level);
@@ -2742,6 +2756,7 @@
         capability.title
       );
       if (results.length > 0) {
+        finishInteraction();
         return renderTerms(
           results,
           candidate,
@@ -2755,22 +2770,30 @@
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
-        return handleRequestFailure(request, token, error, level, replayOptions);
+        finishInteraction();
+        return handleLookupFailure(token, error, level, request, true);
       }
       if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
+        finishInteraction();
         return false;
       }
       noteGeneration(reply.generation, level);
     }
     const kanji = reply.kanji;
     if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
-      if (!retainProtectedReplay(request, token, level, replayOptions)) hide(level);
-      return false;
+      finishInteraction();
+      return handleLookupFailure(token, new Error("kanji lookup returned no usable result"), level, request, true);
+    }
+    const validEntries = kanji.entries.filter((entry) => entry && typeof entry === "object"
+      && typeof entry.dictionary === "string" && entry.dictionary !== "");
+    if (validEntries.length === 0) {
+      finishInteraction();
+      return handleLookupFailure(token, new Error("kanji lookup returned no usable result"), level, request, true);
     }
     const selectedEntries = capability?.kind === "kanji"
-      ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
-      : kanji.entries;
-    const entries = selectedEntries.length > 0 ? selectedEntries : kanji.entries;
+      ? validEntries.filter((entry) => entry.dictionary === capability.title)
+      : validEntries;
+    const entries = selectedEntries.length > 0 ? selectedEntries : validEntries;
     clearDefinitionBlurTimer(level);
     level.currentViewRequest = request;
     level.deferredRefresh = null;
@@ -2791,8 +2814,9 @@
       });
     } catch (error) {
       console.warn("hachidori: could not render kanji", error);
-      hide(level);
-      return false;
+      return handleLookupFailure(token, error, level, request, true);
+    } finally {
+      finishInteraction();
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
@@ -3505,6 +3529,12 @@
       activationPressed = false;
       activationCode = null;
       pointerInPopup = false;
+      const interaction = levels.find((level) => !level.popup?.hidden
+        && level.pendingPopupInteraction === level.lookupToken);
+      if (interaction) {
+        interaction.pendingPopupInteraction = null;
+        return;
+      }
       hide();
     }
   }

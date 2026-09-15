@@ -3553,13 +3553,14 @@
           }
           if (readings.childNodes.length > 0) entry.appendChild(readings);
 
-          if (kanjiEntry.definitions.length > 0) {
+          const definitions = Array.isArray(kanjiEntry.definitions) ? kanjiEntry.definitions : [];
+          if (definitions.length > 0) {
             const meaningsHeading = documentRef.createElement("h4");
             meaningsHeading.textContent = "Meanings";
             entry.appendChild(meaningsHeading);
             const meanings = documentRef.createElement("ol");
             meanings.className = "gsm-hoshidicts-kanji-meanings";
-            for (const meaning of kanjiEntry.definitions) {
+            for (const meaning of definitions) {
               const item = documentRef.createElement("li");
               item.textContent = meaning;
               meanings.appendChild(item);
@@ -3567,14 +3568,15 @@
             entry.appendChild(meanings);
           }
 
-          if (kanjiEntry.stats.length > 0) {
+          const stats = Array.isArray(kanjiEntry.stats) ? kanjiEntry.stats : [];
+          if (stats.length > 0) {
             const details = documentRef.createElement("details");
             details.className = "gsm-hoshidicts-kanji-stats";
             const summary = documentRef.createElement("summary");
             summary.textContent = "Details";
             details.appendChild(summary);
             const list = documentRef.createElement("dl");
-            for (const stat of kanjiEntry.stats) {
+            for (const stat of stats) {
               const name = documentRef.createElement("dt");
               name.textContent = stat.name;
               const value = documentRef.createElement("dd");
