@@ -1392,11 +1392,12 @@
   // one on-screen size, so its lengths are unzoomed pixels and page geometry is
   // converted into them before placement.
   function popupRect(rect) {
-    return window.HDPopup.scaleRect(rect, pageZoom);
+    return window.HDPopup.scaleRect(rect, window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent));
   }
 
   function popupViewport() {
-    return { width: window.innerWidth * pageZoom, height: window.innerHeight * pageZoom };
+    const factor = window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
+    return { width: window.innerWidth * factor, height: window.innerHeight * factor };
   }
 
   function applyPageZoom() {
@@ -1874,6 +1875,7 @@
       appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,
       getPageZoom: () => pageZoom,
+      getPopupScalePercent: () => options.popupScalePercent,
       getPopupColumns: () => options.popupColumns,
       onResizeStart: event => startPopupResize(event, level),
       onResizeMove: movePopupResize,
@@ -3759,7 +3761,8 @@
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const columnsChanged = next.popupColumns !== options.popupColumns;
-    const sizeChanged = next.popupWidthPx !== options.popupWidthPx || next.popupHeightPx !== options.popupHeightPx;
+    const sizeChanged = next.popupWidthPx !== options.popupWidthPx || next.popupHeightPx !== options.popupHeightPx
+      || next.popupScalePercent !== options.popupScalePercent;
     const toolbarChanged = next.popupToolbarPosition !== options.popupToolbarPosition;
     const highlightChanged = next.sourceHighlightEnabled !== options.sourceHighlightEnabled;
     const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
@@ -3820,6 +3823,7 @@
     audio?.update(options);
     mining?.update(options);
     appearance?.update(options);
+    if (sizeChanged) for (const level of levels) level.view?.hideImagePreview();
     const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {
       for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
