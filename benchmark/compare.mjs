@@ -101,7 +101,7 @@ function usage() {
     + `  --keep-profiles        retain successful browser profiles\n`;
 }
 
-function command(executable, args, { cwd = REPO, environment = process.env, maxBuffer = 32 * 1024 * 1024 } = {}) {
+export function command(executable, args, { cwd = REPO, environment = process.env, maxBuffer = 32 * 1024 * 1024 } = {}) {
   const result = spawnSync(executable, args, {
     cwd,
     env: environment,
@@ -112,7 +112,7 @@ function command(executable, args, { cwd = REPO, environment = process.env, maxB
   if (result.status !== 0) {
     throw new Error(`${executable} ${args.join(" ")} failed (${result.status ?? result.signal}): ${(result.stderr || result.stdout).trim()}`);
   }
-  return result.stdout.trim();
+  return result.stdout.replace(/[\r\n]+$/, "");
 }
 
 function git(path, ...args) {
@@ -678,29 +678,31 @@ function writeDeliverables(prepared, rows, rawAttemptCount) {
   return { summary, reportPath: resolve(prepared.output, "report.md") };
 }
 
-const options = parseArgs(process.argv.slice(2));
-if (options.help) {
-  process.stdout.write(usage());
-  process.exit(0);
-}
-
-mkdirSync(resolve(options.output), { recursive: true });
-const release = acquireFileLock(resolve(options.output, ".lock"), {
-  pid: process.pid,
-  createdUtc: new Date().toISOString(),
-  argv: process.argv,
-});
-try {
-  const prepared = await prepare(options);
-  process.stdout.write(`definition ${sha256Canonical(prepared.definition)}\n`);
-  process.stdout.write(`schedule   ${prepared.schedule.length} balanced runs\n`);
-  if (options.dryRun) process.stdout.write("dry-run verified all pinned inputs and runtimes\n");
-  else {
-    const result = await execute(prepared, options);
-    if (result) process.stdout.write(`complete ${result.reportPath}\n`);
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const options = parseArgs(process.argv.slice(2));
+  if (options.help) {
+    process.stdout.write(usage());
+    process.exit(0);
   }
-} catch (error) {
-  die(error?.stack || error?.message || String(error));
-} finally {
-  release();
+
+  mkdirSync(resolve(options.output), { recursive: true });
+  const release = acquireFileLock(resolve(options.output, ".lock"), {
+    pid: process.pid,
+    createdUtc: new Date().toISOString(),
+    argv: process.argv,
+  });
+  try {
+    const prepared = await prepare(options);
+    process.stdout.write(`definition ${sha256Canonical(prepared.definition)}\n`);
+    process.stdout.write(`schedule   ${prepared.schedule.length} balanced runs\n`);
+    if (options.dryRun) process.stdout.write("dry-run verified all pinned inputs and runtimes\n");
+    else {
+      const result = await execute(prepared, options);
+      if (result) process.stdout.write(`complete ${result.reportPath}\n`);
+    }
+  } catch (error) {
+    die(error?.stack || error?.message || String(error));
+  } finally {
+    release();
+  }
 }

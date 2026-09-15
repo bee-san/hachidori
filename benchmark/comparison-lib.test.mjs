@@ -239,3 +239,34 @@ test("comparison summary excludes warmups and emits the requested three-row tabl
   assert.match(renderComparisonMarkdown(summary), /Production paths/);
   assert.match(renderComparisonCsv(summary), /^engine,corpus,metric,unit,median,p95,min,max,n/m);
 });
+
+test("comparison report describes zero configured outer warmups exactly", () => {
+  const { definition, rows } = fixture();
+  definition.config.warmups = 0;
+  definition.schedule = definition.schedule.filter((entry) => !entry.warmup).map((entry) => ({
+    ...entry,
+    round: entry.round - 1,
+  }));
+  const measuredRows = rows.filter((row) => !row.warmup).map((row) => ({
+    ...row,
+    round: row.round - 1,
+    runDefinitionSha256: sha256Canonical(definition),
+  }));
+  const selected = validateComparisonRows(measuredRows, definition.schedule, definition);
+  const summary = buildComparisonSummary(selected, definition, { runDefinitionSha256: sha256Canonical(definition) });
+  const report = renderComparisonMarkdown(summary);
+
+  assert.match(report, /No outer warmups were configured/);
+  assert.doesNotMatch(report, /The outer warmup for every engine\/corpus cell/);
+  assert.match(report, /Configured outer warmups: `0` per engine\/corpus cell \(none excluded\)/);
+});
+
+test("comparison report describes nonzero configured outer warmups exactly", () => {
+  const { schedule, definition, rows } = fixture();
+  const selected = validateComparisonRows(rows, schedule, definition);
+  const summary = buildComparisonSummary(selected, definition, { runDefinitionSha256: sha256Canonical(definition) });
+  const report = renderComparisonMarkdown(summary);
+
+  assert.match(report, /1 outer warmup per engine\/corpus cell is excluded/);
+  assert.match(report, /Configured outer warmups: `1` per engine\/corpus cell \(excluded from aggregates\)/);
+});
