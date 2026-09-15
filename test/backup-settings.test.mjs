@@ -108,13 +108,13 @@ test("leaving Settings cancels late preparation and does not revive a preview on
   }
 });
 
-test("overlay mode disables backup export while preserving restore", async t => {
+test("backup export remains available without Chrome downloads while preserving restore", async t => {
   const f = fixture(t, { exportAvailable: false });
-  assert.equal(f.el("backup-export").disabled, true);
+  assert.equal(f.el("backup-export").disabled, false);
   assert.equal(f.el("backup-file").disabled, false);
   f.el("backup-export").click();
   await tick();
-  assert.equal(f.downloads, 0);
+  assert.equal(f.downloads, 1);
   await f.prepare();
   assert.equal(f.el("backup-preview").hidden, false);
 });
