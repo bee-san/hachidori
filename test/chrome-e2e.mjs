@@ -43,6 +43,7 @@ import {
 } from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
+import { checkPopupResize } from "./chrome-popup-resize.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -347,6 +348,7 @@ const PLANNED = [
   "the popup opens below the complete wrapped match instead of the hovered glyph",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
+  "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
   "the content script attached its open-shadow host to the page",
@@ -9575,6 +9577,8 @@ async function main() {
   const popup = await popupReader(tab);
 
   const hover = (selector, options) => hoverForPopup(tab, popup, selector, options);
+  await checkPopupResize(page, tab);
+  check("mouse resizing retains session dimensions without changing Design settings", true);
 
   // CSS.highlights is a per-document registry, so the extension's entry is
   // readable from the page's own world even though the content script that set

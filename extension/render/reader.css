@@ -1130,6 +1130,20 @@ html[data-hoshidicts-theme="girlypop"],
   user-select: text;
 }
 
+.gsm-hoshidicts-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 10;
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--hoshidicts-border-strong) 3px 4px);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
 :host([data-hoshidicts-theme="high-contrast"]) .gsm-hoshidicts-popup {
   --hoshidicts-card-base: #080808;
   --hoshidicts-text-muted: #f0f0f0;

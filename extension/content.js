@@ -162,6 +162,8 @@
   let pageZoom = 1;
   let pageZoomRatio = null;
   let pageZoomRequest = 0;
+  let sessionPopupSize = null;
+  let popupResize = null;
 
   let styleGeneration = -1;
   let styleRequest = null;
@@ -1418,7 +1420,7 @@
   }
 
   function calculatePopupPosition(anchorRect, viewport, vertical) {
-    return window.HDPopup.calculatePopupPosition(anchorRect, {
+    return window.HDPopup.calculatePopupPosition(anchorRect, sessionPopupSize ?? {
       width: options.popupWidthPx, height: options.popupHeightPx,
     }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical });
   }
@@ -1582,7 +1584,7 @@
     }
     highlighter?.refresh();
     if (fromLevel === rootLevel) {
-      const position = calculatePopupPosition(
+      const position = popupResize?.level === rootLevel ? popupResizePosition() : calculatePopupPosition(
         popupRect(anchorRectFor(rootLevel.activeCandidate)),
         popupViewport(),
         rootLevel.activeCandidate.vertical
@@ -1611,8 +1613,8 @@
       }
       positionToolbar(level, "beside", resetToolbar);
       const anchorRect = popupRect(anchorRectFor(level.activeCandidate));
-      const width = Math.min(options.popupWidthPx, viewport.width - POPUP_PADDING_PX * 2);
-      const height = Math.min(options.popupHeightPx, viewport.height - POPUP_PADDING_PX * 2);
+      const width = Math.min(sessionPopupSize?.width ?? options.popupWidthPx, viewport.width - POPUP_PADDING_PX * 2);
+      const height = Math.min(sessionPopupSize?.height ?? options.popupHeightPx, viewport.height - POPUP_PADDING_PX * 2);
       const rightRoom = viewport.width - parentRect.right - POPUP_GAP_PX - POPUP_PADDING_PX;
       const leftRoom = parentRect.left - POPUP_GAP_PX - POPUP_PADDING_PX;
       const preferredLeft = rightRoom >= width || rightRoom >= leftRoom
@@ -1624,6 +1626,13 @@
       level.popup.style.top = `${top}px`;
       level.popup.style.width = `${width}px`;
       level.popup.style.height = `${height}px`;
+      if (popupResize?.level === level) {
+        const position = popupResizePosition();
+        level.popup.style.left = `${position.left}px`;
+        level.popup.style.top = `${position.top}px`;
+        level.popup.style.width = `${position.width}px`;
+        level.popup.style.height = `${position.height}px`;
+      }
       // Each parent box is read once, after its own placement, not once per
       // ancestor for every descendant. Narrow viewports may overlap panes.
       parentRect = popupRect(level.popup.getBoundingClientRect());
@@ -1640,6 +1649,51 @@
     if (popupLayouts.get(level) !== layout) return;
     popupLayouts.delete(level);
     if (popupLayouts.size === 0) cancelPopupLayout();
+  }
+
+  function popupResizePosition() {
+    const viewport = popupViewport();
+    const left = Math.min(popupResize.left, viewport.width - POPUP_PADDING_PX);
+    const top = Math.min(popupResize.top, viewport.height - POPUP_PADDING_PX);
+    return { left, top, placement: "beside",
+      width: Math.min(sessionPopupSize.width, viewport.width - left - POPUP_PADDING_PX),
+      height: Math.min(sessionPopupSize.height, viewport.height - top - POPUP_PADDING_PX) };
+  }
+
+  function startPopupResize(event, level) {
+    if (event.button !== 0 || level.retired) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const rect = popupRect(level.popup.getBoundingClientRect());
+    const minimum = popupRect(handle.getBoundingClientRect());
+    cancelCandidateScan();
+    clearHideTimer();
+    clearTransferTimer();
+    clearDescendantTimer();
+    sessionPopupSize = { width: rect.width, height: rect.height };
+    popupResize = { level, handle, pointerId: event.pointerId, ...rect,
+      x: event.clientX, y: event.clientY, minimum };
+    handle.setPointerCapture(event.pointerId);
+  }
+
+  function movePopupResize(event) {
+    if (!popupResize || event.pointerId !== popupResize.pointerId) return;
+    if ((event.buttons & 1) === 0) { stopPopupResize(); return; }
+    const drag = popupResize;
+    sessionPopupSize = {
+      width: Math.max(drag.minimum.width, drag.width + (event.clientX - drag.x) * pageZoom),
+      height: Math.max(drag.minimum.height, drag.height + (event.clientY - drag.y) * pageZoom),
+    };
+    const position = popupResizePosition();
+    sessionPopupSize = { width: position.width, height: position.height };
+    positionPopup();
+  }
+
+  function stopPopupResize() {
+    if (!popupResize) return;
+    const { handle, pointerId } = popupResize;
+    popupResize = null;
+    if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
   }
 
   function queueMasonry(level, layout) {
@@ -1811,6 +1865,9 @@
       document,
       getPageZoom: () => pageZoom,
       getPopupColumns: () => options.popupColumns,
+      onResizeStart: event => startPopupResize(event, level),
+      onResizeMove: movePopupResize,
+      onResizeEnd: stopPopupResize,
       customLinks: options.customLinks,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
@@ -2187,6 +2244,7 @@
     const removed = levels.splice(Math.max(1, depth));
     const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
     for (const level of removed.reverse()) {
+      if (popupResize?.level === level) stopPopupResize();
       audio?.retire(level);
       mining?.retire(level);
       clearDefinitionBlurTimer(level);
@@ -2204,6 +2262,7 @@
   }
 
   function hide(level = rootLevel) {
+    if (level === rootLevel || popupResize?.level === level) stopPopupResize();
     audio?.retire(level);
     mining?.retire(level);
     clearDefinitionBlurTimer(level);
@@ -3124,6 +3183,7 @@
   }
 
   function onPopupMouseMove(event, level) {
+    if (popupResize) return;
     if (disposed || !options.hoverEnabled || level.retired) {
       return;
     }
@@ -3160,6 +3220,7 @@
   }
 
   function onMouseMove(event) {
+    if (popupResize) return;
     if (disposed || !options.hoverEnabled) {
       return;
     }
@@ -3511,6 +3572,7 @@
   }
 
   function onMouseOut(event) {
+    if (popupResize) return;
     // A null relatedTarget on a document-level mouseout means the pointer left
     // the window entirely, which mouseleave cannot report from here: it does not
     // bubble, and a capture listener would fire for every element left.
@@ -3523,6 +3585,7 @@
   }
 
   function onWindowBlur() {
+    stopPopupResize();
     if (!disposed) {
       setSelectionDrag(false);
       lastPointer = null;
