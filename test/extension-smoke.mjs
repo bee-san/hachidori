@@ -793,6 +793,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
     .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -810,6 +811,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
+    applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;

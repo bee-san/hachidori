@@ -1725,7 +1725,7 @@
       "z-index: 2147483647 !important",
     ].join("; ");
     applyPageZoom();
-    shadow = host.attachShadow({ mode: "closed" });
+    shadow = host.attachShadow({ mode: "open" });
     if (styles.sheet) {
       shadow.adoptedStyleSheets = [styles.sheet];
     } else {

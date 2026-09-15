@@ -16,7 +16,8 @@
     "downloads",
     "offscreen",
     "storage",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "userScripts"
   ],
   "host_permissions": [
     "<all_urls>"
