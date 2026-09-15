@@ -6867,13 +6867,14 @@ async function main() {
         .every((titles) => titles.length === 12 && new Set(titles).size === 12)
       && settingsConflict.management.orderRequests?.every((request) => request.type === "hd_apply_state")
       && settingsConflict.management.orderTitles?.length === 3
-      && settingsConflict.management.orderTitles[0][0] === "Ａｌｐｈａ notes"
+      && settingsConflict.management.orderTitles[0][0] === "Alpha concurrent"
       && settingsConflict.management.orderTitles[1][0] === "ＡＬＰＨＡ"
-      && settingsConflict.management.orderTitles[1][11] === "Ａｌｐｈａ notes"
+      && settingsConflict.management.orderTitles[1][11] === "Alpha concurrent"
       && settingsConflict.management.orderTitles[2][0] === "Hidden one"
       && settingsConflict.management.orderTitles
         .every((titles) => titles.length === 12 && new Set(titles).size === 12)
       && settingsConflict.management.hiddenOrderPreserved === true
+      && settingsConflict.management.reorderConflictRebuiltMetadata === true
       && settingsConflict.management.directPositionMovedTwelfthToFirst === true
       && settingsConflict.management.directPositionPreservedMetadata === true
       && settingsConflict.management.reorderReusedRowNode === true
@@ -11244,6 +11245,7 @@ async function settingsConflictStage() {
   let storageListener = null;
   const casRequests = [];
   let rejectNextApply = true;
+  let rejectReorderWithMetadataChange = false;
   let holdNextApply = false;
   let releaseHeldApply = null;
   let directDictionaryWrites = 0;
@@ -11282,6 +11284,23 @@ async function settingsConflictStage() {
             dictionaries: structuredClone(message.dictionaries),
             groups: message.groups === undefined ? undefined : structuredClone(message.groups),
           });
+          if (rejectReorderWithMetadataChange) {
+            rejectReorderWithMetadataChange = false;
+            state = {
+              ...state,
+              revision: state.revision + 1,
+              dictionaries: state.dictionaries.map((dictionary) => dictionary.id === ids.gamma
+                ? { ...dictionary, displayName: "Alpha concurrent" }
+                : dictionary),
+            };
+            storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+            return {
+              ok: false,
+              conflict: true,
+              error: "simulated metadata change during reorder",
+              state: structuredClone(state),
+            };
+          }
           if (!rejectNextApply) {
             if (!holdNextApply) {
               return acceptState(message.dictionaries);
@@ -11560,12 +11579,21 @@ async function settingsConflictStage() {
   // A settled local reorder reuses the moved row's DOM node instead of
   // rebuilding it from the template, and refreshes its rank to the new
   // position. Capturing the node before and finding it after proves reuse.
+  rejectReorderWithMetadataChange = true;
+  const gammaRowBeforeConflict = rowFor(ids.gamma);
+  const conflictPosition = gammaRowBeforeConflict.querySelector(".dict-position-input");
+  conflictPosition.value = "1";
+  conflictPosition.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  await waitForRequestCount(5);
+  const reorderConflictRebuiltMetadata = gammaRowBeforeConflict !== rowFor(ids.gamma)
+    && rowFor(ids.gamma).querySelector(".dict-display-name").value === "Alpha concurrent";
+
   const gammaRowBeforeReorder = rowFor(ids.gamma);
   const gammaMetadataBeforeReorder = structuredClone(state.dictionaries.find((entry) => entry.id === ids.gamma));
   const position = rowFor(ids.gamma).querySelector(".dict-position-input");
   position.value = "1";
   position.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-  await waitForRequestCount(5);
+  await waitForRequestCount(6);
   const directPositionMovedTwelfthToFirst = state.dictionaries[0]?.id === ids.gamma
     && state.dictionaries.slice(1).every((entry, index) => entry.id === managementDictionaries[index].id);
   const directPositionPreservedMetadata = Object.keys(gammaMetadataBeforeReorder)
@@ -11577,7 +11605,7 @@ async function settingsConflictStage() {
   const secondPosition = rowFor(ids.gamma).querySelector(".dict-position-input");
   secondPosition.value = "12";
   secondPosition.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-  await waitForRequestCount(6);
+  await waitForRequestCount(7);
 
   const dragStart = new window.Event("dragstart", { bubbles: true, cancelable: true });
   Object.defineProperty(dragStart, "dataTransfer", {
@@ -11586,11 +11614,11 @@ async function settingsConflictStage() {
   rowFor(ids.alpha).querySelector(".dict-drag").dispatchEvent(dragStart);
   rowFor(ids.beta).dispatchEvent(new window.Event("dragover", { bubbles: true, cancelable: true }));
   rowFor(ids.beta).dispatchEvent(new window.Event("drop", { bubbles: true, cancelable: true }));
-  await waitForRequestCount(7);
+  await waitForRequestCount(8);
 
   rowFor(ids.gamma).querySelector(".dict-down").click();
-  await waitForRequestCount(8);
-  const orderRequests = casRequests.slice(4);
+  await waitForRequestCount(9);
+  const orderRequests = casRequests.slice(5);
   const orderTitles = orderRequests.map((request) =>
     request.dictionaries.map((dictionary) => dictionary.displayName || dictionary.title));
   const hiddenOrderPreserved = orderRequests.every((request) =>
@@ -11624,6 +11652,7 @@ async function settingsConflictStage() {
     orderRequests,
     orderTitles,
     hiddenOrderPreserved,
+    reorderConflictRebuiltMetadata,
     directPositionMovedTwelfthToFirst,
     directPositionPreservedMetadata,
     reorderReusedRowNode,

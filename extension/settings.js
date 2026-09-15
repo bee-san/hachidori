@@ -2175,6 +2175,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
     const reply = await send(type, fields, target);
     if (!reply.ok) {
       await restoreAuthoritativeState(reply);
+      reorderReuseHint = false;
       dictionaryCommitFailed = true;
       setStatus(`Dictionary change was not saved: ${reply.error ?? "the state changed elsewhere"}`, "error");
       return reply;
@@ -2188,6 +2189,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
       // Keep the visible error from the failed write; a later storage event or
       // page reload will supply the authoritative state.
     }
+    reorderReuseHint = false;
     dictionaryCommitFailed = true;
     setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
     return { ok: false, error: describe(error) };
