@@ -18370,6 +18370,29 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
     check("deinflection disclosure preserves raw duplicate steps and localized literal text without empty explanations",
       failures.length === 0, JSON.stringify(failures));
 
+    const oversized = { ...raw,
+      matched: "前".repeat(5000),
+      deinflected: "後".repeat(5000),
+      trace: Array.from({ length: 40 }, (_, index) => ({
+        name: index === 0 ? "名".repeat(5000) : `step ${index}`,
+        description: index === 0 ? "説".repeat(5000) : `description ${index}`,
+      })),
+    };
+    Object.defineProperty(window.navigator, "language", { configurable: true, value: "fr-FR" });
+    view.renderResults([oversized], candidate, { hidePopupGrammarTags: false });
+    const bounded = disclosure();
+    const boundedItems = [...bounded.querySelectorAll("ol > li")];
+    const boundedEncoder = new TextEncoder();
+    check("oversized deinflection traces keep bounded nodes and UTF-8 text with a locale-neutral fallback",
+      boundedItems.length === 32
+        && boundedItems.at(-1).textContent === "…"
+        && bounded.querySelector("ol").getAttribute("aria-label") === "Deinflection steps"
+        && bounded.querySelector("summary").getAttribute("aria-label").startsWith("Why this matched:")
+        && [...bounded.querySelectorAll(".gsm-hoshidicts-deinflection-endpoint, .gsm-hoshidicts-deinflection-step-name, .gsm-hoshidicts-deinflection-step-description")]
+          .every((node) => boundedEncoder.encode(node.textContent).byteLength <= 4096)
+        && bounded.querySelectorAll(".gsm-hoshidicts-deinflection-step-name").length === 31,
+      bounded?.outerHTML ?? "missing disclosure");
+
     const first = entry("First", "First match");
     const second = entry("Second", "Second match");
     const results = [first, second];
