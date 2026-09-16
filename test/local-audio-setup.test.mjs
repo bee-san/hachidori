@@ -59,6 +59,34 @@ test("Anki setup offers a detected source explicitly and preserves existing sour
   assert.equal(edits.length, 1);
   assert.equal(sources[1].enabled, false);
   assert.match(el("anki-audio-status").textContent, /disabled/u);
+  sources = original;
+  controller.render();
+  assert.match(el("anki-audio-status").textContent, /Found local audio/u);
+});
+
+test("linked clients cannot detect or add a source on the wrong machine", async t => {
+  const { createLocalAudioSetup } = await import("../extension/local-audio-setup.js");
+  const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"));
+  t.after(() => dom.window.close());
+  let linked = false;
+  let resolve;
+  let signal;
+  const controller = createLocalAudioSetup({ document: dom.window.document, readSources: () => [],
+    isLinked: () => linked, editSources: () => assert.fail("unexpected edit"),
+    detect: options => { signal = options.signal; return new Promise(done => { resolve = done; }); } });
+  const el = id => dom.window.document.getElementById(id);
+  el("anki-audio-check").click();
+  linked = true;
+  controller.render();
+  assert.equal(signal.aborted, true);
+  resolve(sourceUrl);
+  await new Promise(done => setImmediate(done));
+  assert.equal(el("anki-audio-check").disabled, true);
+  assert.equal(el("anki-audio-add").hidden, true);
+  assert.match(el("anki-audio-status").textContent, /host/u);
+  linked = false;
+  controller.render();
+  assert.equal(el("anki-audio-check").disabled, false);
 });
 
 test("cancel and pagehide retire a check before late replies; retry stays usable", async t => {

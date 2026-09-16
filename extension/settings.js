@@ -335,6 +335,7 @@ function updateAnkiSettings() {
   });
   ankiController.render();
   localAudioSetup ??= createLocalAudioSetup({ document, readSources: () => options.audioSources,
+    isLinked: () => sharingLinkedAddress !== null,
     editSources: sources => { options.audioSources = sources; writeOptions(); },
   });
   localAudioSetup.render();
@@ -344,6 +345,7 @@ function updateAnkiSettings() {
 function renderSharingLink(value) {
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
   const linked = sharingLinkedAddress !== null;
+  localAudioSetup?.render();
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
   element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;

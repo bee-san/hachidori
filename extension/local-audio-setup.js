@@ -4,7 +4,7 @@ import { audioSourceUrl, parseAudioSourceList } from "./audio-sources.js";
 const SOURCE_URL = "http://127.0.0.1:5050/?term={term}&reading={reading}";
 const UNAVAILABLE = "No compatible local audio service found. Open Anki with Local Audio Server enabled and retry. For a custom port, add its URL in Audio settings.";
 
-export function createLocalAudioSetup({ document, readSources, editSources, detect = detectLocalAudioSource }) {
+export function createLocalAudioSetup({ document, readSources, editSources, isLinked = () => false, detect = detectLocalAudioSource }) {
   const check = document.getElementById("anki-audio-check");
   const add = document.getElementById("anki-audio-add");
   const status = document.getElementById("anki-audio-status");
@@ -12,12 +12,23 @@ export function createLocalAudioSetup({ document, readSources, editSources, dete
   let active = null;
 
   function render() {
+    const linked = isLinked();
+    if (linked) {
+      const previous = active;
+      active = null;
+      detected = null;
+      previous?.abort();
+    }
+    check.disabled = linked;
     const existing = readSources().find(source => source.type === "custom-json" && source.url === detected);
     add.hidden = !detected || Boolean(existing);
     check.textContent = active ? "Cancel audio check" : "Detect local audio";
-    if (existing) status.textContent = existing.enabled
+    if (linked) status.textContent = "Detect local audio in Anki settings on your Hachidori host.";
+    else if (existing) status.textContent = existing.enabled
       ? "Local audio is already in Audio settings."
       : "Local audio is already in Audio settings, but disabled. Enable it there when wanted.";
+    else if (detected) status.textContent = `Found local audio: ${detected}`;
+    else if (status.textContent.includes("Hachidori host")) status.textContent = "";
   }
 
   function cancel() {
@@ -30,6 +41,7 @@ export function createLocalAudioSetup({ document, readSources, editSources, dete
   }
 
   check.addEventListener("click", async () => {
+    if (isLinked()) { render(); return; }
     if (active) { cancel(); return; }
     const operation = new AbortController();
     active = operation;
@@ -48,6 +60,7 @@ export function createLocalAudioSetup({ document, readSources, editSources, dete
     }
   });
   add.addEventListener("click", () => {
+    if (isLinked()) { render(); return; }
     if (!detected || readSources().some(source => source.type === "custom-json" && source.url === detected)) return;
     editSources([...readSources(), { id: document.defaultView.crypto.randomUUID(), type: "custom-json",
       enabled: true, url: detected, voice: "" }]);
