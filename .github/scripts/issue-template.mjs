@@ -2,14 +2,12 @@ import { readFileSync } from "node:fs";
 
 const template = readFileSync(new URL("../ISSUE_TEMPLATE/feature_request.md", import.meta.url), "utf8");
 const requiredSections = [...template.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
-const acknowledgement = template.match(/^- \[ \] (.+)$/m)[1];
 const normalise = (text) => text.trim().replace(/\s+/gu, " ").toLowerCase();
 
 function parseIssue(body) {
   const sections = new Map();
   let section;
   let fence;
-  let acknowledged = false;
   const text = (body ?? "").replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?(?:-->|$)/g, "");
 
   for (const line of text.split("\n")) {
@@ -38,23 +36,16 @@ function parseIssue(body) {
       continue;
     }
 
-    const checkbox = line.match(/^ {0,3}[-*][ \t]+\[([ xX])\][ \t]+(.+?)\s*$/);
-    if (checkbox && normalise(checkbox[2]) === normalise(acknowledgement)) {
-      acknowledged ||= checkbox[1].toLowerCase() === "x";
-    } else {
-      section?.push(line);
-    }
+    section?.push(line);
   }
-  return { sections, acknowledged };
+  return sections;
 }
 
 export function validateIssueBody(body) {
-  const { sections, acknowledged } = parseIssue(body);
-  const problems = requiredSections
+  const sections = parseIssue(body);
+  return requiredSections
     .filter((heading) => !sections.get(normalise(heading))?.join("\n").trim())
     .map((heading) => `Fill in the "${heading}" section.`);
-  if (!acknowledged) problems.push("Check the acknowledgement from the issue template.");
-  return problems;
 }
 
 export async function enforceIssueTemplate({ github, context }) {
@@ -72,7 +63,7 @@ export async function enforceIssueTemplate({ github, context }) {
     body: [
       "Closing this issue because it does not follow the issue template:",
       problems.map((problem) => `- ${problem}`).join("\n"),
-      `Please edit this issue using the [issue template](${templateUrl}), complete every section, and check the acknowledgement. Then ask for it to be reopened.`,
+      `Please edit this issue using the [issue template](${templateUrl}) and complete every section. Then ask for it to be reopened.`,
     ].join("\n\n"),
   });
   await github.rest.issues.update({ ...parameters, state: "closed", state_reason: "not_planned" });
