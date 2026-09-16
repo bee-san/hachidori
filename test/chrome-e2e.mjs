@@ -4455,7 +4455,8 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
         && ready.order.slice(3).every(kind => kind === "external")
         && ready.controls[0].icon === "add" && ready.controls[0].action === "add"
-        && saved.controls[0].action === "view" && saved.controls[0].icon === "checkmark"
+        && saved.controls[0].action === "view" && saved.controls[0].icon === "book-search"
+        && saved.controls[0].title === "Find added note in Anki"
         && saved.feedback?.hidden === false && saved.feedback.kind === "success"
         && saved.controls[0].output.startsWith("Added note ")
         && saved.feedback.text.includes(saved.controls[0].output)
@@ -4463,7 +4464,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
-        && duplicate.controls[0].icon === "document-search"
+        && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
