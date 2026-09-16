@@ -36,9 +36,12 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
           anki.bind(miningActions, { owner: popup, popup, request, isCurrent: () => true, getRequest: () => ({}) });
         },
       });
-      window.rowFixture = { root, popup, view, render({ expression, reading, definitions, compact, nested, links }) {
+      window.rowFixture = { root, popup, view, anki, render({ expression, reading, definitions, compact, nested, links }) {
         request = {};
-        view.setCustomLinks(links ? [{ label: "A longer custom dictionary link", url: "https://example.test/{word}" }] : []);
+        view.setCustomLinks(links ? [
+          { label: "A longer custom dictionary link", url: "https://example.test/%w" },
+          { label: "📚", url: "https://example.test/second/%w" },
+        ] : []);
         view.renderResults([{ matched: expression, term: {
           expression, reading, frequencies: [], pitches: [],
           glossaries: [{ dictionary: "row-layout", glossary: JSON.stringify(definitions) }],
@@ -71,7 +74,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             const buttons = ["mine", "audio", "note"].map(name => root.querySelector(`.gsm-hoshidicts-${name}-button`));
             const rect = node => node.getBoundingClientRect().toJSON();
             const header = root.querySelector(".gsm-hoshidicts-primary-header");
-            const extras = [...root.querySelectorAll(".gsm-hoshidicts-external-link-button, .gsm-hoshidicts-back-button")];
+            const extras = [...root.querySelectorAll(".gsm-hoshidicts-external-link-button, .gsm-hoshidicts-kanji-back")];
             return { buttons: buttons.map(rect), popup: rect(popup), header: rect(header),
               headword: rect(root.querySelector(".gsm-hoshidicts-headword")),
               hit: buttons.every(button => { const r = rect(button); return button.contains(root.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }),
@@ -90,8 +93,10 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
           assert.ok(mine.right <= audio.left && audio.right <= note.left, `icon order/overlap: ${detail}`);
           assert.ok(geometry.hit && !geometry.overflow && note.right <= geometry.popup.right, `inaccessible toolbar: ${detail}`);
           assert.ok(geometry.headword.right <= mine.left + 1 || geometry.headword.top >= mine.bottom - 1, `heading overlaps icons: ${detail}`);
+          assert.equal(geometry.extras.length, variant === "large-nested" ? 1 : variant === "links" ? 2 : 0);
           assert.ok(geometry.extras.every(r => r.hit && r.right <= geometry.popup.right), `custom link or Back inaccessible: ${detail}`);
-          assert.ok(Math.abs(mine.top - geometry.header.top - (variant === "large-nested" ? 16.5 : 11)) < 1, `toolbar moves with heading height: ${detail}`);
+          const reference = evidence.find(row => row.width === width && row.variant === variant);
+          assert.equal(mine.top - geometry.header.top, reference.buttons[0].top - reference.header.top, `toolbar moves with heading height: ${detail}`);
           if (variant !== "plain") assert.equal(geometry.summary, scenario.definitions.join(""));
         }
       }
@@ -108,16 +113,14 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       const { root } = window.rowFixture;
       const audio = root.querySelector(".gsm-hoshidicts-audio-button");
       const note = root.querySelector(".gsm-hoshidicts-note-button");
-      const mine = root.querySelector(".gsm-hoshidicts-mine-button");
       return ["loading", "error", "idle"].map(state => {
         audio.dataset.state = state;
         audio.disabled = state === "loading";
-        mine.hidden = state === "idle";
         return { audio: audio.getBoundingClientRect().toJSON(), note: note.getBoundingClientRect().toJSON() };
       });
     });
     for (const state of states) {
-      assert.equal(state.audio.top, state.note.top, "loading/disabled/hidden actions retain row");
+      assert.equal(state.audio.top, state.note.top, "loading/disabled actions retain row");
       assert.equal(state.note.top, states[0].note.top, "state updates retain toolbar height");
     }
     const note = await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-button").getBoundingClientRect().toJSON());
@@ -126,6 +129,21 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
     await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-button").focus());
     await page.keyboard.press("Enter");
     assert.ok(await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-form").hidden), "keyboard closes Note");
+    const absent = await page.evaluate(() => {
+      const { root, popup, anki, render } = window.rowFixture;
+      anki.update({ anki: { model: "" } });
+      render({ expression: "響く", reading: "ひびく", definitions: ["to resound"], compact: true, nested: true, links: true });
+      popup.style.width = "200px";
+      const buttons = [...root.querySelectorAll(".gsm-hoshidicts-audio-button, .gsm-hoshidicts-note-button, .gsm-hoshidicts-external-link-button, .gsm-hoshidicts-kanji-back")];
+      return { mine: Boolean(root.querySelector(".gsm-hoshidicts-mine-button")), buttons: buttons.map(button => {
+        const r = button.getBoundingClientRect();
+        return { top: r.top, hit: button.contains(root.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+      }) };
+    });
+    assert.equal(absent.mine, false, "disabled Anki omits mining control");
+    assert.equal(absent.buttons.length, 5);
+    assert.ok(absent.buttons.every(button => button.hit), "remaining controls stay reachable without Anki");
+    assert.equal(absent.buttons[1].top, absent.buttons[2].top, "audio and Note stay aligned without Anki");
     console.log("PASS action row geometry", JSON.stringify(evidence));
   } finally {
     await page.close();
