@@ -760,8 +760,12 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
+    .replace(/import \{ BROWSER_KIND, IS_FIREFOX \} from "\.\/browser-api\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "")
     .replace("OVERLAY_MODE = false;", `OVERLAY_MODE = ${overlayMode};`);
+  const chromeOffscreen = readFileSync(resolve(EXTENSION, "chrome-offscreen.js"), "utf8")
+    .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
@@ -776,6 +780,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import \{ extensionApi as chrome, IS_FIREFOX \} from "\.\/browser-api\.js";\s*/u, "")
+    .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
+    .replace(/import \{ waitForFirefoxOffscreen \} from "\.\/firefox-host\.js";\s*/u, "")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
@@ -794,7 +801,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
-    .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace(/import \{ HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -816,9 +823,11 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
+    `const BROWSER_KIND = "chrome";\nconst IS_FIREFOX = false;\nasync function waitForFirefoxOffscreen() {}\n`
+      + `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n`
+      + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -3643,6 +3652,9 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
+  window.IS_FIREFOX = false;
+  window.HOST_BROWSER = overlayMode ? "electron" : "chrome";
+  window.extensionApi = window.chrome;
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
 
@@ -4217,6 +4229,11 @@ function checkRecommendedDictionaries() {
     JSON.stringify(manifest.permissions),
   );
   const webResources = new Set(manifest.web_accessible_resources?.flatMap(({ resources }) => resources) ?? []);
+  check(
+    "the page-injected overlay module exposes its browser API dependency",
+    ["overlay-mode.js", "browser-api.js"].every(resource => webResources.has(resource)),
+    JSON.stringify([...webResources]),
+  );
   check(
     "the popup exposes the copied GSM toolbar icons to content-script shadow roots",
     ["big-circle", "add-duplicate-big-circle", "overwrite-big-circle", "view-note"]

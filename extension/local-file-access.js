@@ -1,8 +1,21 @@
-// Chrome's file-URL switch is controlled by the user in extension details.
+// File-URL access is controlled by the user in browser-owned extension details.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-export function createLocalFileAccessController({ document, container, chromeApi = globalThis.chrome, onDismiss = null }) {
+export function createLocalFileAccessController({
+  document,
+  container,
+  chromeApi = globalThis.browser ?? globalThis.chrome,
+  onDismiss = null,
+}) {
   const window = document.defaultView;
+  const firefox = (() => {
+    try {
+      return new URL(chromeApi.runtime.getURL("")).protocol === "moz-extension:";
+    } catch {
+      return false;
+    }
+  })();
+  const browserName = firefox ? "Firefox" : "Chrome";
   const make = (tag, id, text, className = "") => {
     const node = document.createElement(tag);
     node.id = id;
@@ -12,12 +25,20 @@ export function createLocalFileAccessController({ document, container, chromeApi
   };
   const heading = make("h2", "local-file-heading", "Read saved pages too");
   const description = make("p", "local-file-description",
-    "To look up Japanese in HTML files opened from your computer, enable “Allow access to file URLs” in Hachidori’s extension settings.");
+    firefox
+      ? "To look up Japanese in HTML files opened from your computer, allow Hachidori to access local files in Firefox’s Add-ons Manager."
+      : "To look up Japanese in HTML files opened from your computer, enable “Allow access to file URLs” in Hachidori’s extension settings.");
   const instruction = make("p", "local-file-instruction",
-    "Turn on “Allow access to file URLs”, then return to this tab.");
-  const recovery = make("p", "local-file-recovery", onDismiss
-    ? "Chrome may close setup when it reloads Hachidori. On the extension details page, open Extension options, then choose Resume setup."
-    : "Chrome may close Settings when it reloads Hachidori. On the extension details page, open Extension options to return.");
+    firefox
+      ? "Open Hachidori’s Permissions, allow local-file access, then return to this tab."
+      : "Turn on “Allow access to file URLs”, then return to this tab.");
+  const recovery = make("p", "local-file-recovery", firefox
+    ? (onDismiss
+      ? "Firefox may close setup when it reloads Hachidori. Open Hachidori’s extension options, then choose Resume setup."
+      : "Firefox may close Settings when it reloads Hachidori. Open Hachidori’s extension options to return.")
+    : (onDismiss
+      ? "Chrome may close setup when it reloads Hachidori. On the extension details page, open Extension options, then choose Resume setup."
+      : "Chrome may close Settings when it reloads Hachidori. On the extension details page, open Extension options to return."));
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
@@ -60,7 +81,7 @@ export function createLocalFileAccessController({ document, container, chromeApi
     const request = ++sequence;
     let nextAllowed = null, nextError = "";
     try { nextAllowed = await chromeApi.extension.isAllowedFileSchemeAccess(); }
-    catch { nextError = "Could not check local-file access. You can check it in Chrome’s extension settings."; }
+    catch { nextError = `Could not check local-file access. You can check it in ${browserName}’s extension settings.`; }
     if (disposed || dismissed || request !== sequence) return;
     allowed = nextAllowed;
     error = nextError;
@@ -73,7 +94,11 @@ export function createLocalFileAccessController({ document, container, chromeApi
     opened = true;
     error = "";
     render();
-    try { await chromeApi.tabs.create({ url: `chrome://extensions/?id=${chromeApi.runtime.id}` }); }
+    try {
+      await chromeApi.tabs.create({
+        url: firefox ? "about:addons" : `chrome://extensions/?id=${chromeApi.runtime.id}`,
+      });
+    }
     catch {
       if (!disposed && !dismissed) {
         error = "Could not open extension settings. Try again.";

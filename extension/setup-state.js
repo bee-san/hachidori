@@ -36,16 +36,30 @@ export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
   "sourceHighlightEnabled", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupColumns", "popupToolbarPosition", "popupNestingMaxDepth",
 ]);
 
-// What mining may use in an overlay host, whatever the stored options say.
-// Electron has no chrome.tabs.captureVisibleTab, and no capture host can record
-// browser text-to-speech, so only downloadable pronunciations reach Anki.
-export function overlayAnkiOptions(options) {
+// What mining may use in this host, whatever the stored options say. The
+// returned projection never changes the saved cross-browser configuration.
+export function capabilityAnkiOptions(options, {
+  screenshot = true,
+  browserSpeech = true,
+  mediaCapture = true,
+} = {}) {
   return {
     ...options,
-    anki: { ...options.anki, captureScreenshot: false },
-    audioSources: options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
-    mediaCapture: { ...options.mediaCapture, enabled: false },
+    anki: { ...options.anki, captureScreenshot: screenshot && options.anki.captureScreenshot },
+    audioSources: browserSpeech
+      ? options.audioSources
+      : options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
+    mediaCapture: { ...options.mediaCapture, enabled: mediaCapture && options.mediaCapture.enabled },
   };
+}
+
+// Electron has neither viewport capture nor a capture host.
+export function overlayAnkiOptions(options) {
+  return capabilityAnkiOptions(options, {
+    screenshot: false,
+    browserSpeech: false,
+    mediaCapture: false,
+  });
 }
 
 // How each first-install option's value is built from a committed title.

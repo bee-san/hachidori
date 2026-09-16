@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
-  const extensionAsset = path => globalThis.chrome?.runtime?.getURL?.(path) || path;
+  const extensionAsset = path => (globalThis.browser ?? globalThis.chrome)?.runtime?.getURL?.(path) || path;
   const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]

@@ -18,6 +18,8 @@ function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
   t.after(() => dom.window.close());
   const { window } = dom;
   const requests = [];
+  window.IS_FIREFOX = false;
+  window.HOST_BROWSER = "chrome";
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode,

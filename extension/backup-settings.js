@@ -4,7 +4,7 @@ import { downloadBlob } from "./blob-download.js";
 
 export function createBackupSettingsController({
   document, send, download, checkReady, setBusy, status, refresh,
-  trackPreparation = () => {}, cancelPreparation = () => {},
+  trackPreparation = () => {}, cancelPreparation = () => {}, browserName = "Chrome",
 }) {
   const element = id => document.getElementById(id);
   const window = document.defaultView;
@@ -77,7 +77,7 @@ export function createBackupSettingsController({
       }
       const reply = await download();
       if (!reply.ok) throw new Error(reply.error || "Could not create the backup.");
-      status(reply.warning || "Download started. Check Chrome’s downloads for progress.", reply.warning ? "" : "ready", true);
+      status(reply.warning || `Download started. Check ${browserName}’s downloads for progress.`, reply.warning ? "" : "ready", true);
     });
   });
 

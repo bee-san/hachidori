@@ -13,7 +13,10 @@ const [html, source, optionsSource, manifest] = await Promise.all([
   readFile(new URL("manifest.json", extension), "utf8").then(JSON.parse),
 ]);
 
-async function toolbar(stored = {}, captureState = "stopped", { mediaCapture = true } = {}) {
+async function toolbar(stored = {}, captureState = "stopped", {
+  mediaCapture = true,
+  hostBrowser = "chrome",
+} = {}) {
   const nodes = new Map([...html.matchAll(/id="([^"]+)"/gu)].map(([, id]) => [id, {
     id, textContent: "", hidden: true, attributes: new Map(), listeners: new Map(),
     classList: { values: new Set(), toggle(name, enabled) {
@@ -28,6 +31,7 @@ async function toolbar(stored = {}, captureState = "stopped", { mediaCapture = t
   let openedSettings = 0;
   let closed = 0;
   const context = vm.createContext({
+    HOST_BROWSER: hostBrowser,
     HOST_CAPABILITIES: { mediaCapture },
     document: { querySelectorAll: () => [...nodes.values()] },
     window: { close: () => { closed++; }, addEventListener() {} },
@@ -60,8 +64,9 @@ async function toolbar(stored = {}, captureState = "stopped", { mediaCapture = t
   });
   vm.runInContext(optionsSource, context);
   const script = source
+    .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
     .replace('import "./reader-options.js";', "")
-    .replace(/import \{ HOST_CAPABILITIES \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace(/import \{ HOST_BROWSER, HOST_CAPABILITIES \} from "\.\/overlay-mode\.js";\s*/u, "");
   await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,
@@ -124,6 +129,15 @@ test("overlay toolbar keeps recording visibly disabled without waking capture", 
   await ui.click("record-screen");
   assert.deepEqual(ui.requests, []);
   assert.equal(ui.closed, 0);
+});
+
+test("Firefox toolbar omits recording without changing saved capture settings", async () => {
+  const ui = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording", {
+    mediaCapture: false,
+    hostBrowser: "firefox",
+  });
+  assert.equal(ui.nodes.get("record-screen").hidden, true);
+  assert.deepEqual(ui.requests, []);
 });
 
 test("settings shortcut opens Chrome options and closes the toolbar", async () => {

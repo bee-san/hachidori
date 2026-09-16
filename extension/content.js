@@ -25,6 +25,13 @@
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
+  const EXTENSION_PROTOCOL = (() => {
+    try {
+      return new URL(chrome.runtime.getURL("")).protocol;
+    } catch {
+      return "";
+    }
+  })();
 
   const {
     DEFAULT_OPTIONS,
@@ -114,7 +121,7 @@
   // link may leave the known heading fragment before the module loads or on
   // reload; query variants and every other internal page stay excluded.
   if (
-    location.protocol === "chrome-extension:" &&
+    location.protocol === EXTENSION_PROTOCOL &&
     location.href !== chrome.runtime.getURL("startup.html") &&
     location.href !== chrome.runtime.getURL("startup.html#setup-heading")
   ) {
@@ -501,7 +508,7 @@
       if (isEditingElement(focused)) {
         // Startup is the only extension page allowed above. Its scene arrow
         // keeps keyboard focus without pausing the practice lookup.
-        if (location.protocol === "chrome-extension:" && focused.matches(".vn-next")) continue;
+        if (location.protocol === EXTENSION_PROTOCOL && focused.matches(".vn-next")) continue;
         return true;
       }
     }
