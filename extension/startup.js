@@ -480,7 +480,15 @@ function ankiProgressView(anki = null, complete = false) {
     const marker = document.createElement("span");
     marker.className = "setup-anki-progress-marker";
     marker.setAttribute("aria-hidden", "true");
-    marker.textContent = done ? "✓" : String(index + 1);
+    if (done) {
+      const icon = document.createElement("span");
+      icon.className = "hd-icon";
+      icon.dataset.icon = "checkmark";
+      icon.setAttribute("aria-hidden", "true");
+      marker.append(icon);
+    } else {
+      marker.textContent = String(index + 1);
+    }
     const copy = document.createElement("span");
     copy.className = "setup-anki-progress-copy";
     const label = document.createElement("strong");

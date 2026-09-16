@@ -98,12 +98,11 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   };
   assert.deepEqual([...f.items[0].actions.children].map(actionKind),
     ["add", "audio", "note", "external"]);
-  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "big-circle");
-  assert.match(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").getAttribute("src"),
-    /render\/icons\/big-circle\.svg$/u);
+  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "add");
+  assert.ok(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").classList.contains("hd-icon"));
   assert.equal(f.items[1].add.dataset.state, "view-existing");
   assert.equal(f.items[1].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
-    "view-note");
+    "book-search");
   assert.equal(f.items[1].add.disabled, false);
   assert.equal(f.items[1].add.title, "View existing notes in Anki");
   assert.equal(f.items[1].add.dataset.action, "view");
@@ -113,7 +112,7 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
-    "overwrite-big-circle");
+    "document-edit");
 });
 
 test("successful Add remains successful after a refresh failure and a second click opens the new note", async t => {
@@ -134,6 +133,8 @@ test("successful Add remains successful after a refresh failure and a second cli
   await until(() => f.items[0].add.dataset.state === "success");
   await tick();
   assert.match(f.items[0].output.textContent, /Added.*12.*Audio unavailable/u);
+  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "book-search");
+  assert.equal(f.items[0].add.title, "Find added note in Anki");
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);

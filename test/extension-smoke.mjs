@@ -4218,9 +4218,8 @@ function checkRecommendedDictionaries() {
   );
   const webResources = new Set(manifest.web_accessible_resources?.flatMap(({ resources }) => resources) ?? []);
   check(
-    "the popup exposes the copied GSM toolbar icons to content-script shadow roots",
-    ["big-circle", "add-duplicate-big-circle", "overwrite-big-circle", "view-note"]
-      .every((name) => webResources.has(`render/icons/${name}.svg`)),
+    "the popup exposes the shared Fluent stylesheet to content-script shadow roots",
+    webResources.has("icons.css"),
     JSON.stringify([...webResources]),
   );
   const catalogueContract = (entry) => ({
@@ -8561,7 +8560,7 @@ async function startupWelcomeStage() {
       && introduction === "Click Start Setup to automatically set up Hachidori"
         + "Already using Hachidori in another browser, on this computer or another one? Link to it from Settings instead of setting up again."
       && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
-        ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
+        ?.textContent.replace(/\s+/gu, " ").trim() === "Star Hachidori on GitHub"
       && page.document.querySelector('a[href*="privacy"]') === null;
     // A failed save leaves the introduction and no network work; a later click
     // still must wait until the accepted stage is committed.

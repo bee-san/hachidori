@@ -34,9 +34,9 @@ those saved settings or other tabs.
 | `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state, starts a screen recording and opens Settings. |
 | `capture.html`, `capture.js` | a tab opened from the toolbar or Settings | Controls media capture. The recorder itself, `capture-host.js`, runs in the offscreen document and keeps going when this tab closes. |
 
-`render/reader.css` and the icons in `render/icons/` are the only files web
-pages may fetch (`web_accessible_resources`); the popup and its Anki controls
-load them.
+`overlay-mode.js`, `render/reader.css` and `icons.css` are the only files web
+pages may fetch (`web_accessible_resources`). The popup and its Anki controls
+load the two stylesheets; overlay hosts use the shared mode contract.
 
 ## Modules by feature
 

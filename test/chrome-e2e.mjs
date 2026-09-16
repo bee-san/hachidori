@@ -2605,7 +2605,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
   check("compact definition text opens a nested lookup with the same close contract",
     evidence.compactLookup.summarySource?.text === fixture.summaryLookup[0]
       && evidence.compactLookup.summaryChild?.closeControl?.label === "Close lookup"
-      && evidence.compactLookup.summaryChild.closeControl.text === "×"
+      && evidence.compactLookup.summaryChild.closeControl.text === ""
       && evidence.compactLookup.summaryDismissed, JSON.stringify(evidence.compactLookup));
   check("Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
     evidence.passed && evidence.imageSources?.focused === 1, JSON.stringify(evidence.imageSources));
@@ -2891,7 +2891,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     JSON.stringify(definitionEvidence));
   check("nested definition lookups use an accessible close control that dismisses the child popup",
     definitionEvidence.definitionClose?.label === "Close lookup"
-      && definitionEvidence.definitionClose.text === "×"
+      && definitionEvidence.definitionClose.text === ""
       && definitionEvidence.definitionClosed, JSON.stringify(definitionEvidence));
   check("nested kanji navigation keeps Back and restores the term lookup close control",
     evidence.kanji?.hasBack && evidence.kanji.closeControl === null
@@ -4386,8 +4386,9 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
       quiet
         && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
         && ready.order.slice(3).every(kind => kind === "external")
-        && ready.controls[0].icon === "big-circle" && ready.controls[0].action === "add"
-        && saved.controls[0].action === "view" && saved.controls[0].icon === "✓"
+        && ready.controls[0].icon === "add" && ready.controls[0].action === "add"
+        && saved.controls[0].action === "view" && saved.controls[0].icon === "book-search"
+        && saved.controls[0].title === "Find added note in Anki"
         && saved.feedback?.hidden === false && saved.feedback.kind === "success"
         && saved.controls[0].output.startsWith("Added note ")
         && saved.feedback.text.includes(saved.controls[0].output)
@@ -4395,7 +4396,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
-        && duplicate.controls[0].icon === "view-note"
+        && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
@@ -5221,7 +5222,7 @@ async function checkAnkiSettings(page, browser) {
         return {
           display: style.display,
           fontSize: Number.parseFloat(style.fontSize),
-          marker: getComputedStyle(node, "::before").content,
+          marker: getComputedStyle(node, "::before").maskImage,
           ready: node.classList.contains("is-ready"),
           height: node.getBoundingClientRect().height,
         };
@@ -5232,7 +5233,7 @@ async function checkAnkiSettings(page, browser) {
         && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
         && persisted.status.generation === original.status.generation
         && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
-        && persisted.statusCard.marker.includes("✓") && persisted.statusCard.ready
+        && persisted.statusCard.marker.includes("data:image/svg+xml,") && persisted.statusCard.ready
         && persisted.statusCard.height >= 56, JSON.stringify(persisted));
     await page.select("#anki-preset", "kiku");
     await page.click("#anki-apply-preset");
@@ -7697,7 +7698,7 @@ async function main() {
         ["bee-san on GitHub", "https://github.com/bee-san"],
         ["skerritt.blog", "https://skerritt.blog/"],
       ])
-      && welcome.star.text === "★ Star Hachidori on GitHub"
+      && welcome.star.text === "Star Hachidori on GitHub"
       && welcome.star.href === "https://github.com/bee-san/hachidori" && welcome.star.visible
       && refusedBeforeStart.anki.error === "Start setup before checking Anki."
       && refusedBeforeStart.dictionaries.error === "Start setup before downloading dictionaries."
