@@ -1155,7 +1155,7 @@
       const icon = documentRef.createElement("span");
       icon.className = "gloss-link-external-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = "↗";
+
       element.appendChild(icon);
     }
     if (tag === "table") {

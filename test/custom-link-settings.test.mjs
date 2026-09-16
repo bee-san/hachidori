@@ -71,11 +71,11 @@ test("link editor adds, edits, reorders and deletes links, saving each change at
   assert.equal(f.rows()[1].querySelector("code").textContent, "https://example.test/?q=%s");
   assert.equal(f.el("opt-custom-link-name").value, "", "adding clears the form");
 
-  f.action("Sentence", "↑").click();
+  f.rows()[1].querySelector('[data-action="up"]').click();
   assert.deepEqual(f.labels(), ["Sentence", "Jisho"]);
   assert.deepEqual(f.links.map(link => link.label), ["Sentence", "Jisho"]);
-  assert.equal(f.action("Sentence", "↑").disabled, true);
-  assert.equal(f.action("Jisho", "↓").disabled, true);
+  assert.equal(f.rows()[0].querySelector('[data-action="up"]').disabled, true);
+  assert.equal(f.rows()[1].querySelector('[data-action="down"]').disabled, true);
 
   f.action("Jisho", "Edit").click();
   assert.equal(f.el("custom-link-submit").textContent, "Save link");

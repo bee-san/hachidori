@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
-  const extensionAsset = path => globalThis.chrome?.runtime?.getURL?.(path) || path;
+
   const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
@@ -46,27 +46,20 @@
     button.setAttribute("aria-label", title);
     button.dataset.action = views(record) ? "view" : "add";
     const iconName = {
-      ready: "big-circle",
-      "add-duplicate": "add-duplicate-big-circle",
-      overwrite: "overwrite-big-circle",
-      "view-existing": "view-note",
-    }[state];
-    const icon = button.ownerDocument.createElement(iconName ? "img" : "span");
-    icon.className = "gsm-hoshidicts-mine-icon";
+      ready: "add",
+      "add-duplicate": "document-add",
+      overwrite: "document-edit",
+      "view-existing": "document-search",
+      checking: "more-horizontal",
+      mining: "arrow-sync",
+      success: "checkmark",
+      error: "error-circle",
+      unavailable: "subtract",
+    }[state] || "subtract";
+    const icon = button.ownerDocument.createElement("span");
+    icon.className = "gsm-hoshidicts-mine-icon hd-icon";
     icon.setAttribute("aria-hidden", "true");
-    if (iconName) {
-      icon.dataset.icon = iconName;
-      icon.src = extensionAsset(`render/icons/${iconName}.svg`);
-      icon.alt = "";
-      icon.draggable = false;
-    }
-    else icon.textContent = {
-      checking: "…",
-      mining: "⟳",
-      success: "✓",
-      error: "!",
-      unavailable: "-",
-    }[state] || "-";
+    icon.dataset.icon = iconName;
     button.replaceChildren(icon);
   }
   // The one Anki button opens Anki instead of adding once there is a note to
