@@ -1770,7 +1770,9 @@
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const text = await response.text();
+    const iconResponse = await fetch(chrome.runtime.getURL("icons.css"));
+    if (!iconResponse.ok) throw new Error(`HTTP ${iconResponse.status}`);
+    const text = `${await response.text()}\n${await iconResponse.text()}`;
     try {
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(text);

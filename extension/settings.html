@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hachidori settings</title>
+    <link rel="stylesheet" href="icons.css" />
     <link rel="stylesheet" href="render/reader.css" />
     <link rel="stylesheet" href="settings.css" />
     <link rel="stylesheet" href="dictionary-progress.css" />
@@ -1145,17 +1146,13 @@
           />
         </label>
         <span class="dict-order">
-          <span class="dict-drag" draggable="true" aria-hidden="true"
-            >&#10247;</span
-          >
+          <span class="dict-drag" draggable="true" aria-hidden="true"><span class="hd-icon" data-icon="reorder" aria-hidden="true"></span></span>
           <span class="dict-rank" aria-hidden="true"></span>
         </span>
         <div class="dict-main">
           <div class="dict-heading">
             <span class="dict-title"></span>
-            <span class="dict-favorite" title="Favourite" aria-label="Favourite"
-              >&#9733;</span
-            >
+            <span class="dict-favorite" title="Favourite" aria-label="Favourite"><span class="hd-icon" data-icon="star" aria-hidden="true"></span></span>
           </div>
           <span class="dict-canonical"></span>
           <div class="dict-badges" aria-label="Dictionary entry counts"></div>
@@ -1168,8 +1165,8 @@
             <span class="cell-label">Enabled</span>
           </label>
           <span class="dict-order-actions">
-            <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
-            <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
+            <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up"><span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span></button>
+            <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down"><span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span></button>
           </span>
         </div>
         <details class="dict-details">
@@ -1242,7 +1239,7 @@
               aria-label="Move group up"
               title="Move group up"
             >
-              &#8593;
+              <span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span>
             </button>
             <button
               type="button"
@@ -1250,7 +1247,7 @@
               aria-label="Move group down"
               title="Move group down"
             >
-              &#8595;
+              <span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span>
             </button>
             <button type="button" class="ghost danger dict-group-delete">
               Delete
@@ -1284,7 +1281,7 @@
             aria-label="Move dictionary up"
             title="Move dictionary up"
           >
-            &#8593;
+            <span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span>
           </button>
           <button
             type="button"
@@ -1292,7 +1289,7 @@
             aria-label="Move dictionary down"
             title="Move dictionary down"
           >
-            &#8595;
+            <span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span>
           </button>
           <button type="button" class="ghost dict-group-member-remove">
             Remove

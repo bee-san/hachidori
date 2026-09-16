@@ -2413,9 +2413,9 @@
       button.setAttribute("aria-expanded", "false");
 
       const icon = documentRef.createElement("span");
-      icon.className = "gsm-hoshidicts-note-icon";
+      icon.className = "gsm-hoshidicts-note-icon hd-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = "\u270e";
+      icon.dataset.icon = "edit";
       button.appendChild(icon);
 
       const actions = documentRef.createElement("div");
@@ -3024,7 +3024,6 @@
         back.type = "button";
         if (typeof onClose === "function") {
           back.className = "gsm-hoshidicts-popup-close";
-          back.textContent = "×";
           back.setAttribute("aria-label", "Close lookup");
           back.addEventListener("click", onClose);
         } else {

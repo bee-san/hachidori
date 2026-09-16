@@ -12,7 +12,10 @@
   stylesheet.href = "render/reader.css";
   const popup = document.createElement("div");
   popup.className = "gsm-hoshidicts-popup";
-  shadow.append(stylesheet, popup);
+  const iconStylesheet = document.createElement("link");
+  iconStylesheet.rel = "stylesheet";
+  iconStylesheet.href = "icons.css";
+  shadow.append(stylesheet, iconStylesheet, popup);
   const source = document.getElementById("preview-source");
   const candidate = { query: "食べる", sentence: source.textContent,
     sourceElements: [source], matchOffset: source.textContent.indexOf("食べる") };
