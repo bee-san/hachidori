@@ -20,20 +20,31 @@ export function createLocalAudioSetup({ document, readSources, editSources, dete
       : "Local audio is already in Audio settings, but disabled. Enable it there when wanted.";
   }
 
+  function cancel() {
+    const previous = active;
+    active = null;
+    detected = null;
+    previous?.abort();
+    status.textContent = "Local audio check cancelled.";
+    render();
+  }
+
   check.addEventListener("click", async () => {
+    if (active) { cancel(); return; }
     const operation = new AbortController();
     active = operation;
     detected = null;
     status.textContent = "Checking the local audio service…";
     render();
     try {
-      detected = await detect({ signal: operation.signal });
+      const result = await detect({ signal: operation.signal });
+      if (active !== operation) return;
+      detected = result;
       status.textContent = `Found local audio: ${detected}`;
     } catch (error) {
-      status.textContent = error.message;
+      if (active === operation) status.textContent = error.message;
     } finally {
-      active = null;
-      render();
+      if (active === operation) { active = null; render(); }
     }
   });
   add.addEventListener("click", () => {
@@ -42,7 +53,8 @@ export function createLocalAudioSetup({ document, readSources, editSources, dete
       enabled: true, url: detected, voice: "" }]);
     render();
   });
-  return { render };
+  document.defaultView.addEventListener("pagehide", cancel);
+  return { render, cancel };
 }
 
 export async function detectLocalAudioSource({ fetch = globalThis.fetch, signal, timeoutMs = 2000 } = {}) {

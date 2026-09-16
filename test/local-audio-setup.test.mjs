@@ -60,3 +60,58 @@ test("Anki setup offers a detected source explicitly and preserves existing sour
   assert.equal(sources[1].enabled, false);
   assert.match(el("anki-audio-status").textContent, /disabled/u);
 });
+
+test("cancel and pagehide retire a check before late replies; retry stays usable", async t => {
+  const { createLocalAudioSetup } = await import("../extension/local-audio-setup.js");
+  const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"));
+  t.after(() => dom.window.close());
+  const calls = [];
+  createLocalAudioSetup({ document: dom.window.document, readSources: () => [], editSources: () => assert.fail("unexpected edit"),
+    detect: ({ signal }) => new Promise((resolve, reject) => calls.push({ signal, resolve, reject })) });
+  const el = id => dom.window.document.getElementById(id);
+  el("anki-audio-check").click();
+  el("anki-audio-check").click();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].signal.aborted, true);
+  el("anki-audio-check").click();
+  calls[0].resolve(sourceUrl);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(el("anki-audio-add").hidden, true);
+  calls[1].reject(new Error("Unavailable. Retry."));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(el("anki-audio-status").textContent, /Unavailable/u);
+  el("anki-audio-check").click();
+  dom.window.dispatchEvent(new dom.window.Event("pagehide"));
+  assert.equal(calls[2].signal.aborted, true);
+  calls[2].resolve(sourceUrl);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(el("anki-audio-add").hidden, true);
+  el("anki-audio-check").click();
+  calls[3].resolve(sourceUrl);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(el("anki-audio-add").hidden, false);
+});
+
+test("discovery rejects unavailable, malformed and unsupported services and bounds response bodies", async () => {
+  const { detectLocalAudioSource } = await import("../extension/local-audio-setup.js");
+  for (const response of [new Response("", { status: 503 }), new Response("not json"), Response.json({ status: "ok" }),
+    Response.json({ ...info, sources: [123] })]) {
+    await assert.rejects(detectLocalAudioSource({ fetch: async () => response }), /No compatible/u);
+  }
+  await assert.rejects(detectLocalAudioSource({ fetch: async () => { throw new TypeError("connection refused"); } }), /No compatible/u);
+  let calls = 0;
+  await assert.rejects(detectLocalAudioSource({ fetch: async () => Response.json(++calls === 1 ? info : { unexpected: true }) }), /No compatible/u);
+  for (const stallAt of [1, 2]) {
+    let count = 0;
+    await assert.rejects(detectLocalAudioSource({ timeoutMs: 10, fetch: async (_url, { signal }) => {
+      if (++count !== stallAt) return Response.json(info);
+      return { ok: true, json: () => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })) };
+    } }), /No compatible/u);
+    assert.equal(count, stallAt);
+  }
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(detectLocalAudioSource({ signal: controller.signal, fetch: async (_url, { signal }) => {
+    signal.throwIfAborted();
+  } }), /cancelled/u);
+});
