@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['[0-9]*']
   workflow_dispatch:
     inputs:
       ref:
@@ -131,7 +131,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --generate-notes \
-              --title "Hachidori ${RELEASE_TAG#v}"
+              --title "Hachidori ${RELEASE_TAG}"
           fi
 
   chrome-web-store:
