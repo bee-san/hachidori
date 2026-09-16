@@ -6647,7 +6647,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
 
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hover-delay", "opt-hide-delay",
+    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hide-delay",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -6672,14 +6672,13 @@ async function checkReaderActivation(settings, tab, popup) {
       opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
       JSON.stringify({ closed, disabled, reopened: reopened !== null }));
 
-    await edit({ "opt-lookup-mode": "activation", "opt-activation-key": "K", "opt-hover-delay": "200", "opt-hide-delay": "400" });
+    await edit({ "opt-lookup-mode": "activation", "opt-activation-key": "K", "opt-hide-delay": "400" });
     await popup.waitForHidden();
     await moveToWord();
     await pause(250);
     const gated = !popup.visible(await popup.state());
     await tab.keyboard.down("k");
     await pause(30);
-    const delayed = !popup.visible(await popup.state());
     const activated = await popup.waitForVisible();
     await tab.keyboard.up("k");
     const retained = popup.visible(await popup.state());
@@ -6694,9 +6693,9 @@ async function checkReaderActivation(settings, tab, popup) {
       mode: document.getElementById("opt-lookup-mode").value,
     }));
     check("configured activation keys open stationary lookups and release them using the saved delays",
-      gated && delayed && activated !== null && retained && released && cancelled
+      gated && activated !== null && retained && released && cancelled
         && controls.key === "K" && controls.mode === "activation" && !controls.disabled,
-      JSON.stringify({ gated, delayed, activated: activated !== null, retained, released, cancelled, controls }));
+      JSON.stringify({ gated, activated: activated !== null, retained, released, cancelled, controls }));
   } finally {
     await tab.keyboard.up("k");
     // Keep a non-default key in Hover mode to prove that mode changes preserve
@@ -6708,7 +6707,7 @@ async function checkReaderActivation(settings, tab, popup) {
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-hover-delay",
+    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only",
   ]);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const worker = await installMediaReplyProbe(browser, settings);
@@ -6742,7 +6741,6 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   try {
     await editSettingsControls(settings, {
       "opt-lookup-mode": "activation", "opt-scan-length": "1", "opt-japanese-only": true,
-      "opt-hover-delay": "0",
     });
     await tab.bringToFront();
     await dismiss();
@@ -7043,7 +7041,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
 }
 
 async function checkSourceFallback(settings, tab, popup) {
-  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length", "opt-hover-delay"]);
+  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length"]);
   const sourceBefore = await tab.$eval("#verb", element => ({ html: element.innerHTML,
     style: element.getAttribute("style"), className: element.className }));
   const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
@@ -7060,7 +7058,7 @@ async function checkSourceFallback(settings, tab, popup) {
   let evidence;
   try {
     await tab.keyboard.press("Escape");
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16", "opt-hover-delay": "0" });
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
     await tab.$eval("#verb", element => {
       getSelection().removeAllRanges();
       element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';

@@ -445,10 +445,10 @@ try {
   // Setup never opens in an overlay: the host has no tab to show it in.
   assert.equal(browser.targets().some((target) => target.url().endsWith("/startup.html")), false,
     "overlay mode opens no startup page");
-  // A long hover delay keeps a press from racing the hover lookup, so the
-  // drag below provably starts with no popup open.
+  // Activation mode keeps a press from racing the hover lookup, so the drag
+  // below starts with no popup open.
   await editSettingsControls(settings, {
-    "opt-hover-delay": "1500",
+    "opt-lookup-mode": "activation",
     "opt-blur-count": false,
     "opt-blur-anki": false,
     "opt-blur-frequency": false,
