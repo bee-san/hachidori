@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { audioSourceUrl, parseAudioSourceList } from "./audio-sources.js";
+
+const SOURCE_URL = "http://127.0.0.1:5050/?term={term}&reading={reading}";
+const UNAVAILABLE = "No compatible local audio service found. Open Anki with Local Audio Server enabled and retry. For a custom port, add its URL in Audio settings.";
+
+export function createLocalAudioSetup({ document, readSources, editSources, detect = detectLocalAudioSource }) {
+  const check = document.getElementById("anki-audio-check");
+  const add = document.getElementById("anki-audio-add");
+  const status = document.getElementById("anki-audio-status");
+  let detected = null;
+  let active = null;
+
+  function render() {
+    const existing = readSources().find(source => source.type === "custom-json" && source.url === detected);
+    add.hidden = !detected || Boolean(existing);
+    check.textContent = active ? "Cancel audio check" : "Detect local audio";
+    if (existing) status.textContent = existing.enabled
+      ? "Local audio is already in Audio settings."
+      : "Local audio is already in Audio settings, but disabled. Enable it there when wanted.";
+  }
+
+  check.addEventListener("click", async () => {
+    const operation = new AbortController();
+    active = operation;
+    detected = null;
+    status.textContent = "Checking the local audio service…";
+    render();
+    try {
+      detected = await detect({ signal: operation.signal });
+      status.textContent = `Found local audio: ${detected}`;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      active = null;
+      render();
+    }
+  });
+  add.addEventListener("click", () => {
+    if (!detected || readSources().some(source => source.type === "custom-json" && source.url === detected)) return;
+    editSources([...readSources(), { id: document.defaultView.crypto.randomUUID(), type: "custom-json",
+      enabled: true, url: detected, voice: "" }]);
+    render();
+  });
+  return { render };
+}
+
+export async function detectLocalAudioSource({ fetch = globalThis.fetch, signal, timeoutMs = 2000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const cancel = () => controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  try {
+    const options = { signal: controller.signal, credentials: "omit", redirect: "error", cache: "no-store" };
+    const response = await fetch("http://127.0.0.1:5050/v1/info", options);
+    if (!response.ok) throw new Error(UNAVAILABLE);
+    const info = await response.json();
+    if (!info || typeof info.lookupMode !== "string" || !Array.isArray(info.sources)
+        || !info.sources.every(source => typeof source === "string")
+        || !(Object.hasOwn(info, "audioPack") || (info.status === "ok" && typeof info.serverVersion === "string"))) {
+      throw new Error(UNAVAILABLE);
+    }
+    const sample = await fetch(audioSourceUrl(SOURCE_URL, { expression: "猫", reading: "ねこ" }), options);
+    if (!sample.ok) throw new Error(UNAVAILABLE);
+    parseAudioSourceList(await sample.json());
+    if (controller.signal.aborted) throw new Error(UNAVAILABLE);
+    return SOURCE_URL;
+  } catch {
+    throw new Error(signal?.aborted ? "Local audio check cancelled." : UNAVAILABLE);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+  }
+}

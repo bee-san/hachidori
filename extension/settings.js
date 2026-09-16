@@ -8,6 +8,7 @@ import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
+import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
@@ -157,6 +158,7 @@ let requestCounter = 0;
 let audioController;
 let keybindController;
 let ankiController;
+let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
 let sharingLinkedAddress = null;
@@ -332,6 +334,10 @@ function updateAnkiSettings() {
     },
   });
   ankiController.render();
+  localAudioSetup ??= createLocalAudioSetup({ document, readSources: () => options.audioSources,
+    editSources: sources => { options.audioSources = sources; writeOptions(); },
+  });
+  localAudioSetup.render();
 }
 
 // While linked, archives and backups belong to the host; the notices say so.

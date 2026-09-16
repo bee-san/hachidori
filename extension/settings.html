@@ -991,6 +991,12 @@
               <span class="field-hint">Find your most-used Kiku, Lapis or Senren setup, or check your saved mapping. Open Anki and retry if it was unavailable.</span>
             </div>
             <output id="anki-setup-status" class="operational-status" aria-live="polite" aria-atomic="true" hidden></output>
+            <div class="sharing-actions">
+              <button id="anki-audio-check" type="button" class="ghost">Detect local audio</button>
+              <button id="anki-audio-add" type="button" class="ghost" hidden>Add detected audio source</button>
+            </div>
+            <p class="field-hint">Checks <a href="https://github.com/bee-san/yomitan-audio-fast" target="_blank" rel="noopener noreferrer">Local Audio Server</a> on this device at 127.0.0.1:5050. Keep Anki open. Adding appends a Custom JSON source without changing your existing sources. For custom ports, use <a href="#audio">Audio settings</a>.</p>
+            <output id="anki-audio-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
           </div>
           <fieldset class="lookup-group">
             <legend>Destination</legend>
