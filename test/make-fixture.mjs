@@ -499,13 +499,23 @@ export function buildFixtureZip() {
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
 // which is what the path-traversal and failed-re-import tests need.
-export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [], mediaEntries = [], frequencyMode } = {}) {
+export function buildTitledZip(title, {
+  banks = true,
+  terms = TERMS,
+  termMeta = [],
+  mediaEntries = [],
+  frequencyMode,
+  styles = '',
+} = {}) {
   const entries = [zipEntry('index.json', JSON.stringify({ ...index, title, frequencyMode }))];
   if (banks) {
     entries.push(zipEntry('term_bank_1.json', JSON.stringify(terms)));
   }
   if (termMeta.length > 0) {
     entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify(termMeta)));
+  }
+  if (styles) {
+    entries.push(zipEntry('styles.css', styles));
   }
   for (const [path, bytes] of mediaEntries) entries.push(zipEntry(path, bytes));
   return buildZip(entries);
@@ -657,6 +667,45 @@ export function imageSizingFixture() {
       tag: 'div', content: [name, { tag: 'img', path, alt: name, ...dimensions }],
     } })), 1, '']], mediaEntries: [[path, bytes]] });
   return { archive, bytes, cases, path, query, title };
+}
+
+export function gaijiSizingFixture() {
+  const title = 'meikyo-gaiji-compat-fixture';
+  const query = '外字表示';
+  const path = 'gaiji/bs-arrow.png';
+  const bytes = makePng();
+  const data = { class: 'gaiji', glyph: 'bs-arrow', 'unsafe key': 'ignored' };
+  const cases = [
+    { name: 'natural', dimensions: {}, width: 16, height: 16 },
+    { name: 'explicit', dimensions: { width: 40, height: 20 }, width: 40, height: 20 },
+  ];
+  const styles = [
+    '.gloss-sc-span[data-sc-class="gaiji"] > .gloss-sc-a[data-sc-glyph="bs-arrow"] .gloss-sc-img {',
+    '  filter: invert(0.9);',
+    '}',
+  ].join('\n');
+  const archive = buildTitledZip(title, {
+    mediaEntries: [[path, bytes]],
+    styles,
+    terms: [[query, 'がいじひょうじ', '', '', 0, [{
+      type: 'structured-content',
+      content: {
+        tag: 'div',
+        content: cases.map(({ name, dimensions }) => ({
+          tag: 'p',
+          content: [
+            `${name}: `,
+            {
+              tag: 'span',
+              data,
+              content: { tag: 'img', path, alt: `${name} gaiji`, data, ...dimensions },
+            },
+          ],
+        })),
+      },
+    }], 1, '']],
+  });
+  return { archive, bytes, cases, data, path, query, styles, title };
 }
 
 export function imagePreviewFixture() {

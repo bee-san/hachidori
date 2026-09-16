@@ -46,6 +46,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
   frequencyRankingFixture,
+  gaijiSizingFixture,
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
@@ -19008,6 +19009,54 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
 }
 
 async function mediaRenderStage({ HDGlossary, document, window }) {
+  const gaiji = gaijiSizingFixture();
+  const gaijiParent = document.createElement("div");
+  document.body.appendChild(gaijiParent);
+  let gaijiLayouts = 0;
+  let gaijiPreviewRefreshes = 0;
+  const gaijiRendered = [];
+  for (const fixtureCase of gaiji.cases) {
+    HDGlossary.appendStructuredImage(document, gaijiParent, {
+      path: gaiji.path,
+      data: gaiji.data,
+      ...fixtureCase.dimensions,
+    }, {
+      onLayoutChange() { gaijiLayouts += 1; },
+      refreshImagePreview() { gaijiPreviewRefreshes += 1; },
+      resolveMedia: async () => `data:image/png;base64,${gaiji.bytes.toString("base64")}`,
+    });
+    await Promise.resolve();
+    const link = gaijiParent.lastElementChild;
+    const image = link.querySelector("img");
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 16 },
+      naturalHeight: { configurable: true, value: 16 },
+    });
+    image.dispatchEvent(new window.Event("load"));
+    const container = link.querySelector(".gloss-image-container");
+    gaijiRendered.push({
+      name: fixtureCase.name,
+      width: Number.parseFloat(container.style.width),
+      padding: Number.parseFloat(container.querySelector(".gloss-image-sizer").style.paddingTop),
+      linkHook: link.classList.contains("gloss-sc-a"),
+      imageHook: image.classList.contains("gloss-sc-img"),
+      classData: link.getAttribute("data-sc-class"),
+      glyphData: link.getAttribute("data-sc-glyph"),
+      unsafeData: link.hasAttribute("data-sc-unsafe key"),
+    });
+  }
+  check("structured gaiji hooks preserve dictionary selectors while decoded natural sizing leaves explicit geometry unchanged",
+    gaijiRendered.every((rendered, index) =>
+      rendered.linkHook && rendered.imageHook
+      && rendered.classData === "gaiji" && rendered.glyphData === "bs-arrow"
+      && !rendered.unsafeData
+      && Math.abs(rendered.width - gaiji.cases[index].width) < 1e-12
+      && Math.abs(rendered.padding - gaiji.cases[index].height / gaiji.cases[index].width * 100) < 0.001)
+      && gaijiLayouts === gaiji.cases.length
+      && gaijiPreviewRefreshes === gaiji.cases.length,
+    JSON.stringify({ gaijiRendered, gaijiLayouts, gaijiPreviewRefreshes }));
+  gaijiParent.remove();
+
   const sizing = imageSizingFixture();
   const sizingParent = document.createElement("div");
   document.body.appendChild(sizingParent);
