@@ -45,11 +45,11 @@ test("release validation rejects browser drift and a tag that does not match the
   );
   assert.throws(
     () => validateReleaseContract(manifest, tooling, "9.9.9"),
-    /must be 0\.1\.1/u,
+    new RegExp(`must be ${manifest.version.replaceAll(".", "\\.")}`, "u"),
   );
   assert.throws(
     () => validateReleaseContract(manifest, tooling, `v${manifest.version}`),
-    /must be 0\.1\.1/u,
+    new RegExp(`must be ${manifest.version.replaceAll(".", "\\.")}`, "u"),
   );
   assert.throws(
     () => validateReleaseContract({ ...manifest, version: "0.65536.0" }, tooling),
