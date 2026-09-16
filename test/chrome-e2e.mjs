@@ -31,6 +31,7 @@ import {
   dictionaryTabsFixture,
   externalLinksFixture,
   frequencyRankingFixture,
+  gaijiSizingFixture,
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
@@ -45,6 +46,7 @@ import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 import { checkPopupResize } from "./chrome-popup-resize.mjs";
 import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
+import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 
@@ -376,6 +378,7 @@ const PLANNED = [
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Compact summaries wrap without clipping and retain narrow toolbar access",
+  ACTION_ROW_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
@@ -425,6 +428,7 @@ const PLANNED = [
   "image hover and keyboard previews stay larger, viewport-clamped and motion-aware",
   "image previews close on leave, blur, scrolling and pending navigation",
   "dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
+  "Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
 ];
 
 const results = [];
@@ -1004,12 +1008,20 @@ async function popupReader(page, depth = 0) {
           images: links.map(link => {
             const image = link.querySelector("img");
             const container = link.querySelector(".gloss-image-container");
+            const content = link.closest(".gsm-hoshidicts-glossary-content");
             const rect = container.getBoundingClientRect();
             return { source: image.src, width: image.naturalWidth, height: image.naturalHeight,
               tabStop: link.getAttribute("tabindex"), href: link.getAttribute("href"),
+              linkClasses: [...link.classList], imageClasses: [...image.classList],
+              structuredData: Object.fromEntries([...link.attributes]
+                .filter(attribute => attribute.name.startsWith("data-sc-"))
+                .map(attribute => [attribute.name, attribute.value])),
+              filter: view.getComputedStyle(image).filter,
+              overflow: content ? { clientWidth: content.clientWidth, scrollWidth: content.scrollWidth } : null,
               display: { width: rect.width, height: rect.height, inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
+          theme: root.host?.dataset.hoshidictsTheme ?? null,
           preview: preview ? {
             rect: preview.getBoundingClientRect().toJSON(),
             source: expanded.src, width: expanded.naturalWidth, height: expanded.naturalHeight,
@@ -3349,6 +3361,62 @@ async function imageSizingChrome({ page, tab, popup }) {
         && (index >= 7 || Math.abs(display.width - maximumWidth) <= 1 / 64)
         && Math.abs(display.height - display.width * expected.padding / 100) <= 1 / 32;
     }), JSON.stringify(state?.images.map(({ display }) => display)));
+}
+
+async function gaijiSizingChrome({ page, tab, popup }) {
+  const fixture = gaijiSizingFixture();
+  const originalTheme = await page.evaluate(async () =>
+    (await chrome.storage.local.get("options")).options?.popupTheme ?? "default");
+  const setTheme = theme => page.evaluate(async nextTheme => {
+    const { options } = await chrome.storage.local.get("options");
+    if ((options?.popupTheme ?? "default") === nextTheme) return;
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_options_write",
+      requestId: `gaiji-theme-${nextTheme}`,
+      baseRevision: options?.revision ?? 0,
+      options: { popupTheme: nextTheme },
+    });
+    if (!reply.ok) throw new Error(reply.error);
+  }, theme);
+  try {
+    await setTheme("dark");
+    await installMediaArchive(page, fixture.archive);
+    await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await hoverForPopup(tab, popup, "#verb");
+    const deadline = Date.now() + 6000;
+    let state;
+    do {
+      state = await popup.imagePreview();
+      if (state?.theme === "dark"
+          && state.images.length === fixture.cases.length
+          && state.images.every(image => image.width === 16 && image.height === 16)) break;
+      await new Promise(done => setTimeout(done, 25));
+    } while (Date.now() < deadline);
+    const expectedSource = `data:image/png;base64,${fixture.bytes.toString("base64")}`;
+    check("Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
+      state?.theme === "dark" && state.images.length === fixture.cases.length
+        && state.images.every((image, index) => {
+          const expected = fixture.cases[index];
+          return image.source === expectedSource
+            && image.linkClasses.includes("gloss-sc-a")
+            && image.imageClasses.includes("gloss-sc-img")
+            && image.structuredData["data-sc-class"] === "gaiji"
+            && image.structuredData["data-sc-glyph"] === "bs-arrow"
+            && !Object.hasOwn(image.structuredData, "data-sc-unsafe key")
+            && image.filter !== "none"
+            && image.display.inlineWidth === `${expected.width}px`
+            && Math.abs(image.display.width - expected.width) <= 1 / 64
+            && Math.abs(image.display.height - expected.height) <= 1 / 64
+            && image.overflow?.clientWidth > 0
+            && image.overflow.scrollWidth <= image.overflow.clientWidth + 1;
+        }), JSON.stringify(state));
+  } finally {
+    await setTheme(originalTheme);
+  }
 }
 
 async function showSettingsSection(page, id) {
@@ -9895,6 +9963,8 @@ async function main() {
   await checkDictionaryTabsColumns(page, tab, popup, browser);
   await checkCompactSummaryLayout(browser);
   check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
+  await checkActionRow(browser);
+  check(ACTION_ROW_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
@@ -11277,6 +11347,7 @@ async function main() {
   await boundedMediaChrome({ browser, page, tab: tab2, popup: popup2 });
   await imagePreviewChrome({ browser, page, tab: tab2, popup: popup2 });
   await imageSizingChrome({ page, tab: tab2, popup: popup2 });
+  await gaijiSizingChrome({ page, tab: tab2, popup: popup2 });
   await checkStartupFileAccess(page, browser, startupUrl);
   await browser.close();
   server.close();

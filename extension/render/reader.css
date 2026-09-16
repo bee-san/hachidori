@@ -1621,10 +1621,17 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-entry-header {
   display: flex;
+  flex-wrap: wrap-reverse;
   align-items: center;
   justify-content: space-between;
   min-height: 42px;
   gap: 10px;
+}
+
+.gsm-hoshidicts-entry-header > .gsm-hoshidicts-headword,
+.gsm-hoshidicts-entry-header > .gsm-hoshidicts-kanji-navigation {
+  flex: 1 1 12em;
+  max-width: 100%;
 }
 
 .gsm-hoshidicts-headword {
@@ -1824,12 +1831,21 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-entry-actions {
-  display: flex;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  flex: 0 0 auto;
+  width: min-content;
+  max-width: 100%;
+  margin-left: auto;
+  align-self: start;
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
+}
+
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-external-link-button {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .gsm-hoshidicts-audio-button,
@@ -2674,6 +2690,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-navigation {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-width: 0;
