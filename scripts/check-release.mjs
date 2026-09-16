@@ -53,7 +53,7 @@ export function validateReleaseContract(manifest, tooling, tag = null) {
   if (compareVersions(current, minimum) < 0) {
     fail("the current Chrome test build is older than the minimum build");
   }
-  const expectedTag = `v${manifest.version}`;
+  const expectedTag = manifest.version;
   if (tag !== null && tag !== expectedTag) {
     fail(`release tag ${JSON.stringify(tag)} must be ${expectedTag}`);
   }
@@ -72,7 +72,7 @@ function readJson(path) {
 function commandLineTag(arguments_) {
   if (arguments_.length === 0) return null;
   if (arguments_.length !== 2 || arguments_[0] !== "--tag" || arguments_[1] === "") {
-    fail("usage: node scripts/check-release.mjs [--tag v<manifest.version>]");
+    fail("usage: node scripts/check-release.mjs [--tag <manifest.version>]");
   }
   return arguments_[1];
 }

@@ -195,7 +195,7 @@ put its public download location in the listing before distribution.
 
 The **Release** workflow can package any selected ref without publishing when
 run manually. For automatic publication, commit a new manifest version and push
-the exact tag `v<manifest.version>`. The tag run validates the version and
+the exact tag `<manifest.version>` (for example, `0.1.2`). The tag run validates the version and
 browser contract, rebuilds and checksum-verifies the same three files, preserves
 them as a workflow artifact, creates the corresponding GitHub release, then
 uploads the Chrome ZIP and submits it for review.

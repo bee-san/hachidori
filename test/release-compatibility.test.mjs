@@ -14,10 +14,10 @@ const read = (path) => readFileSync(resolve(ROOT, path), "utf8");
 const manifest = JSON.parse(read("extension/manifest.json"));
 const tooling = JSON.parse(read("test/tooling/package.json"));
 
-test("manifest, minimum Chrome, current Chrome and release tag share one contract", () => {
-  assert.deepEqual(validateReleaseContract(manifest, tooling, `v${manifest.version}`), {
+test("manifest, minimum Chrome, current Chrome and bare release tag share one contract", () => {
+  assert.deepEqual(validateReleaseContract(manifest, tooling, manifest.version), {
     version: manifest.version,
-    expectedTag: `v${manifest.version}`,
+    expectedTag: manifest.version,
     minimumChrome: "128.0.6613.137",
     currentChrome: "152.0.7977.75",
   });
@@ -44,8 +44,12 @@ test("release validation rejects browser drift and a tag that does not match the
     /current Chrome test build is older/u,
   );
   assert.throws(
-    () => validateReleaseContract(manifest, tooling, "v9.9.9"),
-    /must be v0\.1\.1/u,
+    () => validateReleaseContract(manifest, tooling, "9.9.9"),
+    new RegExp(`must be ${manifest.version.replaceAll(".", "\\.")}`, "u"),
+  );
+  assert.throws(
+    () => validateReleaseContract(manifest, tooling, `v${manifest.version}`),
+    new RegExp(`must be ${manifest.version.replaceAll(".", "\\.")}`, "u"),
   );
   assert.throws(
     () => validateReleaseContract({ ...manifest, version: "0.65536.0" }, tooling),
@@ -67,9 +71,9 @@ test("CI checks both supported-browser edges and packages every release candidat
   assert.match(runtime, /sha256sum -c/u);
 });
 
-test("tag and manual release runs verify and publish the checksummed package pair", () => {
+test("bare-tag and manual release runs verify and publish the checksummed package pair", () => {
   const workflow = read(".github/workflows/release.yml");
-  assert.match(workflow, /tags: \['v\*'\]/u);
+  assert.match(workflow, /tags: \['\[0-9\]\*'\]/u);
   assert.match(workflow, /workflow_dispatch:/u);
   assert.match(workflow, /publish:[\s\S]*type: boolean[\s\S]*default: false/u);
   assert.match(workflow, /permissions:\n  contents: read/u);
