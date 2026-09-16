@@ -160,6 +160,9 @@
               <button type="button" class="ghost" id="dict-bulk-unfavorite">
                 Unfavourite
               </button>
+              <button type="button" class="ghost danger" id="dict-bulk-remove">
+                Remove
+              </button>
             </div>
           </div>
           <ol class="dict-list" id="dict-list"></ol>
@@ -647,6 +650,14 @@
                     </span>
                   </label>
                 </div>
+                <label class="field">
+                  <span class="field-label">Scale</span>
+                  <span class="input-suffix">
+                    <input id="opt-popup-scale" type="number" min="25" max="500" step="1" />
+                    <span class="suffix">%</span>
+                  </span>
+                  <span class="field-hint">Scale the whole popup, including text and controls. 100% is the default.</span>
+                </label>
                 <p class="field-hint">Popups shrink to fit smaller windows.</p>
                 <label class="field">
                   <span class="field-label">Toolbar position</span>
@@ -795,6 +806,15 @@
                   <button id="reset-custom-css" type="button" class="ghost">Reset custom CSS</button>
                 </div>
                 <p class="field-hint">Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
+                <label class="field-label" for="opt-custom-popup-javascript">Custom JavaScript</label>
+                <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
+                <p class="field-hint">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
+                <textarea id="opt-custom-popup-javascript" rows="8" spellcheck="false" autocapitalize="off"
+                  aria-describedby="custom-javascript-warning custom-javascript-count"></textarea>
+                <div class="custom-css-footer">
+                  <span id="custom-javascript-count" class="field-hint">0 characters</span>
+                  <button id="reset-custom-javascript" type="button" class="ghost">Reset custom JavaScript</button>
+                </div>
               </details>
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
               <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
@@ -1087,7 +1107,7 @@
             <div>
               <h2>Save a backup</h2>
               <p>Includes every dictionary, media and styles, your personal source, groups, and all saved settings.</p>
-              <p id="backup-export-overlay-help" class="field-hint" hidden>Electron cannot start Chrome downloads here. Restore remains available; export from Hachidori in Chrome.</p>
+
             </div>
             <button id="backup-export" class="ghost" type="button">Export backup</button>
           </div>

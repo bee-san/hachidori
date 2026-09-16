@@ -11,7 +11,7 @@ export const HOST_BROWSER = OVERLAY_MODE ? "electron" : BROWSER_KIND;
 // Keep every host-owned capability in one place so shared settings cannot make
 // an unavailable control live again.
 export const HOST_CAPABILITIES = Object.freeze({
-  backupExport: !OVERLAY_MODE,
+
   browserShortcuts: !OVERLAY_MODE,
   customLinks: !OVERLAY_MODE,
   localFileAccessPrompt: !OVERLAY_MODE,

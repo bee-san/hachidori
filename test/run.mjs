@@ -77,6 +77,7 @@ try {
       HACHIDORI_DEINFLECTION_SCREENSHOT: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT || resolve(OUTPUT, "deinflection.png"),
       HACHIDORI_SHARING_SCREENSHOTS: process.env.HACHIDORI_SHARING_SCREENSHOTS || resolve(OUTPUT, "sharing"),
     });
+    if (suite === "chrome-e2e") await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
   } else {
     throw new Error(
       "Choose node, smoke, firefox-smoke, chrome-e2e, chrome-sharing, chrome-fallback,"

@@ -1093,7 +1093,7 @@ html[data-hoshidicts-theme="girlypop"],
   --tag-part-of-speech-background-color: var(--hoshidicts-palette-accent);
   position: fixed;
   z-index: 2147483646;
-  zoom: var(--gsm-hoshidicts-page-zoom, 1);
+  zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
   width: var(--gsm-hoshidicts-popup-width, 560px);
   height: var(--gsm-hoshidicts-popup-height, 420px);
   max-width: none;
@@ -1128,6 +1128,20 @@ html[data-hoshidicts-theme="girlypop"],
   overscroll-behavior: contain;
   pointer-events: auto;
   user-select: text;
+}
+
+.gsm-hoshidicts-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 10;
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--hoshidicts-border-strong) 3px 4px);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
 :host([data-hoshidicts-theme="high-contrast"]) .gsm-hoshidicts-popup {
@@ -1751,7 +1765,6 @@ html[data-hoshidicts-theme="girlypop"],
   min-height: 36px;
   margin: 2px 0 0;
   padding: 0;
-  overflow: hidden;
   display: flex;
   flex: 1 1 180px;
   align-self: center;
@@ -1788,10 +1801,8 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-compact-definition-items {
   min-width: 0;
-  max-height: 2.7em;
   margin: 0;
   padding: 0;
-  overflow: hidden;
   list-style: none;
 }
 
@@ -2485,7 +2496,7 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-image-hover-preview {
   position: fixed;
   z-index: 2147483647;
-  zoom: var(--gsm-hoshidicts-page-zoom, 1);
+  zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
   display: inline-block;
   line-height: 0;
   pointer-events: none;

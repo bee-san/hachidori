@@ -106,10 +106,12 @@ is checked before checksums are written. Load unpacked from an extracted Chrome
 ZIP to check the exact staged runtime before uploading it.
 
 CI runs this packaging command and verifies the checksums for every release
-candidate. The **Release** workflow also supports a non-publishing manual run
-for a selected ref. Pushing `v<manifest.version>` packages that exact tag,
-creates its GitHub release, then uploads and submits the Chrome package only
-after the version, minimum/current Chrome pins, archive integrity, and checksums
-pass. Chrome Web Store automation requires the service-account secret and the
-publisher and extension repository variables documented in
+candidate. The **Release** workflow supports package-only manual runs by default.
+Enabling **Publish** for a manual run requires an existing bare
+`<manifest.version>` release tag at the selected commit; the workflow uploads
+its assets and submits the Chrome package. Pushing `v<manifest.version>` keeps
+the automatic release path. Both paths publish only after the version,
+minimum/current Chrome pins, archive integrity, and checksums pass. Chrome Web
+Store automation requires the service-account secret and the publisher and
+extension repository variables documented in
 [the publishing guide](chrome-web-store.md#publish-step-by-step).

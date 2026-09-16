@@ -45,7 +45,7 @@ test("release validation rejects browser drift and a tag that does not match the
   );
   assert.throws(
     () => validateReleaseContract(manifest, tooling, "v9.9.9"),
-    /must be v0\.1\.0/u,
+    /must be v0\.1\.1/u,
   );
   assert.throws(
     () => validateReleaseContract({ ...manifest, version: "0.65536.0" }, tooling),
@@ -76,16 +76,24 @@ test("tag and manual release runs verify and publish the checksummed package pai
   const workflow = read(".github/workflows/release.yml");
   assert.match(workflow, /tags: \['v\*'\]/u);
   assert.match(workflow, /workflow_dispatch:/u);
+  assert.match(workflow, /publish:[\s\S]*type: boolean[\s\S]*default: false/u);
   assert.match(workflow, /permissions:\n  contents: read/u);
   assert.match(workflow, /node scripts\/check-release\.mjs --tag/u);
   assert.match(workflow, /git merge-base --is-ancestor/u);
   assert.match(workflow, /python3 scripts\/package-store\.py/u);
   assert.match(workflow, /sha256sum -c/u);
+  assert.match(workflow, /outputs:[\s\S]*release_tag:[\s\S]*release_commit:/u);
+  assert.match(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish/u);
   assert.match(workflow, /publish:[\s\S]*needs: package[\s\S]*permissions:\n      contents: write/u);
   assert.match(workflow, /gh release create/u);
+  assert.match(workflow, /gh release upload[\s\S]*--clobber/u);
+  assert.match(workflow, /Release tag \$RELEASE_TAG points to \$tag_commit/u);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
   assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
-  assert.match(workflow, /chrome-web-store:[\s\S]*needs: \[package, publish\]/u);
+  assert.match(
+    workflow,
+    /chrome-web-store:[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish[\s\S]*needs: \[package, publish\]/u,
+  );
   assert.match(workflow, /secrets\.CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON/u);
   assert.match(workflow, /vars\.CHROME_WEBSTORE_PUBLISHER_ID/u);
   assert.match(workflow, /vars\.CHROME_WEBSTORE_EXTENSION_ID/u);

@@ -22,7 +22,7 @@ The command runs `web-ext lint`, assembles the Firefox manifest without editing
 capture, and animated-AVIF encoder, and writes:
 
 ```text
-test/tmp/firefox-artifacts/hachidori-0.1.0-firefox-unsigned.xpi
+test/tmp/firefox-artifacts/hachidori-0.1.1-firefox-unsigned.xpi
 ```
 
 ## Install temporarily

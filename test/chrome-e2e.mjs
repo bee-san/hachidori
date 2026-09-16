@@ -43,6 +43,10 @@ import {
 } from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
+import { checkPopupResize } from "./chrome-popup-resize.mjs";
+import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
+import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
+import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -188,6 +192,11 @@ const RECOMMENDED_FIXTURE_METADATA = {
     revision: "2026.09.10",
     capabilities: ["term"],
   },
+  "sankoku8-eng": {
+    title: "sankoku8-gpt-5.6-luna",
+    revision: "sankoku8-gpt-5.6-luna",
+    capabilities: ["term"],
+  },
 };
 const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
@@ -205,6 +214,7 @@ const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json
   .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const PLANNED = [
+  "dictionary pointer reorder and confirmed bulk removal persist across reload",
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
@@ -235,6 +245,7 @@ const PLANNED = [
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
+  SETTINGS_FEEDBACK_CHECK,
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
@@ -297,11 +308,12 @@ const PLANNED = [
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
+  "Japanese-only mixed numeral lookups retain native matches and exact source highlights",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
-  "settings page renders exactly five safe recommended dictionary links",
+  "settings page renders exactly six safe recommended dictionary links",
   "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
@@ -344,12 +356,13 @@ const PLANNED = [
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
-  "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "a multiline match anchors the popup to the scanned line fragment",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
+  "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
-  "the content script attached its closed-shadow host to the page",
+  "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "dictionary cards render open under a plain title with no disclosure control",
@@ -362,6 +375,7 @@ const PLANNED = [
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
+  "Compact summaries wrap without clipping and retain narrow toolbar access",
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
@@ -1976,7 +1990,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.dictionaryTabs("select", studyKey);
     await tab.setViewport({ width: 1880, height: 240 });
     const inherited = await openChild();
-    require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
     await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
@@ -2010,6 +2023,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && value.rect.height === Math.min(480, value.viewport.height - 12),
       "E15 live child dimensions");
     evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
+    await optionsWrite({ popupScalePercent: 75 });
+    const scaledChild = await until(childState, value => value.rect.width === 480,
+      "scaled child dimensions");
+    require(scaledChild.rect.left >= 0 && scaledChild.rect.top >= 0
+      && scaledChild.rect.right <= scaledChild.viewport.width && scaledChild.rect.bottom <= scaledChild.viewport.height
+      && (await rootState()).rect.width === 480,
+      "fractional scale applies once to both root and nested popups");
+    await optionsWrite({ popupScalePercent: 100 });
+    await until(childState, value => value.rect.width === 640, "restore child scale");
     const automaticRoot = (await rootState()).toolbar;
     evidence.toolbarChild = true;
     for (const edge of ["bottom", "top", "auto"]) {
@@ -2184,7 +2206,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E8 genuine child Show more");
     const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2)
       && value.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 complete child expansion");
     require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
@@ -2399,7 +2420,6 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     await until(() => child.compactSummaries(), value => value[0]?.items[0] === "Text before the image."
       && value[0].image.length === 0, "E10 child late-image negative");
-    require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
     await until(() => child.compactSummaries(), value => value.length === 2
       && value[1].items.length === 3, "E10 deferred headers use current preferences");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
@@ -6029,6 +6049,12 @@ async function checkDesignAppearance(page, frame) {
     const restored = await frame.evaluate(() => [...CSS.highlights.get("gsm-hoshidicts-match")].map(range => range.toString()).join(""));
     await frame.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").click());
     const beforeReset = await page.evaluate(() => chrome.storage.local.get(["options", "dictionaryState", "dictionaryUpdates"]));
+    await editSettingsControls(page, { "opt-popup-scale": "75" });
+    await page.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupScalePercent === 75);
+    await drain();
+    const scaled = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .querySelector(".gsm-hoshidicts-popup").getBoundingClientRect().width);
+    if (scaled !== 540) throw new Error(`75% preview width: ${scaled}`);
     await page.$eval("#reset-design", button => button.click());
     await page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
     const reset = await page.evaluate(async before => {
@@ -6876,6 +6902,50 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     check("Japanese-only preferences change automatic scanning in an already-open tab",
       japaneseOnly && latinRequests.length === 1 && latinRequests[0].text === "hello world" && gatedAgain,
       JSON.stringify({ japaneseOnly, latinRequests, gatedAgain }));
+    const title = "mixed-numeral-fixture";
+    const terms = ["第1", "第１", "第一", "1扉", "１扉", "3月", "３月"];
+    await installMediaArchive(settings, buildTitledZip(title, {
+      terms: terms.map((term, index) => [term, "だいいち", "", "", 100, ["mixed numeral match"], index + 1, ""]),
+    }));
+    const mixed = [];
+    try {
+      for (const [text, offset, match] of [
+        ["第1。", 0, "第1"], ["第１。", 0, "第１"], ["第一。", 0, "第一"],
+        ["第1扉。", 1, "1扉"], ["第１扉。", 1, "１扉"], ["3月。", 0, "3月"], ["３月。", 0, "３月"],
+      ]) {
+        await dismiss();
+        await tab.$eval("#verb", (element, value) => { element.textContent = value; }, text);
+        const point = await tab.$eval("#verb", (element, start) => {
+          const range = document.createRange();
+          range.setStart(element.firstChild, start);
+          range.setEnd(element.firstChild, start + 1);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.x + rect.width / 4, y: rect.y + rect.height / 2 };
+        }, offset);
+        await tab.mouse.move(point.x, point.y);
+        await pause();
+        const state = await popup.state();
+        const highlighted = await tab.evaluate(name =>
+          [...(CSS.highlights.get(name) ?? [])].map(range => range.toString()).join(""), HIGHLIGHT_NAME);
+        const lookup = await settings.evaluate(text => chrome.runtime.sendMessage({
+          target: "hoshidicts-offscreen", type: "hd_lookup", text, maxResults: 32, scanLength: 16,
+        }), text.slice(offset));
+        mixed.push({ text, offset, highlighted, visible: popup.visible(state),
+          matched: lookup.results?.some(result => result.term?.expression === match && result.matched === match),
+          correct: highlighted === match && state?.plain.includes("mixed numeral match") });
+        if (text === "第1。" && process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT) {
+          await tab.screenshot({ path: process.env.HACHIDORI_MIXED_NUMERAL_SCREENSHOT });
+        }
+      }
+    } finally {
+      await dismiss();
+      const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    check("Japanese-only mixed numeral lookups retain native matches and exact source highlights",
+      mixed.length === 7 && mixed.every(value => value.visible && value.matched && value.correct), JSON.stringify(mixed));
   } finally {
     await dismiss();
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
@@ -7688,6 +7758,7 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
         ["jiten", "Waiting", null, null],
         ["bees-ultimate-grammar-dictionary", "Waiting", null, null],
+        ["sankoku8-eng", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
       && startupShell.status === "Installing default dictionaries…"
@@ -7828,6 +7899,7 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
         ["jiten", "Installed in N seconds"],
         ["bees-ultimate-grammar-dictionary", "Installed in N seconds"],
+        ["sankoku8-eng", "Installed in N seconds"],
       ])
       && JSON.stringify(runOutcome.actions) === JSON.stringify([["setup-retry", "Retry missing dictionaries"], ["setup-continue", "Continue setup"]])
       && runOutcome.countdown === null && runOutcome.importLink
@@ -7846,7 +7918,7 @@ async function main() {
       && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
       && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
-      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
+      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
       && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
       && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
       && afterRun.setupState.stage === "dictionaries"
@@ -8186,6 +8258,7 @@ async function main() {
   await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
   await checkSettingsAutosave(page, browser, settingsUrl);
+  await checkSettingsFeedback(browser, settingsUrl, check);
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
   await checkAudioSettings(page, browser);
@@ -8217,7 +8290,7 @@ async function main() {
   });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
-    "settings page renders exactly five safe recommended dictionary links",
+    "settings page renders exactly six safe recommended dictionary links",
     JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),
@@ -8383,7 +8456,7 @@ async function main() {
         return entry
           && dictionary.title === entry.title
           && dictionary.revision === entry.revision
-          && dictionary.isUpdatable === true
+          && dictionary.isUpdatable === (entry.indexUrl !== null)
           && dictionary.indexUrl === entry.indexUrl
           && dictionary.downloadUrl === entry.downloadUrl;
       }),
@@ -9161,6 +9234,9 @@ async function main() {
     revision: aliasBlurAction.revision,
   });
 
+  await dictionaryManagementScenarios(page);
+  check("dictionary pointer reorder and confirmed bulk removal persist across reload", true);
+
   await showSettingsSection(page, "dictionary-groups");
   const groupManagement = await page.evaluate(async ({ fixtureId, genericId }) => {
     const nameInput = document.getElementById("dict-group-name-new");
@@ -9575,6 +9651,8 @@ async function main() {
   const popup = await popupReader(tab);
 
   const hover = (selector, options) => hoverForPopup(tab, popup, selector, options);
+  await checkPopupResize(page, tab);
+  check("mouse resizing retains session dimensions without changing Design settings", true);
 
   // CSS.highlights is a per-document registry, so the extension's entry is
   // readable from the page's own world even though the content script that set
@@ -9591,12 +9669,12 @@ async function main() {
     style: element.getAttribute("style"),
   }));
   await tab.$eval("#verb", element => {
-    element.innerHTML = '<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
+    element.innerHTML = '\u524d\u524d\u524d\u524d\u524d\u524d\u524d\u524d<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
     element.style.cssText = [
       "position: fixed",
       "top: 10px",
-      "left: 20px",
-      "width: 3em",
+      "left: 600px",
+      "width: 11em",
       "word-break: break-all",
     ].join(";");
   });
@@ -9607,20 +9685,37 @@ async function main() {
     const ranges = highlight ? [...highlight] : [];
     const rects = ranges.flatMap(range => [...range.getClientRects()]);
     if (rects.length === 0) return null;
+    const start = document.createRange();
+    const startNode = document.getElementById("placement-start").firstChild;
+    start.setStart(startNode, 0);
+    start.setEnd(startNode, 1);
+    const active = start.getBoundingClientRect();
     return {
+      active: { bottom: active.bottom, left: active.left, top: active.top },
       bottom: Math.max(...rects.map(rect => rect.bottom)),
+      left: Math.min(...rects.map(rect => rect.left)),
       rectCount: rects.length,
       text: ranges.map(range => range.toString()).join(""),
       top: Math.min(...rects.map(rect => rect.top)),
+      viewportWidth: innerWidth,
     };
   }, HIGHLIGHT_NAME);
+  if (process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT) {
+    await tab.screenshot({ path: process.env.HACHIDORI_MULTILINE_POPUP_SCREENSHOT });
+  }
+  const wrappedExpectedLeft = wrappedPopupState && wrappedSource
+    ? Math.max(6, Math.min(Math.round(wrappedSource.active.left),
+      wrappedSource.viewportWidth - wrappedPopupState.rect.width - 6))
+    : null;
   check(
-    "the popup opens below the complete wrapped match instead of the hovered glyph",
+    "a multiline match anchors the popup to the scanned line fragment",
     wrappedPopupState !== null
       && wrappedSource?.text === "\u98df\u3079\u305f\u304b\u3063\u305f"
       && wrappedSource.rectCount > 1
-      && wrappedPopupState.rect.top >= wrappedSource.bottom + 3,
-    JSON.stringify({ popup: wrappedPopupState?.rect, source: wrappedSource }),
+      && wrappedSource.active.left > wrappedSource.left + 50
+      && Math.abs(wrappedPopupState.rect.left - wrappedExpectedLeft) <= 1
+      && Math.abs(wrappedPopupState.rect.top - (wrappedSource.active.bottom + 4)) <= 1,
+    JSON.stringify({ expectedLeft: wrappedExpectedLeft, popup: wrappedPopupState?.rect, source: wrappedSource }),
   );
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
@@ -9635,6 +9730,12 @@ async function main() {
     await chrome.tabs.setZoom(target.id, factor);
   }, pageUrl, zoomFactor);
   await setPageZoom(2);
+  await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupScalePercent: 75 } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   await tab.waitForFunction(() => window.devicePixelRatio === 2, { timeout: 5000 });
   // Selecting the word avoids depending on how synthetic pointer input maps
   // coordinates under browser zoom.
@@ -9642,7 +9743,7 @@ async function main() {
   const zoomedPopup = await popup.waitForVisible();
   let zoomed = null;
   if (zoomedPopup !== null) {
-    const widthPx = await page.evaluate(async () => (await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560);
+    const widthPx = await page.evaluate(async () => ((await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560) * 0.75);
     // The zoom factor arrives from the service worker alongside the lookup.
     for (let attempt = 0; attempt < 20; attempt += 1) {
       zoomed = { widthPx, rect: (await popup.dictionaryTabs()).rect,
@@ -9655,6 +9756,12 @@ async function main() {
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
   await setPageZoom(1);
+  await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupScalePercent: 100 } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   await tab.waitForFunction(() => window.devicePixelRatio === 1, { timeout: 5000 });
   check(
     "browser zoom keeps the popup at its configured on-screen size inside the viewport",
@@ -9748,12 +9855,10 @@ async function main() {
     "no .gsm-hoshidicts-popup appeared within 12 hover attempts");
   const hostPresent = verb === null ? false : await tab.evaluate(() => {
     const host = document.querySelector("hachidori-host");
-    // A closed root is invisible from here, which is the point: page script
-    // cannot reach into the popup either.
-    return !!host && host.isConnected && host.shadowRoot === null;
+    return !!host && host.isConnected && host.shadowRoot instanceof ShadowRoot;
   });
-  check("the content script attached its closed-shadow host to the page", hostPresent,
-    "no connected <hachidori-host> with a closed shadow root");
+  check("the content script attached its open-shadow host to the page", hostPresent,
+    "no connected <hachidori-host> with an open shadow root");
 
   // Read through a default rather than under an `if`: a popup that never appeared
   // must fail these three as well, not quietly remove them from the total.
@@ -9787,6 +9892,8 @@ async function main() {
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
+  await checkCompactSummaryLayout(browser);
+  check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);

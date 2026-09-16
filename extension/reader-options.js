@@ -87,6 +87,7 @@
     popupTheme: "default",
     popupToolbarPosition: "auto",
     customPopupCss: "",
+    customPopupJavascript: "",
     customLinks: [],
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     audioAutoplay: false,
@@ -94,6 +95,7 @@
     mediaCapture: DEFAULT_MEDIA_CAPTURE,
     popupWidthPx: 560,
     popupHeightPx: 420,
+    popupScalePercent: 100,
     popupOpacityPercent: 85,
     sourceHighlightEnabled: true,
     showPopupAudioButton: true,
@@ -133,6 +135,7 @@
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
     popupWidthPx: [280, 1200],
     popupHeightPx: [200, 900],
+    popupScalePercent: [25, 500],
     popupOpacityPercent: [0, 100],
     popupColumns: [1, 4],
     compactDefinitionSummaryCount: [1, 6],
@@ -158,7 +161,7 @@
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "customLinks", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",

@@ -55,6 +55,7 @@ import {
   RECOMMENDED_SELECTIONS_KEY, OVERLAY_LOCAL_OPTION_KEYS,
   advanceSetupState, capabilityAnkiOptions, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
+import { applyCustomJavaScript } from "./custom-javascript.js";
 
 const {
   DEFAULT_OPTIONS, normaliseOptions, projectStoredOptions, validateOptionsPatch,
@@ -1577,6 +1578,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
   void reconcileAnkiIndex();
+  void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
 });
 
 async function applyAnkiIndexRole() {
@@ -2431,8 +2433,8 @@ async function handleWorkerRequest(message, sender) {
   if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
-  if (type === "hd_backup_download" && !HOST_CAPABILITIES.backupExport) {
-    return failureReply(message, new Error("Backup export is unavailable in this overlay."));
+  if (type === "hd_backup_download" && typeof chrome.downloads?.download !== "function") {
+    return failureReply(message, new Error("Chrome downloads are unavailable. Export the backup from Hachidori Settings."));
   }
   if (type === "hd_open_external" && !HOST_CAPABILITIES.customLinks) {
     return failureReply(message, new Error("Custom toolbar links are unavailable in this overlay."));
@@ -2866,6 +2868,8 @@ sharingReady = initialiseSharing().catch((error) => {
   console.error("hachidori: could not restore sharing:", describe(error));
 });
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
+void chrome.storage.local.get(OPTIONS_KEY).then(stored =>
+  applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).customPopupJavascript));
 
 if (OVERLAY_MODE) {
   seedOverlayModeOptions().catch((error) => {

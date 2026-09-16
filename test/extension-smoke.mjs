@@ -800,6 +800,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
     .replace(/import \{ HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -817,6 +818,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
+    applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;
@@ -1172,9 +1174,7 @@ async function overlayModeBackgroundStage() {
     chrome.__bus.sendMessage("overlay-settings", {
       target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-capture",
     }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
-    chrome.__bus.sendMessage("overlay-settings", {
-      target: "hoshidicts-worker", type: "hd_backup_download", requestId: "overlay-backup",
-    }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
+
     chrome.__bus.sendMessage("overlay-reader", {
       target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
       url: "https://example.test/", active: true,
@@ -3657,7 +3657,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.extensionApi = window.chrome;
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
-    backupExport: !overlayMode,
+
     browserShortcuts: !overlayMode,
     customLinks: !overlayMode,
     localFileAccessPrompt: !overlayMode,
@@ -3682,7 +3682,9 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
-  const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
+  window.eval(readFileSync(resolve(EXTENSION, "blob-download.js"), "utf8").replace(/^export\s+/gmu, ""));
+  const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -3713,6 +3715,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/^import .* from "\.\/overlay-mode\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/blob-download\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
@@ -4198,6 +4201,18 @@ const RECOMMENDED_DICTIONARIES = [
     revision: "2026.09.10",
     capabilities: ["term"],
   },
+  {
+    sourceId: "sankoku8-eng",
+    name: "Sankoku 8 English",
+    publisherUrl: "https://github.com/shoui520/sankoku8-eng",
+    downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip",
+    indexUrl: null,
+    githubRepositoryId: "1371843420",
+    requiredCapability: "term",
+    title: "sankoku8-gpt-5.6-luna",
+    revision: "sankoku8-gpt-5.6-luna",
+    capabilities: ["term"],
+  },
 ];
 
 function checkRecommendedDictionaries() {
@@ -4237,7 +4252,7 @@ function checkRecommendedDictionaries() {
   const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
-    "the catalogue names exactly five trusted recommendations and their publishers",
+    "the catalogue names exactly six trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
@@ -7130,15 +7145,15 @@ async function main() {
       // The scenario injects exactly two failures: jmnedict fails to download and
       // the kanji dictionary fails to import. The rest succeed.
       && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, true, false, false])
+        === JSON.stringify([false, true, true, false, false, false])
       && recommendedSettings.partial.state
         === `Finished ${RECOMMENDED_DICTIONARIES.length} of ${RECOMMENDED_DICTIONARIES.length}`
-          + " recommended dictionaries — 3 imported, 2 failed."
+          + " recommended dictionaries — 4 imported, 2 failed."
       && recommendedSettings.starterHiddenAfterFirst === false
       && recommendedSettings.partial.starterHidden === false
       && recommendedSettings.partial.retryHidden === false
       && JSON.stringify(recommendedSettings.partial.sourceIds)
-        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary"])
+        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
@@ -8061,6 +8076,7 @@ async function startupPageStage() {
   let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
     { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
     { id: "grammar", title: "Bee's Ultimate Grammar Dictionary", sourceId: "bees-ultimate-grammar-dictionary", enabled: true },
+    { id: "sankoku", title: "sankoku8-gpt-5.6-luna", sourceId: "sankoku8-eng", enabled: true },
     { id: "names", title: "JMnedict [2026-01-01]", indexUrl: catalogue("jmnedict").indexUrl, enabled: true },
     // A display name is not a trusted identity.
     { id: "lookalike", title: "Jitendex", displayName: "Jitendex", enabled: true },
@@ -8137,7 +8153,7 @@ async function startupPageStage() {
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]]);
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").focus();
@@ -8150,7 +8166,7 @@ async function startupPageStage() {
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
       && status().textContent === "Installing default dictionaries…";
@@ -8182,13 +8198,14 @@ async function startupPageStage() {
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
         jmnedict: { status: "already-installed", seconds: null, error: null }, "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null },
-        "bees-ultimate-grammar-dictionary": { status: "already-installed", seconds: null, error: null } } } };
+        "bees-ultimate-grammar-dictionary": { status: "already-installed", seconds: null, error: null },
+        "sankoku8-eng": { status: "already-installed", seconds: null, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event(runA(7, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })], true));
     const failureView = heading() === "Some dictionaries could not be installed"
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
       && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
       && document.getElementById("setup-countdown-label") === null && installs().length === 2;
 
@@ -8679,12 +8696,14 @@ async function startupReconcileStage() {
       "bees-ultimate-kanji-dictionary": outcome("failed", { error: "could not read bees.zip: HTTP 503" }),
       jiten: outcome("failed", { error: "could not read jiten-frequency.zip: HTTP 503" }),
       "bees-ultimate-grammar-dictionary": outcome("already-installed"),
+      "sankoku8-eng": outcome("already-installed"),
     }, totalSeconds: 4, continued: false, selectionsApplied: ["jitendex"], recordedRuns: ["run-a"] } };
   const installed = (sourceId, title) => ({ id: sourceId, title, sourceId, enabled: true });
   // Everything but Jiten is in the library: Bee's arrived from Settings after its failure.
   const dictionaries = [installed("jitendex", "Jitendex.org [2026-08-11]"), installed("jmnedict", "JMnedict [2026-01-01]"),
     installed("bees-ultimate-kanji-dictionary", "Bee's Ultimate Kanji Dictionary"),
-    installed("bees-ultimate-grammar-dictionary", "Bee's Ultimate Grammar Dictionary")];
+    installed("bees-ultimate-grammar-dictionary", "Bee's Ultimate Grammar Dictionary"),
+    installed("sankoku8-eng", "sankoku8-gpt-5.6-luna")];
   const page = startupCase(jsdom, { setup, dictionaries,
     reply: () => ({ runId: "run-b", sequence: 1, finished: false,
       entries: [{ sourceId: "bees-ultimate-kanji-dictionary", phase: "waiting", receivedBytes: 0, totalBytes: null, seconds: null, error: null }] }) });
@@ -11322,6 +11341,7 @@ async function settingsConflictStage() {
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  let removeHandler = null;
   const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
@@ -11411,6 +11431,7 @@ async function settingsConflictStage() {
           return { ok: true, options: structuredClone(message.options) };
         }
         if (message.type === "hd_remove") {
+          if (removeHandler) return removeHandler(message);
           removeStarted = true;
           return new Promise((resolveRemove) => {
             releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
@@ -11906,6 +11927,57 @@ async function settingsConflictStage() {
     queuedRenameError,
     queuedRenameRequestCount,
   };
+  await navigateSettingsSection(window, "dictionaries");
+  search.value = "";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  acceptState([
+    genericPackage({ id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE }),
+    ...managementDictionaries.slice(0, 3),
+  ]);
+  const bulkRemove = window.document.getElementById("dict-bulk-remove");
+  const removalCalls = [];
+  let finishFirst;
+  removeHandler = async (message) => {
+    removalCalls.push(message.id);
+    if (removalCalls.length === 1) await new Promise(resolve => { finishFirst = resolve; });
+    if (message.id === ids.hiddenOne) throw new window.Error("simulated bulk failure");
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  selectAll.click();
+  window.confirm = () => false;
+  bulkRemove.click();
+  if (removalCalls.length) throw new Error("cancelled bulk removal sent a request");
+  let confirmations = 0;
+  window.confirm = () => { confirmations += 1; return true; };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.join() !== ids.alpha || !bulkRemove.disabled
+      || !window.document.getElementById("import-file").disabled) {
+    throw new Error("bulk removal did not serialize requests and disable competing controls");
+  }
+  finishFirst();
+  const removalDeadline = Date.now() + 2000;
+  while (bulkRemove.disabled && Date.now() < removalDeadline) {
+    await new Promise(done => window.setTimeout(done, 5));
+  }
+  if (confirmations !== 1 || removalCalls.join() !== [ids.alpha, ids.hiddenOne, ids.beta].join()
+      || state.dictionaries.map(entry => entry.id).join() !== [CUSTOM_DICTIONARY_ID, ids.hiddenOne].join()
+      || !rowFor(ids.hiddenOne).querySelector(".dict-selected").checked
+      || !window.document.getElementById("engine-status").textContent.includes("simulated bulk failure")) {
+    throw new Error("bulk removal lost custom protection, partial failure, selection or continuation");
+  }
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  bulkRemove.click();
+  await new Promise(done => window.setTimeout(done, 0));
+  if (removalCalls.at(-1) !== ids.hiddenOne || !bulkRemove.disabled
+      || state.dictionaries.length !== 1 || state.dictionaries[0].id !== CUSTOM_DICTIONARY_ID) {
+    throw new Error("bulk retry did not remove only the failed package and protect the personal dictionary");
+  }
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
@@ -13195,6 +13267,26 @@ async function contentNoteStage() {
       const harness = await createHarness(route);
       try {
         await harness.initialLookup();
+        if (route) {
+          const termHit = harness.driver.showKanji("食");
+          harness.reply(harness.take("hd_lookup_dictionary"), {
+            results: [harness.term("食", "Generic")],
+          });
+          await termHit;
+          harness.driver.onWindowBlur();
+          outcomes["successful selected-term kanji navigation allows later blur"] = harness.popup.hidden;
+          await harness.initialLookup();
+        }
+        const pendingBlur = harness.driver.showKanji("食");
+        const pendingBlurRequest = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
+        harness.driver.onWindowBlur();
+        const firstBlurGuarded = !harness.popup.hidden;
+        harness.driver.onWindowBlur();
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} guards only the interaction blur`] =
+          firstBlurGuarded && harness.popup.hidden;
+        harness.reply(pendingBlurRequest, route ? { results: [] } : { kanji: null });
+        await pendingBlur;
+        await harness.initialLookup();
         const operation = harness.driver.showKanji("食");
         if (route) {
           harness.reply(harness.take("hd_lookup_dictionary"), { results: [] });
@@ -13202,7 +13294,12 @@ async function contentNoteStage() {
         }
         harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [] } });
         await operation;
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss retires the old popup`] = harness.popup.hidden;
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss preserves the old popup`] = !harness.popup.hidden
+          && harness.render().kind === "failure"
+          && harness.render().value.kind === "kanji"
+          && harness.render().value.title === "Kanji lookup failed.";
+        harness.driver.onWindowBlur();
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} settled interaction allows later blur`] = harness.popup.hidden;
         await harness.initialLookup();
         const stale = harness.driver.showKanji("食");
         const held = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
@@ -14052,10 +14149,65 @@ async function contentNoteStage() {
     });
     await retry;
     const invalidatedPendingRetried = retryRequest?.request.maxResults === 4
-      && obsoletePopup !== replacementPopup && obsoletePendingIgnored
+      && obsoletePopup === replacementPopup && obsoletePendingIgnored
       && optionsRace.driver.viewRequest(1)?.payload.options.primaryReading === "reading"
       && optionsRace.render(1).context.isCurrentRequest();
     optionsRace.close();
+    const savingChild = await createHarness();
+    await savingChild.initialLookup();
+    const opened = savingChild.internalLink({ query: "old child" });
+    savingChild.reply(savingChild.take("hd_lookup"), { dictionaryCount: 1, results: [savingChild.term("old child")] });
+    await opened;
+    const shell = savingChild.driver.popupAt(1);
+    savingChild.edit(true, 1);
+    const saved = savingChild.callbacks(1).onAddCustomEntry({ term: "old child", reading: "", definition: "saved" });
+    const append = savingChild.take("hd_custom_append");
+    const replaced = savingChild.internalLink({ query: "new child" });
+    const replacementLookup = savingChild.take("hd_lookup");
+    const retiredNote = !savingChild.driver.snapshot(1).noteEditing && savingChild.driver.viewRequest(1) === null;
+    savingChild.reply(append, { state: { schemaVersion: 1, revision: 0, dictionaries: [] } });
+    await saved;
+    const noOldReplay = savingChild.take("hd_lookup") === null;
+    savingChild.reply(replacementLookup, { dictionaryCount: 1, results: [savingChild.term("new child")] });
+    await replaced;
+    const savedChildReused = retiredNote && noOldReplay && shell === savingChild.driver.popupAt(1)
+      && savingChild.driver.viewRequest(1)?.payload.text === "new child";
+    savingChild.close();
+    const closingChild = await createHarness();
+    await closingChild.initialLookup();
+    const oldChild = closingChild.internalLink({ query: "old child" });
+    closingChild.reply(closingChild.take("hd_lookup"), { dictionaryCount: 1, results: [closingChild.term("old child")] });
+    await oldChild;
+    closingChild.edit(true, 1);
+    closingChild.setCloseNext(true, 1);
+    const closingShell = closingChild.driver.popupAt(1);
+    const closingReplacement = closingChild.internalLink({ query: "new child" });
+    const closingReply = closingChild.take("hd_lookup");
+    closingChild.driver.onKeyDown(new closingShell.ownerDocument.defaultView.KeyboardEvent("keydown", {
+      key: "Escape", code: "Escape", bubbles: true, cancelable: true,
+    }));
+    closingChild.reply(closingReply, { dictionaryCount: 1, results: [closingChild.term("new child")] });
+    await closingReplacement;
+    const pendingChildDismissed = !closingShell.isConnected && !closingChild.driver.popupAt(1);
+    closingChild.close();
+    const movingAnchor = await createHarness();
+    await movingAnchor.initialLookup();
+    const newAnchor = movingAnchor.anchor.cloneNode(true);
+    movingAnchor.anchor.ownerDocument.body.append(newAnchor);
+    const nextRange = newAnchor.ownerDocument.createRange();
+    nextRange.selectNodeContents(newAnchor);
+    const nextCandidate = { ...movingAnchor.candidate, anchor: newAnchor, anchorRange: nextRange,
+      sourceElements: [newAnchor], scanEntries: movingAnchor.candidate.scanEntries.map(entry =>
+        ({ ...entry, node: newAnchor.firstChild })), query: "new anchor" };
+    const nextLookup = movingAnchor.driver.runLookup(nextCandidate);
+    const nextReply = movingAnchor.take("hd_lookup");
+    movingAnchor.anchor.remove();
+    movingAnchor.callbacks().positionPopup();
+    movingAnchor.reply(nextReply, { dictionaryCount: 1, results: [movingAnchor.term("new anchor")] });
+    await nextLookup;
+    const stalePositionIgnored = !movingAnchor.driver.snapshot().popupHidden
+      && movingAnchor.driver.viewRequest()?.payload.text === "new anchor";
+    movingAnchor.close();
     const generations = [];
     for (const generation of [3, 1]) {
       const race = await createHarness();
@@ -14077,7 +14229,8 @@ async function contentNoteStage() {
       race.close();
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
-      retiredIgnored && detachedIgnored && invalidatedPendingRetried && generations.every(Boolean) };
+      retiredIgnored && detachedIgnored && invalidatedPendingRetried && savedChildReused
+        && pendingChildDismissed && stalePositionIgnored && generations.every(Boolean) };
   }
 
   async function retainedParentNavigationCase() {
@@ -14964,6 +15117,7 @@ async function contentNoteStage() {
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
+    window.Range.prototype.getClientRects = () => [];
     const document = window.document;
     const block = document.createElement("p");
     block.style.display = "block";
@@ -14985,6 +15139,19 @@ async function contentNoteStage() {
     const unrestricted = scan(block.firstChild)?.query === "hello world";
     harness.emitOptions({ onlyScanJapaneseText: true });
     const gatedAgain = scan(block.firstChild) === null;
+    const mixedNumerals = [];
+    for (const text of ["第1", "第１", "第一", "第1扉", "第１扉", "第一扉", "3月", "３月", "第1。", "第１、"]) {
+      block.textContent = text;
+      const fromJapanese = scan(block.firstChild);
+      const fromNumeral = scan(block.firstChild, 1);
+      const suffix = text.slice(1);
+      mixedNumerals.push(fromJapanese?.query === text
+        && (/[一扉月]/u.test(suffix) ? fromNumeral?.query === suffix : fromNumeral === null));
+    }
+    const rejected = ["123", "１２３", "hello", "hello 日本語", "1。日本語"].every((text) => {
+      block.textContent = text;
+      return scan(block.firstChild) === null;
+    });
     const controls = [];
     for (const tag of ["button", "select", "textarea", "input", "span"]) {
       block.innerHTML = '<b style="display:inline">食</b>';
@@ -15059,6 +15226,8 @@ async function contentNoteStage() {
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
+      "Japanese-only scanning accepts mixed numeral compounds from Japanese or numeral characters":
+        (mixedNumerals.every(Boolean) && rejected) || { mixedNumerals, rejected },
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
       "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
@@ -15413,14 +15582,14 @@ async function contentNoteStage() {
       });
       const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
 
-      async function latinLookup(onlyScanJapaneseText) {
+      async function definitionLookup(onlyScanJapaneseText, text) {
         const language = await createHarness(
           { title: "Generic", kind: "term" },
           { options: { onlyScanJapaneseText } },
         );
         try {
           await language.initialLookup();
-          const latin = appendGlossary(language, "hello");
+          const latin = appendGlossary(language, text);
           language.popup.ownerDocument.caretPositionFromPoint = () => ({
             offsetNode: latin.textNode,
             offset: 0,
@@ -15439,8 +15608,9 @@ async function contentNoteStage() {
           language.close();
         }
       }
-      const japaneseOnly = await latinLookup(true) === null;
-      const unrestrictedText = await latinLookup(false);
+      const japaneseOnly = await definitionLookup(true, "hello ") === null;
+      const unrestrictedText = await definitionLookup(false, "hello ");
+      const mixedNumeral = (await definitionLookup(true, "第1"))?.startsWith("第1です") === true;
       const firstDetails = {
         context,
         deduplicated,
@@ -15448,6 +15618,7 @@ async function contentNoteStage() {
         explicitLink,
         glossaryOnly,
         japaneseOnly,
+        mixedNumeral,
         linkBoundary,
         missPreservedParent,
         nativeCaret,
@@ -15682,7 +15853,9 @@ async function contentNoteStage() {
     move();
     fire(75);
     const supersededPointer = harness.take("hd_lookup");
-    const oldViewRetired = harness.driver.snapshot().popupHidden && !oldViewContext.isCurrentRequest();
+    const oldViewRetired = !harness.driver.snapshot().popupHidden && harness.popup.inert
+      && !oldViewContext.isCurrentRequest() && !oldViewContext.isCurrentView()
+      && harness.driver.viewRequest() === null;
     const rendersBeforeNote = harness.renders.length;
     harness.driver.setScanCandidate(null);
     move();
@@ -15695,11 +15868,22 @@ async function contentNoteStage() {
     harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
     move();
     fire(75);
-    result["a new pointer candidate retires the old view while an open Note prevents replacement"] =
+    result["a new pointer candidate retains an inert old view while an open Note prevents replacement"] =
       supersededPointer !== null && oldViewRetired && cancelledReplacement
         && harness.driver.snapshot().noteEditing && harness.render().context.isCurrentRequest()
         && harness.take("hd_lookup") === null && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
+
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "settings race" });
+    move();
+    fire(75);
+    const settingsLookup = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, lookupMode: "hover", maxResults: 4 });
+    harness.reply(settingsLookup, { dictionaryCount: 1, results: [harness.term("obsolete settings")] });
+    await harness.settle();
+    result["settings invalidate a pending replacement without stranding an inert visible view"] =
+      harness.driver.snapshot().popupHidden;
+    await harness.initialLookup();
 
     const focusedControl = window.document.createElement("button");
     focusedControl.textContent = "Back";
@@ -17945,7 +18129,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const moved = view.focusEntry({ offset: 1 });
     layout();
     const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
-      && scrolls.at(-1).behavior === "smooth";
+      && scrolls.at(-1).behavior === "instant";
     const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
     scrollTop = 30; // Beta is now the most visible card of the first entry.
@@ -17958,8 +18142,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const reset = view.currentEntryIndex() === 0 && view.focusEntry({ dictionary: 1 }) === false;
     view.renderNotice("No results", candidate);
     const empty = view.focusEntry("last") === false;
-    check("keybind entry navigation expands Show more, clamps, follows clicks and moves between dictionary cards",
-      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty,
+    check("keybind entry navigation expands Show more, clamps, follows clicks and moves instantly between dictionary cards",
+      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty
+        && scrolls.every(scroll => scroll.behavior === "instant"),
       JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
         expanded, scrolls, current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }
@@ -18619,12 +18804,12 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
       onBack() {},
     };
     view.renderResults(results, candidate, context);
-    await settle();
     const primary = disclosure();
     const primaryOutsidePanel = primary !== null
       && popup.querySelector(".gsm-hoshidicts-primary-header").contains(primary)
       && !popup.querySelector(".gsm-hoshidicts-tab-panel").contains(primary);
     const lazy = popup.querySelectorAll(".gsm-hoshidicts-deinflection").length === 1;
+    await settle();
     const beforeOpening = layouts;
     if (primary) primary.open = true;
     await settle();

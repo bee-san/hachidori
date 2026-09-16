@@ -16,7 +16,7 @@ const [chromeManifest, firefoxManifest] = await Promise.all([
   readJson("extension/manifest.firefox.json"),
 ]);
 
-test("Firefox MV2 manifest preserves every shared Chrome declaration", () => {
+test("Firefox MV2 manifest preserves supported shared Chrome declarations", () => {
   for (const field of ["name", "short_name", "version", "icons", "options_page", "commands"]) {
     assert.deepEqual(firefoxManifest[field], chromeManifest[field], field);
   }
@@ -24,7 +24,10 @@ test("Firefox MV2 manifest preserves every shared Chrome declaration", () => {
   assert.deepEqual(firefoxManifest.browser_action, chromeManifest.action);
   assert.deepEqual(
     firefoxManifest.permissions,
-    [...chromeManifest.permissions.filter(permission => permission !== "offscreen"), ...chromeManifest.host_permissions],
+    [
+      ...chromeManifest.permissions.filter(permission => permission !== "offscreen" && permission !== "userScripts"),
+      ...chromeManifest.host_permissions,
+    ],
   );
   assert.deepEqual(
     firefoxManifest.content_scripts[0].js,
