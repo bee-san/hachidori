@@ -21,6 +21,8 @@ test("reader and status pseudo-icons use the same Fluent source as controls", ()
   for (const selector of [".gsm-hoshidicts-audio-button::before", ".operational-status.is-ready::before",
     ".gsm-hoshidicts-popup-close::before", ".gloss-link-external-icon"]) assert.ok(css.includes(selector), selector);
   const reader = readFileSync(new URL("render/reader.css", root), "utf8");
+  const settings = readFileSync(new URL("settings.css", root), "utf8");
   assert.doesNotMatch(reader, /data:image\/svg/);
+  assert.doesNotMatch(settings.match(/\.operational-status::before\s*\{[^}]*\}/u)?.[0] ?? "", /(?:width|height)\s*:/u);
   assert.match(readFileSync(new URL("content.js", root), "utf8"), /getURL\("icons.css"\)/);
 });

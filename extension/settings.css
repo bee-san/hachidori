@@ -1175,8 +1175,6 @@ textarea {
   overflow-wrap: anywhere;
 }
 .operational-status::before {
-  width: 24px;
-  height: 24px;
   margin-top: 1px;
   color: var(--status-color);
 }
