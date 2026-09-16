@@ -62,7 +62,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             render({ ...scenario, compact: variant !== "plain", nested: variant === "large-nested", links: variant === "links" });
             popup.style.width = `${width}px`;
             popup.style.setProperty("--gsm-hoshidicts-popup-scale", variant === "large-nested" ? "150%" : "100%");
-            document.querySelector("#host").dataset.theme = variant === "large-nested" ? "light" : "dark";
+            document.querySelector("#host").dataset.hoshidictsTheme = variant === "large-nested" ? "solarized-light" : "dark";
             root.querySelector(".gsm-hoshidicts-expression").style.fontSize = variant === "large-nested" ? "48px" : "32px";
           }, { width, scenario, variant });
           await page.waitForFunction(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state === "ready");
@@ -71,10 +71,12 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             const buttons = ["mine", "audio", "note"].map(name => root.querySelector(`.gsm-hoshidicts-${name}-button`));
             const rect = node => node.getBoundingClientRect().toJSON();
             const header = root.querySelector(".gsm-hoshidicts-primary-header");
+            const extras = [...root.querySelectorAll(".gsm-hoshidicts-external-link-button, .gsm-hoshidicts-back-button")];
             return { buttons: buttons.map(rect), popup: rect(popup), header: rect(header),
               headword: rect(root.querySelector(".gsm-hoshidicts-headword")),
               hit: buttons.every(button => { const r = rect(button); return button.contains(root.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }),
               overflow: header.scrollWidth > header.clientWidth + 1,
+              extras: extras.map(node => { const r = rect(node); return { ...r, hit: node.contains(root.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) }; }),
               summary: root.querySelector(".gsm-hoshidicts-compact-definition-items")?.textContent,
             };
           });
@@ -87,7 +89,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
           assert.ok(Math.abs(mine.top - audio.top) < 1 && Math.abs(audio.top - note.top) < 1, `icons split into rows: ${detail}`);
           assert.ok(mine.right <= audio.left && audio.right <= note.left, `icon order/overlap: ${detail}`);
           assert.ok(geometry.hit && !geometry.overflow && note.right <= geometry.popup.right, `inaccessible toolbar: ${detail}`);
-          assert.ok(geometry.headword.right <= mine.left + 1 || geometry.headword.bottom <= mine.top + 1, `heading overlaps icons: ${detail}`);
+          assert.ok(geometry.headword.right <= mine.left + 1 || geometry.headword.top >= mine.bottom - 1, `heading overlaps icons: ${detail}`);
+          assert.ok(geometry.extras.every(r => r.hit && r.right <= geometry.popup.right), `custom link or Back inaccessible: ${detail}`);
+          assert.ok(Math.abs(mine.top - geometry.header.top - (variant === "large-nested" ? 16.5 : 11)) < 1, `toolbar moves with heading height: ${detail}`);
           if (variant !== "plain") assert.equal(geometry.summary, scenario.definitions.join(""));
         }
       }
@@ -99,7 +103,23 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       popup.style.setProperty("--gsm-hoshidicts-popup-scale", "100%");
       root.querySelector(".gsm-hoshidicts-audio-button").dataset.state = "loading";
     });
-    await page.waitForFunction(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-mine-button"));
+    await page.waitForFunction(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state === "ready");
+    const states = await page.evaluate(() => {
+      const { root } = window.rowFixture;
+      const audio = root.querySelector(".gsm-hoshidicts-audio-button");
+      const note = root.querySelector(".gsm-hoshidicts-note-button");
+      const mine = root.querySelector(".gsm-hoshidicts-mine-button");
+      return ["loading", "error", "idle"].map(state => {
+        audio.dataset.state = state;
+        audio.disabled = state === "loading";
+        mine.hidden = state === "idle";
+        return { audio: audio.getBoundingClientRect().toJSON(), note: note.getBoundingClientRect().toJSON() };
+      });
+    });
+    for (const state of states) {
+      assert.equal(state.audio.top, state.note.top, "loading/disabled/hidden actions retain row");
+      assert.equal(state.note.top, states[0].note.top, "state updates retain toolbar height");
+    }
     const note = await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-button").getBoundingClientRect().toJSON());
     await page.mouse.click(note.x + note.width / 2, note.y + note.height / 2);
     assert.ok(await page.evaluate(() => !window.rowFixture.root.querySelector(".gsm-hoshidicts-note-form").hidden), "pointer opens Note");
