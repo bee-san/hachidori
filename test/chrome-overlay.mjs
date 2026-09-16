@@ -445,10 +445,8 @@ try {
   // Setup never opens in an overlay: the host has no tab to show it in.
   assert.equal(browser.targets().some((target) => target.url().endsWith("/startup.html")), false,
     "overlay mode opens no startup page");
-  // Activation mode keeps a press from racing the hover lookup, so the drag
-  // below starts with no popup open.
+  // Blur is disabled for the pointer-ownership checks below.
   await editSettingsControls(settings, {
-    "opt-lookup-mode": "activation",
     "opt-blur-count": false,
     "opt-blur-anki": false,
     "opt-blur-frequency": false,
