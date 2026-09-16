@@ -702,7 +702,12 @@ try {
       fontSize: Number.parseFloat(style.fontSize),
       height: rect.height,
       fullWidth: Math.abs(rect.width - parent.width) <= 1,
-      marker: marker.content,
+      marker: {
+        content: marker.content,
+        height: Number.parseFloat(marker.height),
+        maskImage: marker.maskImage,
+        width: Number.parseFloat(marker.width),
+      },
       ready: node.classList.contains("is-ready"),
     };
   })));
@@ -725,7 +730,9 @@ try {
       && hostClients.length === 1 && hostClients[0].local === true && hostClients[0].name === hostName
       && hostClients[0].capabilities?.includes("linked-anki-v1")
       && statusCards.every(card => card.display === "grid" && card.fontSize >= 16 && card.height >= 56
-        && card.fullWidth && card.marker.includes("✓") && card.ready),
+        && card.fullWidth && card.marker.content === '""'
+        && card.marker.maskImage !== "none" && card.marker.width >= 20 && card.marker.height >= 20
+        && card.ready),
     JSON.stringify({ probe, offer, setup: setup.setupState?.stage, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },
       own: before.dictionaryState ?? null, kept: mirror.sharingLocalState?.dictionaryState ?? null, sharing: mirror.sharing,
       mirrorRevision: mirror.dictionaryState?.revision, hostRevision: hostAfterLink.dictionaryState?.revision, hostClients, statusCards }));
