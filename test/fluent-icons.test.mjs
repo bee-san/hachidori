@@ -15,6 +15,9 @@ test("popup action icons share local Fluent 20px geometry and currentColor", () 
   assert.match(css, /background: currentColor/);
   assert.match(css, /data:image\/svg\+xml/);
   assert.doesNotMatch(css, /https?:\/\//);
+  const readme = readFileSync(new URL("README.md", root), "utf8");
+  assert.match(readme, /`icons\.css`/u);
+  assert.doesNotMatch(readme, /icons in `render\/icons\/`/u);
 });
 
 test("reader and status pseudo-icons use the same Fluent source as controls", () => {
