@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { audioSourceUrl, parseAudioSourceList } from "./audio-sources.js";
+import { LOCAL_AUDIO_SOURCE_URL, createLocalAudioSource } from "./local-audio-source.js";
 
-const SOURCE_URL = "http://127.0.0.1:5050/?term={term}&reading={reading}";
 const UNAVAILABLE = "No compatible local audio service found. Open Anki with Local Audio Server enabled and retry. For a custom port, add its URL in Audio settings.";
 
 export function createLocalAudioSetup({ document, readSources, editSources, isLinked = () => false, detect = detectLocalAudioSource }) {
@@ -62,8 +62,7 @@ export function createLocalAudioSetup({ document, readSources, editSources, isLi
   add.addEventListener("click", () => {
     if (isLinked()) { render(); return; }
     if (!detected || readSources().some(source => source.type === "custom-json" && source.url === detected)) return;
-    editSources([...readSources(), { id: document.defaultView.crypto.randomUUID(), type: "custom-json",
-      enabled: true, url: detected, voice: "" }]);
+    editSources([...readSources(), createLocalAudioSource(document.defaultView.crypto.randomUUID(), detected)]);
     render();
   });
   document.defaultView.addEventListener("pagehide", cancel);
@@ -86,11 +85,11 @@ export async function detectLocalAudioSource({ fetch = globalThis.fetch, signal,
         || !(Object.hasOwn(info, "audioPack") || (info.status === "ok" && typeof info.serverVersion === "string"))) {
       throw new Error(UNAVAILABLE);
     }
-    const sample = await fetch(audioSourceUrl(SOURCE_URL, { expression: "猫", reading: "ねこ" }), options);
+    const sample = await fetch(audioSourceUrl(LOCAL_AUDIO_SOURCE_URL, { expression: "猫", reading: "ねこ" }), options);
     if (!sample.ok) throw new Error(UNAVAILABLE);
     parseAudioSourceList(await sample.json());
     if (controller.signal.aborted) throw new Error(UNAVAILABLE);
-    return SOURCE_URL;
+    return LOCAL_AUDIO_SOURCE_URL;
   } catch {
     throw new Error(signal?.aborted ? "Local audio check cancelled." : UNAVAILABLE);
   } finally {

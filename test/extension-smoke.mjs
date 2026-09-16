@@ -27,6 +27,7 @@ import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
 import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
+import { detectLocalAudioSource as realDetectLocalAudioSource } from "../extension/local-audio-setup.js";
 import { lookupAnkiIndex } from "../extension/anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
@@ -766,6 +767,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const sharingProtocol = readFileSync(resolve(EXTENSION, "sharing-protocol.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const sharingHost = readFileSync(resolve(EXTENSION, "sharing-host.js"), "utf8")
@@ -780,8 +783,10 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
-    .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
+    .replace(/import \{ detectAnkiSetup, verifyAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
+    .replace(/import \{ detectLocalAudioSource \} from "\.\/local-audio-setup\.js";\s*/u, "")
+    .replace(/import \{ createLocalAudioSource, findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
     .replace(/^import .* from "\.\/anki-index(?:-cache)?\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
@@ -812,13 +817,14 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
+    detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -2519,14 +2525,28 @@ async function firstRunAnkiStage() {
   // only a note type in Settings leaves the fields blank, which is not one.
   const configuredAnki = (model, deck) => ({ ...defaultAnki(), model, deck,
     fields: { ...defaultAnki().fields, expression: "Front" } });
-  function worldFor(name, { answer, options = null, setup = setupRecord() }) {
+  function worldFor(name, { answer, options = null, setup = setupRecord(), localAudio = false, sharing = null }) {
     const bus = makeBus();
     const storage = makeStorage();
     const chrome = makeChrome(`${name}-worker`, bus, storage);
     const requests = [];
     const held = [];
+    const audioRequests = [];
+    const audioHeld = [];
+    if (sharing !== null) storage.raw.set("sharing", structuredClone(sharing));
     loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, URL, Promise, Error,
       fetch(url, init) {
+        if (url.startsWith("http://127.0.0.1:5050/")) {
+          audioRequests.push({ url, init });
+          if (localAudio === false) return Promise.reject(new TypeError("Failed to fetch"));
+          const value = url.endsWith("/v1/info")
+            ? { lookupMode: "sqlite", sources: ["fixture"], audioPack: null }
+            : { type: "audioSourceList", audioSources: [] };
+          if (localAudio === "hold" && audioRequests.length === 1) {
+            return new Promise(resolve => audioHeld.push(() => resolve({ ok: true, async json() { return value; } })));
+          }
+          return Promise.resolve({ ok: true, async json() { return value; } });
+        }
         const body = JSON.parse(init.body);
         requests.push({ url, action: body.action, params: body.params, key: body.key ?? null });
         const result = answer(body.action, body.params, requests.length);
@@ -2541,7 +2561,7 @@ async function firstRunAnkiStage() {
     if (options) storage.raw.set("options", structuredClone(options));
     const send = (fields = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("startup.html") }) => bus.sendMessage(
       "startup-page", { target: "hoshidicts-worker", type: "hd_setup_anki", requestId: `anki-setup-${name}`, ...fields }, sender);
-    return { bus, storage, chrome, requests, held, send };
+    return { bus, storage, chrome, requests, held, audioRequests, audioHeld, send };
   }
   const collection = (action, params) => {
     switch (action) {
@@ -2609,7 +2629,8 @@ async function firstRunAnkiStage() {
   // A recognised setup: duplicate requests share one detection, the ranked
   // model and deck are saved with the preset through the options CAS, and the
   // outcome lands in the same storage write.
-  const found = worldFor("anki-found", { answer: collection, options: { revision: 2, anki: { ...defaultAnki(), apiKey: "local-key" } } });
+  const found = worldFor("anki-found", { answer: collection, localAudio: true,
+    options: { revision: 2, anki: { ...defaultAnki(), apiKey: "local-key" } } });
   const writesBefore = found.storage.sets.length;
   const [first, second] = await Promise.all([found.send(), found.send({ requestId: "anki-setup-duplicate" })]);
   const savedOptions = found.storage.raw.get("options");
@@ -2628,9 +2649,52 @@ async function firstRunAnkiStage() {
       && savedOptions.anki.fieldTemplates.SentenceAudio.value === ""
       && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
+      && savedOptions.audioSources[0].type === "custom-json"
+      && savedOptions.audioSources[0].enabled === true
+      && savedOptions.audioSources[0].url === "http://127.0.0.1:5050/?term={term}&reading={reading}"
+      && savedOptions.audioSources[1].id === "default-tts"
+      && JSON.stringify(found.audioRequests.map(request => request.url)) === JSON.stringify([
+        "http://127.0.0.1:5050/v1/info",
+        "http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93",
+      ])
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([[ANKI_INDEX_KEY, "options", "setupState"]])
       && first.state.revision === 5,
-    JSON.stringify({ first, second, actions, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
+    JSON.stringify({ first, second, actions, audioRequests: found.audioRequests, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
+
+  const exact = { id: "local-audio", type: "custom-json", enabled: false,
+    url: "http://127.0.0.1:5050/?term={term}&reading={reading}", voice: "" };
+  const speech = { id: "speech", type: "text-to-speech-reading", enabled: true, url: "", voice: "" };
+  const duplicate = worldFor("anki-audio-existing", { answer: collection, localAudio: true,
+    options: { revision: 2, anki: defaultAnki(), audioSources: [speech, exact] } });
+  await duplicate.send();
+  const duplicateSources = duplicate.storage.raw.get("options").audioSources;
+  const audioRace = worldFor("anki-audio-race", { answer: collection, localAudio: "hold",
+    options: { revision: 1, anki: defaultAnki(), audioSources: [speech] } });
+  const pendingAudio = audioRace.send();
+  for (let attempt = 0; attempt < 100 && audioRace.audioHeld.length === 0; attempt += 1) {
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 2));
+  }
+  const audioChoice = await audioRace.bus.sendMessage("settings-page", {
+    target: "hoshidicts-worker", type: "hd_options_write", requestId: "audio-user",
+    baseRevision: 1, options: { audioSources: [exact, speech] },
+  });
+  audioRace.audioHeld.forEach(release => release());
+  await pendingAudio;
+  const racedSources = audioRace.storage.raw.get("options").audioSources;
+  const linked = worldFor("anki-audio-linked", { answer: collection, localAudio: true,
+    sharing: { host: null, client: { address: "ws://127.0.0.1:9100/link" } },
+    options: { revision: 2, anki: defaultAnki(), audioSources: [speech] } });
+  await linked.send();
+  check("first-run setup prepends detected local audio once and leaves existing, racing and linked sources alone",
+    duplicate.audioRequests.length === 0 && JSON.stringify(duplicateSources) === JSON.stringify([speech, exact])
+      && audioRace.audioRequests.length === 2 && audioChoice?.ok === true
+      && JSON.stringify(racedSources) === JSON.stringify([exact, speech])
+      && racedSources.filter(source => source.url === exact.url).length === 1
+      && linked.audioRequests.length === 0
+      && JSON.stringify(linked.storage.raw.get("options").audioSources) === JSON.stringify([speech]),
+    JSON.stringify({ duplicateAudioRequests: duplicate.audioRequests, duplicateSources, audioChoice,
+      raceAudioRequests: audioRace.audioRequests, racedSources, linkedAudioRequests: linked.audioRequests,
+      linkedSources: linked.storage.raw.get("options").audioSources }));
 
   // A choice the user makes while detection runs is kept.
   const racing = worldFor("anki-racing", { answer: (action, params, count) => (action === "modelNamesAndIds" && count === 1 ? "hold" : collection(action, params)),
@@ -3684,9 +3748,11 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "")
     .replace(/^export\s+/gmu, "");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const localAudioSetup = readFileSync(resolve(EXTENSION, "local-audio-setup.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
-  window.eval(`{ ${localAudioSetup}; window.createLocalAudioSetup = createLocalAudioSetup; }`);
+  window.eval(`{ ${localAudioSource}\n${localAudioSetup}; window.createLocalAudioSetup = createLocalAudioSetup; }`);
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -8008,6 +8074,8 @@ function loadStartupScript(window) {
   window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, ""));
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -8029,6 +8097,7 @@ function loadStartupScript(window) {
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
+    .replace(/import \{ findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
@@ -8036,7 +8105,7 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -8282,6 +8351,11 @@ async function startupPageStage() {
         { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
         { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
       ]);
+    storage({ options: { newValue: { ...options, revision: options.revision + 1, audioSources: [
+      { id: "local-audio", type: "custom-json", enabled: true,
+        url: "http://127.0.0.1:5050/?term={term}&reading={reading}", voice: "" },
+      { id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" },
+    ] } } });
     releaseConfiguredAnki();
     await until(() => readAnkiProgress()[0]?.detail === "Selected Kiku v2"
       && readAnkiProgress()[0]?.current, "the selected mining-card step");
@@ -8301,6 +8375,7 @@ async function startupPageStage() {
     const configuredAt = Date.now();
     const checkedHeading = heading();
     const automaticProgress = readAnkiProgress();
+    const localAudioOutcome = document.querySelector(".setup-local-audio-outcome")?.textContent ?? "";
     await new Promise((done) => setTimeout(done, 1500));
     const ankiHeld = heading() === "Anki is set up" && pendingReply === null
       && /Continuing to practice in [12] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
@@ -8317,6 +8392,7 @@ async function startupPageStage() {
     const practice = emptyReplyShown && pendingStayed && ankiRequests() === 3
       && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
       && checkedHeading === "Anki is set up" && ankiHeld
+      && localAudioOutcome === "Local audio is configured."
       && progressDwell.every((duration) => duration >= 1900) && ankiElapsed >= 2900
       && JSON.stringify(cardProgress) === JSON.stringify([
         { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: false, current: true },
@@ -8348,7 +8424,7 @@ async function startupPageStage() {
     const word = document.getElementById("setup-practice-word");
     scene.focus();
     window.getSelection().selectAllChildren(word);
-    storage({ options: { newValue: { ...options, revision: options.revision + 1, activationKey: "Shift" } } });
+    storage({ options: { newValue: { ...options, revision: options.revision + 2, activationKey: "Shift" } } });
     const practicePreserved = document.getElementById("setup-practice-text") === scene
       && window.getSelection().toString() === "辞書" && document.activeElement === scene
       && document.getElementById("setup-practice-instruction").textContent.includes("Hold Shift");
