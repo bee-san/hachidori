@@ -20,6 +20,7 @@ test("popup action icons share local Fluent 20px geometry and currentColor", () 
 test("reader and status pseudo-icons use the same Fluent source as controls", () => {
   const css = readFileSync(new URL("icons.css", root), "utf8");
   for (const selector of [".gsm-hoshidicts-audio-button::before", ".operational-status.is-ready::before",
+    ".operational-status:not(.is-working):not(.is-ready):not(.is-error)::before",
     ".gsm-hoshidicts-popup-close::before", ".gloss-link-external-icon"]) assert.ok(css.includes(selector), selector);
   const reader = readFileSync(new URL("render/reader.css", root), "utf8");
   const settings = readFileSync(new URL("settings.css", root), "utf8");

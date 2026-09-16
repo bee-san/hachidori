@@ -28,6 +28,7 @@ ALIASES = {
     "more-horizontal": ['.gsm-hoshidicts-audio-button[data-state="loading"]::before', '.operational-status.is-working::before'],
     "error-circle": ['.gsm-hoshidicts-audio-button[data-state="error"]::before', '.operational-status.is-error::before'],
     "checkmark": ['.operational-status.is-ready::before'],
+    "subtract": ['.operational-status:not(.is-working):not(.is-ready):not(.is-error)::before'],
     "dismiss": ['.gsm-hoshidicts-popup-close::before'],
     "open": ['.gloss-link-external-icon'],
 }
