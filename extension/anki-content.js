@@ -49,10 +49,10 @@
       ready: "add",
       "add-duplicate": "document-add",
       overwrite: "document-edit",
-      "view-existing": "document-search",
+      "view-existing": "book-search",
       checking: "more-horizontal",
       mining: "arrow-sync",
-      success: "checkmark",
+      success: "book-search",
       error: "error-circle",
       unavailable: "subtract",
     }[state] || "subtract";
@@ -247,7 +247,7 @@
       record.noteIds = [result.noteId];
       const label = result.state === "added" ? "Added" : "Updated";
       const warnings = [record.screenshotWarning, ...(result.warnings ?? [])].filter(Boolean);
-      setMiningButtonState(record, "success", `${label} note. Open it in Anki`);
+      setMiningButtonState(record, "success", `Find ${label.toLowerCase()} note in Anki`);
       setStatus(record, `${label} note ${result.noteId}. ${warnings.join(" ")}`.trim(),
         warnings.length > 0 ? "warning" : "success");
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.

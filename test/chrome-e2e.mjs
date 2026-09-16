@@ -4395,7 +4395,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
-        && duplicate.controls[0].icon === "document-search"
+        && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));

@@ -102,7 +102,7 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.ok(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").classList.contains("hd-icon"));
   assert.equal(f.items[1].add.dataset.state, "view-existing");
   assert.equal(f.items[1].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
-    "document-search");
+    "book-search");
   assert.equal(f.items[1].add.disabled, false);
   assert.equal(f.items[1].add.title, "View existing notes in Anki");
   assert.equal(f.items[1].add.dataset.action, "view");
@@ -133,6 +133,8 @@ test("successful Add remains successful after a refresh failure and a second cli
   await until(() => f.items[0].add.dataset.state === "success");
   await tick();
   assert.match(f.items[0].output.textContent, /Added.*12.*Audio unavailable/u);
+  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "book-search");
+  assert.equal(f.items[0].add.title, "Find added note in Anki");
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);
