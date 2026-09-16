@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
@@ -29,7 +31,8 @@ ALIASES = {
 }
 (DEST / "LICENSE").write_bytes(urlopen(BASE + "LICENSE").read())
 (DEST / "sources.json").write_text(json.dumps({"repository": "microsoft/fluentui-system-icons", "revision": REVISION, "icons": {name: path for name, path, svg in icons}}, indent=2) + "\n")
-css = ',\n'.join(['.hd-icon', '.gsm-hoshidicts-audio-button::before', '.gsm-hoshidicts-popup-close::before', '.gloss-link-external-icon', '.operational-status::before']) + ' {\n  content: "";\n  display: inline-block;\n  flex: 0 0 auto;\n  width: 20px;\n  height: 20px;\n  vertical-align: middle;\n  background: currentColor;\n  mask: var(--hd-icon) center / contain no-repeat;\n}\n.hd-icon[hidden] { display: none; }\n'
+css = '/* SPDX-License-Identifier: GPL-3.0-or-later */\n\n'
+css += ',\n'.join(['.hd-icon', '.gsm-hoshidicts-audio-button::before', '.gsm-hoshidicts-popup-close::before', '.gloss-link-external-icon', '.operational-status::before']) + ' {\n  content: "";\n  display: inline-block;\n  flex: 0 0 auto;\n  width: 20px;\n  height: 20px;\n  vertical-align: middle;\n  background: currentColor;\n  mask: var(--hd-icon) center / contain no-repeat;\n}\n.hd-icon[hidden] { display: none; }\n'
 css += '@media (forced-colors: active) {\n  ' + ',\n  '.join(['.hd-icon', '.gsm-hoshidicts-audio-button::before', '.gsm-hoshidicts-popup-close::before', '.gloss-link-external-icon', '.operational-status::before']) + ' { forced-color-adjust: none; background: CanvasText; }\n}\n'
 for name, path, svg in icons:
     uri = 'url("data:image/svg+xml,' + quote(svg, safe='') + '")'

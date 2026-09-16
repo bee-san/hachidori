@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, existsSync } from "node:fs";
@@ -6,6 +8,7 @@ const root = new URL("../extension/", import.meta.url);
 test("popup action icons share local Fluent 20px geometry and currentColor", () => {
   assert.ok(existsSync(new URL("icons.css", root)), "shared Fluent icons stylesheet exists");
   const css = readFileSync(new URL("icons.css", root), "utf8");
+  assert.match(css, /^\/\* SPDX-License-Identifier: GPL-3\.0-or-later \*\//u);
   for (const name of ["add", "speaker-2", "edit", "checkmark", "error-circle"]) {
     assert.match(css, new RegExp(`\\[data-icon="${name}"\\]`));
   }
