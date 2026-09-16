@@ -9,6 +9,15 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
 const sourceUrl = "http://127.0.0.1:5050/?term={term}&reading={reading}";
 const info = { lookupMode: "sqlite", sources: ["fixture"], audioPack: null };
 
+test("canonical local audio rows are exact, ordered option records", async () => {
+  const { createLocalAudioSource, findLocalAudioSource } = await import("../extension/local-audio-source.js");
+  const source = createLocalAudioSource("local-audio");
+  assert.deepEqual(source, { id: "local-audio", type: "custom-json", enabled: true, url: sourceUrl, voice: "" });
+  assert.equal(findLocalAudioSource([{ ...source, enabled: false }])?.id, "local-audio");
+  assert.equal(findLocalAudioSource([{ ...source, type: "custom" }]), null);
+  assert.equal(findLocalAudioSource([{ ...source, url: "http://localhost:5050/?term={term}&reading={reading}" }]), null);
+});
+
 test("detects the documented local audio service without sending Anki credentials or private terms", async () => {
   const { detectLocalAudioSource } = await import("../extension/local-audio-setup.js");
   const calls = [];

@@ -242,6 +242,7 @@ const PLANNED = [
   "the reader refuses to run on Settings even when its own scripts are loaded there",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
+  "first-run setup automatically prepends detected local audio as source 1",
   "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
@@ -4991,6 +4992,11 @@ async function checkStartupFileAccess(settings, browser, startupUrl) {
 // with the preset, and nothing in the collection is modified. Setup state and
 // options are restored afterwards so the later Anki checks start as they did.
 async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
+  const localAudioUrl = "http://127.0.0.1:5050/?term={term}&reading={reading}";
+  const localAudioInfo = { requests: 0, status: 200, contentType: "application/json",
+    body: JSON.stringify({ lookupMode: "sqlite", sources: ["fixture"], audioPack: null }) };
+  const localAudioSample = { requests: 0, status: 200, contentType: "application/json",
+    body: JSON.stringify({ type: "audioSourceList", audioSources: [] }) };
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
     "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const calls = [];
@@ -5010,7 +5016,11 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
   } };
   const worker = await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js"));
-  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki setup");
+  const session = await interceptFetches(worker, new Map([
+    ["http://127.0.0.1:8765/", route],
+    ["http://127.0.0.1:5050/v1/info", localAudioInfo],
+    ["http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93", localAudioSample],
+  ]), "anki setup");
   const saved = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
   let startup = null;
   let settingsRecovery = null;
@@ -5061,6 +5071,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
           outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
           outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
           outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+          localAudio: document.querySelector(".setup-local-audio-outcome")?.textContent ?? "",
           progress: [...document.querySelectorAll(".setup-anki-progress-step")].map(row => ({
             title: row.querySelector("strong")?.textContent ?? "",
             detail: row.querySelector("small")?.textContent ?? "",
@@ -5080,6 +5091,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     const headingLog = await startup.evaluate(() => window.__headingLog ?? []);
     const detected = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
     const anki = detected.options?.anki ?? {};
+    const audioSources = detected.options?.audioSources ?? [];
     const templates = anki.fieldTemplates ?? {};
     const recovery = await startup.evaluate(() => ({
       link: document.querySelector("#setup-practice-recovery a")?.getAttribute("href"),
@@ -5151,6 +5163,13 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
       JSON.stringify({ headingLog, progressChoices: [...progressChoices], progressDwell, configured, ready, detected, calls }),
     );
+    check("first-run setup automatically prepends detected local audio as source 1",
+      configured?.localAudio === "Local audio is configured."
+        && audioSources[0]?.type === "custom-json" && audioSources[0]?.enabled === true
+        && audioSources[0]?.url === localAudioUrl
+        && audioSources[1]?.id === "default-tts"
+        && localAudioInfo.requests === 1 && localAudioSample.requests === 1,
+      JSON.stringify({ configured, audioSources, localAudioInfo, localAudioSample }));
 
     await startup.close();
     startup = null;
