@@ -2495,6 +2495,9 @@
             linkButton = documentRef.createElement("button");
             linkButton.type = "button";
             linkButton.className = "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button";
+            const label = documentRef.createElement("span");
+            label.className = "gsm-hoshidicts-text-action-label";
+            linkButton.appendChild(label);
             const activate = event => {
               if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
               event.preventDefault();
@@ -2513,7 +2516,7 @@
             linkButtons.push(linkButton);
             actions.appendChild(linkButton);
           }
-          linkButton.textContent = link.label;
+          linkButton.firstElementChild.textContent = link.label;
           linkButton.title = link.label;
           linkButton.setAttribute("aria-label", link.label);
         });

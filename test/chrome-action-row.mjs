@@ -40,8 +40,8 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
         render({ expression, reading, definitions, compact, navigation, links, overlay }) {
           request = {};
           view.setCustomLinks(links && !overlay ? [
-            { label: "Mirror", url: "https://example.test/%w" },
-            { label: "Jisho", url: "https://example.test/second/%w" },
+            { label: "JMirror dictionary", url: "https://example.test/%w" },
+            { label: "Jisho search", url: "https://example.test/second/%w" },
           ] : []);
           view.renderResults([{ matched: expression, term: {
             expression, reading, frequencies: [], pitches: [],
@@ -54,8 +54,8 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
         },
         renderKanji({ links, overlay, navigation }) {
           view.setCustomLinks(links && !overlay ? [
-            { label: "Mirror", url: "https://example.test/%w" },
-            { label: "Jisho", url: "https://example.test/second/%w" },
+            { label: "JMirror dictionary", url: "https://example.test/%w" },
+            { label: "Jisho search", url: "https://example.test/second/%w" },
           ] : []);
           view.renderKanji({ character: "響", entries: [] },
             { anchor: document.querySelector("p"), query: "響" },
@@ -124,8 +124,16 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
               const accessible = node.classList.contains("gsm-hoshidicts-audio-control")
                 ? node.querySelector("button")
                 : node;
+              const label = node.querySelector(".gsm-hoshidicts-text-action-label");
+              const labelStyle = label ? getComputedStyle(label) : null;
               return { bounds, kind: actionKind(node),
                 name: accessible.getAttribute("aria-label") || accessible.title || accessible.textContent.trim(),
+                label: label ? {
+                  clientWidth: label.clientWidth,
+                  scrollWidth: label.scrollWidth,
+                  overflow: labelStyle.overflow,
+                  textOverflow: labelStyle.textOverflow,
+                } : null,
                 hit: node.contains(root.elementFromPoint(
                   Math.max(bounds.left, actions.getBoundingClientRect().left) + 1,
                   bounds.top + bounds.height / 2,
@@ -164,6 +172,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             `actions split into rows: ${detail}`);
           assert.ok(geometry.controls.every(({ bounds, name }) => Math.abs(bounds.height - expectedHeight) < 1 && name),
             `action sizing or accessible name changed: ${detail}`);
+          assert.ok(geometry.controls.filter(({ kind }) => kind === "external")
+            .every(({ label }) => label?.overflow === "hidden" && label.textOverflow === "ellipsis"),
+          `custom-link truncation is not explicit: ${detail}`);
           assert.ok(geometry.controls
             .filter(({ kind }) => kind === "close")
             .every(({ bounds }) => Math.abs(bounds.width - expectedHeight) < 1),

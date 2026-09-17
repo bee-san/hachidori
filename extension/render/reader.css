@@ -2001,6 +2001,13 @@ html[data-hoshidicts-theme="girlypop"],
   cursor: default;
 }
 
+.gsm-hoshidicts-text-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .gsm-hoshidicts-audio-menu {
   --hoshidicts-menu-background: color-mix(
     in srgb,
