@@ -1724,11 +1724,14 @@ interaction and draft selection. Only existing popup actions are shown.
 The Anki button appears only with a valid configured Anki note type. It is
 one button: it adds, and once there is a note to show it opens Anki instead,
 at the duplicates that block adding, the note it just wrote, or a search for
-the expression after a write it could not confirm. The content
-controller preflights rendered candidates sequentially, retires detached actions
-after live tab/group projection, and creates no Anki controls or requests while
-unconfigured. Mining uses the selected projected result, current frequency
-units and audio choice, and the raw source span for sentence/cloze boundaries.
+the expression after a write it could not confirm. While cache and live
+readiness are unresolved, the disabled button exposes its busy state and an
+Arrow Clockwise icon. It resolves to Add or the green View in Anki book action.
+The content controller preflights rendered candidates sequentially, retires
+detached actions after live tab/group projection, and creates no Anki controls
+or requests while unconfigured. Mining uses the selected projected result,
+current frequency units and audio choice, and the raw source span for
+sentence/cloze boundaries.
 
 Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
 The worker validates the configured HTTP(S) endpoint and uses it consistently

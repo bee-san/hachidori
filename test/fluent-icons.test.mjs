@@ -7,7 +7,7 @@ test("popup action icons share local Fluent 20px geometry and currentColor", () 
   assert.ok(existsSync(new URL("icons.css", root)), "shared Fluent icons stylesheet exists");
   const css = readFileSync(new URL("icons.css", root), "utf8");
   assert.ok(css.startsWith("/* SPDX-License-Identifier: GPL-3.0-or-later */\n"));
-  for (const name of ["add", "book-search", "speaker-2", "edit", "checkmark", "error-circle"]) {
+  for (const name of ["add", "arrow-clockwise", "book-search", "speaker-2", "edit", "checkmark", "error-circle"]) {
     assert.match(css, new RegExp(`\\[data-icon="${name}"\\]`));
   }
   assert.match(css, /width: 20px/);

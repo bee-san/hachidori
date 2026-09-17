@@ -323,15 +323,77 @@ async function popupReader(page) {
       requests: JSON.parse(document.documentElement.dataset.hachidoriPhysicalClickRequests || "[]"),
       showKanjiCalls: JSON.parse(document.documentElement.dataset.hachidoriShowKanjiCalls || "[]") };
   }`);
-  return { state, visible, waitForVisible, waitForHidden, click, rect, physicalTrace, trace };
+  const anki = () => call(`function () {
+    const button = this.querySelector(".gsm-hoshidicts-mine-button");
+    const icon = button?.querySelector(".gsm-hoshidicts-mine-icon");
+    return button ? {
+      state: button.dataset.state,
+      icon: icon?.dataset.icon ?? "",
+      action: button.dataset.action,
+      disabled: button.disabled,
+      hidden: button.hidden,
+      ariaBusy: button.getAttribute("aria-busy"),
+      ariaLabel: button.getAttribute("aria-label"),
+      focused: button.getRootNode().activeElement === button,
+      popupRect: this.getBoundingClientRect().toJSON(),
+    } : null;
+  }`);
+  const focusAnki = () => call(`function () {
+    const button = this.querySelector(".gsm-hoshidicts-mine-button");
+    button?.focus();
+    return button?.getRootNode().activeElement === button;
+  }`);
+  return { anki, focusAnki, state, visible, waitForVisible, waitForHidden, click, rect, physicalTrace, trace };
 }
 
-const server = createServer((_request, response) => {
+const overlayAnkiCalls = [];
+let overlayAnkiGate = null;
+const server = createServer((request, response) => {
+  if (request.url?.startsWith("/anki")) {
+    const headers = {
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "content-type",
+      "content-type": "application/json",
+    };
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, headers);
+      response.end();
+      return;
+    }
+    void (async () => {
+      try {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const { action, params = {} } = JSON.parse(body);
+        overlayAnkiCalls.push({ action, params });
+        let result;
+        if (action === "deckNames") result = ["Default"];
+        else if (action === "modelNames") result = ["Basic"];
+        else if (action === "modelNamesAndIds") result = { Basic: 1 };
+        else if (action === "modelFieldNames") result = ["Front", "Back"];
+        else if (action === "findNotes" || action === "findCards" || action === "cardsToNotes"
+            || action === "cardsInfo" || action === "notesInfo" || action === "guiBrowse") result = [];
+        else if (action === "getDecks") result = {};
+        else if (action === "canAddNotesWithErrorDetail") {
+          const gate = overlayAnkiGate;
+          if (gate) await gate.promise;
+          result = params.notes.map(() => ({ canAdd: true, error: null }));
+        } else throw new Error(`Unexpected overlay Anki action ${action}`);
+        response.writeHead(200, headers);
+        response.end(JSON.stringify({ result, error: null }));
+      } catch (error) {
+        response.writeHead(500, headers);
+        response.end(JSON.stringify({ result: null, error: error.message }));
+      }
+    })();
+    return;
+  }
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(PAGE_HTML);
 });
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const pageUrl = `http://127.0.0.1:${server.address().port}/`;
+const ankiUrl = `${pageUrl}anki`;
 
 // The extension's own pages have no console anyone reads; a failure there shows
 // up as a popup that never appears, so every message is kept for the report.
@@ -461,6 +523,32 @@ try {
       revision: options.revision + 1,
     } });
   });
+  const configureOverlayAnki = model => settings.evaluate(async ({ modelName, url }) => {
+    const { options } = await chrome.storage.local.get("options");
+    const normalised = HDReaderOptions.normaliseOptions(options);
+    const optionRevision = Number.isInteger(options?.revision) && options.revision >= 0 ? options.revision : 0;
+    const template = value => ({ value, overwriteMode: "overwrite" });
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_options_write",
+      requestId: `overlay-anki-${modelName || "disabled"}`,
+      baseRevision: optionRevision,
+      options: {
+        anki: {
+          ...normalised.anki,
+          url,
+          model: modelName,
+          deck: "Default",
+          fieldTemplates: {
+            Front: template("{expression}"),
+            Back: template("{glossary}"),
+          },
+        },
+      },
+    });
+    if (!reply.ok) throw new Error(reply.error);
+  }, { modelName: model, url: ankiUrl });
+  await configureOverlayAnki("Basic");
 
   const tab = await browser.newPage();
   tab.on("console", (message) => diagnostics.push(`[page] ${message.type()}: ${message.text()}`));
@@ -484,10 +572,89 @@ try {
   const selected = () => tab.evaluate(() => window.getSelection().toString());
   const events = () => tab.evaluate(() => window.__hostEvents.splice(0));
   const settle = (ms = 250) => new Promise((done) => setTimeout(done, ms));
+  const waitForAnki = async predicate => {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const state = await popup.anki();
+      if (predicate(state)) return state;
+      if (Date.now() >= deadline) throw new Error(`overlay Anki state did not settle: ${JSON.stringify(state)}`);
+      await settle(50);
+    }
+  };
   const setKanjiFailure = mode => tab.evaluate(value => {
     if (value === null) delete document.documentElement.dataset.hachidoriKanjiFailure;
     else document.documentElement.dataset.hachidoriKanjiFailure = value;
   }, mode);
+
+  overlayAnkiGate = Promise.withResolvers();
+  const overlayPreflights = overlayAnkiCalls.filter(call => call.action === "canAddNotesWithErrorDetail").length;
+  await tab.mouse.move(...middle(boxes[0]));
+  const ankiPopup = await popup.waitForVisible(10_000);
+  assert.ok(ankiPopup?.plain.includes("食べる"), `overlay Anki hover reads the boxed word: ${JSON.stringify(ankiPopup)}`);
+  const loadingAnki = await waitForAnki(state => state?.state === "checking"
+    && overlayAnkiCalls.filter(call => call.action === "canAddNotesWithErrorDetail").length > overlayPreflights);
+  const loadingAnkiFocused = await popup.focusAnki();
+  const mutationsBefore = overlayAnkiCalls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length;
+  await popup.click(".gsm-hoshidicts-mine-button");
+  await settle(100);
+  const loadingAnkiInert = overlayAnkiCalls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length
+    === mutationsBefore;
+  if (process.env.HACHIDORI_OVERLAY_ANKI_LOADING_SCREENSHOT) {
+    const { x, y, width, height } = loadingAnki.popupRect;
+    await tab.screenshot({ path: process.env.HACHIDORI_OVERLAY_ANKI_LOADING_SCREENSHOT,
+      clip: { x, y, width, height } });
+  }
+  overlayAnkiGate.resolve();
+  overlayAnkiGate = null;
+  const readyAnki = await waitForAnki(state => state?.state === "ready" && !state.disabled);
+  const readyAnkiFocused = await popup.focusAnki();
+  if (process.env.HACHIDORI_OVERLAY_ANKI_READY_SCREENSHOT) {
+    const { x, y, width, height } = readyAnki.popupRect;
+    await tab.screenshot({ path: process.env.HACHIDORI_OVERLAY_ANKI_READY_SCREENSHOT,
+      clip: { x, y, width, height } });
+  }
+  assert.deepEqual({
+    state: loadingAnki.state,
+    icon: loadingAnki.icon,
+    action: loadingAnki.action,
+    disabled: loadingAnki.disabled,
+    ariaBusy: loadingAnki.ariaBusy,
+    ariaLabel: loadingAnki.ariaLabel,
+    focused: loadingAnkiFocused,
+    inert: loadingAnkiInert,
+  }, {
+    state: "checking",
+    icon: "arrow-clockwise",
+    action: "add",
+    disabled: true,
+    ariaBusy: "true",
+    ariaLabel: "Checking Anki card status",
+    focused: false,
+    inert: true,
+  }, "GSM overlay exposes the same disabled accessible Anki readiness action");
+  assert.deepEqual({
+    state: readyAnki.state,
+    icon: readyAnki.icon,
+    action: readyAnki.action,
+    disabled: readyAnki.disabled,
+    ariaBusy: readyAnki.ariaBusy,
+    ariaLabel: readyAnki.ariaLabel,
+    focused: readyAnkiFocused,
+  }, {
+    state: "ready",
+    icon: "add",
+    action: "add",
+    disabled: false,
+    ariaBusy: "false",
+    ariaLabel: "Mine to Anki",
+    focused: true,
+  }, "GSM overlay resolves the readiness action to keyboard-focusable Add");
+  console.log(`overlay Anki readiness ${JSON.stringify({ loading: loadingAnki, loadingAnkiFocused,
+    loadingAnkiInert, ready: readyAnki, readyAnkiFocused, actions: overlayAnkiCalls.map(call => call.action) })}`);
+  await tab.keyboard.press("Escape");
+  assert.equal(await popup.waitForHidden(), true);
+  assert.deepEqual(await events(), ["shown", "hidden"]);
+  await configureOverlayAnki("");
 
   // Hovering still works, with the overlay's own delay.
   await tab.mouse.move(...middle(boxes[0]));
@@ -679,6 +846,8 @@ try {
   passed = true;
   console.log("overlay mode selects boxed glyphs by drag, offers the pencil for unknown text and keeps the host window claimed");
 } finally {
+  overlayAnkiGate?.resolve();
+  overlayAnkiGate = null;
   server.close();
   if (browser !== undefined) await browser.close().catch(() => {});
   if (passed) {
