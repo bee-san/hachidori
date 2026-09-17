@@ -1744,10 +1744,18 @@ across a settings change.
 Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. Dictionary CSS remains scoped, and image filenames
 bind to committed generation paths. First-field audio is resolved before the
-duplicate check without playback or uploads. Confirmed text is followed by
-best-effort media uploads and a field readback before pronunciation updates;
-external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS can be attached while an active
+duplicate check without playback or uploads. Inside the authoritative write
+queue, every dictionary image referenced by an applied field and any prepared
+first-field pronunciation is checked against Anki's live media inventory.
+Missing files require a deterministic generated name and non-empty valid
+base64, then are stored and checked again under the exact filename before the
+note mutation. Existing files skip retrieval and upload. A failed or later
+rejected write retains confirmed deterministic media because another note may
+share it; an explicit retry reuses it through the same live inventory check.
+Deferred non-first-field pronunciation remains post-write, but its media is
+confirmed before its field update. External edits are preserved. AnkiConnect
+has no cross-client CAS, so its final read/write interval is not atomic. Browser
+TTS can be attached while an active
 media-capture share supplies audio: the selected voice is spoken only after the
 mining action, read back from the transient PCM ring with short leading/trailing
 padding, encoded as WAV, and uploaded through the same pronunciation path.

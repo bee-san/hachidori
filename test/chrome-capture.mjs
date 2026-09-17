@@ -222,6 +222,8 @@ function createFixtureServer(anki) {
           fields: Object.fromEntries(Object.entries(anki.note?.fields ?? {})
             .map(([field, value]) => [field, { value }])),
         }];
+      } else if (action === "getMediaFilesNames") {
+        result = anki.media.has(params.pattern) ? [params.pattern] : [];
       } else if (action === "storeMediaFile") {
         anki.activeUploads += 1;
         anki.maxActiveUploads = Math.max(anki.maxActiveUploads, anki.activeUploads);

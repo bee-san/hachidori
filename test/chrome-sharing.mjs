@@ -310,6 +310,8 @@ async function startMockAnkiConnect(apiKey) {
         const current = state.notes.get(params.note.id);
         state.notes.set(params.note.id, { ...current, fields: { ...current.fields, ...params.note.fields } });
         result = null;
+      } else if (action === "getMediaFilesNames") {
+        result = state.media.has(params.pattern) ? [params.pattern] : [];
       } else if (action === "storeMediaFile") {
         state.media.set(params.filename, params.data);
         result = params.filename;
