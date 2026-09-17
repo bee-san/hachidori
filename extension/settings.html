@@ -1128,6 +1128,42 @@
       </main>
     </div>
 
+    <dialog
+      class="import-decision-dialog"
+      id="import-decision-dialog"
+      aria-labelledby="import-decision-heading"
+      aria-describedby="import-decision-description"
+    >
+      <form method="dialog">
+        <h2 id="import-decision-heading">Dictionary already installed</h2>
+        <p id="import-decision-description"></p>
+        <dl class="import-decision-revisions">
+          <div>
+            <dt>Imported dictionary</dt>
+            <dd id="import-decision-imported"></dd>
+          </div>
+          <div>
+            <dt>Installed dictionary</dt>
+            <dd id="import-decision-installed"></dd>
+          </div>
+        </dl>
+        <label class="field import-decision-target" id="import-decision-target-row" hidden>
+          <span class="field-label">Dictionary to replace</span>
+          <select id="import-decision-target"></select>
+          <span class="field-hint">The archive source matches more than one installed dictionary.</span>
+        </label>
+        <p class="field-hint">
+          Replace keeps this dictionary’s position, display name, enabled state,
+          favourite, groups, and other saved settings. Add separately keeps both.
+        </p>
+        <div class="import-decision-actions">
+          <button class="primary-button" type="submit" value="replace">Replace existing</button>
+          <button class="ghost" type="submit" value="separate">Add separately</button>
+          <button class="ghost" type="submit" value="cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
     <template id="dict-row-template">
       <li class="dict-row">
         <label class="dict-row-select">
