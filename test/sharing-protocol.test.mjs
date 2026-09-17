@@ -113,6 +113,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     generation: 3,
     trace: [],
     configKey: "host-config",
+    dictionaryIds: { A: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     url: "https://client.invalid/anki",
     apiKey: "client-secret",
     anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },
@@ -135,6 +136,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
       trace: [],
       generation: 3,
       configKey: "host-config",
+      dictionaryIds: request.dictionaryIds,
     },
     clientMedia: media,
   });

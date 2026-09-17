@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { buildAnkiFields } from "../extension/anki-values.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
 import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
@@ -5645,6 +5646,27 @@ async function main() {
       ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true, updateScheduleOverride: "off" }
       : dictionary),
   });
+  const presentedPackage = presentedState.state?.dictionaries?.[trustedIndex];
+  const stableMarkerTemplates = {
+    Alias: { value: "{single-glossary-starter-terms-plain-no-dictionary}", overwriteMode: "coalesce" },
+    Package: { value: `{single-glossary-id--${trustedPackage.id}-brief}`, overwriteMode: "coalesce" },
+    Historical: { value: "{single-glossary-jitendexorg-2026-08-11}", overwriteMode: "coalesce" },
+  };
+  const stableMarkerTemplateSnapshot = JSON.stringify(stableMarkerTemplates);
+  const markerFields = dictionary => buildAnkiFields({
+    term: { expression: "辞書", reading: "じしょ", rules: "", frequencies: [], pitches: [],
+      glossaries: [
+        { dictionary: dictionary.title, glossary: '["dictionary"]', definitionTags: "", termTags: "" },
+        { dictionary: dictionary.title, glossary: '["duplicate row"]', definitionTags: "", termTags: "" },
+      ] },
+    trace: [], sentence: "辞書", matchOffset: 0, matched: "辞書", popupSelectionText: "",
+    searchQuery: "辞書", documentTitle: "marker integration",
+    dictionaryAliases: { [dictionary.title]: dictionary.displayName },
+    dictionaryIds: { [dictionary.title]: dictionary.id },
+    frequencyDictionaries: [],
+  }, stableMarkerTemplates, { definition: ({ dictionary: selected } = {}) =>
+    selected === dictionary.title ? "matched" : "" });
+  const markersBeforeUpdate = await markerFields(presentedPackage);
   const updatedTitle = "Jitendex.org [2026-09-05]";
   const updatedRevision = "2026.09.05.0";
   const updatedImport = await request("hd_import", {
@@ -5744,6 +5766,7 @@ async function main() {
   const managedReload = await request("hd_reload");
   const reloadedManagedState = await storedDictionaryState();
   const reloadedManagedPackage = reloadedManagedState.dictionaries[trustedIndex];
+  const markersAfterRestart = await markerFields(reloadedManagedPackage);
   check(
     "managed package identity survives dictionary reconciliation",
     managedReload.ok === true
@@ -5754,6 +5777,25 @@ async function main() {
       && reloadedManagedPackage?.enabled === false
       && reloadedManagedPackage?.favorite === true,
     JSON.stringify({ managedReload, reloadedManagedState }),
+  );
+  check(
+    "stable single-glossary aliases and package IDs survive dated update and restart without rewriting templates",
+    /^[0-9a-f]{32}$/u.test(trustedPackage.id)
+      && markersBeforeUpdate.Alias === "matched"
+      && markersBeforeUpdate.Package === "matched"
+      && markersBeforeUpdate.Historical === "matched"
+      && markersAfterRestart.Alias === "matched"
+      && markersAfterRestart.Package === "matched"
+      && markersAfterRestart.Historical === ""
+      && JSON.stringify(stableMarkerTemplates) === stableMarkerTemplateSnapshot,
+    JSON.stringify({
+      packageId: trustedPackage.id,
+      beforeTitle: presentedPackage?.title,
+      afterTitle: reloadedManagedPackage?.title,
+      markersBeforeUpdate,
+      markersAfterRestart,
+      templatesUnchanged: JSON.stringify(stableMarkerTemplates) === stableMarkerTemplateSnapshot,
+    }),
   );
 
   section("managed dictionary updates");

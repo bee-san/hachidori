@@ -285,6 +285,7 @@ const PLANNED = [
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+  "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
@@ -4403,6 +4404,44 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
       JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
+
+    const markerDictionary = request.term.glossaries[0].dictionary;
+    const markerPackage = await settings.evaluate(async title => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      return dictionaryState.dictionaries.find(dictionary => dictionary.title === title);
+    }, markerDictionary);
+    const markerAlias = "Stable Browser Alias";
+    const markerTemplate = {
+      Front: { value: "{expression} stable-marker", overwriteMode: "overwrite" },
+      Back: { value: "{single-glossary-stable-browser-alias-plain-no-dictionary}", overwriteMode: "overwrite" },
+      Audio: { value: `{single-glossary-id--${markerPackage.id}-brief}`, overwriteMode: "overwrite" },
+    };
+    await configure(false, { fieldTemplates: markerTemplate });
+    const markerRequest = {
+      ...request,
+      term: { ...request.term,
+        glossaries: request.term.glossaries.filter(glossary => glossary.dictionary === markerDictionary) },
+      dictionaryAliases: { [markerDictionary]: markerAlias },
+      dictionaryIds: { [markerDictionary]: markerPackage.id },
+    };
+    markerRequest.configKey = (await operation("hd_anki_status")).configKey;
+    const savedMarkerTemplate = await settings.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates);
+    const markerAdded = await operation("hd_anki_submit", markerRequest);
+    const markerNote = notes.get(markerAdded.noteId);
+    const markerTemplateAfter = await settings.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates);
+    const expectedMarkerTemplates = Object.entries(markerTemplate).every(([field, template]) =>
+      savedMarkerTemplate[field]?.value === template.value
+      && savedMarkerTemplate[field]?.overwriteMode === template.overwriteMode);
+    check("Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
+      /^[0-9a-f]{32}$/u.test(markerPackage.id)
+        && markerAdded.state === "added" && markerAdded.warnings.length === 0
+        && markerNote.Back.trim() !== "" && markerNote.Audio.trim() !== ""
+        && expectedMarkerTemplates
+        && JSON.stringify(markerTemplateAfter) === JSON.stringify(savedMarkerTemplate),
+      JSON.stringify({ markerDictionary, markerPackageId: markerPackage.id, markerAdded,
+        fields: markerNote, savedMarkerTemplate, markerTemplateAfter }));
 
     await configure(true);
     request.configKey = (await operation("hd_anki_status")).configKey;

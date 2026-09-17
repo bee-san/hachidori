@@ -6,8 +6,21 @@ import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape }
 // DOM glossary rendering and resource preparation remain separate; only values
 // actually used by the selected templates are built here.
 const uniqueTokens = values => [...new Set(values.flatMap(value => value.split(/[\s,]+/u).filter(Boolean)))];
+// Keep this sanitizer unchanged: frequency and existing title-based glossary
+// marker mappings depend on its exact output.
 const dictionaryMarker = name => name.replace(/[_\s]/gu, "-").replace(/[^\p{L}\p{N}-]/gu, "")
   .replace(/-+/gu, "-").replace(/^-|-$/gu, "").toLowerCase();
+const normalisedDictionaryMarker = name => typeof name === "string"
+  ? dictionaryMarker(name.normalize("NFKC")) : "";
+const dictionaryIdMarker = id => /^[0-9a-f]{32}$/u.test(id) ? `id--${id}` : "";
+const GLOSSARY_MARKER_PREFIX = "single-glossary-";
+const GLOSSARY_IDENTITY_PHASES = ["legacy", "alias", "id"];
+const GLOSSARY_SUFFIXES = [
+  ["brief", { brief: true }],
+  ["no-dictionary", { noDictionary: true }],
+  ["plain", { plain: true }],
+  ["plain-no-dictionary", { plain: true, noDictionary: true }],
+];
 const PARTS_OF_SPEECH = { v1: "Ichidan verb", v5: "Godan verb", vk: "Kuru verb", vs: "Suru verb",
   vz: "Zuru verb", "adj-i": "I-adjective", n: "Noun" };
 const VALUE_ALIASES = { definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
@@ -90,21 +103,68 @@ function pitchCategories(term) {
   return [...new Set(categories.filter(Boolean))].join(",");
 }
 
-function dynamicGlossaries(request) {
-  const dictionaries = [...new Set(request.term.glossaries.map(glossary => glossary.dictionary))];
-  const bases = dictionaries.flatMap(dictionary => {
-    const key = dictionaryMarker(dictionary);
-    return key ? [[dictionary, `single-glossary-${key}`]] : [];
-  });
-  const variants = new Map();
-  for (const [dictionary, key] of bases) if (!variants.has(key)) variants.set(key, { dictionary });
-  for (const [dictionary, key] of bases) {
-    for (const [suffix, options] of Object.entries({ brief: { brief: true }, "no-dictionary": { noDictionary: true },
-      plain: { plain: true }, "plain-no-dictionary": { plain: true, noDictionary: true } })) {
-      if (!variants.has(`${key}-${suffix}`)) variants.set(`${key}-${suffix}`, { dictionary, ...options });
+function dynamicGlossaries(request, requestedNames) {
+  const exactRequests = new Map();
+  const variantRequests = new Map();
+  const candidateBases = new Set();
+  for (const name of requestedNames) {
+    const key = name.slice(GLOSSARY_MARKER_PREFIX.length);
+    exactRequests.set(key, name);
+    candidateBases.add(key);
+    for (const [suffix, options] of GLOSSARY_SUFFIXES) {
+      const ending = `-${suffix}`;
+      if (!key.endsWith(ending)) continue;
+      const base = key.slice(0, -ending.length);
+      candidateBases.add(base);
+      if (!variantRequests.has(base)) variantRequests.set(base, []);
+      variantRequests.get(base).push({ name, options });
     }
   }
-  return variants;
+  const dictionaries = [...new Set(request.term.glossaries.map(glossary => glossary.dictionary))];
+  const aliases = request.dictionaryAliases ?? {};
+  const wantsId = [...candidateBases].some(key => /^id--[0-9a-f]{32}$/u.test(key));
+  const descriptors = dictionaries.map(dictionary => ({
+    dictionary,
+    legacy: dictionaryMarker(dictionary),
+    alias: Object.hasOwn(aliases, dictionary)
+      ? normalisedDictionaryMarker(aliases[dictionary]) : "",
+    id: wantsId ? dictionaryIdMarker(request.dictionaryIds?.[dictionary]) : "",
+  }));
+  const owners = new Map();
+  const addOwner = (key, dictionary) => {
+    if (!key || !candidateBases.has(key)) return;
+    if (!owners.has(key)) owners.set(key, dictionary);
+    else if (owners.get(key) !== dictionary) owners.set(key, null);
+  };
+  for (const descriptor of descriptors) {
+    addOwner(descriptor.legacy, descriptor.dictionary);
+    if (descriptor.alias !== descriptor.legacy) addOwner(descriptor.alias, descriptor.dictionary);
+  }
+  const resolved = new Map();
+  const base = (descriptor, phase) => {
+    const key = descriptor[phase];
+    return phase !== "alias" || owners.get(key) === descriptor.dictionary ? key : "";
+  };
+  // Complete the legacy namespace before considering new identities so aliases
+  // and IDs cannot steal an existing title-derived suffix marker.
+  for (const phase of GLOSSARY_IDENTITY_PHASES) {
+    for (const descriptor of descriptors) {
+      const key = base(descriptor, phase);
+      const name = key ? exactRequests.get(key) : null;
+      if (name && !resolved.has(name)) resolved.set(name, { dictionary: descriptor.dictionary });
+    }
+    // Within each namespace, all exact bases retain precedence over suffix
+    // variants and dictionary order matches the former eager map.
+    for (const descriptor of descriptors) {
+      const key = base(descriptor, phase);
+      for (const match of key ? variantRequests.get(key) ?? [] : []) {
+        if (!resolved.has(match.name)) {
+          resolved.set(match.name, { dictionary: descriptor.dictionary, ...match.options });
+        }
+      }
+    }
+  }
+  return resolved;
 }
 
 function dynamicFrequencies(request) {
@@ -173,13 +233,21 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   };
   const values = new Map();
   let glossaries, frequencies;
+  const glossaryMarkerNames = new Set();
+  const planned = Object.entries(templates).map(([field, template]) => {
+    const names = new Set(ankiTemplateMarkerNames(template.value));
+    for (const name of names) {
+      if (name.startsWith(GLOSSARY_MARKER_PREFIX)) glossaryMarkerNames.add(name);
+    }
+    return { field, template, names, markers: {} };
+  });
   function valueFor(name) {
     if (Object.hasOwn(VALUE_ALIASES, name)) return valueFor(VALUE_ALIASES[name]);
     if (values.has(name)) return values.get(name);
     let value = "";
     if (Object.hasOwn(table, name)) value = table[name]();
-    else if (name.startsWith("single-glossary-")) {
-      glossaries ??= dynamicGlossaries(request);
+    else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
+      glossaries ??= dynamicGlossaries(request, glossaryMarkerNames);
       if (glossaries.has(name)) value = definition(glossaries.get(name));
     } else if (name.startsWith("single-frequency-")) {
       frequencies ??= dynamicFrequencies(request);
@@ -190,15 +258,13 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     return value;
   }
   const pending = [];
-  const planned = Object.entries(templates).map(([field, template]) => {
-    const markers = {};
-    for (const name of new Set(ankiTemplateMarkerNames(template.value))) {
+  for (const { names, markers } of planned) {
+    for (const name of names) {
       const value = valueFor(name);
       if (value && typeof value.then === "function") pending.push(value.then(resolved => { markers[name] = resolved; }));
       else markers[name] = value;
     }
-    return { field, template, markers };
-  });
+  }
   // Only glossary/resource values need asynchronous settlement. Ordinary text
   // and frequency templates should not create a promise per field and marker.
   if (pending.length) await Promise.all(pending);
