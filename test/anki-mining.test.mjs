@@ -139,9 +139,10 @@ test("View in Anki uses cached IDs directly and repairs a partially stale row wi
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
   const calls = [];
   const service = createAnkiMiningService({
-    gateway: { async invoke(action, params) {
+    gateway: { async invoke(action, params, apiKey, timeoutMs) {
       calls.push({ action, params });
       assert.equal(action, "guiBrowse");
+      assert.equal(timeoutMs, 30_000, "opening Anki's browser gets time to finish before timing out");
       return calls.length === 1 ? [7] : [8, 9];
     } },
     readConfig: async () => config,

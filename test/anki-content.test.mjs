@@ -75,6 +75,28 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
   assert.equal(calls.length, before, "unchanged bindings do not repeat discovery or preflight");
 });
 
+test("a ready Anki action works while later results are still checking", async t => {
+  const held = Promise.withResolvers();
+  t.after(() => held.resolve());
+  let writes = 0, laterChecks = 0;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 12 }; }
+    if (request.term.expression !== "猫") { laterChecks++; await held.promise; }
+    return { state: "addable", canAdd: true };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => laterChecks === 1);
+  assert.equal(f.items[0].add.dataset.state, "ready");
+  assert.equal(f.items[0].add.disabled, false, "later results must not block this ready action");
+  assert.equal(f.items[1].add.disabled, true);
+  assert.equal(f.items[2].add.disabled, true);
+  f.items[0].add.click();
+  await until(() => writes === 1);
+  await until(() => f.items[0].add.dataset.state === "success");
+});
+
 test("Anki actions match the GSM toolbar order and use its add, duplicate, overwrite, and view icons", async t => {
   const browse = [];
   let writes = 0;

@@ -133,6 +133,14 @@ test("discovery distinguishes partial, malformed, permission and offline failure
   assert.equal((await gateway.discover({ model: "Basic" })).errors.length, 0);
 });
 
+test("Anki discovery accepts replies slower than the old 1.25-second deadline", async () => {
+  const gateway = createAnkiGateway({ fetch: (_, { signal }) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ result: [], error: null }) }), 1500);
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  }) });
+  assert.equal((await gateway.discover({ model: "" })).connected, true);
+});
+
 test("Anki discovery timeouts abort the fetch and API errors are not mislabeled offline", async () => {
   const gateway = createAnkiGateway({ timeoutMs: 5, fetch: (_, { signal }) => new Promise((_, reject) => {
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });

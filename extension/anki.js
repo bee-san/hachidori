@@ -5,7 +5,7 @@ import "./reader-options.js";
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. No engine or
 // storage queue is involved. The private worker's feature handlers select
 // actions and bind every conversation to its configured endpoint and API key.
-export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 } = {}) {
+export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000 } = {}) {
   async function invoke(action, params, apiKey, requestTimeoutMs = timeoutMs,
     endpoint = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki.url) {
     const url = globalThis.HDReaderOptions.normaliseAnkiConnectUrl(endpoint);
