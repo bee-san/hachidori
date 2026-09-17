@@ -5105,6 +5105,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && recovery.finish && recovery.settings,
       JSON.stringify(recovery));
     const headingSequence = [...new Set(headingLog.map(entry => entry.text))];
+    // Older Chrome can still be painting the static placeholder when the observer attaches.
+    if (headingSequence[0] === "Loading setup…") headingSequence.shift();
     const pendingSteps = headingLog.filter(entry => entry.text === "Finding your Anki setup…")
       .flatMap(entry => entry.progress.filter(step => step.current).map(step => step.step));
     const progressStarted = new Map();
