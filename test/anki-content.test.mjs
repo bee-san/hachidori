@@ -97,6 +97,41 @@ test("a ready Anki action works while later results are still checking", async t
   await until(() => f.items[0].add.dataset.state === "success");
 });
 
+test("a warm cached View action skips Anki status and preflight", async t => {
+  const calls = [];
+  const browse = [];
+  const f = fixture(t, async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_view") {
+      return {
+        state: "duplicate",
+        canAdd: false,
+        noteIds: [22, 23],
+        configKey: "current",
+        cached: true,
+      };
+    }
+    if (type === "hd_anki_browse") {
+      browse.push(request);
+      return { opened: true, noteIds: [22, 23] };
+    }
+    throw new Error(`warm View readiness unexpectedly called ${type}`);
+  });
+  f.controller.update(configured);
+  f.controller.bind([f.items[1]], f.context);
+  await until(() => f.items[1].add?.dataset.state === "view-existing");
+  assert.deepEqual(calls, ["hd_anki_view"]);
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[1].add.dataset.action, "view");
+  f.items[1].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{
+    noteIds: [22, 23],
+    expression: "犬",
+    configKey: "current",
+  }]);
+});
+
 test("Anki actions match the GSM toolbar order and use its add, duplicate, overwrite, and view icons", async t => {
   const browse = [];
   let writes = 0;
