@@ -1779,6 +1779,7 @@ persisted 32-character lowercase hexadecimal ID, exposed as the reserved
 display names. Settings shows the complete package ID in the dictionary's
 Details metadata so the fallback marker can be copied without inspecting
 storage.
+
 The double hyphen cannot be produced by title/display sanitization. Alias
 changes affect the readable marker, while the package-ID marker stays stable.
 Neither path edits a saved Anki field template.
