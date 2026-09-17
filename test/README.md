@@ -636,6 +636,11 @@ What it proves, in order:
    Focused boundary checks accept depth 24 and reject 25; seed the exported
    traversal's node counter to test exact capacity without a million-node DOM;
    and include containers, wrappers, nulls, and ignored tags in that budget.
+   Each rejection names the exact kind, attempted value, limit and structural
+   path. Popup failures add the canonical dictionary title, stable package ID,
+   entry/definition number and bounded term/reading while retaining the original
+   `RangeError` and stack as the cause; glossary payload text is never copied
+   into the diagnostic.
    Deferred, tab, and Show more failures reach the current view owner. Replaced,
    cleared, destroyed, or request-superseded fills do no rendering, media, or
    layout work, and the actual content callbacks cannot clear a newer request.
@@ -1133,6 +1138,15 @@ Every card must be a plain `div` outside any `details`, with a non-interactive
 title (no pointer cursor, no `::before` marker) carrying the display name and
 dictionary, a laid-out definition body, and the same geometry after a real mouse
 click on the title.
+
+The late bounded-response dictionary also carries legal structured-content
+entries that exceed the depth and node-count limits independently. Real Chrome
+checks that each one leaves an accessible visible error with the dictionary's
+canonical title and stable package ID, term/reading, entry/definition position,
+exact limit and structural path. The warning retains both contextual and cause
+stacks, stays bounded without glossary payload text, and the next healthy hover
+recovers. `HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT` and
+`HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT` capture the two visible states.
 
 The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The

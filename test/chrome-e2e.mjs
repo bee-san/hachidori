@@ -421,7 +421,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
-  "a structured-depth render failure clears its popup and the next healthy hover recovers",
+  "structured node and depth failures show bounded dictionary diagnostics and preserve recovery",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -796,6 +796,15 @@ async function popupReader(page, depth = 0) {
           noteReading: noteForm?.querySelector('[name="reading"]')?.value ?? null,
           noteDefinition: noteForm?.querySelector('[name="definition"]')?.value ?? null,
           noteError: noteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent ?? "",
+          failure: (() => {
+            const alert = this.querySelector(".gsm-hoshidicts-lookup-failure");
+            return alert ? {
+              detail: alert.querySelector(".gsm-hoshidicts-lookup-failure-detail")?.textContent ?? "",
+              kind: alert.dataset.kind ?? "",
+              role: alert.getAttribute("role"),
+              title: alert.querySelector(".gsm-hoshidicts-lookup-failure-title")?.textContent ?? "",
+            } : null;
+          })(),
           noteFits: noteForm === null || noteForm.hidden
             || (noteForm.scrollHeight <= noteForm.clientHeight + 1
               && noteActionsRect.top >= noteFormRect.top - 1
@@ -815,11 +824,11 @@ async function popupReader(page, depth = 0) {
 
   const visible = s => !!s && !s.hidden && s.height > 0 && s.text !== "";
 
-  async function waitForVisible(timeoutMs = 15_000) {
+  async function waitForVisible(timeoutMs = 15_000, accept = null) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const current = await state();
-      if (visible(current)) return current;
+      if (visible(current) && (typeof accept !== "function" || accept(current))) return current;
       if (Date.now() >= deadline) return null;
       await new Promise(r => setTimeout(r, 250));
     }
@@ -1632,7 +1641,11 @@ async function forceSourceFallback(tab, settings) {
 // move that lands before its listeners attach is simply lost. So re-fire
 // mousemove until the popup answers, instead of sleeping long enough to hope the
 // script was ready -- the popup appearing is the only real synchronisation here.
-async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attempts = 12 } = {}) {
+async function hoverForPopup(page, popup, selector, {
+  accept = null,
+  charFraction = 0.15,
+  attempts = 12,
+} = {}) {
   const box = await (await page.$(selector)).boundingBox();
   // Aim at the first glyph rather than the centre, so the scan starts at the
   // beginning of the word and `matched` covers the whole inflection.
@@ -1643,7 +1656,7 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
     // before stepping back onto it.
     await page.mouse.move(2, 2);
     await page.mouse.move(x, y);
-    const state = await popup.waitForVisible(1500);
+    const state = await popup.waitForVisible(1500, accept);
     if (state !== null) return state;
   }
   return null;
@@ -11388,18 +11401,25 @@ async function main() {
     `lookup reply: ${JSON.stringify(removedLookup)}`);
 
   const boundedTitle = "bounded-response-fixture";
-  let deepGlossary = "over-depth leaf";
+  let deepGlossary = "private-depth-leaf-must-not-be-logged";
   for (let depth = 0; depth < 25; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
+  let nodeGlossaryContent = Array.from({ length: 1_048_575 }, () => null);
+  nodeGlossaryContent.push("private-node-leaf-must-not-be-logged");
   const exactMediaBytes = Buffer.alloc(4 * 1024 * 1024);
   makePng().copy(exactMediaBytes);
   const boundedArchive = buildTitledZip(boundedTitle, { terms: [
     ["限界", "げんかい", "", "", 0, ["x".repeat(8 * 1024 * 1024 - 3)], 1, ""],
     ["速度", "そくど", "", "", 0, ["healthy bounded lookup"], 2, ""],
     ["深度", "しんど", "", "", 0, [deepGlossary], 3, ""],
+    ["節点", "せってん", "", "", 0, [{
+      type: "structured-content",
+      content: nodeGlossaryContent,
+    }], 4, ""],
   ], mediaEntries: [
     ["media/exact.png", exactMediaBytes],
     ["media/over.png", Buffer.concat([exactMediaBytes, Buffer.from([0])])],
   ] });
+  nodeGlossaryContent = null;
   await showSettingsSection(page, "add-dictionaries");
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
@@ -11409,12 +11429,12 @@ async function main() {
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }, boundedArchive.toString("base64"));
-  await page.waitForFunction(async (title) => {
+  const boundedPackage = await page.waitForFunction(async (title) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-    return dictionaryState?.dictionaries?.some((entry) => entry.title === title)
-      && status.ok && status.ready && !status.loading;
-  }, { timeout: 90_000, polling: 100 }, boundedTitle);
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === title);
+    return dictionary && status.ok && status.ready && !status.loading ? dictionary : false;
+  }, { timeout: 90_000, polling: 100 }, boundedTitle).then(handle => handle.jsonValue());
   const boundedReplies = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen", type, requestId: `bounded-${type}`, ...fields,
@@ -11460,22 +11480,127 @@ async function main() {
     JSON.stringify({ before: boundedPopupBefore?.plain, hidden: boundedPopupHidden, after: boundedPopupAfter?.plain }),
   );
 
-  const renderFailures = [];
+  const renderFailureLogs = [];
   const onRenderConsole = (message) => {
-    if (message.text().includes("could not render results")) renderFailures.push(message.text());
+    if (!message.text().includes("could not render results")) return;
+    renderFailureLogs.push((async () => {
+      const args = await Promise.all(message.args().map(async (handle) => {
+        try {
+          return await handle.evaluate((value) => {
+            if (value && typeof value === "object"
+                && typeof value.message === "string" && typeof value.stack === "string") {
+              return {
+                code: value.code,
+                definitionIndex: value.definitionIndex,
+                dictionaryId: value.dictionaryId,
+                dictionaryTitle: value.dictionaryTitle,
+                entryIndex: value.entryIndex,
+                message: value.message,
+                name: value.name,
+                originalStack: value.originalStack,
+                stack: value.stack,
+                termExpression: value.termExpression,
+                termReading: value.termReading,
+                cause: value.cause ? {
+                  actual: value.cause.structuredContentActual,
+                  kind: value.cause.structuredContentLimitKind,
+                  limit: value.cause.structuredContentLimit,
+                  location: value.cause.structuredContentLocation,
+                  message: value.cause.message,
+                  name: value.cause.name,
+                  stack: value.cause.stack,
+                } : null,
+              };
+            }
+            return { value: String(value) };
+          });
+        } catch (error) {
+          return { evaluationError: String(error) };
+        }
+      }));
+      return { args, text: message.text(), type: message.type() };
+    })());
   };
   tab2.on("console", onRenderConsole);
-  await tab2.evaluate(() => { document.getElementById("kanjiword").textContent = "深度"; });
-  await tab2.mouse.move(2, 2);
-  await tab2.mouse.move(oversizedBox.x + 5, oversizedBox.y + oversizedBox.height / 2);
-  const deepPopupHidden = await popup2.waitForHidden();
-  const deepPopupAfter = await hoverForPopup(tab2, popup2, "#verb");
+  const renderFailure = async (term, screenshotPath) => {
+    await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, term);
+    const failure = await hoverForPopup(tab2, popup2, "#kanjiword", {
+      accept: state => state.failure?.detail.includes(`term ${JSON.stringify(term)}`),
+    });
+    if (failure && screenshotPath) {
+      mkdirSync(dirname(screenshotPath), { recursive: true });
+      await tab2.screenshot({ path: screenshotPath });
+    }
+    const recovered = await hoverForPopup(tab2, popup2, "#verb", {
+      accept: state => !state.failure && state.plain.includes("healthy bounded lookup"),
+    });
+    return { failure, recovered };
+  };
+  const depthFailure = await renderFailure(
+    "深度",
+    process.env.HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT,
+  );
+  const nodeFailure = await renderFailure(
+    "節点",
+    process.env.HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT,
+  );
   tab2.off("console", onRenderConsole);
+  const renderFailures = await Promise.all(renderFailureLogs);
+  const visible = [
+    {
+      actual: "25",
+      failure: depthFailure.failure,
+      kind: "depth",
+      limit: "24",
+      location: `glossary[0]${".text".repeat(25)}`,
+      reading: "しんど",
+      term: "深度",
+    },
+    {
+      actual: "1048577",
+      failure: nodeFailure.failure,
+      kind: "node count",
+      limit: "1048576",
+      location: "glossary[0].content[1048574]",
+      reading: "せってん",
+      term: "節点",
+    },
+  ].every(({ actual, failure, kind, limit, location, reading, term }) => {
+    const detail = failure?.failure?.detail ?? "";
+    return failure?.failure?.kind === "render"
+      && failure.failure.role === "alert"
+      && failure.failure.title === "Dictionary content could not be rendered."
+      && detail.includes(`Dictionary ${JSON.stringify(boundedTitle)}`)
+      && detail.includes(`stable ID ${JSON.stringify(boundedPackage.id)}`)
+      && detail.includes("entry 1, definition 1")
+      && detail.includes(`term ${JSON.stringify(term)}, reading ${JSON.stringify(reading)}`)
+      && detail.includes(`${kind} ${actual} exceeds limit ${limit} at ${location}`)
+      && detail.length < 2048
+      && !detail.includes("private-depth-leaf")
+      && !detail.includes("private-node-leaf");
+  });
+  const logged = renderFailures.length === 2 && renderFailures.every((failure) => {
+    const contextual = failure.args[1];
+    const original = failure.args[3];
+    return failure.type === "warn"
+      && failure.text.length < 4096
+      && contextual?.code === "dictionary-structured-content-limit"
+      && contextual.dictionaryTitle === boundedTitle
+      && contextual.dictionaryId === boundedPackage.id
+      && contextual.entryIndex === 0 && contextual.definitionIndex === 0
+      && contextual.stack.includes("structuredContentRenderError")
+      && contextual.originalStack === contextual.cause?.stack
+      && contextual.cause?.stack.includes("appendStructuredValue")
+      && original?.stack === contextual.cause.stack
+      && !JSON.stringify(failure).includes("private-depth-leaf")
+      && !JSON.stringify(failure).includes("private-node-leaf");
+  });
   check(
-    "a structured-depth render failure clears its popup and the next healthy hover recovers",
-    renderFailures.length === 1 && deepPopupHidden
-      && deepPopupAfter?.plain?.includes("healthy bounded lookup"),
-    JSON.stringify({ renderFailures, hidden: deepPopupHidden, after: deepPopupAfter?.plain }),
+    "structured node and depth failures show bounded dictionary diagnostics and preserve recovery",
+    visible && logged
+      && depthFailure.recovered?.plain?.includes("healthy bounded lookup")
+      && nodeFailure.recovered?.plain?.includes("healthy bounded lookup"),
+    JSON.stringify({ boundedPackage, renderFailures, depthFailure, nodeFailure }),
   );
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {
