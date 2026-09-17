@@ -4308,6 +4308,12 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   const screenshotDictionary = "screenshot-mining-layout";
   let screenshotDictionaryInstalled = false;
   const notes = new Map(), calls = [], files = new Map();
+  const queryExpression = query => {
+    const duplicate = /^"dupe:1,(.*)"$/u.exec(query);
+    const indexed = /\("note:Basic" "front:((?:\\.|[^"])*)"\)/iu.exec(query);
+    const value = duplicate?.[1] ?? indexed?.[1];
+    return value === undefined ? null : value.replace(/\\(.)/gu, "$1");
+  };
   // Flags the checks below flip to make the mock refuse specific work.
   const control = { failScreenshotUpload: false };
   const apiRoute = { requests: 0, async respond(request) {
@@ -4324,9 +4330,11 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     });
     else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
     else if (action === "findNotes") {
-      const match = /^"dupe:1,(.*)"$/u.exec(params.query);
-      const text = match?.[1]?.replace(/\\(["\\])/gu, "$1") ?? "";
-      result = [...notes].filter(([, fields]) => fields.Front === text).map(([noteId]) => noteId);
+      const expression = queryExpression(params.query);
+      result = params.query === '"note:Basic"'
+        ? [...notes.keys()]
+        : expression === null ? [] : [...notes]
+          .filter(([, fields]) => fields.Front === expression).map(([noteId]) => noteId);
     }
     else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
@@ -4514,8 +4522,10 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
     const browseCount = calls.filter(call => call.action === "guiBrowse").length;
+    const repairStart = calls.length;
     await popup.click(".gsm-hoshidicts-mine-button");
     await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
+    const repairCalls = calls.slice(repairStart);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
     await tab.keyboard.press("Escape");
@@ -4544,11 +4554,17 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Front === "食べる"
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
+        && repairCalls.some(call => call.action === "findNotes"
+          && call.params.query.includes('"note:Basic"') && call.params.query.includes('"front:食べる"'))
+        && repairCalls.some(call => call.action === "notesInfo"
+          && JSON.stringify(call.params.notes) === JSON.stringify([...notes.keys()].slice(-1)))
+        && repairCalls.some(call => call.action === "findNotes"
+          && call.params.query === `nid:${[...notes.keys()].at(-1)} is:review -is:learn prop:ivl>=21`)
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
-      JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
+      JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse, repairCalls }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
     await tab.keyboard.press("Escape");
