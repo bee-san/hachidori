@@ -403,11 +403,12 @@ during the dictionary or Anki stages. Script loading also waits for the reader's
 before the automatic selection, or that late snapshot could invalidate the
 example lookup immediately after it starts. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
-sentence and selects that word through the reader’s existing exact-selection
-route, so it also works from the keyboard. When the final step first becomes
-answerable and the reader is ready, the page makes that same selection once to
-demonstrate the lookup immediately. The button appears only when that exact
-selection can be answered. All exercise lookups use ordinary
+sentence, selects that word and invokes the reader's explicit selected-text
+command through the reader readiness API, so it also works from the keyboard
+without pretending the user held an activation key. When the final step first
+becomes answerable and the reader is ready, the page invokes that same command
+once to demonstrate the lookup immediately. The button appears only when that
+exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
@@ -638,18 +639,28 @@ only their host through browser focus/event APIs; their private editors cannot
 be inspected. The reader does not intercept shadow creation or block every
 focused component to guess at those internals.
 
-An explicit page selection takes priority over pointer scanning and bypasses
-the language and activation-key gates, but not reader disablement or editing
-exclusions. Lookup waits until the mouse drag ends. It sends the complete visible
-selected string without trimming or truncation and accepts only results whose
-`matched` text equals that string. Selection length overrides the configured
-scan length within the existing engine scan window; a prefix-only result is not
-an exact match. A miss retains selection ownership until the selection changes
-or is dismissed, so pointer movement cannot silently replace it with a prefix.
-Its notice exposes the same personal-dictionary pencil as term and kanji results,
-prefilled with the selected word even when no dictionaries are installed. Saving
-uses the managed Note append transaction and replays that exact request to show
-the new definition; publisher dictionaries remain unchanged.
+An automatic page selection takes priority over pointer scanning and bypasses
+the language gate, but follows the same lookup mode and activation key as a
+pointer lookup. Hover mode accepts an ordinary selection. Activation and sticky
+activation accept it only while the configured activation key is held. Plain
+selection or other modifiers alone do not look up, paint a source highlight or
+expose the personal-definition pencil. As with pointer lookup, another modifier
+held alongside the configured one does not disable it. Lookup waits until the
+mouse drag ends. Once an activation-qualified selection is accepted, key release
+does not discard it, so the popup and pencil workflow remain usable. Explicit
+selected-text commands from keybinds and startup practice bypass this automatic
+gate, while reader disablement and editing exclusions still apply.
+
+The lookup sends the complete visible selected string without trimming or
+truncation and accepts only results whose `matched` text equals that string.
+Selection length overrides the configured scan length within the existing
+engine scan window; a prefix-only result is not an exact match. A miss retains
+selection ownership until the selection changes or is dismissed, so pointer
+movement cannot silently replace it with a prefix. Its notice exposes the same
+personal-dictionary pencil as term and kanji results, prefilled with the
+selected word even when no dictionaries are installed. Saving uses the managed
+Note append transaction and replays that exact request to show the new
+definition; publisher dictionaries remain unchanged.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.

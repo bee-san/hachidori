@@ -14843,7 +14843,7 @@ async function contentNoteStage() {
       harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
       const unchangedRetained = harness.take("hd_lookup") === null;
       if (reason === "dictionary") harness.emitState(harness.state(2, "New dictionary generation"));
-      else harness.emitOptions({ maxResults: 5 });
+      else harness.emitOptions({ lookupMode: "hover", maxResults: 5 });
       if (phase === "pending" && first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
       await harness.settle();
       const oldRejected = phase !== "pending"
@@ -14867,7 +14867,11 @@ async function contentNoteStage() {
     const window = harness.popup.ownerDocument.defaultView;
     const query = harness.candidate.query;
     const exactResults = [harness.term("食"), { ...harness.term("食べる"), matched: query }];
-    harness.emitOptions({ scanLength: 1, kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    harness.emitOptions({
+      lookupMode: "hover",
+      scanLength: 1,
+      kanjiClickDictionary: { title: "Generic", kind: "term" },
+    });
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const first = harness.take("hd_lookup");
@@ -14940,8 +14944,8 @@ async function contentNoteStage() {
       await harness.settle();
       if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", code: "Escape", stopPropagation() {} });
       else if (reason === "disable") {
-        harness.emitOptions({ hoverEnabled: false });
-        harness.emitOptions({ hoverEnabled: true });
+        harness.emitOptions({ hoverEnabled: false, lookupMode: "hover" });
+        harness.emitOptions({ hoverEnabled: true, lookupMode: "hover" });
       } else if (reason === "blur") harness.driver.onWindowBlur();
       else harness.emitState(harness.state(2, "Changed dictionaries"));
       harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
@@ -14956,6 +14960,10 @@ async function contentNoteStage() {
     const window = harness.popup.ownerDocument.defaultView;
     const settings = { lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: true };
     harness.emitOptions(settings);
+    window.document.dispatchEvent(new window.KeyboardEvent(
+      "keydown",
+      { key: "k", code: "KeyK", bubbles: true },
+    ));
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const selected = harness.take("hd_lookup");
@@ -14971,6 +14979,132 @@ async function contentNoteStage() {
       "dismissed selections can be looked up again after Escape, enablement, blur and dictionary changes":
         recovered.every(Boolean) || recovered,
       "an explicit selection survives automatic scanning policy changes, key release and pointer motion": retained,
+    };
+  }
+
+  async function selectionActivationCase() {
+    const modifiers = [
+      ["Shift", "shiftKey"],
+      ["Control", "ctrlKey"],
+      ["Alt", "altKey"],
+      ["Meta", "metaKey"],
+    ];
+    const flags = held => Object.fromEntries(
+      modifiers.map(([key, property]) => [property, held.includes(key)]),
+    );
+
+    async function select(harness, held = []) {
+      const window = harness.popup.ownerDocument.defaultView;
+      const active = [];
+      harness.driver.hide();
+      window.getSelection().removeAllRanges();
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      for (const key of held) {
+        active.push(key);
+        window.document.dispatchEvent(new window.KeyboardEvent(
+          "keydown",
+          { bubbles: true, code: `${key}Left`, key, ...flags(active) },
+        ));
+      }
+      harness.anchor.dispatchEvent(new window.MouseEvent(
+        "mousedown",
+        { bubbles: true, button: 0, clientX: 200, clientY: 200, ...flags(active) },
+      ));
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      harness.anchor.dispatchEvent(new window.MouseEvent(
+        "mouseup",
+        { bubbles: true, button: 0, clientX: 200, clientY: 200, ...flags(active) },
+      ));
+      const request = harness.take("hd_lookup");
+      for (const key of held.toReversed()) {
+        active.splice(active.indexOf(key), 1);
+        window.document.dispatchEvent(new window.KeyboardEvent(
+          "keyup",
+          { bubbles: true, code: `${key}Left`, key, ...flags(active) },
+        ));
+      }
+      if (request) harness.reply(request, {
+        dictionaryCount: 1,
+        results: [harness.term(harness.candidate.query)],
+      });
+      await harness.settle();
+      const snapshot = harness.driver.snapshot();
+      return {
+        allowed: request?.request.text === harness.candidate.query
+          && !snapshot.popupHidden
+          && snapshot.activeHighlightText === harness.candidate.query
+          && harness.render()?.kind === "terms",
+        blocked: request === null && snapshot.popupHidden
+          && snapshot.activeHighlightText === "",
+      };
+    }
+
+    const hover = await createHarness();
+    let hoverAllowed = false;
+    try {
+      hover.emitOptions({ lookupMode: "hover", activationKey: "Shift", hoverDelayMs: 0 });
+      hoverAllowed = (await select(hover)).allowed;
+    } finally {
+      hover.close();
+    }
+
+    const results = [];
+    for (const lookupMode of ["activation", "activationSticky"]) {
+      for (let index = 0; index < modifiers.length; index += 1) {
+        const activationKey = modifiers[index][0];
+        const mismatch = modifiers[(index + 1) % modifiers.length][0];
+        const extra = modifiers[(index + 2) % modifiers.length][0];
+        const harness = await createHarness();
+        try {
+          harness.emitOptions({ lookupMode, activationKey, hoverDelayMs: 0 });
+          results.push({
+            activationKey,
+            lookupMode,
+            plain: (await select(harness)).blocked,
+            mismatch: (await select(harness, [mismatch])).blocked,
+            matching: (await select(harness, [activationKey])).allowed,
+            combined: (await select(harness, [activationKey, extra])).allowed,
+          });
+        } finally {
+          harness.close();
+        }
+      }
+    }
+
+    const explicit = await createHarness();
+    let explicitAllowed = false;
+    try {
+      const window = explicit.popup.ownerDocument.defaultView;
+      explicit.emitOptions({ lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 0 });
+      window.getSelection().selectAllChildren(explicit.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const automatic = explicit.take("hd_lookup");
+      explicit.runtimeMessage({
+        target: "hachidori-reader",
+        type: "hd_reader_command",
+        action: "scanSelectedText",
+      });
+      const request = explicit.take("hd_lookup");
+      if (request) {
+        explicit.reply(request, {
+          dictionaryCount: 1,
+          results: [explicit.term(explicit.candidate.query)],
+        });
+      }
+      await explicit.settle();
+      explicitAllowed = automatic === null && request?.request.text === explicit.candidate.query
+        && !explicit.driver.snapshot().popupHidden;
+    } finally {
+      explicit.close();
+    }
+
+    return {
+      "automatic selections follow hover and both activation modes for every modifier":
+        hoverAllowed && results.every(result =>
+          result.plain && result.mismatch && result.matching && result.combined)
+          || { hoverAllowed, results },
+      "explicit selected-text commands still bypass the automatic selection gate": explicitAllowed,
     };
   }
 
@@ -15057,20 +15191,27 @@ async function contentNoteStage() {
     const document = window.document;
     const selection = window.getSelection();
     harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1 });
+    const key = (type) => window.document.dispatchEvent(new window.KeyboardEvent(
+      type,
+      { key: "k", code: "KeyK", bubbles: true },
+    ));
     const mouse = (type) => harness.anchor.dispatchEvent(new window.MouseEvent(type, {
       bubbles: true, button: 0, clientX: 200, clientY: 200,
     }));
     const changed = () => document.dispatchEvent(new window.Event("selectionchange"));
     const selectText = (text) => {
+      key("keydown");
       mouse("mousedown");
       harness.anchor.textContent = text;
       selection.selectAllChildren(harness.anchor);
       changed();
       mouse("mouseup");
+      key("keyup");
       changed();
       return harness.take("hd_lookup");
     };
     harness.anchor.innerHTML = '<b style="display:inline"> 食べ</b><i style="display:inline">たかった </i>';
+    key("keydown");
     mouse("mousedown");
     selection.setBaseAndExtent(harness.anchor.lastChild.firstChild, 4, harness.anchor.firstChild.firstChild, 1);
     changed();
@@ -15078,6 +15219,7 @@ async function contentNoteStage() {
     await harness.settle();
     const dragQuiet = harness.take("hd_lookup") === null;
     mouse("mouseup");
+    key("keyup");
     changed();
     const exact = harness.take("hd_lookup");
     const query = "食べたかった";
@@ -15107,7 +15249,7 @@ async function contentNoteStage() {
       && harness.render()?.kind === "notice" && harness.render().candidate.query === long;
     harness.close();
     return {
-      "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
+      "matching activation preserves exact reverse inline selection context while rejecting prefix results": exactResult,
       "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
     };
   }
@@ -15697,12 +15839,27 @@ async function contentNoteStage() {
           lookupMode: "activation",
           popupNestingMaxDepth: 1,
         });
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keydown", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+            shiftKey: true,
+          }),
+        );
         const selection = activation.popup.ownerDocument.defaultView.getSelection();
         selection.selectAllChildren(activation.anchor);
         activation.popup.ownerDocument.dispatchEvent(
           new activation.popup.ownerDocument.defaultView.Event("selectionchange"),
         );
         const root = activation.take("hd_lookup");
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keyup", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+          }),
+        );
         if (root) activation.reply(root, {
           dictionaryCount: 1,
           results: [activation.term(activation.candidate.query)],
@@ -15843,9 +16000,11 @@ async function contentNoteStage() {
     key("keydown", "Escape", "Escape");
     const escapeDismissed = harness.driver.snapshot().popupHidden;
     key("keyup", "Escape", "Escape");
+    key("keydown", "Escape", "Escape");
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const selectedMiss = harness.take("hd_lookup");
+    key("keyup", "Escape", "Escape");
     if (selectedMiss) harness.reply(selectedMiss, { dictionaryCount: 1, results: [] });
     await harness.settle();
     key("keydown", "Escape", "Escape");
@@ -16786,7 +16945,8 @@ async function contentNoteStage() {
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
-      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
+      ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },

@@ -21,8 +21,9 @@ function fixture(t) {
   globalThis.chrome = { extension: { isAllowedFileSchemeAccess: async () => false } };
   const el = id => document.getElementById(id);
   let readerLoads = 0;
-  let loaded, failed;
-  const pendingReader = new Promise((resolve, reject) => { loaded = resolve; failed = reject; });
+  const commands = [];
+  let resolveReader, failed;
+  const pendingReader = new Promise((resolve, reject) => { resolveReader = resolve; failed = reject; });
   const view = createPracticeView({ document, onDismiss: () => el("finish").focus(),
     loadReader: () => { readerLoads += 1; return pendingReader; } });
   el("practice").append(view.node);
@@ -30,7 +31,11 @@ function fixture(t) {
   return { view, document, window: dom.window, el,
     reader: () => readerLoads === 0 ? null : pendingReader,
     readerLoads: () => readerLoads,
-    loaded: async () => { loaded(); await tick(); },
+    commands,
+    loaded: async () => {
+      resolveReader({ scanSelectedText: () => commands.push("scanSelectedText") });
+      await tick();
+    },
     failed: async () => { failed(new Error("reader failed")); await tick(); },
     update: (options = OPTIONS, dictionaries = DICTIONARIES, outcome = "ready") => view.update(options, dictionaries, outcome) };
 }
@@ -50,16 +55,18 @@ test("the keyboard lookup control selects the exercise's real text after the ord
   assert.equal(selection.getRangeAt(0).commonAncestorContainer, f.el("setup-practice-word"));
   assert.ok(f.el("setup-practice-text").contains(selection.anchorNode));
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
+  assert.deepEqual(f.commands, ["scanSelectedText"]);
 });
 
 test("the final step can trigger the same precise lookup as soon as the reader is ready", async t => {
   const f = fixture(t);
-  f.update();
+  f.update({ ...OPTIONS, lookupMode: "activation", activationKey: "Shift" });
   assert.equal(f.view.lookup(), false);
   await f.loaded();
   assert.equal(f.view.lookup(), true);
   assert.equal(f.window.getSelection().toString(), "辞書");
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
+  assert.deepEqual(f.commands, ["scanSelectedText"]);
 });
 
 test("a passage-only result keeps the reader available without advertising an unanswered shortcut", async t => {
