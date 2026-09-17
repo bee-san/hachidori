@@ -19391,14 +19391,14 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
 
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
   const rejected = (operation) => {
-    try { operation(); return false; }
+    try { operation(); return null; }
     catch (error) {
       if (error.name !== "RangeError" || !/structured.*limit/iu.test(error.message)) throw error;
-      return true;
+      return error;
     }
   };
-  const nested = (depth) => {
-    let value = "leaf";
+  const nested = (depth, leaf = "leaf") => {
+    let value = leaf;
     for (let index = 0; index < depth; index += 1) value = { type: "text", text: value };
     return JSON.stringify([value]);
   };
@@ -19409,8 +19409,16 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const excessiveDepth = rejected(() => HDGlossary.appendTextOnlyGlossary(document, parent, nested(25)));
   HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
   HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
-  check("structured depth rejects overflow and preserves ordinary fallback text",
-    exactDepth && excessiveDepth && parent.textContent === "kept<literal>", parent.textContent);
+  check("structured depth reports its exact limit and content path without exposing the leaf",
+    exactDepth
+      && excessiveDepth?.structuredContentLimitKind === "depth"
+      && excessiveDepth.structuredContentActual === 25
+      && excessiveDepth.structuredContentLimit === 24
+      && excessiveDepth.structuredContentLocation === `glossary[0]${".text".repeat(25)}`
+      && !excessiveDepth.message.includes("leaf")
+      && parent.textContent === "kept<literal>",
+    JSON.stringify({ message: excessiveDepth?.message, location: excessiveDepth?.structuredContentLocation,
+      text: parent.textContent }));
 
   const limit = 1_048_576;
   const values = [
@@ -19423,12 +19431,18 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   ];
   const nodeCases = values.map(({ value, count }) => {
     const state = { nodes: limit - count };
-    const accepted = !rejected(() => HDGlossary.appendStructuredValue(document, parent, value, state, 0));
+    const accepted = rejected(() => HDGlossary.appendStructuredValue(document, parent, value, state, 0)) === null;
+    const full = rejected(() => HDGlossary.appendStructuredValue(document, parent, null, state, 0));
+    const overflow = rejected(() =>
+      HDGlossary.appendStructuredValue(document, parent, value, { nodes: limit - count + 1 }, 0));
     return accepted && state.nodes === limit
-      && rejected(() => HDGlossary.appendStructuredValue(document, parent, null, state, 0))
-      && rejected(() => HDGlossary.appendStructuredValue(document, parent, value, { nodes: limit - count + 1 }, 0));
+      && [full, overflow].every(error =>
+        error?.structuredContentLimitKind === "node count"
+        && error.structuredContentActual === limit + 1
+        && error.structuredContentLimit === limit
+        && error.structuredContentLocation.startsWith("structuredContent"));
   });
-  check("structured node accounting includes containers, wrappers and ignored values without truncation",
+  check("structured node accounting reports the exact limit across containers wrappers and ignored values",
     nodeCases.every(Boolean), JSON.stringify(nodeCases));
 
   const popup = document.createElement("div");
@@ -19439,7 +19453,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   let fills = 0;
   let layouts = 0;
   let media = 0;
-  let errors = 0;
+  const errors = [];
   let requestCurrent = true;
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
@@ -19453,12 +19467,15 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     term: { ...result.term, glossaries: [{ dictionary, glossary }] },
   });
   const healthy = entry("Healthy", '["healthy"]');
-  const invalid = entry("Invalid", nested(25));
+  const invalid = entry("Invalid", nested(25, "private-depth-leaf-must-not-be-logged"));
   const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
   const context = {
     isCurrentRequest: () => requestCurrent,
-    dictionaryPresentation: [{ title: "Healthy", favorite: true }, { title: "Invalid", favorite: true }],
-    onRenderError() { errors += 1; view.clear(); },
+    dictionaryPresentation: [
+      { id: "healthy-id", title: "Healthy", favorite: true },
+      { id: "invalid-id", title: "Invalid", favorite: true },
+    ],
+    onRenderError(error) { errors.push(error); view.clear(); },
     resolveMedia() { media += 1; return Promise.resolve(null); },
   };
   const drain = () => {
@@ -19471,33 +19488,53 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const deferredHandled = errors === 1 && escaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const diagnostic = errors[0];
+    const deferredHandled = errors.length === 1 && escaped === 0
+      && diagnostic?.code === "dictionary-structured-content-limit"
+      && diagnostic.dictionaryTitle === "Invalid"
+      && diagnostic.dictionaryId === "invalid-id"
+      && diagnostic.entryIndex === 1 && diagnostic.definitionIndex === 0
+      && diagnostic.termExpression === result.term.expression
+      && diagnostic.termReading === result.term.reading
+      && diagnostic.message.includes("entry 2, definition 1")
+      && diagnostic.cause?.name === "RangeError"
+      && diagnostic.message.includes(diagnostic.cause.structuredContentLocation)
+      && diagnostic.cause.structuredContentLimitKind === "depth"
+      && diagnostic.cause.structuredContentActual === 25
+      && diagnostic.cause.structuredContentLimit === 24
+      && diagnostic.originalStack === diagnostic.cause.stack
+      && diagnostic.stack.includes("structuredContentRenderError")
+      && diagnostic.cause.stack.includes("appendStructuredValue")
+      && !diagnostic.message.includes("private-depth-leaf")
+      && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const tabHandled = errors.length === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
     check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
-      JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
+      deferredHandled && tabHandled && errors.length === 3 && moreEscaped === 0
+        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+      JSON.stringify({ deferredHandled, tabHandled, errors: errors.map(error => error.message), escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
       dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Healthy"] }],
     };
     view.renderResults([healthy, invalid], candidate, projectionContext);
     let presentationEscaped = false;
-    const beforePresentationError = errors;
+    const beforePresentationError = errors.length;
     try {
       view.updateDictionaryPresentation({ ...projectionContext,
         dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Invalid"] }],
       });
     } catch { presentationEscaped = true; }
     check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors === beforePresentationError + 1 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
-      JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
+      !presentationEscaped && errors.length === beforePresentationError + 1
+        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+      JSON.stringify({ presentationEscaped, errors: errors.length, beforePresentationError }));
 
     const replacements = [
       () => view.renderResults([healthy], candidate, context),
@@ -19510,9 +19547,10 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
       requestCurrent = true;
       view.renderResults([healthy, imageEntry], candidate, context);
       replace();
-      const before = { fills, layouts, media, errors };
+      const before = { fills, layouts, media, errors: errors.length };
       const staleEscaped = drain();
-      return staleEscaped === 0 && JSON.stringify(before) === JSON.stringify({ fills, layouts, media, errors });
+      return staleEscaped === 0
+        && JSON.stringify(before) === JSON.stringify({ fills, layouts, media, errors: errors.length });
     });
     check("superseded glossary tasks do no rendering, media or layout work",
       staleCases.every(Boolean), JSON.stringify(staleCases));

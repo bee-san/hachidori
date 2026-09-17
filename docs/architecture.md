@@ -886,6 +886,14 @@ wrappers, and ignored values consume the same traversal budget as rendered text
 and elements; ordinary unknown-wrapper child text and literal glossary fallback
 remain supported. Rendering still uses one traversal after JSON parsing.
 
+Each limit rejection reports its exact kind, attempted actual value, configured
+limit, and structural path. The popup boundary adds the canonical dictionary
+title, stable package ID, entry/definition position, and bounded term/reading
+when known. Visible and logged diagnostics stay bounded and contain no raw
+glossary payload; the existing accessible error offers Retry, while the
+contextual error retains the original `RangeError` as its cause and preserves
+both stacks for the console.
+
 Deferred glossary fills and their layout callbacks belong to both the current
 lookup request and the current result panel. A newer pending request, a tab
 projection, clear, or destroy invalidates obsolete work before it can render or

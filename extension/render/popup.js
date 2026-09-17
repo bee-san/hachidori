@@ -175,6 +175,7 @@
   const DEINFLECTION_TEXT_MAX_BYTES = 4096;
   const DEINFLECTION_STEP_MAX_COUNT = 31;
   const DEINFLECTION_OMITTED_MARKER = "…";
+  const RENDER_DIAGNOSTIC_TEXT_MAX_BYTES = 512;
 
   function utf8Length(value) {
     return typeof TextEncoder === "function"
@@ -198,6 +199,50 @@
       ? low - 1
       : low;
     return value.slice(0, end);
+  }
+
+  function diagnosticText(value, fallback = "unknown") {
+    return typeof value === "string" && value
+      ? truncateUtf8(value, RENDER_DIAGNOSTIC_TEXT_MAX_BYTES)
+      : fallback;
+  }
+
+  function dictionaryStableId(title, presentation) {
+    const dictionary = Array.isArray(presentation)
+      ? presentation.find((entry) => entry?.title === title)
+      : null;
+    return diagnosticText(dictionary?.id);
+  }
+
+  function structuredContentRenderError(error, {
+    definitionIndex,
+    dictionary,
+    dictionaryId,
+    resultIndex,
+    term,
+  }) {
+    if (error?.code !== "structured-content-limit") return error;
+    const title = diagnosticText(dictionary);
+    const id = diagnosticText(dictionaryId);
+    const expression = diagnosticText(term?.expression, "");
+    const reading = diagnosticText(term?.reading, "");
+    const entry = `entry ${resultIndex + 1}, definition ${definitionIndex + 1}`;
+    const word = expression
+      ? `, term ${JSON.stringify(expression)}${reading ? `, reading ${JSON.stringify(reading)}` : ""}`
+      : "";
+    const message = `Dictionary ${JSON.stringify(title)} (stable ID ${JSON.stringify(id)}) could not render ${entry}${word}: ${error.message}`;
+    const contextual = new RangeError(message, { cause: error });
+    contextual.code = "dictionary-structured-content-limit";
+    contextual.definitionIndex = definitionIndex;
+    contextual.dictionaryId = id;
+    contextual.dictionaryTitle = title;
+    contextual.entryIndex = resultIndex;
+    contextual.originalStack = error.stack;
+    contextual.termExpression = expression;
+    contextual.termReading = reading;
+    contextual.userDetail = message;
+    contextual.userTitle = "Dictionary content could not be rendered.";
+    return contextual;
   }
 
   function deinflectionSteps(result) {
@@ -3279,7 +3324,7 @@
             definitions.classList.add("gsm-hoshidicts-definitions-single");
           }
           applyDefinitionBlurState(definitions);
-          for (const glossary of glossaries) {
+          for (const [definitionIndex, glossary] of glossaries.entries()) {
             const definition = documentRef.createElement("li");
             const definitionTags = parseTagList(glossary.definitionTags);
             if (definitionTags.length > 0) {
@@ -3295,26 +3340,41 @@
             const content = documentRef.createElement("div");
             content.className = "gsm-hoshidicts-glossary-content";
             content.dataset.hoshidictsDictionary = dictionary;
-            const fillContent = () => appendTextOnlyGlossary(
-              documentRef,
-              content,
-              glossary.glossary,
-              {
-                dictionary,
-                generation: renderContext.generation,
-                isCurrent,
-                isCurrentLink,
-                onExternalLink: renderContext.onExternalLink,
-                onInternalLink: renderContext.onInternalLink,
-                onLayoutChange: positionIfCurrent,
-                requestImagePreview,
-                refreshImagePreview,
-                hideImagePreview,
-                imageContext,
-                onImageCreated,
-                resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+            const fillContent = () => {
+              try {
+                appendTextOnlyGlossary(
+                  documentRef,
+                  content,
+                  glossary.glossary,
+                  {
+                    dictionary,
+                    generation: renderContext.generation,
+                    isCurrent,
+                    isCurrentLink,
+                    onExternalLink: renderContext.onExternalLink,
+                    onInternalLink: renderContext.onInternalLink,
+                    onLayoutChange: positionIfCurrent,
+                    requestImagePreview,
+                    refreshImagePreview,
+                    hideImagePreview,
+                    imageContext,
+                    onImageCreated,
+                    resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+                  }
+                );
+              } catch (error) {
+                throw structuredContentRenderError(error, {
+                  definitionIndex,
+                  dictionary,
+                  dictionaryId: dictionaryStableId(
+                    dictionary,
+                    imageContext.dictionaryPresentation
+                  ),
+                  resultIndex,
+                  term: result.term,
+                });
               }
-            );
+            };
             // Glossary bodies are most of a render. Only the first entry is
             // visible in the popup, so fill the rest after it has painted.
             if (resultIndex === 0) {

@@ -310,6 +310,7 @@
     return dictionaries
       .filter((entry) => entry.enabled !== false)
       .map((entry) => ({
+        id: entry.id,
         title: entry.title,
         favorite: entry.favorite,
         frequencyMode: entry.frequencyMode,
@@ -1487,6 +1488,15 @@
 
   function lookupFailureState(error, request = null) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error?.code === "dictionary-structured-content-limit") {
+      return {
+        kind: "render",
+        title: typeof error.userTitle === "string"
+          ? error.userTitle
+          : "Dictionary content could not be rendered.",
+        detail: typeof error.userDetail === "string" ? error.userDetail : message,
+      };
+    }
     if (error?.code === "engine-mutating" || message === "the dictionary engine is busy mutating") {
       return {
         kind: "updating",
@@ -1541,7 +1551,9 @@
 
   function handleLookupFailure(token, error, level = rootLevel, request = null, preserveView = false) {
     if (disposed || level.retired || token !== level.lookupToken) return false;
-    console.debug("hachidori: lookup failed", error);
+    if (error?.code !== "dictionary-structured-content-limit") {
+      console.debug("hachidori: lookup failed", error);
+    }
     const state = lookupFailureState(error, request);
     if (state === null) {
       if (!preserveView) hide(level);
@@ -1566,6 +1578,16 @@
     }, { preserveView });
     positionPopup(level);
     return false;
+  }
+
+  function handleRenderFailure(token, error, request, level = rootLevel) {
+    if (disposed || level.retired || token !== level.lookupToken) return false;
+    if (error?.cause instanceof Error) {
+      console.warn("hachidori: could not render results", error, "caused by", error.cause);
+    } else {
+      console.warn("hachidori: could not render results", error);
+    }
+    return handleLookupFailure(token, error, level, request);
   }
 
   function retainProtectedReplay(request, token, level, replayOptions) {
@@ -2585,13 +2607,12 @@
         isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
         isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
           && (token === level.lookupToken || level.retainedView),
-        onRenderError(error) { handleLookupFailure(token, error, level); },
+        onRenderError(error) { handleRenderFailure(token, error, request, level); },
         ...dictionarySelectionContext(request),
       });
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
-      console.warn("hachidori: could not render results", error);
-      hide(level);
+      handleRenderFailure(token, error, request, level);
       return false;
     }
     level.activeHighlightText = matchedText;
