@@ -287,6 +287,7 @@ const PLANNED = [
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+  "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
@@ -709,6 +710,7 @@ async function popupReader(page, depth = 0) {
   const cdp = await page.createCDPSession();
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
+  await cdp.send("Accessibility.enable");
 
   async function resolvePopupObject() {
     // nodeIds live only until the next getDocument, so each operation re-walks.
@@ -1519,6 +1521,11 @@ async function popupReader(page, depth = 0) {
         const feedback = this.querySelector(".gsm-hoshidicts-mining-feedback");
         const controls = [...this.querySelectorAll(".gsm-hoshidicts-anki-control")];
         const adds = [...this.querySelectorAll(".gsm-hoshidicts-mine-button")];
+        const successProbe = this.ownerDocument.createElement("span");
+        successProbe.style.color = "var(--hoshidicts-success)";
+        this.append(successProbe);
+        const successColor = getComputedStyle(successProbe).color;
+        successProbe.remove();
         const primaryActions = this.querySelector(".gsm-hoshidicts-primary-header .gsm-hoshidicts-entry-actions");
         const actionKind = node => {
           if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
@@ -1533,9 +1540,15 @@ async function popupReader(page, depth = 0) {
           controls: adds.map((add, index) => {
             const control = controls[index];
             const icon = add.querySelector(".gsm-hoshidicts-mine-icon");
+            const style = getComputedStyle(add);
             return { hidden: add.hidden, text: add.textContent,
               title: add.title, icon: icon?.dataset.icon ?? icon?.textContent ?? "",
               state: add.dataset.state, disabled: add.disabled,
+              ariaBusy: add.getAttribute("aria-busy"),
+              ariaLabel: add.getAttribute("aria-label"),
+              focused: add.getRootNode().activeElement === add,
+              color: style.color, borderColor: style.borderColor,
+              successColored: style.color === successColor && style.borderColor === successColor,
               output: control?.querySelector("output")?.textContent ?? "",
               action: add.dataset.action,
               rect: add.getBoundingClientRect().toJSON() };
@@ -1543,6 +1556,52 @@ async function popupReader(page, depth = 0) {
       }.toString(),
     });
     return reply.result.value;
+  }
+  async function focusAnki(index = 0) {
+    const object = await resolvePopupObject();
+    if (!object) return false;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: index }],
+      functionDeclaration: function (buttonIndex) {
+        const button = this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex];
+        button?.focus();
+        return button?.getRootNode().activeElement === button;
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+  async function ankiAccessibility(index = 0) {
+    const popup = await resolvePopupObject();
+    if (!popup) return null;
+    const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: popup.objectId, arguments: [{ value: index }],
+      functionDeclaration: function (buttonIndex) {
+        return this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex] ?? null;
+      }.toString(),
+    });
+    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text);
+    if (!result.objectId) return null;
+    try {
+      const { node } = await cdp.send("DOM.describeNode", { objectId: result.objectId });
+      const { nodes } = await cdp.send("Accessibility.getPartialAXTree", {
+        backendNodeId: node.backendNodeId, fetchRelatives: false,
+      });
+      const ax = nodes.find(candidate => !candidate.ignored) ?? nodes[0];
+      const property = name => {
+        const value = ax?.properties?.find(candidate => candidate.name === name)?.value;
+        if (value?.type === "boolean") return Boolean(value.value);
+        return value?.value ?? null;
+      };
+      return {
+        role: ax?.role?.value ?? null,
+        name: ax?.name?.value ?? null,
+        disabled: property("disabled"),
+        busy: property("busy"),
+        focusable: property("focusable"),
+      };
+    } finally {
+      await cdp.send("Runtime.releaseObject", { objectId: result.objectId });
+    }
   }
   async function lookupStatistics(action = "read") {
     const object = await resolvePopupObject();
@@ -1611,7 +1670,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
+    anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -4315,7 +4374,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     return value === undefined ? null : value.replace(/\\(.)/gu, "$1");
   };
   // Flags the checks below flip to make the mock refuse specific work.
-  const control = { failScreenshotUpload: false };
+  const control = { failScreenshotUpload: false, preflightGate: null };
   const apiRoute = { requests: 0, async respond(request) {
     const { action, params } = JSON.parse(request.postData);
     calls.push({ action, params });
@@ -4324,10 +4383,14 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     else if (action === "modelNames") result = ["Basic"];
     else if (action === "modelNamesAndIds") result = { Basic: 1 };
     else if (action === "modelFieldNames") result = ["Front", "Back", "Audio"];
-    else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(note => {
-      const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
-      return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
-    });
+    else if (action === "canAddNotesWithErrorDetail") {
+      const gate = control.preflightGate;
+      if (gate) await gate.promise;
+      result = params.notes.map(note => {
+        const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
+        return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
+      });
+    }
     else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
     else if (action === "findNotes") {
       const expression = queryExpression(params.query);
@@ -4510,20 +4573,38 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await hoverForPopup(tab, popup, "#verb");
     const quiet = (await popup.anki()).controls.length === 0 && calls.length === before;
     const template = value => ({ value, overwriteMode: "overwrite" });
+    const preflightCount = calls.filter(call => call.action === "canAddNotesWithErrorDetail").length;
+    control.preflightGate = Promise.withResolvers();
     await configure(false, { fieldTemplates: { Front: template("{expression}"),
       Back: template("{cloze-body}|{cloze-suffix}|{sentence}"), Audio: template("") } });
+    const loading = await settled(state => state?.controls[0]?.state === "checking"
+      && calls.filter(call => call.action === "canAddNotesWithErrorDetail").length > preflightCount);
+    const loadingAccessibility = await popup.ankiAccessibility();
+    const mutationCount = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length;
+    const loadingFocused = await popup.focusAnki();
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const loadingInert = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length === mutationCount;
+    if (process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT) {
+      const { x, y, width, height } = loading.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    control.preflightGate.resolve();
+    control.preflightGate = null;
     const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const readyAccessibility = await popup.ankiAccessibility();
     if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
       const { x, y, width, height } = ready.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
     }
     const addCount = calls.filter(call => call.action === "addNote").length;
-    const rect = ready.controls[0].rect;
-    await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
+    const addFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
     const browseCount = calls.filter(call => call.action === "guiBrowse").length;
     const repairStart = calls.length;
-    await popup.click(".gsm-hoshidicts-mine-button");
+    const savedFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
     const repairCalls = calls.slice(repairStart);
     const note = [...notes.values()].at(-1);
@@ -4538,9 +4619,39 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         clip: { x, y, width, height } });
     }
     const exactBrowseCount = calls.filter(call => call.action === "guiBrowse").length;
-    await popup.click(".gsm-hoshidicts-mine-button");
+    const viewFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
+    console.log(`     Anki readiness evidence: ${JSON.stringify({
+      loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+      ready: ready.controls[0], readyAccessibility, addFocused,
+      saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused,
+    })}`);
+    check("Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
+      loading.controls[0].icon === "arrow-clockwise"
+        && loading.controls[0].state === "checking"
+        && loading.controls[0].disabled
+        && loading.controls[0].ariaBusy === "true"
+        && loading.controls[0].ariaLabel === "Checking Anki card status"
+        && loadingAccessibility?.role === "button"
+        && loadingAccessibility.name === "Checking Anki card status"
+        && loadingAccessibility.disabled === true
+        && loadingAccessibility.busy === true
+        && loadingFocused === false && loadingInert
+        && ready.controls[0].icon === "add"
+        && ready.controls[0].ariaBusy === "false"
+        && readyAccessibility?.role === "button"
+        && readyAccessibility.name === "Mine to Anki"
+        && addFocused
+        && saved.controls[0].icon === "book-search"
+        && saved.controls[0].successColored
+        && duplicate.controls[0].icon === "book-search"
+        && duplicate.controls[0].successColored
+        && savedFocused && viewFocused,
+      JSON.stringify({ loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+        ready: ready.controls[0], readyAccessibility, addFocused,
+        saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused }));
     check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
       quiet
         && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
@@ -4563,10 +4674,14 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
+        && duplicate.controls[0].successColored
+        && addFocused && savedFocused && viewFocused
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse, repairCalls }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
+    control.preflightGate?.resolve();
+    control.preflightGate = null;
     await tab.keyboard.press("Escape");
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
   }
