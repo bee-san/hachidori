@@ -693,6 +693,36 @@ function committedSelectionTitle(title, current, dictionaries) {
   return selected ? dictionaries.find((entry) => entry.id === selected.id)?.title ?? "" : title;
 }
 
+function migrateCommittedDictionarySelections(value, current, dictionaries) {
+  const options = { ...value };
+  const migrate = (title) => typeof title === "string" && title !== ""
+    ? committedSelectionTitle(title, current, dictionaries)
+    : title;
+  for (const key of [
+    "frequencyDictionary",
+    "definitionBlurFrequencyDictionary",
+    "compactDefinitionSummaryDictionary",
+    "pitchAccentFuriganaDictionary",
+  ]) {
+    if (Object.hasOwn(options, key)) options[key] = migrate(options[key]);
+  }
+  if (Object.hasOwn(options, "kanjiClickDictionary")
+      && typeof options.kanjiClickDictionary === "string") {
+    options.kanjiClickDictionary = migrate(options.kanjiClickDictionary);
+  } else if (options.kanjiClickDictionary?.title) {
+    const title = migrate(options.kanjiClickDictionary.title);
+    options.kanjiClickDictionary = title === ""
+      ? ""
+      : { ...options.kanjiClickDictionary, title };
+  }
+  if (Object.hasOwn(options, "popupImageSource")
+      && options.popupImageSource?.kind === "dictionary") {
+    const title = migrate(options.popupImageSource.title);
+    options.popupImageSource = title ? { kind: "dictionary", title } : null;
+  }
+  return options;
+}
+
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   for (const dictionary of dictionaries) assertDictionaryUpdateSchedule(dictionary);
   const currentRevision = current?.revision ?? 0;
@@ -706,17 +736,13 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   if (currentOptions !== undefined) {
     const revision = optionsRevision(currentOptions);
     const nextOptions = normaliseDictionarySelections(
-      { ...projectStoredOptions(currentOptions), revision }, state.dictionaries,
+      migrateCommittedDictionarySelections(
+        { ...projectStoredOptions(currentOptions), revision },
+        current,
+        state.dictionaries,
+      ),
+      state.dictionaries,
     );
-    if (nextOptions.popupImageSource?.kind === "dictionary") {
-      const title = committedSelectionTitle(nextOptions.popupImageSource.title, current, dictionaries);
-      nextOptions.popupImageSource = title ? { kind: "dictionary", title } : null;
-    }
-    if (nextOptions.pitchAccentFuriganaDictionary) {
-      nextOptions.pitchAccentFuriganaDictionary = committedSelectionTitle(
-        nextOptions.pitchAccentFuriganaDictionary, current, dictionaries,
-      );
-    }
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
       values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
     }
