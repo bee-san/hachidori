@@ -13,7 +13,6 @@ function fixture() {
     existingFields: { front: "猫", back: "old", audio: "" }, appliedFields: { front: "猫", back: "oldnew" },
     resources: { media: [], audioPrepared: false },
     invoke: async (action, params) => {
-      if (action === "storeMediaFile") { uploads.push(params); return params.filename; }
       if (action === "notesInfo") return [{ noteId: 12, fields: Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, { value }])) }];
       if (action === "updateNoteFields") { updates.push(params.note.fields); fields = { ...fields, ...params.note.fields }; return null; }
       throw new Error(`Unexpected ${action}`);
@@ -23,7 +22,7 @@ function fixture() {
     audio: async () => { downloads++; return { filename: "chosen.wav", data: "YXVkaW8=" }; },
     render: async (request, templates, audio) => ({ fields: Object.fromEntries(Object.keys(templates).map(key =>
       [key, templates[key].value.replace("{audio}", audio)])), media: [] }),
-    media: () => assert.fail("No dictionary image should be fetched"),
+    store: async file => { uploads.push(file); },
   };
   return { context, dependencies, updates, uploads, get downloads() { return downloads; }, edit(patch) { fields = { ...fields, ...patch }; } };
 }
@@ -33,7 +32,7 @@ test("audio enrichment applies overwrite modes once from original fields with au
   assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
   assert.deepEqual(f.updates, [{ back: "oldnew[sound:chosen.wav]", audio: "[sound:chosen.wav]" }]);
   assert.equal(f.downloads, 1);
-  assert.equal(f.uploads[0].deleteExisting, false);
+  assert.equal(f.uploads[0].filename, "chosen.wav");
 });
 
 test("a late external edit is preserved while other audio fields can still enrich", async () => {
@@ -69,10 +68,9 @@ test("with no enabled audio source the pronunciation fields stay empty without a
   assert.deepEqual(f.updates, []);
 });
 
-test("a renamed media upload warns without changing the checked first-field identity", async () => {
+test("an unconfirmed media upload warns without changing the checked first-field identity", async () => {
   const f = fixture();
-  const invoke = f.context.invoke;
-  f.context.invoke = (action, params) => action === "storeMediaFile" ? "renamed.wav" : invoke(action, params);
-  assert.match((await enrichAnkiNote(f.context, f.dependencies)).join(" "), /different filename/u);
+  f.dependencies.store = async () => { throw new Error("media was not confirmed"); };
+  assert.match((await enrichAnkiNote(f.context, f.dependencies)).join(" "), /not confirmed/u);
   assert.deepEqual(f.updates, []);
 });

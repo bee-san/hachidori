@@ -4330,6 +4330,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
     else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
+    else if (action === "getMediaFilesNames") result = files.has(params.pattern) ? [params.pattern] : [];
     else if (action === "storeMediaFile") {
       if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
         return { body: JSON.stringify({ result: null, error: "media folder is read-only" }), status: 200, contentType: "application/json" };
@@ -4393,11 +4394,15 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     const duplicate = await operation("hd_anki_preflight", request);
     const note = notes.get(added.noteId);
     const images = [...note.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]);
+    const addIndex = calls.findIndex(call => call.action === "addNote");
+    const imageStoreIndexes = images.map(filename =>
+      calls.findIndex(call => call.action === "storeMediaFile" && call.params.filename === filename));
     check("Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
       before.canAdd && readOnly && added.state === "added" && added.warnings.length === 0 && duplicate.state === "duplicate" && !duplicate.canAdd
         && images.length > 0 && images.every(filename => files.has(filename)) && note.Back.includes("@scope")
+        && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
-      JSON.stringify({ before, readOnly, added, duplicate, images, actions: calls.map(call => call.action) }));
+      JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
 
     await configure(true);
     request.configKey = (await operation("hd_anki_status")).configKey;
@@ -4418,7 +4423,8 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     check("Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
       noUpload && withAudio.state === "added" && withAudio.warnings.length === 0 && notes.get(withAudio.noteId).Front === checked
         && files.get(filename) === wav.toString("base64") && routes.get(chosen.url).requests === 1
-        && routes.get(other.url).requests === 0 && playCount === 0,
+        && routes.get(other.url).requests === 0 && playCount === 0
+        && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
   } finally {

@@ -893,6 +893,21 @@ feedback, and controls hidden when no source is configured. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
+`node --test test/anki-media.test.mjs test/anki-worker.test.mjs` checks the
+Anki media transaction. Referenced PNG and nested SVG files are deduplicated;
+CSS-only URL media remains outside the supported structured-image plan.
+Existing files skip retrieval and upload. New files require deterministic
+generated names, non-empty valid base64, and exact live inventory confirmation
+after `storeMediaFile`, including lost replies and false successful
+acknowledgements. Partial preparation and later generation or duplicate
+rejection retain deterministic confirmed files for a retry without another
+upload. Invalid base64, empty, colliding and renamed media cannot reach
+`addNote` or `updateNoteFields`. More than 64 legitimate references remain
+accepted, and browser-decoded pronunciation keeps its existing size, container
+and generated extension compatibility. The worker checks dictionary and
+first-field audio before mutation while preserving deferred non-first-field
+pronunciation.
+
 ```sh
 node test/chrome-e2e.mjs
 ```
