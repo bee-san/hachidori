@@ -71,7 +71,7 @@
   function disabled(record) {
     if (!record.add) return;
     record.add.disabled = record.busy
-      || (!record.terminal && (record.group.checking || (!record.decision?.canAdd && !views(record))));
+      || (!record.terminal && (record.needsCheck || (!record.decision?.canAdd && !views(record))));
   }
   function payload(record) {
     return { ...record.group.getRequest(record.result), configKey: record.group.configKey };
@@ -187,7 +187,7 @@
       } catch {
         if (owns()) available(group, false);
       } finally {
-        group.queued = group.checking = false;
+        group.queued = false;
         if (live(group)) {
           group.records.forEach(disabled);
           onChange(group.owner);
@@ -197,12 +197,16 @@
     }
     function refresh(group, all = false) {
       if (all) for (const record of group.records) record.needsCheck = !record.terminal;
-      if (!live(group) || group.queued || !group.records.some(needsCheck)) return;
-      group.queued = group.checking = true;
       group.records.forEach(record => {
-        if (needsCheck(record) && record.add) setMiningButtonState(record, "checking");
+        if (needsCheck(record)) {
+          // Readiness belongs to this result, not to the whole popup's queue.
+          record.decision = null;
+          if (record.add) setMiningButtonState(record, "checking");
+        }
         disabled(record);
       });
+      if (!live(group) || group.queued || !group.records.some(needsCheck)) return;
+      group.queued = true;
       const operation = () => checkGroup(group);
       checks = checks.then(operation, operation);
     }
@@ -371,7 +375,7 @@
     function bind(items, context) {
       let group = owners.get(context.owner);
       if (group && group.request !== context.request) { retire(context.owner); group = null; }
-      if (!group) { group = { ...context, records: [], epoch: 0, checking: false, queued: false }; owners.set(context.owner, group); }
+      if (!group) { group = { ...context, records: [], epoch: 0, queued: false }; owners.set(context.owner, group); }
       else Object.assign(group, context);
       const records = [...group.records];
       for (const item of items) {

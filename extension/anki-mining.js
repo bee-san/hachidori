@@ -370,12 +370,12 @@ export function createAnkiMiningService({
     const query = Array.isArray(value?.noteIds) && value.noteIds.length
       ? ankiNoteIdsQuery(value.noteIds) : ankiBrowseQuery(value?.expression ?? "");
     const invoke = invokeFor(config);
-    const opened = await invoke("guiBrowse", { query });
+    const opened = await invoke("guiBrowse", { query }, 30_000);
     if (Array.isArray(value?.noteIds) && value.noteIds.length && Array.isArray(opened)
         && value.noteIds.some(noteId => !opened.includes(noteId))) {
       const repaired = await duplicateIndex.repair(config, value.expression ?? "", invoke);
       if (repaired.noteIds.length) {
-        await invoke("guiBrowse", { query: ankiNoteIdsQuery(repaired.noteIds) });
+        await invoke("guiBrowse", { query: ankiNoteIdsQuery(repaired.noteIds) }, 30_000);
       }
     }
     return { opened: true };
