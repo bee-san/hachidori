@@ -22,6 +22,13 @@ the popup. Reloading or navigating the page (or restarting the browser) starts a
 new reading session with the saved Design dimensions. Dragging does not change
 those saved settings or other tabs.
 
+The popup action row is one non-wrapping keyboard and visual group: a nested
+Close or Back control first, then Anki, pronunciation, personal-dictionary
+edit, and browser custom links in saved order. Actions share a 36-pixel height
+and a 5-pixel gap. At narrow popup widths the whole action row scrolls
+horizontally instead of wrapping, clipping, or overlapping controls. Overlay
+mode omits the browser-only custom links and preserves the remaining order.
+
 `manifest.json` names them.
 
 | File | Runs as | Role |

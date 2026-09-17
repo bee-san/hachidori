@@ -360,7 +360,12 @@
       control.append(badge, output);
       control.hidden = true;
       feedback.append(control);
-      record.actions.prepend(add);
+      const leadingAction = record.actions.firstElementChild;
+      if (leadingAction?.matches(".gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back")) {
+        leadingAction.after(add);
+      } else {
+        record.actions.prepend(add);
+      }
       Object.assign(record, { feedback, control, add, badge, output, hidden: false });
       setMiningButtonState(record, "checking");
       add.addEventListener("mousedown", event => {
