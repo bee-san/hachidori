@@ -298,7 +298,9 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
-  "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+  "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
+  "ordinary selections follow hover and both activation modes for all four modifiers",
+  "matching activation preserves exact selections, cross-inline highlights and personal definitions",
   "source highlights reconcile selected text mutations without changing selection",
   "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
@@ -6725,14 +6727,21 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await tab.mouse.move(2, 2);
     await pause();
   };
-  const selectVerb = async (html) => {
+  const selectVerb = async (html, heldKeys = []) => {
     await dismiss();
-    return tab.$eval("#verb", (element, contents) => {
-      element.innerHTML = contents;
-      const selection = window.getSelection();
-      selection.selectAllChildren(element);
-      return { visible: selection.toString(), raw: selection.getRangeAt(0).toString() };
-    }, html);
+    for (const key of heldKeys) await tab.keyboard.down(key);
+    try {
+      const selection = await tab.$eval("#verb", (element, contents) => {
+        element.innerHTML = contents;
+        const selection = window.getSelection();
+        selection.selectAllChildren(element);
+        return { visible: selection.toString(), raw: selection.getRangeAt(0).toString() };
+      }, html);
+      if (heldKeys.length > 0) await popup.waitForVisible();
+      return selection;
+    } finally {
+      for (const key of heldKeys.toReversed()) await tab.keyboard.up(key);
+    }
   };
   const moveTo = async (selector) => {
     const box = await (await tab.$(selector)).boundingBox();
@@ -6742,21 +6751,134 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   };
   try {
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-scan-length": "1", "opt-japanese-only": true,
+      "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
+      "opt-scan-length": "1", "opt-japanese-only": true,
     });
     await tab.bringToFront();
     await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
     const box = await (await tab.$("#verb")).boundingBox();
-    const startCount = (await lookups()).length;
+    const plainStart = (await lookups()).length;
     await tab.mouse.move(box.x + 1, box.y + box.height / 2);
     await tab.mouse.down();
-    let duringDrag;
     try {
       await tab.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
-      duringDrag = (await lookups()).length === startCount;
     } finally {
       await tab.mouse.up();
+    }
+    await pause();
+    const plainSelected = await tab.evaluate(() => window.getSelection().toString());
+    const plainRequests = (await lookups()).slice(plainStart);
+    const plainHighlight = await tab.evaluate((name) =>
+      Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
+    const plainPopup = await popup.state();
+    const plainPencil = await popup.click(".gsm-hoshidicts-note-button");
+    if (process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT });
+    }
+    check("plain selections cannot lookup, highlight or open personal definitions when Shift is required",
+      plainSelected === "食べたかった" && plainRequests.length === 0
+        && plainHighlight.length === 0 && !popup.visible(plainPopup) && !plainPencil,
+      JSON.stringify({ plainSelected, plainRequests, plainHighlight,
+        popupVisible: popup.visible(plainPopup), plainPencil }));
+
+    const probeSelection = async (heldKeys, expectedAllowed, allowPointerPrefix = false) => {
+      await dismiss();
+      await tab.$eval("#verb", (element) => { element.textContent = "食べたかった"; });
+      const probeBox = await (await tab.$("#verb")).boundingBox();
+      const before = (await lookups()).length;
+      await tab.mouse.move(probeBox.x + 1, probeBox.y + probeBox.height / 2);
+      await tab.mouse.down();
+      let mouseDown = true;
+      let selection;
+      try {
+        for (const key of heldKeys) await tab.keyboard.down(key);
+        await tab.mouse.move(probeBox.x + probeBox.width - 1, probeBox.y + probeBox.height / 2, { steps: 8 });
+        await tab.mouse.up();
+        mouseDown = false;
+        selection = await tab.evaluate(() => {
+          const selection = window.getSelection();
+          return {
+            visible: selection.toString(),
+            raw: selection.rangeCount > 0 ? selection.getRangeAt(0).toString() : "",
+          };
+        });
+      } finally {
+        if (mouseDown) await tab.mouse.up().catch(() => {});
+        for (const key of heldKeys.toReversed()) await tab.keyboard.up(key);
+      }
+      const view = expectedAllowed ? await popup.waitForVisible() : (await pause(), await popup.state());
+      const requests = (await lookups()).slice(before);
+      const highlights = await tab.evaluate((name) =>
+        Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
+      const intended = requests.filter(({ text }) => text === selection.visible);
+      return {
+        allowed: selection.visible === "食べたかった" && intended.length === 1
+          && requests.at(-1) === intended[0] && (allowPointerPrefix || requests.length === 1)
+          && popup.visible(view)
+          && highlights.includes(selection.raw),
+        blocked: selection.visible === "食べたかった" && requests.length === 0
+          && !popup.visible(view) && highlights.length === 0,
+        highlights,
+        popupVisible: popup.visible(view),
+        requests: requests.map(({ text }) => text),
+      };
+    };
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    const hoverSelection = await probeSelection([], true, true);
+    const modifiers = ["Shift", "Control", "Alt", "Meta"];
+    const modifierResults = [];
+    for (const lookupMode of ["activation", "activationSticky"]) {
+      for (let index = 0; index < modifiers.length; index += 1) {
+        const activationKey = modifiers[index];
+        const mismatch = modifiers[(index + 1) % modifiers.length];
+        const extra = modifiers[(index + 2) % modifiers.length];
+        await editSettingsControls(settings, {
+          "opt-lookup-mode": lookupMode,
+          "opt-activation-key": activationKey,
+        });
+        const plain = await probeSelection([], false);
+        const mismatched = await probeSelection([mismatch], false);
+        const matching = await probeSelection([activationKey], true);
+        const combined = await probeSelection([activationKey, extra], true);
+        modifierResults.push({
+          activationKey,
+          combined: combined.allowed,
+          lookupMode,
+          matching: matching.allowed,
+          mismatch: mismatched.blocked,
+          plain: plain.blocked,
+        });
+      }
+    }
+    check("ordinary selections follow hover and both activation modes for all four modifiers",
+      hoverSelection.allowed && modifierResults.every(({ combined, matching, mismatch, plain }) =>
+        combined && matching && mismatch && plain),
+      JSON.stringify({ hover: hoverSelection, modifiers: modifierResults }));
+
+    await editSettingsControls(settings, {
+      "opt-lookup-mode": "activation", "opt-activation-key": "Shift", "opt-scan-length": "1",
+    });
+    await dismiss();
+    await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
+    const startCount = (await lookups()).length;
+    let duringDrag;
+    await tab.mouse.move(box.x + 1, box.y + box.height / 2);
+    await tab.mouse.down();
+    try {
+      await tab.keyboard.down("Shift");
+      try {
+        await tab.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
+        duringDrag = (await lookups()).length === startCount;
+      } finally {
+        await tab.mouse.up();
+        await tab.keyboard.up("Shift");
+      }
+    } catch (error) {
+      await tab.mouse.up().catch(() => {});
+      await tab.keyboard.up("Shift").catch(() => {});
+      throw error;
     }
     const selected = await tab.evaluate(() => window.getSelection().toString());
     const exactPopup = await popup.waitForVisible();
@@ -6765,6 +6887,10 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       text: range.toString(), startTag: range.startContainer.parentElement.localName,
       endTag: range.endContainer.parentElement.localName,
     })), HIGHLIGHT_NAME);
+    if (process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT });
+    }
     const glossarySelection = await popup.selectGlossaryText();
     await pause();
     const glossaryRetained = glossarySelection.includes("to eat") && popup.visible(await popup.state())
@@ -6788,23 +6914,26 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     }, HIGHLIGHT_NAME);
     check("source highlights reconcile selected text mutations without changing selection",
       Object.values(mutationHighlight).every(Boolean), JSON.stringify(mutationHighlight));
-    const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった');
+    const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった', ["Shift"]);
     const hiddenPopup = await popup.waitForVisible();
     const hiddenHighlight = await tab.evaluate((name) =>
       Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
     const hiddenQuery = (await lookups()).at(-1)?.text;
-    const blockText = await selectVerb("<div>hello</div><div>world</div>");
+    const blockText = await selectVerb("<div>hello</div><div>world</div>", ["Shift"]);
     await pause();
     const blockQuery = (await lookups()).at(-1)?.text;
-    await selectVerb("食べたかったXYZ");
+    const customText = await selectVerb("未登録語", ["Shift"]);
+    const customPopup = await popup.state();
+    const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const selectedEditor = await popup.state();
+    await popup.click(".gsm-hoshidicts-note-cancel");
+    await selectVerb("食べたかったXYZ", ["Shift"]);
     await pause();
     const missingWord = await popup.state();
     const prefixRejected = popup.visible(missingWord)
       && missingWord.plain.includes("No definition found.") && !missingWord.plain.includes("to eat");
     const prefixQuery = (await lookups()).at(-1)?.text;
-    const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
-    const selectedEditor = await popup.state();
-    check("exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+    check("matching activation preserves exact selections, cross-inline highlights and personal definitions",
       duringDrag && selected === "食べたかった" && exactPopup?.plain.includes("食べる")
         && exactRequests.length === 1 && exactRequests[0].text === selected && exactRequests[0].scanLength === 6
         && highlighted.some((range) => range.text === selected && range.startTag === "b" && range.endTag === "i")
@@ -6812,11 +6941,32 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         && hiddenPopup?.plain.includes("食べる") && hiddenHighlight.includes(hiddenText.raw)
         && blockText.visible === "hello\nworld" && blockQuery === blockText.visible
         && prefixRejected && prefixQuery === "食べたかったXYZ"
+        && customText.visible === "未登録語" && customPopup.plain.includes("No definition found.")
         && selectedEditorOpened && selectedEditor.noteOpen
-        && selectedEditor.noteTerm === prefixQuery && selectedEditor.noteReading === "",
+        && selectedEditor.noteTerm === customText.visible && selectedEditor.noteReading === "",
       JSON.stringify({ duringDrag, selected, exactRequests, highlighted, glossaryRetained,
-        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, prefixRejected, prefixQuery,
-        selectedEditorOpened, selectedEditor }));
+        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, customText,
+        prefixRejected, prefixQuery, selectedEditorOpened, selectedEditor }));
+    if (process.env.HACHIDORI_SELECTION_EVIDENCE) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_EVIDENCE), { recursive: true });
+      writeFileSync(process.env.HACHIDORI_SELECTION_EVIDENCE, `${JSON.stringify({
+        matching: {
+          duringDrag,
+          highlighted,
+          pencilOpened: selectedEditorOpened && selectedEditor.noteOpen,
+          requestCount: exactRequests.length,
+          selected,
+        },
+        modifiers: modifierResults,
+        noModifier: {
+          highlighted: plainHighlight,
+          pencilOpened: plainPencil,
+          popupVisible: popup.visible(plainPopup),
+          requestCount: plainRequests.length,
+          selected: plainSelected,
+        },
+      }, null, 2)}\n`);
+    }
 
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();

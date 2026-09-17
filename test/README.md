@@ -1192,14 +1192,23 @@ on release, and cancellation of a quick press/release. A non-default key is kept
 when switching back to Hover and checked with mode, enablement and hide delay
 after the full browser restart.
 
-Exact-selection checks use a real cross-inline mouse drag, verify the complete
-highlighted text, and reject prefix-only matches despite a one-character scan
-setting. They distinguish visible selection text from hidden DOM text and block
-separators, retain the popup while selecting its closed-shadow glossary, and
-observe real worker lookup relays while toggling Japanese-only scanning in the
-open tab. Native input, textarea and contenteditable typing stays intact; direct
-and spanning selections exclude visible editing controls, including boxless
-`display:contents` editors, without treating a hidden control as visible.
+Exact-selection checks first use a plain cross-inline mouse drag with Shift
+configured and prove that it sends no worker lookup, paints no source highlight
+and cannot open the personal-definition pencil. A real matrix then checks Hover
+without a modifier and Shift, Control, Alt and Meta activation, including plain
+input, a wrong modifier and the configured modifier held with another modifier.
+A matching Shift drag verifies the complete highlighted text, retained popup and
+pencil workflow, and rejects prefix-only matches despite a one-character scan
+setting. It distinguishes visible selection text from hidden DOM text and block
+separators, retains the popup while selecting its closed-shadow glossary, and
+observes real worker lookup relays while toggling Japanese-only scanning in the
+open tab. Set `HACHIDORI_SELECTION_BLOCKED_SCREENSHOT`,
+`HACHIDORI_SELECTION_ALLOWED_SCREENSHOT` and
+`HACHIDORI_SELECTION_EVIDENCE` to capture the two visible states and their
+request/highlight summary. Native input, textarea and contenteditable typing
+stays intact; direct and spanning selections exclude visible editing controls,
+including boxless `display:contents` editors, without treating a hidden control
+as visible.
 Nested open-shadow editors suppress printable activation typing and cancel
 pending scans when focused. A local Japanese example link beside an autofocused
 search field supports both hover and stationary Shift lookup while preserving

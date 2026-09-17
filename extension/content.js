@@ -3174,6 +3174,11 @@
     }
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) {
+      if (!activationAllowed()) {
+        cancelCandidateScan();
+        schedulePointerHide();
+        return;
+      }
       const selected = resolveSelectedLookupCandidate(selection);
       if (selected) startSelectionLookup(selected);
       else {
@@ -3292,7 +3297,7 @@
       scheduleScan();
       return;
     }
-    if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
+    if (!activationAllowed()) {
       cancelCandidateScan();
       schedulePointerHide();
       return;
@@ -3355,6 +3360,7 @@
       return;
     }
     if (isOurNode(event.target) || pointInsidePopup(event.clientX, event.clientY)) return;
+    updateModifierState(event);
     if (event.button === 0 && options.hoverEnabled
         && isScannableElement(selectionBoundaryElement(event.target), new Map())) {
       // A press on text may start a selection, so the popup stays until release
@@ -3424,12 +3430,14 @@
       node && (node === host || node.getRootNode() === shadow))) return;
     const candidate = resolveSelectedLookupCandidate(selection);
     if (!candidate && !activeSelectionCandidate) return;
-    if (candidate) startSelectionLookup(candidate);
+    if (candidate && !activationAllowed()) hide();
+    else if (candidate) startSelectionLookup(candidate);
     else hide();
   }
 
   function onMouseUp(event) {
     if (disposed || event.button !== 0 || !selectionDragActive) return;
+    updateModifierState(event);
     finishSelectionDrag({ dismissClick: true });
   }
 
@@ -3484,11 +3492,20 @@
     return true;
   }
 
+  function scanSelectedText() {
+    if (disposed || !options.hoverEnabled) return false;
+    const candidate = resolveSelectedLookupCandidate();
+    if (!candidate) return false;
+    startSelectionLookup(candidate);
+    return true;
+  }
+
   function runKeybindAction({ action, argument }, event) {
     if (action === "close") return closeFromKeybind(event);
     if (action === "scanSelectedText" || action === "scanTextAtSelection") {
       if (!options.hoverEnabled) return false;
-      const candidate = action === "scanSelectedText" ? resolveSelectedLookupCandidate() : resolveSelectionScanCandidate();
+      if (action === "scanSelectedText") return scanSelectedText();
+      const candidate = resolveSelectionScanCandidate();
       if (!candidate) return false;
       startSelectionLookup(candidate);
       return true;
@@ -3901,7 +3918,10 @@
     void loadOverlayMode();
     // Startup awaits this snapshot before demonstrating its first selection.
     let storageReady;
-    globalThis.HDReaderReady = new Promise(resolve => { storageReady = resolve; });
+    const reader = Object.freeze({ scanSelectedText });
+    globalThis.HDReaderReady = new Promise(resolve => {
+      storageReady = () => { resolve(reader); };
+    });
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
       // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
