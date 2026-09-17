@@ -2425,6 +2425,26 @@
     }
     popup.addEventListener("focusout", onPresentationFocusOut);
 
+    function configureEntryActions(actions, label) {
+      actions.className = "gsm-hoshidicts-entry-actions";
+      actions.setAttribute("role", "group");
+      actions.setAttribute("aria-label", label);
+      actions.addEventListener("focusin", event => {
+        const item = [...actions.children].find(child =>
+          child === event.target || child.contains(event.target));
+        if (!item || actions.scrollWidth <= actions.clientWidth) return;
+        const padding = 2;
+        const left = item.offsetLeft;
+        const right = left + item.offsetWidth;
+        if (left < actions.scrollLeft + padding) {
+          actions.scrollLeft = Math.max(0, left - padding);
+        } else if (right > actions.scrollLeft + actions.clientWidth - padding) {
+          actions.scrollLeft = right - actions.clientWidth + padding;
+        }
+      });
+      return actions;
+    }
+
     function runRenderAction(isCurrent, renderContext, action) {
       if (!isCurrent()) return;
       try {
@@ -2464,7 +2484,7 @@
       button.appendChild(icon);
 
       const actions = documentRef.createElement("div");
-      actions.className = "gsm-hoshidicts-entry-actions";
+      configureEntryActions(actions, "Lookup actions");
       actions.appendChild(button);
       const linkButtons = [];
 
@@ -3062,29 +3082,28 @@
         deinflection.addEventListener("toggle", onDeinflectionToggle);
         headword.appendChild(deinflection);
       }
+      let navigationAction = null;
       if (primary && (typeof onBack === "function" || typeof onClose === "function")) {
-        const navigation = documentRef.createElement("div");
-        navigation.className = "gsm-hoshidicts-kanji-navigation";
-        const back = documentRef.createElement("button");
-        back.type = "button";
+        navigationAction = documentRef.createElement("button");
+        navigationAction.type = "button";
         if (typeof onClose === "function") {
-          back.className = "gsm-hoshidicts-popup-close";
-          back.setAttribute("aria-label", "Close lookup");
-          back.addEventListener("click", onClose);
+          navigationAction.className = "gsm-hoshidicts-popup-close";
+          navigationAction.setAttribute("aria-label", "Close lookup");
+          navigationAction.addEventListener("click", onClose);
         } else {
-          back.className = "gsm-hoshidicts-kanji-back";
-          back.textContent = "Back";
-          back.setAttribute("aria-label", "Back to previous results");
-          back.addEventListener("click", onBack);
+          navigationAction.className = "gsm-hoshidicts-kanji-back";
+          navigationAction.textContent = "Back";
+          navigationAction.setAttribute("aria-label", "Back to previous results");
+          navigationAction.addEventListener("click", onBack);
         }
-        navigation.append(back, headword);
-        header.appendChild(navigation);
-      } else {
-        header.appendChild(headword);
       }
+      header.appendChild(headword);
       const actions = primary && noteControls ? noteControls.actions : documentRef.createElement("div");
-      actions.className = "gsm-hoshidicts-entry-actions";
+      if (!primary || !noteControls) configureEntryActions(actions, "Entry actions");
       if (primary && noteControls) actions.querySelector(".gsm-hoshidicts-audio-control")?.remove();
+      for (const previous of actions.querySelectorAll(
+        ":scope > .gsm-hoshidicts-popup-close, :scope > .gsm-hoshidicts-kanji-back"
+      )) previous.remove();
       const audio = documentRef.createElement("div");
       audio.className = "gsm-hoshidicts-audio-control";
       const button = documentRef.createElement("button");
@@ -3096,6 +3115,9 @@
       button.setAttribute("aria-expanded", "false");
       audio.append(button);
       actions.prepend(audio);
+      const existingMiningAction = actions.querySelector(":scope > .gsm-hoshidicts-mine-button");
+      if (existingMiningAction) actions.prepend(existingMiningAction);
+      if (navigationAction) actions.prepend(navigationAction);
       header.append(actions);
       return { element: header, audio: { button, result }, mining: { actions, feedback, result },
         updateRuby(context) {
@@ -3592,19 +3614,23 @@
         "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";
       const navigation = documentRef.createElement("div");
       navigation.className = "gsm-hoshidicts-kanji-navigation";
+      let back = null;
       if (typeof renderOptions.onBack === "function") {
-        const back = documentRef.createElement("button");
+        back = documentRef.createElement("button");
         back.type = "button";
         back.className = "gsm-hoshidicts-kanji-back";
         back.textContent = "Back";
         back.setAttribute("aria-label", "Back to previous results");
         back.addEventListener("click", renderOptions.onBack);
-        navigation.appendChild(back);
       }
       const glyph = documentRef.createElement("div");
       glyph.className = "gsm-hoshidicts-kanji-glyph";
       glyph.textContent = kanji.character;
       navigation.appendChild(glyph);
+      for (const previous of noteControls.actions.querySelectorAll(
+        ":scope > .gsm-hoshidicts-popup-close, :scope > .gsm-hoshidicts-kanji-back"
+      )) previous.remove();
+      if (back) noteControls.actions.prepend(back);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
 
