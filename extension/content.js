@@ -1977,6 +1977,7 @@
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
         capturePin: rootLevel.capturePin ?? undefined,
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
+        dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
       };
     } });

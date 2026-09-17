@@ -138,7 +138,7 @@ export function assertLinkedAnkiFrame(text) {
 
 const MINING_REQUEST_FIELDS = [
   "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
-  "searchQuery", "documentTitle", "audioSelection", "capturePin", "dictionaryAliases",
+  "searchQuery", "documentTitle", "audioSelection", "capturePin", "dictionaryAliases", "dictionaryIds",
   "frequencyDictionaries", "configKey", "screenshot", "captureJobId", "captureUnavailable",
   "clientSpeech",
 ];

@@ -1004,7 +1004,7 @@
             <p id="anki-screenshot-help" class="field-hint">Adds the visible page to fields using <code>{screenshot}</code>.</p>
             <label class="lookup-enable"><span>Edit field templates directly</span><input id="opt-anki-advanced" type="checkbox"></label>
             <p class="field-hint">Combine text with markers such as <code>{expression}</code> and <code>{glossary}</code>.</p>
-            <details class="anki-marker-reference"><summary>Available markers</summary><p id="anki-markers" class="anki-markers"></p><p class="field-hint">Dictionary-specific values also use <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code>.</p></details>
+            <details class="anki-marker-reference"><summary>Available markers</summary><p id="anki-markers" class="anki-markers"></p><p class="field-hint">Dictionary-specific values also use <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code>. A single-glossary marker uses the dictionary's Display name when that sanitized name is unique; current title-based markers and their suffix variants keep precedence. Display-name markers normalize Unicode, change spaces and underscores to hyphens, and remove other punctuation. Empty, colliding or shadowed names can use <code>{single-glossary-id--PACKAGE-ID}</code>, where <code>PACKAGE-ID</code> is the dictionary's 32-character lowercase hexadecimal ID shown in its Details.</p></details>
             <div id="anki-templates" class="anki-templates"></div>
           </fieldset>
           <details class="anki-details">
