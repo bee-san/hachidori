@@ -1776,7 +1776,9 @@ over display names, which retain precedence over package IDs. Frequency markers
 keep their existing sanitizer. Every mining request also carries the package's
 persisted 32-character lowercase hexadecimal ID, exposed as the reserved
 `{single-glossary-id--PACKAGE-ID}` marker for empty, colliding or shadowed
-display names.
+display names. Settings shows the complete package ID in the dictionary's
+Details metadata so the fallback marker can be copied without inspecting
+storage.
 The double hyphen cannot be produced by title/display sanitization. Alias
 changes affect the readable marker, while the package-ID marker stays stable.
 Neither path edits a saved Anki field template.

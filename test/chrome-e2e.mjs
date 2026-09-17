@@ -9704,6 +9704,7 @@ async function main() {
       && renderedDictionary.metadata.includes("Revision test-1")
       && renderedDictionary.metadata.includes("ja")
       && renderedDictionary.metadata.includes("Imported ")
+      && renderedDictionary.metadata.includes(`Package ID ${FIXTURE_ID}`)
       && renderedDictionary.metadata.includes("Update source available"),
     `#dict-list: ${JSON.stringify(renderedDictionary)}`);
 
