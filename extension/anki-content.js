@@ -137,6 +137,32 @@
       setStatus(record, `Encoding captured media${progress}…`);
     }
   }
+  function restartChecks(group) {
+    for (const record of group.records) {
+      if (record.terminal) continue;
+      record.viewChecked = false;
+      record.needsCheck = true;
+      record.decision = null;
+      if (record.add) setMiningButtonState(record, "checking");
+    }
+  }
+  function cachedViewRequest(record) {
+    return { request: {
+      term: {
+        expression: record.result.term.expression,
+        reading: record.result.term.reading,
+      },
+    } };
+  }
+  function cachedView(value) {
+    return value?.cached === true && value.state === "duplicate"
+      && value.canAdd === false && Array.isArray(value.noteIds) && value.noteIds.length > 0;
+  }
+  function checkedConfigKey(configKey, result) {
+    if (typeof result?.configKey !== "string") return { configKey, changed: false };
+    if (configKey !== null && result.configKey !== configKey) return { configKey, changed: true };
+    return { configKey: result.configKey, changed: false };
+  }
   function createAnkiController({
     send,
     capture = send,
@@ -152,56 +178,41 @@
     const boundHere = record => bound.get(record.actions) === record && record.actions.isConnected;
     const current = record => live(record.group) && boundHere(record);
     const needsCheck = record => boundHere(record) && record.needsCheck && !record.busy && !record.terminal;
-    const cachedView = record => record.decision?.cached === true && record.decision.state === "duplicate"
-      && record.decision.canAdd === false && Array.isArray(record.decision.noteIds)
-      && record.decision.noteIds.length > 0;
     function available(group, value) {
       for (const record of group.records) {
-        const show = value || record.terminal || cachedView(record);
+        const show = value || record.terminal || cachedView(record.decision);
         if (show && record.actions.isConnected) controls(record);
         if (record.control) showControls(record, show);
         if (!value && !show) record.needsCheck = false;
       }
     }
-    function restartChecks(group) {
-      for (const record of group.records) {
-        if (record.terminal) continue;
-        record.viewChecked = false;
-        record.needsCheck = true;
-        record.decision = null;
-        if (record.add) setMiningButtonState(record, "checking");
+    async function requestCachedView(record) {
+      record.viewChecked = true;
+      try {
+        return await send("hd_anki_view", cachedViewRequest(record));
+      } catch {
+        return null;
       }
+    }
+    function applyCachedView(group, record, result) {
+      if (!cachedView(result)) return;
+      record.needsCheck = false;
+      controls(record);
+      showControls(record, true);
+      decision(record, result);
+      onChange(group.owner);
     }
     async function checkCachedViews(group, owns) {
       let configKey = null;
       for (const record of group.records) {
         if (!owns()) return { configKey, changed: false };
         if (!needsCheck(record) || record.viewChecked) continue;
-        record.viewChecked = true;
-        let result;
-        try {
-          result = await send("hd_anki_view", { request: {
-            term: {
-              expression: record.result.term.expression,
-              reading: record.result.term.reading,
-            },
-          } });
-        } catch {
-          continue;
-        }
-        if (!owns() || !boundHere(record)) continue;
-        if (typeof result?.configKey === "string") {
-          if (configKey !== null && result.configKey !== configKey) return { configKey, changed: true };
-          configKey = result.configKey;
-        }
-        if (result?.cached === true && result.state === "duplicate" && result.canAdd === false
-            && Array.isArray(result.noteIds) && result.noteIds.length) {
-          record.needsCheck = false;
-          controls(record);
-          showControls(record, true);
-          decision(record, result);
-          onChange(group.owner);
-        }
+        const result = await requestCachedView(record);
+        if (result === null || !owns() || !boundHere(record)) continue;
+        const checked = checkedConfigKey(configKey, result);
+        if (checked.changed) return checked;
+        configKey = checked.configKey;
+        applyCachedView(group, record, result);
       }
       return { configKey, changed: false };
     }
