@@ -43,7 +43,7 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
-  for (const type of ["hd_anki_status", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
+  for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
     assert.equal(forwardableRequest({ target: "hachidori-anki", type }), true, type);
   }
   assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_screenshot" }), false);
@@ -119,6 +119,13 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },
   };
   const media = {};
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_view", requestId: 3,
+    request: { term: request.term, configKey: "client-key", apiKey: "nope" },
+  }), {
+    target: "hachidori-anki", type: "hd_anki_view", requestId: 3,
+    request: { term: { expression: "猫", reading: "ねこ" } },
+  });
   assert.deepEqual(allowLinkedAnkiRequest({
     target: "hachidori-anki",
     type: "hd_anki_submit",

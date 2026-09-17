@@ -814,15 +814,24 @@ races a pull causes an immediate replacement refresh instead of losing the
 new row. Failures retain the previous successful snapshot; a successful empty
 result clears it.
 
-Every mining flow uses the same lookup. A warm hit returns cached note IDs. A
-miss performs the normal scoped Anki lookup, verifies the direct fields against
-Hachidori's exact word key, calculates aggregate maturity and inserts a found
-row; a true miss creates no negative row. Submission repeats that lookup inside
-the mutation queue. Confirmed adds and overwrites update the row immediately.
-View in Anki browses cached IDs directly. Overwrite alone reads `notesInfo` to
-select an exact configured-note-type target; stale IDs trigger the normal live
-repair. Cross-type matches may be viewed or prevented but are never overwrite
-targets.
+Every mining flow uses the same lookup. In Prevent mode, popup readiness first
+peeks at that canonical index using only the term and current configuration
+digest. A warm positive exposes **View in Anki** with its exact note IDs without
+Anki discovery, field rendering or any Anki request. A miss remains unknown and
+falls through to the normal status and preflight path; its scoped live lookup
+verifies the direct fields against Hachidori's exact word key, calculates
+aggregate maturity and inserts a found row. A true miss creates no negative row.
+Other duplicate policies retain their full preflight because Add duplicate and
+Overwrite require live validation beyond membership.
+
+Clicking **View in Anki** forces that same scoped live lookup before opening the
+Browser. It replaces stale IDs in the canonical row, or removes an empty row and
+returns the popup to normal addability checks; unrelated expression searches are
+not opened for a known stale positive. Submission independently repeats the
+lookup inside the mutation queue, so cache readiness never authorizes a write.
+Confirmed adds and overwrites update the row immediately. Overwrite alone reads
+`notesInfo` to select an exact configured-note-type target. Cross-type matches
+may be viewed or prevented but are never overwrite targets.
 
 Stored HTML stays literal, ASCII case is folded as in Anki's ordinary field
 search, and lookup expressions use Anki's default NFC query normalization.

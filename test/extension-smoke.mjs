@@ -1229,6 +1229,10 @@ async function sharingHostStage() {
   };
   const hostAnkiService = {
     status() { hostAnkiCalls.push(["status"]); return { available: true, configKey: "host-config" }; },
+    view(request) {
+      hostAnkiCalls.push(["view", structuredClone(request)]);
+      return { state: "duplicate", canAdd: false, noteIds: [70, 71], configKey: "host-config", cached: true };
+    },
     preflightClient(request) {
       hostAnkiCalls.push(["preflightClient", structuredClone(request)]);
       return { state: "addable", canAdd: true, clientSpeech: {
@@ -1242,7 +1246,10 @@ async function sharingHostStage() {
       hostAnkiCalls.push(["submitClient", structuredClone(request), structuredClone(clientMedia)]);
       return { state: "added", noteId: 71, warnings: [] };
     },
-    browse(request) { hostAnkiCalls.push(["browse", structuredClone(request)]); return { opened: true }; },
+    browse(request) {
+      hostAnkiCalls.push(["browse", structuredClone(request)]);
+      return { opened: true, noteIds: [71], repaired: true };
+    },
     maturity(request) { hostAnkiCalls.push(["maturity", structuredClone(request)]); return { mature: true }; },
     screenshot() { hostAnkiCalls.push(["screenshot"]); return { token: "wrong-host" }; },
   };
@@ -1396,6 +1403,7 @@ async function sharingHostStage() {
     await settle(() => sent(socket).length > beforeCount);
     return sent(socket).at(-1);
   };
+  const ankiView = await askAnki("anki-view", "hd_anki_view", { request: ankiRequest });
   const ankiStatus = await askAnki("anki-status", "hd_anki_status");
   ankiRequest.configKey = ankiStatus.response?.configKey;
   const staleHostKey = await askAnki("anki-stale-key", "hd_anki_preflight", {
@@ -1422,17 +1430,22 @@ async function sharingHostStage() {
         "modelNamesAndIds", "deckNames", "modelFieldNames",
       ])
       && hostSetupCalls.every(call => call.url === "https://host.example/anki" && call.key === "host-secret")
+      && ankiView.response?.cached === true && JSON.stringify(ankiView.response.noteIds) === JSON.stringify([70, 71])
+      && /^linked:[0-9a-f-]+:host-config$/u.test(ankiView.response.configKey)
       && ankiStatus.response?.available === true && /^linked:[0-9a-f-]+:host-config$/u.test(ankiStatus.response.configKey)
       && staleHostKey.response?.ok === false && /configuration changed/u.test(staleHostKey.response.error)
       && ankiPreflight.response?.state === "addable" && ankiSubmit.response?.state === "added"
       && ankiBrowse.response?.opened === true && ankiMaturity.response?.mature === true
       && staleBrowse.response?.ok === false && /configuration changed/u.test(staleBrowse.response.error)
       && hostScreenshot.response?.ok === false && /unsupported linked Anki request/u.test(hostScreenshot.response.error)
-      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify(["status", "preflightClient", "submitClient", "browse", "maturity"])
+      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify([
+        "view", "status", "preflightClient", "submitClient", "browse", "maturity",
+      ])
+      && JSON.stringify(hostAnkiCalls[0][1]) === JSON.stringify({ term: { expression: "猫", reading: "ねこ" } })
       && submitted?.[1]?.url === undefined && submitted?.[1]?.apiKey === undefined && submitted?.[1]?.anki === undefined
       && submitted?.[1]?.configKey === "host-config"
       && submitted?.[1]?.term?.expression === "猫" && JSON.stringify(submitted?.[2]) === JSON.stringify({}),
-    JSON.stringify({ linkedSetup, hostSetupCalls, ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse,
+    JSON.stringify({ linkedSetup, hostSetupCalls, ankiView, ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse,
       staleBrowse, ankiMaturity, hostScreenshot, hostAnkiCalls }));
 
   socket.drop();
@@ -1541,6 +1554,7 @@ async function sharingClientStage() {
       localAnkiCalls.push(["status"]);
       return localStatusGate ?? { available: true, configKey: "local-config", error: null };
     },
+    view() { throw new Error("linked View readiness ran in the reading browser"); },
     preflight() { throw new Error("linked preflight ran in the reading browser"); },
     submit() { throw new Error("linked submit ran in the reading browser"); },
     browse() { throw new Error("linked browse ran in the reading browser"); },
@@ -1715,6 +1729,8 @@ async function sharingClientStage() {
     expression: "猫",
     reading: "ねこ",
   };
+  const ankiView = await askLinkedAnki("hd_anki_view", { request: { term: linkedRequest.term } },
+    { state: "duplicate", canAdd: false, noteIds: [81, 82], configKey: "host-config", cached: true });
   const ankiStatus = await askLinkedAnki("hd_anki_status", {}, { available: true, configKey: "host-config" });
   const ankiPreflight = await askLinkedAnki("hd_anki_preflight", { request: linkedRequest },
     { state: "addable", canAdd: true, clientSpeech: linkedSpeech });
@@ -1743,7 +1759,9 @@ async function sharingClientStage() {
   const rejected = await rejecting;
   const localOperations = localAnkiCalls.map(call => call[0]);
   check("linked Anki preparation and writes go to the host while screenshot bytes and confirmed cleanup stay in the reading browser",
-    ankiStatus.forwarded.message.type === "hd_anki_status" && ankiStatus.reply.available === true
+    ankiView.forwarded.message.type === "hd_anki_view" && ankiView.reply.cached === true
+      && JSON.stringify(ankiView.forwarded.message.request) === JSON.stringify({ term: linkedRequest.term })
+      && ankiStatus.forwarded.message.type === "hd_anki_status" && ankiStatus.reply.available === true
       && ankiPreflight.forwarded.message.type === "hd_anki_preflight" && ankiPreflight.reply.state === "addable"
       && screenshot.ok === true && screenshot.token === localScreenshot.token
       && socket.requests().length === requestsBeforeSubmit + 4
@@ -1767,7 +1785,7 @@ async function sharingClientStage() {
         "clientMedia", "settleClientMedia",
       ])
       && localAnkiCalls[4]?.[2] === "added" && localAnkiCalls[6]?.[2] === "invalid",
-    JSON.stringify({ ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
+    JSON.stringify({ ankiView, ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
       rejected, forwardedRejected, localAnkiCalls }));
 
   const beforeDiscovery = socket.requests().length;

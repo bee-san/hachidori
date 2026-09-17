@@ -107,8 +107,8 @@ After linking, the page reloads, and from then on:
 - this browser's own dictionary state, settings, personal source, update
   schedule and lookup counts are kept aside untouched, and its engine keeps
   reading and committing them, so no local dictionary file is ever removed;
-- Anki Settings discovery and existing-setup checks, availability, preflight,
-  generation validation, duplicate checks, writes and browsing use the host's
+- Anki Settings discovery and existing-setup checks, cache-only View readiness,
+  availability, preflight, generation validation, duplicate checks, writes and browsing use the host's
   AnkiConnect URL, API key, deck and note type. The linked browser never falls
   back to its own Anki, and its duplicate-index refresh is suspended while linked;
 - a mining screenshot and explicitly selected capture clip still come from the

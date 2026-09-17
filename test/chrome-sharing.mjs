@@ -247,6 +247,12 @@ async function startMockAnkiConnect(apiKey) {
     media: new Map(),
     nextNoteId: 100,
   };
+  const queryExpression = query => {
+    const duplicate = /^"dupe:1,(.*)"$/u.exec(query);
+    const indexed = /\("note:Basic" "front:((?:\\.|[^"])*)"\)/iu.exec(query);
+    const value = duplicate?.[1] ?? indexed?.[1];
+    return value === undefined ? null : value.replace(/\\(.)/gu, "$1");
+  };
   const server = createServer(async (request, response) => {
     if (request.method === "OPTIONS") {
       response.writeHead(204, { "access-control-allow-origin": "*" });
@@ -293,9 +299,11 @@ async function startMockAnkiConnect(apiKey) {
         state.notes.set(noteId, structuredClone(params.note));
         result = noteId;
       } else if (action === "findNotes") {
-        const match = /^"dupe:1,(.*)"$/u.exec(params.query);
-        const text = match?.[1]?.replace(/\\(["\\])/gu, "$1") ?? "";
-        result = [...state.notes].filter(([, note]) => note.fields.Front === text).map(([noteId]) => noteId);
+        const expression = queryExpression(params.query);
+        result = params.query === '"note:Basic"'
+          ? [...state.notes.keys()]
+          : expression === null ? [] : [...state.notes]
+            .filter(([, note]) => note.fields.Front === expression).map(([noteId]) => noteId);
       } else if (action === "notesInfo") {
         result = params.notes.filter(noteId => state.notes.has(noteId)).map(noteId => {
           const note = state.notes.get(noteId);
@@ -831,8 +839,10 @@ try {
   await startup.evaluate(() => document.getElementById("linked-anki-screenshot-proof")?.remove());
   const submittedRequest = { ...request, screenshot: { token: captured.token, filename: captured.filename } };
   const submitted = await message(startup, "hachidori-anki", "hd_anki_submit", { request: submittedRequest });
+  const browseStart = hostAnki.state.calls.length;
   const browsed = await message(startup, "hachidori-anki", "hd_anki_browse",
     { request: { noteIds: [submitted.noteId], expression: request.term.expression, configKey: ankiStatus.configKey } });
+  const browseCalls = hostAnki.state.calls.slice(browseStart);
   const addsBeforeStale = hostAnki.state.calls.filter(call => call.action === "addNote").length;
   const stale = await message(startup, "hachidori-anki", "hd_anki_submit", {
     request: { ...request, generation: request.generation + 1 },
@@ -879,6 +889,12 @@ try {
       && screenshotProof?.width === 640 && screenshotProof.height === 480
       && centre[1] > 150 && centre[1] > centre[0] + 80 && centre[1] > centre[2] + 70
       && browsed?.ok === true && browsed.opened === true && hostActions.includes("guiBrowse")
+      && browseCalls.some(call => call.action === "findNotes"
+        && call.params.query.includes('"note:Basic"') && call.params.query.includes(`"front:${request.term.expression}"`))
+      && browseCalls.some(call => call.action === "notesInfo"
+        && JSON.stringify(call.params.notes) === JSON.stringify([submitted.noteId]))
+      && browseCalls.some(call => call.action === "findNotes"
+        && call.params.query === `nid:${submitted.noteId} is:review -is:learn prop:ivl>=21`)
       && stale?.ok === false && /dictionary generation changed/iu.test(stale.error)
       && addsBeforeStale === 1 && addsAfterStale === addsBeforeStale
       && unavailableAnki?.ok === true && unavailableAnki.available === false
@@ -898,6 +914,7 @@ try {
       note: note?.fields,
       screenshot: screenshotProof,
       browsed,
+      browseCalls,
       stale: { ok: stale?.ok, error: stale?.error, addsBeforeStale, addsAfterStale },
       unavailableAnki,
       hostActions,

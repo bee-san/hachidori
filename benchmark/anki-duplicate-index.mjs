@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Alternating production-path benchmark against a warm isolated Anki profile.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import os from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createAnkiGateway } from "../extension/anki.js";
 import { createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { ankiIndexSource, lookupAnkiIndex } from "../extension/anki-index.js";
+import { createAnkiMiningService } from "../extension/anki-mining.js";
 import "../extension/reader-options.js";
 
 const template = value => ({ value, overwriteMode: "coalesce" });
@@ -42,6 +45,7 @@ function argumentsFrom(argv) {
     model: values.model ?? "Hachidori Duplicate Index Benchmark",
     deck: values.deck ?? "Hachidori Duplicate Index Benchmark",
     expression: values.expression ?? "統合重複索引ベンチ",
+    ankiVersion: values["anki-version"] ?? null,
     runs,
     warmups,
     output: values.output ? resolve(values.output) : null,
@@ -69,6 +73,11 @@ function summary(samples, requests) {
     requestCount: requests,
     requestsPerRun: requests / samples.length,
   };
+}
+
+function actionCounts(actions) {
+  return Object.fromEntries([...new Set(actions)].sort()
+    .map(action => [action, actions.filter(value => value === action).length]));
 }
 
 const elapsedMs = started => Number(process.hrtime.bigint() - started) / 1e6;
@@ -135,6 +144,30 @@ async function inMemoryIndex(config, live) {
   return index;
 }
 
+function miningService(gateway, duplicateIndex, config) {
+  return createAnkiMiningService({
+    gateway,
+    duplicateIndex,
+    readConfig: async () => config,
+    buildFields: async request => ({
+      fields: {
+        Expression: request.term.expression,
+        Back: "benchmark fixture",
+      },
+    }),
+  });
+}
+
+function measuredGateway(actions) {
+  return createAnkiGateway({
+    fetch: async (url, options) => {
+      const request = JSON.parse(options.body);
+      actions.push(request.action);
+      return globalThis.fetch(url, options);
+    },
+  });
+}
+
 async function main() {
   const options = argumentsFrom(process.argv.slice(2));
   const apiKey = process.env.HACHIDORI_ANKI_API_KEY ?? "";
@@ -157,47 +190,75 @@ async function main() {
     throw new Error(`Anki opened ${fixture.mediaDir}; expected isolated media directory ${options.expectedMediaDir}.`);
   }
 
-  const requests = { live: 0, warm: 0 };
-  const measuredInvoke = (path) => async (action, params, timeoutMs) => {
-    requests[path]++;
-    return gateway.invoke(action, params, apiKey, timeoutMs, options.endpoint);
-  };
   const cache = await inMemoryIndex(config,
     (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression));
   const primed = await cache.lookup(config, options.expression, uncountedInvoke);
   assert.deepEqual(primed.noteIds, fixture.duplicate.noteIds);
-  const forbiddenWarmInvoke = async () => {
-    requests.warm++;
-    throw new Error("A warm local-index hit contacted Anki.");
-  };
-  assert.deepEqual((await cache.lookup(config, options.expression, forbiddenWarmInvoke)).noteIds,
-    fixture.duplicate.noteIds);
+  const actions = { live: [], warm: [] };
+  const warmService = miningService(measuredGateway(actions.warm), cache, config);
+  const request = { term: { expression: options.expression, reading: "" } };
+  assert.deepEqual((await warmService.view(request)).noteIds, fixture.duplicate.noteIds);
+  assert.equal(actions.warm.length, 0, "a warm View readiness hit contacted Anki");
 
   const samples = { live: [], warm: [] };
   const total = options.warmups + options.runs;
   for (let iteration = 0; iteration < total; iteration++) {
     if (iteration === options.warmups) {
-      requests.live = 0;
-      requests.warm = 0;
+      actions.live.length = 0;
+      actions.warm.length = 0;
     }
     const order = iteration % 2 === 0 ? ["live", "warm"] : ["warm", "live"];
     for (const path of order) {
+      let liveService;
+      if (path === "live") {
+        const index = await inMemoryIndex(config,
+          (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression));
+        await index.peek(config, options.expression);
+        liveService = miningService(measuredGateway(actions.live), index, config);
+      }
       const started = process.hrtime.bigint();
-      const result = path === "live"
-        ? await lookupAnkiIndex(measuredInvoke("live"), fixture.source, options.expression)
-        : await cache.lookup(config, options.expression, forbiddenWarmInvoke);
+      let result;
+      if (path === "live") {
+        const miss = await liveService.view(request);
+        assert.equal(miss.cached, false);
+        assert.deepEqual(miss.noteIds, []);
+        const status = await liveService.status();
+        assert.equal(status.available, true);
+        result = await liveService.preflight({ ...request, configKey: status.configKey });
+      } else {
+        result = await warmService.view(request);
+      }
       const duration = elapsedMs(started);
       assert.deepEqual(result.noteIds, fixture.duplicate.noteIds);
+      assert.equal(result.state, "duplicate");
       if (iteration >= options.warmups) samples[path].push(duration);
     }
   }
 
-  const measuredLiveRequests = requests.live;
-  const live = summary(samples.live, measuredLiveRequests);
-  const warm = summary(samples.warm, requests.warm);
+  const live = { ...summary(samples.live, actions.live.length), actionCounts: actionCounts(actions.live),
+    rawSamplesMs: samples.live };
+  const warm = { ...summary(samples.warm, actions.warm.length), actionCounts: actionCounts(actions.warm),
+    rawSamplesMs: samples.warm };
+  let commit = null;
+  try {
+    commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch { /* A source archive has no Git metadata. */ }
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     measuredAt: new Date().toISOString(),
+    scope: "Service-level View readiness for one known duplicate. The live path starts with an eligible empty canonical index, then performs the same status and preflight fallback as a popup cache miss. Browser messaging, DOM rendering, fixture setup and the complete-index refresh are excluded.",
+    environment: {
+      commit,
+      node: process.version,
+      platform: process.platform,
+      architecture: process.arch,
+      osRelease: os.release(),
+      cpuModel: os.cpus()[0]?.model ?? null,
+      logicalCpuCount: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+      ankiVersion: options.ankiVersion,
+      ankiConnectApiVersion: await uncountedInvoke("version", {}),
+    },
     endpoint: options.endpoint,
     mediaDir: fixture.mediaDir,
     model: config.model,
@@ -217,10 +278,10 @@ async function main() {
   console.log(JSON.stringify(report, null, 2));
   console.log([
     "",
-    "| Production path | median (ms) | p95 (ms) | requests | requests/run |",
+    "| View readiness path | median (ms) | p95 (ms) | requests | requests/run |",
     "| --- | ---: | ---: | ---: | ---: |",
-    `| Live scoped Anki lookup | ${live.medianMs.toFixed(3)} | ${live.p95Ms.toFixed(3)} | ${live.requestCount} | ${live.requestsPerRun.toFixed(2)} |`,
-    `| Warm local-index hit | ${warm.medianMs.toFixed(3)} | ${warm.p95Ms.toFixed(3)} | ${warm.requestCount} | ${warm.requestsPerRun.toFixed(2)} |`,
+    `| Cache miss, status + live scoped repair | ${live.medianMs.toFixed(3)} | ${live.p95Ms.toFixed(3)} | ${live.requestCount} | ${live.requestsPerRun.toFixed(2)} |`,
+    `| Warm canonical-index positive | ${warm.medianMs.toFixed(3)} | ${warm.p95Ms.toFixed(3)} | ${warm.requestCount} | ${warm.requestsPerRun.toFixed(2)} |`,
     "",
     `Median speedup: ${report.medianSpeedup.toFixed(1)}x`,
   ].join("\n"));
@@ -230,4 +291,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   await main();
 }
 
-export { argumentsFrom, median, percentile, summary };
+export { actionCounts, argumentsFrom, median, percentile, summary };

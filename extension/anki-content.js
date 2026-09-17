@@ -137,6 +137,32 @@
       setStatus(record, `Encoding captured media${progress}…`);
     }
   }
+  function restartChecks(group) {
+    for (const record of group.records) {
+      if (record.terminal) continue;
+      record.viewChecked = false;
+      record.needsCheck = true;
+      record.decision = null;
+      if (record.add) setMiningButtonState(record, "checking");
+    }
+  }
+  function cachedViewRequest(record) {
+    return { request: {
+      term: {
+        expression: record.result.term.expression,
+        reading: record.result.term.reading,
+      },
+    } };
+  }
+  function cachedView(value) {
+    return value?.cached === true && value.state === "duplicate"
+      && value.canAdd === false && Array.isArray(value.noteIds) && value.noteIds.length > 0;
+  }
+  function checkedConfigKey(configKey, result) {
+    if (typeof result?.configKey !== "string") return { configKey, changed: false };
+    if (configKey !== null && result.configKey !== configKey) return { configKey, changed: true };
+    return { configKey: result.configKey, changed: false };
+  }
   function createAnkiController({
     send,
     capture = send,
@@ -154,10 +180,41 @@
     const needsCheck = record => boundHere(record) && record.needsCheck && !record.busy && !record.terminal;
     function available(group, value) {
       for (const record of group.records) {
-        if (value && record.actions.isConnected) controls(record);
-        if (record.control) showControls(record, value);
-        if (!value) record.needsCheck = false;
+        const show = value || record.terminal || cachedView(record.decision);
+        if (show && record.actions.isConnected) controls(record);
+        if (record.control) showControls(record, show);
+        if (!value && !show) record.needsCheck = false;
       }
+    }
+    async function requestCachedView(record) {
+      record.viewChecked = true;
+      try {
+        return await send("hd_anki_view", cachedViewRequest(record));
+      } catch {
+        return null;
+      }
+    }
+    function applyCachedView(group, record, result) {
+      if (!cachedView(result)) return;
+      record.needsCheck = false;
+      controls(record);
+      showControls(record, true);
+      decision(record, result);
+      onChange(group.owner);
+    }
+    async function checkCachedViews(group, owns) {
+      let configKey = null;
+      for (const record of group.records) {
+        if (!owns()) return { configKey, changed: false };
+        if (!needsCheck(record) || record.viewChecked) continue;
+        const result = await requestCachedView(record);
+        if (result === null || !owns() || !boundHere(record)) continue;
+        const checked = checkedConfigKey(configKey, result);
+        if (checked.changed) return checked;
+        configKey = checked.configKey;
+        applyCachedView(group, record, result);
+      }
+      return { configKey, changed: false };
     }
     async function checkRecords(group, owns) {
       for (const record of group.records) {
@@ -177,8 +234,20 @@
       const owns = () => live(group) && epoch === group.epoch;
       try {
         if (!owns()) return;
+        const cached = await checkCachedViews(group, owns);
+        if (!owns()) return;
+        if (cached.changed) {
+          restartChecks(group);
+          return;
+        }
+        if (cached.configKey !== null) group.configKey = cached.configKey;
+        if (!group.records.some(needsCheck)) return;
         const status = await send("hd_anki_status", {});
         if (!owns()) return;
+        if (cached.configKey !== null && status.configKey !== cached.configKey) {
+          restartChecks(group);
+          return;
+        }
         group.configKey = status.configKey;
         available(group, status.available);
         if (!status.available) return;
@@ -196,7 +265,10 @@
       }
     }
     function refresh(group, all = false) {
-      if (all) for (const record of group.records) record.needsCheck = !record.terminal;
+      if (all) for (const record of group.records) {
+        record.viewChecked = record.terminal;
+        record.needsCheck = !record.terminal;
+      }
       group.records.forEach(record => {
         if (needsCheck(record)) {
           // Readiness belongs to this result, not to the whole popup's queue.
@@ -324,11 +396,25 @@
       record.add.disabled = true;
       const noteIds = record.terminal ? record.noteIds : record.decision?.noteIds;
       try {
-        await send("hd_anki_browse", { request: {
+        const result = await send("hd_anki_browse", { request: {
           noteIds: Array.isArray(noteIds) ? noteIds : [],
           expression: record.result.term.expression,
           configKey: record.group.configKey,
         } });
+        if (current(record) && Array.isArray(result?.noteIds)) {
+          if (record.terminal) record.noteIds = result.noteIds;
+          else if (record.decision) record.decision = { ...record.decision, noteIds: result.noteIds };
+        }
+        if (current(record) && result?.opened === false) {
+          record.terminal = false;
+          record.noteIds = [];
+          record.decision = null;
+          record.viewChecked = false;
+          record.needsCheck = true;
+          setMiningButtonState(record, "checking");
+          setStatus(record, "");
+          refresh(record.group);
+        }
       }
       catch (error) { if (current(record)) setStatus(record, `Could not open Anki: ${error.message}`, "error"); }
       finally {
@@ -387,7 +473,7 @@
         let record = bound.get(item.actions);
         if (record?.group === group && record.result === item.result) continue;
         removeControls(record);
-        record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true,
+        record = { ...item, group, busy: false, terminal: false, decision: null, viewChecked: false, needsCheck: true,
           captureJobId: null };
         bound.set(item.actions, record);
         records.push(record);

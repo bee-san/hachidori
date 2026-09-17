@@ -6,14 +6,14 @@ import { createAnkiMiningService } from "../extension/anki-mining.js";
 import { createAnkiGateway } from "../extension/anki.js";
 
 function testIndex(resolve = async () => []) {
-  const find = async (config, expression, invoke) => {
+  const find = async (config, expression, invoke, cached = false) => {
     const value = await resolve(config, expression, invoke);
     const result = Array.isArray(value) ? { noteIds: value } : value;
     return {
       wordKey: expression,
       mature: result?.mature === true,
       noteIds: [...new Set(result?.noteIds ?? [])].sort((left, right) => left - right),
-      cached: false,
+      cached: cached && (result?.noteIds ?? []).length > 0,
     };
   };
   return {
@@ -24,6 +24,7 @@ function testIndex(resolve = async () => []) {
           .map(([field]) => field);
       return fields.length ? { key: "test", model: config.model, fields: fields.map(field => field.toLowerCase()) } : null;
     },
+    peek: (config, expression) => find(config, expression, null, true),
     lookup: find,
     repair: find,
     async recordWrite() {},
@@ -68,6 +69,58 @@ test("mining readiness shares its short source-backed cache and skips Anki when 
   f.change({ model: "" });
   assert.equal((await f.service.status()).available, false);
   assert.equal(f.discovers, 1);
+});
+
+test("View readiness uses only the canonical cache and a live preflight repairs a positive miss", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  let cachedIds = [], liveLookups = 0, discoveries = 0;
+  const duplicateIndex = {
+    source: async () => ({ key: "test", model: "Basic", fields: ["front"] }),
+    async peek(configValue, expression) {
+      return { wordKey: expression, mature: false, noteIds: [...cachedIds], cached: cachedIds.length > 0 };
+    },
+    async lookup(configValue, expression) {
+      liveLookups++;
+      cachedIds = [42, 73];
+      return { wordKey: expression, mature: false, noteIds: [...cachedIds], cached: false };
+    },
+    async repair(configValue, expression) {
+      return this.lookup(configValue, expression);
+    },
+    async recordWrite() {},
+  };
+  const service = createAnkiMiningService({
+    gateway: {
+      async discover() {
+        discoveries++;
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      async invoke(action) { throw new Error(`Unexpected Anki request: ${action}`); },
+    },
+    readConfig: async () => config,
+    duplicateIndex,
+    buildFields: async request => ({ fields: { Front: request.term.expression, Back: "cat" } }),
+  });
+  const request = { term: { expression: "猫", reading: "" } };
+  const cold = await service.view(request);
+  assert.deepEqual(cold.noteIds, []);
+  assert.equal(cold.cached, false);
+  assert.equal(discoveries, 0);
+  assert.equal(liveLookups, 0, "a cache miss remains unknown");
+
+  const status = await service.status();
+  const repaired = await service.preflight({ ...request, configKey: status.configKey });
+  assert.deepEqual(repaired.noteIds, [42, 73]);
+  assert.equal(liveLookups, 1);
+
+  const warm = await service.view(request);
+  assert.deepEqual(warm.noteIds, [42, 73]);
+  assert.equal(warm.cached, true);
+  assert.equal(warm.state, "duplicate");
+  assert.equal(liveLookups, 1, "the repaired warm hit makes zero Anki lookups");
+  assert.equal(discoveries, 1, "cache-only readiness does not repeat model discovery");
 });
 
 test("endpoint changes invalidate mining readiness and bind duplicates, media, writes, enrichment and browsing to one endpoint", async () => {
@@ -118,7 +171,7 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   const request = { configKey: current.configKey };
   assert.equal((await service.preflight(request)).canAdd, true);
   assert.equal((await service.submit(request)).state, "added");
-  await service.browse({ configKey: current.configKey, noteIds: [27], expression: "猫" });
+  await service.browse({ configKey: current.configKey, noteIds: [27] });
   const currentRequests = requests.slice(boundary);
   assert.ok(currentRequests.every(value => value.url === config.url && value.key === config.apiKey));
   for (const action of ["canAddNotesWithErrorDetail", "storeMediaFile", "addNote", "notesInfo", "updateNoteFields", "guiBrowse"]) {
@@ -134,7 +187,7 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   assert.equal(requests.length, staleBrowseBoundary, "stale browsing never reaches AnkiConnect");
 });
 
-test("View in Anki uses cached IDs directly and repairs a partially stale row without inspecting fields", async () => {
+test("View in Anki repairs cached IDs before opening the exact live notes", async () => {
   const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
   const calls = [];
@@ -143,16 +196,34 @@ test("View in Anki uses cached IDs directly and repairs a partially stale row wi
       calls.push({ action, params });
       assert.equal(action, "guiBrowse");
       assert.equal(timeoutMs, 30_000, "opening Anki's browser gets time to finish before timing out");
-      return calls.length === 1 ? [7] : [8, 9];
+      return [];
     } },
     readConfig: async () => config,
     duplicateIndex: testIndex(() => [8, 9]),
   });
-  await service.browse({ expression: "猫", noteIds: [7, 8] });
-  assert.deepEqual(calls, [
-    { action: "guiBrowse", params: { query: "nid:7,8" } },
-    { action: "guiBrowse", params: { query: "nid:8,9" } },
-  ]);
+  assert.deepEqual(await service.browse({ expression: "猫", noteIds: [7, 8] }), {
+    opened: true,
+    noteIds: [8, 9],
+    repaired: true,
+  });
+  assert.deepEqual(calls, [{ action: "guiBrowse", params: { query: "nid:8,9" } }]);
+});
+
+test("View in Anki removes a stale positive row without opening an unrelated search", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  let requests = 0;
+  const service = createAnkiMiningService({
+    gateway: { async invoke() { requests++; throw new Error("stale removal must not browse"); } },
+    readConfig: async () => config,
+    duplicateIndex: testIndex(() => []),
+  });
+  assert.deepEqual(await service.browse({ expression: "猫", noteIds: [7, 8] }), {
+    opened: false,
+    noteIds: [],
+    repaired: true,
+  });
+  assert.equal(requests, 0);
 });
 
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {

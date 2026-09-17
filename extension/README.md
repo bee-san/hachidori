@@ -73,7 +73,8 @@ the service worker and both engine runtimes run the same code.
   media crossing a linked-browser boundary. `anki-mining.js` and
   `anki-worker.js` are the mining service in the
   service worker. `anki-index.js` and `anki-index-cache.js` provide the shared
-  scoped duplicate and maturity index. `anki-offscreen.js` launches
+  scoped duplicate and maturity index, including cache-only View readiness and
+  click-time live ID repair. `anki-offscreen.js` launches
   `anki-index-worker.js` for complete refreshes without moving note fields
   through the service worker.
 - **Pronunciation.** `audio-sources.js`, `audio-repository.js`,

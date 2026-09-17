@@ -465,8 +465,10 @@ where sandboxed Chrome cannot start; do not use it for untrusted archives.
 ## Anki duplicate index
 
 The focused [duplicate-index benchmark](../docs/anki-duplicate-index-benchmark.md)
-alternates two equivalent production lookup paths for the same known duplicate:
-a normal scoped Anki lookup returning exact note IDs and a warm local-index hit
-returning those IDs. Setup, refresh, cold-cache and cache-miss work is excluded.
-The driver refuses AnkiConnect's standard port and verifies the isolated
-profile's media directory before measuring.
+alternates two equivalent service-level View-readiness outcomes for the same
+known duplicate: an eligible cache miss followed by status plus live preflight
+repair, and a warm canonical-index positive returning the same exact IDs with
+zero Anki requests. Setup, complete refreshes, browser messaging and DOM work
+are excluded. The JSON includes every raw sample, action counts and environment
+details. The driver refuses AnkiConnect's standard port and verifies the
+isolated profile's media directory before measuring.

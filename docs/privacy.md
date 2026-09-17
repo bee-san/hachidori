@@ -80,11 +80,15 @@ scope selected in Anki settings. Each compact row stores a word, whether any
 matching note is mature, and matching note IDs; it does not store note fields,
 note-type names, deck names or card data. A missing word triggers a scoped
 Anki lookup during mining and a found result repairs the local index. Mature-card
-definition blur reads only that index. These reads and checks do not create
-notes. Frequency definition blur uses only native numeric values already
+definition blur reads only that index. In Prevent mode, popup readiness also
+checks this local index first: a warm positive shows View in Anki without
+contacting Anki, while an unknown miss continues to the ordinary live mining
+check. Clicking View validates the matching IDs live before opening Anki and
+repairs or removes the compact row. These reads and checks do not create notes.
+Frequency definition blur uses only native numeric values already
 returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
-host owns duplicate and maturity checks. Explicit mining sends the content
+host owns View readiness, duplicate and maturity checks. Explicit mining sends the content
 selected by your field mappings, such as a word, definition, sentence, page
 title, image or audio, and creates or updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.

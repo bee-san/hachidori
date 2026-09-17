@@ -1729,7 +1729,7 @@ function failureReply(message, error) {
   });
 }
 
-const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit",
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_preflight: "preflight", hd_anki_submit: "submit",
   hd_anki_browse: "browse", hd_anki_screenshot: "screenshot", hd_anki_screenshot_discard: "discardScreenshot",
   hd_anki_maturity: "maturity" };
 
@@ -2188,7 +2188,7 @@ async function handleAnkiRequest(message, sender) {
       // from before linked mining advertised a capability.
       if (message.type === "hd_anki_maturity") return forwardToHost(message);
       if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
-      if (["hd_anki_status", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
+      if (["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
         try {
           const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
           if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
@@ -2287,6 +2287,10 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     if (linkedClient && message.type === "hd_anki_status") {
       const status = await service.status();
       return { ...status, configKey: linkedAnkiConfigKey(status.configKey) };
+    }
+    if (linkedClient && message.type === "hd_anki_view") {
+      const result = await service.view(message.request);
+      return { ...result, configKey: linkedAnkiConfigKey(result.configKey) };
     }
     if (linkedClient && message.type === "hd_anki_preflight") {
       return service.preflightClient(hostLinkedAnkiRequest(message.request));

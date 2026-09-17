@@ -16,12 +16,19 @@ async function until(predicate) {
   for (let n = 0; n < 100 && !predicate(); n++) await tick();
   assert.ok(predicate(), "mining controller did not reach the expected state");
 }
+function handlesAnkiView(send) {
+  send.handlesAnkiView = true;
+  return send;
+}
 function fixture(t, send, capture = send, wait, conceal) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
   const owner = {}, request = {};
-  const controller = globalThis.HDAnki.createAnkiController({ send, capture, onChange() {},
+  const controllerSend = (type, fields) => type === "hd_anki_view" && send.handlesAnkiView !== true
+    ? Promise.resolve({ state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false })
+    : send(type, fields);
+  const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
     ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
@@ -75,6 +82,58 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
   assert.equal(calls.length, before, "unchanged bindings do not repeat discovery or preflight");
 });
 
+test("an unknown cache miss falls through to live preflight and keeps its repaired exact IDs", async t => {
+  const calls = [];
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_view") {
+      return { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false };
+    }
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") {
+      assert.equal(request.term.expression, "猫");
+      return { state: "duplicate", canAdd: false, noteIds: [31, 42] };
+    }
+    throw new Error(`Unexpected ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "view-existing");
+  assert.deepEqual(calls, ["hd_anki_view", "hd_anki_status", "hd_anki_preflight"]);
+  assert.deepEqual(f.items[0].add.disabled, false);
+});
+
+test("a stale View repair updates exact IDs or returns the control to normal addability", async t => {
+  const browsed = [];
+  let removed = false;
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    if (type === "hd_anki_view") {
+      return removed
+        ? { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false }
+        : { state: "duplicate", canAdd: false, noteIds: [7, 8], configKey: "current", cached: true };
+    }
+    if (type === "hd_anki_browse") {
+      browsed.push(request.noteIds);
+      if (browsed.length === 1) return { opened: true, noteIds: [8, 9], repaired: true };
+      removed = true;
+      return { opened: false, noteIds: [], repaired: true };
+    }
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+    throw new Error(`Unexpected ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "view-existing");
+  f.items[0].add.click();
+  await until(() => browsed.length === 1);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "ready");
+  assert.deepEqual(browsed, [[7, 8], [8, 9]]);
+  assert.equal(f.items[0].add.dataset.action, "add");
+  assert.equal(f.items[0].add.disabled, false);
+});
+
 test("a ready Anki action works while later results are still checking", async t => {
   const held = Promise.withResolvers();
   t.after(() => held.resolve());
@@ -95,6 +154,41 @@ test("a ready Anki action works while later results are still checking", async t
   f.items[0].add.click();
   await until(() => writes === 1);
   await until(() => f.items[0].add.dataset.state === "success");
+});
+
+test("a warm cached View action skips Anki status and preflight", async t => {
+  const calls = [];
+  const browse = [];
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_view") {
+      return {
+        state: "duplicate",
+        canAdd: false,
+        noteIds: [22, 23],
+        configKey: "current",
+        cached: true,
+      };
+    }
+    if (type === "hd_anki_browse") {
+      browse.push(request);
+      return { opened: true, noteIds: [22, 23] };
+    }
+    throw new Error(`warm View readiness unexpectedly called ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[1]], f.context);
+  await until(() => f.items[1].add?.dataset.state === "view-existing");
+  assert.deepEqual(calls, ["hd_anki_view"]);
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[1].add.dataset.action, "view");
+  f.items[1].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{
+    noteIds: [22, 23],
+    expression: "犬",
+    configKey: "current",
+  }]);
 });
 
 test("Anki actions match the GSM toolbar order and use its add, duplicate, overwrite, and view icons", async t => {
