@@ -1651,8 +1651,7 @@ function dictionaryMetadata(entry) {
       details.push(`Imported ${installed.toLocaleString()}`);
     }
   }
-  details.push(`Package ID ${entry.id}`);
-  details.push(isUpdateCheckable(entry) ? "Update source available" : "Local archive");
+  details.push(`Package ID ${entry.id}`, isUpdateCheckable(entry) ? "Update source available" : "Local archive");
   return details.join(" · ");
 }
 

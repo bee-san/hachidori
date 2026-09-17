@@ -15,11 +15,11 @@ const normalisedDictionaryMarker = name => typeof name === "string"
 const dictionaryIdMarker = id => /^[0-9a-f]{32}$/u.test(id) ? `id--${id}` : "";
 const GLOSSARY_MARKER_PREFIX = "single-glossary-";
 const GLOSSARY_IDENTITY_PHASES = ["legacy", "alias", "id"];
-const GLOSSARY_SUFFIXES = [
-  ["brief", { brief: true }],
-  ["no-dictionary", { noDictionary: true }],
-  ["plain", { plain: true }],
-  ["plain-no-dictionary", { plain: true, noDictionary: true }],
+const GLOSSARY_VARIANTS = [
+  { ending: "-brief", options: { brief: true } },
+  { ending: "-no-dictionary", options: { noDictionary: true } },
+  { ending: "-plain", options: { plain: true } },
+  { ending: "-plain-no-dictionary", options: { plain: true, noDictionary: true } },
 ];
 const PARTS_OF_SPEECH = { v1: "Ichidan verb", v5: "Godan verb", vk: "Kuru verb", vs: "Suru verb",
   vz: "Zuru verb", "adj-i": "I-adjective", n: "Noun" };
@@ -103,7 +103,7 @@ function pitchCategories(term) {
   return [...new Set(categories.filter(Boolean))].join(",");
 }
 
-function dynamicGlossaries(request, requestedNames) {
+function requestedGlossaryMarkers(requestedNames) {
   const exactRequests = new Map();
   const variantRequests = new Map();
   const candidateBases = new Set();
@@ -111,8 +111,7 @@ function dynamicGlossaries(request, requestedNames) {
     const key = name.slice(GLOSSARY_MARKER_PREFIX.length);
     exactRequests.set(key, name);
     candidateBases.add(key);
-    for (const [suffix, options] of GLOSSARY_SUFFIXES) {
-      const ending = `-${suffix}`;
+    for (const { ending, options } of GLOSSARY_VARIANTS) {
       if (!key.endsWith(ending)) continue;
       const base = key.slice(0, -ending.length);
       candidateBases.add(base);
@@ -120,49 +119,71 @@ function dynamicGlossaries(request, requestedNames) {
       variantRequests.get(base).push({ name, options });
     }
   }
+  return { exactRequests, variantRequests, candidateBases };
+}
+
+function glossaryDescriptors(request, candidateBases) {
   const dictionaries = [...new Set(request.term.glossaries.map(glossary => glossary.dictionary))];
   const aliases = request.dictionaryAliases ?? {};
   const wantsId = [...candidateBases].some(key => /^id--[0-9a-f]{32}$/u.test(key));
-  const descriptors = dictionaries.map(dictionary => ({
+  return dictionaries.map(dictionary => ({
     dictionary,
     legacy: dictionaryMarker(dictionary),
     alias: Object.hasOwn(aliases, dictionary)
       ? normalisedDictionaryMarker(aliases[dictionary]) : "",
     id: wantsId ? dictionaryIdMarker(request.dictionaryIds?.[dictionary]) : "",
   }));
+}
+
+function claimGlossaryOwner(owners, candidateBases, key, dictionary) {
+  if (!key || !candidateBases.has(key)) return;
+  if (!owners.has(key)) owners.set(key, dictionary);
+  else if (owners.get(key) !== dictionary) owners.set(key, null);
+}
+
+function glossaryIdentityOwners(descriptors, candidateBases) {
   const owners = new Map();
-  const addOwner = (key, dictionary) => {
-    if (!key || !candidateBases.has(key)) return;
-    if (!owners.has(key)) owners.set(key, dictionary);
-    else if (owners.get(key) !== dictionary) owners.set(key, null);
-  };
   for (const descriptor of descriptors) {
-    addOwner(descriptor.legacy, descriptor.dictionary);
-    if (descriptor.alias !== descriptor.legacy) addOwner(descriptor.alias, descriptor.dictionary);
+    claimGlossaryOwner(owners, candidateBases, descriptor.legacy, descriptor.dictionary);
+    if (descriptor.alias !== descriptor.legacy) {
+      claimGlossaryOwner(owners, candidateBases, descriptor.alias, descriptor.dictionary);
+    }
   }
+  return owners;
+}
+
+function glossaryIdentity(descriptor, phase, owners) {
+  const key = descriptor[phase];
+  return phase !== "alias" || owners.get(key) === descriptor.dictionary ? key : "";
+}
+
+function resolveGlossaryPhase(resolved, descriptors, phase, owners, exactRequests, variantRequests) {
+  for (const descriptor of descriptors) {
+    const key = glossaryIdentity(descriptor, phase, owners);
+    const name = key ? exactRequests.get(key) : null;
+    if (name && !resolved.has(name)) resolved.set(name, { dictionary: descriptor.dictionary });
+  }
+  // Within each namespace, all exact bases retain precedence over suffix
+  // variants and dictionary order matches the former eager map.
+  for (const descriptor of descriptors) {
+    const key = glossaryIdentity(descriptor, phase, owners);
+    for (const match of key ? variantRequests.get(key) ?? [] : []) {
+      if (!resolved.has(match.name)) {
+        resolved.set(match.name, { dictionary: descriptor.dictionary, ...match.options });
+      }
+    }
+  }
+}
+
+function dynamicGlossaries(request, requestedNames) {
+  const { exactRequests, variantRequests, candidateBases } = requestedGlossaryMarkers(requestedNames);
+  const descriptors = glossaryDescriptors(request, candidateBases);
+  const owners = glossaryIdentityOwners(descriptors, candidateBases);
   const resolved = new Map();
-  const base = (descriptor, phase) => {
-    const key = descriptor[phase];
-    return phase !== "alias" || owners.get(key) === descriptor.dictionary ? key : "";
-  };
   // Complete the legacy namespace before considering new identities so aliases
   // and IDs cannot steal an existing title-derived suffix marker.
   for (const phase of GLOSSARY_IDENTITY_PHASES) {
-    for (const descriptor of descriptors) {
-      const key = base(descriptor, phase);
-      const name = key ? exactRequests.get(key) : null;
-      if (name && !resolved.has(name)) resolved.set(name, { dictionary: descriptor.dictionary });
-    }
-    // Within each namespace, all exact bases retain precedence over suffix
-    // variants and dictionary order matches the former eager map.
-    for (const descriptor of descriptors) {
-      const key = base(descriptor, phase);
-      for (const match of key ? variantRequests.get(key) ?? [] : []) {
-        if (!resolved.has(match.name)) {
-          resolved.set(match.name, { dictionary: descriptor.dictionary, ...match.options });
-        }
-      }
-    }
+    resolveGlossaryPhase(resolved, descriptors, phase, owners, exactRequests, variantRequests);
   }
   return resolved;
 }
