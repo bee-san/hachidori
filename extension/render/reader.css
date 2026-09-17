@@ -1939,11 +1939,13 @@ html[data-hoshidicts-theme="girlypop"],
   background: var(--hoshidicts-accent-soft);
 }
 
+.gsm-hoshidicts-mine-button[data-state="view-existing"],
 .gsm-hoshidicts-mine-button[data-state="success"] {
   border-color: var(--hoshidicts-success);
   color: var(--hoshidicts-success);
 }
 
+.gsm-hoshidicts-mine-button[data-state="checking"] .hd-icon,
 .gsm-hoshidicts-mine-button[data-state="mining"] .hd-icon {
   animation: gsm-hoshidicts-spin 0.8s linear infinite;
 }
@@ -2111,6 +2113,7 @@ html[data-hoshidicts-theme="girlypop"],
     scroll-behavior: auto;
   }
 
+  .gsm-hoshidicts-mine-button[data-state="checking"] .hd-icon,
   .gsm-hoshidicts-mine-button[data-state="mining"] .hd-icon {
     animation: none;
   }

@@ -769,6 +769,12 @@ local pulls until resume. The offscreen service test verifies that
 the refresh worker returns only compact rows and terminates after success or
 failure. These focused suites never contact an Anki collection.
 
+`node --test test/anki-content.test.mjs` checks the reader action across initial
+cache lookup, warm hits, live repair, stale IDs, failures, retries, superseded
+requests and nested popup owners. An unresolved action is disabled and exposes
+an accessible busy Arrow Clockwise state before resolving to Add or View in
+Anki.
+
 The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, autoplay held until the hover reveal
 and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,

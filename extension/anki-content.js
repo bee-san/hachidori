@@ -31,7 +31,7 @@
     const button = record.add;
     button.dataset.state = state;
     const title = message || {
-      checking: "Checking Anki availability",
+      checking: "Checking Anki card status",
       ready: "Mine to Anki",
       "add-duplicate": "Add duplicate to Anki",
       overwrite: "Overwrite note in Anki",
@@ -44,13 +44,14 @@
     }[state] || "Mine to Anki";
     button.title = title;
     button.setAttribute("aria-label", title);
+    button.setAttribute("aria-busy", String(state === "checking" || state === "mining"));
     button.dataset.action = views(record) ? "view" : "add";
     const iconName = {
       ready: "add",
       "add-duplicate": "document-add",
       overwrite: "document-edit",
       "view-existing": "book-search",
-      checking: "more-horizontal",
+      checking: "arrow-clockwise",
       mining: "arrow-sync",
       success: "book-search",
       error: "error-circle",
@@ -273,7 +274,11 @@
         if (needsCheck(record)) {
           // Readiness belongs to this result, not to the whole popup's queue.
           record.decision = null;
-          if (record.add) setMiningButtonState(record, "checking");
+          if (enabled) {
+            controls(record);
+            showControls(record, true);
+            setMiningButtonState(record, "checking");
+          }
         }
         disabled(record);
       });

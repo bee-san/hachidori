@@ -453,7 +453,9 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   f.controller.bind([f.items[1]], f.context);
   held.resolve();
   await until(() => f.items[1].add && !f.items[1].add.disabled);
-  assert.equal(f.items[0].control, null);
+  assert.equal(f.items[0].control.hidden, true);
+  assert.equal(f.items[0].add.hidden, true);
+  assertChecking(f.items[0]);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "error");
   assert.equal(f.items[1].add.dataset.action, "view");
