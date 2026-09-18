@@ -160,7 +160,8 @@ mode. The unpacked relay is temporary and removed on exit.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 
-`node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
+`node --test test/custom-link-settings.test.mjs test/external-link-host.test.mjs test/custom-links-renderer.test.mjs`
+checks URL-template validation, the overlay host request/result boundary, named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.
 

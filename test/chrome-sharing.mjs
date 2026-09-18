@@ -624,9 +624,10 @@ async function checkOverlaySharing(hostPage) {
         && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
         && speech.help.includes("cannot be recorded into Anki")
         && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
-        && shortcuts.browserDisabled && shortcuts.pageEnabled && links.disabled && links.helpVisible
+        && shortcuts.browserDisabled && shortcuts.pageEnabled && !links.disabled && links.helpVisible
         && !backup.exportDisabled && backup.restoreEnabled
-        && guarded.every(reply => reply.ok === false && reply.error.includes("unavailable in this overlay")),
+        && guarded[0]?.ok === false && guarded[0].error.includes("unavailable in this overlay")
+        && guarded[1]?.ok === false && guarded[1].error.includes("only from lookup popups"),
       JSON.stringify({ afterLink, afterLocal, hostAfterLocal, afterHost, mixed, hostAfterMixed, stale, offline, afterRestart,
         afterUnlink, screenshot, speech, media, shortcuts, links, backup, guarded, notice }));
   } finally { await overlayBrowser?.close().catch(() => {}); }

@@ -465,9 +465,15 @@ try {
     pageKeybindsEnabled: !document.getElementById("keybind-add").disabled,
   }));
   await showSection(settings, "design");
+  await settings.type("#opt-custom-link-name", "Overlay editor");
+  await settings.type("#opt-custom-link-url", "https://example.test/%w");
+  await settings.click("#custom-link-submit");
+  await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+    { polling: 100, timeout: 10_000 });
   const designSettings = await settings.evaluate(() => ({
     customLinksDisabled: document.getElementById("custom-links-settings").disabled,
     customLinksHelpVisible: !document.getElementById("custom-links-overlay-help").hidden,
+    savedLink: document.querySelector("#custom-link-list strong")?.textContent || "",
     themeEnabled: !document.getElementById("opt-popup-theme").disabled,
   }));
   await showSection(settings, "backup");
@@ -510,15 +516,21 @@ try {
     status: "Media capture is unavailable in this overlay.",
   });
   assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
-  assert.deepEqual(designSettings, { customLinksDisabled: true, customLinksHelpVisible: true, themeEnabled: true });
+  assert.deepEqual(designSettings, {
+    customLinksDisabled: false,
+    customLinksHelpVisible: true,
+    savedLink: "Overlay editor",
+    themeEnabled: true,
+  });
   assert.deepEqual(backupSettings, { exportDisabled: false, restoreEnabled: true });
   assert.deepEqual(audioSettings, { sourceEditorEnabled: true, speechHelpVisible: true });
   assert.equal(ankiSettings.screenshotDisabled, true);
   assert.equal(ankiSettings.screenshotEnabled, false);
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
   assert.deepEqual(readingSettings, { readingEnabled: true, localFilePromptHidden: true, localFilePromptEmpty: true });
-  assert.ok(guardedRequests.every(reply => reply.ok === false && reply.error.includes("unavailable in this overlay")),
-    JSON.stringify(guardedRequests));
+  assert.ok(guardedRequests[0].ok === false && guardedRequests[0].error.includes("unavailable in this overlay")
+    && guardedRequests[1].ok === false && guardedRequests[1].error.includes("only from lookup popups"),
+  JSON.stringify(guardedRequests));
   assert.equal(browser.targets().some(target => target.url().endsWith("/capture.html")), false,
     "disabled media controls never open a capture tab");
   // Setup never opens in an overlay: the host has no tab to show it in.
@@ -802,7 +814,7 @@ try {
   console.log(`blurred physical kanji trace ${JSON.stringify({ before: blurredBefore, after: blurredAfter })}`);
   await popup.click(".gsm-hoshidicts-kanji-back");
   await popup.waitForVisible();
-  assert.equal(hovered.customLinks, 0, "stored or remotely shared custom links stay out of the overlay popup");
+  assert.equal(hovered.customLinks, 1, "stored or remotely shared custom links render in the overlay popup");
   assert.deepEqual(await events(), ["hidden", "shown"]);
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true, "Escape closes the hover popup");

@@ -1291,7 +1291,20 @@ async function externalLinksBackgroundStage() {
   const accepted = await send({ url: " HTTPS://EXAMPLE.COM:443/日本?q=1#term ", active: false, windowId: 99, openerTabId: 11 });
   const local = await send({ url: "http://127.0.0.1:9876/reference" });
   const rejected = [];
-  for (const url of ["javascript:alert(1)", "file:///tmp/a", "chrome://settings", "/relative", "https://", "https://user:pass@example.test/", "https://exam\nple.test/", { href: "https://example.test/" }]) {
+  for (const url of [
+    "javascript:alert(1)",
+    "file:///tmp/a",
+    "chrome://settings",
+    "/relative",
+    "https:example.test/",
+    "https:/example.test/",
+    "https://",
+    "https://user:pass@example.test/",
+    "\nhttps://example.test/",
+    "https://example.test/\r",
+    "https://exam\nple.test/",
+    { href: "https://example.test/" },
+  ]) {
     rejected.push(await send({ url }));
   }
   rejected.push(await send({ url: "https://example.test/", active: "yes" }));
@@ -1407,7 +1420,10 @@ async function overlayModeBackgroundStage() {
     revision: storage.raw.get("options").revision + 1,
   } });
   await settle();
-  const unsupportedGuarded = unavailable.every(reply => reply?.ok === false && reply.error.includes("unavailable in this overlay"))
+  const unsupportedGuarded = unavailable[0]?.ok === false
+    && unavailable[0].error.includes("unavailable in this overlay")
+    && unavailable[1]?.ok === false
+    && unavailable[1].error.includes("only from lookup popups")
     && offscreenState.created === captureHostStarts && tabs.length === 0;
 
   // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
@@ -4156,7 +4172,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.HOST_CAPABILITIES = {
 
     browserShortcuts: !overlayMode,
-    customLinks: !overlayMode,
+    customLinks: true,
+    externalLinkHost: overlayMode,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };

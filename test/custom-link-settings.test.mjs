@@ -21,7 +21,17 @@ test("GSM word/sentence templates and reading encode values exactly once and rej
   assert.equal(url.searchParams.get("word"), values.word);
   assert.equal(url.searchParams.get("reading"), values.reading);
   assert.equal(url.searchParams.get("sentence"), values.sentence);
-  for (const template of ["javascript:alert('%w')", "data:text/html,%s", "file:///tmp/%w", "https://user:pass@example.test/%w", "https://example.test/\n%w"]) {
+  for (const template of [
+    "javascript:alert('%w')",
+    "data:text/html,%s",
+    "file:///tmp/%w",
+    "https:example.test/%w",
+    "https:/example.test/%w",
+    "https://user:pass@example.test/%w",
+    "\nhttps://example.test/%w",
+    "https://example.test/%w\r",
+    "https://example.test/\n%w",
+  ]) {
     assert.equal(expandCustomLinkUrl(template, values), null, template);
     assert.match(validateCustomLink("Unsafe", template), /http/u, template);
   }
