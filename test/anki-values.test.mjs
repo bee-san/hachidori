@@ -21,6 +21,24 @@ test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16
   assert.equal(await render(request(), "{sentence-furigana}|{sentence-furigana-plain}"), "🍵 <b>食べます</b>。|🍵 <b>食べます</b>。");
 });
 
+test("note field rendering preserves literal whitespace, repeated markers and the source template", async () => {
+  const value = " \tstart {expression}{expression} + {reading}\nend  ";
+  const mapping = templates(value);
+  const fields = await buildAnkiFields(request(), mapping, {
+    definition: () => { throw new Error("Unexpected rich glossary work"); },
+  });
+  assert.equal(fields.Front, " \tstart 食べる食べる + たべる\nend  ");
+  assert.equal(mapping.Front.value, value);
+
+  const invalid = " literal {unknown} {unknown}\t";
+  const invalidMapping = templates(invalid);
+  await assert.rejects(buildAnkiFields(request(), invalidMapping, {
+    definition: () => { throw new Error("Unexpected rich glossary work"); },
+  }), /Unknown marker: \{unknown\}/u);
+  assert.equal(invalidMapping.Front.value, invalid,
+    "a rejected note must not rewrite the saved mapping");
+});
+
 test("only requested glossary variants render and legacy title markers keep exact collision and suffix precedence", async () => {
   const calls = [];
   const definition = options => { calls.push(options); return JSON.stringify(options); };

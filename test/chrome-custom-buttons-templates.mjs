@@ -30,11 +30,18 @@ const REUSE_PROFILE = process.env.HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE === "1"
 const EVIDENCE = process.env.HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR || "";
 const ANKI_URL = process.env.HACHIDORI_ANKI_URL || "";
 const PAGE_URL = "http://127.0.0.1:18774/";
-const WORD_DECK = "Hachidori I22 Words";
-const SENTENCE_DECK = "Hachidori I22 Sentences";
-const WORD_MODEL = "Hachidori I22 Word";
-const SENTENCE_MODEL = "Hachidori I22 Sentence";
-const E2E_TAG = "hachidori-i22-e2e";
+const WORD_DECK = "Hachidori I23 Words";
+const SENTENCE_DECK = "Hachidori I23 Sentences";
+const WORD_MODEL = "Hachidori I23 Word";
+const SENTENCE_MODEL = "Hachidori I23 Sentence";
+const E2E_TAG = "hachidori-i23-e2e";
+const WORD_DRAFT = " \tword {expression}{expression} {unknown}\n literal  ";
+const SENTENCE_DRAFT = "\n sentence {sentence}{sentence} {unknown}\t ";
+const WORD_EXPRESSION_MAPPING = "word [{expression}] + [{expression}]";
+const WORD_SOURCE_MAPPING = " \tcontext {sentence} + {sentence}\n ";
+const SENTENCE_MAPPING = "\ncontext {sentence} + {sentence}\t";
+const SENTENCE_EXPRESSION_MAPPING = "selected [{expression}]";
+const MINED_SENTENCE = "昨日、<b>食べたかった</b>。とてもおいしかった。";
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 const diagnostics = [];
 
@@ -304,6 +311,319 @@ async function keyboardActivate(page, selector) {
   return before;
 }
 
+async function insertText(page, text) {
+  const session = await page.createCDPSession();
+  try {
+    await session.send("Input.insertText", { text });
+  } finally {
+    await session.detach();
+  }
+}
+
+const fieldSelector = field => `#anki-templates [data-anki-field="${field}"] [role="combobox"]`;
+
+async function waitForMapping(page, field, value) {
+  await waitForStored(page, async expected => {
+    const { options } = await chrome.storage.local.get("options");
+    const selected = document.getElementById("anki-template-select").value;
+    return options.anki.templates.find(template => template.id === selected)
+      ?.fieldTemplates?.[expected.field]?.value === expected.value;
+  }, { field, value });
+}
+
+async function editMapping(page, field, value, inputType = "insertText") {
+  await page.$eval(fieldSelector(field), (node, [text, type]) => {
+    node.focus();
+    node.value = text;
+    node.setSelectionRange(text.length, text.length);
+    node.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: type, data: text }));
+  }, [value, inputType]);
+  await waitForMapping(page, field, value);
+}
+
+async function accessibilityNode(page, selector) {
+  const session = await page.createCDPSession();
+  try {
+    await session.send("DOM.enable");
+    await session.send("Accessibility.enable");
+    const { root } = await session.send("DOM.getDocument");
+    const { nodeId } = await session.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+    const { node } = await session.send("DOM.describeNode", { nodeId });
+    const { nodes } = await session.send("Accessibility.getPartialAXTree", {
+      backendNodeId: node.backendNodeId,
+      fetchRelatives: false,
+    });
+    const ax = nodes.find(candidate => !candidate.ignored) ?? nodes[0];
+    const property = name => ax?.properties?.find(candidate => candidate.name === name)?.value?.value ?? null;
+    return {
+      role: ax?.role?.value ?? null,
+      name: ax?.name?.value ?? null,
+      expanded: property("expanded"),
+      focusable: property("focusable"),
+    };
+  } finally {
+    await session.detach();
+  }
+}
+
+async function exerciseMarkerComboboxes(settings) {
+  await settings.waitForFunction(() => {
+    const fields = [...document.querySelectorAll("#anki-templates [data-anki-field]")]
+      .map(node => node.dataset.ankiField);
+    return ["Expression", "Reading", "Glossary", "Source"].every(field => fields.includes(field));
+  }, { timeout: 20_000, polling: 100 });
+  const contract = await settings.evaluate(async () => {
+    const { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } = await import("./anki-templates.js");
+    const rows = [...document.querySelectorAll("#anki-templates [data-anki-field]")];
+    const control = rows[0].querySelector('[role="combobox"]');
+    const listbox = document.getElementById(control.getAttribute("aria-controls"));
+    const options = [...listbox.querySelectorAll('[role="option"]')];
+    return {
+      fields: rows.map(row => row.dataset.ankiField),
+      allEditable: rows.every(row => {
+        const editor = row.querySelector('[role="combobox"]');
+        return editor && !editor.readOnly && !editor.disabled;
+      }),
+      options: options.map(option => option.dataset.marker),
+      expected: ANKI_TEMPLATE_MARKER_OPTIONS.map(option => option.value),
+      core: ANKI_TEMPLATE_MARKERS.map(marker => `{${marker}}`),
+      described: options.every(option => option.getAttribute("aria-label")?.includes(": ")),
+      label: document.querySelector(`label[for="${control.id}"]`)?.textContent,
+      expanded: control.getAttribute("aria-expanded"),
+      controls: control.getAttribute("aria-controls"),
+      autocomplete: control.getAttribute("aria-autocomplete"),
+      haspopup: control.getAttribute("aria-haspopup"),
+      listboxRole: listbox.getAttribute("role"),
+      statusRole: control.closest(".anki-template-row").querySelector('[role="status"]').getAttribute("role"),
+    };
+  });
+
+  const expression = fieldSelector("Expression");
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await settings.focus(expression);
+  await settings.keyboard.down(modifier);
+  await settings.keyboard.press("KeyA");
+  await settings.keyboard.up(modifier);
+  await settings.keyboard.type("{expr");
+  await settings.waitForFunction(selector =>
+    document.querySelector(selector).getAttribute("aria-expanded") === "true", {}, expression);
+  const filtered = await settings.$eval('#anki-templates [data-anki-field="Expression"]', node => {
+    const control = node.querySelector('[role="combobox"]');
+    const listbox = document.getElementById(control.getAttribute("aria-controls"));
+    const visible = [...listbox.querySelectorAll('[role="option"]')].filter(option => !option.hidden);
+    return {
+      value: control.value,
+      markers: visible.map(option => option.dataset.marker),
+      active: control.getAttribute("aria-activedescendant"),
+      selected: visible.filter(option => option.getAttribute("aria-selected") === "true").map(option => option.id),
+      status: node.querySelector('[role="status"]').textContent,
+    };
+  });
+  await settings.keyboard.press("Escape");
+  await waitForMapping(settings, "Expression", "{expr");
+  const escaped = await settings.$eval(expression, node => ({
+    value: node.value,
+    expanded: node.getAttribute("aria-expanded"),
+  }));
+
+  const freeForm = "literal {expression} + suffix  ";
+  await settings.focus(expression);
+  await settings.keyboard.down(modifier);
+  await settings.keyboard.press("KeyA");
+  await settings.keyboard.up(modifier);
+  await insertText(settings, freeForm);
+  await waitForMapping(settings, "Expression", freeForm);
+  const highlightedBeforeTab = await settings.$eval(expression,
+    node => node.getAttribute("aria-activedescendant"));
+  await settings.keyboard.press("Tab");
+  const tabExit = await settings.evaluate(async selector => {
+    const control = document.querySelector(selector);
+    const { options } = await chrome.storage.local.get("options");
+    const selected = document.getElementById("anki-template-select").value;
+    return {
+      value: control.value,
+      stored: options.anki.templates.find(template => template.id === selected)
+        .fieldTemplates.Expression.value,
+      expanded: control.getAttribute("aria-expanded"),
+      leftControl: document.activeElement !== control,
+      focused: document.activeElement?.id ?? "",
+    };
+  }, expression);
+
+  await editMapping(settings, "Source", "before  after");
+  await settings.$eval(fieldSelector("Source"), node => node.setSelectionRange(7, 7));
+  await settings.click('#anki-templates [data-anki-field="Source"] [role="option"][data-marker="{sentence}"]');
+  await waitForMapping(settings, "Source", "before {sentence} after");
+  const pointerValue = await settings.$eval(fieldSelector("Source"), node => node.value);
+
+  await editMapping(settings, "Source", "{expression}{expression}");
+  await settings.$eval(fieldSelector("Source"), node => {
+    const boundary = "{expression}".length;
+    node.setSelectionRange(boundary, boundary);
+  });
+  await settings.click('#anki-templates [data-anki-field="Source"] [role="option"][data-marker="{reading}"]');
+  await waitForMapping(settings, "Source", "{expression}{reading}{expression}");
+  const adjacentMarkerValue = await settings.$eval(fieldSelector("Source"), node => node.value);
+
+  await editMapping(settings, "Source", "");
+  await settings.keyboard.press("Escape");
+  await settings.focus(fieldSelector("Source"));
+  await settings.keyboard.press("ArrowDown");
+  const keyboardFirst = await settings.$eval(fieldSelector("Source"),
+    node => node.getAttribute("aria-activedescendant"));
+  await settings.keyboard.press("ArrowDown");
+  const keyboardSecond = await settings.$eval(fieldSelector("Source"),
+    node => node.getAttribute("aria-activedescendant"));
+  await settings.keyboard.press("Enter");
+  const keyboardValue = await settings.$eval(fieldSelector("Source"), node => node.value);
+  await waitForMapping(settings, "Source", keyboardValue);
+
+  await editMapping(settings, "Expression", "{definitely-no-marker");
+  const empty = await settings.$eval('#anki-templates [data-anki-field="Expression"]', node => ({
+    visible: !node.querySelector(".anki-marker-empty").hidden,
+    active: node.querySelector('[role="combobox"]').getAttribute("aria-activedescendant"),
+    status: node.querySelector('[role="status"]').textContent,
+  }));
+  await settings.keyboard.press("Escape");
+
+  const reading = fieldSelector("Reading");
+  await settings.focus(reading);
+  await settings.keyboard.down(modifier);
+  await settings.keyboard.press("KeyA");
+  await settings.keyboard.up(modifier);
+  await insertText(settings, WORD_DRAFT);
+  await waitForMapping(settings, "Reading", WORD_DRAFT);
+  await settings.keyboard.down(modifier);
+  await settings.keyboard.press("KeyA");
+  await settings.keyboard.press("KeyC");
+  await settings.keyboard.up(modifier);
+  await settings.focus(expression);
+  await settings.keyboard.down(modifier);
+  await settings.keyboard.press("KeyA");
+  await settings.keyboard.press("KeyV");
+  await settings.keyboard.up(modifier);
+  await waitForMapping(settings, "Expression", WORD_DRAFT);
+  const clipboard = await settings.evaluate(async selector => {
+    const control = document.querySelector(selector);
+    const { options } = await chrome.storage.local.get("options");
+    const selected = document.getElementById("anki-template-select").value;
+    const mappings = options.anki.templates.find(template => template.id === selected).fieldTemplates;
+    return {
+      control: control.value,
+      expression: mappings.Expression.value,
+      reading: mappings.Reading.value,
+      invalid: control.getAttribute("aria-invalid"),
+      error: control.closest(".anki-template-row").querySelector(".anki-template-error").textContent,
+      status: document.getElementById("anki-status").textContent,
+    };
+  }, expression);
+
+  await editMapping(settings, "Glossary", "composition: ");
+  const glossary = fieldSelector("Glossary");
+  await settings.$eval(glossary, node => {
+    node.focus();
+    node.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+    node.value = "composition: 日本";
+    node.setSelectionRange(node.value.length, node.value.length);
+    node.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "insertCompositionText",
+      data: "日本",
+      isComposing: true,
+    }));
+  });
+  const compositionDuring = await settings.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const selected = document.getElementById("anki-template-select").value;
+    return options.anki.templates.find(template => template.id === selected).fieldTemplates.Glossary.value;
+  });
+  await settings.$eval(glossary, node => {
+    node.value = "composition: 日本語\t";
+    node.setSelectionRange(node.value.length, node.value.length);
+    node.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本語" }));
+  });
+  await waitForMapping(settings, "Glossary", "composition: 日本語\t");
+  const compositionAfter = await settings.$eval(glossary, node => node.value);
+
+  await editMapping(settings, "Reading", "{reading}");
+  await editMapping(settings, "Glossary", "{glossary}");
+  await editMapping(settings, "Source", "{sentence}");
+  await editMapping(settings, "Expression", WORD_DRAFT, "insertFromPaste");
+  await settings.keyboard.press("Escape");
+  await settings.click('#anki-templates [data-anki-field="Expression"] .anki-marker-combobox-toggle');
+  const opened = await settings.$eval(expression, node => ({
+    expanded: node.getAttribute("aria-expanded"),
+    listboxHidden: document.getElementById(node.getAttribute("aria-controls")).hidden,
+  }));
+  const accessibility = await accessibilityNode(settings, expression);
+  const markerScreenshot = await screenshotElement(settings, "#anki-field-mapping", "marker-combobox-settings.png");
+  await settings.keyboard.press("Escape");
+
+  assert.equal(contract.allEditable, true);
+  assert.deepEqual(contract.options, contract.expected);
+  assert.ok(contract.core.every(marker => contract.options.includes(marker)));
+  assert.equal(contract.described, true);
+  assert.equal(contract.label, "Expression");
+  assert.equal(contract.expanded, "false");
+  assert.equal(contract.autocomplete, "list");
+  assert.equal(contract.haspopup, "listbox");
+  assert.equal(contract.listboxRole, "listbox");
+  assert.equal(contract.statusRole, "status");
+  assert.deepEqual(filtered.markers, ["{expression}"]);
+  assert.equal(filtered.active, filtered.selected[0]);
+  assert.match(filtered.status, /1 marker suggestion/u);
+  assert.deepEqual(escaped, { value: "{expr", expanded: "false" });
+  assert.ok(highlightedBeforeTab);
+  assert.equal(tabExit.value, freeForm);
+  assert.equal(tabExit.stored, freeForm);
+  assert.equal(tabExit.expanded, "false");
+  assert.equal(tabExit.leftControl, true);
+  assert.equal(pointerValue, "before {sentence} after");
+  assert.equal(adjacentMarkerValue, "{expression}{reading}{expression}");
+  assert.ok(keyboardFirst);
+  assert.notEqual(keyboardSecond, keyboardFirst);
+  assert.notEqual(keyboardValue, "");
+  assert.equal(empty.visible, true);
+  assert.equal(empty.active, null);
+  assert.match(empty.status, /No marker suggestions/u);
+  assert.equal(clipboard.control, WORD_DRAFT);
+  assert.equal(clipboard.expression, WORD_DRAFT);
+  assert.equal(clipboard.reading, WORD_DRAFT);
+  assert.equal(clipboard.invalid, "true");
+  assert.match(clipboard.error, /Unknown marker: \{unknown\}/u);
+  assert.match(clipboard.status, /Unknown marker/u);
+  assert.equal(compositionDuring, "composition: ");
+  assert.equal(compositionAfter, "composition: 日本語\t");
+  assert.deepEqual(opened, { expanded: "true", listboxHidden: false });
+  assert.deepEqual(accessibility, {
+    role: "combobox",
+    name: "Expression",
+    expanded: true,
+    focusable: true,
+  });
+
+  return {
+    contract,
+    filtered,
+    escaped,
+    highlightedBeforeTab,
+    tabExit,
+    pointerValue,
+    adjacentMarkerValue,
+    keyboardFirst,
+    keyboardSecond,
+    keyboardValue,
+    empty,
+    clipboard,
+    compositionDuring,
+    compositionAfter,
+    opened,
+    accessibility,
+    markerScreenshot,
+    wordDraft: WORD_DRAFT,
+  };
+}
+
 function percentile(values, fraction) {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
@@ -540,6 +860,7 @@ async function configureThroughSettings(settings) {
     const { options } = await chrome.storage.local.get("options");
     return options.anki.templates[0].name === "Words";
   });
+  const combobox = await exerciseMarkerComboboxes(settings);
 
   const keyboard = {
     duplicate: await keyboardActivate(settings, "#anki-template-duplicate"),
@@ -574,34 +895,69 @@ async function configureThroughSettings(settings) {
   keyboard.next = await keyboardActivate(settings, "#anki-template-next");
 
   await settings.select("#opt-anki-model", SENTENCE_MODEL);
-  await waitForStored(settings, async () => {
+  await waitForStored(settings, async model => {
     const { options } = await chrome.storage.local.get("options");
-    return options.anki.templates[1].model === "Hachidori I22 Sentence";
-  });
+    return options.anki.templates[1].model === model;
+  }, SENTENCE_MODEL);
   await settings.waitForFunction(
-    () => [...document.getElementById("opt-anki-field-sentence").options]
-      .some(option => option.value === "Sentence"),
+    () => [...document.querySelectorAll("#anki-templates [data-anki-field]")]
+      .some(row => row.dataset.ankiField === "Sentence"),
     { timeout: 20_000, polling: 100 },
   );
   await settings.select("#opt-anki-deck", SENTENCE_DECK);
-  for (const [key, field] of [
-    ["sentence", "Sentence"],
-    ["expression", "Expression"],
-    ["definition", "Glossary"],
+  for (const [field, value] of [
+    ["Sentence", SENTENCE_DRAFT],
+    ["Expression", "{expression}"],
+    ["Glossary", "{glossary}"],
+    ["Screenshot", "{screenshot}"],
   ]) {
-    await settings.select(`#opt-anki-field-${key}`, field);
+    await editMapping(settings, field, value);
   }
-  await waitForStored(settings, async () => {
+  await replaceText(settings, "#opt-anki-tags", `${E2E_TAG} sentence-draft`);
+  await waitForStored(settings, async expected => {
     const { options } = await chrome.storage.local.get("options");
     const selected = options.anki.templates[1];
-    return selected.deck === "Hachidori I22 Sentences"
-      && selected.fields.sentence === "Sentence"
-      && selected.fields.expression === "Expression"
-      && selected.fields.definition === "Glossary";
+    return selected.deck === expected.deck
+      && selected.fieldTemplates.Sentence.value === expected.mapping
+      && selected.fieldTemplates.Expression.value === "{expression}"
+      && selected.fieldTemplates.Glossary.value === "{glossary}"
+      && selected.tags.join(" ") === expected.tags;
+  }, {
+    deck: SENTENCE_DECK,
+    mapping: SENTENCE_DRAFT,
+    tags: `${E2E_TAG} sentence-draft`,
   });
 
-  const current = await storedOptions(settings);
-  const [word, sentence] = current.anki.templates;
+  let current = await storedOptions(settings);
+  let [word, sentence] = current.anki.templates;
+  assert.equal(word.fieldTemplates.Expression.value, WORD_DRAFT);
+  assert.equal(sentence.fieldTemplates.Sentence.value, SENTENCE_DRAFT);
+  await settings.select("#anki-template-select", word.id);
+  await settings.waitForFunction(expected =>
+    document.querySelector('#anki-templates [data-anki-field="Expression"] [role="combobox"]')?.value === expected,
+  {}, WORD_DRAFT);
+  await settings.select("#anki-template-select", sentence.id);
+  await settings.waitForFunction(expected =>
+    document.querySelector('#anki-templates [data-anki-field="Sentence"] [role="combobox"]')?.value === expected,
+  {}, SENTENCE_DRAFT);
+  await settings.reload({ waitUntil: "domcontentloaded" });
+  await showSection(settings, "anki");
+  await settings.select("#anki-template-select", sentence.id);
+  await settings.waitForFunction(expected =>
+    document.querySelector('#anki-templates [data-anki-field="Sentence"] [role="combobox"]')?.value === expected,
+  {}, SENTENCE_DRAFT);
+  current = await storedOptions(settings);
+  [word, sentence] = current.anki.templates;
+  const preservation = {
+    word: word.fieldTemplates.Expression.value,
+    sentence: sentence.fieldTemplates.Sentence.value,
+    sentenceTags: sentence.tags,
+    reloadedControl: await settings.$eval(fieldSelector("Sentence"), node => node.value),
+  };
+  assert.equal(preservation.word, WORD_DRAFT);
+  assert.equal(preservation.sentence, SENTENCE_DRAFT);
+  assert.equal(preservation.reloadedControl, SENTENCE_DRAFT);
+
   await showSection(settings, "design");
   await settings.focus("#opt-custom-button-name");
   await settings.keyboard.type("Sentence card");
@@ -636,7 +992,20 @@ async function configureThroughSettings(settings) {
     return options.customButtons[0].type === "link" && options.customButtons[1].type === "anki";
   });
 
-  const configured = await settings.evaluate(async ({ ankiUrl, wordId, sentenceId, tag }) => {
+  const configured = await settings.evaluate(async ({
+    ankiUrl,
+    wordId,
+    sentenceId,
+    tag,
+    wordDeck,
+    sentenceDeck,
+    wordModel,
+    sentenceModel,
+    wordExpression,
+    wordSource,
+    sentenceMapping,
+    sentenceExpression,
+  }) => {
     const { options } = await chrome.storage.local.get("options");
     const fields = Object.fromEntries(document.defaultView.HDReaderOptions.ANKI_FIELDS.map(field => [field, ""]));
     const template = (id, name, deck, model, tags, fieldTemplates, captureScreenshot) => ({
@@ -657,17 +1026,17 @@ async function configureThroughSettings(settings) {
       url: ankiUrl,
       apiKey: "",
       templates: [
-        template(wordId, "Words", "Hachidori I22 Words", "Hachidori I22 Word",
+        template(wordId, "Words", wordDeck, wordModel,
           [tag, "word-template"], {
-            Expression: "{expression}",
+            Expression: wordExpression,
             Reading: "{reading}",
             Glossary: "{glossary}",
-            Source: "{sentence}",
+            Source: wordSource,
           }, false),
-        template(sentenceId, "Sentences", "Hachidori I22 Sentences", "Hachidori I22 Sentence",
+        template(sentenceId, "Sentences", sentenceDeck, sentenceModel,
           [tag, "sentence-template"], {
-            Sentence: "{sentence}",
-            Expression: "{expression}",
+            Sentence: sentenceMapping,
+            Expression: sentenceExpression,
             Glossary: "{glossary}",
             Screenshot: "{screenshot}",
           }, true),
@@ -691,7 +1060,20 @@ async function configureThroughSettings(settings) {
       options: reply.options,
       sentenceButtonId: sentenceButton.id,
     };
-  }, { ankiUrl: ANKI_URL, wordId: word.id, sentenceId: sentence.id, tag: E2E_TAG });
+  }, {
+    ankiUrl: ANKI_URL,
+    wordId: word.id,
+    sentenceId: sentence.id,
+    tag: E2E_TAG,
+    wordDeck: WORD_DECK,
+    sentenceDeck: SENTENCE_DECK,
+    wordModel: WORD_MODEL,
+    sentenceModel: SENTENCE_MODEL,
+    wordExpression: WORD_EXPRESSION_MAPPING,
+    wordSource: WORD_SOURCE_MAPPING,
+    sentenceMapping: SENTENCE_MAPPING,
+    sentenceExpression: SENTENCE_EXPRESSION_MAPPING,
+  });
 
   await showSection(settings, "anki");
   await settings.select("#anki-template-select", sentence.id);
@@ -715,8 +1097,10 @@ async function configureThroughSettings(settings) {
       template: migrated.anki.templates[0],
       customButton: migrated.customButtons[0],
     },
+    combobox,
+    preservation,
     timing,
-    screenshots: { templateScreenshot, buttonScreenshot },
+    screenshots: { markerScreenshot: combobox.markerScreenshot, templateScreenshot, buttonScreenshot },
     wordTemplateId: word.id,
     sentenceTemplateId: sentence.id,
     sentenceButtonId: configured.sentenceButtonId,
@@ -813,12 +1197,12 @@ async function verifyAnkiWrites() {
   assert.ok(sentence, "sentence Template wrote its note type");
   assert.equal(deckByNote.get(word.noteId), WORD_DECK);
   assert.equal(deckByNote.get(sentence.noteId), SENTENCE_DECK);
-  assert.equal(word.fields.Expression.value, "食べる");
+  assert.equal(word.fields.Expression.value, "word [食べる] + [食べる]");
   assert.equal(word.fields.Reading.value, "たべる");
   assert.match(word.fields.Glossary.value, /eat/iu);
-  assert.match(word.fields.Source.value, /食べたかった/u);
-  assert.match(sentence.fields.Sentence.value, /食べたかった/u);
-  assert.equal(sentence.fields.Expression.value, "食べる");
+  assert.equal(word.fields.Source.value, ` \tcontext ${MINED_SENTENCE} + ${MINED_SENTENCE}\n `);
+  assert.equal(sentence.fields.Sentence.value, `\ncontext ${MINED_SENTENCE} + ${MINED_SENTENCE}\t`);
+  assert.equal(sentence.fields.Expression.value, "selected [食べる]");
   assert.match(sentence.fields.Glossary.value, /eat/iu);
   assert.equal(word.fields.Screenshot, undefined);
   const screenshotMatch = sentence.fields.Screenshot.value.match(/<img src="([^"]+)">/u);

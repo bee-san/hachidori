@@ -205,7 +205,11 @@ options on worker start.
   is the value that persists. Anki settings contain an ordered
   `anki.templates` list; the first Template is also projected through the
   legacy flat Anki fields. `customButtons` contains ordered link or Anki
-  actions, while `customLinks` is its link-only compatibility projection. See
+  actions, while `customLinks` is its link-only compatibility projection.
+  Each field-template value is opaque user text: Settings offers marker
+  suggestions through an editable combobox, but storage, Template switching,
+  backup/restore, linked projection and note generation retain the exact
+  string without trimming, canonicalizing or deduplicating it. See
   [Custom buttons and Anki Templates](custom-buttons-and-templates.md).
 
 New installations begin at `welcome`, which discloses local page processing,

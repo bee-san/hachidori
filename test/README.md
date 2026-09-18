@@ -815,25 +815,31 @@ Settings controls.
 
 `test/chrome-custom-buttons-templates.mjs` requires an explicitly isolated real
 Anki profile with AnkiConnect bound to a chosen `127.0.0.1` endpoint. It creates
-only the fixed `Hachidori I22 Words` and `Hachidori I22 Sentences` decks and
-note types, and deletes only notes carrying the `hachidori-i22-e2e` tag.
+only the fixed `Hachidori I23 Words` and `Hachidori I23 Sentences` decks and
+note types, and deletes only notes carrying the `hachidori-i23-e2e` tag.
 
 ```sh
 HACHIDORI_ANKI_URL=http://127.0.0.1:18773 \
-HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR=/tmp/hachidori-i22-evidence \
+HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR=/tmp/hachidori-i23-evidence \
 node test/chrome-custom-buttons-templates.mjs
 ```
 
 The harness starts a fresh Chrome profile, imports the production fixture,
 writes legacy flat Anki/custom-link settings and verifies their canonical
 migration, then drives Template and Custom button create, duplicate, navigation,
-reorder and delete controls with real keyboard input. It measures 40
+reorder and delete controls with real keyboard input. For every field mapping,
+it checks the marker inventory and descriptions, filtering, active-option and
+selected state, Arrow/Home/End/Enter/Escape/Tab behavior, pointer insertion,
+free-form text, native copy/paste, IME composition, validation, focus exit and
+Chrome's accessibility tree. It switches Templates with distinct arbitrary
+drafts and reloads Settings to prove exact preservation. It then measures 40
 two-frame Template switches and captures Settings screenshots. A real lookup
-then requires independent ready states for the built-in first Template and a
-custom second-Template action, plus a visible disabled action for a missing
-Template ID. It submits the custom action from the keyboard and the built-in
-action with the pointer, and finally reads Anki back to prove separate decks,
-note types, mappings, tags and selected-Template screenshot media.
+requires independent ready states for the built-in first Template and a custom
+second-Template action, plus a visible disabled action for a missing Template
+ID. It submits the custom action from the keyboard and the built-in action with
+the pointer, and finally reads Anki back to prove separate decks, note types,
+repeated-marker and literal mappings, tabs, newlines, tags and selected-Template
+screenshot media.
 
 `HACHIDORI_CUSTOM_BUTTONS_PROFILE` may name an empty profile for diagnosis.
 Setting `HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE=1` reuses a prior harness

@@ -71,7 +71,9 @@ the service worker and both engine runtimes run the same code.
   `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
   fields and media. Stored Anki Templates group each destination, note type,
   field mapping and duplicate policy; the first powers the built-in action and
-  custom Anki buttons select the others by stable ID. `anki-duplicates.js` and
+  custom Anki buttons select the others by stable ID. Settings edits every
+  field mapping through an accessible marker combobox while retaining the
+  mapping string exactly. `anki-duplicates.js` and
   `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
   `anki-client-media.js` validates final screenshot, capture and browser-speech

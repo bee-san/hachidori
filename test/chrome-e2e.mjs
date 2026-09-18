@@ -281,6 +281,7 @@ const PLANNED = [
   "Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
   "Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
   "Anki configuration persists through reload without reloading the dictionary engine",
+  "Anki field mappings expose accessible editable combobox behavior without replacing free-form text",
   "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
@@ -5480,6 +5481,24 @@ async function checkAnkiSettings(page, browser) {
   const settled = () => page.waitForFunction(() => !document.getElementById("anki-refresh").disabled);
   const saved = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
   const choose = async (id, value) => { await page.select(`#opt-anki-${id}`, value); await saved(); };
+  const fieldSelector = field => `#anki-templates [data-anki-field="${field}"] [role="combobox"]`;
+  const editField = async (field, value, inputType = "insertText") => {
+    await page.$eval(fieldSelector(field), (node, [text, type]) => {
+      node.focus();
+      node.value = text;
+      node.setSelectionRange(text.length, text.length);
+      node.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: type, data: text }));
+    }, [value, inputType]);
+    await saved();
+  };
+  const insertText = async value => {
+    const session = await page.createCDPSession();
+    try {
+      await session.send("Input.insertText", { text: value });
+    } finally {
+      await session.detach();
+    }
+  };
   try {
     const lazy = route.requests === 0;
     await showSettingsSection(page, "anki");
@@ -5502,27 +5521,32 @@ async function checkAnkiSettings(page, browser) {
     await settled();
     releaseA();
     await saved();
-    const newest = await page.$eval("#opt-anki-field-expression", node => [...node.options].map(option => option.value));
-    await choose("field-expression", "Front");
+    const newest = await page.$$eval("#anki-templates [data-anki-field]",
+      nodes => nodes.map(node => node.dataset.ankiField));
+    await editField("Front", "{expression}");
     await choose("model", "Japanese");
     await settled();
-    await choose("field-expression", "Expression");
+    await editField("Expression", "{expression}");
     const revision = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
     missingField = true;
     await page.click("#anki-refresh");
     await settled();
-    const unavailable = await page.$eval("#opt-anki-field-expression", node => ({ value: node.value, text: node.textContent }));
+    const unavailable = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => ({
+      value: node.querySelector('[role="combobox"]').value,
+      removable: !node.querySelector("button.ghost").hidden,
+      label: node.querySelector(".field-label").textContent,
+    }));
     const afterRefresh = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
     check("Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
-      newest.includes("Front") && !newest.includes("Expression") && unavailable.value === "Expression"
-        && unavailable.text.includes("unavailable") && (await status()).includes("unavailable")
+      newest.includes("Front") && !newest.includes("Expression") && unavailable.value === "{expression}"
+        && unavailable.removable && unavailable.label === "Expression" && (await status()).includes("unavailable")
         && revision === afterRefresh, JSON.stringify({ newest, unavailable, revision, afterRefresh }));
 
     missingField = false;
     await page.click("#anki-refresh");
     await settled();
-    for (const [key, field] of [["reading", "Reading"], ["definition", "Meaning"], ["sentence", "Sentence"],
-      ["frequency", "Frequency"], ["pitch", "Pitch"], ["audio", "Audio"]]) await choose(`field-${key}`, field);
+    for (const [field, value] of [["Reading", "{reading}"], ["Meaning", "{definition}"], ["Sentence", "{sentence}"],
+      ["Frequency", "{frequency}"], ["Pitch", "{pitch}"], ["Audio", "{audio}"]]) await editField(field, value);
     await choose("deck", "Japanese");
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("configuration ready"));
@@ -5544,11 +5568,254 @@ async function checkAnkiSettings(page, browser) {
     }));
     check("Anki configuration persists through reload without reloading the dictionary engine",
       persisted.anki.deck === "Japanese" && persisted.anki.model === "Japanese"
-        && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
+        && persisted.anki.fieldTemplates.Expression.value === "{expression}"
+        && persisted.anki.fieldTemplates.Audio.value === "{audio}"
         && persisted.status.generation === original.status.generation
         && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
         && persisted.statusCard.marker.includes("data:image/svg+xml,") && persisted.statusCard.ready
         && persisted.statusCard.height >= 56, JSON.stringify(persisted));
+
+    const comboboxContract = await page.evaluate(async () => {
+      const { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } = await import("./anki-templates.js");
+      const rows = [...document.querySelectorAll("#anki-templates [data-anki-field]")];
+      const control = rows[0].querySelector('[role="combobox"]');
+      const listbox = document.getElementById(control.getAttribute("aria-controls"));
+      const options = [...listbox.querySelectorAll('[role="option"]')];
+      return {
+        fields: rows.map(row => row.dataset.ankiField),
+        everyCombobox: rows.every(row => row.querySelector('[role="combobox"]')),
+        optionValues: options.map(option => option.dataset.marker),
+        expectedOptions: ANKI_TEMPLATE_MARKER_OPTIONS.map(option => option.value),
+        coreMarkers: ANKI_TEMPLATE_MARKERS.map(marker => `{${marker}}`),
+        described: options.every(option => option.getAttribute("aria-label")?.includes(": ")),
+        label: document.querySelector(`label[for="${control.id}"]`)?.textContent,
+        attributes: Object.fromEntries(["aria-expanded", "aria-controls", "aria-autocomplete", "aria-haspopup"]
+          .map(name => [name, control.getAttribute(name)])),
+        listboxRole: listbox.getAttribute("role"),
+        statusRole: document.getElementById(control.getAttribute("aria-describedby").split(" ")[0])
+          ?.getAttribute("role"),
+      };
+    });
+
+    const expressionSelector = fieldSelector("Expression");
+    await page.focus(expressionSelector);
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await page.keyboard.type("{expr");
+    await page.waitForFunction(selector => document.querySelector(selector).getAttribute("aria-expanded") === "true",
+      {}, expressionSelector);
+    const filtered = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => {
+      const control = node.querySelector('[role="combobox"]');
+      const listbox = document.getElementById(control.getAttribute("aria-controls"));
+      const visible = [...listbox.querySelectorAll('[role="option"]')].filter(option => !option.hidden);
+      return {
+        value: control.value,
+        markers: visible.map(option => option.dataset.marker),
+        active: control.getAttribute("aria-activedescendant"),
+        selected: visible.filter(option => option.getAttribute("aria-selected") === "true").map(option => option.id),
+        status: node.querySelector('[role="status"]').textContent,
+      };
+    });
+    await page.keyboard.press("Escape");
+    await saved();
+    const escaped = await page.$eval(expressionSelector, node => ({
+      value: node.value,
+      expanded: node.getAttribute("aria-expanded"),
+    }));
+
+    const freeForm = "literal {expression} + suffix  ";
+    await page.focus(expressionSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await insertText(freeForm);
+    await saved();
+    const highlightedBeforeTab = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("Tab");
+    await saved();
+    const tabExit = await page.evaluate(async selector => {
+      const control = document.querySelector(selector);
+      const options = (await chrome.storage.local.get("options")).options.anki.fieldTemplates;
+      return {
+        value: control.value,
+        stored: options.Expression.value,
+        expanded: control.getAttribute("aria-expanded"),
+        focusedId: document.activeElement?.id ?? "",
+        leftControl: document.activeElement !== control,
+      };
+    }, expressionSelector);
+
+    await editField("Expression", "before  after");
+    await page.$eval(expressionSelector, node => node.setSelectionRange(7, 7));
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{glossary}"]');
+    await saved();
+    const pointerValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{expression}{expression}");
+    await page.$eval(expressionSelector, node => {
+      const boundary = "{expression}".length;
+      node.setSelectionRange(boundary, boundary);
+    });
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{reading}"]');
+    await saved();
+    const adjacentMarkerValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{expression}");
+    await page.$eval(expressionSelector, node => {
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{reading}"]');
+    await saved();
+    const closingBoundaryValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "");
+    await page.keyboard.press("Escape");
+    await page.focus(expressionSelector);
+    await page.keyboard.press("ArrowDown");
+    const keyboardFirst = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("ArrowDown");
+    const keyboardSecond = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("Enter");
+    await saved();
+    const keyboardValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{definitely-no-marker");
+    const emptyState = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => ({
+      emptyVisible: !node.querySelector(".anki-marker-empty").hidden,
+      active: node.querySelector('[role="combobox"]').getAttribute("aria-activedescendant"),
+      status: node.querySelector('[role="status"]').textContent,
+    }));
+    await page.keyboard.press("Escape");
+
+    const copiedValue = " \tcopy {unknown}{unknown}\n literal  ";
+    const readingSelector = fieldSelector("Reading");
+    await page.focus(readingSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await insertText(copiedValue);
+    await saved();
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.press("KeyC");
+    await page.keyboard.up(modifier);
+    await page.focus(expressionSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.press("KeyV");
+    await page.keyboard.up(modifier);
+    await saved();
+    const clipboard = await page.evaluate(async selector => {
+      const control = document.querySelector(selector);
+      const mappings = (await chrome.storage.local.get("options")).options.anki.fieldTemplates;
+      return {
+        control: control.value,
+        expression: mappings.Expression.value,
+        reading: mappings.Reading.value,
+        invalid: control.getAttribute("aria-invalid"),
+        error: control.closest(".anki-template-row").querySelector(".anki-template-error").textContent,
+      };
+    }, expressionSelector);
+
+    await editField("Frequency", "composition: ");
+    const frequencySelector = fieldSelector("Frequency");
+    await page.$eval(frequencySelector, node => {
+      node.focus();
+      node.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      node.value = "composition: 日本";
+      node.setSelectionRange(node.value.length, node.value.length);
+      node.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertCompositionText",
+        data: "日本",
+        isComposing: true,
+      }));
+    });
+    const compositionDuring = await page.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates.Frequency.value);
+    await page.$eval(frequencySelector, node => {
+      node.value = "composition: 日本語\t";
+      node.setSelectionRange(node.value.length, node.value.length);
+      node.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本語" }));
+    });
+    await saved();
+    const compositionAfter = await page.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates.Frequency.value);
+
+    await page.click('#anki-templates [data-anki-field="Expression"] .anki-marker-combobox-toggle');
+    const cdp = await page.createCDPSession();
+    await cdp.send("DOM.enable");
+    await cdp.send("Accessibility.enable");
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: expressionSelector });
+    const { node } = await cdp.send("DOM.describeNode", { nodeId });
+    const { nodes: axNodes } = await cdp.send("Accessibility.getPartialAXTree", {
+      backendNodeId: node.backendNodeId,
+      fetchRelatives: false,
+    });
+    await cdp.detach();
+    const ax = axNodes.find(candidate => !candidate.ignored) ?? axNodes[0];
+    const axProperty = name => ax?.properties?.find(property => property.name === name)?.value?.value ?? null;
+    const accessibility = {
+      role: ax?.role?.value ?? null,
+      name: ax?.name?.value ?? null,
+      expanded: axProperty("expanded"),
+      focusable: axProperty("focusable"),
+    };
+    const opened = await page.$eval(expressionSelector, node => ({
+      expanded: node.getAttribute("aria-expanded"),
+      listboxHidden: document.getElementById(node.getAttribute("aria-controls")).hidden,
+    }));
+    await page.keyboard.press("Escape");
+
+    check("Anki field mappings expose accessible editable combobox behavior without replacing free-form text",
+      comboboxContract.everyCombobox
+        && JSON.stringify(comboboxContract.optionValues) === JSON.stringify(comboboxContract.expectedOptions)
+        && comboboxContract.coreMarkers.every(marker => comboboxContract.optionValues.includes(marker))
+        && comboboxContract.described && comboboxContract.label === "Expression"
+        && comboboxContract.attributes["aria-expanded"] === "false"
+        && comboboxContract.attributes["aria-autocomplete"] === "list"
+        && comboboxContract.attributes["aria-haspopup"] === "listbox"
+        && comboboxContract.listboxRole === "listbox" && comboboxContract.statusRole === "status"
+        && JSON.stringify(filtered.markers) === JSON.stringify(["{expression}"])
+        && filtered.active === filtered.selected[0] && filtered.status.includes("1 marker suggestion")
+        && escaped.value === "{expr" && escaped.expanded === "false"
+        && highlightedBeforeTab !== null && tabExit.value === freeForm && tabExit.stored === freeForm
+        && tabExit.expanded === "false" && tabExit.leftControl
+        && pointerValue === "before {glossary} after"
+        && adjacentMarkerValue === "{expression}{reading}{expression}"
+        && closingBoundaryValue === "{expression}{reading}"
+        && keyboardFirst !== null && keyboardSecond !== keyboardFirst && keyboardValue !== ""
+        && emptyState.emptyVisible && emptyState.active === null && emptyState.status.includes("No marker suggestions")
+        && clipboard.control === copiedValue && clipboard.expression === copiedValue
+        && clipboard.reading === copiedValue && clipboard.invalid === "true"
+        && clipboard.error.includes("Unknown marker: {unknown}")
+        && compositionDuring === "composition: " && compositionAfter === "composition: 日本語\t"
+        && opened.expanded === "true" && opened.listboxHidden === false
+        && accessibility.role === "combobox" && accessibility.name === "Expression"
+        && accessibility.expanded === true && accessibility.focusable === true,
+      JSON.stringify({
+        comboboxContract,
+        filtered,
+        escaped,
+        highlightedBeforeTab,
+        tabExit,
+        pointerValue,
+        adjacentMarkerValue,
+        closingBoundaryValue,
+        keyboardFirst,
+        keyboardSecond,
+        keyboardValue,
+        emptyState,
+        clipboard,
+        compositionDuring,
+        compositionAfter,
+        opened,
+        accessibility,
+      }));
+
     await page.select("#anki-preset", "kiku");
     await page.click("#anki-apply-preset");
     await saved();
