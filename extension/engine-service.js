@@ -1,3 +1,4 @@
+import { encodeBase64 } from "./base64.js";
 import {
   httpsUrl,
   assertRecommendedDictionary,
@@ -67,7 +68,6 @@ const MAX_MEDIA_DICTIONARY_BYTES = 1024;
 const MAX_MEDIA_PATH_BYTES = 4 * 1024;
 const UTF8 = new TextEncoder();
 
-const BASE64_CHUNK = 0x8000;
 const MEDIA_TYPES = {
   avif: "image/avif",
   webp: "image/webp",
@@ -1637,14 +1637,6 @@ function rollbackImportedGeneration(generationRoot, failure) {
   return rollbackImportedGenerations([generationRoot], failure);
 }
 
-function toBase64(bytes) {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + BASE64_CHUNK));
-  }
-  return btoa(binary);
-}
-
 function mediaType(path) {
   const dot = path.lastIndexOf(".");
   const extension = dot < 0 ? "" : path.slice(dot + 1).toLowerCase();
@@ -2689,7 +2681,7 @@ const HANDLERS = {
     }
     // Read HEAPU8 through the module: memory growth swaps the view out.
     const bytes = engine.HEAPU8.subarray(pointer, pointer + length);
-    return { dataUrl: `data:${mediaType(path)};base64,${toBase64(bytes)}` };
+    return { dataUrl: `data:${mediaType(path)};base64,${encodeBase64(bytes)}` };
   },
 
   async hd_custom_save(message) {
