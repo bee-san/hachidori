@@ -303,6 +303,43 @@ function speedUpMemfsGrowth() {
   };
 }
 
+// IDBFS persists each file as an IndexedDB record whose `contents` is a
+// Uint8Array. Chromium serialises such a value through the renderer on every
+// put and deserialises it on every get, and the cost grew with the size of the
+// database (Electron: 400, 630 and 880 ms for three imports of 70–100 MB).
+// A Blob value is handed to the browser's blob storage once and read back with
+// one copy; the same three imports persist in 230, 280 and 340 ms, and restart
+// to ready loses about 300 ms. Files under 1 MiB stay arrays. Records of either
+// shape load; Blobs are only written where FileReaderSync can read them back.
+const IDBFS_BLOB_THRESHOLD = 1024 * 1024;
+
+function storeLargeIdbfsFilesAsBlobs() {
+  const idbfs = engine.FS?.filesystems?.IDBFS;
+  if (typeof idbfs?.storeRemoteEntry !== "function" || typeof idbfs.loadRemoteEntry !== "function"
+      || typeof FileReaderSync !== "function" || typeof Blob !== "function") {
+    return;
+  }
+  const storeRemoteEntry = idbfs.storeRemoteEntry;
+  const loadRemoteEntry = idbfs.loadRemoteEntry;
+  idbfs.storeRemoteEntry = (store, path, entry, callback) => {
+    if (entry?.contents instanceof Uint8Array && entry.contents.byteLength >= IDBFS_BLOB_THRESHOLD) {
+      entry = { ...entry, contents: new Blob([entry.contents]) };
+    }
+    return storeRemoteEntry(store, path, entry, callback);
+  };
+  idbfs.loadRemoteEntry = (store, path, callback) => loadRemoteEntry(store, path, (error, entry) => {
+    if (!error && entry?.contents instanceof Blob) {
+      try {
+        entry.contents = new Uint8Array(new FileReaderSync().readAsArrayBuffer(entry.contents));
+      } catch (readError) {
+        callback(readError);
+        return;
+      }
+    }
+    callback(error, entry);
+  });
+}
+
 // Reallocate over-allocated classic-FS files under `root` to their exact size.
 function trimMemfsFiles(root) {
   let node;
@@ -1204,6 +1241,7 @@ async function boot() {
     verifiedPackages.clear();
     if (storageBackend === "idbfs") {
       speedUpMemfsGrowth();
+      storeLargeIdbfsFilesAsBlobs();
       if (!exists(DICT_ROOT)) {
         engine.FS.mkdir(DICT_ROOT);
       }
