@@ -64,13 +64,14 @@ export function startEngineWorker({ createHoshidicts, storageBackend }) {
     reportProgress: reportEngineProgress,
   });
   startEngine();
-  globalThis.onmessage = onHostMessage;
+  // A dedicated worker receives only from its creator over its implicit
+  // MessagePort. MessageEvent.origin is always empty, so there is no origin
+  // value to validate; the channel checks in onHostMessage validate the
+  // expected protocol.
+  globalThis.onmessage = onHostMessage; // NOSONAR
 }
 
-// A dedicated worker receives only from its creator over its implicit
-// MessagePort. MessageEvent.origin is always empty, so there is no origin value
-// to validate; the channel check below validates the expected protocol.
-function onHostMessage(event) { // NOSONAR
+function onHostMessage(event) {
   const data = event.data;
   if (data?.channel === "host-response") {
     const pending = pendingHostRequests.get(data.id);
