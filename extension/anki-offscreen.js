@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { decodeBase64 } from "./base64.js";
 import { buildAnkiResourceFields } from "./anki-resources.js";
 import { exportAnkiAudio } from "./anki-audio.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
@@ -42,8 +43,7 @@ function sameClientSpeech(plan, source, term) {
 }
 
 function decodeClientSpeech(window, data) {
-  const binary = window.atob(data);
-  return Uint8Array.from(binary, character => character.codePointAt(0));
+  return decodeBase64(data, { atob: window.atob.bind(window) });
 }
 
 function linkedSpeechRecorder(window, message) {

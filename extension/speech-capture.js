@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { encodeBase64 as encodeBase64Bytes } from "./base64.js";
 import {
   EMBEDDED_SPEECH_CAPTURE_TARGET,
   recordEmbeddedSpeech,
@@ -11,12 +12,7 @@ function describe(error) {
 }
 
 function encodeBase64(window, data) {
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const chunks = [];
-  for (let offset = 0; offset < bytes.length; offset += 32_768) {
-    chunks.push(String.fromCodePoint(...bytes.subarray(offset, offset + 32_768)));
-  }
-  return window.btoa(chunks.join(""));
+  return encodeBase64Bytes(data, { btoa: window.btoa.bind(window) });
 }
 
 function captureSender(window, sender) {

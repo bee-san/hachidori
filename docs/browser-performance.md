@@ -366,6 +366,18 @@ baseline wasm tier and is about twice as slow as the same import after another
 one has warmed the JIT (JMnedict 430 ms cold, 220 ms warm). The numbers above are
 warm unless stated; Chrome caches optimised wasm code across sessions.
 
+## Base64 through the native codec
+
+Dictionary media travel to the popup as data URLs, and captured audio and
+screenshots travel to Anki and back as base64. Those encodings used
+`String.fromCodePoint`/`btoa` and `atob`/`Uint8Array.from` loops. Chrome 143+
+has `Uint8Array.prototype.toBase64` and `Uint8Array.fromBase64`; measured in
+Chrome 152 on 1 MB: encode 43 → 0.5 ms, decode 55 → 0.9 ms, identical output.
+`extension/base64.js` uses them when present and keeps the loops as the fallback
+(Chrome 128, Node). A 140 KB Jitendex AVIF now reaches the page in 3.2 ms
+instead of 3.5; the larger effect is on Anki captures, where a megabyte of audio
+or screenshot no longer costs about 100 ms of encode-plus-decode on the way.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production

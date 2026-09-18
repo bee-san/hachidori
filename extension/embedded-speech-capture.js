@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { decodeBase64 as decodeBase64Text } from "./base64.js";
 import { CAPTURE_SAMPLE_RATE, encodeMonoWav } from "./capture-buffer.js";
 import { resolveSpeech } from "./speech.js";
 
@@ -58,8 +59,7 @@ function requireAudioTrack(stream) {
 }
 
 function decodeBase64(window, value) {
-  const binary = window.atob(value);
-  return Uint8Array.from(binary, character => character.codePointAt(0));
+  return decodeBase64Text(value, { atob: window.atob.bind(window) });
 }
 
 function isWav(data) {
