@@ -403,6 +403,9 @@ function watchExtensionTarget(target) {
   if (!target.url().startsWith("chrome-extension://")) return;
   target.createCDPSession().then(async (cdp) => {
     await cdp.send("Runtime.enable");
+    // Puppeteer attaches dedicated workers paused; without this the OPFS probe
+    // and engine workers never run and the engine silently falls back.
+    await cdp.send("Runtime.runIfWaitingForDebugger").catch(() => {});
     const flatten = (args) => (args || [])
       .map((argument) => argument.value ?? argument.description ?? JSON.stringify(argument.preview ?? null)).join(" ");
     cdp.on("Runtime.consoleAPICalled", (event) => diagnostics.push(`[${target.type()}] ${event.type}: ${flatten(event.args)}`));
