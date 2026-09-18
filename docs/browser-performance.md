@@ -194,6 +194,24 @@ headers inside an `extern "C"` block and does not compile.
 
 The threaded runtime shrinks by 4 KB. Builds stay byte-reproducible.
 
+## Importer: no UTF-8 re-validation of bank strings
+
+The bank parsers capture every string raw (`raw_string`, `raw_json_view`) and
+copy it through unchanged, yet glaze's default `validate_utf8` re-walked every
+skipped string. Turning it off for the bank parsers (not `index.json`) leaves
+the produced files byte-identical and removes 12–18% of a Jitendex import.
+
+| Import (settings upload to "Finished", 3 runs) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1070–1254 ms (median 1110) | 962–996 ms (median 973) |
+| Pixiv Light | 1163–1615 ms (median 1331) | 1097–1146 ms (median 1116) |
+
+Native `hdw_import` in node: Jitendex 667 → 544 ms, Pixiv Light 652 → 618 ms.
+One behaviour change, for corrupt input only: a bank containing malformed UTF-8
+used to fail the whole import ("empty dictionary" when it was the only bank);
+it now imports with the bytes as they are, and renderers show U+FFFD for them,
+which is what Yomitan does.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
