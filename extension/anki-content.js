@@ -116,6 +116,38 @@
     record?.control?.remove();
     if (record?.feedback) syncFeedbackSurface(record.feedback);
   }
+  function reusableRecord(record, group, spec) {
+    return record?.group === group && record.result === spec.item.result
+      && record.custom === spec.custom && record.templateId === spec.templateId;
+  }
+  function createRecord(group, spec) {
+    const { item, binding, custom, templateId, label, add } = spec;
+    return {
+      ...item,
+      binding,
+      group,
+      custom,
+      templateId,
+      label,
+      ...(add ? { add } : {}),
+      configKey: null,
+      busy: false,
+      terminal: false,
+      decision: null,
+      viewChecked: false,
+      needsCheck: true,
+      captureJobId: null,
+    };
+  }
+  function updateRecord(record, spec) {
+    Object.assign(record, {
+      actions: spec.item.actions,
+      feedback: spec.item.feedback,
+      result: spec.item.result,
+      label: spec.label,
+    });
+    if (spec.custom) setMiningButtonState(record, record.add.dataset.state || "checking");
+  }
   function captureBadge(record, state = "") {
     if (!record.badge) return;
     const capture = record.decision?.capture;
@@ -567,38 +599,6 @@
         }
       }
       return specs;
-    }
-    function reusableRecord(record, group, spec) {
-      return record?.group === group && record.result === spec.item.result
-        && record.custom === spec.custom && record.templateId === spec.templateId;
-    }
-    function createRecord(group, spec) {
-      const { item, binding, custom, templateId, label, add } = spec;
-      return {
-        ...item,
-        binding,
-        group,
-        custom,
-        templateId,
-        label,
-        ...(add ? { add } : {}),
-        configKey: null,
-        busy: false,
-        terminal: false,
-        decision: null,
-        viewChecked: false,
-        needsCheck: true,
-        captureJobId: null,
-      };
-    }
-    function updateRecord(record, spec) {
-      Object.assign(record, {
-        actions: spec.item.actions,
-        feedback: spec.item.feedback,
-        result: spec.item.result,
-        label: spec.label,
-      });
-      if (spec.custom) setMiningButtonState(record, record.add.dataset.state || "checking");
     }
     function recordForSpec(group, spec) {
       let record = bound.get(spec.binding);
