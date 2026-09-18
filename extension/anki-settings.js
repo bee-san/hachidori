@@ -4,40 +4,69 @@ import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_TEMPLATE_MARKER_OPTIONS, ankiFieldNames, ankiTemplateErrors, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 import { reorderSettingsRows, setStatusOutput } from "./settings-dom.js";
 
-function markerSelection(value, selectionStart, selectionEnd) {
+function setAttributeIfChanged(element, name, value) {
+  if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
+function intersectingMarkerSelection(value, selectionStart, selectionEnd) {
   const collapsed = selectionStart === selectionEnd;
   for (const match of value.matchAll(/\{([^{}]*)\}/gu)) {
     const start = match.index;
     const end = start + match[0].length;
-    if (collapsed ? selectionStart > start && selectionStart < end
-      : selectionStart < end && selectionEnd > start) {
-      return {
-        start: collapsed ? start : Math.min(selectionStart, start),
-        end: collapsed ? end : Math.max(selectionEnd, end),
-        query: match[1],
-      };
-    }
-  }
-  const before = value.slice(0, selectionStart);
-  const open = before.lastIndexOf("{");
-  if (open > before.lastIndexOf("}")) {
-    const close = value.indexOf("}", selectionEnd);
+    const intersects = collapsed
+      ? selectionStart > start && selectionStart < end
+      : selectionStart < end && selectionEnd > start;
+    if (!intersects) continue;
     return {
-      start: open,
-      end: close < 0 ? selectionEnd : close + 1,
-      query: value.slice(open + 1, selectionStart),
+      start: collapsed ? start : Math.min(selectionStart, start),
+      end: collapsed ? end : Math.max(selectionEnd, end),
+      query: match[1],
     };
   }
-  const trimmedStart = value.search(/\S/u);
-  const trimmedEnd = value.search(/\s*$/u);
-  if (trimmedStart >= 0 && trimmedStart <= selectionStart && selectionEnd <= trimmedEnd) {
-    const token = value.slice(trimmedStart, trimmedEnd);
-    const completeMarkerBoundary = collapsed && token.startsWith("{") && token.endsWith("}")
-      && (selectionStart === trimmedStart || selectionStart === trimmedEnd);
-    if (!completeMarkerBoundary && /^\{?[^{}\s]*\}?$/u.test(token)) {
-      return { start: trimmedStart, end: trimmedEnd, query: token.replace(/^\{|\}$/gu, "") };
-    }
+  return null;
+}
+
+function partialMarkerSelection(value, selectionStart, selectionEnd) {
+  const before = value.slice(0, selectionStart);
+  const open = before.lastIndexOf("{");
+  if (open <= before.lastIndexOf("}")) return null;
+  const close = value.indexOf("}", selectionEnd);
+  return {
+    start: open,
+    end: close < 0 ? selectionEnd : close + 1,
+    query: value.slice(open + 1, selectionStart),
+  };
+}
+
+function markerLikeTokenQuery(token) {
+  let start = token.startsWith("{") ? 1 : 0;
+  let end = token.endsWith("}") ? token.length - 1 : token.length;
+  if (end < start) end = start;
+  const query = token.slice(start, end);
+  for (const character of query) {
+    if (character === "{" || character === "}" || character.trim() === "") return null;
   }
+  return query;
+}
+
+function singleTokenSelection(value, selectionStart, selectionEnd) {
+  const trimmedStart = value.length - value.trimStart().length;
+  const trimmedEnd = value.trimEnd().length;
+  if (trimmedStart >= trimmedEnd || trimmedStart > selectionStart || selectionEnd > trimmedEnd) return null;
+  const token = value.slice(trimmedStart, trimmedEnd);
+  const collapsed = selectionStart === selectionEnd;
+  const completeMarkerBoundary = collapsed && token.startsWith("{") && token.endsWith("}")
+    && (selectionStart === trimmedStart || selectionStart === trimmedEnd);
+  if (completeMarkerBoundary) return null;
+  const query = markerLikeTokenQuery(token);
+  return query === null ? null : { start: trimmedStart, end: trimmedEnd, query };
+}
+
+function markerSelection(value, selectionStart, selectionEnd) {
+  const selection = intersectingMarkerSelection(value, selectionStart, selectionEnd)
+    ?? partialMarkerSelection(value, selectionStart, selectionEnd)
+    ?? singleTokenSelection(value, selectionStart, selectionEnd);
+  if (selection) return selection;
   return { start: selectionStart, end: selectionEnd, query: "" };
 }
 
@@ -106,13 +135,9 @@ function createMarkerCombobox(document, id, labelText, onValue) {
   let composing = false;
   let committedValue = "";
 
-  function setAttribute(element, name, value) {
-    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
-  }
-
   function updateLabel(value) {
-    setAttribute(toggle, "aria-label", `${open ? "Hide" : "Show"} marker suggestions for ${value}`);
-    setAttribute(listbox, "aria-label", `Marker suggestions for ${value}`);
+    setAttributeIfChanged(toggle, "aria-label", `${open ? "Hide" : "Show"} marker suggestions for ${value}`);
+    setAttributeIfChanged(listbox, "aria-label", `Marker suggestions for ${value}`);
   }
 
   function setActive(index) {
@@ -188,9 +213,56 @@ function createMarkerCombobox(document, id, labelText, onValue) {
     const visible = visibleOptions();
     if (visible.length === 0) return;
     const position = visible.indexOf(active);
-    const next = position < 0 ? (offset < 0 ? visible.length - 1 : 0)
-      : (position + offset + visible.length) % visible.length;
+    let next = 0;
+    if (position >= 0) next = (position + offset + visible.length) % visible.length;
+    else if (offset < 0) next = visible.length - 1;
     setActive(visible[next]);
+  }
+
+  function moveActiveToEdge(last) {
+    const visible = visibleOptions();
+    setActive(last ? visible.at(-1) ?? -1 : visible[0] ?? -1);
+  }
+
+  function handleOpenKey(event) {
+    if (!open) return false;
+    if (event.key === "Tab") {
+      setOpen(false);
+      return false;
+    }
+    switch (event.key) {
+      case "Home":
+        moveActiveToEdge(false);
+        return true;
+      case "End":
+        moveActiveToEdge(true);
+        return true;
+      case "Enter":
+        if (event.shiftKey || active < 0) return false;
+        select(active);
+        return true;
+      case "Escape":
+        setOpen(false);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function handleKeydown(event) {
+    if (composing || event.isComposing) return;
+    let handled = false;
+    if (event.altKey && event.key === "ArrowUp" && open) {
+      setOpen(false);
+      handled = true;
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!open) setOpen(true, true);
+      else moveActive(event.key === "ArrowDown" ? 1 : -1);
+      handled = true;
+    } else {
+      handled = handleOpenKey(event);
+    }
+    if (handled) event.preventDefault();
   }
 
   editor.addEventListener("input", event => {
@@ -206,37 +278,7 @@ function createMarkerCombobox(document, id, labelText, onValue) {
     if (!open) setOpen(true);
     else refreshOptions();
   });
-  editor.addEventListener("keydown", event => {
-    if (composing || event.isComposing) return;
-    if (event.altKey && event.key === "ArrowUp" && open) {
-      event.preventDefault();
-      setOpen(false);
-      return;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (!open) setOpen(true, true);
-      else moveActive(event.key === "ArrowDown" ? 1 : -1);
-      return;
-    }
-    if (open && (event.key === "Home" || event.key === "End")) {
-      event.preventDefault();
-      const visible = visibleOptions();
-      setActive(event.key === "Home" ? visible[0] ?? -1 : visible.at(-1) ?? -1);
-      return;
-    }
-    if (open && event.key === "Enter" && !event.shiftKey && active >= 0) {
-      event.preventDefault();
-      select(active);
-      return;
-    }
-    if (open && event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false);
-      return;
-    }
-    if (open && event.key === "Tab") setOpen(false);
-  });
+  editor.addEventListener("keydown", handleKeydown);
   toggle.addEventListener("pointerdown", event => event.preventDefault());
   toggle.addEventListener("click", () => {
     const wasOpen = open;
@@ -267,7 +309,7 @@ function createMarkerCombobox(document, id, labelText, onValue) {
       if (editor !== document.activeElement && editor.value !== value) editor.value = value;
       const message = errors.join("\n");
       if (error.textContent !== message) error.textContent = message;
-      setAttribute(editor, "aria-invalid", `${errors.length > 0}`);
+      setAttributeIfChanged(editor, "aria-invalid", `${errors.length > 0}`);
       if (open) refreshOptions();
     },
   };
