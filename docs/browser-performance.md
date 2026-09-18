@@ -212,6 +212,35 @@ used to fail the whole import ("empty dictionary" when it was the only bank);
 it now imports with the bytes as they are, and renderers show U+FFFD for them,
 which is what Yomitan does.
 
+## Importer: trainer threads and the default FSE table
+
+Two engine changes (hoshidicts #8 and #9), both leaving every produced data file
+byte-identical for nine dictionaries (the fixture, Jitendex, Pixiv Light, JMdict,
+JMnedict, KANJIDIC, JPDB and BCCWJ frequency, Kanjium pitch):
+
+- The zstd dictionary trainer tries five values of k; each trial walks a 4 MiB
+  frequency table and is memory-bound, so five trials at once were slower than
+  three in two rounds. Jitendex training wall on 16 cores: 8 threads 133 ms,
+  3 threads 96 ms. The trainer is now capped at three threads.
+- zstd's `set_basic` path (blocks with one or two sequences, i.e. short
+  glossaries) rebuilt the format-defined default FSE table on every block. For
+  JMnedict that was 360 ms of CPU, the largest item in its import profile. The
+  table is now built once (`third_party/hoshidicts/src/zstd`, which replaces one
+  upstream translation unit).
+
+| Import (settings upload to "Finished", medians of 3) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1104 ms | 971 ms |
+| Pixiv Light | 1216 ms | 1145 ms |
+| JMdict (English) | 802 ms | 707 ms |
+| JMnedict | 616 ms | 581 ms |
+| BCCWJ frequency | 948 ms | 894 ms |
+| JPDB frequency | 497 ms | 469 ms |
+| KANJIDIC, Kanjium pitch | unchanged | unchanged |
+
+Node, four cores (`taskset -c 0-3`): JMnedict 606 → 540 ms, JMdict 629 → 594 ms,
+Jitendex 974 → 821 ms.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
