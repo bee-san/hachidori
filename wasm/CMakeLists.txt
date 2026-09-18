@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.31)
 
 project(hachidori LANGUAGES C CXX)
 
-option(HACHIDORI_PTHREADS "Build the pthread + OPFS runtime" ON)
+option(HACHIDORI_PTHREADS "Build a pthread runtime" ON)
+# With pthreads, WasmFS + direct OPFS is the primary runtime. Turning this off
+# keeps the threads but stores through the classic FS + IDBFS, for hosts such as
+# Electron that expose shared memory and workers but refuse OPFS access handles
+# to chrome-extension:// origins.
+option(HACHIDORI_WASMFS "Use WasmFS + direct OPFS with pthreads" ON)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,7 +30,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts hoshidict
 
 add_executable(hoshidicts_wasm bindings.cpp)
 
-if(HACHIDORI_PTHREADS)
+if(HACHIDORI_PTHREADS AND NOT HACHIDORI_WASMFS)
+  set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts-threaded-idbfs SUFFIX ".mjs")
+elseif(HACHIDORI_PTHREADS)
   set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts-threaded SUFFIX ".mjs")
 else()
   set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts SUFFIX ".mjs")
@@ -39,7 +46,7 @@ target_link_libraries(hoshidicts_wasm PRIVATE hoshidicts glaze::glaze)
 # archive to an importer that turns that title into a directory it may delete.
 target_include_directories(hoshidicts_wasm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts/src)
 
-if(HACHIDORI_PTHREADS)
+if(HACHIDORI_PTHREADS AND HACHIDORI_WASMFS)
   target_compile_definitions(hoshidicts_wasm PRIVATE HACHIDORI_OPFS=1)
 endif()
 
@@ -64,6 +71,11 @@ if(HACHIDORI_PTHREADS)
       -sPTHREAD_POOL_SIZE_STRICT=2
       -sPTHREAD_POOL_DELAY_LOAD=0
       -sALLOW_BLOCKING_ON_MAIN_THREAD=0
+  )
+endif()
+
+if(HACHIDORI_PTHREADS AND HACHIDORI_WASMFS)
+  target_link_options(hoshidicts_wasm PRIVATE
       -sWASMFS=1
       -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8
   )

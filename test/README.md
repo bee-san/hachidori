@@ -173,10 +173,11 @@ use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
 cd /path/to/hachidori
 
 node test/submodule-identity.mjs # 1. submodule/runtime identity is internally consistent
-./wasm/build.sh                  # 2. produces threaded OPFS and fallback IDBFS bundles
+./wasm/build.sh                  # 2. produces threaded OPFS, threaded IDBFS and fallback IDBFS bundles
 node --test test/custom-dictionary.test.mjs # 3. custom source and ZIP contract
 node test/make-fixture.mjs       # 4. writes test/fixtures/
 node test/node-smoke.mjs         # 5. threaded C ABI contract test
+HACHIDORI_WASM_VARIANT=threaded-idbfs node test/node-smoke.mjs # 6a. threaded IDBFS C ABI contract test
 HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 6. fallback C ABI contract test
 node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control test
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
@@ -340,7 +341,8 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 ## `node-smoke.mjs`
 
-The real test. Loads the threaded bundle by default or the fallback bundle when
+The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
+`HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
 117 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.

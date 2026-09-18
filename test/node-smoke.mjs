@@ -52,7 +52,7 @@ import {
 } from '../extension/custom-dictionary.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const VARIANT = process.env.HACHIDORI_WASM_VARIANT === 'fallback' ? 'hoshidicts' : 'hoshidicts-threaded';
+const VARIANT = { fallback: 'hoshidicts', 'threaded-idbfs': 'hoshidicts-threaded-idbfs' }[process.env.HACHIDORI_WASM_VARIANT] ?? 'hoshidicts-threaded';
 const MODULE_PATH = join(HERE, '..', 'extension', 'vendor', `${VARIANT}.mjs`);
 const WASM_PATH = join(HERE, '..', 'extension', 'vendor', `${VARIANT}.wasm`);
 const DICT_DIR = `/dicts/${TITLE}`;

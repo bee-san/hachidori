@@ -27,11 +27,14 @@ SDK environment so `emcmake`, `emcc`, and `em++` are on `PATH`. Run these comman
 from the extracted archive's top-level directory:
 
 ```sh
-emcmake cmake -S wasm -B wasm/build -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON
+emcmake cmake -S wasm -B wasm/build -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=ON
 cmake --build wasm/build --parallel
+emcmake cmake -S wasm -B wasm/build-idbfs -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=OFF
+cmake --build wasm/build-idbfs --parallel
 emcmake cmake -S wasm -B wasm/build-fallback -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=OFF
 cmake --build wasm/build-fallback --parallel
 cp wasm/build/hoshidicts-threaded.mjs wasm/build/hoshidicts-threaded.wasm extension/vendor/
+cp wasm/build-idbfs/hoshidicts-threaded-idbfs.mjs wasm/build-idbfs/hoshidicts-threaded-idbfs.wasm extension/vendor/
 cp wasm/build-fallback/hoshidicts.mjs wasm/build-fallback/hoshidicts.wasm extension/vendor/
 ```
 

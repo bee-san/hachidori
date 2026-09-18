@@ -59,6 +59,7 @@ try {
   } else if (suite === "smoke") {
     await run("fixture", ["test/make-fixture.mjs"]);
     await run("node-threaded", ["test/node-smoke.mjs"]);
+    await run("node-threaded-idbfs", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", ["test/extension-smoke.mjs"]);

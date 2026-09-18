@@ -45,6 +45,84 @@ Aggregate Chrome RSS sums descendant-process RSS and can count shared pages more
 
 The benchmark checks exact import counts, hits, misses, deinflection, result signatures, and every persistent OPFS file's path, length, and SHA-256 before and after a complete Chrome restart. Raw evidence remains under the ignored local `benchmark/results/` directory; the benchmark source itself is versioned.
 
+## Archive transport, relay, and first-lookup warm-up
+
+On 2026-09-18 the standard Jitendex + Pixiv Light matrix (one excluded warmup,
+three measured samples per corpus, five lookup passes, Chrome 152.0.7977.75,
+16-vCPU Intel Xeon Platinum 8488C) was rerun on `ba9171bc` (extension tree
+SHA-256 `75eddb68…c62353`). Jitendex import to first valid lookup had grown to
+2.181 `[2.136–2.236]` s against the 1.281 s recorded above. Instrumenting the
+engine worker showed where the time went:
+
+- 0.90–1.02 s writing the 38.7 MB archive into OPFS through WasmFS's `FS.write`,
+  which copies from JavaScript into the wasm heap one byte at a time (about
+  25 ns per byte, independent of the destination backend);
+- 0.88–0.97 s in `hdw_import` (zstd dictionary training 0.16–0.18 s, term banks
+  0.47–0.56 s of which ~0.24 s waits for the eight parse/compress workers and
+  ~0.05 s is file writing, index and hash tables ~0.08 s);
+- 0.13–0.15 s loading the generated dictionary; the same load costs 0.15 s on
+  restart.
+
+The first `hd_lookup` after a load also spent 7–20 ms inside the native call
+against 0.3–0.5 ms once warm (V8 tiering the wasm), and every relayed request
+paid a `chrome.runtime.getContexts()` round trip of about 0.2 ms.
+
+Four changes:
+
+1. `streamResponseToFile` collects the body and writes it once through a shared
+   writable mapping (`FS.mmap`, one `HEAPU8.set`, `FS.msync`, `FS.munmap`). WasmFS's
+   `FS.writeFile` was not usable: on the OPFS backend it appends to an existing
+   file and leaves it undeletable until the next start, which the benchmark's
+   durable-storage manifest check caught.
+2. `relay()` sends to the offscreen document directly once it has answered and
+   only verifies the document again when a reply is missing.
+3. Publishing a non-empty dictionary set runs one warm-up lookup inside the
+   serialised load.
+4. The archive is staged in MEMFS for the WasmFS build as well, which removes
+   the proxied OPFS write, read-back mapping, and unlink (about 50 ms of
+   `hdw_import` for Jitendex) and writes nothing to disk the importer does not
+   keep.
+
+| Metric | `ba9171bc` | With changes |
+| --- | ---: | ---: |
+| Jitendex import to first correctness-checked lookup | 2.181 `[2.136–2.236]` s | 1.322 `[1.175–1.325]` s |
+| Pixiv Light import to first correctness-checked lookup | 2.832 `[2.791–2.884]` s | 1.627 `[1.623–1.680]` s |
+| Jitendex Chrome restart to first correctness-checked lookup | 0.987 `[0.983–0.990]` s | 1.037 `[0.986–1.047]` s |
+| Pixiv Light Chrome restart to first correctness-checked lookup | 1.055 `[0.999–1.066]` s | 1.068 `[1.034–1.095]` s |
+| Jitendex first hit after import / after restart | 10.100 / 10.450 ms | 3.550 / 4.030 ms |
+| Pixiv Light first hit after import / after restart | 8.780 / 8.885 ms | 2.830 / 3.420 ms |
+| Jitendex steady hit p50 after import / after restart | 2.345 / 2.327 ms | 2.000 / 2.070 ms |
+| Pixiv Light steady hit p50 after import / after restart | 1.872 / 1.933 ms | 1.720 / 1.790 ms |
+
+Durable OPFS bytes are unchanged (99,440,781 and 154,655,950). Restart is not
+a target of these changes: its cost is Chrome and extension startup (about
+0.8 s for the six-term fixture) plus the dictionary load, and the three-sample
+restart spreads of the two runs overlap (0.94–1.04 s against 0.97–1.04 s for
+Jitendex). An earlier run of the first three changes alone measured 1.227 s and
+1.673 s for the two imports; the import medians move by about the same amount
+between runs.
+
+Under Electron 42.3.2 (Chromium 148, the GameSentenceMiner host) the base
+commit ran the single-thread IDBFS fallback: shared memory and workers are
+available, but `createSyncAccessHandle` is refused for `chrome-extension://`
+origins. Its Jitendex import took 3.9–4.2 s, 3.3 s of it in the single-threaded
+native importer and 0.35 s in the IDBFS `syncfs`. A third runtime variant,
+`hoshidicts-threaded-idbfs` (pthreads on the classic FS with IDBFS, run by
+`engine-worker-idbfs.js`), is now selected when the OPFS probe fails on an
+isolated origin. Measured with the same Electron harness, two runs each:
+
+| Metric (Electron, Jitendex) | Base (single-thread, local) | Threaded IDBFS worker |
+| --- | ---: | ---: |
+| Import message wall | 3.99 / 4.15 s | 1.66 / 1.58 s |
+| First hit after import / after restart | 10.3 / 10.2 ms | 2.9–3.2 / 3.0–3.5 ms |
+| Steady hit p50 after import / after restart | 2.12 / 1.71 ms | 2.26–2.10 / 1.97–2.17 ms |
+| App ready to engine ready after restart | 442 / 444 ms | 493 / 477 ms |
+
+The worker hop and the eager pthread pool cost about 0.2 ms per lookup and
+40 ms at startup against the base's in-document engine; the import no longer
+blocks the offscreen document's thread, which also hosts pronunciation and Anki
+work.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
