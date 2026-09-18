@@ -26,7 +26,11 @@ Then load the extension as usual, for example with Electron's
 `session.extensions.loadExtension()`. There is nothing to change in storage or Settings.
 
 GameSentenceMiner does this in `scripts/sync-hachidori.mjs` when it vendors a
-Hachidori commit, and records the change in the vendored `SOURCE.json`.
+Hachidori commit. It also enables `EMBEDDED_SPEECH_CAPTURE` because its Electron
+host creates and grants Hachidori's dedicated `speech-capture.html` frame as a
+display-media source and can expose byte-exporting system voices to that page.
+Both changes are recorded in the vendored `SOURCE.json`. Other hosts must leave
+that capability off unless they provide the same byte-backed contract.
 
 ## What it changes
 
@@ -50,12 +54,16 @@ normal first-install preferences plus:
   overlay profile. Settings also shows the effective off/disabled capability
   when a carried or shared configuration has the stored option on. It preserves
   that configuration and its field mappings.
-- **Pronunciation:** no media capture host runs in an overlay, so browser
-  text-to-speech cannot be recorded. Mining skips text-to-speech audio sources.
-  With no downloadable source left,
-  `{audio}` fields stay empty without a warning; add one under Audio to fill them.
-  Audio Settings explains this playback-only speech capability and hides the
-  browser instruction to start capture for speech recording.
+- **Pronunciation:** a generic overlay has no byte-backed speech capture, so
+  mining skips text-to-speech audio sources. With no downloadable source left,
+  `{audio}` fields stay empty without a warning; add one under Audio to fill
+  them. A host with `EMBEDDED_SPEECH_CAPTURE` keeps those sources. Hachidori
+  asks its host-owned speech page for the selected browser voice. A matching
+  system exporter returns a WAV that the page plays and attaches; other voices
+  use the page's frame-audio capture. Hachidori submits the resulting bounded
+  mono WAV through the normal pronunciation media path before mutating the
+  note. Capture failure therefore leaves no audio-less note or media residue.
+  Local playback by itself never counts as an attachment.
 
 ## Settings capabilities
 
@@ -67,7 +75,7 @@ turn an Electron-only control back on remotely.
 | --- | --- |
 | Media capture | Every recorder control and the toolbar Record button are disabled. The service worker also rejects capture requests and does not wake a capture host. |
 | Anki screenshot | The switch is effectively off and disabled; existing mappings and the stored choice are preserved. |
-| Audio | Downloadable pronunciation and browser-speech playback work. Browser speech and captured audio are not recorded for mining. |
+| Audio | Downloadable pronunciation and browser-speech playback work. Generic overlays do not record browser speech. A host that explicitly supplies embedded speech capture records the selected voice at mining time and sends its WAV through the normal Anki media transaction. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
 | Design | Appearance, layout, custom CSS and custom toolbar links work. A real lookup popup asks the embedding host to open a link in the system browser; the Settings live preview cannot launch it. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
