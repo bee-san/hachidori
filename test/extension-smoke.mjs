@@ -823,7 +823,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
-    .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace(/import \{ HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -4177,7 +4177,11 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.MINING_CAPABILITIES = {
+    screenshot: !overlayMode,
+    browserSpeech: !overlayMode,
+    embeddedSpeechCapture: false,
+  };
   window.chrome.runtime.connect ??= () => ({
     postMessage() {},
     onDisconnect: { addListener() {} },

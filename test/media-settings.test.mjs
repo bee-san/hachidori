@@ -13,7 +13,7 @@ const extension = file => readFileSync(new URL(`../extension/${file}`, import.me
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
+function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechCapture = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -26,7 +26,11 @@ function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.MINING_CAPABILITIES = {
+    screenshot: !overlayMode,
+    browserSpeech: !overlayMode || embeddedSpeechCapture,
+    embeddedSpeechCapture: overlayMode && embeddedSpeechCapture,
+  };
   window.settingsReplies = {
     hd_capture_status: { ok: true, state: "stopped" },
     hd_capture_open: { ok: true },
@@ -51,6 +55,7 @@ function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
   const source = withoutModules(extension("settings.js"));
   assert.ok(source.endsWith("start();\n"));
   window.eval(source.replace(/start\(\);\s*$/u, `
+    renderMiningCapabilityHelp();
     attachHandlers();
     options.mediaCapture.enabled = ${mediaEnabled};
     renderMediaSettings();
@@ -126,4 +131,12 @@ test("overlay Settings preserves but cannot activate remote media capture option
   assert.equal(window.readMediaSettings().enabled, true, "the stored host value is preserved");
   assert.equal(el("opt-media-enabled").checked, false, "the effective overlay value stays off");
   assert.equal(requests.length, 0);
+});
+
+test("an embedded speech-capture host advertises byte-backed TTS without enabling media capture", t => {
+  const { el } = fixture(t, { overlayMode: true, embeddedSpeechCapture: true });
+  assert.equal(el("audio-mining-help").hidden, true);
+  assert.equal(el("audio-speech-capture-help").hidden, true);
+  assert.equal(el("audio-embedded-speech-capture-help").hidden, false);
+  assert.equal(el("media-overlay-help").hidden, false);
 });
