@@ -341,6 +341,17 @@ cache lines of a small filter bounced between cores and the build was slower tha
 single-threaded. Node, medians of 3: JMnedict 319 → 213 ms, Jitendex 364 → 313,
 VNDB 2874 → 2424.
 
+Two smaller follow-ups (hoshidicts #15, #16): the zstd trainer uses five threads
+when the sample is small (short-glossary dictionaries; JMnedict 223 → 209 ms), and
+the bank processors reserve their record buffers up front instead of growing them
+a few bytes per field (BCCWJ 373–390 → 343–351 ms, JPDB 122–125 → 114–116).
+Output unchanged in both cases.
+
+A note on measuring: a single import in a fresh Node process runs on V8's
+baseline wasm tier and is about twice as slow as the same import after another
+one has warmed the JIT (JMnedict 430 ms cold, 220 ms warm). The numbers above are
+warm unless stated; Chrome caches optimised wasm code across sessions.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
