@@ -2,6 +2,18 @@
 import { ankiTemplateMarkerNames, resolveAnkiTemplates } from "./anki-templates.js";
 import "./reader-options.js";
 
+export class AnkiTransportError extends Error {
+  constructor(message, { dispatched }) {
+    super(message);
+    Object.defineProperty(this, "name", { value: "AnkiTransportError", configurable: true });
+    Object.defineProperty(this, "dispatched", { value: dispatched === true, enumerable: false });
+  }
+}
+
+export function isUndispatchedAnkiTransportError(error) {
+  return error instanceof AnkiTransportError && error.dispatched === false;
+}
+
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. AnkiConnect
 // handles requests through Anki's UI loop, so each endpoint gets a small,
 // bounded set of transport lanes. Four lanes let a replacement Settings check
@@ -9,7 +21,6 @@ import "./reader-options.js";
 // The private worker's feature handlers still select actions and bind every
 // conversation to its configured endpoint and API key.
 export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000 } = {}) {
-  class AnkiTransportError extends Error {}
   const maximumActive = 4;
   const queues = new Map();
 
@@ -17,8 +28,11 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000
     const controller = new AbortController();
     queue.controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
-    const unavailable = () => new AnkiTransportError(controller.signal.aborted ? "AnkiConnect timed out. Check its URL in Settings, open Anki and retry."
-      : "Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.");
+    const unavailable = () => new AnkiTransportError(
+      controller.signal.aborted ? "AnkiConnect timed out. Check its URL in Settings, open Anki and retry."
+        : "Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.",
+      { dispatched: true },
+    );
     const interrupted = () => controller.signal.reason instanceof AnkiTransportError
       ? controller.signal.reason : unavailable();
     try {
@@ -54,10 +68,14 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000
     queue.failure = error;
     if (queues.get(url) === queue) queues.delete(url);
     for (const pending of queue.pending.splice(0)) {
-      pending.reject(new AnkiTransportError(error.message));
+      pending.reject(new AnkiTransportError(error.message, { dispatched: false }));
     }
+    // Every active entry has entered fetch, so aborting one cannot prove that
+    // its Anki mutation did not run. Mark active siblings dispatched and keep
+    // their outcomes conservative while ending a failed endpoint generation
+    // within one transport deadline.
     for (const controller of queue.controllers) {
-      controller.abort(new AnkiTransportError(error.message));
+      controller.abort(new AnkiTransportError(error.message, { dispatched: true }));
     }
   }
 

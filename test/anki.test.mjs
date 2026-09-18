@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { createAnkiGateway, ankiAvailability } from "../extension/anki.js";
+import { AnkiTransportError, createAnkiGateway, ankiAvailability } from "../extension/anki.js";
 
 const { normaliseOptions, normaliseAnkiConnectUrl, validateOptionsPatch } = globalThis.HDReaderOptions;
 const config = (patch = {}) => ({ ...normaliseOptions({}).anki, ...patch });
@@ -166,22 +166,32 @@ test("Anki queues are isolated by normalized endpoint", async () => {
   assert.deepEqual(await Promise.all([first, second]), ["first-result", "second-result"]);
 });
 
-test("Anki transport failure rejects the bounded active generation once and a later request reconnects", async () => {
+test("Anki transport failure marks pending work unsent, aborts dispatched siblings conservatively and reconnects", async () => {
   let mode = "stalled";
   let requestCount = 0;
-  const gateway = createAnkiGateway({ timeoutMs: 10, fetch: async (_, { signal }) => {
+  const signals = [];
+  const gateway = createAnkiGateway({ timeoutMs: 1000, fetch: async (_, { signal }) => {
     requestCount += 1;
+    signals.push(signal);
     if (mode === "connected") return reply("reconnected");
     return new Promise((_, reject) => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     });
   } });
-  const pending = Array.from({ length: 8 }, (_, index) => gateway.invoke(`request-${index}`, {}));
+  const pending = Array.from({ length: 8 }, (_, index) =>
+    gateway.invoke(`request-${index}`, {}, "", index === 0 ? 10 : 1000));
   const settled = await Promise.allSettled(pending);
   assert.equal(requestCount, 4, "a failed transport must not spend another timeout on each queued request");
-  for (const result of settled) {
+  assert.ok(signals.slice(1).every(signal =>
+    signal.reason instanceof AnkiTransportError && signal.reason.dispatched === true),
+    "the first failure deliberately aborts already-dispatched siblings");
+  for (const [index, result] of settled.entries()) {
     assert.equal(result.status, "rejected");
+    assert.ok(result.reason instanceof AnkiTransportError);
     assert.match(result.reason.message, /timed out/u);
+    assert.equal(result.reason.dispatched, index < 4,
+      "only requests that entered a transport lane have an uncertain mutation outcome");
+    assert.equal(Object.getOwnPropertyDescriptor(result.reason, "dispatched").enumerable, false);
   }
   mode = "connected";
   assert.equal(await gateway.invoke("retry", {}), "reconnected");

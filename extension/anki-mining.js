@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiAvailability } from "./anki.js";
+import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { ankiSetupFamily } from "./anki-setup.js";
@@ -340,6 +340,13 @@ export function createAnkiMiningService({
             : (await duplicateIndex.repair(config, expression, invoke)).noteIds;
         } catch { /* The duplicate result is definitive even if browse discovery fails. */ }
         return { state: "duplicate", error: "This note already exists in Anki.", noteIds };
+      }
+      if (isUndispatchedAnkiTransportError(error)) {
+        // A failed endpoint generation rejected this queued mutation before it
+        // entered fetch. Its note cannot exist, so release request-owned media
+        // and return a definitive retryable failure instead of uncertainty.
+        await releaseRejected();
+        throw error;
       }
       // A lost acknowledgement may follow a completed write. Neither this
       // worker nor the reader retries it automatically, including append modes.

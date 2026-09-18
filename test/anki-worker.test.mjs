@@ -4,6 +4,7 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
+import { AnkiTransportError } from "../extension/anki.js";
 
 const AUDIO_FILENAME = `hachidori_${"c".repeat(64)}.wav`;
 const SPEECH_FILENAME = `hachidori_${"a".repeat(64)}.wav`;
@@ -1039,7 +1040,7 @@ test("missing captured audio writes the mapped animation only and returns the so
 test("a mining screenshot is held until the note is written, then stored under its own name", async () => {
   const uploads = [];
   const deletions = [];
-  let refuse = false, duplicate = false, lostReply = false;
+  let refuse = false, duplicate = false, lostReply = false, unsentReply = false;
   let check = { canAdd: true };
   const notes = new Map();
   let fields = null;
@@ -1055,7 +1056,8 @@ test("a mining screenshot is held until the note is written, then stored under i
       if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
       if (action === "addNote") {
         if (duplicate) throw new Error("cannot create note because it is a duplicate");
-        if (lostReply) throw new Error("Anki reply lost");
+        if (lostReply) throw new AnkiTransportError("Anki reply lost", { dispatched: true });
+        if (unsentReply) throw new AnkiTransportError("Anki request was never sent", { dispatched: false });
         fields = params.note.fields;
         notes.set(12, fields);
         return 12;
@@ -1172,6 +1174,18 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.equal(uncertain.state, "uncertain");
   assert.equal(uploads.at(-1).filename, uncertainPicture.filename);
   assert.deepEqual(deletions, [], "an uncertain write must retain its uploaded screenshot");
+
+  lostReply = false;
+  unsentReply = true;
+  const unsentPicture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  await assert.rejects(
+    service.submit({ ...request, term: { ...request.term, expression: "兎" },
+      configKey: status.configKey, screenshot: unsentPicture }),
+    error => error instanceof AnkiTransportError && error.dispatched === false,
+  );
+  assert.equal(uploads.at(-1).filename, unsentPicture.filename);
+  assert.deepEqual(deletions, [unsentPicture.filename],
+    "a queued mutation rejected before dispatch must release its uploaded screenshot");
 
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);

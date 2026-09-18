@@ -718,6 +718,30 @@ test("definitive duplicate and invalid submissions release ready capture jobs fo
   }
 });
 
+test("a definitive worker rejection releases request-owned capture media and remains retryable", async t => {
+  let submissions = 0;
+  const f = preparedCaptureFixture(t, async () => {
+    submissions++;
+    const error = new Error("AnkiConnect timed out before this mutation was sent.");
+    error.responseReceived = true;
+    throw error;
+  });
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  f.items[0].add.click();
+  await until(() => submissions === 1 && f.captureCalls.includes("hd_capture_cancel")
+    && !f.items[0].add.disabled);
+  assert.equal(f.items[0].add.dataset.state, "ready");
+  assert.equal(f.items[0].add.dataset.action, "add");
+  assert.match(f.items[0].output.textContent, /Could not add.*before this mutation was sent/u);
+  assert.throws(() => f.session.jobStatus(f.jobs[0]), /expired/u);
+  assert.doesNotThrow(() => f.nextPin());
+
+  f.items[0].add.click();
+  await until(() => submissions === 2 && !f.items[0].add.disabled);
+  assert.equal(f.jobs.length, 2, "retrying prepares fresh request-owned media");
+  assert.equal(f.captureCalls.filter(type => type === "hd_capture_cancel").length, 2);
+});
+
 test("a definitive rejection releases its admitted job after the popup retires and the reader relinks", async t => {
   const held = Promise.withResolvers();
   let sent = false;

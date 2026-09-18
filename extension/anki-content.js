@@ -386,9 +386,17 @@
         // Nothing was sent, so the picture this submission took is nobody's.
         if (!writeSent) await discardScreenshot(record);
         if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Check Anki before trying again. ${error.message}`);
-        else if (owns()) {
-          setMiningButtonState(record, decisionState(record.decision));
-          setStatus(record, `Could not add: ${error.message}`, "error");
+        else {
+          if (writeSent) {
+            // A worker reply confirms that no Anki mutation was sent. Release
+            // the request-owned export; a retry will prepare a fresh one.
+            await cancelCapture(record);
+            await discardScreenshot(record);
+          }
+          if (owns()) {
+            setMiningButtonState(record, decisionState(record.decision));
+            setStatus(record, `Could not add: ${error.message}`, "error");
+          }
         }
       } finally {
         record.busy = false;
