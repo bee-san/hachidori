@@ -301,6 +301,23 @@
       try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
       record.captureJobId = null;
     }
+    async function handleSubmissionFailure(record, error, writeSent, owns) {
+      if (!writeSent) {
+        // Nothing was sent, so the picture this submission took is nobody's.
+        await discardScreenshot(record);
+      } else if (!error.responseReceived) {
+        uncertain(record, `The write could not be confirmed. Check Anki before trying again. ${error.message}`);
+        return;
+      } else {
+        // A worker reply confirms that no Anki mutation was sent. Release the
+        // request-owned export even after its popup owner has retired.
+        await cancelCapture(record);
+        await discardScreenshot(record);
+      }
+      if (!owns()) return;
+      setMiningButtonState(record, decisionState(record.decision));
+      setStatus(record, `Could not add: ${error.message}`, "error");
+    }
     // One viewport screenshot for this submission, taken with Hachidori's own
     // overlays hidden. A capture or upload that fails is a warning carried with
     // the note's outcome: the field renders empty and the note still goes in.
@@ -383,13 +400,7 @@
         if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
-        // Nothing was sent, so the picture this submission took is nobody's.
-        if (!writeSent) await discardScreenshot(record);
-        if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Check Anki before trying again. ${error.message}`);
-        else if (owns()) {
-          setMiningButtonState(record, decisionState(record.decision));
-          setStatus(record, `Could not add: ${error.message}`, "error");
-        }
+        await handleSubmissionFailure(record, error, writeSent, owns);
       } finally {
         record.busy = false;
         if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }

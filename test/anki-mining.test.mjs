@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService } from "../extension/anki-mining.js";
-import { createAnkiGateway } from "../extension/anki.js";
+import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
 
 function testIndex(resolve = async () => []) {
   const find = async (config, expression, invoke, cached = false) => {
@@ -287,6 +287,119 @@ test("an ambiguous mutation failure is not retried or reported as a confirmed fa
   assert.equal(result.state, "uncertain");
   assert.match(result.error, /Check Anki/u);
   assert.equal(writes, 1);
+});
+
+test("mining releases a queued unsent mutation but keeps a dispatched transport failure uncertain", async t => {
+  for (const dispatched of [false, true]) await t.test(dispatched ? "dispatched" : "queued", async () => {
+    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+      fieldTemplates: {
+        Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{definition}", overwriteMode: "overwrite" },
+      } };
+    const actions = [];
+    let blockers = [];
+    const transport = createAnkiGateway({ fetch: async (_, options) => {
+      const { action } = JSON.parse(options.body);
+      actions.push(action);
+      if (action === "canAddNotesWithErrorDetail") {
+        return { ok: true, async json() { return { result: [{ canAdd: true, error: null }], error: null }; } };
+      }
+      if (action.startsWith("block-")) {
+        return new Promise((_, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        });
+      }
+      if (action === "addNote") throw new TypeError("connection reset after dispatch");
+      assert.fail(`Unexpected ${action}`);
+    } });
+    const gateway = {
+      async discover() {
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      invoke: transport.invoke,
+    };
+    const released = [];
+    const service = createAnkiMiningService({
+      gateway,
+      readConfig: async () => config,
+      duplicateIndex: testIndex(),
+      buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
+      beforeWrite: async () => ({ owned: "request-media" }),
+      beforeMutation: async () => {
+        if (dispatched) return;
+        blockers = Array.from({ length: 4 }, (_, index) =>
+          transport.invoke(`block-${index}`, {}, "", index === 0 ? 10 : 1000, config.url).catch(error => error));
+      },
+      afterRejected: async ({ writeResources }) => { released.push(writeResources.owned); },
+      enrich: async () => [],
+    });
+    const { configKey } = await service.status();
+    const operation = service.submit({ expression: "猫", configKey });
+    if (dispatched) {
+      const result = await operation;
+      assert.equal(result.state, "uncertain");
+      assert.match(result.error, /Check Anki/u);
+      assert.deepEqual(released, [], "a dispatched mutation may have written and must retain its resources");
+      assert.equal(actions.filter(action => action === "addNote").length, 1);
+    } else {
+      await assert.rejects(operation, error =>
+        error instanceof AnkiTransportError && error.dispatched === false && /timed out/u.test(error.message));
+      assert.deepEqual(released, ["request-media"], "an unsent mutation has a definitive cleanup path");
+      assert.equal(actions.includes("addNote"), false, "the rejected queued mutation never entered fetch");
+      const blockerErrors = await Promise.all(blockers);
+      assert.ok(blockerErrors.every(error => error instanceof AnkiTransportError && error.dispatched === true),
+        "active sibling aborts remain outcome-uncertain");
+    }
+  });
+});
+
+test("overwrite mutations use the same pending-versus-dispatched failure boundary", async t => {
+  for (const dispatched of [false, true]) await t.test(dispatched ? "dispatched" : "queued", async () => {
+    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+      duplicateBehavior: "overwrite",
+      fieldTemplates: {
+        Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{definition}", overwriteMode: "overwrite" },
+      } };
+    const calls = [];
+    const gateway = {
+      async discover() {
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      async invoke(action) {
+        calls.push(action);
+        if (action === "notesInfo") return [{ noteId: 123, modelName: "Basic",
+          fields: { Front: { value: "猫" }, Back: { value: "old" } } }];
+        if (action === "updateNoteFields") {
+          throw new AnkiTransportError("update transport failed", { dispatched });
+        }
+        assert.fail(`Unexpected ${action}`);
+      },
+    };
+    let releases = 0;
+    const service = createAnkiMiningService({
+      gateway,
+      readConfig: async () => config,
+      duplicateIndex: testIndex(() => [123]),
+      buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
+      beforeWrite: async () => ({ owned: true }),
+      afterRejected: async () => { releases++; },
+      enrich: async () => [],
+    });
+    const { configKey } = await service.status();
+    const operation = service.submit({ expression: "猫", configKey });
+    if (dispatched) {
+      assert.equal((await operation).state, "uncertain");
+      assert.equal(releases, 0);
+    } else {
+      await assert.rejects(operation, error =>
+        error instanceof AnkiTransportError && error.dispatched === false);
+      assert.equal(releases, 1);
+    }
+    assert.equal(calls.filter(action => action === "updateNoteFields").length, 1);
+  });
 });
 
 test("overwrite mode still prevents an external duplicate created after preflight found no target", async () => {

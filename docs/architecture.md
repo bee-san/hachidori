@@ -1740,6 +1740,18 @@ Endpoint changes invalidate connection and maturity identities. Selecting a
 recognised note-type family applies its preset after that model's fields load;
 stale replies and subsequent manual mapping edits cannot apply the old preset.
 
+The Anki gateway keeps four FIFO transport lanes per normalized endpoint.
+Requests wait outside `fetch`, and their timeout starts only when a lane
+dispatches them. The first transport failure retires that endpoint generation:
+queued entries are rejected as never dispatched, active siblings are aborted as
+already dispatched, and the queue is removed so a later call can reconnect with
+a fresh generation. For note mutations this dispatch boundary is authoritative.
+A queued `addNote` or `updateNoteFields` rejection is a definitive no-write, so
+request-owned screenshot and capture media are released and the reader remains
+retryable. Any active or otherwise dispatched mutation failure remains
+outcome-uncertain, retains its media for inspection or an explicit retry, and is
+never retried automatically.
+
 Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
