@@ -51,6 +51,26 @@ test("media capture accepts only bounded enumerated settings and loopback websoc
   }
 });
 
+test("media capture validation ignores storage property order without relaxing values", () => {
+  const value = configured({
+    enabled: true,
+    timingMode: "recent",
+    texthooker: { enabled: false, url: "", format: "gsm" },
+    page: { nativeCues: false, domText: true, autoLearnArea: false },
+  });
+  const reordered = Object.fromEntries(Object.entries(value).reverse());
+  reordered.texthooker = Object.fromEntries(Object.entries(value.texthooker).reverse());
+  reordered.page = Object.fromEntries(Object.entries(value.page).reverse());
+  assert.deepEqual(validateOptionsPatch({ mediaCapture: reordered }).mediaCapture, value);
+  const inherited = Object.create(value);
+  assert.throws(() => validateOptionsPatch({ mediaCapture: inherited }));
+  const missing = structuredClone(value);
+  delete missing.enabled;
+  assert.throws(() => validateOptionsPatch({ mediaCapture: missing }));
+  const inheritedPage = { ...value, page: Object.create(value.page) };
+  assert.throws(() => validateOptionsPatch({ mediaCapture: inheritedPage }));
+});
+
 test("media capture rejects inert output, armed empty texthooker, malformed ranges and unknown properties", () => {
   const invalid = [
     configured({ includeAnimation: false, includeCapturedAudio: false }),

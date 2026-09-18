@@ -73,10 +73,10 @@ Google requires [a justification for each permission](https://developer.chrome.c
 
 | Permission | Hachidori use and proposed explanation |
 | --- | --- |
-| `storage` | Save dictionary configuration, reader preferences, custom entries, lookup counts and Anki settings locally. The engine stores dictionary indexes separately in OPFS or IndexedDB. |
+| `storage` | Save dictionary configuration, reader preferences, custom entries, lookup counts, Anki settings and the newest two automatic backup records locally. The engine stores dictionary indexes separately in OPFS or IndexedDB. |
 | `unlimitedStorage` | Keep user-imported dictionaries and their generated indexes in OPFS or IndexedDB exempt from ordinary extension storage quotas and storage-pressure eviction. |
 | `offscreen` | Run the local dictionary engine and pronunciation playback, and retain an explicitly started capture session when its controls close. [The worker](../extension/background.js) requests `DOM_SCRAPING`, `AUDIO_PLAYBACK` and `DISPLAY_MEDIA`. |
-| `alarms` | Run the user's configured dictionary update schedules and refresh the local Anki duplicate index every 30 minutes when Anki mining is configured. Scheduled runs can install dictionary data updates; they do not replace extension code. |
+| `alarms` | Run the user's configured dictionary update schedules, refresh the local Anki duplicate index every 30 minutes when Anki mining is configured, and schedule at most one local automatic backup per 24 hours. Scheduled runs can install dictionary data updates; they do not replace extension code. |
 | `downloads` | Save an explicitly requested local backup ZIP and monitor that export's completion. [The implementation](../extension/backup-downloads.js) tracks its own export IDs. |
 | `<all_urls>` host access | Fetch dictionaries and updates from configured HTTPS sources, pronunciation from configured sources, communicate with local Anki, and capture the visible reading page for mapped mining screenshots. Explain arbitrary source support and why a fixed allowlist does not cover the shipped feature. |
 | `<all_urls>` content-script matching | Read Japanese text near the pointer/selection and display dictionary results on the user's reading pages. A fixed website list cannot cover where users read. User-enabled local-file access can support local reading pages. |
@@ -117,12 +117,13 @@ The policy covers the paths below; use this mapping when completing the dashboar
 | Page screenshots | With Screenshot the page when mining enabled and a field mapping `{screenshot}`, Add or Overwrite takes one picture of the whole visible reading page directly from the active tab. The switch is on by default. The picture stays in temporary memory and is sent to the configured Anki with the note; when linked, the reading browser sends the final JPEG to the sharing host for that transaction. | [Mining](../extension/anki-content.js), [screenshot ownership](../extension/background.js) |
 | Continuous capture | User-selected tab/window/monitor frames and available source audio stay in transient capture history after Start capture and Chrome's picker. Stop clears it; explicitly mined final clips are sent to the configured Anki. When linked, only final AVIF/WAV assets cross the relay to the host; this can include a separately recorded browser-speech WAV. Reading-page titles/URLs identify the linked source. | [Capture privacy](media-capture.md#privacy-and-limitations) |
 | Other external resources | Explicit external dictionary links open dictionary-supplied HTTP(S) URLs, which may contain terms or other parameters. User-written popup CSS may fetch URL resources. Their destination hosts may receive request metadata; dictionary CSS has separate restrictions. | [Renderer](../extension/render/glossary.js), [links](../extension/external-links.js), [custom CSS](architecture.md#custom-popup-css) |
-| Backups and deletion | User-requested backup ZIPs include settings, dictionaries, custom entries and statistics, and may include API keys. They are unencrypted and exclude the derived Anki duplicate index. Uninstalling the extension does not delete downloaded backups or already-created Anki notes; those need separate deletion. | [Backup format](backup-format.md) |
+| Backups and deletion | The newest two automatic daily snapshots stay in the browser profile and contain the same saved settings, custom entries and statistics as a manual backup payload, including a configured AnkiConnect API key. Clearing current settings does not remove their older retained values until later snapshots replace them or the extension is uninstalled. User-requested ZIPs additionally contain dictionary files; they are unencrypted and remain outside the profile until separately deleted. Automatic and manual backups exclude the derived Anki duplicate index. | [Backup format](backup-format.md) |
 
 No analytics/advertising SDK or developer-operated lookup collection endpoint was
 found in the audited runtime. That does **not** mean the extension handles no
-user data or never contacts third parties. Ordinary Chrome storage and backup
-ZIPs are not application-encrypted; review API-key storage and exported secrets
+user data or never contacts third parties. Ordinary Chrome storage, automatic
+snapshots and backup ZIPs are not separately application-encrypted; review
+API-key storage and retained/exported secrets
 against Google’s [secure-handling requirements](https://developer.chrome.com/docs/webstore/program-policies/data-handling)
 and [user-data FAQ](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq) before certifying. The existing
 backup export UI explicitly warns that the ZIP is unencrypted and can contain

@@ -16,7 +16,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
@@ -368,6 +368,7 @@ function makeStorage() {
   const gets = [];
   const sets = [];
   let pendingSetFailure = null;
+  let pendingSetReplyFailure = null;
   let sortDictionaryKeysOnRead = false;
 
   function withSortedDictionaryKeys(value) {
@@ -442,6 +443,11 @@ function makeStorage() {
             setTimeout(callback, 0);
             return undefined;
           }
+          if (pendingSetReplyFailure !== null) {
+            const failure = pendingSetReplyFailure;
+            pendingSetReplyFailure = null;
+            return Promise.reject(failure);
+          }
           return Promise.resolve();
         },
         remove(keys, callback) {
@@ -486,6 +492,9 @@ function makeStorage() {
     failNextSet(message) {
       pendingSetFailure = new Error(message);
     },
+    loseNextSetReply(message) {
+      pendingSetReplyFailure = new Error(message);
+    },
     sortDictionaryKeysOnRead(value) {
       sortDictionaryKeysOnRead = value;
     },
@@ -511,12 +520,18 @@ function makeEvent() {
 function makeAlarms() {
   const values = new Map();
   const onAlarm = makeEvent();
+  let pendingCreateFailure = null;
   return {
     api: {
       async clear(name) {
         return values.delete(name);
       },
-      create(name, info) {
+      async create(name, info) {
+        if (pendingCreateFailure !== null) {
+          const failure = pendingCreateFailure;
+          pendingCreateFailure = null;
+          throw failure;
+        }
         values.set(name, { name, ...structuredClone(info), scheduledTime: info.when ?? Date.now() + info.periodInMinutes * 60_000 });
       },
       async get(name) {
@@ -527,6 +542,9 @@ function makeAlarms() {
     fire(name) {
       const alarm = values.get(name);
       if (alarm) onAlarm.fire(structuredClone(alarm));
+    },
+    failNextCreate(message) {
+      pendingCreateFailure = new Error(message);
     },
     values,
   };
@@ -763,6 +781,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const automaticBackups = readFileSync(resolve(EXTENSION, "backup-automatic.js"), "utf8")
+    .replace(/^import .* from "\.\/(?:lookup-stats|backup-state)\.js";\s*/gmu, "")
+    .replace(/^export\s+/gmu, "");
   const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
     .replace(/^export\s+/gmu, "")
     .replace("OVERLAY_MODE = false;", `OVERLAY_MODE = ${overlayMode};`);
@@ -783,7 +804,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
-    .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup, verifyAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
@@ -826,7 +847,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -884,16 +905,21 @@ async function hostedExtensionBackgroundStage() {
 async function lookupStatsStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("lookup-stats-worker", bus, storage);
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  const backgroundContext = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  await runInContext("initialiseAutomaticBackupAlarm()", backgroundContext);
+  const getsBeforeLookups = storage.gets.length;
+  const setsBeforeLookups = storage.sets.length;
   const send = (type, fields = {}) => bus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
   const fields = { term: "  は\u3099 ", reading: " は\u3099 " };
   const replies = await Promise.all(Array.from({ length: 25 }, () => send("hd_lookup_stats_record", fields)));
   const current = await send("hd_lookup_stats_read", fields);
+  const lookupGets = storage.gets.slice(getsBeforeLookups);
+  const lookupWrites = storage.sets.slice(setsBeforeLookups);
   check("concurrent lookups increment one canonical row without scanning or rewriting the statistics collection",
     replies.every(reply => reply.ok) && current.statistics?.lookupCount === 25 && current.statistics.term === "ば"
       && current.statistics.reading === "ば" && !("seenCount" in current.statistics)
-      && storage.gets.every(query => query !== null) && storage.sets.length === 25
-      && storage.sets.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
+      && lookupGets.every(query => query !== null) && lookupWrites.length === 25
+      && lookupWrites.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
 
   const restartBus = makeBus();
   const restartChrome = makeChrome("lookup-stats-restarted", restartBus, storage);
@@ -941,6 +967,199 @@ async function lookupStatsStage() {
 
 }
 
+async function automaticBackupBackgroundStage() {
+  let now = Date.parse("2026-09-18T12:00:00.000Z");
+  const day = 24 * 60 * 60_000;
+  class BackupDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("automatic-backup-worker", bus, storage, alarms);
+  const semanticRevision = await customDictionarySemanticRevision([]);
+  await chrome.storage.local.set({
+    dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] },
+    options: { revision: 1 },
+    customDictionarySource: { schemaVersion: 1, revision: 1, semanticRevision, text: "" },
+    dictionaryUpdates: { revision: 1, schedule: "off", lastCheckedAt: null },
+    lookupStats: { generation: null, revision: 0 },
+  });
+  const cleanups = [];
+  bus.addListener("automatic-backup-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    cleanups.push(structuredClone(message));
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
+    return true;
+  });
+  const context = loadBackgroundScript({
+    chrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  const reconcile = () => runInContext("reconcileAutomaticBackups()", context);
+  await runInContext("initialiseAutomaticBackupAlarm()", context);
+  const firstStore = structuredClone(storage.raw.get("automaticBackups"));
+  const firstWrites = storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("an absent automatic-backup store is created as v1 on worker initialization",
+    firstStore.schemaVersion === 1
+      && firstStore.backups.length === 1
+      && Date.parse(firstStore.backups[0].createdAt) === now
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ committedAt: firstStore.backups[0].createdAt,
+      alarm: await alarms.api.get("hachidori-automatic-backup") }));
+
+  now += day;
+  const queuedAt = now;
+  let releaseQueue;
+  context.automaticBackupQueueGate = new Promise(resolve => { releaseQueue = resolve; });
+  const blocker = runInContext("serialiseStorage(() => automaticBackupQueueGate)", context);
+  const delayed = Promise.all([reconcile(), reconcile(), reconcile()]);
+  now += 3 * 60 * 60_000;
+  releaseQueue();
+  await blocker;
+  await delayed;
+  const secondStore = structuredClone(storage.raw.get("automaticBackups"));
+  const automaticWrites = storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("automatic backups timestamp serialized creation after queue delay and retain only the newest two payloads",
+    firstStore.backups.length === 1
+      && firstWrites === 1
+      && secondStore.backups.length === 2
+      && automaticWrites === 2
+      && cleanups.length === 2
+      && Date.parse(secondStore.backups[0].createdAt) === now
+      && Date.parse(secondStore.backups[0].createdAt) !== queuedAt
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ queuedAt, firstStore, secondStore, automaticWrites, cleanups: cleanups.length,
+      metadataBytes: Buffer.byteLength(JSON.stringify(secondStore)) }));
+
+  now += day;
+  const futureStore = { schemaVersion: 2, backups: structuredClone(secondStore.backups) };
+  const writesBeforeFuture = storage.sets.filter(keys =>
+    keys.length === 1 && keys[0] === "automaticBackups").length;
+  const cleanupsBeforeFuture = cleanups.length;
+  storage.raw.set("automaticBackups", structuredClone(futureStore));
+  let futureFailure = null;
+  try { await reconcile(); } catch (error) { futureFailure = error; }
+  const futureAfterFailure = structuredClone(storage.raw.get("automaticBackups"));
+  const writesAfterFuture = storage.sets.filter(keys =>
+    keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("an unsupported future automatic-backup schema fails closed without overwrite or generation cleanup",
+    /unsupported schema/u.test(futureFailure?.message ?? "")
+      && JSON.stringify(futureAfterFailure) === JSON.stringify(futureStore)
+      && writesAfterFuture === writesBeforeFuture
+      && cleanups.length === cleanupsBeforeFuture,
+    JSON.stringify({ futureFailure: futureFailure?.message, futureAfterFailure,
+      writesBeforeFuture, writesAfterFuture, cleanupsBeforeFuture, cleanupsAfterFuture: cleanups.length }));
+  storage.raw.set("automaticBackups", structuredClone(secondStore));
+
+  const beforeRefusal = structuredClone(secondStore);
+  const cleanupsBeforeRefusal = cleanups.length;
+  storage.failNextSet("injected automatic metadata failure");
+  let refusal = null;
+  try { await reconcile(); } catch (error) { refusal = error; }
+  check("a refused automatic-backup metadata write retains the authoritative index and skips generation cleanup",
+    /injected automatic metadata failure/u.test(refusal?.message ?? "")
+      && JSON.stringify(storage.raw.get("automaticBackups")) === JSON.stringify(beforeRefusal)
+      && cleanups.length === cleanupsBeforeRefusal,
+    JSON.stringify({ refusal: refusal?.message, store: storage.raw.get("automaticBackups"), cleanups: cleanups.length }));
+
+  storage.loseNextSetReply("lost automatic metadata reply");
+  await reconcile();
+  const recovered = structuredClone(storage.raw.get("automaticBackups"));
+  check("a lost automatic-backup metadata reply is recovered by exact readback without a duplicate snapshot",
+    recovered.backups.length === 2
+      && Date.parse(recovered.backups[0].createdAt) === now
+      && new Set(recovered.backups.map(record => record.id)).size === 2
+      && storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length === 3
+      && cleanups.length === cleanupsBeforeRefusal + 1,
+    JSON.stringify({ recovered, writes: storage.sets, cleanups: cleanups.length }));
+
+  await alarms.api.clear("hachidori-automatic-backup");
+  await runInContext("automaticBackupNextAt = null", context);
+  alarms.failNextCreate("injected automatic alarm failure");
+  let alarmFailure = null;
+  try { await runInContext(`scheduleAutomaticBackup(${now + day})`, context); }
+  catch (error) { alarmFailure = error; }
+  const nextAtAfterFailure = runInContext("automaticBackupNextAt", context);
+  await runInContext(`scheduleAutomaticBackup(${now + day})`, context);
+  check("a rejected automatic-backup alarm creation leaves scheduling retryable until a later create succeeds",
+    /injected automatic alarm failure/u.test(alarmFailure?.message ?? "")
+      && nextAtAfterFailure === null
+      && runInContext("automaticBackupNextAt", context) === now + day
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ alarmFailure: alarmFailure?.message, nextAtAfterFailure,
+      retryAlarm: await alarms.api.get("hachidori-automatic-backup") }));
+
+  const corrupt = structuredClone(recovered);
+  corrupt.backups[0].snapshot.state.schemaVersion = 99;
+  await chrome.storage.local.set({ automaticBackups: corrupt });
+  const settingsChrome = makeChrome("automatic-backup-settings", bus, storage, alarms);
+  const listed = await settingsChrome.runtime.sendMessage({
+    target: "hoshidicts-worker", type: "hd_backup_auto_list",
+  });
+  const roots = await bus.sendMessage("automatic-backup-engine-host", {
+    target: "hoshidicts-worker", type: "hd_backup_auto_roots",
+  }, { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
+  check("a corrupt newest automatic backup leaves the valid older snapshot visible and blocks unsafe cleanup",
+    listed?.ok === true && listed.corruptCount === 1 && listed.backups.length === 1
+      && listed.backups[0].id === corrupt.backups[1].id
+      && roots?.ok === true && roots.complete === false && roots.dictionaries.length === 0,
+    JSON.stringify({ listed, roots }));
+
+  await alarms.api.clear("hachidori-automatic-backup");
+  const writesBeforeRestart = storage.sets.length;
+  const restartedBus = makeBus();
+  const restartedChrome = makeChrome("automatic-backup-restarted", restartedBus, storage, alarms);
+  const restarted = loadBackgroundScript({
+    chrome: restartedChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", restarted);
+  check("worker restart recreates the automatic-backup alarm from retained metadata without another write",
+    (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day
+      && storage.sets.length === writesBeforeRestart,
+    JSON.stringify({ alarm: await alarms.api.get("hachidori-automatic-backup"),
+      writesBeforeRestart, writesAfterRestart: storage.sets.length }));
+
+  const noStoreStorage = makeStorage();
+  const noStoreAlarms = makeAlarms();
+  const notReadyBus = makeBus();
+  const notReadyChrome = makeChrome("automatic-backup-not-ready", notReadyBus, noStoreStorage, noStoreAlarms);
+  const notReady = loadBackgroundScript({
+    chrome: notReadyChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", notReady);
+  const waitedWithoutStore = !noStoreStorage.raw.has("automaticBackups")
+    && runInContext("automaticBackupWaitingForState", notReady) === true;
+  noStoreStorage.raw.set("dictionaryState",
+    { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] });
+  noStoreStorage.raw.set("options", { revision: 1 });
+  noStoreStorage.raw.set("customDictionarySource",
+    { schemaVersion: 1, revision: 1, semanticRevision, text: "" });
+  noStoreStorage.raw.set("dictionaryUpdates",
+    { revision: 1, schedule: "off", lastCheckedAt: null });
+  noStoreStorage.raw.set("lookupStats", { generation: null, revision: 0 });
+
+  const noStoreRestartBus = makeBus();
+  noStoreRestartBus.addListener("automatic-backup-no-store-engine", (message, _sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
+    return true;
+  });
+  const noStoreRestartChrome = makeChrome(
+    "automatic-backup-no-store-restarted", noStoreRestartBus, noStoreStorage, noStoreAlarms,
+  );
+  const noStoreRestart = loadBackgroundScript({
+    chrome: noStoreRestartChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", noStoreRestart);
+  const restartedStore = structuredClone(noStoreStorage.raw.get("automaticBackups"));
+  check("worker restart retries an initial snapshot when the previous no-store attempt was not ready",
+    waitedWithoutStore
+      && restartedStore.schemaVersion === 1
+      && restartedStore.backups.length === 1
+      && (await noStoreAlarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ waitedWithoutStore, restartedStore,
+      alarm: await noStoreAlarms.api.get("hachidori-automatic-backup") }));
+}
+
 async function managedScheduleStage() {
   let now = Date.parse("2026-09-07T12:00:00Z");
   const hour = 3_600_000;
@@ -976,10 +1195,11 @@ async function managedScheduleStage() {
   const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
   await cycle();
   let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  const managedAlarms = [...alarms.values.values()].filter(alarm => alarm.name === name);
   check("per-dictionary schedules check only due managed packages including disabled overrides",
     JSON.stringify(fetched) === JSON.stringify(["https://example.com/hourly.json"])
       && saved.dictionaries[0].enabled === false && saved.dictionaries[0].lastUpdateCheck.checkedAt === new Date(now).toISOString()
-      && (await alarms.api.get(name))?.scheduledTime === now + hour && alarms.values.size === 1,
+      && (await alarms.api.get(name))?.scheduledTime === now + hour && managedAlarms.length === 1,
     JSON.stringify({ fetched, saved, alarms: [...alarms.values.values()] }));
   const writes = storage.sets.length;
   await cycle();
@@ -1323,8 +1543,9 @@ async function sharingHostStage() {
     message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }));
   await settle(() => sent(socket).length >= 2);
   const lookup = sent(socket)[1];
+  const lookupRelays = relayed.filter(message => message.type === "hd_lookup");
   check("a forwarded lookup reaches the engine once and returns its exact reply",
-    relayed.length === 1 && relayed[0].type === "hd_lookup" && relayed[0].text === "猫" && relayed[0].requestId === "lookup-9"
+    lookupRelays.length === 1 && lookupRelays[0].text === "猫" && lookupRelays[0].requestId === "lookup-9"
       && lookup?.kind === "reply" && lookup.id === "r1" && lookup.response?.type === "hd_lookup_result"
       && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
     JSON.stringify({ relayed, lookup }));
@@ -1935,9 +2156,20 @@ async function sharingTransitionStage() {
     }
     throw new Error("sharing transition did not settle");
   };
-  async function fixture({ overlayMode = false, initial = null, ankiService = null, ankiIndex = null } = {}) {
-    const bus = makeBus(), storage = makeStorage();
-    const chrome = makeChrome("sharing-transitions-worker", bus, storage);
+  async function fixture({
+    overlayMode = false,
+    initial = null,
+    ankiService = null,
+    ankiIndex = null,
+    automaticBackup = false,
+  } = {}) {
+    let now = Date.parse("2026-09-18T12:00:00.000Z");
+    class SharingDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [now])); }
+      static now() { return now; }
+    }
+    const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+    const chrome = makeChrome("sharing-transitions-worker", bus, storage, alarms);
     const text = "私語,しご,my personal entry\n";
     const semanticRevision = await customDictionarySemanticRevision(parseCustomDictionary(text).entries);
     const local = {
@@ -1950,13 +2182,47 @@ async function sharingTransitionStage() {
       customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
       dictionaryUpdates: null, lookupStats: null,
     };
-    await chrome.storage.local.set(initial ?? { sharing: { host: null },
-      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)) });
+    const automaticBackups = {
+      schemaVersion: 1,
+      backups: [{
+        id: "local-before-link",
+        createdAt: new SharingDate(now).toISOString(),
+        snapshot: {
+          state: local.dictionaryState,
+          options: local.options,
+          document: local.customDictionarySource,
+          updates: { revision: 0, schedule: "off", lastCheckedAt: null },
+          lookupStats: { generation: null, revision: 0 },
+        },
+        lookupStatsRows: [],
+      }],
+    };
+    await chrome.storage.local.set(initial ?? {
+      sharing: { host: null },
+      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)),
+      ...(automaticBackup ? { automaticBackups } : {}),
+    });
+    const automaticCleanups = [];
+    const pendingAutomaticCleanups = [];
+    let holdAutomaticCleanup = false;
+    bus.addListener("sharing-transition-automatic-engine", (message, _sender, sendResponse) => {
+      if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true
+          || message.type !== "hd_backup_auto_cleanup") return false;
+      automaticCleanups.push(structuredClone(message));
+      const reply = () => sendResponse({
+        type: "hd_backup_auto_cleanup_result", requestId: message.requestId, ok: true, error: null,
+      });
+      if (holdAutomaticCleanup) pendingAutomaticCleanups.push(reply);
+      else reply();
+      return true;
+    });
     const sockets = [];
     class Socket extends FakeSharingSocket {
       constructor(url) { super(url); sockets.push(this); }
     }
-    const sandbox = { chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket };
+    const sandbox = {
+      chrome, console, setTimeout, clearTimeout, Promise, Error, Date: SharingDate, WebSocket: Socket,
+    };
     if (ankiService !== null) sandbox.createAnkiWorkerService = () => ankiService;
     if (ankiIndex !== null) sandbox.createAnkiDuplicateIndex = () => ankiIndex;
     const context = loadBackgroundScript(sandbox, { overlayMode });
@@ -1984,11 +2250,18 @@ async function sharingTransitionStage() {
       await tick();
       return replies;
     }
-    return { chrome, storage, local, sockets, send, hello, finishLinks,
+    return { chrome, storage, alarms, automaticCleanups, pendingAutomaticCleanups, local, sockets, send, hello, finishLinks,
       record: outcomes => bus.sendMessage("local-installer", { target: "hoshidicts-worker", type: "hd_setup_record",
         runId: "local-linked-run", recordSetup: false, outcomes },
       { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") }),
       link: () => send("hd_sharing_client_link", { address: "127.0.0.1:9100" }),
+      advance: milliseconds => { now += milliseconds; },
+      holdAutomaticCleanup: value => { holdAutomaticCleanup = value; },
+      releaseAutomaticCleanups: () => {
+        for (const reply of pendingAutomaticCleanups.splice(0)) reply();
+      },
+      queueAutomatic: () => runInContext("queueAutomaticBackup(true)", context),
+      reconcileAutomatic: () => runInContext("reconcileAutomaticBackups()", context),
       dispose: () => runInContext("getSharingClient().unlink()", context) };
   }
 
@@ -2051,6 +2324,150 @@ async function sharingTransitionStage() {
         && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
         && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
   } finally { f.dispose(); }
+
+  const automatic = await fixture({ automaticBackup: true });
+  const originalAutomaticSet = automatic.chrome.storage.local.set;
+  let releaseLinkStorage = () => {};
+  try {
+    await until(() => automatic.alarms.values.has("hachidori-automatic-backup"));
+    const beforeLink = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    const automaticWritesBeforeLink = automatic.storage.sets.filter(keys =>
+      keys.length === 1 && keys[0] === "automaticBackups").length;
+    automatic.advance(24 * 60 * 60_000);
+    let linkStorageEntered = false;
+    const linkStorageGate = new Promise(resolve => { releaseLinkStorage = resolve; });
+    automatic.chrome.storage.local.set = async (items, callback) => {
+      if (!linkStorageEntered && items.sharing?.client?.address) {
+        linkStorageEntered = true;
+        await linkStorageGate;
+      }
+      return originalAutomaticSet(items, callback);
+    };
+    const linking = automatic.link();
+    await until(() => automatic.sockets.some(socket => socket.readyState === 0));
+    for (const socket of automatic.sockets.filter(item => item.readyState === 0)) {
+      socket.open();
+      socket.receive(automatic.hello);
+    }
+    await until(() => linkStorageEntered);
+    const queuedReconcile = automatic.reconcileAutomatic();
+    await tick();
+    releaseLinkStorage();
+    const [linked, queuedResult] = await Promise.all([linking, queuedReconcile]);
+    automatic.chrome.storage.local.set = originalAutomaticSet;
+    await until(() => !automatic.alarms.values.has("hachidori-automatic-backup"));
+    const whileLinked = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    const alarmWhileLinked = automatic.alarms.values.has("hachidori-automatic-backup");
+    const automaticWritesWhileLinked = automatic.storage.sets.filter(keys =>
+      keys.length === 1 && keys[0] === "automaticBackups").length;
+    check("an automatic backup queued behind Link rechecks linked ownership before it can snapshot the host mirror",
+      linked.ok && linked.sharing.client.linked
+        && queuedResult.linked === true && queuedResult.created === false
+        && automatic.storage.raw.get("dictionaryState").dictionaries[0].id === "host"
+        && JSON.stringify(whileLinked) === JSON.stringify(beforeLink)
+        && automaticWritesWhileLinked === automaticWritesBeforeLink
+        && automatic.automaticCleanups.length === 0
+        && alarmWhileLinked === false,
+      JSON.stringify({ linked, queuedResult, beforeLink, whileLinked,
+        automaticWritesBeforeLink, automaticWritesWhileLinked,
+        cleanups: automatic.automaticCleanups.length, alarmWhileLinked }));
+    const unlinked = await automatic.send("hd_sharing_client_unlink");
+    const resumed = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    check("Link suppresses local automatic snapshots and Unlink resumes from the restored local snapshot store",
+      linked.ok && linked.sharing.client.linked
+        && JSON.stringify(whileLinked) === JSON.stringify(beforeLink)
+        && alarmWhileLinked === false
+        && unlinked.ok && !unlinked.sharing.client.linked
+        && resumed.backups.length === 2
+        && resumed.backups[0].snapshot.state.dictionaries[0].id === CUSTOM_DICTIONARY_ID
+        && resumed.backups[0].snapshot.state.dictionaries.every(dictionary => dictionary.id !== "host")
+        && resumed.backups[1].id === "local-before-link"
+        && automatic.alarms.values.get("hachidori-automatic-backup")?.scheduledTime
+          === Date.parse(resumed.backups[0].createdAt) + 24 * 60 * 60_000,
+      JSON.stringify({ linked, beforeLink, whileLinked, alarmWhileLinked, unlinked, resumed,
+        alarm: automatic.alarms.values.get("hachidori-automatic-backup") }));
+  } finally {
+    releaseLinkStorage();
+    automatic.chrome.storage.local.set = originalAutomaticSet;
+    automatic.dispose();
+  }
+
+  const transitionAutomatic = await fixture({ automaticBackup: true });
+  const originalTransitionClear = transitionAutomatic.alarms.api.clear;
+  let releaseLinkedSuppression = () => {};
+  try {
+    await until(() => transitionAutomatic.alarms.values.has("hachidori-automatic-backup"));
+    transitionAutomatic.advance(24 * 60 * 60_000);
+    transitionAutomatic.holdAutomaticCleanup(true);
+    const localAutomaticRun = transitionAutomatic.queueAutomatic();
+    await until(() => transitionAutomatic.pendingAutomaticCleanups.length === 1);
+    const alarmFromLocalRun = structuredClone(
+      transitionAutomatic.alarms.values.get("hachidori-automatic-backup"),
+    );
+    let linkSettled = false;
+    const finishingLink = transitionAutomatic.finishLinks([transitionAutomatic.link()])
+      .then(replies => {
+        linkSettled = true;
+        return replies;
+      });
+    await until(() => transitionAutomatic.storage.raw.get("sharing")?.client?.address
+      && transitionAutomatic.storage.raw.get("dictionaryState")?.dictionaries[0]?.id === "host");
+    await tick();
+    const linkWaitedForLocalRun = !linkSettled
+      && transitionAutomatic.alarms.values.has("hachidori-automatic-backup");
+    transitionAutomatic.releaseAutomaticCleanups();
+    const [linked] = await finishingLink;
+    await localAutomaticRun;
+    const alarmAfterLink = transitionAutomatic.alarms.values.get("hachidori-automatic-backup");
+    check("Link drains an in-flight local automatic run before fresh linked suppression",
+      linkWaitedForLocalRun
+        && linked.ok && linked.sharing.client.linked
+        && alarmFromLocalRun?.scheduledTime !== undefined
+        && alarmAfterLink === undefined,
+      JSON.stringify({ linkWaitedForLocalRun, linked, alarmFromLocalRun, alarmAfterLink }));
+
+    await transitionAutomatic.alarms.api.create("hachidori-automatic-backup", {
+      when: Date.now() + 24 * 60 * 60_000,
+    });
+    let linkedSuppressionEntered = false;
+    const linkedSuppressionGate = new Promise(resolve => { releaseLinkedSuppression = resolve; });
+    transitionAutomatic.alarms.api.clear = async name => {
+      if (!linkedSuppressionEntered && name === "hachidori-automatic-backup") {
+        linkedSuppressionEntered = true;
+        await linkedSuppressionGate;
+      }
+      return originalTransitionClear(name);
+    };
+    const linkedSuppression = transitionAutomatic.queueAutomatic();
+    await until(() => linkedSuppressionEntered);
+    let unlinkSettled = false;
+    const unlinking = transitionAutomatic.send("hd_sharing_client_unlink").then(reply => {
+      unlinkSettled = true;
+      return reply;
+    });
+    await until(() => transitionAutomatic.storage.raw.get("sharing")?.client === null
+      && transitionAutomatic.storage.raw.get("dictionaryState")?.dictionaries[0]?.id === CUSTOM_DICTIONARY_ID);
+    await tick();
+    const unlinkWaitedForLinkedRun = !unlinkSettled;
+    releaseLinkedSuppression();
+    const unlinked = await unlinking;
+    await linkedSuppression;
+    transitionAutomatic.alarms.api.clear = originalTransitionClear;
+    const resumedStore = transitionAutomatic.storage.raw.get("automaticBackups");
+    const resumedAlarm = transitionAutomatic.alarms.values.get("hachidori-automatic-backup");
+    check("Unlink drains an in-flight linked suppression before fresh local scheduling",
+      unlinkWaitedForLinkedRun
+        && unlinked.ok && !unlinked.sharing.client.linked
+        && resumedAlarm?.scheduledTime
+          === Date.parse(resumedStore.backups[0].createdAt) + 24 * 60 * 60_000,
+      JSON.stringify({ unlinkWaitedForLinkedRun, unlinked, resumedStore, resumedAlarm }));
+  } finally {
+    transitionAutomatic.holdAutomaticCleanup(false);
+    transitionAutomatic.releaseAutomaticCleanups();
+    releaseLinkedSuppression();
+    transitionAutomatic.alarms.api.clear = originalTransitionClear;
+    transitionAutomatic.dispose();
+  }
 
   const indexCalls = [];
   const indexRace = await fixture({ ankiIndex: {
@@ -2980,7 +3397,8 @@ async function ankiBackgroundStage() {
 
 async function backupRelayStage() {
   const results = [];
-  for (const retry of [false, true]) {
+  for (const prepareType of ["hd_backup_prepare", "hd_backup_auto_prepare"]) {
+    for (const retry of [false, true]) {
     const bus = makeBus(), storage = makeStorage();
     const chrome = makeChrome("backup-relay", bus, storage);
     const sent = [], backoffs = [];
@@ -2992,7 +3410,7 @@ async function backupRelayStage() {
     };
     chrome.runtime.sendMessage = async message => {
       sent.push(message.type);
-      if (message.type === "hd_backup_prepare" && fail) { fail = false; return undefined; }
+      if (message.type === prepareType && fail) { fail = false; return undefined; }
       if (message.type === "hd_backup_cancel" && !releaseCancel) {
         return new Promise(resolve => { releaseCancel = () => resolve({ ok: true }); });
       }
@@ -3001,7 +3419,7 @@ async function backupRelayStage() {
     loadBackgroundScript({ chrome, console, clearTimeout, Promise, Error,
       setTimeout: resolve => backoffs.push(resolve) });
     const send = (type, token = "departed-page") => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token });
-    const pending = send("hd_backup_prepare");
+    const pending = send(prepareType);
     if (retry) {
       for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
       if (backoffs.length === 0) throw new Error("Backup relay did not reach its retry");
@@ -3019,10 +3437,12 @@ async function backupRelayStage() {
     releaseCancel();
     await Promise.all([cancelled, otherCancelled]);
     results.push(waitedForPreparation && serialized && reply.status === "cancelled"
-      && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
+      && sent.filter(type => type === prepareType).length === Number(retry)
       && sent.filter(type => type === "hd_backup_cancel").length === 2);
+    }
   }
-  check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
+  check("manual and automatic backup cancellation retire delayed startup and lost-reply retries before they can recreate staging",
+    results.every(Boolean));
 }
 
 async function backupLifecyclePortStage() {
@@ -3341,6 +3761,7 @@ async function customEngineStage() {
     URL,
   });
   const pageChrome = makeChrome("custom-engine-page", bus, storage, alarms);
+  const engineChrome = makeChrome("custom-engine-offscreen", bus, storage, alarms);
   const engineService = await import(
     `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?custom-engine-stage`
   );
@@ -3369,7 +3790,7 @@ async function customEngineStage() {
               : dictionary),
         });
       }
-      const reply = await pageChrome.runtime.sendMessage(message);
+      const reply = await engineChrome.runtime.sendMessage(message);
       if (message.type === "hd_custom_cas"
           && reply?.ok === true
           && advancePresentationAfterCustomCas) {
@@ -3759,6 +4180,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(readFileSync(resolve(EXTENSION, "blob-download.js"), "utf8").replace(/^export\s+/gmu, ""));
+  const automaticBackups = readFileSync(resolve(EXTENSION, "backup-automatic.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
@@ -3831,7 +4254,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -4424,6 +4847,7 @@ async function main() {
   await firstRunAnkiStage();
   await backupRelayStage();
   await backupLifecyclePortStage();
+  await automaticBackupBackgroundStage();
   await managedScheduleStage();
   await lookupStatsStage();
   await audioRelayStage();
@@ -4605,7 +5029,7 @@ async function main() {
   globalThis.chrome = offscreenChrome;
 
   const swChrome = makeChrome("sw", bus, storage, alarms);
-  loadBackgroundScript({
+  const swContext = loadBackgroundScript({
     chrome: swChrome,
     console,
     fetch: globalThis.fetch,
@@ -6011,13 +6435,14 @@ async function main() {
     schedule: "hourly",
   });
   const hourlyAlarm = await alarms.api.get(updateAlarmName);
+  const managedAlarms = [...alarms.values.values()].filter(alarm => alarm.name === updateAlarmName);
   check(
     "one global schedule creates one browser alarm",
     scheduled?.ok === true
       && scheduled.settings?.schedule === "hourly"
       && hourlyAlarm?.periodInMinutes === undefined
       && hourlyAlarm?.scheduledTime === Date.parse(cleanupRacePackage.lastUpdateCheck.checkedAt) + 3_600_000
-      && alarms.values.size === 1,
+      && managedAlarms.length === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -6088,7 +6513,7 @@ async function main() {
     "service-worker startup recreates a missing configured alarm",
     repairedAlarm?.periodInMinutes === undefined
       && repairedAlarm?.scheduledTime === Date.parse(alarmUpdated.lastUpdateCheck.checkedAt) + 3_600_000
-      && alarms.values.size === 1,
+      && [...alarms.values].filter(([name]) => name === updateAlarmName).length === 1,
     JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -7720,6 +8145,8 @@ async function main() {
     navigationSettings?.design === true, JSON.stringify(navigationSettings));
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
+  check("Unlink refreshes retained automatic backups and a concurrent storage change cannot be erased by a stale list",
+    navigationSettings?.automaticRefresh === true, JSON.stringify(navigationSettings));
   const linkedAnkiSettings = await settingsLinkedAnkiDiscoveryStage();
   check("linked Anki Settings saves endpoint drafts on the host before running host-owned discovery or setup checks",
     linkedAnkiSettings?.discoveriesBeforeSave === 1
@@ -8262,7 +8689,23 @@ async function main() {
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
   );
 
-  await backupEngineScenarios({ request, pageChrome, hostChrome: offscreenChrome, storage, engine: observedEngine, check });
+  const backupScenarioEvidence = await backupEngineScenarios({
+    request,
+    pageChrome,
+    hostChrome: offscreenChrome,
+    workerChrome: swChrome,
+    storage,
+    engine: observedEngine,
+    transactionCounts,
+    reconcileAutomatic: () => runInContext("reconcileAutomaticBackups()", swContext),
+    check,
+  });
+  if (process.env.HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK) {
+    writeFileSync(
+      process.env.HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK,
+      `${JSON.stringify(backupScenarioEvidence.automaticBackupBenchmark, null, 2)}\n`,
+    );
+  }
 
   const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
   const unreferencedImport = await request("hd_import", {
@@ -8494,6 +8937,7 @@ async function settingsNavigationStage() {
   let listener;
   let pendingSave;
   const requests = [];
+  const automaticReplies = [];
   const storedOptions = { revision: 1, maxResults: 32 };
   let state = { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
     genericPackage({ id: "first", title: "First" }),
@@ -8506,6 +8950,9 @@ async function settingsNavigationStage() {
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
       if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
         semanticRevision: "a".repeat(64), text: "" } };
+      if (message.type === "hd_backup_auto_list") {
+        return new Promise(resolveReply => automaticReplies.push(resolveReply));
+      }
       if (message.type === "hd_options_write") return new Promise((resolveReply) => { pendingSave = resolveReply; });
       throw new Error(`Unexpected navigation request ${message.type}`);
     } },
@@ -8677,7 +9124,42 @@ async function settingsNavigationStage() {
     resume &&= !resumeLink.hidden;
     listener({ setupState: { newValue: { schemaVersion: 2, revision: 4 } } }, "local");
     resume &&= resumeLink.hidden;
-    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design, resume };
+
+    listener({ sharing: { newValue: { client: { address: "ws://127.0.0.1:8771/link" } } } }, "local");
+    await navigate("backup");
+    await until(() => automaticReplies.length === 1);
+    automaticReplies[0]({ ok: true, backups: [], corruptCount: 0, linked: true });
+    await until(() => document.getElementById("automatic-backup-status").textContent.includes("No automatic backup"));
+    listener({ sharing: {
+      newValue: { host: { enabled: false, port: 8771, network: false }, client: null },
+    } }, "local");
+    await until(() => automaticReplies.length === 2);
+    listener({ automaticBackups: {
+      oldValue: undefined,
+      newValue: { schemaVersion: 1, backups: [{ id: "committed" }] },
+    } }, "local");
+    await until(() => automaticReplies.length === 3);
+    const automatic = {
+      id: "committed",
+      createdAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      dictionaries: [],
+      customEntryCount: 0,
+    };
+    automaticReplies[2]({ ok: true, backups: [automatic], corruptCount: 0 });
+    await until(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1);
+    automaticReplies[1]({ ok: true, backups: [], corruptCount: 0 });
+    await pause();
+    const automaticRefresh = document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1
+      && document.querySelector("#automatic-backup-list .automatic-backup-row")?.dataset.backupId === automatic.id
+      && !document.getElementById("automatic-backups").hidden;
+    return {
+      navigation,
+      draft: draft && unseenCompletion && mirror.textContent === "",
+      details,
+      design,
+      resume,
+      automaticRefresh,
+    };
   } finally {
     window.close();
   }

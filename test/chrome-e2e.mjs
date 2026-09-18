@@ -352,7 +352,7 @@ const PLANNED = [
   "metadata mismatch and corrupt replacement leave no OPFS generation roots",
   "same, lower, missing, malformed, and nonnumeric revisions are described without automatic replacement",
   "Add separately persists a collision-safe title that native lookup reports",
-  "separate copies survive a browser restart and their generations retire cleanly",
+  "separate copies survive a browser restart, stay retained by automatic backups, and retire after release",
   "the import batch continues after failure and retains every archive outcome",
   "batch re-import preserves presentation, source, and order while clearing stale check state",
   "the dictionary list renders its alias, metadata, and five capability badges",
@@ -4030,7 +4030,8 @@ async function checkManagementAutosave(page, browser, settingsUrl) {
         && schedule.stored.schedule === "weekly"
         && schedule.calls[1].baseRevision === schedule.calls[0].baseRevision + 1
         && retried.stored.revision === lostRevision && retried.stored.schedule === "off"
-        && retried.calls === 4 && retried.alarms.length === 0,
+        && retried.calls === 4
+        && retried.alarms.every(alarm => alarm.name !== MANAGED_UPDATE_ALARM),
       JSON.stringify({ whileHeld, schedule, lostRevision, retried }));
 
     await mutateGroup(page, {});
@@ -11845,7 +11846,7 @@ async function main() {
     .catch(() => null);
   check(
     "one aggregate browser alarm follows the next dictionary due time",
-    scheduledAlarm?.alarms?.length === 1
+    scheduledAlarm?.alarms?.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
       && scheduledAlarm.alarm.name === MANAGED_UPDATE_ALARM
       && scheduledAlarm.alarm.periodInMinutes === undefined
       && scheduledAlarm.alarm.scheduledTime === expectedNextCheck,
@@ -11879,7 +11880,8 @@ async function main() {
   check("per-dictionary schedules persist without engine reload and override global Off",
     policyState.override === "hourly" && policyState.fixture === "off" && policyState.global === "off"
       && policyState.hint.includes("Next check") && policyState.generation === generationBeforePolicy
-      && policyState.alarms.length === 1 && policyState.alarms[0].scheduledTime === expectedNextCheck,
+      && policyState.alarms.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
+      && policyState.alarms.find(alarm => alarm.name === MANAGED_UPDATE_ALARM)?.scheduledTime === expectedNextCheck,
     JSON.stringify(policyState));
   if (process.env.HACHIDORI_SCHEDULE_SCREENSHOT) {
     await page.bringToFront();
@@ -12077,7 +12079,7 @@ async function main() {
       && restartedPage === true
       && restartWakeReply?.ok === true
       && restartedWorker?.url === `chrome-extension://${extensionId}/background.js`
-      && recreatedAlarm?.alarms?.length === 1
+      && recreatedAlarm?.alarms?.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
       && recreatedAlarm.alarm.name === MANAGED_UPDATE_ALARM
       && recreatedAlarm.alarm.periodInMinutes === undefined
       && recreatedAlarm.alarm.scheduledTime === expectedRecreatedCheck,
@@ -12223,8 +12225,37 @@ async function main() {
     .then(() => true)
     .catch(() => false);
   const atomicPathsAfterRemoval = await listOpfsPaths(page);
+  const automaticAtomicRetention = await page.evaluate(async roots => {
+    const { automaticBackups } = await chrome.storage.local.get("automaticBackups");
+    const referenced = new Set((automaticBackups?.backups ?? []).flatMap(backup =>
+      backup.snapshot?.state?.dictionaries?.map(dictionary => dictionary.path.split("/").slice(0, 3).join("/")) ?? []));
+    return {
+      schemaVersion: automaticBackups?.schemaVersion,
+      backupCount: automaticBackups?.backups?.length ?? 0,
+      retainedRoots: roots.filter(root => referenced.has(root)),
+    };
+  }, atomicBeforeRestart.packages.map(dictionary => dictionary.generationRoot));
+  await page.evaluate(() => chrome.storage.local.set({
+    automaticBackups: { schemaVersion: 1, backups: [] },
+  }));
+  const automaticRetentionCleanup = await page.evaluate(async () => {
+    const deadline = Date.now() + 30_000;
+    let reply;
+    for (;;) {
+      reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen",
+        type: "hd_backup_auto_cleanup",
+        requestId: `i04-restart-auto-cleanup-${crypto.randomUUID()}`,
+      });
+      if (reply?.ok || Date.now() >= deadline) return reply;
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+    }
+  });
+  const atomicRetiredAfterRelease = (await Promise.all(atomicBeforeRestart.packages.map(dictionary =>
+    waitForGenerationAbsent(page, dictionary.generationRoot)))).every(Boolean);
+  const atomicPathsAfterRetentionRelease = await listOpfsPaths(page);
   check(
-    "separate copies survive a browser restart and their generations retire cleanly",
+    "separate copies survive a browser restart, stay retained by automatic backups, and retire after release",
     atomicReloadCount?.dictionaryCount === 6
       && atomicRestartPackages.every((dictionary, index) =>
         dictionary?.title === atomicBeforeRestart.packages[index].title
@@ -12236,7 +12267,14 @@ async function main() {
       && atomicRemoveReplies.every(reply => reply?.ok === true)
       && atomicRemoved
       && atomicBeforeRestart.packages.every(dictionary =>
-        generationIsAbsent(atomicPathsAfterRemoval, dictionary.generationRoot)),
+        generationExists(atomicPathsAfterRemoval, dictionary.path))
+      && automaticAtomicRetention.schemaVersion === 1
+      && automaticAtomicRetention.backupCount > 0
+      && automaticAtomicRetention.retainedRoots.length === atomicBeforeRestart.packages.length
+      && automaticRetentionCleanup?.ok === true
+      && atomicRetiredAfterRelease
+      && atomicBeforeRestart.packages.every(dictionary =>
+        generationIsAbsent(atomicPathsAfterRetentionRelease, dictionary.generationRoot)),
     JSON.stringify({
       atomicBeforeRestart,
       atomicReloadCount,
@@ -12246,6 +12284,10 @@ async function main() {
       atomicRemoveReplies,
       atomicRemoved,
       atomicPathsAfterRemoval,
+      automaticAtomicRetention,
+      automaticRetentionCleanup,
+      atomicRetiredAfterRelease,
+      atomicPathsAfterRetentionRelease,
     }),
   );
 

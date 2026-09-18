@@ -348,6 +348,7 @@ function updateAnkiSettings() {
 
 // While linked, archives and backups belong to the host; the notices say so.
 function renderSharingLink(value) {
+  const wasLinked = sharingLinkedAddress !== null;
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
   const linked = sharingLinkedAddress !== null;
   localAudioSetup?.render();
@@ -356,6 +357,10 @@ function renderSharingLink(value) {
   element("sharing-backup-notice").hidden = !linked;
   element("import-drop-zone").hidden = linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
+  element("automatic-backups").hidden = linked;
+  if (wasLinked && !linked) {
+    void backupController?.refreshAutomaticBackups();
+  }
 }
 
 // Save the pinned release through a blob download, including in Electron hosts.
@@ -482,6 +487,7 @@ function updateBackupSettings() {
     document, send,
     download: typeof chrome.downloads?.download === "function"
       ? () => send("hd_backup_download", {}, WORKER_TARGET) : null,
+    listAutomatic: () => send("hd_backup_auto_list", {}, WORKER_TARGET),
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {
       if (backupLifecycleTokens.has(token)) postBackupLifecycle({ type: "cancel", token });
@@ -3297,6 +3303,9 @@ function handleStorageChange(changes, area) {
   }
   if (changes.dictionaryUpdates) {
     if (adoptUpdateSettings(changes.dictionaryUpdates.newValue)) renderUpdateControls();
+  }
+  if (changes.automaticBackups) {
+    void backupController?.refreshAutomaticBackups();
   }
 }
 
