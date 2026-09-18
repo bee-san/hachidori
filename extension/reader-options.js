@@ -149,6 +149,7 @@
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
+    { label: "Automatic", ids: ["auto"] },
     { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
       "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss"] },
     { label: "Light", ids: ["girlypop", "solarized-light", "light", "cupcake", "bumblebee", "emerald", "corporate",

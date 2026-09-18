@@ -4,7 +4,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { setStatusOutput } from "../extension/settings-dom.js";
+import { applyPageTheme, setStatusOutput } from "../extension/settings-dom.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -30,5 +30,31 @@ test("status outputs switch one semantic tone at a time without repeating unchan
   assert.equal(output.className, "");
   setStatusOutput(output, "AnkiConnect returned HTTP 503.", "error");
   assert.deepEqual([...output.classList], ["is-error"]);
+  dom.window.close();
+});
+
+test("AUTO page themes follow live browser preference without changing explicit choices", () => {
+  const dom = new JSDOM("<main></main>");
+  let dark = false;
+  let changed;
+  dom.window.matchMedia = () => ({
+    get matches() { return dark; },
+    addEventListener(type, listener) { if (type === "change") changed = listener; },
+  });
+
+  applyPageTheme(dom.window.document, { popupTheme: "auto" });
+  assert.equal(dom.window.document.documentElement.dataset.hoshidictsTheme, "light");
+  dark = true;
+  changed();
+  assert.equal(dom.window.document.documentElement.dataset.hoshidictsTheme, "dark");
+
+  applyPageTheme(dom.window.document, { popupTheme: "dracula" });
+  dark = false;
+  changed();
+  assert.equal(dom.window.document.documentElement.dataset.hoshidictsTheme, "dracula");
+
+  const detached = { defaultView: null, documentElement: { dataset: {} } };
+  applyPageTheme(detached, { popupTheme: "auto" });
+  assert.equal(detached.documentElement.dataset.hoshidictsTheme, "light");
   dom.window.close();
 });

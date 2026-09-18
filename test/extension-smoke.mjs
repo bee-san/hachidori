@@ -1146,7 +1146,8 @@ async function overlayModeBackgroundStage() {
   const seeded = storage.raw.get("options");
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
-      lookupMode: "hover", anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
+      lookupMode: "hover", popupTheme: "auto",
+      anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
       sourceHighlightEnabled: false,
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
@@ -2358,7 +2359,9 @@ async function firstRunBackgroundStage() {
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
       anki: null,
     }) && validIso(seeded.setup?.startedAt)
-    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1 })
+    && JSON.stringify(seeded.options) === JSON.stringify({
+      popupTheme: "auto", showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
+    })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
 
   // The user edits a seeded preference; updates, browser starts, a restarted
@@ -3907,10 +3910,10 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       Object.entries(appearanceDefaults).every(([key, value]) => reader.normaliseOptions({})[key] === value)
         && appearanceAccepted.every(Boolean) && appearanceRejected.every(Boolean),
       JSON.stringify({ appearanceAccepted, appearanceRejected }));
-    check("the grouped 42-theme catalogue matches the production palettes and validates every ID",
-      themes.length === 42 && new Set(themes.map(theme => theme.id)).size === 42
-        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[18,23,1]"
-        && themes.every(theme => cssThemes.has(theme.id) && typeof theme.label === "string"
+    check("AUTO plus the grouped 42-palette catalogue validates every persisted ID",
+      themes.length === 43 && new Set(themes.map(theme => theme.id)).size === 43
+        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[1,18,23,1]"
+        && themes.every(theme => (theme.id === "auto" || cssThemes.has(theme.id)) && typeof theme.label === "string"
           && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
         && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
       JSON.stringify({ themes, cssThemes: [...cssThemes] }));
@@ -8638,7 +8641,7 @@ async function settingsNavigationStage() {
     if (document.getElementById("design")) {
       await navigate("design");
       const preview = document.getElementById("design-preview");
-      design &&= document.getElementById("opt-popup-theme").options.length === 42;
+      design &&= document.getElementById("opt-popup-theme").options.length === 43;
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));
@@ -10741,7 +10744,7 @@ async function settingsFrequencyStage() {
     }
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
-    await until(() => theme.options.length === 42);
+    await until(() => theme.options.length === 43);
     let settingsTheme = window.document.documentElement.dataset.hoshidictsTheme === "default";
     const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
     await editControl(toolbarSelect, "bottom");

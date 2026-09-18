@@ -1561,9 +1561,11 @@ only rebuilds a clicked-kanji view when its effective source/kind changes.
 Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
-`reader-options.js` owns the audited 42-theme grouped catalogue (18 dark, 23
-light, one high-contrast), strict option validation, and the 19 Design reset
-keys. Defaults are the Hachidori palette, 560 × 420 px, 85% background opacity,
+`reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
+dark, 23 light, one high-contrast), strict option validation, and the 19 Design
+reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
+sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
+palette. Other defaults are 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
 names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
 averages off. Reset writes those keys through the existing sparse revision CAS;
