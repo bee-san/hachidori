@@ -1,4 +1,4 @@
 [submodule "third_party/hoshidicts"]
 	path = third_party/hoshidicts
 	url = https://github.com/bee-san/hoshidicts.git
-	branch = perf/threaded-import
+	branch = main
