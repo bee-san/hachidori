@@ -335,6 +335,12 @@ Output is byte-identical for ten dictionaries.
 Chrome (settings upload to "Finished", single runs): JMnedict 650 → 583 ms, BCCWJ
 782 → 728, JPDB 475 → 432, Pixiv Light 783 → 749. Electron: JMnedict 1398 → 1164.
 
+The Bloom filter's parallel build partitions the filter by bit ranges rather than
+the hashes by chunks (hoshidicts #14): with atomic ORs from every thread the
+cache lines of a small filter bounced between cores and the build was slower than
+single-threaded. Node, medians of 3: JMnedict 319 → 213 ms, Jitendex 364 → 313,
+VNDB 2874 → 2424.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
