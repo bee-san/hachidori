@@ -307,26 +307,33 @@ function linkedOptionsCapability(message) {
 const LINKED_SETTINGS_UPDATE_REQUIRED =
   "Update the linked Hachidori before editing Templates or Custom Buttons.";
 
-function mergeLegacyCustomLinks(currentButtons, links) {
-  const incoming = validateOptionsPatch({ customLinks: links }).customButtons;
-  const currentLinks = currentButtons.filter(button => button.type === "link");
-  const assigned = Array(incoming.length).fill(-1);
-  const available = new Set(currentLinks.map((_, index) => index));
-  // Preserve identity through legacy reordering before treating a changed row
-  // as an edit of the link that occupied the same legacy position.
+function assignMatchingLegacyLinks(incoming, currentLinks, available, assigned) {
   for (const [incomingIndex, button] of incoming.entries()) {
     const match = currentLinks.findIndex((candidate, currentIndex) => available.has(currentIndex)
       && candidate.label === button.label && candidate.url === button.url);
-    if (match >= 0) {
-      assigned[incomingIndex] = match;
-      available.delete(match);
-    }
+    if (match < 0) continue;
+    assigned[incomingIndex] = match;
+    available.delete(match);
   }
+}
+
+function assignPositionedLegacyLinks(incoming, available, assigned) {
   for (let index = 0; index < incoming.length; index += 1) {
     if (assigned[index] >= 0 || !available.has(index)) continue;
     assigned[index] = index;
     available.delete(index);
   }
+}
+
+function mergeLegacyCustomLinks(currentButtons, links) {
+  const incoming = validateOptionsPatch({ customLinks: links }).customButtons;
+  const currentLinks = currentButtons.filter(button => button.type === "link");
+  const assigned = new Array(incoming.length).fill(-1);
+  const available = new Set(currentLinks.map((_, index) => index));
+  // Preserve identity through legacy reordering before treating a changed row
+  // as an edit of the link that occupied the same legacy position.
+  assignMatchingLegacyLinks(incoming, currentLinks, available, assigned);
+  assignPositionedLegacyLinks(incoming, available, assigned);
   const usedIds = new Set(currentButtons.filter(button => button.type !== "link").map(button => button.id));
   for (const currentIndex of assigned) {
     if (currentIndex >= 0) usedIds.add(currentLinks[currentIndex].id);

@@ -269,6 +269,28 @@
         }
       }
     }
+    function recordsByTemplate(records) {
+      const byTemplate = new Map();
+      for (const record of records) {
+        if (!byTemplate.has(record.templateId)) byTemplate.set(record.templateId, []);
+        byTemplate.get(record.templateId).push(record);
+      }
+      return byTemplate;
+    }
+    async function checkTemplateRecords(group, templateId, records, configKeys, owns) {
+      const status = await send("hd_anki_status", { templateId });
+      if (!owns()) return;
+      const cachedKey = configKeys.get(templateId) ?? null;
+      if (status.available && cachedKey !== null && status.configKey !== cachedKey) {
+        restartChecks(records);
+        return;
+      }
+      for (const record of records) record.configKey = status.configKey;
+      available(records, status.available, status.error);
+      if (!status.available) return;
+      onChange(group.owner);
+      await checkRecords(records, owns);
+    }
     async function checkGroup(group) {
       const epoch = group.epoch;
       const owns = () => live(group) && epoch === group.epoch;
@@ -284,24 +306,10 @@
           return;
         }
         if (!group.records.some(needsCheck)) return;
-        const byTemplate = new Map();
-        for (const record of group.records.filter(needsCheck)) {
-          if (!byTemplate.has(record.templateId)) byTemplate.set(record.templateId, []);
-          byTemplate.get(record.templateId).push(record);
-        }
+        const byTemplate = recordsByTemplate(group.records.filter(needsCheck));
         for (const [templateId, records] of byTemplate) {
-          const status = await send("hd_anki_status", { templateId });
+          await checkTemplateRecords(group, templateId, records, cached.configKeys, owns);
           if (!owns()) return;
-          const cachedKey = cached.configKeys.get(templateId) ?? null;
-          if (status.available && cachedKey !== null && status.configKey !== cachedKey) {
-            restartChecks(records);
-            continue;
-          }
-          for (const record of records) record.configKey = status.configKey;
-          available(records, status.available, status.error);
-          if (!status.available) continue;
-          onChange(group.owner);
-          await checkRecords(records, owns);
         }
       } catch (error) {
         if (owns()) available(group.records.filter(needsCheck), false, error.message);
@@ -535,9 +543,7 @@
       add.addEventListener("click", record.onClick);
       disabled(record);
     }
-    function reconcile(group) {
-      const next = [];
-      const retained = new Set();
+    function recordSpecs(group) {
       const specs = [];
       for (const item of group.items) {
         specs.push({
@@ -560,45 +566,57 @@
           });
         }
       }
-      for (const spec of specs) {
-        const { item, binding, custom, templateId, label, add } = spec;
-        let record = bound.get(binding);
-        const reusable = record?.group === group && record.result === item.result
-          && record.custom === custom && record.templateId === templateId;
-        if (!reusable) {
-          if (record) {
-            removeControls(record);
-            bound.delete(binding);
-          }
-          record = {
-            ...item,
-            binding,
-            group,
-            custom,
-            templateId,
-            label,
-            ...(add ? { add } : {}),
-            configKey: null,
-            busy: false,
-            terminal: false,
-            decision: null,
-            viewChecked: false,
-            needsCheck: true,
-            captureJobId: null,
-          };
-          bound.set(binding, record);
-        } else {
-          Object.assign(record, {
-            actions: item.actions,
-            feedback: item.feedback,
-            result: item.result,
-            label,
-          });
-          if (custom) setMiningButtonState(record, record.add.dataset.state || "checking");
-        }
-        retained.add(record);
-        next.push(record);
+      return specs;
+    }
+    function reusableRecord(record, group, spec) {
+      return record?.group === group && record.result === spec.item.result
+        && record.custom === spec.custom && record.templateId === spec.templateId;
+    }
+    function createRecord(group, spec) {
+      const { item, binding, custom, templateId, label, add } = spec;
+      return {
+        ...item,
+        binding,
+        group,
+        custom,
+        templateId,
+        label,
+        ...(add ? { add } : {}),
+        configKey: null,
+        busy: false,
+        terminal: false,
+        decision: null,
+        viewChecked: false,
+        needsCheck: true,
+        captureJobId: null,
+      };
+    }
+    function updateRecord(record, spec) {
+      Object.assign(record, {
+        actions: spec.item.actions,
+        feedback: spec.item.feedback,
+        result: spec.item.result,
+        label: spec.label,
+      });
+      if (spec.custom) setMiningButtonState(record, record.add.dataset.state || "checking");
+    }
+    function recordForSpec(group, spec) {
+      let record = bound.get(spec.binding);
+      if (reusableRecord(record, group, spec)) {
+        updateRecord(record, spec);
+        return record;
       }
+      if (record) {
+        removeControls(record);
+        bound.delete(spec.binding);
+      }
+      record = createRecord(group, spec);
+      bound.set(spec.binding, record);
+      return record;
+    }
+    function reconcile(group) {
+      const next = recordSpecs(group).map(spec => recordForSpec(group, spec));
+      const retained = new Set(next);
       const retainedBindings = new Set(next.map(record => record.binding));
       for (const record of group.records) {
         if (retained.has(record) || retainedBindings.has(record.binding)) continue;

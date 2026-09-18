@@ -477,9 +477,11 @@ export function createAnkiTemplateSettingsController({
     saveTemplates(anki, templates);
     render();
     const preferred = element(offset < 0 ? "anki-template-up" : "anki-template-down");
-    (preferred.disabled
-      ? element(offset < 0 ? "anki-template-down" : "anki-template-up")
-      : preferred).focus();
+    let focusTarget = preferred;
+    if (preferred.disabled) {
+      focusTarget = element(offset < 0 ? "anki-template-down" : "anki-template-up");
+    }
+    focusTarget.focus();
   }
 
   function add() {
@@ -518,9 +520,10 @@ export function createAnkiTemplateSettingsController({
     if (anki.templates.length === 1) return;
     const references = readButtons().filter(button => button.type === "anki" && button.templateId === template.id);
     if (references.length > 0) {
-      element("anki-template-status").textContent = `“${template.name}” is used by ${references.length === 1
-        ? `the “${references[0].label}” custom button`
-        : `${references.length} custom buttons`}. Choose another Template for those buttons before deleting it.`;
+      let usage = `${references.length} custom buttons`;
+      if (references.length === 1) usage = `the “${references[0].label}” custom button`;
+      element("anki-template-status").textContent =
+        `“${template.name}” is used by ${usage}. Choose another Template for those buttons before deleting it.`;
       return;
     }
     const templates = anki.templates.filter(value => value.id !== template.id);
