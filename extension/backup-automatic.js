@@ -24,7 +24,7 @@ export function automaticBackupStore(value) {
 }
 
 export function automaticBackupTime(record) {
-  const timestamp = typeof record?.createdAt === "string" ? Date.parse(record.createdAt) : NaN;
+  const timestamp = typeof record?.createdAt === "string" ? Date.parse(record.createdAt) : Number.NaN;
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 

@@ -1342,7 +1342,7 @@ async function cleanupCommittedDictionaries() {
       return;
     }
     if (!Array.isArray(retained.dictionaries)) {
-      throw new Error("The automatic backup root list is invalid.");
+      throw new TypeError("The automatic backup root list is invalid.");
     }
     await cleanupUnreferencedDictionaries([
       ...state.dictionaries,
