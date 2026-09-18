@@ -155,6 +155,27 @@ settings page, five samples each):
 | Reorder with one dictionary disabled | 246 ms | 4 ms |
 | Restart to ready with one disabled | 1182 ms | 1147 ms (unchanged: nothing is verified yet) |
 
+## Importer: one glossary buffer per bank
+
+A CPU profile of the import workers (Jitendex, `--profiling-funcs` build,
+Chrome's sampling profiler attached to every pthread) put the work at roughly
+1.5 s of JSON parsing, 1.45 s of zstd, 0.3 s of inflate and 0.17 s of malloc
+and free across the eight workers, with the writer thread spending 80 ms
+deduplicating glossaries and copying them into a per-bank buffer. The
+allocator and copy costs came from keeping one heap vector per distinct
+glossary (350k for Jitendex, 650k for Pixiv Light). Workers now compress
+straight into one per-bank blob and record spans; the writer emits the blob
+with one write per run between glossaries an earlier bank already wrote. The
+files produced are byte-identical.
+
+| Import (settings upload to "Finished", 3 runs) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1222–1253 ms | 1138–1162 ms |
+| Pixiv Light | 1445–1614 ms | 1247–1281 ms |
+
+The native `hdw_import` alone in node: Jitendex 844 → 746 ms, Pixiv Light
+961 → 829 ms (medians of three).
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
