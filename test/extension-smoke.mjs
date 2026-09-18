@@ -1597,6 +1597,8 @@ async function sharingHostStage() {
     JSON.stringify({ written, broadcasts: broadcasts(socket), refused, refusedWorker }));
 
   const readerOptions = globalThis.HDReaderOptions;
+  const exactWordMapping = " \tword {expression}{expression} {unknown}\n literal  ";
+  const exactSentenceMapping = "\n{sentence} + literal\t{sentence}\n";
   const richAnki = readerOptions.normaliseAnki({
     url: "https://host.example/original",
     apiKey: "host-key",
@@ -1608,6 +1610,9 @@ async function sharingHostStage() {
         deck: "Words",
         model: "Basic",
         fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, expression: "Front" },
+        fieldTemplates: {
+          Front: { value: exactWordMapping, overwriteMode: "coalesce" },
+        },
       },
       {
         ...readerOptions.DEFAULT_ANKI_TEMPLATE,
@@ -1616,6 +1621,9 @@ async function sharingHostStage() {
         deck: "Sentences",
         model: "Sentence",
         fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, sentence: "Front" },
+        fieldTemplates: {
+          Front: { value: exactSentenceMapping, overwriteMode: "prepend" },
+        },
       },
     ],
   });
@@ -1695,8 +1703,10 @@ async function sharingHostStage() {
       && afterLegacyAnki.anki.templates[0]?.name === "Word card"
       && afterLegacyAnki.anki.templates[0]?.deck === "Legacy words"
       && afterLegacyAnki.anki.templates[0]?.model === "Legacy Basic"
+      && afterLegacyAnki.anki.templates[0]?.fieldTemplates?.Front?.value === exactWordMapping
       && afterLegacyAnki.anki.templates[1]?.id === "sentence-template"
       && afterLegacyAnki.anki.templates[1]?.name === "Sentence card"
+      && afterLegacyAnki.anki.templates[1]?.fieldTemplates?.Front?.value === exactSentenceMapping
       && afterLegacyAnki.customButtons.some(button => button.id === "host-sentence")
       && legacyRichReply.response?.ok === false
       && /Update the linked Hachidori/u.test(legacyRichReply.response.error)
@@ -1934,6 +1944,18 @@ async function sharingClientStage() {
   const localState = { schemaVersion: 1, revision: 2, dictionaries: [localDictionary], groups: [] };
   const localStats = { generation: "local-gen", revision: 1 };
   const localRow = { term: "猫", reading: "ねこ", lookupCount: 4, firstLookedUpAt: 1, lastLookedUpAt: 2 };
+  const linkedMapping = " \tlinked {expression}{expression} {unknown}\n literal  ";
+  const linkedAnki = globalThis.HDReaderOptions.normaliseAnki({
+    templates: [{
+      ...globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE,
+      id: "linked-template",
+      name: "Linked",
+      model: "Basic",
+      fieldTemplates: {
+        Front: { value: linkedMapping, overwriteMode: "coalesce" },
+      },
+    }],
+  });
   await storage.api().local.set({
     options: { hoverEnabled: true, revision: 3 },
     dictionaryState: localState,
@@ -1954,11 +1976,7 @@ async function sharingClientStage() {
   const hostDictionary = { ...localDictionary, id: "host-id", title: "Host", path: "/dicts/Host", termCount: 900 };
   const hostSnapshot = {
     dictionaryState: { schemaVersion: 1, revision: 7, dictionaries: [hostDictionary], groups: [] },
-    options: { hoverEnabled: false, revision: 1, anki: {
-      ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
-      model: "Basic",
-      fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } },
-    } },
+    options: { hoverEnabled: false, revision: 1, anki: linkedAnki },
     customDictionarySource: null,
     dictionaryUpdates: { revision: 0, schedule: "off", lastCheckedAt: null },
     lookupStats: { generation: "host-gen", revision: 40 },
@@ -2039,7 +2057,10 @@ async function sharingClientStage() {
   // moves when the host pushes its storage batch.
   const setsBefore = storage.sets.length;
   const pushedOptions = { ...hostSnapshot.options, hoverEnabled: true, revision: 2 };
-  const writing = send("hd_options_write", { baseRevision: 1, options: { hoverEnabled: true } }, "hoshidicts-worker");
+  const writing = send("hd_options_write", {
+    baseRevision: 1,
+    options: { hoverEnabled: true, anki: structuredClone(linkedAnki) },
+  }, "hoshidicts-worker");
   await settle(() => socket.requests().length >= 1);
   const forwardedWrite = socket.requests()[0];
   socket.receive({ kind: "reply", id: forwardedWrite.id, response: {
@@ -2065,8 +2086,10 @@ async function sharingClientStage() {
   const rowSet = storage.sets.slice(setsBefore).find(keys => keys.includes("lookupStats") && keys.includes(rowKey));
   check("a linked page's writes, lookups and lookup counts go to the host, whose storage batches land locally as single writes",
     forwardedWrite.message.type === "hd_options_write" && forwardedWrite.message.target === "hoshidicts-worker" && forwardedWrite.message.baseRevision === 1
+      && forwardedWrite.message.options.anki.templates[0].fieldTemplates.Front.value === linkedMapping
       && written.ok === true && written.options.revision === 2 && written.requestId === "client-hd_options_write"
       && beforePush === 1 && storage.raw.get("options").revision === 2
+      && storage.raw.get("options").anki.templates[0].fieldTemplates.Front.value === linkedMapping
       && forwardedLookup.message.type === "hd_lookup" && forwardedLookup.message.text === "猫" && looked.results?.[0]?.matched === "猫"
       && bus.log.every(entry => !(entry.type === "hd_lookup" && entry.relayed))
       && forwardedCount.message.type === "hd_lookup_stats_record" && counted.statistics?.lookupCount === 9

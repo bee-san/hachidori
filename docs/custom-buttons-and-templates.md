@@ -27,6 +27,22 @@ If storage from an older or interrupted writer nevertheless contains a missing
 Template ID, its button remains visible and disabled with an explicit error; it
 does not silently mine with another Template.
 
+Every Anki field mapping is an editable marker combobox. Open the list from its
+button or with an Arrow key to browse every supported marker and a short
+description. Typing filters the list around the marker at the cursor. Arrow
+keys, Home and End move the active option; Enter explicitly inserts it at the
+selection. Escape closes the list, Tab leaves the field, and Shift+Enter remains
+available for literal multiline text. Pointer selection inserts through the
+same path.
+
+The text area remains the source of truth. A highlighted suggestion is never
+accepted by Escape, Tab, focus exit, paste or IME composition. Literal text,
+unknown or repeated markers, tabs, spaces and newlines are stored exactly as
+entered. Unknown markers stay editable and produce a visible validation error;
+they are not rewritten while another setting or Template is edited.
+
+![An editable Anki marker combobox with descriptions](assets/anki-marker-combobox-settings.png)
+
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
 ## Stored model and migration
@@ -108,8 +124,12 @@ mining actions and follow the linked/local ownership rules above.
 
 The task-specific harness uses Chrome for Testing 152.0.7977.75, the production
 Settings page and popup, a fresh extension profile, an imported dictionary
-fixture, and an isolated real Anki collection. It exercises Template and button
-controls from the keyboard, then mines two notes:
+fixture, and an isolated Anki 24.11 collection. It exercises marker filtering,
+keyboard and pointer selection, free-form text, clipboard input, IME
+composition, validation, focus exit and the browser accessibility tree. It
+also switches between two Templates with distinct invalid drafts, reloads
+Settings, and proves that both drafts remain byte-for-byte unchanged before
+installing valid mappings and mining two notes:
 
 - the custom **Sentence card** button writes the Sentence Template to its own
   deck and note type, including the selected Template's `{screenshot}` field;
@@ -120,7 +140,7 @@ controls from the keyboard, then mines two notes:
 The same run switches between two Templates 40 times. Each sample starts with
 the production previous/next click, waits for two animation frames, and forces
 the manager's final layout read. The retained sample measured a 33.33 ms median,
-33.38 ms p95 and 33.40 ms maximum. Raw samples are in
+33.39 ms p95 and 33.42 ms maximum. Raw samples are in
 [`anki-template-switch-timing.json`](assets/anki-template-switch-timing.json).
 This measures the static Settings interaction and render path; it is not an
 Anki or dictionary-engine benchmark.

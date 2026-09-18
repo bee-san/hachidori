@@ -68,6 +68,48 @@ test("a pre-Template backup validates and restores through the canonical Templat
   await assertBackupSnapshot(restored);
 });
 
+test("canonical multi-Template field mappings survive backup validation and restore byte-for-byte", async () => {
+  const archived = snapshot();
+  const defaults = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const first = " \tword {expression}{expression} {unknown}\n literal  ";
+  const second = "\n{sentence} + literal\t{sentence}\n";
+  archived.options = {
+    revision: 14,
+    anki: globalThis.HDReaderOptions.normaliseAnki({
+      url: "http://127.0.0.1:18773",
+      apiKey: "backup-key",
+      templates: [
+        {
+          ...defaults,
+          id: "words",
+          name: "Words",
+          model: "Basic",
+          fieldTemplates: {
+            Front: { value: first, overwriteMode: "coalesce" },
+            Back: { value: "", overwriteMode: "overwrite" },
+          },
+        },
+        {
+          ...defaults,
+          id: "sentences",
+          name: "Sentences",
+          model: "Sentence",
+          fieldTemplates: {
+            Front: { value: second, overwriteMode: "prepend" },
+          },
+        },
+      ],
+    }),
+  };
+  await assertBackupSnapshot(archived);
+  const restored = restoredBackupSnapshot(snapshot(), archived, []);
+  assert.equal(restored.options.anki.templates[0].fieldTemplates.Front.value, first);
+  assert.equal(restored.options.anki.templates[0].fieldTemplates.Back.value, "");
+  assert.equal(restored.options.anki.templates[1].fieldTemplates.Front.value, second);
+  assert.deepEqual(restored.options.anki.templates.map(template => template.id), ["words", "sentences"]);
+  await assertBackupSnapshot(restored);
+});
+
 test("restore validation rejects malformed state, settings and inconsistent custom source", async () => {
   const edits = [
     value => { value.state.schemaVersion = 2; },
