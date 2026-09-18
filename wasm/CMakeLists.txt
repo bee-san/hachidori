@@ -33,6 +33,13 @@ if(HACHIDORI_PTHREADS)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 endif()
 
+# The WasmFS runtime reads dictionary files through sync access handles (see
+# hoshidicts src/memory/memory.cpp); the classic-FS runtimes must not.
+if(HACHIDORI_PTHREADS AND HACHIDORI_WASMFS)
+  set(HOSHIDICTS_WASMFS ON CACHE BOOL "" FORCE)
+else()
+  set(HOSHIDICTS_WASMFS OFF CACHE BOOL "" FORCE)
+endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts hoshidicts)
 
 add_executable(hoshidicts_wasm bindings.cpp)
