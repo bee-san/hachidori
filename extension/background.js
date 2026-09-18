@@ -346,6 +346,9 @@ const RELAY_BACKOFF_MS = 40;
 const NOT_LISTENING = /Receiving end does not exist|Could not establish connection/i;
 
 let creating = null;
+// True after the offscreen document answered a relayed request; cleared when a
+// relay gets no reply, so the next attempt verifies the document again.
+let offscreenAnswered = false;
 let latestAudioOperation = null;
 let capturePage = null;
 let captureRecovery = null;
@@ -552,7 +555,14 @@ async function ensureOffscreen() {
 async function relay(message, stillCurrent = null) {
   let failure = null;
   for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
-    await ensureOffscreen();
+    // ensureOffscreen() costs a getContexts() round trip to the browser process
+    // on every request (about 0.2 ms of a 2.3 ms lookup). Once the document has
+    // answered, send to it directly; a missing reply falls back to the checked
+    // path immediately, without consuming an attempt or backing off.
+    const optimistic = offscreenAnswered;
+    if (!optimistic) {
+      await ensureOffscreen();
+    }
     if (stillCurrent && !stillCurrent()) {
       return { type: `${message.type}_result`, requestId: message.requestId, ok: true, status: "cancelled" };
     }
@@ -562,6 +572,7 @@ async function relay(message, stillCurrent = null) {
       // from an extension page runs on the engine exactly once.
       const reply = await chrome.runtime.sendMessage({ ...message, relayed: true });
       if (reply !== undefined) {
+        offscreenAnswered = true;
         return reply;
       }
       failure = new Error("offscreen document sent no reply");
@@ -570,6 +581,11 @@ async function relay(message, stillCurrent = null) {
         throw error;
       }
       failure = error;
+    }
+    offscreenAnswered = false;
+    if (optimistic) {
+      attempt -= 1;
+      continue;
     }
     await sleep(RELAY_BACKOFF_MS * (attempt + 1));
   }
