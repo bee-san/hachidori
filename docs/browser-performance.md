@@ -285,7 +285,9 @@ against glaze's own skip runs in hoshidicts' ctest.
 | Node, 16 cores: Jitendex / Pixiv Light / VNDB / full Pixiv | 571 / 627 / 3234 / 2310 ms | 436 / 553 / 2903 / 2156 ms |
 | Node, four cores: Jitendex / Pixiv Light | 881 / 1084 ms | 717 / 891 ms |
 
-Dictionaries without term banks (frequency, kanji, pitch) are unchanged.
+Meta banks (frequency, pitch) go through the same skipper for their object
+values (hoshidicts #12): node import JPDB 149 → 132 ms, Kanjium 49 → 42 ms,
+BCCWJ 440 → 429 ms; output byte-identical.
 
 ## Clicked-kanji selected dictionary lookup
 
