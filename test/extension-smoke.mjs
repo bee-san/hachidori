@@ -3519,10 +3519,11 @@ async function audioRelayStage() {
   chrome.runtime.getContexts = async () => [{}];
   const sent = [];
   const backoffs = [];
-  let failNext = true;
+  // Keep failing until the relay has scheduled its backoff: an optimistic send
+  // to a previously answering document retries once immediately.
+  let failing = true;
   chrome.runtime.sendMessage = async message => {
-    if (message.type === "hd_audio_test" && failNext) {
-      failNext = false;
+    if (message.type === "hd_audio_test" && failing) {
       throw new Error("Receiving end does not exist");
     }
     sent.push(message);
@@ -3537,13 +3538,14 @@ async function audioRelayStage() {
   async function reachBackoff() {
     for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
     if (!backoffs.length) throw new Error("Audio relay never reached the startup retry");
+    failing = false;
   }
   const stopped = send("hd_audio_test", "stopped", { source });
   await reachBackoff();
   await send("hd_audio_stop", "stop", { playRequestId: "stopped" });
   backoffs.shift()();
   const stoppedReply = await stopped;
-  failNext = true;
+  failing = true;
   const old = send("hd_audio_test", "old", { source });
   await reachBackoff();
   const current = await send("hd_audio_test", "current", { source, owner: "spoofed" }, "settings-b");
@@ -5116,23 +5118,25 @@ async function main() {
   const streamChunk = new Uint8Array(1024 * 1024);
   let streamRemaining = formerArchiveByteLimit + 1;
   let streamedBytes = 0;
+  let streamWrites = 0;
+  let streamedPath = null;
   let streamClosed = false;
-  let streamUnlinked = false;
   let streamed = null;
   let streamError = null;
   try {
     streamed = await engineService.streamResponseToFile(
       {
-        open: () => ({}),
-        write(_stream, _value, _offset, length) {
-          streamedBytes += length;
+        open: (path) => ({ fd: 7, path }),
+        // WasmFS FS.write copies byte by byte from JavaScript, so the body must
+        // arrive as one write rather than one per stream chunk.
+        write(stream, data, offset, length) {
+          streamWrites += 1;
+          streamedPath = stream.path;
+          streamedBytes += length - offset;
           return length;
         },
         close() {
           streamClosed = true;
-        },
-        unlink() {
-          streamUnlinked = true;
         },
       },
       {
@@ -5156,8 +5160,8 @@ async function main() {
   }
   equal(
     "an actual streamed body crosses the former fixed byte cap",
-    [streamError?.message ?? null, streamed, streamedBytes, streamClosed, streamUnlinked],
-    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, true, false],
+    [streamError?.message ?? null, streamed, streamedBytes, streamWrites, streamedPath, streamClosed],
+    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, 1, "/streamed-boundary.zip", true],
   );
   const { default: createHoshidicts } = await import(
     `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?service`

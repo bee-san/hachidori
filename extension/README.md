@@ -36,7 +36,7 @@ same validated URL in the system browser.
 | --- | --- | --- |
 | `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
 | `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki, pronunciation and capture controls (`anki-content.js`, `audio-content.js`, `capture-content.js`). `content.css` is the only style the page itself receives: the source highlight. |
-| `offscreen.html`, `offscreen.js` | one offscreen document the service worker creates | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can; `engine-service.js` is the single-thread IDBFS fallback. Pronunciation, Anki, media capture and the first-run installer load here on demand. |
+| `offscreen.html`, `offscreen.js` | one offscreen document the service worker creates | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), both through `engine-worker-runtime.js`; `engine-service.js` is also the single-thread IDBFS fallback. Pronunciation, Anki, media capture and the first-run installer load here on demand. |
 | `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, media capture, backup and sharing, with global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
 | `startup.html`, `startup.js` | a tab opened once after install | First-run setup: recommended dictionaries, Anki detection, a practice lookup, and the offer to use a Hachidori that another browser on this computer already shares. Overlay mode skips it. |
 | `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state, starts a screen recording and opens Settings. |
@@ -120,8 +120,9 @@ the service worker and both engine runtimes run the same code.
   bytes or a matching system-synthesized WAV to the dictionary offscreen
   document; see
   [overlay mode](../docs/overlay-mode.md).
-- **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}` and
-  `vendor/hoshidicts.{mjs,wasm}` are the two builds of the hoshidicts engine
+- **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}`,
+  `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
+  `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
   from `wasm/build.sh`, `vendor/avif-encoder.{mjs,wasm}` the AVIF encoder
   from `wasm/avif/`, and `vendor/zip.js` the pinned zip.js runtime. They are
   committed build output: update them with their source change and otherwise

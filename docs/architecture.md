@@ -24,6 +24,8 @@ settings.html / content.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
                       ├─ primary: engine-worker.js
                       │    └─ pthread Wasm + WasmFS direct OPFS
+                      ├─ no OPFS access handles: engine-worker-idbfs.js
+                      │    └─ pthread Wasm + classic FS + IDBFS
                       └─ fallback: engine-service.js
                            └─ single-thread Wasm + IDBFS
 ```
@@ -60,9 +62,11 @@ archive, source-document, or background-storage-queue limit.
 
 ## Compatibility path
 
-If shared Wasm memory, workers, or direct OPFS are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+If shared Wasm memory and workers are available but direct OPFS is not, `offscreen.js` starts `engine-worker-idbfs.js`: the same pthread engine on the classic Emscripten FS with IDBFS mounted at `/dicts`. Electron (the GameSentenceMiner host) is the known case: it exposes cross-origin isolation and shared memory but refuses OPFS sync access handles to `chrome-extension://` origins. Imports keep the bounded eight-thread worker group (Jitendex imports in about 1.6 s instead of 3.9 s single-threaded), and the offscreen document's own thread stays free for audio and Anki work during an import. `hd_status` reports `threaded: true` and `storageBackend: "idbfs"`.
 
-The fallback is intentionally explicit: `hd_status` reports `threaded: false` and `storageBackend: "idbfs"`. The production benchmark rejects fallback execution when it is measuring the primary Hachidori path.
+If shared Wasm memory or workers are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+
+Both IDBFS paths are intentionally explicit: `hd_status` reports `storageBackend: "idbfs"`, with `threaded: false` only for the single-thread runtime. The production benchmark rejects either when it is measuring the primary Hachidori path.
 
 ## Import transaction
 
@@ -2379,12 +2383,13 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 
 ## Build outputs
 
-`wasm/build.sh` produces two runtime variants from the same bindings:
+`wasm/build.sh` produces three runtime variants from the same bindings:
 
 - `extension/vendor/hoshidicts-threaded.mjs` and `hoshidicts-threaded.wasm` for pthread WasmFS/direct OPFS;
+- `extension/vendor/hoshidicts-threaded-idbfs.mjs` and `hoshidicts-threaded-idbfs.wasm` for pthread classic FS/IDBFS;
 - `extension/vendor/hoshidicts.mjs` and `hoshidicts.wasm` for single-thread IDBFS.
 
-`HACHIDORI_PTHREADS` selects the CMake variant. `HACHIDORI_WASM_VARIANT=fallback` selects the fallback artifact in the Node smoke test.
+`HACHIDORI_PTHREADS` and `HACHIDORI_WASMFS` select the CMake variant. `HACHIDORI_WASM_VARIANT=threaded-idbfs` or `fallback` selects the corresponding artifact in the Node smoke test.
 
 ## Test boundaries
 

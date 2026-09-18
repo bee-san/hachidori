@@ -107,6 +107,8 @@ let hostRequest = null;
 let started = false;
 let createHoshidicts = null;
 let storageBackend = "memory";
+// The single-thread runtime imports on one thread with small read-ahead; the
+// pthread runtimes (OPFS or IDBFS) use the bounded worker group.
 let lowRam = true;
 // Optional sink for import download/installation phases, keyed by request ID.
 let reportProgress = null;
@@ -979,9 +981,32 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
   }
 }
 
+// The first hdw_lookup after the module starts runs 15-30x slower than the
+// steady state (about 7 ms against 0.3-0.5 ms for Jitendex: V8 tiers the wasm
+// up on first execution). Spend it here, still inside the serialised load, so a
+// reader's first hover after a browser start or an import gets a warm engine.
+// Best effort: the engine's failure fallback for a lookup is shape-valid.
+const WARM_LOOKUP_TEXT = "食べました";
+
+function warmLookup() {
+  try {
+    engine.ccall(
+      "hdw_lookup",
+      "string",
+      ["string", "number", "number", "string"],
+      [WARM_LOOKUP_TEXT, 1, 4, ""],
+    );
+  } catch {
+    // A failed warm-up only forfeits the speedup; the next lookup reports it.
+  }
+}
+
 function publishLoadedDictionaries(loadedCount) {
   dictionaryCount = loadedCount;
   generation += 1;
+  if (loadedCount > 0) {
+    warmLookup();
+  }
 }
 
 async function restoreCommittedDictionaries(state = null, { publish = true } = {}) {
@@ -1070,6 +1095,8 @@ async function boot() {
       // canonical-path importer; persist native recovery before reconciliation.
       await persistFilesystem();
     } else if (storageBackend === "opfs") {
+      // Earlier versions staged the archive in OPFS; remove one left by an
+      // interrupted import there.
       try {
         engine.FS.unlink(OPFS_IMPORT_ZIP);
       } catch {
@@ -1503,17 +1530,78 @@ async function consumeResponse(response, consume, onProgress = null) {
   return received;
 }
 
-export async function streamResponseToFile(FS, response, path, onProgress = null) {
-  const output = FS.open(path, "w");
+const PROT_READ_WRITE = 0x1 | 0x2;
+const MAP_SHARED = 0x01;
+
+// Writes one buffer as the whole file. WasmFS's FS.write copies from JavaScript
+// one byte at a time (about 25 ns per byte: a full second for the 39 MiB
+// Jitendex archive), and its FS.writeFile on the OPFS backend appends to an
+// existing file and leaves it undeletable until the next start. A shared
+// writable mapping gives a single typed-array copy and one write-back through
+// the OPFS proxy. The legacy FS (single-thread IDBFS build) has no munmap and
+// its FS.write is already a typed-array copy, so it takes the direct path.
+function writeFileBytes(FS, path, data) {
+  const stream = FS.open(path, "w+");
   try {
-    return await consumeResponse(
-      response,
-      (bytes) => FS.write(output, bytes, 0, bytes.byteLength),
-      onProgress,
-    );
+    if (data.byteLength === 0 || typeof FS.mmap !== "function" || typeof FS.munmap !== "function") {
+      for (let offset = 0; offset < data.byteLength;) {
+        const written = FS.write(stream, data, offset, data.byteLength - offset);
+        if (!(written > 0)) {
+          throw new Error(`could not write ${path}`);
+        }
+        offset += written;
+      }
+      return;
+    }
+    FS.ftruncate(stream.fd, data.byteLength);
+    const mapping = FS.mmap(stream, data.byteLength, 0, PROT_READ_WRITE, MAP_SHARED);
+    try {
+      // Module.HEAPU8 is swapped out after memory growth only once some glue
+      // touches the heap; FS.stat does, so a view too short for the mapping is
+      // refreshed before the copy.
+      let heap = engine.HEAPU8;
+      if (heap.byteLength < mapping.ptr + data.byteLength) {
+        FS.stat(path);
+        heap = engine.HEAPU8;
+      }
+      heap.set(data, mapping.ptr);
+      FS.msync(stream, mapping.ptr, 0, data.byteLength, MAP_SHARED);
+    } finally {
+      FS.munmap(mapping.ptr, data.byteLength);
+    }
   } finally {
-    FS.close(output);
+    FS.close(stream);
   }
+}
+
+// The stream is collected and written once; the importer maps the whole file
+// into the heap anyway, so holding the bytes in JavaScript until the stream ends
+// does not change the largest archive that can be imported.
+export async function streamResponseToFile(FS, response, path, onProgress = null) {
+  const parts = [];
+  let byteLength = 0;
+  await consumeResponse(
+    response,
+    (bytes) => {
+      parts.push(bytes);
+      byteLength += bytes.byteLength;
+    },
+    onProgress,
+  );
+  let data;
+  if (parts.length === 1) {
+    data = parts[0];
+  } else {
+    data = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const part of parts) {
+      data.set(part, offset);
+      offset += part.byteLength;
+    }
+    parts.length = 0;
+  }
+  writeFileBytes(FS, path, data);
+  return byteLength;
 }
 
 export async function stageImportArchive(response, onProgress = null) {
@@ -1776,7 +1864,11 @@ async function runImportTransaction(
   // not changed until either the candidate or the committed state is loaded.
   engine.ccall("hdw_reset", null, [], []);
 
-  const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
+  // The archive is scratch: staging it in MEMFS instead of OPFS saves the
+  // proxied write, read-back mapping, and unlink (about 50 ms of hdw_import for
+  // Jitendex) and writes nothing to disk that the importer does not keep. The
+  // heap holds one extra copy of the archive for the duration of the import.
+  const archivePath = IMPORT_ZIP;
   let report;
   let rollbackAttempted = false;
   try {
@@ -2672,7 +2764,7 @@ const HANDLERS = {
       failedDictionaries: loadFailures,
       generation,
       storageBackend,
-      threaded: storageBackend === "opfs",
+      threaded: !lowRam,
     };
   },
 };
