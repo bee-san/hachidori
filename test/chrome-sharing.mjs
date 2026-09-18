@@ -510,13 +510,17 @@ async function checkOverlaySharing(hostPage) {
     await writeOptions(page, { popupWidthPx: 440, popupTheme: "sunset",
       anki: { ...initial.anki, captureScreenshot: true },
       mediaCapture: { ...initial.mediaCapture, enabled: true },
-      customLinks: [{ label: "Local link", url: "https://local.example/%w" }] });
+      customButtons: [{
+        id: "local-link", type: "link", label: "Local link", url: "https://local.example/%w",
+      }] });
     const hostInitial = await hostPage.evaluate(async () =>
       HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options));
     await writeOptions(hostPage, { lookupMode: "activationSticky", activationKey: "Control", sourceHighlightEnabled: true,
       popupWidthPx: 1000, popupTheme: "dracula",
       mediaCapture: { ...hostInitial.mediaCapture, enabled: true },
-      customLinks: [{ label: "Host link", url: "https://host.example/%w" }] });
+      customButtons: [{
+        id: "host-link", type: "link", label: "Host link", url: "https://host.example/%w",
+      }] });
     const linked = await message(page, "hachidori-sharing", "hd_sharing_client_link", { address: ADDRESS });
     if (!linked.ok) throw new Error(linked.error);
     await until(async () => (await sharingStatus(page)).sharing.client.connected, "the overlay link");
@@ -592,9 +596,9 @@ async function checkOverlaySharing(hostPage) {
       pageEnabled: !document.getElementById("keybind-add").disabled,
     }));
     await showSection(page, "design");
-    const links = await page.evaluate(() => ({
-      disabled: document.getElementById("custom-links-settings").disabled,
-      helpVisible: !document.getElementById("custom-links-overlay-help").hidden,
+    const buttons = await page.evaluate(() => ({
+      disabled: document.getElementById("custom-buttons-settings").disabled,
+      helpVisible: !document.getElementById("custom-buttons-overlay-help").hidden,
     }));
     await showSection(page, "backup");
     const backup = await page.evaluate(() => ({
@@ -612,7 +616,8 @@ async function checkOverlaySharing(hostPage) {
     check(CHECKS.at(-1),
       afterLink.lookupMode === "hover" && afterLink.sourceHighlightEnabled === false && afterLink.popupWidthPx === 440
         && afterLink.popupTheme === "dracula" && afterLink.mediaCapture.enabled
-        && afterLink.customLinks[0]?.label === "Host link" && sharedLookup.ok && notice
+        && afterLink.customButtons[0]?.id === "host-link" && afterLink.customLinks[0]?.label === "Host link"
+        && sharedLookup.ok && notice
         && afterLocal.popupWidthPx === 480 && hostAfterLocal.popupWidthPx === 1000
         && afterHost.popupWidthPx === 480 && mixed.options.popupWidthPx === 520
         && hostAfterMixed.popupWidthPx === 1150 && hostAfterMixed.popupTheme === "forest"
@@ -620,16 +625,17 @@ async function checkOverlaySharing(hostPage) {
         && afterRestart.popupWidthPx === 680 && unlinked.ok && afterUnlink.options.popupWidthPx === 680
         && afterUnlink.options.popupTheme === "sunset" && afterUnlink.dictionaryState.dictionaries.length === 0
         && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
-        && afterUnlink.options.mediaCapture.enabled && afterUnlink.options.customLinks[0]?.label === "Local link"
+        && afterUnlink.options.mediaCapture.enabled && afterUnlink.options.customButtons[0]?.id === "local-link"
+        && afterUnlink.options.customLinks[0]?.label === "Local link"
         && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
         && speech.help.includes("cannot be recorded into Anki")
         && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
-        && shortcuts.browserDisabled && shortcuts.pageEnabled && !links.disabled && links.helpVisible
+        && shortcuts.browserDisabled && shortcuts.pageEnabled && !buttons.disabled && buttons.helpVisible
         && !backup.exportDisabled && backup.restoreEnabled
         && guarded[0]?.ok === false && guarded[0].error.includes("unavailable in this overlay")
         && guarded[1]?.ok === false && guarded[1].error.includes("only from lookup popups"),
       JSON.stringify({ afterLink, afterLocal, hostAfterLocal, afterHost, mixed, hostAfterMixed, stale, offline, afterRestart,
-        afterUnlink, screenshot, speech, media, shortcuts, links, backup, guarded, notice }));
+        afterUnlink, screenshot, speech, media, shortcuts, buttons, backup, guarded, notice }));
   } finally { await overlayBrowser?.close().catch(() => {}); }
 }
 
@@ -727,6 +733,7 @@ try {
       && linked.enabled === false && linked.client.address === ADDRESS && linked.client.display === "this computer"
       && linked.client.host?.name === hostName && linked.client.host.dictionaryCount === hostState.dictionaryState.dictionaries.length
       && linked.client.host.capabilities?.includes("linked-anki-v1")
+      && linked.client.host.capabilities?.includes("linked-anki-v2")
       && JSON.stringify(mirror.dictionaryState) === JSON.stringify(hostAfterLink.dictionaryState)
       && JSON.stringify(mirror.options) === JSON.stringify(hostAfterLink.options)
       // The fresh browser's own library, empty whether or not its engine had committed it yet, is what is kept aside.
@@ -735,6 +742,7 @@ try {
       && linkedLookup?.ok === true && linkedLookup.results?.[0]?.deinflected === "食べる"
       && hostClients.length === 1 && hostClients[0].local === true && hostClients[0].name === hostName
       && hostClients[0].capabilities?.includes("linked-anki-v1")
+      && hostClients[0].capabilities?.includes("linked-anki-v2")
       && statusCards.every(card => card.display === "grid" && card.fontSize >= 16 && card.height >= 56
         && card.fullWidth && card.marker.includes("data:image/svg+xml,") && card.ready),
     JSON.stringify({ probe, offer, setup: setup.setupState?.stage, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },

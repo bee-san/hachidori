@@ -24,11 +24,11 @@ function fixture(t) {
   }
   const popup = document.getElementById("popup");
   const opened = [];
-  const links = [{ label: "Look up", url: "https://example.test/search?word=%w&reading=%r&sentence=%s" }];
+  const links = [{ id: "lookup", type: "link", label: "Look up", url: "https://example.test/search?word=%w&reading=%r&sentence=%s" }];
   const view = window.HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
-    parseTagList: window.HDGlossary.parseTagList, positionPopup() {}, customLinks: links,
+    parseTagList: window.HDGlossary.parseTagList, positionPopup() {}, customButtons: links,
     onCustomLinkClick: link => opened.push({ ...link }),
   });
   const anchor = document.querySelector("p");
@@ -39,7 +39,7 @@ function fixture(t) {
     link: () => popup.querySelector(".gsm-hoshidicts-external-link-button") };
 }
 
-test("named toolbar links use the current projected word, reading and source sentence", t => {
+test("named custom link buttons use the current projected word, reading and source sentence", t => {
   const f = fixture(t);
   f.view.renderResults([result("食べる", "たべる", "A"), result("飲む", "のむ", "B")], f.candidate, {
     dictionaryPresentation: [{ title: "A", favorite: true }, { title: "B", favorite: true }],
@@ -61,7 +61,7 @@ test("named toolbar links use the current projected word, reading and source sen
   assert.equal(f.opened[1].active, false);
 });
 
-test("live custom-link edits preserve dictionary cards, the Note draft and keyboard focus", t => {
+test("live custom-button edits preserve dictionary cards, the Note draft and keyboard focus", t => {
   const f = fixture(t);
   f.view.renderResults([result("食べる", "たべる", "A")], f.candidate);
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
@@ -70,17 +70,26 @@ test("live custom-link edits preserve dictionary cards, the Note draft and keybo
   form.elements.definition.value = "Keep my draft";
   form.elements.definition.focus();
   const button = f.link();
-  f.view.setCustomLinks([{ label: "New search", url: "https://example.test/new/%w" },
-    { label: "Reading", url: "https://example.test/read/%r" }]);
+  f.view.setCustomButtons([{ id: "lookup", type: "link", label: "New search", url: "https://example.test/new/%w" },
+    { id: "mine", type: "anki", label: "Mine sentence", templateId: "sentence" },
+    { id: "reading", type: "link", label: "Reading", url: "https://example.test/read/%r" }]);
   assert.equal(f.link(), button);
   assert.equal(f.link().textContent, "New search");
   assert.equal(f.popup.ownerDocument.activeElement, form.elements.definition);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
   assert.equal(f.popup.querySelector("form"), form);
   assert.equal(form.elements.definition.value, "Keep my draft");
+  const mine = f.popup.querySelector(".gsm-hoshidicts-custom-anki-button");
+  assert.equal(mine.textContent, "Mine sentence");
+  assert.equal(mine.dataset.customButtonId, "mine");
+  assert.equal(mine.dataset.ankiTemplateId, "sentence");
+  assert.equal(mine.disabled, true, "the mining controller owns Anki readiness");
+  assert.deepEqual([...mine.parentElement.querySelectorAll(
+    ".gsm-hoshidicts-external-link-button, .gsm-hoshidicts-custom-anki-button",
+  )].map(node => node.dataset.customButtonId), ["lookup", "mine", "reading"]);
   f.link().click();
   assert.equal(f.opened[0].url, `https://example.test/new/${encodeURIComponent("食べる")}`);
-  f.view.setCustomLinks([]);
+  f.view.setCustomButtons([]);
   button.click();
   assert.equal(f.opened.length, 1, "removed links cannot navigate");
   assert.equal(f.link(), null);

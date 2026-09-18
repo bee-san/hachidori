@@ -10,7 +10,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
   try {
     await page.setViewport({ width: 3440, height: 1440 });
     await page.setContent('<p>響く が</p><div id="host"></div>');
-    for (const file of ["external-links.js", "render/glossary.js", "render/popup.js", "anki-content.js"]) {
+    for (const file of ["external-links.js", "render/glossary.js", "render/popup.js", "reader-options.js", "anki-content.js"]) {
       await page.addScriptTag({ path: fileURLToPath(new URL(`../extension/${file}`, import.meta.url)) });
     }
     await page.evaluate(css => {
@@ -37,12 +37,30 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
         },
       });
       window.rowFixture = { root, popup, view, anki,
-        render({ expression, reading, definitions, compact, navigation, links, overlay }) {
+        customButtons(buttons, overlay, includeAnki = true) {
+          return buttons ? [
+            ...(overlay ? [] : [{
+              id: "jmirror",
+              type: "link",
+              label: "JMirror dictionary",
+              url: "https://example.test/%w",
+            }]),
+            ...(includeAnki
+              ? [{ id: "sentence-card", type: "anki", label: "Sentence card", templateId: "default" }]
+              : []),
+            ...(overlay ? [] : [{
+              id: "jisho",
+              type: "link",
+              label: "Jisho search",
+              url: "https://example.test/second/%w",
+            }]),
+          ] : [];
+        },
+        render({ expression, reading, definitions, compact, navigation, buttons, overlay, ankiEnabled = true }) {
           request = {};
-          view.setCustomLinks(links && !overlay ? [
-            { label: "JMirror dictionary", url: "https://example.test/%w" },
-            { label: "Jisho search", url: "https://example.test/second/%w" },
-          ] : []);
+          const configured = window.rowFixture.customButtons(buttons, overlay, ankiEnabled);
+          view.setCustomButtons(configured);
+          anki.update({ anki: { model: ankiEnabled ? "row" : "" }, customButtons: configured });
           view.renderResults([{ matched: expression, term: {
             expression, reading, frequencies: [], pitches: [],
             glossaries: [{ dictionary: "row-layout", glossary: JSON.stringify(definitions) }],
@@ -52,11 +70,10 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             ...(navigation === "close" ? { onClose() {} } : {}),
           });
         },
-        renderKanji({ links, overlay, navigation }) {
-          view.setCustomLinks(links && !overlay ? [
-            { label: "JMirror dictionary", url: "https://example.test/%w" },
-            { label: "Jisho search", url: "https://example.test/second/%w" },
-          ] : []);
+        renderKanji({ buttons, overlay, navigation }) {
+          const configured = window.rowFixture.customButtons(buttons, overlay);
+          view.setCustomButtons(configured);
+          anki.update({ anki: { model: "row" }, customButtons: configured });
           view.renderKanji({ character: "響", entries: [] },
             { anchor: document.querySelector("p"), query: "響" },
             navigation === "back" ? { onBack() {} } : {});
@@ -72,18 +89,18 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       { name: "long", expression: "国際連合教育科学文化機関", reading: "こくさいれんごうきょういくかがくぶんかきかん", definitions: ["United Nations Educational, Scientific and Cultural Organization", "UNESCO"] },
     ];
     const variants = [
-      { name: "browser-parent", compact: true, links: true,
-        expected: ["anki", "audio", "note", "external", "external"] },
-      { name: "browser-nested-close", compact: true, links: true, navigation: "close",
-        expected: ["close", "anki", "audio", "note", "external", "external"] },
-      { name: "browser-nested-back-large", compact: true, links: true, navigation: "back", large: true,
-        expected: ["back", "anki", "audio", "note", "external", "external"] },
-      { name: "overlay-parent", compact: true, overlay: true,
-        expected: ["anki", "audio", "note"] },
-      { name: "overlay-nested-close", compact: true, overlay: true, navigation: "close",
-        expected: ["close", "anki", "audio", "note"] },
-      { name: "kanji-nested-back", compact: false, links: true, navigation: "back", kanji: true,
-        expected: ["back", "note", "external", "external"] },
+      { name: "browser-parent", compact: true, buttons: true,
+        expected: ["anki", "audio", "note", "external", "custom-anki", "external"] },
+      { name: "browser-nested-close", compact: true, buttons: true, navigation: "close",
+        expected: ["close", "anki", "audio", "note", "external", "custom-anki", "external"] },
+      { name: "browser-nested-back-large", compact: true, buttons: true, navigation: "back", large: true,
+        expected: ["back", "anki", "audio", "note", "external", "custom-anki", "external"] },
+      { name: "overlay-parent", compact: true, buttons: true, overlay: true,
+        expected: ["anki", "audio", "note", "custom-anki"] },
+      { name: "overlay-nested-close", compact: true, buttons: true, overlay: true, navigation: "close",
+        expected: ["close", "anki", "audio", "note", "custom-anki"] },
+      { name: "kanji-nested-back", compact: false, buttons: true, navigation: "back", kanji: true,
+        expected: ["back", "note", "external", "custom-anki", "external"] },
       { name: "plain-parent", compact: false,
         expected: ["anki", "audio", "note"] },
     ];
@@ -117,6 +134,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
               if (node.classList.contains("gsm-hoshidicts-audio-control")) return "audio";
               if (node.classList.contains("gsm-hoshidicts-note-button")) return "note";
               if (node.classList.contains("gsm-hoshidicts-external-link-button")) return "external";
+              if (node.classList.contains("gsm-hoshidicts-custom-anki-button")) return "custom-anki";
               return node.className;
             };
             const controls = [...actions.children].map(node => {
@@ -172,9 +190,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             `actions split into rows: ${detail}`);
           assert.ok(geometry.controls.every(({ bounds, name }) => Math.abs(bounds.height - expectedHeight) < 1 && name),
             `action sizing or accessible name changed: ${detail}`);
-          assert.ok(geometry.controls.filter(({ kind }) => kind === "external")
+          assert.ok(geometry.controls.filter(({ kind }) => kind === "external" || kind === "custom-anki")
             .every(({ label }) => label?.overflow === "hidden" && label.textOverflow === "ellipsis"),
-          `custom-link truncation is not explicit: ${detail}`);
+          `custom-button truncation is not explicit: ${detail}`);
           assert.ok(geometry.controls
             .filter(({ kind }) => kind === "close")
             .every(({ bounds }) => Math.abs(bounds.width - expectedHeight) < 1),
@@ -196,10 +214,11 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             || geometry.heading.top >= geometry.actions.bottom - 1
             || geometry.actions.top >= geometry.heading.bottom - 1,
           `heading overlaps actions: ${detail}`);
-          if (width === 200 && variant.links && !variant.overlay && !variant.kanji) {
-            assert.ok(geometry.actionOverflow, `narrow browser actions do not expose overflow: ${detail}`);
+          if (width === 200) {
+            assert.equal(geometry.actionOverflow, variant.expected.length >= 5,
+              `narrow action overflow does not match the minimum control widths: ${detail}`);
           }
-          if (!variant.links || variant.overlay) {
+          if (!variant.buttons) {
             assert.equal(geometry.actionOverflow, false, `short action row overflows: ${detail}`);
           }
           if (width === 560) {
@@ -238,7 +257,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
     await page.evaluate(() => {
       const { root, popup, render } = window.rowFixture;
       render({ expression: "響く", reading: "ひびく", definitions: ["to resound"],
-        compact: true, navigation: "close", links: true });
+        compact: true, navigation: "close", buttons: true });
       popup.style.width = "200px";
       const actions = root.querySelector(".gsm-hoshidicts-primary-header > .gsm-hoshidicts-entry-actions");
       actions.scrollLeft = 0;
@@ -246,7 +265,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
     });
     await page.waitForFunction(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state === "ready");
     const focusTrace = [];
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 7; index += 1) {
       focusTrace.push(await page.evaluate(() => {
         const { root } = window.rowFixture;
         const focused = root.activeElement;
@@ -259,16 +278,17 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
         else if (focused.classList.contains("gsm-hoshidicts-audio-button")) kind = "audio";
         else if (focused.classList.contains("gsm-hoshidicts-note-button")) kind = "note";
         else if (focused.classList.contains("gsm-hoshidicts-external-link-button")) kind = "external";
+        else if (focused.classList.contains("gsm-hoshidicts-custom-anki-button")) kind = "custom-anki";
         const style = getComputedStyle(focused);
         const inToolbar = actions.contains(focused);
         return { inToolbar, kind, visible: focused === root.activeElement
           && (!inToolbar || (bounds.left >= viewport.left - 1 && bounds.right <= viewport.right + 1)),
         outline: [style.outlineStyle, style.outlineWidth], scrollLeft: actions.scrollLeft };
       }));
-      if (index < 5) await page.keyboard.press("Tab");
+      if (index < 6) await page.keyboard.press("Tab");
     }
     assert.deepEqual(focusTrace.map(({ kind }) => kind),
-      ["close", "anki", "audio", "note", "external", "external"],
+      ["close", "anki", "audio", "note", "external", "custom-anki", "external"],
     `narrow keyboard order: ${JSON.stringify(focusTrace)}`);
     assert.ok(focusTrace.every(({ inToolbar, visible, outline }) =>
       inToolbar && visible && outline[0] !== "none" && outline[1] !== "0px"),
@@ -282,10 +302,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
     await page.keyboard.press("Enter");
     assert.ok(await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-form").hidden), "keyboard closes Note");
     const absent = await page.evaluate(() => {
-      const { root, popup, anki, render } = window.rowFixture;
-      anki.update({ anki: { model: "" } });
+      const { root, popup, render } = window.rowFixture;
       render({ expression: "響く", reading: "ひびく", definitions: ["to resound"],
-        compact: true, navigation: "back", links: true });
+        compact: true, navigation: "back", buttons: true, ankiEnabled: false });
       popup.style.width = "200px";
       const buttons = [...root.querySelectorAll(".gsm-hoshidicts-audio-button, .gsm-hoshidicts-note-button, .gsm-hoshidicts-external-link-button, .gsm-hoshidicts-kanji-back")];
       return { mine: Boolean(root.querySelector(".gsm-hoshidicts-mine-button")), buttons: buttons.map(button => {

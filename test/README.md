@@ -160,10 +160,12 @@ mode. The unpacked relay is temporary and removed on exit.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 
-`node --test test/custom-link-settings.test.mjs test/external-link-host.test.mjs test/custom-links-renderer.test.mjs`
-checks URL-template validation, the overlay host request/result boundary, named toolbar links,
-current word/reading/sentence expansion, background-tab clicks, live editing
-without replacing cards or Note drafts, and stale-control navigation rejection.
+`node --test test/custom-button-settings.test.mjs test/external-link-host.test.mjs test/custom-buttons-renderer.test.mjs`
+checks link URL-template validation, Anki Template selection, button
+create/edit/delete/reorder behavior, the overlay host request/result boundary,
+named toolbar actions, current word/reading/sentence expansion, background-tab
+clicks, live editing without replacing cards or Note drafts, and stale-control
+navigation rejection.
 
 The lower-level checks can also be run individually in this order. Node suites
 use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
@@ -808,6 +810,35 @@ The real-WASM fixture also verifies frequency-only blur from native value `142`
 while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
 `HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
 Settings controls.
+
+### Real Custom buttons and Templates path
+
+`test/chrome-custom-buttons-templates.mjs` requires an explicitly isolated real
+Anki profile with AnkiConnect bound to a chosen `127.0.0.1` endpoint. It creates
+only the fixed `Hachidori I22 Words` and `Hachidori I22 Sentences` decks and
+note types, and deletes only notes carrying the `hachidori-i22-e2e` tag.
+
+```sh
+HACHIDORI_ANKI_URL=http://127.0.0.1:18773 \
+HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR=/tmp/hachidori-i22-evidence \
+node test/chrome-custom-buttons-templates.mjs
+```
+
+The harness starts a fresh Chrome profile, imports the production fixture,
+writes legacy flat Anki/custom-link settings and verifies their canonical
+migration, then drives Template and Custom button create, duplicate, navigation,
+reorder and delete controls with real keyboard input. It measures 40
+two-frame Template switches and captures Settings screenshots. A real lookup
+then requires independent ready states for the built-in first Template and a
+custom second-Template action, plus a visible disabled action for a missing
+Template ID. It submits the custom action from the keyboard and the built-in
+action with the pointer, and finally reads Anki back to prove separate decks,
+note types, mappings, tags and selected-Template screenshot media.
+
+`HACHIDORI_CUSTOM_BUTTONS_PROFILE` may name an empty profile for diagnosis.
+Setting `HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE=1` reuses a prior harness
+profile and fixture import; release evidence should omit both so migration and
+first-run storage are fresh.
 
 ### Upstream Anki note-type contracts
 

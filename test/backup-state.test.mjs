@@ -27,6 +27,47 @@ test("complete restore advances each local revision and replaces absent/default 
   await assertBackupSnapshot(restored);
 });
 
+test("a pre-Template backup validates and restores through the canonical Template and Custom-button model", async () => {
+  const archived = snapshot();
+  const defaults = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki;
+  archived.options = {
+    revision: 4,
+    anki: {
+      url: "http://127.0.0.1:8765",
+      apiKey: "legacy-key",
+      deck: "Legacy",
+      model: "Basic",
+      tags: ["legacy"],
+      fields: { ...defaults.fields, expression: "Front", screenshot: "Picture" },
+      duplicateScope: "deck",
+      duplicateBehavior: "overwrite",
+      captureScreenshot: true,
+      fieldTemplates: {
+        Front: { value: "{expression}", overwriteMode: "coalesce" },
+        Picture: { value: "{screenshot}", overwriteMode: "overwrite" },
+      },
+    },
+    customLinks: [
+      { label: "First", url: "https://one.example/%w" },
+      { label: "Second", url: "https://two.example/%s" },
+    ],
+  };
+  await assertBackupSnapshot(archived);
+  const restored = restoredBackupSnapshot(snapshot(), archived, []);
+  assert.deepEqual(restored.options.anki.templates, [{
+    id: "default",
+    name: "Default",
+    ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS
+      .map(key => [key, archived.options.anki[key]])),
+  }]);
+  assert.deepEqual(restored.options.customButtons, [
+    { id: "legacy-link-1", type: "link", label: "First", url: "https://one.example/%w" },
+    { id: "legacy-link-2", type: "link", label: "Second", url: "https://two.example/%s" },
+  ]);
+  assert.deepEqual(restored.options.customLinks, archived.options.customLinks);
+  await assertBackupSnapshot(restored);
+});
+
 test("restore validation rejects malformed state, settings and inconsistent custom source", async () => {
   const edits = [
     value => { value.state.schemaVersion = 2; },
@@ -43,6 +84,13 @@ test("restore validation rejects malformed state, settings and inconsistent cust
     edit(value);
     await assert.rejects(assertBackupSnapshot(value));
   }
+  const inconsistent = snapshot();
+  inconsistent.options = {
+    revision: 1,
+    customButtons: [{ id: "one", type: "link", label: "One", url: "https://one.example/%w" }],
+    customLinks: [{ label: "Other", url: "https://other.example/%w" }],
+  };
+  await assert.rejects(assertBackupSnapshot(inconsistent));
 });
 
 test("backup enforces managed custom metadata without imposing extra limits on ordinary titles", async () => {

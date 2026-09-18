@@ -1274,3 +1274,60 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     else assert.match(result.warnings.join(" "), /Screenshot: /u);
   });
 });
+
+test("worker selects the requested Template for destination, fields and screenshot policy", async () => {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: {
+    url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Word", deck: "Words", captureScreenshot: true,
+        fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" } } },
+      { ...base, id: "sentence", name: "Sentence", model: "Sentence", deck: "Sentences", captureScreenshot: false,
+        fieldTemplates: { Front: { value: "{sentence}", overwriteMode: "overwrite" } } },
+    ],
+  } });
+  const notes = new Map();
+  const writes = [];
+  const gateway = {
+    async discover(config) { return { connected: true, model: config.model, models: [config.model],
+      decks: [config.deck], fields: ["Front"], errors: [] }; },
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "addNote") {
+        const noteId = writes.length + 101;
+        writes.push(params.note);
+        notes.set(noteId, params.note);
+        return noteId;
+      }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+        modelName: notes.get(noteId).modelName,
+        fields: Object.fromEntries(Object.entries(notes.get(noteId).fields)
+          .map(([field, value]) => [field, { value }])) }));
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(), readDictionaries: async () => [],
+    engine: async () => ({ generation: 9, ready: true, loading: false }),
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates,
+      { audio: message.audio }), media: [] }),
+  });
+  const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,/9j/", "default");
+  assert.match(screenshot.filename, /^hachidori-screenshot-/u);
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,/9j/", "sentence"),
+    /turned off/u);
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,/9j/", "deleted"),
+    /no longer available/u);
+
+  const status = await service.status("sentence");
+  const result = await service.submit({ templateId: "sentence", configKey: status.configKey,
+    term: { expression: "猫", reading: "ねこ" }, sentence: "猫がいる。", generation: 9,
+    trace: [], matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [] });
+  assert.equal(result.state, "added");
+  assert.deepEqual(writes, [{ deckName: "Sentences", modelName: "Sentence",
+    fields: { Front: "<b>猫</b>がいる。" }, options: {
+      allowDuplicate: false,
+      duplicateScope: "collection",
+      duplicateScopeOptions: { deckName: null, checkChildren: false, checkAllModels: false },
+    }, tags: ["hachidori"] }]);
+});

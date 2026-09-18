@@ -26,8 +26,13 @@ test("global Anki configuration validates complete mappings and duplicate polici
   assert.equal(Object.hasOwn(defaults, "duplicateScopeCheckAllModels"), false);
   const value = config({ model: "日本語", tags: Array.from({ length: 300 }, (_, i) => `tag${i}`),
     fields: { ...defaults.fields, expression: "日本語".repeat(300) }, duplicateScope: "deck", duplicateBehavior: "new" });
-  assert.deepEqual(validateOptionsPatch({ anki: value }), { anki: value });
-  assert.deepEqual(normaliseOptions({ anki: value }).anki, value);
+  const canonical = normaliseOptions({ anki: value }).anki;
+  assert.deepEqual(validateOptionsPatch({ anki: value }), { anki: canonical });
+  assert.deepEqual(canonical.templates[0], {
+    id: "default",
+    name: "Default",
+    ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS.map(key => [key, canonical[key]])),
+  });
   for (const bad of [null, [], { ...value, model: 42 }, { ...value, fields: {} },
     { ...value, tags: [false] }, { ...value, duplicateScope: "profile" }]) {
     assert.throws(() => validateOptionsPatch({ anki: bad }));

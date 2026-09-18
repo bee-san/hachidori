@@ -202,7 +202,11 @@ options on worker start.
   `compactDefinitionSummaryCount: 2`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
   user's popup, and a later edit through the ordinary revisioned options write
-  is the value that persists.
+  is the value that persists. Anki settings contain an ordered
+  `anki.templates` list; the first Template is also projected through the
+  legacy flat Anki fields. `customButtons` contains ordered link or Anki
+  actions, while `customLinks` is its link-only compatibility projection. See
+  [Custom buttons and Anki Templates](custom-buttons-and-templates.md).
 
 New installations begin at `welcome`, which discloses local page processing,
 lookup statistics, publisher downloads, configured Anki metadata discovery, optional
@@ -1757,17 +1761,28 @@ interaction and draft selection. Only existing popup actions are shown.
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)
 
-The Anki button appears only with a valid configured Anki note type. It is
-one button: it adds, and once there is a note to show it opens Anki instead,
-at the duplicates that block adding, the note it just wrote, or a search for
-the expression after a write it could not confirm. While cache and live
-readiness are unresolved, the disabled button exposes its busy state and an
-Arrow Clockwise icon. It resolves to Add or the green View in Anki book action.
+The built-in Anki button uses the first configured Template. Custom Anki
+buttons use the same controller with their selected stable Template ID. Each
+action adds, and once there is a note to show it opens Anki instead, at the
+duplicates that block adding, the note it just wrote, or a search for the
+expression after a write it could not confirm. While cache and live readiness
+are unresolved, the disabled button exposes its busy state and an Arrow
+Clockwise icon. It resolves to Add or the green View in Anki book action.
+Missing Template IDs remain visible as disabled errors and send no Anki
+request.
 The content controller preflights rendered candidates sequentially, retires
 detached actions after live tab/group projection, and creates no Anki controls
 or requests while unconfigured. Mining uses the selected projected result,
 current frequency units and audio choice, and the raw source span for
 sentence/cloze boundaries.
+
+Status, cached View, preflight, submit, screenshot and browse carry the selected
+Template identity. Per-Template configuration digests and status caches prevent
+a readiness result from one destination being submitted through another. The
+scheduled compact duplicate/maturity snapshot stays scoped to the first
+Template; another Template falls through to the ordinary live duplicate lookup
+and every submission still performs its final live check. All Templates share
+the existing fixed background mutation queue and request-owned media rules.
 
 Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
 The worker validates the configured HTTP(S) endpoint and uses it consistently
@@ -2176,8 +2191,16 @@ network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,
 browser name, dictionary count, capabilities and a snapshot of the five shared
 keys), `request` carrying an ordinary runtime message, and `pong` to the
-relay's `ping`. `linked-anki-v1` advertises the host-owned Anki transaction
-described below; omitting capabilities remains valid for older hosts.
+relay's `ping`. `linked-anki-v1` advertises the legacy singleton host-owned
+Anki transaction. `linked-anki-v2` adds stable Template identity to readiness,
+mining, browsing and Template/custom-button settings writes. Current hosts
+advertise both so older readers can keep using the first Template; omitting
+capabilities remains valid for older dictionary-only hosts. The host passes the
+client's validated capability list into request dispatch. For a client without
+v2, a legacy flat Anki write updates only the first Template while preserving
+its identity and the remaining Templates, and a legacy `customLinks` write
+replaces only link buttons while retaining custom Anki buttons. Rich Template
+or custom-button writes from that client fail closed.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
@@ -2195,12 +2218,14 @@ forwarding table. A reply goes back verbatim, including its `requestId`, only
 while the exact relay socket and client incarnation that sent it remain
 current; a reused client ID after reconnect cannot receive an older operation's
 reply.
-The Anki dispatcher accepts only status, preflight, submit, browse and maturity
-operations, rebuilds the operation-specific request shape, and never admits an
-endpoint URL, API key or screenshot-capture operation from the client. Settings
-checks have separate allowlists: discovery may name the prospective note type,
-while full setup detection carries no client configuration at all. The host
-reads its own saved mapping, URL and API key for both. Every
+The Anki dispatcher accepts only status, cached View, preflight, submit, browse
+and maturity operations, rebuilds the operation-specific request shape, and
+never admits an endpoint URL, API key or screenshot-capture operation from the
+client. Template-aware operations carry a bounded stable Template ID, which the
+host resolves against its own saved configuration. Settings checks have
+separate allowlists: discovery may name the prospective note type, while full
+setup detection carries only the selected Template ID. The host reads its own
+saved mapping, URL and API key for both. Every
 `chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
@@ -2258,7 +2283,10 @@ offers to use it; that link then advances setup to `complete`. See
 Linked Anki mining is split at the browser boundary. The reading browser keeps
 `hd_anki_screenshot`/discard and its capture session local, while
 Settings discovery and existing-setup detection, `hd_anki_status`, preflight,
-submit, browse and maturity go to the host. A browser-speech source is planned
+submit, browse and maturity go to the host. Status, View, preflight, submit and
+browse carry the selected Template ID through the allowlist; screenshots use
+the same ID in the reading browser before their bytes cross the link. A
+browser-speech source is planned
 against the host's mirrored configuration but verified and recorded with the
 reading browser's selected voice and capture session. Just before submit, the
 reading browser's singleton Anki worker exports that final speech WAV, the
@@ -2286,9 +2314,9 @@ complete its capture job; a definitive duplicate, invalid or failed host reply
 discards/cancels them. A frame rejected before `WebSocket.send()` remains
 retryable. Once send succeeds, a closed connection or malformed reply is
 `uncertain`: neither side automatically retries it and client media stays
-available for the person to reconcile. Hosts without `linked-anki-v1` keep
-ordinary dictionary sharing but return Anki unavailable before a mining request
-is sent.
+available for the person to reconcile. Hosts without `linked-anki-v2` keep
+ordinary dictionary sharing but return Template-aware Anki operations and
+Template/custom-button settings writes unavailable before a request is sent.
 
 ## Storage ownership
 
@@ -2301,7 +2329,7 @@ is sent.
 | Newest two automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
@@ -2311,7 +2339,11 @@ The offscreen document deliberately has no direct `chrome.storage` access. It as
 `reader-options.js` supplies one synchronous stored-value view to Settings, the
 content reader, and the service worker. New patches reject malformed supported
 fields and discard unknown fields; the revision remains worker-owned. Legacy
-reads retain numeric coercion and title-only kanji selectors. Sparse stored
+reads retain numeric coercion and title-only kanji selectors. A legacy flat
+Anki configuration is normalized into the first Template, and legacy custom
+links become link-type custom buttons. The former flat Anki fields and
+`customLinks` remain compatibility projections, including callers that spread a
+normalized value and edit its first-Template fields. Sparse stored
 options remain sparse: missing defaults or a missing revision do not force a
 write. A successful patch that repairs malformed values or removes stored junk
 increments the options revision once, as does a repair in a dictionary-state
