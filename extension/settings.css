@@ -878,7 +878,6 @@ input[type="checkbox"] {
   color: var(--text-dim);
 }
 .dict-drag {
-  display: none;
   font-size: 17px;
   line-height: 1;
   cursor: grab;
