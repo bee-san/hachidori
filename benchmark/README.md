@@ -472,3 +472,21 @@ zero Anki requests. Setup, complete refreshes, browser messaging and DOM work
 are excluded. The JSON includes every raw sample, action counts and environment
 details. The driver refuses AnkiConnect's standard port and verifies the
 isolated profile's media directory before measuring.
+
+## Electron (classic FS + IDBFS)
+
+`benchmark/electron.mjs` drives the extension inside a minimal Electron host
+(`benchmark/electron-host/`), which is the GameSentenceMiner shape: shared
+memory and cross-origin isolation, but no OPFS sync access handles, so the
+engine runs on the classic Emscripten FS with IDBFS persistence. It imports the
+given archives through the real settings page, times lookups from the page, then
+relaunches on the same profile and times restart-to-ready.
+
+```sh
+HDW_ELECTRON=/path/to/electron node benchmark/electron.mjs extension a.zip b.zip
+```
+
+Needs `xvfb-run` and puppeteer-core (`HDW_PUPPETEER` if it is not under
+`~/.cache/hachidori-e2e`). The host is shut down through a quit file rather
+than a signal: an abruptly killed Electron cannot re-register the extension's
+service worker on the next launch with the same profile.
