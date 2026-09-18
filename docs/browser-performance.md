@@ -176,6 +176,24 @@ files produced are byte-identical.
 The native `hdw_import` alone in node: Jitendex 844 → 746 ms, Pixiv Light
 961 → 829 ms (medians of three).
 
+## Runtime build: wasm SIMD and link-time optimisation
+
+Every supported host (Chrome ≥ 128, Electron, Node) runs wasm SIMD, so the
+runtimes are now compiled with `-msimd128` and linked with `-flto`. Output
+files are byte-identical; the compiler vectorises the parsers and inlines
+across the engine, zstd, glaze, and libdeflate. xxHash stays scalar because its
+wasm SIMD path goes through the SIMDe `arm_neon.h` shim, which pulls C++
+headers inside an `extern "C"` block and does not compile.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Native `hdw_lookup` in node, p50 (食べました / 走り出した / 美しい景色 / 日本語を勉強しています) | 186 / 222 / 59 / 279 µs | 155 / 158 / 50 / 254 µs |
+| Native `hdw_import` in node, Jitendex / Pixiv Light | 769 / 802 ms | 731 / 764 ms |
+| Import from the settings page, Jitendex / Pixiv Light (median of 3) | 1187 / 1348 ms | 1127 / 1314 ms |
+| End-to-end hover lookup (Jitendex hit, median) | 2.0 ms | 2.0 ms (transport-bound) |
+
+The threaded runtime shrinks by 4 KB. Builds stay byte-reproducible.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
