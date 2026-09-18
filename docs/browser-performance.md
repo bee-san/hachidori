@@ -314,6 +314,33 @@ Of the remainder, the IDBFS `syncfs` (IndexedDB write of the new files) is
 is unchanged at about 4.2 s (3.5 s of it is an empty start). Chrome is unaffected
 (OPFS runtime).
 
+## Importer: one worker pool, tail phases in parallel
+
+After the term-bank workers finished, the rest of an import ran on the calling
+thread on Emscripten: meta and kanji banks, the offset radix sort (its eight
+chunks executed serially), the hash table, the Bloom filter and the media
+extraction. For VNDB (6.6M terms) that tail was 1.5 s of a 2.7 s import.
+hoshidicts now runs the whole import on one worker pool created after training,
+so those phases use the same threads the bank workers used (hoshidicts #13).
+Output is byte-identical for ten dictionaries.
+
+| Node import, 16 cores | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 456 ms | 326 ms |
+| Pixiv Light | 560 ms | 419 ms |
+| VNDB | 2510 ms | 1811 ms |
+| JMnedict | 329 ms | 224 ms |
+| JPDB frequency / Kanjium pitch | 143 / 43 ms | 123 / 19 ms |
+
+Chrome (settings upload to "Finished", single runs): JMnedict 650 → 583 ms, BCCWJ
+782 → 728, JPDB 475 → 432, Pixiv Light 783 → 749. Electron: JMnedict 1398 → 1164.
+
+The Bloom filter's parallel build partitions the filter by bit ranges rather than
+the hashes by chunks (hoshidicts #14): with atomic ORs from every thread the
+cache lines of a small filter bounced between cores and the build was slower than
+single-threaded. Node, medians of 3: JMnedict 319 → 213 ms, Jitendex 364 → 313,
+VNDB 2874 → 2424.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
