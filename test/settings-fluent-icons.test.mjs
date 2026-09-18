@@ -114,7 +114,7 @@ test("Settings, startup and toolbar static icons share the local stylesheet with
       icon(document.getElementById("open-settings"), "settings");
       assert.equal(document.querySelectorAll("svg").length, 0);
       assert.equal(document.getElementById("record-screen").disabled, true);
-      assert.equal(document.getElementById("record-label").textContent, "Record screen");
+      assert.equal(document.getElementById("record-label").textContent, "Record context for Anki");
       assert.equal(document.querySelector("header img").getAttribute("src"), "icons/hachidori-32.png");
     }
   }
