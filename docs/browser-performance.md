@@ -267,6 +267,26 @@ The post-import reload is the phase that grows with the number of installed
 dictionaries (the importer unloads everything to free the address space and
 reloads it afterwards); with seven installed it was almost half of an import.
 
+## Importer: SIMD glossary skip
+
+Term glossaries are captured raw and make up most of a term bank's bytes. glaze
+skipped them eight bytes at a time and dropped to a byte-and-switch loop at
+every quote or bracket, which structured content hits every few bytes; that
+skip was the largest item in the import profile (about 40% of a VNDB import
+under native `perf`). hoshidicts now classifies 64 bytes per step (wasm simd128)
+and only walks the structural bits of a block in which the matching bracket can
+fall. Output is byte-identical for eleven dictionaries, and a differential test
+against glaze's own skip runs in hoshidicts' ctest.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Chrome import Jitendex (medians of 3) | 878 ms | 798 ms |
+| Chrome import Pixiv Light | 965 ms | 913 ms |
+| Node, 16 cores: Jitendex / Pixiv Light / VNDB / full Pixiv | 571 / 627 / 3234 / 2310 ms | 436 / 553 / 2903 / 2156 ms |
+| Node, four cores: Jitendex / Pixiv Light | 881 / 1084 ms | 717 / 891 ms |
+
+Dictionaries without term banks (frequency, kanji, pitch) are unchanged.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
