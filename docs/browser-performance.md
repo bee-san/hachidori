@@ -309,10 +309,24 @@ still installed:
 | JMdict (English) | 1281 ms | 1130 ms |
 | JMnedict | 1598 ms | 1398 ms |
 
-Of the remainder, the IDBFS `syncfs` (IndexedDB write of the new files) is
-320–890 ms and grows with the database; restart-to-ready with three dictionaries
-is unchanged at about 4.2 s (3.5 s of it is an empty start). Chrome is unaffected
-(OPFS runtime).
+Of the remainder, the IDBFS `syncfs` (IndexedDB write of the new files) was
+320–890 ms and grew with the database. IDBFS stores each file as a record whose
+`contents` is a Uint8Array, which Chromium serialises through the renderer on
+every put and deserialises on every get. `engine-service.js` now stores files of
+1 MiB and more as Blobs (handed to blob storage once) and reads them back with
+`FileReaderSync`; records of either shape load, and a profile written by an older
+version keeps working.
+
+| Electron 42 | Before | After |
+| --- | ---: | ---: |
+| Import Jitendex / JMdict / JMnedict (in sequence) | 1461 / 1279 / 1630 ms | 977 / 748 / 878 ms |
+| `syncfs` for the same three | 398 / 631 / 879 ms | 230 / 280 / 340 ms |
+| Restart to ready, three dictionaries | 4157–4207 ms | 3863–3961 ms |
+
+An empty Electron start is 3.5 s of that, almost all Electron itself (the
+extension goes from load to engine ready in about 260 ms). Chrome is unaffected
+(OPFS runtime). One caveat: an older hachidori cannot read Blob records, so a
+downgrade after an import would need that dictionary re-imported.
 
 ## Importer: one worker pool, tail phases in parallel
 
