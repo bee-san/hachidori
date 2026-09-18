@@ -24,10 +24,11 @@ those saved settings or other tabs.
 
 The popup action row is one non-wrapping keyboard and visual group: a nested
 Close or Back control first, then Anki, pronunciation, personal-dictionary
-edit, and browser custom links in saved order. Actions share a 36-pixel height
-and a 5-pixel gap. At narrow popup widths the whole action row scrolls
-horizontally instead of wrapping, clipping, or overlapping controls. Overlay
-mode omits the browser-only custom links and preserves the remaining order.
+edit, and custom links in saved order. Actions share a 36-pixel height and a
+5-pixel gap. At narrow popup widths the whole action row scrolls horizontally
+instead of wrapping, clipping, or overlapping controls. Browser mode opens
+custom links in a Chrome tab; overlay mode asks its embedding host to open the
+same validated URL in the system browser.
 
 `manifest.json` names them.
 

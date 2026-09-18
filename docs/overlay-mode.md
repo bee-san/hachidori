@@ -11,7 +11,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text; with no entry for it, the popup offers the pencil to add your own definition.
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - Hachidori's **screen recorder** is unavailable. GameSentenceMiner owns game screenshots, recordings and sentence audio instead.
-- Chrome-owned pages are unavailable, so **browser shortcut management**, the **local-file access prompt**, and **custom toolbar links** are disabled. Page/popup keybinds still work. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
+- Chrome-owned pages are unavailable, so **browser shortcut management** and the **local-file access prompt** are disabled. Page/popup keybinds still work. **Custom toolbar links** remain editable and the reader asks the host to open their validated HTTP(S) URLs in the system browser. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -69,7 +69,7 @@ turn an Electron-only control back on remotely.
 | Anki screenshot | The switch is effectively off and disabled; existing mappings and the stored choice are preserved. |
 | Audio | Downloadable pronunciation and browser-speech playback work. Browser speech and captured audio are not recorded for mining. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
-| Design | Appearance, layout and custom CSS work. Custom toolbar links are disabled and omitted from the live/reader popup because Electron cannot open their tabs. |
+| Design | Appearance, layout, custom CSS and custom toolbar links work. A real lookup popup asks the embedding host to open a link in the system browser; the Settings live preview cannot launch it. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
 | Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission. |
 
@@ -77,6 +77,13 @@ turn an Electron-only control back on remotely.
 the content script and the service worker. Unsupported runtime requests fail
 with an explicit overlay error even if they came from stale UI or a remotely
 shared option.
+
+For custom links, the content script dispatches `hachidori-open-external` with
+a request ID, a normalized credential-free HTTP(S) URL and the saved activation
+choice. The host answers with `hachidori-open-external-result` carrying the same
+request ID and either `ok: true` or an error. Hosts must validate the URL again
+at their privileged browser-opening boundary and bind that operation to the
+intended overlay window.
 
 The page scan is layout-unaware like Yomitan's default: an overlay may box every glyph in its own
 absolutely positioned span and Hachidori still reads the word across the boxes,
@@ -163,9 +170,9 @@ or capture host, and that the worker download endpoint checks the actual API.
 
 `node test/chrome-overlay.mjs` loads a copy of the extension with the flag set
 into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
-does. It checks the Settings capability matrix and backend guards before
-checking glyph selection, the pencil for an unknown selection, and the host
-events around a drag.
+does. It checks the Settings capability matrix, editable custom links and
+backend guards before checking glyph selection, the pencil for an unknown
+selection, and the host events around a drag.
 
 `test/electron-backup.cjs` exercises export, download cancellation and restore in
 a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1

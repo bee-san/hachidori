@@ -2707,8 +2707,10 @@ async function handleWorkerRequest(message, sender) {
   if (type === "hd_backup_download" && typeof chrome.downloads?.download !== "function") {
     return failureReply(message, new Error("Chrome downloads are unavailable. Export the backup from Hachidori Settings."));
   }
-  if (type === "hd_open_external" && !HOST_CAPABILITIES.customLinks) {
-    return failureReply(message, new Error("Custom toolbar links are unavailable in this overlay."));
+  if (type === "hd_open_external" && HOST_CAPABILITIES.externalLinkHost) {
+    return failureReply(message, new Error(
+      "Custom toolbar links open only from lookup popups in this overlay; the Settings preview cannot launch them.",
+    ));
   }
   await sharingReady;
   if (["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)) await sharingTransitionTail;

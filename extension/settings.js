@@ -285,7 +285,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  if (activeSection === "design" && HOST_CAPABILITIES.customLinks) {
+  if (activeSection === "design") {
     customLinkController ??= createCustomLinkSettings({ document,
       readLinks: () => options.customLinks,
       saveLinks: links => { options.customLinks = links; writeOptions(); },
@@ -587,8 +587,7 @@ function updateDesignPreview() {
   }
   if (frame.style.width !== `${options.popupWidthPx * options.popupScalePercent / 100 + 96}px`
       || frame.style.height !== `${options.popupHeightPx * options.popupScalePercent / 100 + 216}px`) resizeDesignPreview();
-  const previewOptions = HOST_CAPABILITIES.customLinks ? options : { ...options, customLinks: [] };
-  frame.contentWindow.HDDesignPreview?.update(previewOptions, dictionaryState);
+  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
 function resizeDesignPreview() {
@@ -3405,8 +3404,8 @@ async function start() {
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
   element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
   element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
-  element("custom-links-settings").disabled = !HOST_CAPABILITIES.customLinks;
-  element("custom-links-overlay-help").hidden = HOST_CAPABILITIES.customLinks;
+  element("custom-links-settings").disabled = false;
+  element("custom-links-overlay-help").hidden = !HOST_CAPABILITIES.externalLinkHost;
   if (HOST_CAPABILITIES.localFileAccessPrompt) {
     createLocalFileAccessController({ document, container: element("settings-local-file-access") });
   }
