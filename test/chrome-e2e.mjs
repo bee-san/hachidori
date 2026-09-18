@@ -238,7 +238,7 @@ const PLANNED = [
   "manifest and settings page are branded as Hachidori",
   "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
-  "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+  "a fresh install uses AUTO in startup and Settings before Start setup and waits for work",
   "Start setup begins automatic dictionary installation with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
@@ -266,7 +266,7 @@ const PLANNED = [
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
   "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
-  "Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
+  "Design exposes AUTO plus 42 grouped palettes and applies live browser preference changes",
   "Design previews opacity and dimensions immediately and resets only Design settings",
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
@@ -2242,6 +2242,17 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const sourceSpan = await highlights();
     const pageTheme = await tab.evaluate(() => ({ theme: document.documentElement.getAttribute("data-hoshidicts-theme"),
       style: document.documentElement.getAttribute("style") }));
+    await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await optionsWrite({ popupTheme: "auto" });
+    const automaticThemes = [];
+    for (const scheme of ["light", "dark"]) {
+      await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await tab.waitForFunction(expected =>
+        document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === expected, {}, scheme);
+      automaticThemes.push(await tab.$eval("hachidori-host", host => host.dataset.hoshidictsTheme));
+    }
+    const automaticDraft = await popup.retainedControls();
+    await tab.emulateMediaFeatures([]);
     await optionsWrite({ popupTheme: "high-contrast", popupOpacityPercent: 0, sourceHighlightEnabled: false });
     await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === "high-contrast"
       && !CSS.highlights.has("gsm-hoshidicts-match"));
@@ -2256,7 +2267,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
         style: document.documentElement.getAttribute("style") };
     });
     const appearanceDraft = await popup.retainedControls();
-    evidence.appearance = evidence.appearanceChild && appearance.primary === "#ffe000" && appearance.opacity === "0%"
+    evidence.appearance = evidence.appearanceChild && JSON.stringify(automaticThemes) === '["light","dark"]'
+      && automaticDraft.sameForm && automaticDraft.inputFocused && automaticDraft.draft === columnDraft.draft
+      && appearance.primary === "#ffe000" && appearance.opacity === "0%"
       && appearance.highlight.endsWith(" / 0.56)") && appearance.theme === pageTheme.theme && appearance.style === pageTheme.style
       && appearanceDraft.sameForm && appearanceDraft.inputFocused && appearanceDraft.draft === columnDraft.draft
       && (await rootState()).sameCards && (await requests()).length === columnsStart;
@@ -6285,6 +6298,24 @@ async function checkDesignAppearance(page, frame) {
       window.appearanceProof = { card: host.shadowRoot.querySelector(".gsm-hoshidicts-glossary-card"),
         stylesheet: host.shadowRoot.querySelector("link").sheet, highlightSheet: document.adoptedStyleSheets[0] };
     });
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await editSettingsControls(page, { "opt-popup-theme": "auto" });
+    const automatic = [];
+    for (const scheme of ["light", "dark"]) {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await frame.waitForFunction(expected =>
+        document.getElementById("preview-host").dataset.hoshidictsTheme === expected, {}, scheme);
+      automatic.push(await frame.evaluate(() => {
+        const host = document.getElementById("preview-host");
+        const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        return { theme: host.dataset.hoshidictsTheme,
+          retained: window.appearanceProof.card === popup.querySelector(".gsm-hoshidicts-glossary-card")
+            && window.appearanceProof.stylesheet === host.shadowRoot.querySelector("link").sheet
+            && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
+          pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
+      }));
+    }
+    await page.emulateMediaFeatures([]);
     const palettes = [];
     for (const theme of ["miku", "girlypop", "light", "high-contrast"]) {
       await editSettingsControls(page, { "opt-popup-theme": theme });
@@ -6311,14 +6342,17 @@ async function checkDesignAppearance(page, frame) {
         palettes.at(-1).fullStops = await stops(100);
       }
     }
-    check("Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
-      catalogue.count === 42 && JSON.stringify(catalogue.groups) === "[18,23,1]"
+    check("Design exposes AUTO plus 42 grouped palettes and applies live browser preference changes",
+      catalogue.count === 43 && JSON.stringify(catalogue.groups) === "[1,18,23,1]"
+        && JSON.stringify(automatic.map(value => value.theme)) === '["light","dark"]'
+        && automatic.every(value => value.retained && value.pageUntouched)
         && palettes.every(value => value.retained && value.pageUntouched)
         && palettes[0].primary === "#39c5bb" && palettes[2].primary === "oklch(45% 0.24 277.023)"
         && palettes[3].primary === "#ffe000" && palettes[3].backdrop === "none"
         && palettes.slice(0, 2).every(value => JSON.stringify(value.zeroStops) === "[0,0]")
         && JSON.stringify(palettes[0].fullStops) === "[0.18,0.12]"
-        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]", JSON.stringify({ catalogue, palettes }));
+        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]",
+      JSON.stringify({ catalogue, automatic, palettes }));
     await editSettingsControls(page, { "opt-popup-theme": "default" });
     const immediate = await page.evaluate(async () => {
       const revision = (await chrome.storage.local.get("options")).options.revision;
@@ -6373,6 +6407,7 @@ async function checkDesignAppearance(page, frame) {
       && geometry.background.endsWith(" / 0)") && !opaque.includes(" / ") && disabled && restored === "食べる",
     JSON.stringify({ immediate, geometry, opaque, disabled, restored, reset }));
   } finally {
+    await page.emulateMediaFeatures([]);
     await page.evaluate(async saved => {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
@@ -8671,6 +8706,7 @@ async function main() {
       visible: document.querySelector(".startup-star-link")?.checkVisibility() === true,
     },
     privacy: document.querySelector('a[href*="privacy"]') !== null,
+    theme: document.documentElement.dataset.hoshidictsTheme,
     background: getComputedStyle(document.body).backgroundColor,
     cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
   });
@@ -8696,6 +8732,43 @@ async function main() {
   };
   const welcome = startup === null ? null
     : await waitStartup((state) => state.actions.some(([id]) => id === "setup-start"), 30_000);
+  const automaticBeforeStart = {};
+  if (startup !== null) {
+    for (const scheme of ["light", "dark"]) {
+      await page.bringToFront();
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      let settingsState;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        settingsState = await page.evaluate(async () => {
+          const stored = await chrome.storage.local.get(["options", "setupState"]);
+          return { page: location.pathname, theme: document.documentElement.dataset.hoshidictsTheme,
+            storedTheme: stored.options?.popupTheme, optionsRevision: stored.options?.revision,
+            setupStage: stored.setupState?.stage, setupRevision: stored.setupState?.revision };
+        });
+        if (settingsState.theme === scheme && settingsState.storedTheme === "auto") break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      await startup.bringToFront();
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      let startupState;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        startupState = await startup.evaluate(async () => {
+          const stored = await chrome.storage.local.get("options");
+          return { page: location.pathname, theme: document.documentElement.dataset.hoshidictsTheme,
+            storedTheme: stored.options?.popupTheme, optionsRevision: stored.options?.revision,
+            startVisible: document.getElementById("setup-start")?.checkVisibility() === true };
+        });
+        if (startupState.theme === scheme && startupState.storedTheme === "auto") break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      automaticBeforeStart[scheme] = { settings: settingsState, startup: startupState };
+    }
+    await page.bringToFront();
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await page.waitForFunction(() => document.documentElement.dataset.hoshidictsTheme === "light");
+    await startup.bringToFront();
+    await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  }
   const refusedBeforeStart = startup === null ? null : await startup.evaluate(async () => ({
     anki: await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_setup_anki", requestId: "before-start-anki" }),
     dictionaries: await chrome.runtime.sendMessage({ target: "hachidori-setup", type: "hd_setup_install",
@@ -8703,9 +8776,18 @@ async function main() {
     setup: (await chrome.storage.local.get("setupState")).setupState,
     privacy: document.querySelector('a[href*="privacy"]') !== null,
   }));
-  check("a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+  check("a fresh install uses AUTO in startup and Settings before Start setup and waits for work",
     startupTabs() === 1 && welcome?.rows.length === 0 && refusedBeforeStart?.setup.stage === "welcome"
       && refusedBeforeStart.setup.revision === 1 && !refusedBeforeStart.privacy && !welcome.privacy
+      && ["light", "dark"].every(scheme => {
+        const proof = automaticBeforeStart[scheme];
+        return proof?.settings.page === "/settings.html" && proof.settings.theme === scheme
+          && proof.settings.storedTheme === "auto" && proof.settings.optionsRevision === 1
+          && proof.settings.setupStage === "welcome" && proof.settings.setupRevision === 1
+          && proof.startup.page === "/startup.html" && proof.startup.theme === scheme
+          && proof.startup.storedTheme === "auto" && proof.startup.optionsRevision === 1
+          && proof.startup.startVisible;
+      })
       && welcome.tagline === "Blazing fast, feature rich Japanese dictionary by Bee"
       && welcome.credit === "Made by Bee · bee-san on GitHub · skerritt.blog"
       && JSON.stringify(welcome.creditLinks) === JSON.stringify([
@@ -8717,7 +8799,16 @@ async function main() {
       && refusedBeforeStart.anki.error === "Start setup before checking Anki."
       && refusedBeforeStart.dictionaries.error === "Start setup before downloading dictionaries."
       && setupArchives.requests.length === 0,
-    JSON.stringify({ welcome, refusedBeforeStart, requests: setupArchives.requests }));
+    JSON.stringify({ welcome, automaticBeforeStart, refusedBeforeStart, requests: setupArchives.requests }));
+  if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 820 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  }
   if (startup !== null) await clickStartupControl("setup-start");
   // After the click, the held request means Jitendex sits in Downloading.
   const startupShell = startup === null ? null
@@ -8779,14 +8870,11 @@ async function main() {
       && startupShell.status === "Installing default dictionaries…"
       && startupShell.background !== "rgba(0, 0, 0, 0)"
       && startupShell.cardBackground !== "rgba(0, 0, 0, 0)"
-      && settingsPalette.theme === "default"
-      && settingsPalette.base100 === "#272630"
-      && settingsPalette.base200 === "#302f3b"
-      && settingsPalette.accent === "#b1a5ee"
-      && settingsPalette.borderStrong === "#747586"
-      && settingsPalette.textDim === "#aaa8b2"
+      && settingsPalette.theme === "light"
+      && [settingsPalette.base100, settingsPalette.base200, settingsPalette.accent,
+        settingsPalette.borderStrong, settingsPalette.textDim].every(Boolean)
       && settingsPalette.background !== "rgba(0, 0, 0, 0)"
-      && settingsPalette.surface === "rgb(43, 43, 54)"
+      && settingsPalette.surface !== "rgba(0, 0, 0, 0)"
       && firstInstallStorage.setupState?.stage === "dictionaries"
       && firstInstallStorage.setupState.revision === 2
       && firstInstallStorage.setupState.completedAt === null
@@ -8796,27 +8884,18 @@ async function main() {
       && JSON.stringify(firstInstallStorage.setupState.dictionaries.selectionsApplied) === "[]"
       && (firstInstallStorage.dictionaryState?.dictionaries?.length ?? 0) === 0
       && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
-        ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
+        ["compactDefinitionSummaryCount", "popupTheme", "revision", "showCompactDefinitionSummary"],
       )
+      && seededOptions.popupTheme === "auto"
       && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 2
       && seededOptions.revision === 1
-      && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
+      && effective.popupTheme === "auto" && effective.popupOpacityPercent === 85
       && effective.audioAutoplay === false
       && JSON.stringify(effective.audioSources?.map((source) => [source.type, source.enabled]))
         === JSON.stringify([["text-to-speech-reading", true]])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"]),
     JSON.stringify({ startupTabs: startupTabs(), skippedToSetup, seededInSettings, startupShell, settingsPalette, firstInstallStorage, requests: setupArchives.requests }),
   );
-  if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
-    await startup.setViewport({ width: 900, height: 820 });
-    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
-      if (!path) continue;
-      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-      await startup.screenshot({ path });
-    }
-    await startup.emulateMediaFeatures([]);
-  }
-
   const resumeVisible = await page.evaluate(() => {
     const link = document.getElementById("setup-resume");
     return {
@@ -9881,7 +9960,7 @@ async function main() {
   const pickerKeepsFocus = await page.evaluate(() => document.activeElement.id === "settings-section");
   const originalSettingsTheme = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options.popupTheme ?? "default");
-  const setSettingsTheme = async (theme) => {
+  const setSettingsTheme = async (theme, effectiveTheme = theme) => {
     await page.evaluate(async nextTheme => {
       const { options } = await chrome.storage.local.get("options");
       if ((options.popupTheme ?? "default") === nextTheme) return;
@@ -9896,8 +9975,21 @@ async function main() {
     }, theme);
     await page.waitForFunction(nextTheme =>
       document.documentElement.dataset.hoshidictsTheme === nextTheme,
-    { polling: 50, timeout: 10_000 }, theme);
+    { polling: 50, timeout: 10_000 }, effectiveTheme);
   };
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  await setSettingsTheme("auto", "light");
+  const automaticSettingsThemes = [];
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await page.waitForFunction(expected =>
+      document.documentElement.dataset.hoshidictsTheme === expected, {}, scheme);
+    automaticSettingsThemes.push(await page.evaluate(async () => ({
+      effective: document.documentElement.dataset.hoshidictsTheme,
+      stored: (await chrome.storage.local.get("options")).options.popupTheme,
+    })));
+  }
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   const narrowThemes = [];
   for (const theme of ["light", "default"]) {
     await setSettingsTheme(theme);
@@ -9982,7 +10074,7 @@ async function main() {
   const themePalettes = [];
   await page.setViewport({ width: 1280, height: 900 });
   await showSettingsSection(page, "design");
-  for (const theme of themes) {
+  for (const theme of themes.filter(theme => theme !== "auto")) {
     await setSettingsTheme(theme);
     themePalettes.push(await page.evaluate(expectedTheme => {
       const probe = document.createElement("span");
@@ -10040,10 +10132,14 @@ async function main() {
     await page.mouse.move(1275, 5);
     await page.screenshot({ path: process.env.HACHIDORI_SETTINGS_THEME_SCREENSHOT, fullPage: true });
   }
-  await setSettingsTheme(originalSettingsTheme);
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  await setSettingsTheme(originalSettingsTheme, originalSettingsTheme === "auto" ? "light" : originalSettingsTheme);
   await page.emulateMediaFeatures([]);
   check("Settings follows every popup theme and keeps each task view readable without horizontal overflow",
-    themes.length === 42
+    themes.length === 43 && themePalettes.length === 42
+      && JSON.stringify(automaticSettingsThemes) === JSON.stringify([
+        { effective: "light", stored: "auto" }, { effective: "dark", stored: "auto" },
+      ])
       && narrowThemes.every(({ theme, noOverflow, fieldsFit, statusExposed }) =>
         ["light", "default"].includes(theme) && noOverflow && fieldsFit && statusExposed)
       && themeLayouts.every((layout) => layout.selectedTheme === layout.theme
@@ -10051,7 +10147,7 @@ async function main() {
       && themePalettes.every((theme) => theme.selectedTheme === theme.expectedTheme && theme.palette
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
-    JSON.stringify({ narrowThemes, themeLayouts, themePalettes }));
+    JSON.stringify({ automaticSettingsThemes, narrowThemes, themeLayouts, themePalettes }));
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });

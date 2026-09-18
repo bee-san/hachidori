@@ -78,10 +78,22 @@
       highlightSheet.cssRules[0].style.setProperty("background-color", mix);
     }
 
+    const colorScheme = window.matchMedia?.("(prefers-color-scheme: dark)");
+    function applyTheme(theme = current.popupTheme) {
+      host.dataset.hoshidictsTheme = theme === "auto"
+        ? (colorScheme?.matches ? "dark" : "light") : theme;
+    }
+    const colorSchemeChanged = () => {
+      if (current.popupTheme !== "auto") return;
+      applyTheme();
+      refreshHighlight();
+    };
+    colorScheme?.addEventListener("change", colorSchemeChanged);
+
     return {
       update(options) {
         const themeChanged = current.popupTheme !== options.popupTheme;
-        if (themeChanged) host.dataset.hoshidictsTheme = options.popupTheme;
+        if (themeChanged) applyTheme(options.popupTheme);
         // Only CSS hides the button: it stays bound, so autoplay and keybinds still play.
         if (options.showPopupAudioButton === false) host.dataset.hoshidictsAudioButton = "hidden";
         else delete host.dataset.hoshidictsAudioButton;
@@ -98,6 +110,7 @@
       },
       refreshHighlight,
       destroy() {
+        colorScheme?.removeEventListener("change", colorSchemeChanged);
         if (highlightSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== highlightSheet);
       },
     };

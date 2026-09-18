@@ -1113,13 +1113,14 @@ settles. The extension harness also checks shared Reading/Design save feedback,
 unsaved preview updates, unchanged-echo render skips, unavailable image routes,
 preferred-source draft retention, and exact tab/disclosure restoration.
 
-Three further appearance assertions cover all 42 grouped theme IDs and real
-dark/light/high-contrast palette overrides, immediate unsaved opacity/dimension
-preview and scoped reset, and live reader/child geometry with exact highlight
-restoration and retained Note/cards/resources. Unit coverage checks strict
-option ranges and no-op CAS, first-layout width ordering, and native/term
-clicked-kanji preview switching without losing Note or Back state. Unrelated
-dictionary changes retain the current clicked-kanji cards and disclosures.
+Three further appearance assertions cover AUTO plus all 42 grouped palette IDs,
+live browser light/dark changes and real high-contrast overrides, immediate
+unsaved opacity/dimension preview and scoped reset, and live reader/child
+geometry with exact highlight restoration and retained Note/cards/resources.
+Unit coverage checks strict option ranges and no-op CAS, first-layout width
+ordering, and native/term clicked-kanji preview switching without losing Note
+or Back state. Unrelated dictionary changes retain the current clicked-kanji
+cards and disclosures.
 
 Three custom-CSS assertions check immediate unsaved preview, character count,
 persisted source and scoped reset; real CSS cascade after built-in and late

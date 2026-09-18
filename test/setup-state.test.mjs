@@ -153,10 +153,14 @@ test("absent state is null and malformed or unsupported state is refused", () =>
 });
 
 test("first-install preferences are a valid options patch that leaves reader defaults untouched", () => {
-  const { DEFAULT_OPTIONS, validateOptionsPatch } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
   assert.deepEqual(validateOptionsPatch(FIRST_INSTALL_OPTIONS), { ...FIRST_INSTALL_OPTIONS });
+  assert.equal(FIRST_INSTALL_OPTIONS.popupTheme, "auto");
   assert.equal(DEFAULT_OPTIONS.showCompactDefinitionSummary, false);
   assert.equal(DEFAULT_OPTIONS.popupTheme, "default");
+  assert.equal(normaliseOptions({}).popupTheme, "default");
+  assert.deepEqual(["default", "light", "dark", "dracula"].map(popupTheme =>
+    normaliseOptions({ popupTheme }).popupTheme), ["default", "light", "dark", "dracula"]);
   assert.equal(DEFAULT_OPTIONS.popupOpacityPercent, 85);
   assert.equal(DEFAULT_OPTIONS.audioAutoplay, false);
   assert.deepEqual(DEFAULT_OPTIONS.audioSources.map(source => [source.type, source.enabled]), [["text-to-speech-reading", true]]);

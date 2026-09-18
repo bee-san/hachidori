@@ -262,6 +262,7 @@ async function popupReader(page) {
       kanjiGlyph: this.querySelector(".gsm-hoshidicts-kanji-glyph")?.textContent ?? null,
       failureKind: this.querySelector(".gsm-hoshidicts-lookup-failure")?.dataset.kind ?? null,
       failureText: this.querySelector(".gsm-hoshidicts-lookup-failure")?.textContent ?? null,
+      theme: this.getRootNode().host.dataset.hoshidictsTheme,
     };
   }`);
   const visible = (current) => Boolean(current) && !current.hidden && current.height > 0 && current.plain !== "";
@@ -420,6 +421,22 @@ try {
   for (const target of browser.targets()) watchExtensionTarget(target);
   const id = await extensionId(browser);
   const settings = await openSettings(browser, id);
+  const automaticSettingsThemes = [];
+  for (const scheme of ["light", "dark"]) {
+    await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await settings.waitForFunction(async expected => {
+      const options = (await chrome.storage.local.get("options")).options;
+      return options?.popupTheme === "auto" && document.documentElement.dataset.hoshidictsTheme === expected;
+    }, {}, scheme);
+    automaticSettingsThemes.push(await settings.evaluate(async () => ({
+      effective: document.documentElement.dataset.hoshidictsTheme,
+      stored: (await chrome.storage.local.get("options")).options.popupTheme,
+    })));
+  }
+  await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  assert.deepEqual(automaticSettingsThemes, [
+    { effective: "light", stored: "auto" }, { effective: "dark", stored: "auto" },
+  ], "overlay Settings follows the live browser preference from its first seeded options");
   await importFixture(settings);
   await showSection(settings, "media");
   await settings.waitForFunction(() =>
@@ -553,6 +570,7 @@ try {
   const tab = await browser.newPage();
   tab.on("console", (message) => diagnostics.push(`[page] ${message.type()}: ${message.text()}`));
   tab.on("pageerror", (error) => diagnostics.push(`[page] error: ${error.message}`));
+  await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   await tab.setViewport({ width: 1280, height: 720 });
   await tab.goto(pageUrl, { waitUntil: "load" });
   await tab.bringToFront();
@@ -591,6 +609,16 @@ try {
   await tab.mouse.move(...middle(boxes[0]));
   const ankiPopup = await popup.waitForVisible(10_000);
   assert.ok(ankiPopup?.plain.includes("食べる"), `overlay Anki hover reads the boxed word: ${JSON.stringify(ankiPopup)}`);
+  const automaticPopupThemes = [ankiPopup.theme];
+  await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+  const automaticThemeDeadline = Date.now() + 5000;
+  while (automaticPopupThemes.at(-1) !== "dark" && Date.now() < automaticThemeDeadline) {
+    await settle(50);
+    automaticPopupThemes[1] = (await popup.state())?.theme;
+  }
+  assert.deepEqual(automaticPopupThemes, ["light", "dark"],
+    "the open overlay popup follows a live browser preference change");
+  await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   const loadingAnki = await waitForAnki(state => state?.state === "checking"
     && overlayAnkiCalls.filter(call => call.action === "canAddNotesWithErrorDetail").length > overlayPreflights);
   const loadingAnkiFocused = await popup.focusAnki();
