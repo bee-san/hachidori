@@ -933,11 +933,92 @@ function addDictionaries(dictionaries, includeDisabled) {
 // never published unless it does, but one already at a `committed` path that
 // stops loading is left out and reported in `loadFailures`: otherwise a single
 // broken package would stop lookups in every other dictionary.
+//
+// Loading a package copies its files into the wasm heap (about 1 ms per MB, so
+// 100-150 ms for Jitendex or Pixiv), and the engine cannot reorder or drop a
+// loaded package on its own, so the first version of this rebuilt the whole
+// set on every change. `loadedPackages` and `verifiedPackages` let a change
+// that only reorders, disables, or re-enables packages this session already
+// loaded be applied in place through hdw_remove_dict / hdw_add_dict /
+// hdw_set_dict_order instead. Package paths are generation-scoped and their
+// files never change once loaded, so a package that loaded once this session
+// loads again; anything else falls back to the full rebuild below, which also
+// discards whatever an interrupted incremental step left behind.
+let loadedPackages = null;
+const verifiedPackages = new Map();
+
+function packageKinds(dictionary) {
+  return kindsForPackage(dictionary).join(",");
+}
+
+function resetEngine() {
+  engine.ccall("hdw_reset", null, [], []);
+  loadedPackages = null;
+}
+
+function trackLoaded(dictionaries) {
+  loadedPackages = dictionaries.map((dictionary) => ({
+    path: dictionary.path,
+    kinds: packageKinds(dictionary),
+  }));
+  for (const entry of loadedPackages) verifiedPackages.set(entry.path, entry.kinds);
+}
+
+function retainVerified(dictionaries) {
+  const requested = new Set(dictionaries.map((dictionary) => dictionary.path));
+  for (const path of [...verifiedPackages.keys()]) {
+    if (!requested.has(path)) verifiedPackages.delete(path);
+  }
+}
+
+function isVerified(dictionary) {
+  return verifiedPackages.get(dictionary.path) === packageKinds(dictionary);
+}
+
+// Returns the loaded count, or null when the change needs the full rebuild.
+function loadDictionariesIncrementally(dictionaries) {
+  if (loadedPackages === null || !dictionaries.every(isVerified)) {
+    return null;
+  }
+  const enabled = dictionaries.filter((dictionary) => dictionary.enabled !== false);
+  const wanted = new Map(enabled.map((dictionary) => [dictionary.path, packageKinds(dictionary)]));
+  const present = new Map(loadedPackages.map((entry) => [entry.path, entry.kinds]));
+  try {
+    for (const entry of loadedPackages) {
+      if (wanted.get(entry.path) === entry.kinds) continue;
+      if (!engine.ccall("hdw_remove_dict", "number", ["string"], [entry.path])) return null;
+      present.delete(entry.path);
+    }
+    for (const dictionary of enabled) {
+      if (present.has(dictionary.path)) continue;
+      addDictionaries([dictionary], true);
+      present.set(dictionary.path, packageKinds(dictionary));
+    }
+    const order = JSON.stringify(enabled.map((dictionary) => dictionary.path));
+    if (!engine.ccall("hdw_set_dict_order", "number", ["string"], [order])) return null;
+  } catch (error) {
+    if (!(error instanceof DictionaryLoadError)) throw error;
+    return null;
+  } finally {
+    // Until the rebuild below or trackLoaded() describes it, the loaded set is
+    // unknown; the fast path must not trust an interrupted step.
+    loadedPackages = null;
+  }
+  trackLoaded(enabled);
+  retainVerified(dictionaries);
+  loadFailures = [];
+  return enabled.reduce((count, dictionary) => count + kindsForPackage(dictionary).length, 0);
+}
+
 function loadDictionaries(dictionaries, { committed = [] } = {}) {
   for (const dictionary of dictionaries) {
     if (dictionaryRoot(dictionary) === null) {
       throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
     }
+  }
+  const incremental = loadDictionariesIncrementally(dictionaries);
+  if (incremental !== null) {
+    return incremental;
   }
   const tolerated = new Set(committed.map((dictionary) => text(dictionary?.path)));
   const failed = [];
@@ -954,12 +1035,13 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
     });
   };
   for (const dictionary of dictionaries) {
-    if (dictionary.enabled !== false) {
+    if (dictionary.enabled !== false || isVerified(dictionary)) {
       continue;
     }
-    engine.ccall("hdw_reset", null, [], []);
+    resetEngine();
     try {
       addDictionaries([dictionary], true);
+      verifiedPackages.set(dictionary.path, packageKinds(dictionary));
     } catch (error) {
       recordFailure(error);
     }
@@ -967,13 +1049,13 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
   // An enabled package can fail after some of its kinds were added, so reload
   // without it rather than keep part of it.
   for (;;) {
-    engine.ccall("hdw_reset", null, [], []);
+    resetEngine();
+    const candidates = dictionaries.filter((dictionary) => !skipped.has(dictionary.path));
     try {
-      const loadedCount = addDictionaries(
-        dictionaries.filter((dictionary) => !skipped.has(dictionary.path)),
-        false,
-      );
+      const loadedCount = addDictionaries(candidates, false);
       loadFailures = failed;
+      trackLoaded(candidates.filter((dictionary) => dictionary.enabled !== false));
+      retainVerified(dictionaries);
       return loadedCount;
     } catch (error) {
       recordFailure(error);
@@ -1073,6 +1155,8 @@ async function boot() {
       throw new Error("the engine service has no WASM factory");
     }
     engine = await createHoshidicts();
+    loadedPackages = null;
+    verifiedPackages.clear();
     if (storageBackend === "idbfs") {
       if (!exists(DICT_ROOT)) {
         engine.FS.mkdir(DICT_ROOT);
@@ -1862,7 +1946,7 @@ async function runImportTransaction(
   // Unload before importing: the loaded dictionaries are mapped into the same
   // 32-bit address space the importer needs. Public count/generation state is
   // not changed until either the candidate or the committed state is loaded.
-  engine.ccall("hdw_reset", null, [], []);
+  resetEngine();
 
   // The archive is scratch: staging it in MEMFS instead of OPFS saves the
   // proxied write, read-back mapping, and unlink (about 50 ms of hdw_import for
