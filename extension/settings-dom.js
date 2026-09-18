@@ -13,8 +13,9 @@ export function applyPageTheme(document, options) {
     PAGE_THEMES.set(document, state);
   }
   state.theme = options.popupTheme;
-  document.documentElement.dataset.hoshidictsTheme = state.theme === "auto"
-    ? (state.media.matches ? "dark" : "light") : state.theme;
+  let resolvedTheme = state.theme;
+  if (resolvedTheme === "auto") resolvedTheme = state.media.matches ? "dark" : "light";
+  document.documentElement.dataset.hoshidictsTheme = resolvedTheme;
 }
 
 const STATUS_CLASSES = {

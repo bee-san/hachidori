@@ -80,8 +80,9 @@
 
     const colorScheme = window.matchMedia?.("(prefers-color-scheme: dark)");
     function applyTheme(theme = current.popupTheme) {
-      host.dataset.hoshidictsTheme = theme === "auto"
-        ? (colorScheme?.matches ? "dark" : "light") : theme;
+      let resolvedTheme = theme;
+      if (resolvedTheme === "auto") resolvedTheme = colorScheme?.matches ? "dark" : "light";
+      host.dataset.hoshidictsTheme = resolvedTheme;
     }
     const colorSchemeChanged = () => {
       if (current.popupTheme !== "auto") return;
