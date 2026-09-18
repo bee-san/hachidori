@@ -1377,10 +1377,14 @@ async function overlayModeBackgroundStage() {
   await settle(() => storage.raw.has("options"));
   await settle();
   const seeded = storage.raw.get("options");
+  const overlayAnki = globalThis.HDReaderOptions.normaliseOptions({ anki: {
+    ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki,
+    captureScreenshot: false,
+  } }).anki;
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
       lookupMode: "hover", popupTheme: "auto",
-      anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
+      anki: overlayAnki,
       sourceHighlightEnabled: false,
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
@@ -1550,7 +1554,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
     JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
@@ -1592,18 +1596,143 @@ async function sharingHostStage() {
       && /unsupported shared request/u.test(refusedWorker.response.error),
     JSON.stringify({ written, broadcasts: broadcasts(socket), refused, refusedWorker }));
 
+  const readerOptions = globalThis.HDReaderOptions;
+  const richAnki = readerOptions.normaliseAnki({
+    url: "https://host.example/original",
+    apiKey: "host-key",
+    templates: [
+      {
+        ...readerOptions.DEFAULT_ANKI_TEMPLATE,
+        id: "word-template",
+        name: "Word card",
+        deck: "Words",
+        model: "Basic",
+        fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, expression: "Front" },
+      },
+      {
+        ...readerOptions.DEFAULT_ANKI_TEMPLATE,
+        id: "sentence-template",
+        name: "Sentence card",
+        deck: "Sentences",
+        model: "Sentence",
+        fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, sentence: "Front" },
+      },
+    ],
+  });
+  const richOptions = readerOptions.normaliseOptions({
+    ...storage.raw.get("options"),
+    anki: richAnki,
+    customButtons: [
+      { id: "host-link-a", type: "link", label: "A", url: "https://a.example/%w" },
+      { id: "host-sentence", type: "anki", label: "Sentence", templateId: "sentence-template" },
+      { id: "host-link-b", type: "link", label: "B", url: "https://b.example/%w" },
+    ],
+  });
+  richOptions.revision = storage.raw.get("options").revision + 1;
+  await storage.api().local.set({ options: richOptions });
+
+  let beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-links", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-links-write",
+    baseRevision: richOptions.revision,
+    options: { customLinks: [
+      { label: "B", url: "https://b.example/%w" },
+      { label: "C", url: "https://c.example/%w" },
+      { label: "A", url: "https://a.example/%w" },
+    ] },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyLinksReply = sent(socket).at(-1);
+  const afterLegacyLinks = storage.raw.get("options");
+
+  const legacyAnki = Object.fromEntries(["url", "apiKey", ...readerOptions.ANKI_TEMPLATE_CONFIG_KEYS]
+    .map(key => [key, structuredClone(afterLegacyLinks.anki[key])]));
+  Object.assign(legacyAnki, {
+    url: "https://legacy.example/anki",
+    apiKey: "legacy-key",
+    deck: "Legacy words",
+    model: "Legacy Basic",
+    tags: ["legacy"],
+  });
+  beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-anki", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-anki-write",
+    baseRevision: afterLegacyLinks.revision,
+    options: { anki: legacyAnki },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyAnkiReply = sent(socket).at(-1);
+  const afterLegacyAnki = storage.raw.get("options");
+  const beforeRichWrite = JSON.stringify(afterLegacyAnki);
+
+  beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-rich-write", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-rich-write",
+    baseRevision: afterLegacyAnki.revision,
+    options: { customButtons: [
+      { id: "erase", type: "link", label: "Erase", url: "https://erase.invalid/" },
+    ] },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyRichReply = sent(socket).at(-1);
+  check("a legacy linked reader can edit its first Anki setup and link list without erasing newer Templates or Anki buttons",
+    legacyLinksReply.response?.ok === true
+      && legacyAnkiReply.response?.ok === true
+      && JSON.stringify(afterLegacyLinks.customLinks.map(link => link.label)) === JSON.stringify(["B", "C", "A"])
+      && afterLegacyLinks.customButtons[0]?.id === "host-link-b"
+      && afterLegacyLinks.customButtons[1]?.id === "host-sentence"
+      && afterLegacyLinks.customButtons[1]?.templateId === "sentence-template"
+      && afterLegacyLinks.customButtons[3]?.id === "host-link-a"
+      && afterLegacyAnki.anki.url === "https://legacy.example/anki"
+      && afterLegacyAnki.anki.apiKey === "legacy-key"
+      && afterLegacyAnki.anki.templates[0]?.id === "word-template"
+      && afterLegacyAnki.anki.templates[0]?.name === "Word card"
+      && afterLegacyAnki.anki.templates[0]?.deck === "Legacy words"
+      && afterLegacyAnki.anki.templates[0]?.model === "Legacy Basic"
+      && afterLegacyAnki.anki.templates[1]?.id === "sentence-template"
+      && afterLegacyAnki.anki.templates[1]?.name === "Sentence card"
+      && afterLegacyAnki.customButtons.some(button => button.id === "host-sentence")
+      && legacyRichReply.response?.ok === false
+      && /Update the linked Hachidori/u.test(legacyRichReply.response.error)
+      && JSON.stringify(storage.raw.get("options")) === beforeRichWrite,
+    JSON.stringify({ legacyLinksReply, legacyAnkiReply, legacyRichReply, afterLegacyLinks, afterLegacyAnki }));
+
   const currentOptions = storage.raw.get("options");
-  const setupAnki = {
-    ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
-    model: "Basic",
-    deck: "Default",
+  const setupBase = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const setupAnki = globalThis.HDReaderOptions.normaliseAnki({
     url: "https://host.example/anki",
     apiKey: "host-secret",
-    fieldTemplates: {
-      Front: { value: "{expression}", overwriteMode: "coalesce" },
-      Back: { value: "{definition}", overwriteMode: "coalesce" },
-    },
-  };
+    templates: [
+      {
+        ...setupBase,
+        id: "first-template",
+        name: "First",
+        model: "Basic",
+        deck: "Unavailable deck",
+        fieldTemplates: {
+          Front: { value: "{expression}", overwriteMode: "coalesce" },
+          Back: { value: "{definition}", overwriteMode: "coalesce" },
+        },
+      },
+      {
+        ...setupBase,
+        id: "setup-template",
+        name: "Setup",
+        model: "Basic",
+        deck: "Default",
+        fieldTemplates: {
+          Front: { value: "{expression}", overwriteMode: "coalesce" },
+          Back: { value: "{definition}", overwriteMode: "coalesce" },
+        },
+      },
+    ],
+  });
   await storage.api().local.set({ options: {
     ...currentOptions,
     anki: setupAnki,
@@ -1614,6 +1743,7 @@ async function sharingHostStage() {
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "host-hd_anki_setup",
+    templateId: "setup-template",
     anki: {
       model: "Client model",
       deck: "Client deck",
@@ -1834,7 +1964,7 @@ async function sharingClientStage() {
     lookupStats: { generation: "host-gen", revision: 40 },
   };
   const hello = { kind: "hello", protocol: 1, version: "9.9.9", name: "Chrome", dictionaryCount: 1,
-    capabilities: ["linked-anki-v1"], snapshot: hostSnapshot };
+    capabilities: ["linked-anki-v1", "linked-anki-v2"], snapshot: hostSnapshot };
   let releaseLocalStatus;
   let localStatusGate = null;
 
@@ -1886,13 +2016,13 @@ async function sharingClientStage() {
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello"
-      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1"]) && probe.readyState === 3
+      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"]) && probe.readyState === 3
       && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
-      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
       && linkedReply.sharing.client.display === "this computer"
       && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"
-      && JSON.stringify(linkedStatus.sharing.client.host?.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(linkedStatus.sharing.client.host?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
       && linkWaitedForLocalAnki && localStatusReply.available === true
       && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
@@ -2055,6 +2185,7 @@ async function sharingClientStage() {
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "client-anki-setup",
+    templateId: "sentence-template",
     anki: {
       model: "Client model",
       deck: "Client deck",
@@ -2086,6 +2217,7 @@ async function sharingClientStage() {
         target: "hoshidicts-worker",
         type: "hd_anki_setup",
         requestId: "client-anki-setup",
+        templateId: "sentence-template",
       })
       && setup.ok === true && setup.outcome?.status === "already-configured"
       && setup.outcome.model === "Basic" && setup.outcome.deck === "Default",
@@ -2283,6 +2415,7 @@ async function sharingTransitionStage() {
 
   const f = await fixture();
   try {
+    f.hello.capabilities = ["linked-anki-v1"];
     const first = f.link(), second = f.link();
     await until(() => f.sockets.length > 0);
     const edit = await f.send("hd_options_write", { baseRevision: 3, options: { showLookupCounts: false } }, "hoshidicts-worker");
@@ -2295,6 +2428,10 @@ async function sharingTransitionStage() {
     const keptSocket = f.sockets.at(-1);
     const requestsBeforeOldAnki = keptSocket.requests().length;
     const oldAnki = await f.send("hd_anki_status", {}, "hachidori-anki");
+    const oldTemplateWrite = await f.send("hd_options_write", {
+      baseRevision: f.storage.raw.get("options").revision,
+      options: { customButtons: [{ id: "sentence", type: "anki", label: "Sentence", templateId: "sentence" }] },
+    }, "hoshidicts-worker");
     const oldDiscovery = await f.send("hd_anki_discover", {
       model: "Basic",
       url: "https://client.invalid/anki",
@@ -2321,8 +2458,10 @@ async function sharingTransitionStage() {
         && oldDiscovery.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && oldSetup.ok === false
         && oldSetup.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
+        && oldTemplateWrite.ok === false
+        && oldTemplateWrite.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && keptSocket.requests().length === requestsBeforeOldAnki,
-      JSON.stringify({ oldAnki, oldDiscovery, oldSetup, requests: keptSocket.requests() }));
+      JSON.stringify({ oldAnki, oldDiscovery, oldSetup, oldTemplateWrite, requests: keptSocket.requests() }));
     const writes = f.storage.sets.length, sockets = f.sockets.length;
     await f.finishLinks([f.link()]);
     check("a repeated Link returns the current link without probing or replacing its saved state",
@@ -2602,7 +2741,7 @@ async function sharingTransitionStage() {
     },
   } });
   try {
-    remote.hello.capabilities = ["linked-anki-v1"];
+    remote.hello.capabilities = ["linked-anki-v1", "linked-anki-v2"];
     await remote.finishLinks([remote.link()]);
     const oldAddress = "ws://127.0.0.1:9100/link";
     const oldSocket = remote.sockets.find(socket => socket.url === oldAddress && socket.readyState === 1);
@@ -2664,12 +2803,16 @@ async function sharingTransitionStage() {
   let restarted;
   let legacy;
   try {
+    overlay.hello.capabilities = ["linked-anki-v1"];
     await overlay.finishLinks([overlay.link()]);
     const socket = overlay.sockets.at(-1);
     const current = () => overlay.storage.raw.get("options");
     const write = (patch, baseRevision = current().revision) => overlay.send("hd_options_write",
       { baseRevision, options: patch }, "hoshidicts-worker");
     const initial = structuredClone(current());
+    const blockedTemplates = await write({
+      anki: globalThis.HDReaderOptions.normaliseOptions({}).anki,
+    });
     const local = await write({ hoverEnabled: false, popupWidthPx: 480 });
     const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
     socket.receive({ kind: "storage", changes: { options: rawHost } });
@@ -2680,12 +2823,14 @@ async function sharingTransitionStage() {
     check("a linked overlay keeps activation, highlighting and geometry local through host option batches",
       initial.hoverEnabled && initial.lookupMode === "hover" && !initial.sourceHighlightEnabled
         && initial.popupWidthPx === 420 && initial.popupTheme === "light"
+        && blockedTemplates.ok === false
+        && blockedTemplates.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
         && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
         && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
         && current().revision === mirrored.revision && current().popupTheme === "dracula"
         && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480,
-      JSON.stringify({ initial, local, mirrored, current: current() }));
+      JSON.stringify({ initial, blockedTemplates, local, mirrored, current: current() }));
 
     async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
       await until(() => socket.requests().length === expectedCount);
@@ -4174,7 +4319,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.HOST_CAPABILITIES = {
 
     browserShortcuts: !overlayMode,
-    customLinks: true,
+    linkButtons: true,
     externalLinkHost: overlayMode,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
@@ -4196,7 +4341,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.ankiSetupFamily = ankiSetupFamily;
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
-  const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
+  const customButtonSettings = readFileSync(resolve(EXTENSION, "custom-button-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
@@ -4247,13 +4392,13 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .* from "\.\/blob-download\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
-    .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
+    .replace(/import \{ createCustomButtonSettings \} from "\.\/custom-button-settings\.js";\s*/u, "")
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
-    .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
+    .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
@@ -4277,7 +4422,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 

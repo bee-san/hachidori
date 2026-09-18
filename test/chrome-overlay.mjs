@@ -255,7 +255,7 @@ async function popupReader(page) {
       height: this.getBoundingClientRect().height,
       plain: (stripped.textContent || "").replace(/\\s+/g, " ").trim(),
       pencil: this.querySelector(".gsm-hoshidicts-note-button") !== null,
-      customLinks: this.querySelectorAll(".gsm-hoshidicts-external-link-button").length,
+      linkButtons: this.querySelectorAll(".gsm-hoshidicts-external-link-button").length,
       noteOpen: noteForm !== null && !noteForm.hidden,
       noteTerm: noteForm?.querySelector('[name="term"]')?.value ?? null,
       kanjiBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
@@ -468,15 +468,15 @@ try {
     pageKeybindsEnabled: !document.getElementById("keybind-add").disabled,
   }));
   await showSection(settings, "design");
-  await settings.type("#opt-custom-link-name", "Overlay editor");
-  await settings.type("#opt-custom-link-url", "https://example.test/%w");
-  await settings.click("#custom-link-submit");
+  await settings.type("#opt-custom-button-name", "Overlay editor");
+  await settings.type("#opt-custom-button-url", "https://example.test/%w");
+  await settings.click("#custom-button-submit");
   await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
     { polling: 100, timeout: 10_000 });
   const designSettings = await settings.evaluate(() => ({
-    customLinksDisabled: document.getElementById("custom-links-settings").disabled,
-    customLinksHelpVisible: !document.getElementById("custom-links-overlay-help").hidden,
-    savedLink: document.querySelector("#custom-link-list strong")?.textContent || "",
+    customButtonsDisabled: document.getElementById("custom-buttons-settings").disabled,
+    customButtonsHelpVisible: !document.getElementById("custom-buttons-overlay-help").hidden,
+    savedButton: document.querySelector("#custom-button-list strong")?.textContent || "",
     themeEnabled: !document.getElementById("opt-popup-theme").disabled,
   }));
   await showSection(settings, "backup");
@@ -520,9 +520,9 @@ try {
   });
   assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
   assert.deepEqual(designSettings, {
-    customLinksDisabled: false,
-    customLinksHelpVisible: true,
-    savedLink: "Overlay editor",
+    customButtonsDisabled: false,
+    customButtonsHelpVisible: true,
+    savedButton: "Overlay editor",
     themeEnabled: true,
   });
   assert.deepEqual(backupSettings, { exportDisabled: false, restoreEnabled: true });
@@ -550,6 +550,9 @@ try {
     const options = HDReaderOptions.normaliseOptions(stored.options);
     await chrome.storage.local.set({ options: {
       ...stored.options,
+      customButtons: [{
+        id: "remote-link", type: "link", label: "Remote link", url: "https://example.test/%w",
+      }],
       customLinks: [{ label: "Remote link", url: "https://example.test/%w" }],
       mediaCapture: { ...options.mediaCapture, enabled: true },
       revision: options.revision + 1,
@@ -817,7 +820,7 @@ try {
   console.log(`blurred physical kanji trace ${JSON.stringify({ before: blurredBefore, after: blurredAfter })}`);
   await popup.click(".gsm-hoshidicts-kanji-back");
   await popup.waitForVisible();
-  assert.equal(hovered.customLinks, 1, "stored or remotely shared custom links render in the overlay popup");
+  assert.equal(hovered.linkButtons, 1, "stored or remotely shared link buttons render in the overlay popup");
   assert.deepEqual(await events(), ["hidden", "shown"]);
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true, "Escape closes the hover popup");

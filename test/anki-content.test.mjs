@@ -256,6 +256,7 @@ test("a warm cached View action skips Anki status and preflight", async t => {
     noteIds: [22, 23],
     expression: "犬",
     configKey: "current",
+    templateId: "default",
   }]);
 });
 
@@ -293,7 +294,7 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.equal(f.items[0].actions.querySelectorAll("button").length, 4);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current", templateId: "default" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "document-edit");
@@ -405,7 +406,7 @@ test("successful Add remains successful after a refresh failure and a second cli
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current", templateId: "default" }]);
   assert.equal(submitted, 1);
 });
 
@@ -462,7 +463,7 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   assert.match(f.items[1].output.textContent, /Check Anki before trying again/u);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current", templateId: "default" }]);
   assert.equal(writes, 1);
 });
 
@@ -840,4 +841,84 @@ test("a note that maps a screenshot captures one with the reader concealed and n
   assert.deepEqual(submittedRequest.captureUnavailable, ["screenshot"]);
   assert.equal(submittedRequest.screenshot, undefined);
   assert.match(f.items[1].output.textContent, /Added.*12.*Screenshot: The reading tab is no longer the active tab\./u);
+});
+
+test("built-in and custom Anki buttons keep independent Template status, preflight and submission identities", async t => {
+  const calls = [];
+  const f = fixture(t, handlesAnkiView(async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    const templateId = fields.templateId ?? fields.request?.templateId;
+    if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [],
+      configKey: `key-${templateId}`, cached: false };
+    if (type === "hd_anki_status") return { available: true, configKey: `key-${templateId}` };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+    if (type === "hd_anki_submit") return { state: "added", noteId: templateId === "sentence" ? 22 : 11, warnings: [] };
+    throw new Error(`Unexpected ${type}`);
+  }));
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "mine-sentence";
+  custom.dataset.ankiTemplateId = "sentence";
+  custom.dataset.customButtonLabel = "Mine sentence";
+  custom.appendChild(f.items[0].actions.ownerDocument.createElement("span")).className = "gsm-hoshidicts-text-action-label";
+  custom.firstElementChild.textContent = "Mine sentence";
+  f.items[0].actions.append(custom);
+
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    anki: { url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Basic", fields: { ...base.fields, expression: "Front" } },
+      { ...base, id: "sentence", name: "Sentence", model: "Sentence", deck: "Sentences",
+        fields: { ...base.fields, sentence: "Front" } },
+    ] },
+    customButtons: [{ id: "mine-sentence", type: "anki", label: "Mine sentence", templateId: "sentence" }],
+  });
+  f.controller.update(options);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "ready" && custom.dataset.state === "ready");
+  assert.equal(custom.textContent, "Mine sentence");
+  assert.equal(custom.disabled, false);
+  assert.equal(custom.getAttribute("aria-label"), "Mine sentence: Mine to Anki");
+  const preflights = calls.filter(call => call.type === "hd_anki_preflight").map(call => call.fields.request);
+  assert.deepEqual(preflights.map(request => [request.templateId, request.configKey]), [
+    ["default", "key-default"], ["sentence", "key-sentence"],
+  ]);
+
+  custom.click();
+  await until(() => custom.dataset.state === "success");
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.deepEqual(calls.filter(call => call.type === "hd_anki_submit")
+    .map(call => call.fields.request.templateId), ["sentence", "default"]);
+});
+
+test("a custom Anki button whose Template was removed stays visible and reports the missing identity", async t => {
+  const calls = [];
+  const f = fixture(t, async (type, fields = {}) => {
+    calls.push({ type, fields });
+    if (type === "hd_anki_status") return { available: false, configKey: "", error: "Choose an Anki note type in Settings." };
+    throw new Error(`Unexpected ${type}`);
+  });
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "missing";
+  custom.dataset.ankiTemplateId = "deleted-template";
+  custom.dataset.customButtonLabel = "Mine old card";
+  custom.appendChild(f.items[0].actions.ownerDocument.createElement("span")).className = "gsm-hoshidicts-text-action-label";
+  custom.firstElementChild.textContent = "Mine old card";
+  f.items[0].actions.append(custom);
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    customButtons: [{ id: "missing", type: "anki", label: "Mine old card", templateId: "deleted-template" }],
+  });
+  f.controller.update(options);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => custom.dataset.state === "unavailable");
+  assert.equal(custom.hidden, false);
+  assert.equal(custom.disabled, true);
+  assert.match(custom.title, /no longer available/u);
+  assert.match(f.items[0].feedback.textContent, /no longer available/u);
+  assert.equal(calls.some(call => call.fields.templateId === "deleted-template"
+    || call.fields.request?.templateId === "deleted-template"), false);
 });

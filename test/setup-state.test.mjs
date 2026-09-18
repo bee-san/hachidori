@@ -7,8 +7,12 @@ import {
 import "../extension/reader-options.js";
 
 test("overlay mining applies the host's byte-backed media capabilities without changing saved options", () => {
+  const template = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
   const stored = globalThis.HDReaderOptions.normaliseOptions({
-    anki: { captureScreenshot: true },
+    anki: { templates: [
+      { ...template, id: "default", name: "Words", captureScreenshot: true },
+      { ...template, id: "sentence", name: "Sentences", captureScreenshot: true },
+    ] },
     mediaCapture: { enabled: true },
     audioSources: [
       { id: "tts", type: "text-to-speech", enabled: true, url: "", voice: "" },
@@ -18,14 +22,17 @@ test("overlay mining applies the host's byte-backed media capabilities without c
   });
   const overlay = overlayAnkiOptions(stored);
   assert.equal(overlay.anki.captureScreenshot, false);
+  assert.deepEqual(overlay.anki.templates.map(value => value.captureScreenshot), [false, false]);
   assert.equal(overlay.mediaCapture.enabled, false);
   assert.deepEqual(overlay.audioSources.map(source => source.id), ["jpod"]);
   assert.equal(stored.anki.captureScreenshot, true, "the stored options are not changed");
+  assert.deepEqual(stored.anki.templates.map(value => value.captureScreenshot), [true, true]);
   assert.equal(stored.mediaCapture.enabled, true);
   assert.equal(stored.audioSources.length, 3);
 
   const speechCaptureHost = overlayAnkiOptions(stored, { browserSpeech: true });
   assert.equal(speechCaptureHost.anki.captureScreenshot, false);
+  assert.deepEqual(speechCaptureHost.anki.templates.map(value => value.captureScreenshot), [false, false]);
   assert.equal(speechCaptureHost.mediaCapture.enabled, false);
   assert.deepEqual(speechCaptureHost.audioSources.map(source => source.id), ["tts", "reading", "jpod"]);
 });

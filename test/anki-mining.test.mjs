@@ -516,3 +516,54 @@ test("overwrite leaves preserved fields out of the mutation when Anki changes du
   assert.deepEqual(updates, [{ Back: "cat" }]);
   assert.deepEqual(fields, { Front: "猫", Keep: "edited keep", Fill: "edited fill", Fallback: "edited fallback", Back: "cat" });
 });
+
+test("each Template has an independent configuration identity and routes its note to the selected destination", async () => {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const configs = new Map([
+    ["word", { ...base, url: "https://anki.example.test", apiKey: "key", model: "Word", deck: "Words",
+      fields: { ...base.fields, expression: "Front" } }],
+    ["sentence", { ...base, url: "https://anki.example.test", apiKey: "key", model: "Sentence", deck: "Sentences",
+      fields: { ...base.fields, expression: "Front" } }],
+  ]);
+  const writes = [];
+  let nextNoteId = 40;
+  const saved = new Map();
+  const gateway = {
+    async discover(config) { return { connected: true, model: config.model, models: [config.model],
+      decks: [config.deck], fields: ["Front"], errors: [] }; },
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "addNote") {
+        const noteId = ++nextNoteId;
+        writes.push({ noteId, deck: params.note.deckName, model: params.note.modelName, fields: params.note.fields });
+        saved.set(noteId, params.note);
+        return noteId;
+      }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+        modelName: saved.get(noteId).modelName, cards: [], fields: Object.fromEntries(
+          Object.entries(saved.get(noteId).fields).map(([field, value]) => [field, { value }])) }));
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiMiningService({ gateway,
+    readConfig: async templateId => configs.get(templateId) ?? null,
+    duplicateIndex: testIndex(),
+    buildFields: async request => ({ fields: { Front: request.term.expression } }),
+    beforeWrite: async () => {}, enrich: async () => [],
+  });
+  const word = await service.status("word");
+  const sentence = await service.status("sentence");
+  assert.notEqual(word.configKey, sentence.configKey);
+  assert.equal((await service.submit({ templateId: "word", configKey: word.configKey,
+    term: { expression: "猫", reading: "ねこ" } })).state, "added");
+  assert.equal((await service.submit({ templateId: "sentence", configKey: sentence.configKey,
+    term: { expression: "猫がいる", reading: "ねこがいる" } })).state, "added");
+  assert.deepEqual(writes.map(({ deck, model, fields }) => ({ deck, model, fields })), [
+    { deck: "Words", model: "Word", fields: { Front: "猫" } },
+    { deck: "Sentences", model: "Sentence", fields: { Front: "猫がいる" } },
+  ]);
+  configs.set("sentence", { ...configs.get("sentence"), deck: "Changed" });
+  await assert.rejects(service.submit({ templateId: "sentence", configKey: sentence.configKey,
+    term: { expression: "古い", reading: "ふるい" } }), /configuration changed/u);
+  await assert.rejects(service.status("deleted"), /no longer available/u);
+});

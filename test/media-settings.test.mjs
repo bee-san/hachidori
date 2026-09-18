@@ -21,7 +21,7 @@ function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechC
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode,
-    customLinks: true,
+    linkButtons: true,
     externalLinkHost: overlayMode,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,

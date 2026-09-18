@@ -24,11 +24,12 @@ those saved settings or other tabs.
 
 The popup action row is one non-wrapping keyboard and visual group: a nested
 Close or Back control first, then Anki, pronunciation, personal-dictionary
-edit, and custom links in saved order. Actions share a 36-pixel height and a
+edit, and custom buttons in saved order. A custom button opens a URL template
+or mines with a chosen Anki Template. Actions share a 36-pixel height and a
 5-pixel gap. At narrow popup widths the whole action row scrolls horizontally
-instead of wrapping, clipping, or overlapping controls. Browser mode opens
-custom links in a Chrome tab; overlay mode asks its embedding host to open the
-same validated URL in the system browser.
+instead of wrapping, clipping, or overlapping controls. Browser mode opens link
+buttons in a Chrome tab; overlay mode asks its embedding host to open the same
+validated URL in the system browser.
 
 `manifest.json` names them.
 
@@ -68,7 +69,10 @@ the service worker and both engine runtimes run the same code.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
   `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
-  fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
+  fields and media. Stored Anki Templates group each destination, note type,
+  field mapping and duplicate policy; the first powers the built-in action and
+  custom Anki buttons select the others by stable ID. `anki-duplicates.js` and
+  `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
   `anki-client-media.js` validates final screenshot, capture and browser-speech
   media crossing a linked-browser boundary. `anki-mining.js` and
@@ -101,8 +105,8 @@ the service worker and both engine runtimes run the same code.
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
-  `keybind-settings.js`, `custom-link-settings.js` and `external-links.js`
-  the keybinds and the custom links in the popup; `local-file-access.js` the
+  `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`
+  the keybinds and custom buttons in the popup; `local-file-access.js` the
   notice about Chrome's *Allow access to file URLs* permission;
   `startup-practice.js` the practice step. `visual-novel.js` and
   `visual-novel.css` draw the background scenes behind the startup page and

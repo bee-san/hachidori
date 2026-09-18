@@ -109,8 +109,17 @@ After linking, the page reloads, and from then on:
   reading and committing them, so no local dictionary file is ever removed;
 - Anki Settings discovery and existing-setup checks, cache-only View readiness,
   availability, preflight, generation validation, duplicate checks, writes and browsing use the host's
-  AnkiConnect URL, API key, deck and note type. The linked browser never falls
-  back to its own Anki, and its duplicate-index refresh is suspended while linked;
+  AnkiConnect URL, API key and selected Template. The linked browser never falls
+  back to its own Anki, and its duplicate-index refresh is suspended while
+  linked. The chosen Template ID is forwarded for status, View, preflight,
+  submit and browse, while the host resolves its deck, note type, mappings and
+  duplicate policy from the mirrored saved options. These operations and
+  Template or custom-button settings writes require a host advertising
+  `linked-anki-v2`; current hosts also advertise legacy `linked-anki-v1` for
+  older reading browsers. A current host applies a legacy flat Anki write only
+  to the first Template and applies a legacy custom-link write without removing
+  custom Anki buttons. It rejects rich Template or custom-button writes from a
+  client that did not advertise v2;
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
@@ -156,8 +165,9 @@ The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
 reachable* and the Sharing section says so; the linked browser reconnects by
 itself once they are back. Mining also requires AnkiConnect and the selected
-deck/note type on the host. A host from before linked mining support keeps
-dictionary sharing working but reports mining unavailable until it is updated.
+Template's deck/note type on the host. A host without `linked-anki-v2` keeps
+dictionary sharing working but reports Template-aware mining unavailable until
+it is updated.
 The GameSentenceMiner overlay's Hachidori links the same way; its Electron
 runtime needs nothing beyond the WebSocket.
 
@@ -173,13 +183,17 @@ runtime needs nothing beyond the WebSocket.
 - Anki Settings discovery and existing-setup checks, status, preflight,
   duplicate and generation checks, note writes and browsing. Endpoint
   credentials or mappings supplied by a linked request are ignored; only the
-  host's saved Anki configuration is used.
+  host's saved Anki Templates and shared connection settings are used. A
+  selected Template ID is allowed through existing-setup checks, and a missing
+  Template fails visibly instead of falling back to the first one.
 
 Local-file imports and backups happen on the host. Pronunciation playback and
 external links run in each browser. During mining, URL pronunciation providers
 run on the host while browser speech, screenshots and continuous-capture
 ownership stay in the reading browser. Their explicitly submitted final media
-and the complete Anki transaction go through the host.
+and the complete Anki transaction go through the host. A screenshot request
+carries the selected Template ID through the reading browser's worker so only
+that Template's `{screenshot}` choice can authorize it.
 
 ## The relay
 

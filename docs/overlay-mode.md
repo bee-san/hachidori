@@ -41,7 +41,7 @@ normal first-install preferences plus:
 | --- | --- | --- |
 | `lookupMode` | `"hover"` | Lookup → Activation → Lookup mode → Hover |
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
-| `anki.captureScreenshot` | `false` | Anki → Screenshot the page when mining |
+| every `anki.templates[].captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
 - **Reading defaults:** lookup activation and word highlighting remain editable
   in Settings, and later choices persist.
@@ -50,10 +50,10 @@ normal first-install preferences plus:
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
-- **Screenshot:** the worker reads `anki.captureScreenshot` as `false` in every
-  overlay profile. Settings also shows the effective off/disabled capability
-  when a carried or shared configuration has the stored option on. It preserves
-  that configuration and its field mappings.
+- **Screenshot:** the worker reads screenshot capture as `false` for every
+  Template in an overlay profile. Settings also shows the effective
+  off/disabled capability when a carried or shared Template has the stored
+  option on. It preserves each Template and its field mappings.
 - **Pronunciation:** a generic overlay has no byte-backed speech capture, so
   mining skips text-to-speech audio sources. With no downloadable source left,
   `{audio}` fields stay empty without a warning; add one under Audio to fill
@@ -77,7 +77,7 @@ turn an Electron-only control back on remotely.
 | Anki screenshot | The switch is effectively off and disabled; existing mappings and the stored choice are preserved. |
 | Audio | Downloadable pronunciation and browser-speech playback work. Generic overlays do not record browser speech. A host that explicitly supplies embedded speech capture records the selected voice at mining time and sends its WAV through the normal Anki media transaction. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
-| Design | Appearance, layout, custom CSS and custom toolbar links work. A real lookup popup asks the embedding host to open a link in the system browser; the Settings live preview cannot launch it. |
+| Design | Appearance, layout, custom CSS and Custom buttons work. Link buttons ask the embedding host to open the URL in the system browser; Anki buttons use their selected Template. The Settings live preview cannot launch links. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
 | Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission. |
 
@@ -86,7 +86,7 @@ the content script and the service worker. Unsupported runtime requests fail
 with an explicit overlay error even if they came from stale UI or a remotely
 shared option.
 
-For custom links, the content script dispatches `hachidori-open-external` with
+For link-type Custom buttons, the content script dispatches `hachidori-open-external` with
 a request ID, a normalized credential-free HTTP(S) URL and the saved activation
 choice. The host answers with `hachidori-open-external-result` carrying the same
 request ID and either `ok: true` or an error. Hosts must validate the URL again
@@ -172,15 +172,16 @@ once and never opens setup" check covers:
 - a pre-existing profile staying untouched.
 
 Its "overlay mode never takes a mining screenshot, even when the stored option
-is on" check asks the worker for a screenshot from a profile that has it on. It
-also verifies that recorder and custom-link requests fail before opening a tab
+is on" check asks the worker for a screenshot from a Template that has it on. It
+also verifies that recorder and link-button requests fail before opening a tab
 or capture host, and that the worker download endpoint checks the actual API.
 
 `node test/chrome-overlay.mjs` loads a copy of the extension with the flag set
 into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
-does. It checks the Settings capability matrix, editable custom links and
-backend guards before checking glyph selection, the pencil for an unknown
-selection, and the host events around a drag.
+does. It checks the Settings capability matrix, editable Custom buttons,
+rendered link and Anki buttons, and backend guards before checking glyph
+selection, the pencil for an unknown selection, and the host events around a
+drag.
 
 `test/electron-backup.cjs` exercises export, download cancellation and restore in
 a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1
