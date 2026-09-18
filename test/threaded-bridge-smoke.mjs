@@ -151,7 +151,7 @@ for (const message of engine.messages.splice(0)) {
 }
 await Promise.all(queued.slice(0, 128));
 
-for (const type of ["hd_backup_prepare", "hd_custom_save"]) {
+for (const type of ["hd_backup_prepare", "hd_backup_auto_prepare", "hd_custom_save"]) {
   const saturated = Array.from({ length: 127 }, (_, index) => request("hd_lookup", `before-cancel-${index}`));
   const preparing = request(type, "leaving-prepare", { token: "leaving-page" });
   await tick();
@@ -251,6 +251,8 @@ const mutationTypes = [
   "hd_custom_save",
   "hd_backup_export",
   "hd_backup_prepare",
+  "hd_backup_auto_prepare",
+  "hd_backup_auto_cleanup",
   "hd_backup_restore",
   "hd_backup_cancel",
 ];

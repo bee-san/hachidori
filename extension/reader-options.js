@@ -247,8 +247,17 @@
     return result;
   }
 
+  function sameFields(left, right, keys) {
+    return keys.every(key => Object.hasOwn(left, key) && left[key] === right[key]);
+  }
+
   function sameMediaCapture(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    const keys = Object.keys(DEFAULT_MEDIA_CAPTURE).filter(key => !["texthooker", "page"].includes(key));
+    return Object.hasOwn(left, "texthooker")
+      && Object.hasOwn(left, "page")
+      && sameFields(left, right, keys)
+      && sameFields(left.texthooker, right.texthooker, Object.keys(DEFAULT_MEDIA_CAPTURE.texthooker))
+      && sameFields(left.page, right.page, Object.keys(DEFAULT_MEDIA_CAPTURE.page));
   }
 
   function validMediaCapture(value, normalized) {

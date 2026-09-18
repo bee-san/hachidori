@@ -17,6 +17,7 @@ settings.html / content.js
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one next-due alarm
+            ├─ owns two retained daily snapshots and their next-due alarm
             ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
                  └─ offscreen.js
@@ -93,6 +94,35 @@ new state, and finally garbage-collects the removed generation. The
 `/dicts/.hdw-remove` handling remains only for recovery of dictionaries stranded
 by the older removal protocol, including a legacy dictionary whose real title
 was `.hdw-remove`.
+
+## Automatic backup cycle
+
+`automaticBackups` is a schema-versioned service-worker-owned index containing
+at most two records. Each record carries the same five-key snapshot and
+lookup-statistics rows used by manual backup, but references committed immutable
+dictionary generation paths instead of copying their files. Snapshot creation
+runs inside the background storage queue, captures its timestamp after reaching
+that queue, writes the replacement index once, and schedules
+`hachidori-automatic-backup` for 24 hours after the committed record. Concurrent
+triggers share that serialized result. An absent key becomes schema version 1;
+an unsupported future schema is left untouched.
+
+The index is authoritative before cleanup. A refused metadata write performs no
+generation deletion. A lost reply is successful only when exact readback matches
+the replacement; an uncertain result retains all roots. After confirmed
+replacement, cleanup is best effort. Every normal cleanup and restart asks the
+service worker for roots referenced by both retained records and skips deletion
+when the index or any record is invalid. Shared roots occur once on disk.
+
+Settings lists valid records independently, so a corrupt newest record cannot
+hide an older fallback. Automatic restore validates generation paths before any
+filesystem read, validates the referenced files in place, and then uses the
+manual restore transaction and explicit replacement confirmation. Open Settings
+refreshes when the index changes and after a persisted page is restored.
+
+Linking clears the local automatic-backup alarm and suppresses snapshots of the
+host mirror while retaining the local index. Unlink restores the kept local
+state before reconciling local snapshots and scheduling again.
 
 ## Managed update cycle
 
@@ -2250,6 +2280,7 @@ is sent.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
+| Newest two automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
@@ -2319,6 +2350,8 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_custom_cas` | Atomically compare-and-set the source document and bound package state |
 | `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |
 | `hd_custom_append` | Append one validated popup Note entry to the latest queued source and compile it |
+| `hd_backup_read`, `hd_backup_export`, `hd_backup_prepare`, `hd_backup_restore`, `hd_backup_cancel` | Read the complete manual payload, export it, stage and confirm a complete replacement, or discard staged roots |
+| `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect both records' immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |

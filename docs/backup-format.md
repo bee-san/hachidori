@@ -37,7 +37,49 @@ request starts. The background retires delayed/retrying preparation requests;
 the engine queues token-scoped cleanup even behind another active mutation.
 Cleanup does not depend on the closed page receiving a preparation reply.
 
-![Backup preview and replacement confirmation in Settings](assets/backup-restore-settings.png)
+## Automatic snapshots
+
+The service worker keeps at most two automatic snapshots in the browser profile
+under the `automaticBackups` storage key. An absent key initializes as schema
+version 1 on the first successful snapshot; an unsupported future schema fails
+closed without replacing metadata or cleaning dictionary files. Snapshot
+creation is serialized with other storage writes, timestamped when that queued
+operation runs, and limited to one successful snapshot per 24 hours. The
+nonperiodic `hachidori-automatic-backup` alarm is recreated from retained
+metadata after worker or browser restart.
+
+Each record uses the same complete snapshot and lookup-statistics rows as a
+manual export. It therefore retains personal entries, custom URLs, saved
+settings and a configured AnkiConnect API key as well as dictionary metadata.
+The two records stay on this device and are not ZIP archives or cloud uploads.
+Clearing a value from current settings does not remove it from an older retained
+snapshot; later successful snapshots replace it through the two-record
+retention policy.
+
+Dictionary files are immutable generation roots. Automatic records reference
+those existing roots in place, so two snapshots can share one generation
+without copying its blobs or issuing a filesystem write. Every ordinary
+generation cleanup and restart reconciliation includes roots referenced by
+both records. The one-key metadata replacement becomes authoritative before
+any newly unreferenced generation may be removed. A refused write performs no
+cleanup; a lost reply requires exact readback; an uncertain outcome retains the
+roots. Cleanup after confirmed replacement is best effort and can be completed
+by a later reload.
+
+Corrupt records are validated independently, so a damaged newest record does
+not hide a valid older one. Invalid or incomplete metadata, including an
+unsupported index schema, makes root discovery incomplete and suppresses
+generation cleanup. Preparing a restore rejects malformed generation paths
+before filesystem access and validates the retained files in place. Settings
+shows each valid record's actual relative age and uses the same preview,
+replacement checkbox and **Replace and restore** action as manual restore.
+
+Linked clients suspend their local automatic-backup alarm and do not snapshot
+the mirrored host state. Their existing local records remain in the browser
+profile. Confirmed unlink restores the kept local state, then reconciles the
+local snapshots and alarm again.
+
+![Automatic backups in Settings](assets/backup-restore-settings.png)
 
 ## Transaction and recovery
 
@@ -76,12 +118,15 @@ retryable; an uncertain commit retains both namespaces.
 
 The focused archive/state/download/Settings unit tests cover format and control
 contracts. `test/backup-engine-scenarios.mjs`, included by extension smoke, covers
-five-way conflicts, disabled-package validation, lost replies, storage failures,
-uncertain commits, damaged-installation recovery and empty restores through real
-WASM. Five shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
-the actual Chrome download, immutable preview/conflict, complete restore and
-corrupt-archive cleanup and actual page closure during staged preparation in
-both OPFS and IDBFS suites, followed by browser restart.
+automatic cadence, retention, shared real generations, malformed paths, schema
+failure, lost replies, storage failures, uncertain commits, corrupt-newest
+fallback, interrupted cleanup, disabled-package validation, damaged-installation
+recovery and empty restores through real WASM. Seven shared browser assertions
+in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
+confirmation and a real older-snapshot restore, plus the actual Chrome download,
+immutable preview/conflict, complete restore, corrupt-archive cleanup and actual
+page closure during staged preparation in both OPFS and IDBFS suites, followed
+by browser restart.
 
 ## Archive representation
 

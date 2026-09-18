@@ -33,7 +33,7 @@ mode omits the browser-only custom links and preserves the remaining order.
 
 | File | Runs as | Role |
 | --- | --- | --- |
-| `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
+| `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
 | `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki, pronunciation and capture controls (`anki-content.js`, `audio-content.js`, `capture-content.js`). `content.css` is the only style the page itself receives: the source highlight. |
 | `offscreen.html`, `offscreen.js` | one offscreen document the service worker creates | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can; `engine-service.js` is the single-thread IDBFS fallback. Pronunciation, Anki, media capture and the first-run installer load here on demand. |
 | `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, media capture, backup and sharing, with global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
@@ -89,9 +89,10 @@ the service worker and both engine runtimes run the same code.
   `capture-encoder-worker.js` move audio sampling, frame grabbing and animated
   AVIF encoding (`avif-sequence.js`) off the main thread.
   `texthooker-protocol.js` parses the text a texthooker sends.
-- **Backup.** `backup-archive.js` is the archive format, `backup-state.js`
-  the snapshot rules, `backup-downloads.js` the pending downloads and
-  `backup-settings.js` the controls.
+- **Backup.** `backup-archive.js` is the manual ZIP format, `backup-state.js`
+  the shared snapshot rules, `backup-automatic.js` the two-record daily
+  retention, cadence and age rules, `backup-downloads.js` the pending downloads,
+  and `backup-settings.js` the manual and automatic restore controls.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
   worker; `sharing-settings.js` is the Settings section. `anki-addon.js` pins

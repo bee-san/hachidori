@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { openBackupArchive } from "../extension/backup-archive.js";
 
 export const BACKUP_CHROME_CHECKS = [
+  "automatic backup list shows two actual relative ages and requires explicit restore confirmation",
+  "a corrupt newest automatic backup leaves the valid older browser snapshot restorable in place",
   "Settings exports a complete ZIP through Chrome downloads and releases its engine-owned URL",
   "backup preview preserves the working generation and refuses a concurrent Settings edit",
   "confirmed restore atomically replaces browser generations and retains the complete saved state",
@@ -19,6 +21,11 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_read" });
     if (!reply.ok) throw new Error(reply.error);
     return reply.snapshot;
+  });
+  const readPayload = () => page.evaluate(async () => {
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_read" });
+    if (!reply.ok) throw new Error(reply.error);
+    return { snapshot: reply.snapshot, lookupStatsRows: reply.lookupStatsRows };
   });
   const status = () => page.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
   const roots = async () => page.evaluate(async backend => {
@@ -53,8 +60,178 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     await page.click("#backup-restore");
     await page.waitForFunction(() => !document.getElementById("backup-export").disabled, { timeout: 120_000 });
   };
+  const waitForBackupSettings = async () => {
+    await page.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready")
+      && !document.getElementById("backup-export").disabled, { timeout: 120_000 });
+  };
+
+  const automaticPayload = await readPayload();
+  const automaticNow = Date.now();
+  const automaticStore = {
+    schemaVersion: 1,
+    backups: [
+      {
+        id: "browser-recent",
+        createdAt: new Date(automaticNow - 3 * 60 * 60_000).toISOString(),
+        snapshot: structuredClone(automaticPayload.snapshot),
+        lookupStatsRows: structuredClone(automaticPayload.lookupStatsRows),
+      },
+      {
+        id: "browser-older",
+        createdAt: new Date(automaticNow - 24 * 60 * 60_000).toISOString(),
+        snapshot: structuredClone(automaticPayload.snapshot),
+        lookupStatsRows: structuredClone(automaticPayload.lookupStatsRows),
+      },
+    ],
+  };
+  await page.evaluate(store => chrome.storage.local.set({ automaticBackups: store }), automaticStore);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForBackupSettings();
   await page.evaluate(() => { location.hash = "#backup"; });
   await page.waitForSelector("#backup-export", { visible: true });
+  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 2);
+  const automaticRows = await page.$$eval("#automatic-backup-list .automatic-backup-row", rows => rows.map(row => ({
+    age: row.querySelector(".automatic-backup-age").textContent,
+    action: row.querySelector(".automatic-backup-restore").textContent,
+    createdAt: row.querySelector(".automatic-backup-created").dateTime,
+  })));
+  if (process.env.HACHIDORI_AUTOMATIC_BACKUP_SCREENSHOT) {
+    await page.setViewport({ width: 1200, height: 900 });
+    await page.screenshot({ path: process.env.HACHIDORI_AUTOMATIC_BACKUP_SCREENSHOT, fullPage: true });
+  }
+
+  const backend = (await status()).storageBackend;
+  const rawAutomaticStats = await page.evaluate(async ({ backend, roots: retainedRoots }) => {
+    if (backend === "opfs") {
+      const root = await navigator.storage.getDirectory();
+      async function walk(directory) {
+        let bytes = 0;
+        let files = 0;
+        for await (const [, handle] of directory.entries()) {
+          if (handle.kind === "directory") {
+            const nested = await walk(handle);
+            bytes += nested.bytes;
+            files += nested.files;
+          } else {
+            bytes += (await handle.getFile()).size;
+            files += 1;
+          }
+        }
+        return { bytes, files };
+      }
+      let bytes = 0;
+      let files = 0;
+      for (const name of retainedRoots) {
+        const stats = await walk(await root.getDirectoryHandle(name));
+        bytes += stats.bytes;
+        files += stats.files;
+      }
+      return { bytes, files };
+    }
+    return new Promise((resolve, reject) => {
+      const opening = indexedDB.open("/dicts");
+      opening.onerror = () => reject(opening.error);
+      opening.onsuccess = () => {
+        const database = opening.result;
+        const transaction = database.transaction("FILE_DATA", "readonly");
+        const store = transaction.objectStore("FILE_DATA");
+        const keysRequest = store.getAllKeys();
+        const valuesRequest = store.getAll();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.oncomplete = () => {
+          let bytes = 0;
+          let files = 0;
+          for (const [index, key] of keysRequest.result.entries()) {
+            if (!retainedRoots.some(root => String(key).startsWith(`/dicts/${root}/`))) continue;
+            const contents = valuesRequest.result[index]?.contents;
+            if (contents === undefined || contents === null) continue;
+            bytes += Number(contents.byteLength ?? contents.length) || 0;
+            files += 1;
+          }
+          database.close();
+          resolve({ bytes, files });
+        };
+      };
+    });
+  }, {
+    backend,
+    roots: [...new Set(automaticPayload.snapshot.state.dictionaries.map(dictionary =>
+      dictionary.path.split("/")[2]))],
+  });
+  if (process.env.HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK) {
+    const uniqueRoots = new Set(automaticPayload.snapshot.state.dictionaries.map(dictionary =>
+      dictionary.path.split("/")[2]));
+    writeFileSync(process.env.HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK, `${JSON.stringify({
+      backend,
+      fixture: automaticPayload.snapshot.state.dictionaries.map(dictionary => ({
+        title: dictionary.title,
+        revision: dictionary.revision,
+        path: dictionary.path,
+      })),
+      records: automaticStore.backups.length,
+      metadataBytes: Buffer.byteLength(JSON.stringify(automaticStore)),
+      snapshotRootReferences: uniqueRoots.size * automaticStore.backups.length,
+      uniqueRetainedRoots: uniqueRoots.size,
+      rawRetainedFiles: rawAutomaticStats.files,
+      rawRetainedBytes: rawAutomaticStats.bytes,
+      rawBytesIfRootsWereCopiedPerSnapshot: rawAutomaticStats.bytes * automaticStore.backups.length,
+      rawBytesAvoidedBySharing: rawAutomaticStats.bytes * (automaticStore.backups.length - 1),
+    }, null, 2)}\n`);
+  }
+
+  const corruptAutomatic = structuredClone(automaticStore);
+  corruptAutomatic.backups[0].snapshot.state.schemaVersion = 99;
+  assert.equal(corruptAutomatic.backups[1].snapshot.state.schemaVersion, 1);
+  await page.evaluate(store => chrome.storage.local.set({ automaticBackups: store }), corruptAutomatic);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForBackupSettings();
+  await page.evaluate(() => { location.hash = "#backup"; });
+  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1
+    && /damaged.*valid older/iu.test(document.getElementById("automatic-backup-status").textContent));
+  await page.click("#automatic-backup-list .automatic-backup-restore");
+  await page.waitForFunction(() => !document.getElementById("backup-preview").hidden
+    || document.getElementById("backup-status").classList.contains("is-error"), { timeout: 120_000 });
+  const automaticConfirmation = {
+    fileName: await page.$eval("#backup-file-name", element => element.textContent),
+    restoreDisabled: await page.$eval("#backup-restore", element => element.disabled),
+    status: await page.$eval("#automatic-backup-status", element => element.textContent),
+  };
+  check(BACKUP_CHROME_CHECKS[0],
+    automaticRows.length === 2
+      && /3 hours ago/u.test(automaticRows[0].age)
+      && /Restore from 3 hours ago/u.test(automaticRows[0].action)
+      && /1 day ago/u.test(automaticRows[1].age)
+      && /Restore from 1 day ago/u.test(automaticRows[1].action)
+      && automaticConfirmation.restoreDisabled
+      && /Automatic backup from 1 day ago/u.test(automaticConfirmation.fileName),
+    JSON.stringify({ automaticRows, automaticConfirmation }));
+
+  const beforeAutomaticRestore = await read();
+  const rootsBeforeAutomaticRestore = await roots();
+  await confirm();
+  const automaticRestored = await read();
+  const automaticNotice = await page.$eval("#backup-status", element => element.textContent);
+  const automaticRevisions = Object.keys(automaticRestored).every(key =>
+    automaticRestored[key].revision === beforeAutomaticRestore[key].revision + 1);
+  const automaticLookup = await page.evaluate(() =>
+    chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
+  check(BACKUP_CHROME_CHECKS[1],
+    /Restored successfully/u.test(automaticNotice)
+      && /damaged.*valid older/iu.test(automaticConfirmation.status)
+      && automaticRevisions
+      && JSON.stringify(automaticRestored.state.dictionaries.map(dictionary => dictionary.path))
+        === JSON.stringify(automaticPayload.snapshot.state.dictionaries.map(dictionary => dictionary.path))
+      && JSON.stringify(await roots()) === JSON.stringify(rootsBeforeAutomaticRestore)
+      && automaticLookup.ok && automaticLookup.results.length > 0,
+    JSON.stringify({ automaticNotice, automaticRevisions, automaticLookup: automaticLookup.ok }));
+
+  await page.evaluate(() => chrome.storage.local.set({
+    automaticBackups: { schemaVersion: 1, backups: [] },
+  }));
+  await page.evaluate(async () => {
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_reload" });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   const before = await read();
   await page.click("#backup-export");
   await page.waitForFunction(() => {
@@ -69,7 +246,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   }, { timeout: 30_000 }).then(handle => handle.jsonValue());
   const bytes = readFileSync(downloaded.filename);
   const parsed = await openBackupArchive(new Blob([bytes]));
-  check(BACKUP_CHROME_CHECKS[0], JSON.stringify(parsed.snapshot) === JSON.stringify(before)
+  check(BACKUP_CHROME_CHECKS[2], JSON.stringify(parsed.snapshot) === JSON.stringify(before)
     && parsed.files.some(file => file.path.endsWith("/media.bin")), JSON.stringify({ size: bytes.length, files: parsed.files.length }));
 
   const generation = (await status()).generation;
@@ -87,7 +264,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const edited = await read();
   await confirm();
   const refusal = await page.$eval("#backup-status", element => element.textContent);
-  check(BACKUP_CHROME_CHECKS[1], /changed since/u.test(refusal) && JSON.stringify(await read()) === JSON.stringify(edited), refusal);
+  check(BACKUP_CHROME_CHECKS[3], /changed since/u.test(refusal) && JSON.stringify(await read()) === JSON.stringify(edited), refusal);
 
   await choose(downloaded.filename);
   assert.equal(await page.$eval("#backup-preview", element => element.hidden), false);
@@ -107,7 +284,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   }));
   const paths = restored.state.dictionaries.every((entry, index) => entry.path !== before.state.dictionaries[index].path);
   const lookup = await page.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
-  check(BACKUP_CHROME_CHECKS[2], /Restored successfully/u.test(notice) && revisions && paths
+  check(BACKUP_CHROME_CHECKS[4], /Restored successfully/u.test(notice) && revisions && paths
     && JSON.stringify(comparable(restored)) === JSON.stringify(comparable(before))
     && lookup.ok && lookup.results.length > 0, JSON.stringify({ notice, revisions, paths, lookupOk: lookup.ok }));
 
@@ -124,7 +301,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   await choose(corruptPath);
   const failure = await page.$eval("#backup-status", element => element.textContent);
   const native = await page.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
-  check(BACKUP_CHROME_CHECKS[3], /signature|CRC/iu.test(failure)
+  check(BACKUP_CHROME_CHECKS[5], /signature|CRC/iu.test(failure)
     && JSON.stringify(await read()) === JSON.stringify(restored)
     && (await status()).generation === stableGeneration && native.ok && native.results.length > 0
     && JSON.stringify(await roots()) === JSON.stringify(stableRoots), failure);
@@ -189,7 +366,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     }
     const closingSnapshot = await read();
     const closingStatus = await status();
-    check(BACKUP_CHROME_CHECKS[4], JSON.stringify(closingRoots) === JSON.stringify(stableRoots)
+    check(BACKUP_CHROME_CHECKS[6], JSON.stringify(closingRoots) === JSON.stringify(stableRoots)
       && JSON.stringify(closingSnapshot) === JSON.stringify(restored) && closingStatus.generation === stableGeneration,
     JSON.stringify({
       stableRoots,
