@@ -742,18 +742,26 @@ test("a definitive worker rejection releases request-owned capture media and rem
   assert.equal(f.captureCalls.filter(type => type === "hd_capture_cancel").length, 2);
 });
 
-test("a definitive rejection releases its admitted job after the popup retires and the reader relinks", async t => {
-  const held = Promise.withResolvers();
-  let sent = false;
-  const f = preparedCaptureFixture(t, async () => { sent = true; return held.promise; });
-  await until(() => f.items[0].add && !f.items[0].add.disabled);
-  f.items[0].add.click();
-  await until(() => sent);
-  f.controller.retire(f.context.owner);
-  f.session.setLinkedPage({ tabId: 8, documentId: "new-reader" });
-  held.resolve({ state: "duplicate" });
-  await until(() => f.captureCalls.includes("hd_capture_cancel"));
-  assert.doesNotThrow(() => f.nextPin());
+test("a definitive result or worker rejection releases its admitted job after its popup retires", async t => {
+  for (const outcome of ["duplicate result", "worker rejection"]) await t.test(outcome, async t => {
+    const held = Promise.withResolvers();
+    let sent = false;
+    const f = preparedCaptureFixture(t, async () => { sent = true; return held.promise; });
+    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    f.items[0].add.click();
+    await until(() => sent);
+    f.controller.retire(f.context.owner);
+    f.session.setLinkedPage({ tabId: 8, documentId: "new-reader" });
+    if (outcome === "duplicate result") {
+      held.resolve({ state: "duplicate" });
+    } else {
+      const error = new Error("AnkiConnect rejected the queued mutation.");
+      error.responseReceived = true;
+      held.reject(error);
+    }
+    await until(() => f.captureCalls.includes("hd_capture_cancel"));
+    assert.doesNotThrow(() => f.nextPin());
+  });
 });
 
 test("uncertain replies and lost submission responses retain the prepared job and terminal write state", async t => {
