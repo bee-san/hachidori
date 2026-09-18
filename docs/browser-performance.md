@@ -123,6 +123,38 @@ The worker hop and the eager pthread pool cost about 0.2 ms per lookup and
 blocks the offscreen document's thread, which also hosts pronunciation and Anki
 work.
 
+## Incremental dictionary reorder, disable, and enable
+
+Loading a package copies its files out of OPFS into the wasm heap: `blobs.bin`
+alone is 80 MB for Jitendex and 128 MB for Pixiv Light, and the copy runs at
+about 1.3 GB/s, so one package costs 100–150 ms (65% of it the blob copy, the
+rest the hash table, bloom filter, and zstd dictionary). Until now every
+dictionary change in Settings, including a drag to reorder, went through
+`hdw_reset` and re-added every package, so two dictionaries cost about 250 ms
+per change and every disabled package was probe-loaded again on top.
+
+Hoshidicts now exposes `remove_dict` and `set_dict_order` (`hdw_remove_dict`
+and `hdw_set_dict_order` in the wasm ABI), and `engine-service.js` keeps a
+record of which packages loaded this session. A change whose packages all
+loaded before is applied in place: packages that leave the enabled set are
+removed, packages that rejoin it are added alone, and the engine order is set to
+the new list. Anything else (a first load, an import, a package that never
+loaded, a rejected in-place step) falls back to the full rebuild, whose
+`hdw_reset` also discards anything a partial step left behind. Package paths
+are generation-scoped and immutable once loaded, which is what makes "loaded
+once this session" a safe proxy for "loads now".
+
+Measured with Jitendex and Pixiv Light loaded (`hd_apply_state` wall from a
+settings page, five samples each):
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| Reorder two dictionaries | 256 ms | 6 ms |
+| Disable one dictionary | 240 ms | 8 ms |
+| Re-enable one dictionary | 240 ms | 146 ms (only that package is copied) |
+| Reorder with one dictionary disabled | 246 ms | 4 ms |
+| Restart to ready with one disabled | 1182 ms | 1147 ms (unchanged: nothing is verified yet) |
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production

@@ -5176,6 +5176,7 @@ async function main() {
     stateCasAttempts: 0,
     durableFilesystemWrites: 0,
   };
+  const nativeCounts = { resets: 0, adds: 0, removes: 0, reorders: 0 };
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
     observedEngine = module;
@@ -5187,13 +5188,20 @@ async function main() {
       }
       const result = ccall(name, returnType, argumentTypes, argumentValues);
       if (name === "hdw_reset") {
+        nativeCounts.resets += 1;
         loadedDictionaryPaths = new Set();
       } else if (name === "hdw_add_dict" && result) {
+        nativeCounts.adds += 1;
         loadedDictionaryPaths.add(argumentValues[0]);
         peakLoadedDictionaryPaths = Math.max(
           peakLoadedDictionaryPaths,
           loadedDictionaryPaths.size,
         );
+      } else if (name === "hdw_remove_dict" && result) {
+        nativeCounts.removes += 1;
+        loadedDictionaryPaths.delete(argumentValues[0]);
+      } else if (name === "hdw_set_dict_order" && result) {
+        nativeCounts.reorders += 1;
       }
       return result;
     };
@@ -7344,27 +7352,73 @@ async function main() {
     JSON.stringify(canonicallyEquivalentPackages),
   );
   const stateWithThreePackages = await storedDictionaryState();
-  peakLoadedDictionaryPaths = 0;
-  const allDisabled = await request("hd_apply_state", {
+  const lookupBeforeReorder = await request("hd_lookup", { text: "食べる" });
+  const statusBeforeReorder = await request("hd_status");
+  const packageCount = stateWithThreePackages.dictionaries.length;
+  const nativeBeforeReorder = { ...nativeCounts };
+  const reorderedThreePackages = await request("hd_apply_state", {
     baseRevision: stateWithThreePackages.revision,
-    dictionaries: stateWithThreePackages.dictionaries.map((dictionary) => ({
+    dictionaries: [...stateWithThreePackages.dictionaries].reverse(),
+  });
+  const lookupAfterReorder = await request("hd_lookup", { text: "食べる" });
+  const statusAfterReorder = await request("hd_status");
+  const dictionaryNames = (lookup) => lookup.results.flatMap((result) =>
+    result.term.glossaries.map((glossary) => glossary.dictionary));
+  check(
+    "reordering loaded packages reorders the engine in place instead of reloading every package",
+    reorderedThreePackages.ok === true
+      && reorderedThreePackages.state.dictionaries.map(({ id }) => id).join()
+        === [...stateWithThreePackages.dictionaries].reverse().map(({ id }) => id).join()
+      && nativeCounts.resets === nativeBeforeReorder.resets
+      && nativeCounts.adds === nativeBeforeReorder.adds
+      && nativeCounts.reorders === nativeBeforeReorder.reorders + 1
+      && statusAfterReorder.dictionaryCount === statusBeforeReorder.dictionaryCount
+      && statusAfterReorder.generation === statusBeforeReorder.generation + 1
+      && lookupAfterReorder.ok === true
+      && dictionaryNames(lookupAfterReorder).length === dictionaryNames(lookupBeforeReorder).length
+      && dictionaryNames(lookupAfterReorder).length > 1
+      && dictionaryNames(lookupAfterReorder).join() !== dictionaryNames(lookupBeforeReorder).join(),
+    JSON.stringify({
+      reorderedThreePackages,
+      counts: { before: nativeBeforeReorder, after: nativeCounts },
+      before: dictionaryNames(lookupBeforeReorder),
+      after: dictionaryNames(lookupAfterReorder),
+    }),
+  );
+  peakLoadedDictionaryPaths = 0;
+  const nativeBeforeDisable = { ...nativeCounts };
+  const allDisabled = await request("hd_apply_state", {
+    baseRevision: reorderedThreePackages.state.revision,
+    dictionaries: reorderedThreePackages.state.dictionaries.map((dictionary) => ({
       ...dictionary,
       enabled: false,
     })),
   });
   const disabledValidationPeak = peakLoadedDictionaryPaths;
   const disabledStatusAfterValidation = await request("hd_status");
+  const nativeBeforeRestore = { ...nativeCounts };
   const restoredThreePackages = await request("hd_apply_state", {
     baseRevision: allDisabled.state.revision,
     dictionaries: stateWithThreePackages.dictionaries,
   });
+  const lookupAfterRestore = await request("hd_lookup", { text: "食べる" });
   check(
-    "disabled packages are validated independently before publishing an empty load set",
+    "disabling and re-enabling packages this session already loaded drops and re-adds only them",
     allDisabled.ok === true
       && disabledStatusAfterValidation.dictionaryCount === 0
-      && disabledValidationPeak === 1
-      && restoredThreePackages.ok === true,
-    JSON.stringify({ allDisabled, disabledValidationPeak, restoredThreePackages }),
+      && disabledValidationPeak === 0
+      && nativeCounts.resets === nativeBeforeDisable.resets
+      && nativeBeforeRestore.removes === nativeBeforeDisable.removes + packageCount
+      && restoredThreePackages.ok === true
+      && nativeCounts.adds === nativeBeforeRestore.adds + statusBeforeReorder.dictionaryCount
+      && (await request("hd_status")).dictionaryCount === statusBeforeReorder.dictionaryCount
+      && dictionaryNames(lookupAfterRestore).join() === dictionaryNames(lookupBeforeReorder).join(),
+    JSON.stringify({
+      allDisabled,
+      disabledValidationPeak,
+      restoredThreePackages,
+      counts: { beforeDisable: nativeBeforeDisable, beforeRestore: nativeBeforeRestore, after: nativeCounts },
+    }),
   );
   for (const title of canonicallyEquivalentTitles) {
     await request("hd_remove", { title });
@@ -7502,11 +7556,30 @@ async function main() {
         === JSON.stringify(authoritativeInvalidState.dictionaries.map(({ id, path }) => [id, path])),
     JSON.stringify({ invalidStateWrite, invalidReload, invalidStatus, lookupBesideInvalid, stateAfterInvalidReload }),
   );
-  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+  const disabledInvalidWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
     baseRevision: stateAfterInvalidReload.revision,
-    dictionaries: stateAfterInvalidReload.dictionaries.filter(
+    dictionaries: stateAfterInvalidReload.dictionaries.map((dictionary) =>
+      dictionary.title === invalidLoadTitle ? { ...dictionary, enabled: false } : dictionary),
+  });
+  const disabledInvalidReload = await request("hd_reload");
+  const disabledInvalidStatus = await request("hd_status");
+  const stateAfterDisabledInvalidReload = await storedDictionaryState();
+  check(
+    "a disabled package that never loaded this session is still validated and reported",
+    disabledInvalidWrite.ok === true
+      && disabledInvalidReload.ok === true
+      && disabledInvalidReload.dictionaryCount === 4
+      && disabledInvalidStatus.failedDictionaries.length === 1
+      && disabledInvalidStatus.failedDictionaries[0].id === invalidPackage.id,
+    JSON.stringify({ disabledInvalidWrite, disabledInvalidReload, disabledInvalidStatus }),
+  );
+  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateAfterDisabledInvalidReload.revision,
+    dictionaries: stateAfterDisabledInvalidReload.dictionaries.filter(
       (dictionary) => dictionary.title !== invalidLoadTitle,
     ),
   });

@@ -945,6 +945,51 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
   }
 }
 
+// Drops one package from the loaded set without rebuilding it. Returns the
+// number of kinds removed; 0 with no error when the path was not loaded.
+EMSCRIPTEN_KEEPALIVE int hdw_remove_dict(const char* path) {
+  clear_error();
+  if (path == nullptr || *path == '\0') {
+    set_error("empty dictionary path");
+    return 0;
+  }
+  try {
+    auto& e = engine();
+    const std::string dict_path{path};
+    const size_t removed = e.query.remove_dict(dict_path);
+    e.dictionary_count -= std::min(removed, e.dictionary_count);
+    std::erase(e.term_paths, dict_path);
+    g_media.clear();
+    return static_cast<int>(removed);
+  } catch (...) {
+    set_error(describe_current_exception());
+    return 0;
+  }
+}
+
+// Reorders the loaded set to follow the JSON array of package paths in
+// `order_json`. Returns 1 on success and 0, changing nothing, when the list is
+// malformed or names a package that is not loaded.
+EMSCRIPTEN_KEEPALIVE int hdw_set_dict_order(const char* order_json) {
+  clear_error();
+  try {
+    std::vector<std::string> order;
+    if (order_json == nullptr
+        || glz::read<glz::opts{.error_on_unknown_keys = false}>(order, std::string_view{order_json})) {
+      set_error("malformed dictionary order");
+      return 0;
+    }
+    if (!engine().query.set_dict_order(order)) {
+      set_error("dictionary order names a package that is not loaded");
+      return 0;
+    }
+    return 1;
+  } catch (...) {
+    set_error(describe_current_exception());
+    return 0;
+  }
+}
+
 EMSCRIPTEN_KEEPALIVE const char* hdw_lookup(const char* text, int max_results, int scan_length,
                                             const char* options_json) {
   static std::string out;
