@@ -241,6 +241,32 @@ JMnedict, KANJIDIC, JPDB and BCCWJ frequency, Kanjium pitch):
 Node, four cores (`taskset -c 0-3`): JMnedict 606 → 540 ms, JMdict 629 → 594 ms,
 Jitendex 974 → 821 ms.
 
+## Dictionary loads through sync access handles
+
+WasmFS's OPFS backend opens a read-only descriptor as a Blob: every read copies
+the range into a JavaScript `ArrayBuffer` and then into the heap, with an async
+round trip in between. A read-write descriptor uses a sync access handle whose
+`read` lands straight in the heap. Loading a dictionary is one mmap copy of each
+file, so the WasmFS runtime (hoshidicts `HOSHIDICTS_WASMFS`) now opens the files
+read-write for the copy and closes the descriptor immediately afterwards; the
+access handle and its lock exist only for the copy. The IDBFS and single-threaded
+runtimes are unchanged (their wasm is byte-identical).
+
+Everything that (re)loads dictionaries gets faster:
+
+| Chrome | Before | After |
+| --- | ---: | ---: |
+| Restart to ready, five dictionaries (one disabled) | 1446 ms | 1173 ms |
+| Reload after an import, seven installed | 446 ms | 237 ms |
+| Reload after an import, five installed | 246 ms | 133 ms |
+| Re-enable JMnedict | 153 ms | 74 ms |
+| Import Jitendex with six others installed | 1062 ms | 880 ms |
+| Import BCCWJ with six others installed | 980 ms | 797 ms |
+
+The post-import reload is the phase that grows with the number of installed
+dictionaries (the importer unloads everything to free the address space and
+reloads it afterwards); with seven installed it was almost half of an import.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
