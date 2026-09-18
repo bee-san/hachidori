@@ -275,7 +275,52 @@ function syncfs(populate) {
 
 async function persistFilesystem() {
   if (storageBackend === "idbfs") {
+    // Trim first: IDBFS stores each file as a view of its array, and a
+    // structured clone of a view carries the whole backing buffer.
+    trimMemfsFiles(DICT_ROOT);
     await syncfs(false);
+  }
+}
+
+// The classic FS keeps every file as a JavaScript array that grows by 12.5% per
+// write once it passes 1 MiB, so streaming an 80 MB blobs.bin copies about nine
+// times its size (expandFileStorage was 340 ms of a Jitendex import in
+// Electron). Doubling instead copies about twice its size; the slack is given
+// back by trimMemfsFiles before the import is persisted.
+function speedUpMemfsGrowth() {
+  const memfs = engine.FS?.filesystems?.MEMFS;
+  if (typeof memfs?.expandFileStorage !== "function"
+      || typeof memfs.getFileDataAsTypedArray !== "function") {
+    return;
+  }
+  memfs.expandFileStorage = (node, newCapacity) => {
+    const prevCapacity = node.contents.length;
+    if (prevCapacity >= newCapacity) return;
+    const capacity = Math.max(newCapacity, prevCapacity * 2, 256) >>> 0;
+    const oldContents = memfs.getFileDataAsTypedArray(node);
+    node.contents = new Uint8Array(capacity);
+    node.contents.set(oldContents);
+  };
+}
+
+// Reallocate over-allocated classic-FS files under `root` to their exact size.
+function trimMemfsFiles(root) {
+  let node;
+  try {
+    node = engine.FS.lookupPath(root).node;
+  } catch {
+    return;
+  }
+  const stack = [node];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (engine.FS.isDir(current.mode)) {
+      for (const child of Object.values(current.contents ?? {})) stack.push(child);
+    } else if (engine.FS.isFile(current.mode)
+        && current.contents instanceof Uint8Array
+        && current.contents.length > current.usedBytes) {
+      current.contents = current.contents.slice(0, current.usedBytes);
+    }
   }
 }
 
@@ -1158,6 +1203,7 @@ async function boot() {
     loadedPackages = null;
     verifiedPackages.clear();
     if (storageBackend === "idbfs") {
+      speedUpMemfsGrowth();
       if (!exists(DICT_ROOT)) {
         engine.FS.mkdir(DICT_ROOT);
       }

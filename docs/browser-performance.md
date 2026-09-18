@@ -289,6 +289,31 @@ Meta banks (frequency, pitch) go through the same skipper for their object
 values (hoshidicts #12): node import JPDB 149 → 132 ms, Kanjium 49 → 42 ms,
 BCCWJ 440 → 429 ms; output byte-identical.
 
+## Electron: classic-FS file growth during imports
+
+On the IDBFS runtime (Electron), the importer's output files live in the
+classic Emscripten FS, whose `MEMFS` grows a file's JavaScript array by 12.5%
+per write once it passes 1 MiB; streaming an 80 MB `blobs.bin` therefore copies
+about nine times its size (`expandFileStorage` was 340 ms of a Jitendex import).
+`engine-service.js` now doubles the capacity instead and trims the finished
+files back to their exact size before `syncfs` (IDBFS stores each file as a view
+of its array, and a structured clone of a view carries the whole backing buffer,
+so trimming first also keeps the IndexedDB write at the real size).
+
+Electron 42, `benchmark/electron.mjs`, imports with the previous dictionaries
+still installed:
+
+| Import | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1408 ms | 1206 ms |
+| JMdict (English) | 1281 ms | 1130 ms |
+| JMnedict | 1598 ms | 1398 ms |
+
+Of the remainder, the IDBFS `syncfs` (IndexedDB write of the new files) is
+320–890 ms and grows with the database; restart-to-ready with three dictionaries
+is unchanged at about 4.2 s (3.5 s of it is an empty start). Chrome is unaffected
+(OPFS runtime).
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production
