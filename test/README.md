@@ -633,12 +633,14 @@ What it proves, in order:
    traces are safe even with grammar tags enabled. Secondary headers stay lazy;
    tab projection resets the disclosure, and stale toggles after replacement,
    clear, request supersession, or destruction cannot request positioning.
-   Focused boundary checks accept depth 24 and reject 25; seed the exported
-   traversal's node counter to test exact capacity without a million-node DOM;
-   and include containers, wrappers, nulls, and ignored tags in that budget.
-   Deferred, tab, and Show more failures reach the current view owner. Replaced,
-   cleared, destroyed, or request-superseded fills do no rendering, media, or
-   layout work, and the actual content callbacks cannot clear a newer request.
+   Deep structured content is rendered through explicit traversal frames rather
+   than a fixed nesting-depth limit; the exported traversal's node counter is
+   seeded to test exact capacity without a million-node DOM, and containers,
+   wrappers, nulls, and ignored tags remain in that budget. A glossary that
+   exceeds the work budget is omitted locally, so deferred, tab, and Show more
+   fills cannot clear unrelated dictionary cards. Replaced, cleared, destroyed,
+   or request-superseded fills do no rendering, media, or layout work, and the
+   actual content callbacks cannot clear a newer request.
    External links preserve safe native hrefs while routing current primary,
    keyboard and middle activation exactly once, including mixed nested links.
    Worker checks reject invalid URLs/senders before tab creation and bypass held

@@ -19246,11 +19246,13 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   HDGlossary.appendTextOnlyGlossary(document, parent, nested(24));
   const exactDepth = parent.textContent === "leaf";
   parent.replaceChildren();
-  const excessiveDepth = rejected(() => HDGlossary.appendTextOnlyGlossary(document, parent, nested(25)));
+  HDGlossary.appendTextOnlyGlossary(document, parent, nested(1000));
+  const deepContent = parent.textContent === "leaf";
+  parent.replaceChildren();
   HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
   HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
-  check("structured depth rejects overflow and preserves ordinary fallback text",
-    exactDepth && excessiveDepth && parent.textContent === "kept<literal>", parent.textContent);
+  check("structured content renders beyond the former depth limit and preserves ordinary fallback text",
+    exactDepth && deepContent && parent.textContent === "kept<literal>", parent.textContent);
 
   const limit = 1_048_576;
   const values = [
@@ -19281,11 +19283,18 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   let media = 0;
   let errors = 0;
   let requestCurrent = true;
+  const invalidGlossary = "render-failure";
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     parseTagList: HDGlossary.parseTagList,
-    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendTextOnlyGlossary(...args) {
+      fills += 1;
+      if (args[2] === invalidGlossary) {
+        throw new RangeError("Structured content exceeds its node limit");
+      }
+      return HDGlossary.appendTextOnlyGlossary(...args);
+    },
     positionPopup() { layouts += 1; },
   });
   const entry = (dictionary, glossary) => ({
@@ -19293,7 +19302,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     term: { ...result.term, glossaries: [{ dictionary, glossary }] },
   });
   const healthy = entry("Healthy", '["healthy"]');
-  const invalid = entry("Invalid", nested(25));
+  const invalid = entry("Invalid", invalidGlossary);
   const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
   const context = {
     isCurrentRequest: () => requestCurrent,
@@ -19311,17 +19320,21 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const deferredHandled = errors === 1 && escaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const deferredHandled = errors === 0 && escaped === 0
+      && view.scrollElement.childElementCount === 1
+      && popup.textContent.includes("healthy");
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const tabHandled = errors === 0 && view.scrollElement.childElementCount > 0
+      && popup.textContent.includes("Invalid");
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
-    check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+    check("deferred, tab and expanded render failures omit only their glossary body",
+      deferredHandled && tabHandled && errors === 0 && moreEscaped === 0
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
       JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
@@ -19335,9 +19348,30 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
         dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Invalid"] }],
       });
     } catch { presentationEscaped = true; }
-    check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors === beforePresentationError + 1 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+    check("storage-driven projection failures omit only the affected glossary body",
+      !presentationEscaped && errors === beforePresentationError
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
       JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
+
+    const manyDictionaries = Array.from({ length: 100 }, (_, index) => ({
+      dictionary: `Dictionary ${index}`,
+      glossary: index === 50 ? invalidGlossary : JSON.stringify([`definition ${index}`]),
+    }));
+    const manyDictionaryResult = {
+      ...result,
+      term: { ...result.term, glossaries: manyDictionaries },
+    };
+    view.renderResults([manyDictionaryResult], candidate, {
+      ...context,
+      dictionaryPresentation: manyDictionaries.map(({ dictionary }) => ({ dictionary, title: dictionary, favorite: true })),
+    });
+    const manyEscaped = drain();
+    const manyCards = popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length;
+    check("one failed glossary does not cap a large dictionary result set",
+      manyEscaped === 0 && errors === 0 && manyCards === 100
+        && popup.textContent.includes("definition 0")
+        && popup.textContent.includes("definition 99"),
+      JSON.stringify({ manyEscaped, errors, manyCards }));
 
     const replacements = [
       () => view.renderResults([healthy], candidate, context),

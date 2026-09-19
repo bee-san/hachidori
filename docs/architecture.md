@@ -869,11 +869,13 @@ script clears the failed request's popup, but an older failed request cannot
 hide a newer result. These are lookup transport bounds, not archive-size,
 dictionary-entry, source-document, or media-count product limits.
 
-Structured glossary traversal rejects values beyond depth 24 or 1,048,576
-visited values per glossary, rather than silently truncating content. Containers,
-wrappers, and ignored values consume the same traversal budget as rendered text
-and elements; ordinary unknown-wrapper child text and literal glossary fallback
-remain supported. Rendering still uses one traversal after JSON parsing.
+Structured glossary traversal uses explicit frames, so valid content has no
+renderer-imposed nesting-depth limit or JavaScript call-stack dependency. It
+still rejects more than 1,048,576 visited values per glossary. Containers,
+wrappers, and ignored values consume the same per-glossary traversal budget as
+rendered text and elements; ordinary unknown-wrapper child text and literal
+glossary fallback remain supported. A glossary that exceeds that work budget is
+omitted without clearing the surrounding entry or other dictionary cards.
 
 Deferred glossary fills and their layout callbacks belong to both the current
 lookup request and the current result panel. A newer pending request, a tab

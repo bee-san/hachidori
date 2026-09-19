@@ -419,7 +419,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
-  "a structured-depth render failure clears its popup and the next healthy hover recovers",
+  "deep structured content renders and the next healthy hover recovers",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -11314,16 +11314,14 @@ async function main() {
   };
   tab2.on("console", onRenderConsole);
   await tab2.evaluate(() => { document.getElementById("kanjiword").textContent = "深度"; });
-  await tab2.mouse.move(2, 2);
-  await tab2.mouse.move(oversizedBox.x + 5, oversizedBox.y + oversizedBox.height / 2);
-  const deepPopupHidden = await popup2.waitForHidden();
+  const deepPopup = await hoverForPopup(tab2, popup2, "#kanjiword");
   const deepPopupAfter = await hoverForPopup(tab2, popup2, "#verb");
   tab2.off("console", onRenderConsole);
   check(
-    "a structured-depth render failure clears its popup and the next healthy hover recovers",
-    renderFailures.length === 1 && deepPopupHidden
+    "deep structured content renders and the next healthy hover recovers",
+    renderFailures.length === 0 && deepPopup?.plain?.includes("over-depth leaf")
       && deepPopupAfter?.plain?.includes("healthy bounded lookup"),
-    JSON.stringify({ renderFailures, hidden: deepPopupHidden, after: deepPopupAfter?.plain }),
+    JSON.stringify({ renderFailures, deep: deepPopup?.plain, after: deepPopupAfter?.plain }),
   );
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {

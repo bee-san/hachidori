@@ -3295,26 +3295,40 @@
             const content = documentRef.createElement("div");
             content.className = "gsm-hoshidicts-glossary-content";
             content.dataset.hoshidictsDictionary = dictionary;
-            const fillContent = () => appendTextOnlyGlossary(
-              documentRef,
-              content,
-              glossary.glossary,
-              {
-                dictionary,
-                generation: renderContext.generation,
-                isCurrent,
-                isCurrentLink,
-                onExternalLink: renderContext.onExternalLink,
-                onInternalLink: renderContext.onInternalLink,
-                onLayoutChange: positionIfCurrent,
-                requestImagePreview,
-                refreshImagePreview,
-                hideImagePreview,
-                imageContext,
-                onImageCreated,
-                resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+            const fillContent = () => {
+              try {
+                appendTextOnlyGlossary(
+                  documentRef,
+                  content,
+                  glossary.glossary,
+                  {
+                    dictionary,
+                    generation: renderContext.generation,
+                    isCurrent,
+                    isCurrentLink,
+                    onExternalLink: renderContext.onExternalLink,
+                    onInternalLink: renderContext.onInternalLink,
+                    onLayoutChange: positionIfCurrent,
+                    requestImagePreview,
+                    refreshImagePreview,
+                    hideImagePreview,
+                    imageContext,
+                    onImageCreated,
+                    resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+                  }
+                );
+              } catch (error) {
+                // A malformed or over-budget glossary must not hide unrelated
+                // dictionaries from the same lookup. Remove any partial DOM
+                // produced before the renderer reported the failure.
+                content.replaceChildren();
+                console.warn("hachidori: omitted dictionary definition after render failure", {
+                  dictionary,
+                  expression: result.term.expression,
+                  error,
+                });
               }
-            );
+            };
             // Glossary bodies are most of a render. Only the first entry is
             // visible in the popup, so fill the rest after it has painted.
             if (resultIndex === 0) {

@@ -28,7 +28,6 @@
   const MAX_TEXT_LENGTH = 128 * 1024;
   const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
   const MAX_MEDIA_DISPLAY_SIZE = 1024;
-  const MAX_STRUCTURED_DEPTH = 24;
   const MAX_STRUCTURED_NODES = 1_048_576;
   const MAX_STRUCTURED_DATA_ATTRIBUTES = 64;
   const MAX_STRUCTURED_DATA_KEY_LENGTH = 64;
@@ -1018,163 +1017,180 @@
     return element.isConnected && (typeof isCurrent !== "function" || isCurrent());
   }
 
-  function appendStructuredValue(documentRef, parent, value, state, depth) {
-    if (state.nodes >= MAX_STRUCTURED_NODES || depth > MAX_STRUCTURED_DEPTH) {
-      throw new RangeError("Structured content exceeds its node or depth limit");
-    }
-    // Bound traversal work, including containers and values that render no DOM.
-    state.nodes += 1;
-    if (typeof value === "string") {
-      parent.appendChild(documentRef.createTextNode(value));
-      return;
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-      parent.appendChild(documentRef.createTextNode(String(value)));
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        appendStructuredValue(documentRef, parent, child, state, depth + 1);
+  function appendStructuredValue(documentRef, parent, value, state) {
+    // Use explicit traversal frames instead of recursive calls. Structured
+    // content is dictionary-authored and valid entries can be much deeper
+    // than the old arbitrary depth bound; the node budget still bounds work
+    // for one glossary.
+    const stack = [{ kind: "value", parent, value }];
+    while (stack.length > 0) {
+      const frame = stack.pop();
+      if (frame.kind === "append-external-icon") {
+        const icon = documentRef.createElement("span");
+        icon.className = "gloss-link-external-icon";
+        icon.setAttribute("aria-hidden", "true");
+        frame.element.appendChild(icon);
+        continue;
       }
-      return;
-    }
-    if (!isRecord(value)) {
-      return;
-    }
 
-    if (value.type === "structured-content") {
-      appendStructuredValue(documentRef, parent, value.content, state, depth + 1);
-      return;
-    }
-    if (value.type === "text") {
-      appendStructuredValue(
-        documentRef,
-        parent,
-        Object.prototype.hasOwnProperty.call(value, "text") ? value.text : value.content,
-        state,
-        depth + 1
-      );
-      return;
-    }
-    if (value.type === "image") {
-      value = { ...value, tag: "img" };
-    }
-
-    const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
-    if (IGNORED_STRUCTURED_TAGS.has(tag)) {
-      return;
-    }
-    if (!ALLOWED_STRUCTURED_TAGS.has(tag)) {
-      if (Object.prototype.hasOwnProperty.call(value, "content")) {
-        appendStructuredValue(documentRef, parent, value.content, state, depth + 1);
+      if (frame.kind === "array") {
+        if (frame.index >= frame.value.length) continue;
+        stack.push({ ...frame, index: frame.index + 1 });
+        stack.push({ kind: "value", parent: frame.parent, value: frame.value[frame.index] });
+        continue;
       }
-      return;
-    }
 
-    if (tag === "img") {
-      appendStructuredImage(documentRef, parent, value, state);
-      return;
-    }
-
-    const element = documentRef.createElement(tag);
-    element.classList.add(`gloss-sc-${tag}`);
-    applyStructuredStyle(element, value.style);
-    applyStructuredData(element, value.data);
-    if (
-      typeof value.lang === "string" &&
-      /^[A-Za-z0-9-]{1,35}$/u.test(value.lang)
-    ) {
-      element.setAttribute("lang", value.lang);
-    }
-    if (tag === "td" || tag === "th") {
-      for (const [property, attribute] of [
-        ["colSpan", "colspan"],
-        ["rowSpan", "rowspan"],
-      ]) {
-        const span = Number(value[property]);
-        if (Number.isInteger(span) && span >= 1 && span <= 32) {
-          element.setAttribute(attribute, String(span));
-        }
+      if (state.nodes >= MAX_STRUCTURED_NODES) {
+        throw new RangeError("Structured content exceeds its node limit");
       }
-    }
-    if (tag === "details" && typeof state.onLayoutChange === "function") {
-      element.addEventListener("toggle", state.onLayoutChange);
-    }
-    if (typeof value.title === "string" && value.title.length <= 4096) {
-      element.title = value.title;
-    }
-    if (tag === "details" && value.open === true) {
-      element.open = true;
-    }
-    if (tag === "a") {
-      element.classList.add("gloss-link", "gsm-hoshidicts-structured-link");
-      const link = parseStructuredLink(value.href);
-      if (link?.internal) {
-        element.setAttribute("href", "#");
-        element.dataset.hoshidictsQuery = link.query;
-        if (link.primaryReading) {
-          element.dataset.hoshidictsReading = link.primaryReading;
-        }
-        element.addEventListener("click", (event) => {
-          if (event.defaultPrevented) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (ownsStructuredLink(element, state) && typeof state.onInternalLink === "function") {
-            state.onInternalLink({
-              anchor: element,
-              focusChild: event.detail === 0,
-              primaryReading: link.primaryReading,
-              query: link.query,
-            });
-          }
+      // Bound traversal work, including containers and values that render no DOM.
+      state.nodes += 1;
+      value = frame.value;
+      parent = frame.parent;
+      if (typeof value === "string") {
+        parent.appendChild(documentRef.createTextNode(value));
+        continue;
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        parent.appendChild(documentRef.createTextNode(String(value)));
+        continue;
+      }
+      if (Array.isArray(value)) {
+        stack.push({ kind: "array", parent, value, index: 0 });
+        continue;
+      }
+      if (!isRecord(value)) {
+        continue;
+      }
+
+      if (value.type === "structured-content") {
+        stack.push({ kind: "value", parent, value: value.content });
+        continue;
+      }
+      if (value.type === "text") {
+        stack.push({
+          kind: "value",
+          parent,
+          value: Object.prototype.hasOwnProperty.call(value, "text") ? value.text : value.content,
         });
-      } else if (link) {
-        element.href = link.href;
-        element.target = "_blank";
-        element.rel = "noopener noreferrer";
-        element.dataset.external = "true";
-        const activate = (event) => {
-          if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (!ownsStructuredLink(element, state)) return;
-          if (typeof state.onExternalLink === "function") {
-            state.onExternalLink({
-              url: link.href,
-              active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey),
-            });
-          }
-        };
-        element.addEventListener("click", activate);
-        element.addEventListener("auxclick", activate);
+        continue;
       }
-    }
-    let contentParent = element;
-    if (tag === "a") {
-      contentParent = documentRef.createElement("span");
-      contentParent.className = "gloss-link-text";
-      element.appendChild(contentParent);
-    }
-    if (
-      !STRUCTURED_TAGS_WITHOUT_CONTENT.has(tag) &&
-      Object.prototype.hasOwnProperty.call(value, "content")
-    ) {
-      appendStructuredValue(documentRef, contentParent, value.content, state, depth + 1);
-    }
-    if (tag === "a" && element.dataset.external === "true") {
-      const icon = documentRef.createElement("span");
-      icon.className = "gloss-link-external-icon";
-      icon.setAttribute("aria-hidden", "true");
+      if (value.type === "image") {
+        value = { ...value, tag: "img" };
+      }
 
-      element.appendChild(icon);
-    }
-    if (tag === "table") {
-      const container = documentRef.createElement("div");
-      container.className = "gloss-sc-table-container";
-      container.appendChild(element);
-      parent.appendChild(container);
-    } else {
-      parent.appendChild(element);
+      const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
+      if (IGNORED_STRUCTURED_TAGS.has(tag)) {
+        continue;
+      }
+      if (!ALLOWED_STRUCTURED_TAGS.has(tag)) {
+        if (Object.prototype.hasOwnProperty.call(value, "content")) {
+          stack.push({ kind: "value", parent, value: value.content });
+        }
+        continue;
+      }
+
+      if (tag === "img") {
+        appendStructuredImage(documentRef, parent, value, state);
+        continue;
+      }
+
+      const element = documentRef.createElement(tag);
+      element.classList.add(`gloss-sc-${tag}`);
+      applyStructuredStyle(element, value.style);
+      applyStructuredData(element, value.data);
+      if (
+        typeof value.lang === "string" &&
+        /^[A-Za-z0-9-]{1,35}$/u.test(value.lang)
+      ) {
+        element.setAttribute("lang", value.lang);
+      }
+      if (tag === "td" || tag === "th") {
+        for (const [property, attribute] of [
+          ["colSpan", "colspan"],
+          ["rowSpan", "rowspan"],
+        ]) {
+          const span = Number(value[property]);
+          if (Number.isInteger(span) && span >= 1 && span <= 32) {
+            element.setAttribute(attribute, String(span));
+          }
+        }
+      }
+      if (tag === "details" && typeof state.onLayoutChange === "function") {
+        element.addEventListener("toggle", state.onLayoutChange);
+      }
+      if (typeof value.title === "string" && value.title.length <= 4096) {
+        element.title = value.title;
+      }
+      if (tag === "details" && value.open === true) {
+        element.open = true;
+      }
+      if (tag === "a") {
+        element.classList.add("gloss-link", "gsm-hoshidicts-structured-link");
+        const link = parseStructuredLink(value.href);
+        if (link?.internal) {
+          element.setAttribute("href", "#");
+          element.dataset.hoshidictsQuery = link.query;
+          if (link.primaryReading) {
+            element.dataset.hoshidictsReading = link.primaryReading;
+          }
+          element.addEventListener("click", (event) => {
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (ownsStructuredLink(element, state) && typeof state.onInternalLink === "function") {
+              state.onInternalLink({
+                anchor: element,
+                focusChild: event.detail === 0,
+                primaryReading: link.primaryReading,
+                query: link.query,
+              });
+            }
+          });
+        } else if (link) {
+          element.href = link.href;
+          element.target = "_blank";
+          element.rel = "noopener noreferrer";
+          element.dataset.external = "true";
+          const activate = (event) => {
+            if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (!ownsStructuredLink(element, state)) return;
+            if (typeof state.onExternalLink === "function") {
+              state.onExternalLink({
+                url: link.href,
+                active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey),
+              });
+            }
+          };
+          element.addEventListener("click", activate);
+          element.addEventListener("auxclick", activate);
+        }
+      }
+      let contentParent = element;
+      if (tag === "a") {
+        contentParent = documentRef.createElement("span");
+        contentParent.className = "gloss-link-text";
+        element.appendChild(contentParent);
+      }
+      if (tag === "table") {
+        const container = documentRef.createElement("div");
+        container.className = "gloss-sc-table-container";
+        container.appendChild(element);
+        parent.appendChild(container);
+      } else {
+        parent.appendChild(element);
+      }
+      if (tag === "a" && element.dataset.external === "true") {
+        stack.push({ kind: "append-external-icon", element });
+      }
+      if (
+        !STRUCTURED_TAGS_WITHOUT_CONTENT.has(tag) &&
+        Object.prototype.hasOwnProperty.call(value, "content")
+      ) {
+        stack.push({ kind: "value", parent: contentParent, value: value.content });
+      }
     }
   }
 
