@@ -45,6 +45,30 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
+## Japanese pitch accent graphs
+
+Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,
+then map an Anki field such as `Graph` to `{pitch-accent-graphs}`. For a graph
+with kana under each mora, use `{pitch-accent-graphs-jj}` (Jidoujisho style).
+Both export inline SVG that follows the card's text color and font size.
+
+Each dictionary's variants are kept in source order. The final hollow symbol
+shows the pitch of a following particle, distinguishing a flat accent from a
+drop after the last mora. Numeric downstep positions and explicit `H`/`L`
+patterns are supported. A pattern may include one extra level for the particle;
+otherwise its final level continues. Missing, transcription-only or invalid
+pitch data leaves the graph field empty.
+
+Existing graph mappings produce SVG on the next mining operation; stored notes
+are not migrated. Text and position markers keep their existing output. Use
+`{pitch}` for nasalization and devoicing annotations, which graphs do not show.
+
+The standard and kana-labelled fields mined from the test pitch dictionary:
+
+![Pitch graphs on a light card](assets/anki-pitch-light.png)
+
+![Pitch graphs on a dark card](assets/anki-pitch-dark.png)
+
 ## Stored model and migration
 
 `options.anki.templates` is the canonical ordered Template list. Template IDs

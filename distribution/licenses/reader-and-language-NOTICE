@@ -7,6 +7,10 @@ Copyright (C) 2023-2026 Yomitan Authors
 Copyright (C) 2021-2022 Yomichan Authors
 SPDX-License-Identifier: GPL-3.0-or-later
 
+Anki pitch-accent SVG graphs in extension/anki-pitch.js follow Yomitan's
+pronunciation-generator.js notation, including its Jidoujisho-style graph
+(https://github.com/lrorpilla/jidoujisho, GPL-3.0).
+
 Hoshidicts' text_processor.cpp and deinflector.cpp adapt Yomitan's Japanese
 text handling and inflection rules. The referenced upstream Japanese source
 at commit 81d17d877fb18c62ba826210bf6db2b7f4d4deed carries this notice:
