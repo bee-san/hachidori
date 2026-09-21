@@ -808,6 +808,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const sharingClient = readFileSync(resolve(EXTENSION, "sharing-client.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const glossary = readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8");
+  const apiHost = readFileSync(resolve(EXTENSION, "api-host.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+\{[^}]*\}\s*from[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -828,6 +831,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/api-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
@@ -855,7 +859,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1646,7 +1650,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "hoshidicts-api-v1"])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
     JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
@@ -1662,20 +1666,34 @@ async function sharingHostStage() {
       && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
     JSON.stringify({ relayed, lookup }));
 
+  // The relay's Yomitan API asks as a client of its own; the answers are the
+  // contract's plain objects, not runtime reply envelopes.
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-1", message: { target: "hoshidicts-offscreen", type: "hd_api_version" } }));
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-2", message: { target: "hoshidicts-offscreen", type: "hd_api_dictionaries" } }));
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-3", message: { target: "hoshidicts-offscreen", type: "hd_api_dictionary_open", id: "missing" } }));
+  await settle(() => sent(socket).length >= 5);
+  const api = Object.fromEntries(sent(socket).slice(2, 5).map(frame => [frame.id, frame.response]));
+  check("the relay's API requests are answered by the host with the contract's objects",
+    JSON.stringify(api["api-1"]) === JSON.stringify({ version: "0.0.0-smoke" })
+      && JSON.stringify(api["api-2"]) === JSON.stringify({ dictionaries: [{ id: "host-dict", title: "Host", revision: "1", fileName: "Host.hachidori.zip" }] })
+      && JSON.stringify(api["api-3"]) === JSON.stringify({ error: "unknown dictionary", notFound: true })
+      && !relayed.some(message => message.type.startsWith("hd_api_")),
+    JSON.stringify(api));
+
   clientText(socket, JSON.stringify({ kind: "request", id: "r2",
     message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "write-1", baseRevision: 0, options: { hoverEnabled: false } } }));
-  await settle(() => sent(socket).length >= 3 && broadcasts(socket).length >= 1);
-  const written = sent(socket)[2];
+  await settle(() => sent(socket).length >= 6 && broadcasts(socket).length >= 1);
+  const written = sent(socket)[5];
   const broadcast = broadcasts(socket)[0];
   await storage.api().local.set({ setupState: { stage: "welcome" } });
   await settle();
   clientText(socket, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
-  await settle(() => sent(socket).length >= 4);
-  const refused = sent(socket)[3];
+  await settle(() => sent(socket).length >= 7);
+  const refused = sent(socket)[6];
   clientText(socket, JSON.stringify({ kind: "request", id: "r4",
     message: { target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-1", url: "https://client.invalid/" } }));
-  await settle(() => sent(socket).length >= 5);
-  const refusedWorker = sent(socket)[4];
+  await settle(() => sent(socket).length >= 8);
+  const refusedWorker = sent(socket)[7];
   check("the host accepts only forwardable linked requests, commits shared writes and keeps local-only actions home",
     written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
       && storage.raw.get("options")?.hoverEnabled === false
@@ -4467,6 +4485,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
+  const experimentalSettings = readFileSync(resolve(EXTENSION, "experimental-settings.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -4511,6 +4531,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
+    .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
@@ -4537,7 +4558,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -8209,6 +8230,35 @@ async function main() {
     JSON.stringify({ imported: largeMediaImport.ok, exact: exactNativeMedia.ok, over: overNativeMedia.ok,
       error: overNativeMedia.error, healthy: healthyMediaAfterError.ok, removed: largeMediaRemoved.ok }));
 
+  // Issue #260: a macOS-built archive stores media names decomposed (NFD)
+  // while the term bank spells them composed, and some converters
+  // percent-encode the path. The engine compares bytes, so the worker tries
+  // those equivalents before reporting the file missing.
+  const spellingTitle = "media-spelling-fixture";
+  const composed = "がぞう";
+  const spellingSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+  const spellingArchive = buildTitledZip(spellingTitle, { mediaEntries: [
+    [`media/${composed.normalize("NFD")}.svg`, spellingSvg],
+    [`media/${composed}.png`, makePng()],
+  ] });
+  const spellingImport = await request("hd_import", { blobUrl: createObjectURL(spellingArchive), fileName: "media-spelling.zip" });
+  const spellingMedia = await Promise.all([
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed}.svg` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${encodeURIComponent(composed)}.png` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed.normalize("NFD")}.png` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed}.gif` }),
+  ]);
+  const spellingRemoved = await request("hd_remove", { title: spellingTitle });
+  check("media paths resolve their decomposed and percent-encoded spellings of the same archive entry",
+    spellingImport.ok === true && spellingImport.report.mediaCount === 2
+      && spellingMedia[0].ok && spellingMedia[0].dataUrl === `data:image/svg+xml;base64,${spellingSvg.toString("base64")}`
+      && spellingMedia[1].ok && spellingMedia[1].dataUrl?.startsWith("data:image/png;base64,")
+      && spellingMedia[2].ok && spellingMedia[2].dataUrl === spellingMedia[1].dataUrl
+      && spellingMedia[3].ok && spellingMedia[3].dataUrl === null
+      && spellingRemoved.ok === true,
+    JSON.stringify({ imported: spellingImport.ok, count: spellingImport.report?.mediaCount,
+      replies: spellingMedia.map(reply => [reply.ok, reply.dataUrl?.slice(0, 30) ?? null]) }));
+
   let nativeMediaCalls = 0;
   observedEngine.ccall = (name, ...args) => {
     if (name === "hdw_media") nativeMediaCalls += 1;
@@ -11051,10 +11101,11 @@ async function designPreviewStage() {
       && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"] .gsm-hoshidicts-frequency-values')?.textContent === "120 · 240"
       && !query(".gsm-hoshidicts-frequency-source")
       && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
-      && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
+      && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
+      && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
       && !popup.textContent.includes("Sample pitch")
-      && query(".gsm-hoshidicts-tag-pitch")?.title.includes("Sample pitch");
+      && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -19024,6 +19075,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   let addNoteEntry = async () => {};
   const view = HDPopup.createPopupView({
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     document,
     getPopupColumns: () => 1,
@@ -19552,6 +19604,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
   const settle = () => new Promise(resolve => window.setTimeout(resolve, 0));
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     queueMasonry: callback => layouts.add(callback),
@@ -19666,6 +19719,7 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
   let positions = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
@@ -19779,6 +19833,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
   let fills = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
@@ -20015,6 +20070,7 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   let showCounts = false;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     // The owner decides visibility; the renderer only provides the slot.
@@ -20051,6 +20107,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
   const expanded = [];
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     onResultsExpanded: ({ audioButtons }) => {
@@ -20109,6 +20166,7 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
   let layouts = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     queueMasonry() { layouts += 1; },
@@ -20228,6 +20286,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   }
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) {
       fills += 1;
       linkPredicates.push(args[3].isCurrentLink);
@@ -20569,6 +20628,7 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
   let current = true;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
   });
@@ -20661,6 +20721,7 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
   const view = HDPopup.createPopupView({
     document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     positionPopup() { layouts += 1; },
@@ -21001,7 +21062,7 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     const container = link.querySelector(".gloss-image-container");
     gaijiRendered.push({
       name: fixtureCase.name,
-      width: Number.parseFloat(container.style.width),
+      inlineWidth: container.style.width,
       padding: Number.parseFloat(container.querySelector(".gloss-image-sizer").style.paddingTop),
       linkHook: link.classList.contains("gloss-sc-a"),
       imageHook: image.classList.contains("gloss-sc-img"),
@@ -21015,11 +21076,27 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       rendered.linkHook && rendered.imageHook
       && rendered.classData === "gaiji" && rendered.glyphData === "bs-arrow"
       && !rendered.unsafeData
-      && Math.abs(rendered.width - gaiji.cases[index].width) < 1e-12
+      // Every image decodes as 16x16 here, so a natural case writes 16px.
+      && rendered.inlineWidth === (gaiji.cases[index].inlineWidth ?? "16px")
       && Math.abs(rendered.padding - gaiji.cases[index].height / gaiji.cases[index].width * 100) < 0.001)
       && gaijiLayouts === gaiji.cases.length
       && gaijiPreviewRefreshes === gaiji.cases.length,
     JSON.stringify({ gaijiRendered, gaijiLayouts, gaijiPreviewRefreshes }));
+
+  // Converted Monokakido dictionaries key their data by Japanese words (付録,
+  // 外字) and select on the names Yomitan's dataset setter produces, so the
+  // renderer must derive the same names: `data-sc付録`, `data-sc-head`.
+  const dataParent = document.createElement("div");
+  HDGlossary.appendStructuredValue(document, dataParent, { tag: "span", content: "x",
+    data: { "付録": "", head: "", someKey: "camel", a_b: "underscore", ABC: "caps", "sc-x": "rejected", "unsafe key": "rejected", "1st": "digit" } },
+    { nodes: 0 }, 0);
+  const dataAttributes = Object.fromEntries([...dataParent.firstElementChild.attributes]
+    .filter(attribute => attribute.name.startsWith("data-sc")).map(attribute => [attribute.name, attribute.value]));
+  check("structured data keys become the attribute names Yomitan's dataset setter produces, including Japanese keys",
+    JSON.stringify(dataAttributes) === JSON.stringify({
+      "data-sc付録": "", "data-sc-head": "", "data-sc-some-key": "camel", "data-sc-a_b": "underscore",
+      "data-sc-a-b-c": "caps", "data-sc1st": "digit",
+    }), JSON.stringify(dataAttributes));
   gaijiParent.remove();
 
   const sizing = imageSizingFixture();
@@ -21192,6 +21269,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     parseTagList: HDGlossary.parseTagList,
     appendTextOnlyGlossary(...args) {
       fills += 1;

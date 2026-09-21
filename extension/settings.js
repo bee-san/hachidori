@@ -10,6 +10,7 @@ import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiTemplateSettingsController } from "./anki-settings.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
+import { createExperimentalSettings } from "./experimental-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
@@ -58,12 +59,13 @@ const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
 const SHARING_TARGET = "hachidori-sharing";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
-const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki", keybinds: "Keybinds" };
+const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki", keybinds: "Keybinds",
+  advanced: "Advanced" };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
-  DEFINITION_BLUR_FREQUENCY_ORDERS,
+  DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -173,6 +175,7 @@ let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController;
+let experimentalController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
@@ -249,12 +252,27 @@ function setSectionStatus(id, message, tone, completed = false) {
   syncNavigationStatus(id);
 }
 
+// Whether an experimental flag that is off hides `section`.
+function sectionGated(section) {
+  return EXPERIMENTAL_FEATURES.some(feature => feature.section === section && !options.experimental[feature.id]);
+}
+
+function requestedSection() {
+  const fragment = window.location.hash.slice(1);
+  return fragment === "settings-content" ? activeSection : fragment;
+}
+
+function resolveSection(requested) {
+  const sections = [...document.querySelectorAll("main > section")];
+  if (!sections.some((section) => section.id === requested)) return "dictionaries";
+  // A gated section leads to the switch that reveals it.
+  return sectionGated(requested) ? "advanced" : requested;
+}
+
 function showSettingsSection(focus = false) {
   settingsSearch?.clear();
-  const fragment = window.location.hash.slice(1);
-  const requested = fragment === "settings-content" ? activeSection : fragment;
   const sections = [...document.querySelectorAll("main > section")];
-  activeSection = sections.some((section) => section.id === requested) ? requested : "dictionaries";
+  activeSection = resolveSection(requestedSection());
   pendingManagementFocus = null;
   for (const section of sections) section.hidden = section.id !== activeSection;
   element("settings-section").value = activeSection;
@@ -300,7 +318,7 @@ function showSettingsSection(focus = false) {
     customButtonController.render();
   }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
-  if (fragment === "settings-content") element("settings-content").focus();
+  if (window.location.hash === "#settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
 
@@ -491,6 +509,35 @@ async function editMediaCapture(mutator, { immediate = false } = {}) {
   renderMediaSettings();
   writeOptions();
   return true;
+}
+
+async function toggleExperimental(id, enabled) {
+  // Media capture keeps its own switch and settings; only the recorder itself
+  // must not stay active behind a hidden section.
+  if (id === "mediaMining" && !enabled && HOST_CAPABILITIES.mediaCapture && options.mediaCapture.enabled
+      && !await editMediaCapture(capture => { capture.enabled = false; })) {
+    renderExperimentalSettings();
+    return;
+  }
+  options.experimental = { ...options.experimental, [id]: enabled };
+  renderExperimentalSettings();
+  writeOptions();
+}
+
+function renderExperimentalSettings() {
+  experimentalController ??= createExperimentalSettings({
+    document, features: EXPERIMENTAL_FEATURES, onToggle: (id, enabled) => { void toggleExperimental(id, enabled); },
+  });
+  experimentalController.render(options.experimental);
+  for (const feature of EXPERIMENTAL_FEATURES) {
+    if (!feature.section) continue;
+    const hidden = !options.experimental[feature.id];
+    document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
+    element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
+  }
+  // A flag that changed elsewhere can hide the visible section, or reveal the
+  // one this page was opened on before the stored options arrived.
+  if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
 }
 
 function updateBackupSettings() {
@@ -1639,6 +1686,7 @@ function renderOptions() {
   renderCompactSummaryControls();
   renderPopupImageSources();
   renderMetadataControls();
+  renderExperimentalSettings();
   updateDesignPreview();
   updateAudioSettings();
   updateMediaSettings();

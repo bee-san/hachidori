@@ -766,18 +766,24 @@ before the change event completes.
 
 Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-metadata defaults to one neutral `Freq:` pill with compact numbers and no
-dictionary names. Kana-derived values retain the visible Yomitan/Jiten `㋕`
+metadata defaults to compact numbers without dictionary names. The first
+result's frequency tags are the same Yomitan-like two-tone tags as every later
+entry's metadata row; a filled source segment appears only when names or
+averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`
 marker, while source and numeric detail remain available on hover and to screen
-readers. The pill sits inside the primary result, before its pronunciation
+readers. The tags sit inside the primary result, before its pronunciation
 metadata and definition cards, instead of occupying the popup-wide headword
 header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
 Contour and pitch badges remain on, and averages remain off. IPA transcriptions
-and definition tags remain visible independently. Pitch and IPA show pronunciation
-data without source-name labels; tooltips and accessibility labels retain source
+and definition tags remain visible independently. Every pitch badge draws its
+dictionary's accent as the same mora contour the header furigana uses, followed
+by the `[n]` position, so several pitch dictionaries compare at a glance; a
+position outside the reading's morae keeps the plain `reading [n]` text, and the
+text stays in every badge's tooltip and accessibility label. Pitch and IPA show
+pronunciation data without source-name labels; tooltips and accessibility labels retain source
 attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
 and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
@@ -1275,7 +1281,11 @@ handler checks it after loading and before native extraction, so queued media
 cannot accidentally read a replacement dictionary. Only an accepted current
 lookup/kanji response adopts the reader's generation; late media or styles
 cannot roll it backward. A restarted engine may legitimately report a lower
-generation number.
+generation number. The engine compares the term bank `path` with the archive
+entry name byte for byte; the handler retries a miss with the NFC and NFD
+spellings and the percent-decoded form of the path, because macOS-built
+archives store decomposed Japanese names and some converters percent-encode
+paths. Entry names in another byte encoding are not recoverable.
 
 Image-source selection is independent of the dictionary supplying the text.
 Automatic retains that dictionary's direct media path; an explicit dictionary or
@@ -1480,10 +1490,18 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes nine destinations. Library owns five local,
+The primary rail exposes ten destinations. Library owns five local,
 hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
-dictionary. Backup and restore remains a global destination. The compact picker
-keeps all thirteen task views available and groups those five Library choices.
+dictionary. Backup and restore remains a global destination. Advanced is the
+last destination and holds Experimental features: one switch per entry in the
+`EXPERIMENTAL_FEATURES` registry in `reader-options.js`, stored as booleans
+under `options.experimental` and saved through the same revisioned option
+writes. A feature that names a Settings section keeps that section, its rail
+link and its picker option hidden while the switch is off; a hash request for
+the hidden section resolves to Advanced and is re-resolved when the stored
+options arrive or change. The feature's own settings stay where they were, so
+turning a switch off preserves them. The compact picker
+keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
@@ -1576,8 +1594,10 @@ the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
 after expiry. Failed choices are forgotten so ordinary playback can fall back.
-The content controller retains the explicit selection for the later Anki path;
-this stage does not add Anki submission.
+An ordinary play that ends on a downloadable recording pins that recording the
+same way, so `{audio}` attaches the reading the user heard; browser speech is
+not pinned and keeps the ordinary source fallback. The content controller
+retains the selection for the Anki path.
 
 Optional autoplay is off by default and runs once for the first current result
 of a logical lookup/tab. Expansion, presentation echoes, Note refresh and Back
@@ -1998,7 +2018,15 @@ name.
 ## Generic media capture
 
 Media capture is default-off and starts only through an explicit **Start
-capture** action in `capture.html`. That page is a control surface;
+capture** action in `capture.html`. It is also the first experimental feature:
+`options.experimental.mediaMining` reveals the Media capture section in
+Settings. Runtime code keeps gating on `mediaCapture.enabled`; when the
+Settings switch turns media mining off it also turns `mediaCapture.enabled`
+off in the same save, so no recorder stays active behind a hidden section,
+and the overlay only toggles the flag because it cannot edit the browser's
+recorder settings. A stored options record without `experimental` inherits
+`mediaMining` from `mediaCapture.enabled`, so a profile that enabled capture
+before the flag existed keeps its section. That page is a control surface;
 `capture-host.js` owns the stream in the shared `offscreen.html` document.
 Closing or reopening controls leaves recording running. The service worker
 creates the offscreen document with `DOM_SCRAPING`, `AUDIO_PLAYBACK`, and

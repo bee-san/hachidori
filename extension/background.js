@@ -18,9 +18,10 @@ import {
   validAutomaticBackups,
 } from "./backup-automatic.js";
 import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
+import { API_REQUESTS, createApiHost } from "./api-host.js";
 import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
-  FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED,
+  API_CAPABILITY, FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
   browserName, forwardableRequest, mutatingForwardedRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
@@ -210,8 +211,23 @@ function getSharingHost() {
     sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
+    capabilities: [...SHARING_CAPABILITIES, API_CAPABILITY],
   });
   return sharingHost;
+}
+
+// The relay's API asks like a linked browser; its lookups and renders go
+// through the same engine and offscreen senders as Anki mining.
+let apiHost;
+function getApiHost() {
+  apiHost ??= createApiHost({
+    version: chrome.runtime.getManifest().version,
+    engine: fields => sendAnkiRequest(TARGET, fields),
+    render: fields => sendAnkiRequest("hachidori-anki-render", fields),
+    readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
+    readAudioSources: async () => (await readAnkiOptions()).audioSources.filter(source => source.enabled),
+  });
+  return apiHost;
 }
 
 // Client side: this install uses another Hachidori. `sharingLinked` is read
@@ -2557,13 +2573,15 @@ async function handleAnkiRequest(message, sender) {
   });
 }
 
+async function sendAnkiRequest(target, fields) {
+  const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
+  if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
+  return reply;
+}
+
 function getAnkiMining() {
   if (!ankiMining) {
-    const send = async (target, fields) => {
-      const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
-      if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
-      return reply;
-    };
+    const send = sendAnkiRequest;
     ankiGateway ??= createAnkiGateway();
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
@@ -2969,6 +2987,7 @@ async function dispatchSharedRequest(message, clientId, capabilities = []) {
   try {
     switch (message.target) {
       case TARGET:
+        if (API_REQUESTS.has(message.type)) return await getApiHost()(message);
         ordinary();
         return await relayEngineRequest(message);
       case WORKER_TARGET:

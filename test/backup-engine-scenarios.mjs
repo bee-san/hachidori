@@ -64,6 +64,53 @@ export async function backupEngineScenarios({
   const initial = await accepted("hd_backup_export");
   let initialSnapshot = await read();
 
+  // The relay's dictionary download: one dictionary as an archive the restore
+  // path itself accepts, read in chunks by offset while lookups stay possible.
+  {
+    const target = initialSnapshot.state.dictionaries.find(dictionary => dictionary.mediaCount > 0) ?? initialSnapshot.state.dictionaries[0];
+    const opened = await accepted("hd_api_dictionary_open", { id: target.id });
+    assert.match(opened.token, /^dl-\d+$/u);
+    assert.ok(Number.isSafeInteger(opened.size) && opened.size > 0, JSON.stringify(opened));
+    const chunk = 1024;
+    const parts = [];
+    let offset = 0, eof = false;
+    while (!eof) {
+      const part = await accepted("hd_api_dictionary_read", { token: opened.token, offset, length: chunk });
+      const bytes = Buffer.from(part.data, "base64");
+      assert.ok(bytes.length <= chunk);
+      parts.push(bytes);
+      offset += bytes.length;
+      eof = part.eof;
+      assert.ok(offset <= opened.size, "a read never runs past the archive");
+    }
+    assert.equal(offset, opened.size, "the chunks add up to the announced size");
+    const lookupDuringDownload = await accepted("hd_lookup", { text: "食べる" });
+    assert.ok(lookupDuringDownload.results.length > 0, "lookups keep working while a download is open");
+    const archive = new Blob(parts);
+    const parsed = await openBackupArchive(archive);
+    assert.deepEqual(parsed.snapshot.state.dictionaries.map(dictionary => dictionary.id), [target.id]);
+    assert.deepEqual(parsed.lookupStatsRows, []);
+    const fullExport = await openBackupArchive(await (await fetch(initial.blobUrl)).blob());
+    const ordinal = initialSnapshot.state.dictionaries.indexOf(target);
+    const expectedFiles = fullExport.files.filter(file => file.path.startsWith(`dictionaries/${ordinal}/`))
+      .map(file => [file.path.replace(`dictionaries/${ordinal}/`, "dictionaries/0/"), file.size]).sort();
+    assert.deepEqual(parsed.files.map(file => [file.path, file.size]).sort(), expectedFiles, "the download carries exactly that dictionary's generation files");
+    // The restore path stages it like any backup; discarding it leaves nothing behind.
+    const downloadUrl = URL.createObjectURL(archive);
+    const staged = await prepare(downloadUrl);
+    assert.deepEqual(staged.dictionaries.map(dictionary => dictionary.title), [target.title]);
+    await accepted("hd_backup_cancel", { token: staged.token });
+    URL.revokeObjectURL(downloadUrl);
+    await accepted("hd_api_dictionary_close", { token: opened.token });
+    const afterClose = await request("hd_api_dictionary_read", { token: opened.token, offset: 0, length: chunk });
+    assert.equal(afterClose.ok, false);
+    assert.match(afterClose.error, /unknown download token/u);
+    const missing = await request("hd_api_dictionary_open", { id: "no-such-dictionary" });
+    assert.equal(missing.ok, false);
+    assert.match(missing.error, /unknown dictionary/u);
+    assert.deepEqual(new Set(roots().map(root => `/dicts/${root}`)), snapshotRoots(await read()), "the staged download generation was discarded");
+  }
+
   assert.equal(typeof reconcileAutomatic, "function");
   await pageChrome.storage.local.set({ automaticBackups: { schemaVersion: 1, backups: [] } });
   await accepted("hd_reload");

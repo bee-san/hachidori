@@ -20,6 +20,7 @@ export async function checkCompactSummaryLayout(browser) {
       shadow.append(style, popup);
       const view = HDPopup.createPopupView({ document, window, popup,
         appendExpressionRuby: HDGlossary.appendExpressionRuby,
+        buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
         appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
         parseTagList: HDGlossary.parseTagList, positionPopup() {},
       });

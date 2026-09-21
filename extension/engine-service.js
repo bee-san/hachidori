@@ -81,7 +81,9 @@ const MEDIA_TYPES = {
 // Status and release do not touch the loaded dictionaries. Imports stage their
 // network body outside the engine queue, then explicitly serialize only the
 // revalidation and native installation phase.
-const UNQUEUED = new Set(["hd_status", "hd_backup_release", "hd_import"]);
+// Dictionary download reads serve an archive already built by its open, so
+// they need no turn in the queue either.
+const UNQUEUED = new Set(["hd_status", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -1672,6 +1674,29 @@ function rollbackImportedGeneration(generationRoot, failure) {
   return rollbackImportedGenerations([generationRoot], failure);
 }
 
+// The engine matches a term bank `path` to a ZIP entry name byte for byte.
+// Archives built on macOS store decomposed (NFD) Japanese names while the
+// term bank keeps the composed (NFC) form, and some converters percent-encode
+// the path; in both cases the same file is meant. Try the spelled path first,
+// then those equivalents. Names in another byte encoding cannot be recovered
+// here.
+function mediaPathCandidates(path) {
+  const candidates = [path];
+  let decoded = path;
+  if (path.includes("%")) {
+    try {
+      decoded = decodeURIComponent(path);
+      candidates.push(decoded);
+    } catch {
+      // Not percent-encoded; keep the raw path only.
+    }
+  }
+  for (const source of new Set([path, decoded])) {
+    candidates.push(source.normalize("NFC"), source.normalize("NFD"));
+  }
+  return [...new Set(candidates)];
+}
+
 function mediaType(path) {
   const dot = path.lastIndexOf(".");
   const extension = dot < 0 ? "" : path.slice(dot + 1).toLowerCase();
@@ -2322,6 +2347,8 @@ async function saveCustomDictionary(snapshot, source) {
 
 let preparedBackup = null;
 const backupUrls = new Set();
+const dictionaryDownloads = new Map();
+let dictionaryDownloadCounter = 0;
 
 async function readBackupStorage(raw = false) {
   const reply = await ask(raw ? "hd_backup_base_read" : "hd_backup_read");
@@ -2524,6 +2551,50 @@ const HANDLERS = {
     return {};
   },
 
+  // The relay's dictionary download: one dictionary as the backup archive the
+  // host's own restore accepts, built while this turn holds the queue so no
+  // cleanup can remove the generation under it, then served by offset.
+  async hd_api_dictionary_open(message) {
+    await ensureLoaded();
+    const [{ createBackupArchive, assertBackupPath }, { assertBackupSnapshot }, { emptyCustomDictionaryDocument }] = await Promise.all([
+      import("./backup-archive.js"), import("./backup-state.js"), import("./custom-dictionary.js"),
+    ]);
+    const { snapshot } = await readBackupStorage();
+    const dictionary = snapshot.state.dictionaries.find(entry => entry?.id === message.id);
+    if (!dictionary) throw new Error("unknown dictionary");
+    if (dictionaryRoot(dictionary) === null) throw new Error("Cannot export an invalid dictionary path.");
+    const single = {
+      ...snapshot,
+      state: { ...snapshot.state, dictionaries: [dictionary],
+        groups: globalThis.HDDictionaryGroups.normaliseDictionaryGroups(snapshot.state.groups, [dictionary]) },
+      document: dictionary.id === CUSTOM_DICTIONARY_ID ? snapshot.document : emptyCustomDictionaryDocument(),
+    };
+    await assertBackupSnapshot(single);
+    const files = [];
+    collectBackupFiles(dictionary.path, "dictionaries/0", assertBackupPath, files);
+    const archive = await createBackupArchive(single, files, []);
+    const token = `dl-${++dictionaryDownloadCounter}`;
+    dictionaryDownloads.set(token, archive);
+    return { token, size: archive.size };
+  },
+
+  async hd_api_dictionary_read(message) {
+    const archive = dictionaryDownloads.get(message.token);
+    if (!archive) throw new Error("unknown download token");
+    const offset = Number(message.offset), length = Number(message.length);
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0) {
+      throw new Error("a dictionary read needs a non-negative offset and length");
+    }
+    const end = Math.min(archive.size, offset + length);
+    const bytes = new Uint8Array(await archive.slice(offset, end).arrayBuffer());
+    return { data: encodeBase64(bytes), eof: end >= archive.size };
+  },
+
+  hd_api_dictionary_close(message) {
+    dictionaryDownloads.delete(message.token);
+    return {};
+  },
+
   async hd_backup_cancel(message) {
     if (preparedBackup?.token === message.token) await discardPreparedBackup();
     return {};
@@ -2702,8 +2773,12 @@ const HANDLERS = {
     if (dictionary === "" || path === "") {
       return { dataUrl: null };
     }
-    const length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, path]);
-    throwIfEngineFailed("hdw_media");
+    let length = 0;
+    for (const candidate of mediaPathCandidates(path)) {
+      length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, candidate]);
+      throwIfEngineFailed("hdw_media");
+      if (length > 0) break;
+    }
     if (length <= 0) {
       return { dataUrl: null };
     }

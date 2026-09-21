@@ -50,12 +50,15 @@ test("Anki setup offers a detected source explicitly and preserves existing sour
     editSources: value => { sources = value; edits.push(value); },
     detect: async () => { checks++; return sourceUrl; } });
   const el = id => dom.window.document.getElementById(id);
+  const pill = () => [el("anki-audio-pill").textContent, el("anki-audio-pill").dataset.state];
   controller.render();
   assert.equal(checks, 0);
+  assert.deepEqual(pill(), ["Not detected", "offline"]);
   el("anki-audio-check").click();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(edits.length, 0);
   assert.equal(el("anki-audio-add").hidden, false);
+  assert.deepEqual(pill(), ["Ready", "connected"]);
   el("anki-audio-add").click();
   assert.deepEqual(sources.slice(0, 1), original);
   assert.equal(sources[1].type, "custom-json");
@@ -68,9 +71,14 @@ test("Anki setup offers a detected source explicitly and preserves existing sour
   assert.equal(edits.length, 1);
   assert.equal(sources[1].enabled, false);
   assert.match(el("anki-audio-status").textContent, /disabled/u);
+  const added = sources[1];
   sources = original;
   controller.render();
   assert.match(el("anki-audio-status").textContent, /Found local audio/u);
+  sources = [...original, { ...added, enabled: true }];
+  controller.cancel();
+  controller.render();
+  assert.deepEqual(pill(), ["Ready", "connected"], "an enabled configured source is ready without a fresh check");
 });
 
 test("linked clients cannot detect or add a source on the wrong machine", async t => {
