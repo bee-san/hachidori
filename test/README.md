@@ -65,6 +65,12 @@ focused jsdom test with the locked tooling directly:
 HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
 ```
 
+`node --test test/anki-pitch.test.mjs test/anki-values.test.mjs test/anki-templates.test.mjs`
+checks pitch contours, kana, escaping, variants and existing text markers using
+the jsdom override above. The Chrome suite mines the fixture dictionary and
+renders both graph styles offline in light, dark and styled cards, including
+the hollow-particle regression for card CSS that colors mora dots by radius.
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 plus the toolbar toggle, revision conflicts and recording shortcut. Search uses

@@ -68,7 +68,7 @@ the service worker and both engine runtimes run the same code.
   content script can use it, and `lookup-stats.js`.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
-  `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
+  `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note
   fields and media. Stored Anki Templates group each destination, note type,
   field mapping and duplicate policy; the first powers the built-in action and
   custom Anki buttons select the others by stable ID. Settings edits every

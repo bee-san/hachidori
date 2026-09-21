@@ -287,6 +287,7 @@ const PLANNED = [
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
+  "Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
   "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
@@ -4528,6 +4529,53 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && JSON.stringify(markerTemplateAfter) === JSON.stringify(savedMarkerTemplate),
       JSON.stringify({ markerDictionary, markerPackageId: markerPackage.id, markerAdded,
         fields: markerNote, savedMarkerTemplate, markerTemplateAfter }));
+
+    await configure(false, { fieldTemplates: {
+      Front: { value: "{expression} pitch-graphs", overwriteMode: "overwrite" },
+      Back: { value: "{pitch-accent-graphs}", overwriteMode: "overwrite" },
+      Audio: { value: "{pitch-accent-graphs-jj}", overwriteMode: "overwrite" },
+    } });
+    const pitchRequest = await settings.evaluate(async () => {
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べる", maxResults: 4 });
+      if (!reply.ok || !reply.results.length) throw new Error(reply.error || "No pitch fixture result");
+      return { ...reply.results[0], generation: reply.generation, sentence: "食べる。", matched: "食べる", matchOffset: 0,
+        popupSelectionText: "", searchQuery: "食べる", documentTitle: "Pitch graphs", dictionaryAliases: {}, frequencyDictionaries: [] };
+    });
+    pitchRequest.configKey = (await operation("hd_anki_status")).configKey;
+    const pitchUploadsBefore = files.size;
+    const pitchAdded = await operation("hd_anki_submit", pitchRequest);
+    const pitchNote = notes.get(pitchAdded.noteId);
+    const card = await browser.newPage();
+    const themes = [];
+    try {
+      await card.setOfflineMode(true);
+      for (const [theme, color, background] of [["light", "rgb(30, 30, 30)", "white"],
+        ["dark", "rgb(235, 235, 235)", "#202124"], ["card-css", "rgb(255, 255, 255)", "#202124"]]) {
+        // Existing Anki cards can color Yomitan's filled mora dots by radius.
+        // The hollow JJ particle must remain distinct under the same rule.
+        const style = theme === "card-css" ? '<style>svg > circle[r="5"] { fill: #fff !important; }</style>' : "";
+        await card.setContent(`<html lang="ja">${style}<body style="font: 24px sans-serif; padding: 24px; color: ${color}; background: ${background}">`
+          + `<h2>食べる — ${theme}</h2><p>${pitchNote.Back}</p><p>${pitchNote.Audio}</p></body></html>`);
+        const state = await card.evaluate(() => {
+          const graphs = [...document.querySelectorAll("svg")];
+          return { count: graphs.length, labels: [...document.querySelectorAll("text")].map(node => node.textContent),
+            visible: graphs.every(svg => svg.getBoundingClientRect().width > 0 && svg.getBoundingClientRect().height > 0),
+            colors: graphs.map(svg => getComputedStyle(svg.querySelector("circle")).fill),
+            tails: graphs.map(svg => svg.querySelector(".pronunciation-graph-tail").dataset.pitch),
+            tailFills: graphs.map(svg => getComputedStyle(svg.querySelector(".pronunciation-graph-tail")).fill),
+            external: document.querySelectorAll("script, link, img, image, use").length };
+        });
+        themes.push({ theme, color, ...state });
+      }
+    } finally { await card.close(); }
+    check("Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
+      pitchAdded.state === "added" && pitchAdded.warnings.length === 0 && files.size === pitchUploadsBefore
+        && themes.every(state => state.count === 6 && state.visible && state.external === 0
+          && state.colors.every(fill => fill === state.color || fill === "none")
+          && state.tailFills.every(fill => fill === "none")
+          && state.labels.join("") === "たべるたべるたべる"
+          && state.tails.join(",") === "low,high,high,low,high,high"),
+      JSON.stringify({ pitchAdded, themes }));
 
     await configure(true);
     request.configKey = (await operation("hd_anki_status")).configKey;
