@@ -115,8 +115,11 @@ let started = false;
 let createHoshidicts = null;
 let storageBackend = "memory";
 // The single-thread runtime imports on one thread with small read-ahead; the
-// pthread runtimes (OPFS or IDBFS) use the bounded worker group.
+// pthread runtimes (OPFS or IDBFS) use the bounded worker group, unless the
+// low-memory worker asks for one thread too.
 let lowRam = true;
+// Whether this is a pthread runtime, as hd_status reports it.
+let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
 let reportProgress = null;
 // Download progress is a transient UI signal; one report per chunk would flood
@@ -131,6 +134,7 @@ export function configureEngineService(request, options = {}) {
   createHoshidicts = options.createHoshidicts;
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
+  threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
 }
 
@@ -3145,7 +3149,7 @@ const HANDLERS = {
       failedDictionaries: loadFailures,
       generation,
       storageBackend,
-      threaded: !lowRam,
+      threaded,
     };
   },
 
