@@ -115,7 +115,7 @@ test("recording shortcut enables existing controls without starting or duplicati
   assert.equal(ui.closed, 1);
 
   const active = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording");
-  assert.equal(active.nodes.get("record-label").textContent, "Recording");
+  assert.equal(active.nodes.get("record-label").textContent, "Recording context");
   await active.click("record-screen");
   assert.deepEqual(active.requests.map(request => request.type), ["hd_capture_status", "hd_capture_open"]);
 });
@@ -123,7 +123,7 @@ test("recording shortcut enables existing controls without starting or duplicati
 test("overlay toolbar keeps recording visibly disabled without waking capture", async () => {
   const ui = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording", { mediaCapture: false });
   assert.equal(ui.nodes.get("record-screen").disabled, true);
-  assert.equal(ui.nodes.get("record-label").textContent, "Recording unavailable");
+  assert.equal(ui.nodes.get("record-label").textContent, "Context capture unavailable");
   assert.match(ui.nodes.get("record-screen").title, /unavailable in this overlay/u);
   assert.deepEqual(ui.requests, []);
   await ui.click("record-screen");

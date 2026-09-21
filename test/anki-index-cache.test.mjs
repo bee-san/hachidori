@@ -126,6 +126,19 @@ test("warm hits return sorted note IDs without Anki, while an absent word is nev
   const f = fixture();
   await f.service.reconcile();
   const forbidden = f.invoke(() => { throw new Error("warm hit queried Anki"); });
+  assert.deepEqual(await f.service.peek(f.options.anki, "猫"), {
+    wordKey: "猫",
+    mature: true,
+    noteIds: [7, 9],
+    cached: true,
+  });
+  assert.deepEqual(await f.service.peek(f.options.anki, "犬"), {
+    wordKey: "犬",
+    mature: false,
+    noteIds: [],
+    cached: false,
+  });
+  assert.equal(f.lookups.length, 0, "cache-only misses must remain unknown without querying Anki");
   assert.deepEqual(await f.service.lookup(f.options.anki, "猫", forbidden), {
     wordKey: "猫",
     mature: true,

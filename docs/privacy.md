@@ -20,10 +20,11 @@ first/last lookup times. Turning off lookup counts in Reading settings pauses
 new recording and keeps your existing history. Statistics do not contain a list
 of visited page URLs.
 
-Settings can contain custom service URLs, CSS, Anki field templates and an
-optional AnkiConnect API key. Hachidori does not add application-level encryption
-to browser profile storage. The AnkiConnect key is used only for requests to the
-AnkiConnect server you configure.
+Settings can contain custom-button URLs, CSS, Anki Templates and an optional
+AnkiConnect API key. Each Template includes its deck, note type, tags, field
+mapping, duplicate policy and screenshot choice. Hachidori does not add
+application-level encryption to browser profile storage. The AnkiConnect key is
+used only for requests to the AnkiConnect server you configure.
 
 ## Downloads and optional connections
 
@@ -76,17 +77,25 @@ requests do not supply the mapping, endpoint or key used for those checks.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
 metadata. Hachidori refreshes a local duplicate index every 30 minutes for the
-scope selected in Anki settings. Each compact row stores a word, whether any
+scope selected by the first Anki Template, which powers the built-in mining
+button. Each compact row stores a word, whether any
 matching note is mature, and matching note IDs; it does not store note fields,
 note-type names, deck names or card data. A missing word triggers a scoped
 Anki lookup during mining and a found result repairs the local index. Mature-card
-definition blur reads only that index. These reads and checks do not create
-notes. Frequency definition blur uses only native numeric values already
+definition blur reads only that index. In Prevent mode, popup readiness also
+checks this local index first: a warm positive shows View in Anki without
+contacting Anki, while an unknown miss continues to the ordinary live mining
+check. Clicking View validates the matching IDs live before opening Anki and
+repairs or removes the compact row. These reads and checks do not create notes.
+Frequency definition blur uses only native numeric values already
 returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
-host owns duplicate and maturity checks. Explicit mining sends the content
-selected by your field mappings, such as a word, definition, sentence, page
-title, image or audio, and creates or updates a note according to your settings.
+host owns View readiness, duplicate and maturity checks. Explicit mining sends
+the content selected by the chosen Template's field mappings, such as a word,
+definition, sentence, page title, image or audio, and creates or updates a note
+according to that Template. Link-type Custom buttons open their configured
+HTTP(S) destination with the selected word, reading or sentence substituted
+when requested.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
 **Texthookers.** Optional media-capture texthookers receive text and timing from
@@ -161,6 +170,16 @@ Data saved in the extension remains until you remove it, replace it by restoring
 a backup, or uninstall the extension. Settings lets you remove dictionaries
 and edit personal entries. Uninstalling removes the extension's browser-profile
 storage.
+
+Hachidori keeps the newest two automatic daily snapshots in this device's
+browser profile. They use the same saved-state payload as an exported backup,
+including personal entries, lookup statistics, custom URLs, settings and a
+configured AnkiConnect API key. Hachidori does not upload them. Clearing a value
+from current settings does not erase it from an older snapshot; it remains
+until later successful snapshots replace that record or the extension is
+uninstalled. A linked browser pauses local snapshot creation and keeps its
+existing local snapshots until it is unlinked and local backup scheduling
+resumes.
 
 An exported backup is an **unencrypted file** containing dictionaries, personal
 entries, settings and lookup statistics. It can include custom URLs and your

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { argumentsFrom, median, percentile, summary } from "./anki-duplicate-index.mjs";
+import { actionCounts, argumentsFrom, median, percentile, summary } from "./anki-duplicate-index.mjs";
 
 test("duplicate-index benchmark statistics use measured samples and nearest-rank p95", () => {
   assert.equal(median([4, 1, 3, 2]), 2.5);
@@ -14,6 +14,10 @@ test("duplicate-index benchmark statistics use measured samples and nearest-rank
     requestCount: 8,
     requestsPerRun: 2,
   });
+  assert.deepEqual(actionCounts(["findNotes", "notesInfo", "findNotes"]), {
+    findNotes: 2,
+    notesInfo: 1,
+  });
 });
 
 test("duplicate-index benchmark requires an explicit isolated profile and refuses the live port", () => {
@@ -22,10 +26,12 @@ test("duplicate-index benchmark requires an explicit isolated profile and refuse
     "--expected-media-dir", "/tmp/fixture/collection.media",
     "--runs", "20",
     "--warmups", "4",
+    "--anki-version", "26.09.2",
   ]);
   assert.equal(options.endpoint, "http://127.0.0.1:18765/");
   assert.equal(options.runs, 20);
   assert.equal(options.warmups, 4);
+  assert.equal(options.ankiVersion, "26.09.2");
   assert.throws(() => argumentsFrom([
     "--endpoint", "http://127.0.0.1:8765",
     "--expected-media-dir", "/tmp/fixture/collection.media",

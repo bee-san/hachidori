@@ -465,8 +465,28 @@ where sandboxed Chrome cannot start; do not use it for untrusted archives.
 ## Anki duplicate index
 
 The focused [duplicate-index benchmark](../docs/anki-duplicate-index-benchmark.md)
-alternates two equivalent production lookup paths for the same known duplicate:
-a normal scoped Anki lookup returning exact note IDs and a warm local-index hit
-returning those IDs. Setup, refresh, cold-cache and cache-miss work is excluded.
-The driver refuses AnkiConnect's standard port and verifies the isolated
-profile's media directory before measuring.
+alternates two equivalent service-level View-readiness outcomes for the same
+known duplicate: an eligible cache miss followed by status plus live preflight
+repair, and a warm canonical-index positive returning the same exact IDs with
+zero Anki requests. Setup, complete refreshes, browser messaging and DOM work
+are excluded. The JSON includes every raw sample, action counts and environment
+details. The driver refuses AnkiConnect's standard port and verifies the
+isolated profile's media directory before measuring.
+
+## Electron (classic FS + IDBFS)
+
+`benchmark/electron.mjs` drives the extension inside a minimal Electron host
+(`benchmark/electron-host/`), which is the GameSentenceMiner shape: shared
+memory and cross-origin isolation, but no OPFS sync access handles, so the
+engine runs on the classic Emscripten FS with IDBFS persistence. It imports the
+given archives through the real settings page, times lookups from the page, then
+relaunches on the same profile and times restart-to-ready.
+
+```sh
+HDW_ELECTRON=/path/to/electron node benchmark/electron.mjs extension a.zip b.zip
+```
+
+Needs `xvfb-run` and puppeteer-core (`HDW_PUPPETEER` if it is not under
+`~/.cache/hachidori-e2e`). The host is shut down through a quit file rather
+than a signal: an abruptly killed Electron cannot re-register the extension's
+service worker on the next launch with the same profile.

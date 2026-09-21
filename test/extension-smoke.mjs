@@ -16,7 +16,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
@@ -24,15 +24,18 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { buildAnkiFields } from "../extension/anki-values.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
 import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
+import { detectLocalAudioSource as realDetectLocalAudioSource } from "../extension/local-audio-setup.js";
 import { lookupAnkiIndex } from "../extension/anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
 import { lookupStatsKey } from "../extension/lookup-stats.js";
+import { dictionaryImportTarget } from "../extension/dictionary-import.js";
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
@@ -46,6 +49,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
   frequencyRankingFixture,
+  gaijiSizingFixture,
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
@@ -364,6 +368,7 @@ function makeStorage() {
   const gets = [];
   const sets = [];
   let pendingSetFailure = null;
+  let pendingSetReplyFailure = null;
   let sortDictionaryKeysOnRead = false;
 
   function withSortedDictionaryKeys(value) {
@@ -438,6 +443,11 @@ function makeStorage() {
             setTimeout(callback, 0);
             return undefined;
           }
+          if (pendingSetReplyFailure !== null) {
+            const failure = pendingSetReplyFailure;
+            pendingSetReplyFailure = null;
+            return Promise.reject(failure);
+          }
           return Promise.resolve();
         },
         remove(keys, callback) {
@@ -482,6 +492,9 @@ function makeStorage() {
     failNextSet(message) {
       pendingSetFailure = new Error(message);
     },
+    loseNextSetReply(message) {
+      pendingSetReplyFailure = new Error(message);
+    },
     sortDictionaryKeysOnRead(value) {
       sortDictionaryKeysOnRead = value;
     },
@@ -507,12 +520,18 @@ function makeEvent() {
 function makeAlarms() {
   const values = new Map();
   const onAlarm = makeEvent();
+  let pendingCreateFailure = null;
   return {
     api: {
       async clear(name) {
         return values.delete(name);
       },
-      create(name, info) {
+      async create(name, info) {
+        if (pendingCreateFailure !== null) {
+          const failure = pendingCreateFailure;
+          pendingCreateFailure = null;
+          throw failure;
+        }
         values.set(name, { name, ...structuredClone(info), scheduledTime: info.when ?? Date.now() + info.periodInMinutes * 60_000 });
       },
       async get(name) {
@@ -523,6 +542,9 @@ function makeAlarms() {
     fire(name) {
       const alarm = values.get(name);
       if (alarm) onAlarm.fire(structuredClone(alarm));
+    },
+    failNextCreate(message) {
+      pendingCreateFailure = new Error(message);
     },
     values,
   };
@@ -759,6 +781,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const automaticBackups = readFileSync(resolve(EXTENSION, "backup-automatic.js"), "utf8")
+    .replace(/^import .* from "\.\/(?:lookup-stats|backup-state)\.js";\s*/gmu, "")
+    .replace(/^export\s+/gmu, "");
   const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
     .replace(/import \{ BROWSER_KIND, IS_FIREFOX \} from "\.\/browser-api\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "")
@@ -768,6 +793,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const sharingProtocol = readFileSync(resolve(EXTENSION, "sharing-protocol.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -784,10 +811,12 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
     .replace(/import \{ waitForFirefoxOffscreen \} from "\.\/firefox-host\.js";\s*/u, "")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
-    .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
-    .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
+    .replace(/import \{ detectAnkiSetup, verifyAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
+    .replace(/import \{ detectLocalAudioSource \} from "\.\/local-audio-setup\.js";\s*/u, "")
+    .replace(/import \{ createLocalAudioSource, findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
     .replace(/^import .* from "\.\/anki-index(?:-cache)?\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
@@ -818,6 +847,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     lookupAnkiIndex,
+    detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
@@ -825,7 +855,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `const BROWSER_KIND = "chrome";\nconst IS_FIREFOX = false;\nasync function waitForFirefoxOffscreen() {}\n`
       + `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n`
       + background,
     context,
@@ -884,16 +914,21 @@ async function hostedExtensionBackgroundStage() {
 async function lookupStatsStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("lookup-stats-worker", bus, storage);
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  const backgroundContext = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  await runInContext("initialiseAutomaticBackupAlarm()", backgroundContext);
+  const getsBeforeLookups = storage.gets.length;
+  const setsBeforeLookups = storage.sets.length;
   const send = (type, fields = {}) => bus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
   const fields = { term: "  は\u3099 ", reading: " は\u3099 " };
   const replies = await Promise.all(Array.from({ length: 25 }, () => send("hd_lookup_stats_record", fields)));
   const current = await send("hd_lookup_stats_read", fields);
+  const lookupGets = storage.gets.slice(getsBeforeLookups);
+  const lookupWrites = storage.sets.slice(setsBeforeLookups);
   check("concurrent lookups increment one canonical row without scanning or rewriting the statistics collection",
     replies.every(reply => reply.ok) && current.statistics?.lookupCount === 25 && current.statistics.term === "ば"
       && current.statistics.reading === "ば" && !("seenCount" in current.statistics)
-      && storage.gets.every(query => query !== null) && storage.sets.length === 25
-      && storage.sets.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
+      && lookupGets.every(query => query !== null) && lookupWrites.length === 25
+      && lookupWrites.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
 
   const restartBus = makeBus();
   const restartChrome = makeChrome("lookup-stats-restarted", restartBus, storage);
@@ -941,6 +976,199 @@ async function lookupStatsStage() {
 
 }
 
+async function automaticBackupBackgroundStage() {
+  let now = Date.parse("2026-09-18T12:00:00.000Z");
+  const day = 24 * 60 * 60_000;
+  class BackupDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("automatic-backup-worker", bus, storage, alarms);
+  const semanticRevision = await customDictionarySemanticRevision([]);
+  await chrome.storage.local.set({
+    dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] },
+    options: { revision: 1 },
+    customDictionarySource: { schemaVersion: 1, revision: 1, semanticRevision, text: "" },
+    dictionaryUpdates: { revision: 1, schedule: "off", lastCheckedAt: null },
+    lookupStats: { generation: null, revision: 0 },
+  });
+  const cleanups = [];
+  bus.addListener("automatic-backup-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    cleanups.push(structuredClone(message));
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
+    return true;
+  });
+  const context = loadBackgroundScript({
+    chrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  const reconcile = () => runInContext("reconcileAutomaticBackups()", context);
+  await runInContext("initialiseAutomaticBackupAlarm()", context);
+  const firstStore = structuredClone(storage.raw.get("automaticBackups"));
+  const firstWrites = storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("an absent automatic-backup store is created as v1 on worker initialization",
+    firstStore.schemaVersion === 1
+      && firstStore.backups.length === 1
+      && Date.parse(firstStore.backups[0].createdAt) === now
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ committedAt: firstStore.backups[0].createdAt,
+      alarm: await alarms.api.get("hachidori-automatic-backup") }));
+
+  now += day;
+  const queuedAt = now;
+  let releaseQueue;
+  context.automaticBackupQueueGate = new Promise(resolve => { releaseQueue = resolve; });
+  const blocker = runInContext("serialiseStorage(() => automaticBackupQueueGate)", context);
+  const delayed = Promise.all([reconcile(), reconcile(), reconcile()]);
+  now += 3 * 60 * 60_000;
+  releaseQueue();
+  await blocker;
+  await delayed;
+  const secondStore = structuredClone(storage.raw.get("automaticBackups"));
+  const automaticWrites = storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("automatic backups timestamp serialized creation after queue delay and retain only the newest two payloads",
+    firstStore.backups.length === 1
+      && firstWrites === 1
+      && secondStore.backups.length === 2
+      && automaticWrites === 2
+      && cleanups.length === 2
+      && Date.parse(secondStore.backups[0].createdAt) === now
+      && Date.parse(secondStore.backups[0].createdAt) !== queuedAt
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ queuedAt, firstStore, secondStore, automaticWrites, cleanups: cleanups.length,
+      metadataBytes: Buffer.byteLength(JSON.stringify(secondStore)) }));
+
+  now += day;
+  const futureStore = { schemaVersion: 2, backups: structuredClone(secondStore.backups) };
+  const writesBeforeFuture = storage.sets.filter(keys =>
+    keys.length === 1 && keys[0] === "automaticBackups").length;
+  const cleanupsBeforeFuture = cleanups.length;
+  storage.raw.set("automaticBackups", structuredClone(futureStore));
+  let futureFailure = null;
+  try { await reconcile(); } catch (error) { futureFailure = error; }
+  const futureAfterFailure = structuredClone(storage.raw.get("automaticBackups"));
+  const writesAfterFuture = storage.sets.filter(keys =>
+    keys.length === 1 && keys[0] === "automaticBackups").length;
+  check("an unsupported future automatic-backup schema fails closed without overwrite or generation cleanup",
+    /unsupported schema/u.test(futureFailure?.message ?? "")
+      && JSON.stringify(futureAfterFailure) === JSON.stringify(futureStore)
+      && writesAfterFuture === writesBeforeFuture
+      && cleanups.length === cleanupsBeforeFuture,
+    JSON.stringify({ futureFailure: futureFailure?.message, futureAfterFailure,
+      writesBeforeFuture, writesAfterFuture, cleanupsBeforeFuture, cleanupsAfterFuture: cleanups.length }));
+  storage.raw.set("automaticBackups", structuredClone(secondStore));
+
+  const beforeRefusal = structuredClone(secondStore);
+  const cleanupsBeforeRefusal = cleanups.length;
+  storage.failNextSet("injected automatic metadata failure");
+  let refusal = null;
+  try { await reconcile(); } catch (error) { refusal = error; }
+  check("a refused automatic-backup metadata write retains the authoritative index and skips generation cleanup",
+    /injected automatic metadata failure/u.test(refusal?.message ?? "")
+      && JSON.stringify(storage.raw.get("automaticBackups")) === JSON.stringify(beforeRefusal)
+      && cleanups.length === cleanupsBeforeRefusal,
+    JSON.stringify({ refusal: refusal?.message, store: storage.raw.get("automaticBackups"), cleanups: cleanups.length }));
+
+  storage.loseNextSetReply("lost automatic metadata reply");
+  await reconcile();
+  const recovered = structuredClone(storage.raw.get("automaticBackups"));
+  check("a lost automatic-backup metadata reply is recovered by exact readback without a duplicate snapshot",
+    recovered.backups.length === 2
+      && Date.parse(recovered.backups[0].createdAt) === now
+      && new Set(recovered.backups.map(record => record.id)).size === 2
+      && storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length === 3
+      && cleanups.length === cleanupsBeforeRefusal + 1,
+    JSON.stringify({ recovered, writes: storage.sets, cleanups: cleanups.length }));
+
+  await alarms.api.clear("hachidori-automatic-backup");
+  await runInContext("automaticBackupNextAt = null", context);
+  alarms.failNextCreate("injected automatic alarm failure");
+  let alarmFailure = null;
+  try { await runInContext(`scheduleAutomaticBackup(${now + day})`, context); }
+  catch (error) { alarmFailure = error; }
+  const nextAtAfterFailure = runInContext("automaticBackupNextAt", context);
+  await runInContext(`scheduleAutomaticBackup(${now + day})`, context);
+  check("a rejected automatic-backup alarm creation leaves scheduling retryable until a later create succeeds",
+    /injected automatic alarm failure/u.test(alarmFailure?.message ?? "")
+      && nextAtAfterFailure === null
+      && runInContext("automaticBackupNextAt", context) === now + day
+      && (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ alarmFailure: alarmFailure?.message, nextAtAfterFailure,
+      retryAlarm: await alarms.api.get("hachidori-automatic-backup") }));
+
+  const corrupt = structuredClone(recovered);
+  corrupt.backups[0].snapshot.state.schemaVersion = 99;
+  await chrome.storage.local.set({ automaticBackups: corrupt });
+  const settingsChrome = makeChrome("automatic-backup-settings", bus, storage, alarms);
+  const listed = await settingsChrome.runtime.sendMessage({
+    target: "hoshidicts-worker", type: "hd_backup_auto_list",
+  });
+  const roots = await bus.sendMessage("automatic-backup-engine-host", {
+    target: "hoshidicts-worker", type: "hd_backup_auto_roots",
+  }, { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
+  check("a corrupt newest automatic backup leaves the valid older snapshot visible and blocks unsafe cleanup",
+    listed?.ok === true && listed.corruptCount === 1 && listed.backups.length === 1
+      && listed.backups[0].id === corrupt.backups[1].id
+      && roots?.ok === true && roots.complete === false && roots.dictionaries.length === 0,
+    JSON.stringify({ listed, roots }));
+
+  await alarms.api.clear("hachidori-automatic-backup");
+  const writesBeforeRestart = storage.sets.length;
+  const restartedBus = makeBus();
+  const restartedChrome = makeChrome("automatic-backup-restarted", restartedBus, storage, alarms);
+  const restarted = loadBackgroundScript({
+    chrome: restartedChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", restarted);
+  check("worker restart recreates the automatic-backup alarm from retained metadata without another write",
+    (await alarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day
+      && storage.sets.length === writesBeforeRestart,
+    JSON.stringify({ alarm: await alarms.api.get("hachidori-automatic-backup"),
+      writesBeforeRestart, writesAfterRestart: storage.sets.length }));
+
+  const noStoreStorage = makeStorage();
+  const noStoreAlarms = makeAlarms();
+  const notReadyBus = makeBus();
+  const notReadyChrome = makeChrome("automatic-backup-not-ready", notReadyBus, noStoreStorage, noStoreAlarms);
+  const notReady = loadBackgroundScript({
+    chrome: notReadyChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", notReady);
+  const waitedWithoutStore = !noStoreStorage.raw.has("automaticBackups")
+    && runInContext("automaticBackupWaitingForState", notReady) === true;
+  noStoreStorage.raw.set("dictionaryState",
+    { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] });
+  noStoreStorage.raw.set("options", { revision: 1 });
+  noStoreStorage.raw.set("customDictionarySource",
+    { schemaVersion: 1, revision: 1, semanticRevision, text: "" });
+  noStoreStorage.raw.set("dictionaryUpdates",
+    { revision: 1, schedule: "off", lastCheckedAt: null });
+  noStoreStorage.raw.set("lookupStats", { generation: null, revision: 0 });
+
+  const noStoreRestartBus = makeBus();
+  noStoreRestartBus.addListener("automatic-backup-no-store-engine", (message, _sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
+    return true;
+  });
+  const noStoreRestartChrome = makeChrome(
+    "automatic-backup-no-store-restarted", noStoreRestartBus, noStoreStorage, noStoreAlarms,
+  );
+  const noStoreRestart = loadBackgroundScript({
+    chrome: noStoreRestartChrome, console, setTimeout, clearTimeout, Promise, Error, Date: BackupDate,
+  });
+  await runInContext("initialiseAutomaticBackupAlarm()", noStoreRestart);
+  const restartedStore = structuredClone(noStoreStorage.raw.get("automaticBackups"));
+  check("worker restart retries an initial snapshot when the previous no-store attempt was not ready",
+    waitedWithoutStore
+      && restartedStore.schemaVersion === 1
+      && restartedStore.backups.length === 1
+      && (await noStoreAlarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
+    JSON.stringify({ waitedWithoutStore, restartedStore,
+      alarm: await noStoreAlarms.api.get("hachidori-automatic-backup") }));
+}
+
 async function managedScheduleStage() {
   let now = Date.parse("2026-09-07T12:00:00Z");
   const hour = 3_600_000;
@@ -976,10 +1204,11 @@ async function managedScheduleStage() {
   const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
   await cycle();
   let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  const managedAlarms = [...alarms.values.values()].filter(alarm => alarm.name === name);
   check("per-dictionary schedules check only due managed packages including disabled overrides",
     JSON.stringify(fetched) === JSON.stringify(["https://example.com/hourly.json"])
       && saved.dictionaries[0].enabled === false && saved.dictionaries[0].lastUpdateCheck.checkedAt === new Date(now).toISOString()
-      && (await alarms.api.get(name))?.scheduledTime === now + hour && alarms.values.size === 1,
+      && (await alarms.api.get(name))?.scheduledTime === now + hour && managedAlarms.length === 1,
     JSON.stringify({ fetched, saved, alarms: [...alarms.values.values()] }));
   const writes = storage.sets.length;
   await cycle();
@@ -1071,7 +1300,20 @@ async function externalLinksBackgroundStage() {
   const accepted = await send({ url: " HTTPS://EXAMPLE.COM:443/日本?q=1#term ", active: false, windowId: 99, openerTabId: 11 });
   const local = await send({ url: "http://127.0.0.1:9876/reference" });
   const rejected = [];
-  for (const url of ["javascript:alert(1)", "file:///tmp/a", "chrome://settings", "/relative", "https://", "https://user:pass@example.test/", "https://exam\nple.test/", { href: "https://example.test/" }]) {
+  for (const url of [
+    "javascript:alert(1)",
+    "file:///tmp/a",
+    "chrome://settings",
+    "/relative",
+    "https:example.test/",
+    "https:/example.test/",
+    "https://",
+    "https://user:pass@example.test/",
+    "\nhttps://example.test/",
+    "https://example.test/\r",
+    "https://exam\nple.test/",
+    { href: "https://example.test/" },
+  ]) {
     rejected.push(await send({ url }));
   }
   rejected.push(await send({ url: "https://example.test/", active: "yes" }));
@@ -1144,9 +1386,14 @@ async function overlayModeBackgroundStage() {
   await settle(() => storage.raw.has("options"));
   await settle();
   const seeded = storage.raw.get("options");
+  const overlayAnki = globalThis.HDReaderOptions.normaliseOptions({ anki: {
+    ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki,
+    captureScreenshot: false,
+  } }).anki;
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
-      lookupMode: "hover", anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
+      lookupMode: "hover", popupTheme: "auto",
+      anki: overlayAnki,
       sourceHighlightEnabled: false,
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
@@ -1186,7 +1433,10 @@ async function overlayModeBackgroundStage() {
     revision: storage.raw.get("options").revision + 1,
   } });
   await settle();
-  const unsupportedGuarded = unavailable.every(reply => reply?.ok === false && reply.error.includes("unavailable in this overlay"))
+  const unsupportedGuarded = unavailable[0]?.ok === false
+    && unavailable[0].error.includes("unavailable in this overlay")
+    && unavailable[1]?.ok === false
+    && unavailable[1].error.includes("only from lookup popups")
     && offscreenState.created === captureHostStarts && tabs.length === 0;
 
   // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
@@ -1229,6 +1479,10 @@ async function sharingHostStage() {
   };
   const hostAnkiService = {
     status() { hostAnkiCalls.push(["status"]); return { available: true, configKey: "host-config" }; },
+    view(request) {
+      hostAnkiCalls.push(["view", structuredClone(request)]);
+      return { state: "duplicate", canAdd: false, noteIds: [70, 71], configKey: "host-config", cached: true };
+    },
     preflightClient(request) {
       hostAnkiCalls.push(["preflightClient", structuredClone(request)]);
       return { state: "addable", canAdd: true, clientSpeech: {
@@ -1242,7 +1496,10 @@ async function sharingHostStage() {
       hostAnkiCalls.push(["submitClient", structuredClone(request), structuredClone(clientMedia)]);
       return { state: "added", noteId: 71, warnings: [] };
     },
-    browse(request) { hostAnkiCalls.push(["browse", structuredClone(request)]); return { opened: true }; },
+    browse(request) {
+      hostAnkiCalls.push(["browse", structuredClone(request)]);
+      return { opened: true, noteIds: [71], repaired: true };
+    },
     maturity(request) { hostAnkiCalls.push(["maturity", structuredClone(request)]); return { mature: true }; },
     screenshot() { hostAnkiCalls.push(["screenshot"]); return { token: "wrong-host" }; },
   };
@@ -1306,7 +1563,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
     JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
@@ -1315,8 +1572,9 @@ async function sharingHostStage() {
     message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }));
   await settle(() => sent(socket).length >= 2);
   const lookup = sent(socket)[1];
+  const lookupRelays = relayed.filter(message => message.type === "hd_lookup");
   check("a forwarded lookup reaches the engine once and returns its exact reply",
-    relayed.length === 1 && relayed[0].type === "hd_lookup" && relayed[0].text === "猫" && relayed[0].requestId === "lookup-9"
+    lookupRelays.length === 1 && lookupRelays[0].text === "猫" && lookupRelays[0].requestId === "lookup-9"
       && lookup?.kind === "reply" && lookup.id === "r1" && lookup.response?.type === "hd_lookup_result"
       && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
     JSON.stringify({ relayed, lookup }));
@@ -1347,18 +1605,153 @@ async function sharingHostStage() {
       && /unsupported shared request/u.test(refusedWorker.response.error),
     JSON.stringify({ written, broadcasts: broadcasts(socket), refused, refusedWorker }));
 
+  const readerOptions = globalThis.HDReaderOptions;
+  const exactWordMapping = " \tword {expression}{expression} {unknown}\n literal  ";
+  const exactSentenceMapping = "\n{sentence} + literal\t{sentence}\n";
+  const richAnki = readerOptions.normaliseAnki({
+    url: "https://host.example/original",
+    apiKey: "host-key",
+    templates: [
+      {
+        ...readerOptions.DEFAULT_ANKI_TEMPLATE,
+        id: "word-template",
+        name: "Word card",
+        deck: "Words",
+        model: "Basic",
+        fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, expression: "Front" },
+        fieldTemplates: {
+          Front: { value: exactWordMapping, overwriteMode: "coalesce" },
+        },
+      },
+      {
+        ...readerOptions.DEFAULT_ANKI_TEMPLATE,
+        id: "sentence-template",
+        name: "Sentence card",
+        deck: "Sentences",
+        model: "Sentence",
+        fields: { ...readerOptions.DEFAULT_ANKI_TEMPLATE.fields, sentence: "Front" },
+        fieldTemplates: {
+          Front: { value: exactSentenceMapping, overwriteMode: "prepend" },
+        },
+      },
+    ],
+  });
+  const richOptions = readerOptions.normaliseOptions({
+    ...storage.raw.get("options"),
+    anki: richAnki,
+    customButtons: [
+      { id: "host-link-a", type: "link", label: "A", url: "https://a.example/%w" },
+      { id: "host-sentence", type: "anki", label: "Sentence", templateId: "sentence-template" },
+      { id: "host-link-b", type: "link", label: "B", url: "https://b.example/%w" },
+    ],
+  });
+  richOptions.revision = storage.raw.get("options").revision + 1;
+  await storage.api().local.set({ options: richOptions });
+
+  let beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-links", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-links-write",
+    baseRevision: richOptions.revision,
+    options: { customLinks: [
+      { label: "B", url: "https://b.example/%w" },
+      { label: "C", url: "https://c.example/%w" },
+      { label: "A", url: "https://a.example/%w" },
+    ] },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyLinksReply = sent(socket).at(-1);
+  const afterLegacyLinks = storage.raw.get("options");
+
+  const legacyAnki = Object.fromEntries(["url", "apiKey", ...readerOptions.ANKI_TEMPLATE_CONFIG_KEYS]
+    .map(key => [key, structuredClone(afterLegacyLinks.anki[key])]));
+  Object.assign(legacyAnki, {
+    url: "https://legacy.example/anki",
+    apiKey: "legacy-key",
+    deck: "Legacy words",
+    model: "Legacy Basic",
+    tags: ["legacy"],
+  });
+  beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-anki", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-anki-write",
+    baseRevision: afterLegacyLinks.revision,
+    options: { anki: legacyAnki },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyAnkiReply = sent(socket).at(-1);
+  const afterLegacyAnki = storage.raw.get("options");
+  const beforeRichWrite = JSON.stringify(afterLegacyAnki);
+
+  beforeLegacy = sent(socket).length;
+  clientText(socket, JSON.stringify({ kind: "request", id: "legacy-rich-write", message: {
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    requestId: "legacy-rich-write",
+    baseRevision: afterLegacyAnki.revision,
+    options: { customButtons: [
+      { id: "erase", type: "link", label: "Erase", url: "https://erase.invalid/" },
+    ] },
+  } }));
+  await settle(() => sent(socket).length > beforeLegacy);
+  const legacyRichReply = sent(socket).at(-1);
+  check("a legacy linked reader can edit its first Anki setup and link list without erasing newer Templates or Anki buttons",
+    legacyLinksReply.response?.ok === true
+      && legacyAnkiReply.response?.ok === true
+      && JSON.stringify(afterLegacyLinks.customLinks.map(link => link.label)) === JSON.stringify(["B", "C", "A"])
+      && afterLegacyLinks.customButtons[0]?.id === "host-link-b"
+      && afterLegacyLinks.customButtons[1]?.id === "host-sentence"
+      && afterLegacyLinks.customButtons[1]?.templateId === "sentence-template"
+      && afterLegacyLinks.customButtons[3]?.id === "host-link-a"
+      && afterLegacyAnki.anki.url === "https://legacy.example/anki"
+      && afterLegacyAnki.anki.apiKey === "legacy-key"
+      && afterLegacyAnki.anki.templates[0]?.id === "word-template"
+      && afterLegacyAnki.anki.templates[0]?.name === "Word card"
+      && afterLegacyAnki.anki.templates[0]?.deck === "Legacy words"
+      && afterLegacyAnki.anki.templates[0]?.model === "Legacy Basic"
+      && afterLegacyAnki.anki.templates[0]?.fieldTemplates?.Front?.value === exactWordMapping
+      && afterLegacyAnki.anki.templates[1]?.id === "sentence-template"
+      && afterLegacyAnki.anki.templates[1]?.name === "Sentence card"
+      && afterLegacyAnki.anki.templates[1]?.fieldTemplates?.Front?.value === exactSentenceMapping
+      && afterLegacyAnki.customButtons.some(button => button.id === "host-sentence")
+      && legacyRichReply.response?.ok === false
+      && /Update the linked Hachidori/u.test(legacyRichReply.response.error)
+      && JSON.stringify(storage.raw.get("options")) === beforeRichWrite,
+    JSON.stringify({ legacyLinksReply, legacyAnkiReply, legacyRichReply, afterLegacyLinks, afterLegacyAnki }));
+
   const currentOptions = storage.raw.get("options");
-  const setupAnki = {
-    ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
-    model: "Basic",
-    deck: "Default",
+  const setupBase = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const setupAnki = globalThis.HDReaderOptions.normaliseAnki({
     url: "https://host.example/anki",
     apiKey: "host-secret",
-    fieldTemplates: {
-      Front: { value: "{expression}", overwriteMode: "coalesce" },
-      Back: { value: "{definition}", overwriteMode: "coalesce" },
-    },
-  };
+    templates: [
+      {
+        ...setupBase,
+        id: "first-template",
+        name: "First",
+        model: "Basic",
+        deck: "Unavailable deck",
+        fieldTemplates: {
+          Front: { value: "{expression}", overwriteMode: "coalesce" },
+          Back: { value: "{definition}", overwriteMode: "coalesce" },
+        },
+      },
+      {
+        ...setupBase,
+        id: "setup-template",
+        name: "Setup",
+        model: "Basic",
+        deck: "Default",
+        fieldTemplates: {
+          Front: { value: "{expression}", overwriteMode: "coalesce" },
+          Back: { value: "{definition}", overwriteMode: "coalesce" },
+        },
+      },
+    ],
+  });
   await storage.api().local.set({ options: {
     ...currentOptions,
     anki: setupAnki,
@@ -1369,6 +1762,7 @@ async function sharingHostStage() {
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "host-hd_anki_setup",
+    templateId: "setup-template",
     anki: {
       model: "Client model",
       deck: "Client deck",
@@ -1396,6 +1790,7 @@ async function sharingHostStage() {
     await settle(() => sent(socket).length > beforeCount);
     return sent(socket).at(-1);
   };
+  const ankiView = await askAnki("anki-view", "hd_anki_view", { request: ankiRequest });
   const ankiStatus = await askAnki("anki-status", "hd_anki_status");
   ankiRequest.configKey = ankiStatus.response?.configKey;
   const staleHostKey = await askAnki("anki-stale-key", "hd_anki_preflight", {
@@ -1422,17 +1817,22 @@ async function sharingHostStage() {
         "modelNamesAndIds", "deckNames", "modelFieldNames",
       ])
       && hostSetupCalls.every(call => call.url === "https://host.example/anki" && call.key === "host-secret")
+      && ankiView.response?.cached === true && JSON.stringify(ankiView.response.noteIds) === JSON.stringify([70, 71])
+      && /^linked:[0-9a-f-]+:host-config$/u.test(ankiView.response.configKey)
       && ankiStatus.response?.available === true && /^linked:[0-9a-f-]+:host-config$/u.test(ankiStatus.response.configKey)
       && staleHostKey.response?.ok === false && /configuration changed/u.test(staleHostKey.response.error)
       && ankiPreflight.response?.state === "addable" && ankiSubmit.response?.state === "added"
       && ankiBrowse.response?.opened === true && ankiMaturity.response?.mature === true
       && staleBrowse.response?.ok === false && /configuration changed/u.test(staleBrowse.response.error)
       && hostScreenshot.response?.ok === false && /unsupported linked Anki request/u.test(hostScreenshot.response.error)
-      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify(["status", "preflightClient", "submitClient", "browse", "maturity"])
+      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify([
+        "view", "status", "preflightClient", "submitClient", "browse", "maturity",
+      ])
+      && JSON.stringify(hostAnkiCalls[0][1]) === JSON.stringify({ term: { expression: "猫", reading: "ねこ" } })
       && submitted?.[1]?.url === undefined && submitted?.[1]?.apiKey === undefined && submitted?.[1]?.anki === undefined
       && submitted?.[1]?.configKey === "host-config"
       && submitted?.[1]?.term?.expression === "猫" && JSON.stringify(submitted?.[2]) === JSON.stringify({}),
-    JSON.stringify({ linkedSetup, hostSetupCalls, ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse,
+    JSON.stringify({ linkedSetup, hostSetupCalls, ankiView, ankiStatus, staleHostKey, ankiPreflight, ankiSubmit, ankiBrowse,
       staleBrowse, ankiMaturity, hostScreenshot, hostAnkiCalls }));
 
   socket.drop();
@@ -1541,6 +1941,7 @@ async function sharingClientStage() {
       localAnkiCalls.push(["status"]);
       return localStatusGate ?? { available: true, configKey: "local-config", error: null };
     },
+    view() { throw new Error("linked View readiness ran in the reading browser"); },
     preflight() { throw new Error("linked preflight ran in the reading browser"); },
     submit() { throw new Error("linked submit ran in the reading browser"); },
     browse() { throw new Error("linked browse ran in the reading browser"); },
@@ -1552,6 +1953,18 @@ async function sharingClientStage() {
   const localState = { schemaVersion: 1, revision: 2, dictionaries: [localDictionary], groups: [] };
   const localStats = { generation: "local-gen", revision: 1 };
   const localRow = { term: "猫", reading: "ねこ", lookupCount: 4, firstLookedUpAt: 1, lastLookedUpAt: 2 };
+  const linkedMapping = " \tlinked {expression}{expression} {unknown}\n literal  ";
+  const linkedAnki = globalThis.HDReaderOptions.normaliseAnki({
+    templates: [{
+      ...globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE,
+      id: "linked-template",
+      name: "Linked",
+      model: "Basic",
+      fieldTemplates: {
+        Front: { value: linkedMapping, overwriteMode: "coalesce" },
+      },
+    }],
+  });
   await storage.api().local.set({
     options: { hoverEnabled: true, revision: 3 },
     dictionaryState: localState,
@@ -1572,17 +1985,13 @@ async function sharingClientStage() {
   const hostDictionary = { ...localDictionary, id: "host-id", title: "Host", path: "/dicts/Host", termCount: 900 };
   const hostSnapshot = {
     dictionaryState: { schemaVersion: 1, revision: 7, dictionaries: [hostDictionary], groups: [] },
-    options: { hoverEnabled: false, revision: 1, anki: {
-      ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
-      model: "Basic",
-      fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } },
-    } },
+    options: { hoverEnabled: false, revision: 1, anki: linkedAnki },
     customDictionarySource: null,
     dictionaryUpdates: { revision: 0, schedule: "off", lastCheckedAt: null },
     lookupStats: { generation: "host-gen", revision: 40 },
   };
   const hello = { kind: "hello", protocol: 1, version: "9.9.9", name: "Chrome", dictionaryCount: 1,
-    capabilities: ["linked-anki-v1"], snapshot: hostSnapshot };
+    capabilities: ["linked-anki-v1", "linked-anki-v2"], snapshot: hostSnapshot };
   let releaseLocalStatus;
   let localStatusGate = null;
 
@@ -1634,13 +2043,13 @@ async function sharingClientStage() {
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello"
-      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1"]) && probe.readyState === 3
+      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"]) && probe.readyState === 3
       && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
-      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
       && linkedReply.sharing.client.display === "this computer"
       && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"
-      && JSON.stringify(linkedStatus.sharing.client.host?.capabilities) === JSON.stringify(["linked-anki-v1"])
+      && JSON.stringify(linkedStatus.sharing.client.host?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
       && linkWaitedForLocalAnki && localStatusReply.available === true
       && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
@@ -1657,7 +2066,10 @@ async function sharingClientStage() {
   // moves when the host pushes its storage batch.
   const setsBefore = storage.sets.length;
   const pushedOptions = { ...hostSnapshot.options, hoverEnabled: true, revision: 2 };
-  const writing = send("hd_options_write", { baseRevision: 1, options: { hoverEnabled: true } }, "hoshidicts-worker");
+  const writing = send("hd_options_write", {
+    baseRevision: 1,
+    options: { hoverEnabled: true, anki: structuredClone(linkedAnki) },
+  }, "hoshidicts-worker");
   await settle(() => socket.requests().length >= 1);
   const forwardedWrite = socket.requests()[0];
   socket.receive({ kind: "reply", id: forwardedWrite.id, response: {
@@ -1683,8 +2095,10 @@ async function sharingClientStage() {
   const rowSet = storage.sets.slice(setsBefore).find(keys => keys.includes("lookupStats") && keys.includes(rowKey));
   check("a linked page's writes, lookups and lookup counts go to the host, whose storage batches land locally as single writes",
     forwardedWrite.message.type === "hd_options_write" && forwardedWrite.message.target === "hoshidicts-worker" && forwardedWrite.message.baseRevision === 1
+      && forwardedWrite.message.options.anki.templates[0].fieldTemplates.Front.value === linkedMapping
       && written.ok === true && written.options.revision === 2 && written.requestId === "client-hd_options_write"
       && beforePush === 1 && storage.raw.get("options").revision === 2
+      && storage.raw.get("options").anki.templates[0].fieldTemplates.Front.value === linkedMapping
       && forwardedLookup.message.type === "hd_lookup" && forwardedLookup.message.text === "猫" && looked.results?.[0]?.matched === "猫"
       && bus.log.every(entry => !(entry.type === "hd_lookup" && entry.relayed))
       && forwardedCount.message.type === "hd_lookup_stats_record" && counted.statistics?.lookupCount === 9
@@ -1715,6 +2129,8 @@ async function sharingClientStage() {
     expression: "猫",
     reading: "ねこ",
   };
+  const ankiView = await askLinkedAnki("hd_anki_view", { request: { term: linkedRequest.term } },
+    { state: "duplicate", canAdd: false, noteIds: [81, 82], configKey: "host-config", cached: true });
   const ankiStatus = await askLinkedAnki("hd_anki_status", {}, { available: true, configKey: "host-config" });
   const ankiPreflight = await askLinkedAnki("hd_anki_preflight", { request: linkedRequest },
     { state: "addable", canAdd: true, clientSpeech: linkedSpeech });
@@ -1743,7 +2159,9 @@ async function sharingClientStage() {
   const rejected = await rejecting;
   const localOperations = localAnkiCalls.map(call => call[0]);
   check("linked Anki preparation and writes go to the host while screenshot bytes and confirmed cleanup stay in the reading browser",
-    ankiStatus.forwarded.message.type === "hd_anki_status" && ankiStatus.reply.available === true
+    ankiView.forwarded.message.type === "hd_anki_view" && ankiView.reply.cached === true
+      && JSON.stringify(ankiView.forwarded.message.request) === JSON.stringify({ term: linkedRequest.term })
+      && ankiStatus.forwarded.message.type === "hd_anki_status" && ankiStatus.reply.available === true
       && ankiPreflight.forwarded.message.type === "hd_anki_preflight" && ankiPreflight.reply.state === "addable"
       && screenshot.ok === true && screenshot.token === localScreenshot.token
       && socket.requests().length === requestsBeforeSubmit + 4
@@ -1767,7 +2185,7 @@ async function sharingClientStage() {
         "clientMedia", "settleClientMedia",
       ])
       && localAnkiCalls[4]?.[2] === "added" && localAnkiCalls[6]?.[2] === "invalid",
-    JSON.stringify({ ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
+    JSON.stringify({ ankiView, ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
       rejected, forwardedRejected, localAnkiCalls }));
 
   const beforeDiscovery = socket.requests().length;
@@ -1799,6 +2217,7 @@ async function sharingClientStage() {
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "client-anki-setup",
+    templateId: "sentence-template",
     anki: {
       model: "Client model",
       deck: "Client deck",
@@ -1830,6 +2249,7 @@ async function sharingClientStage() {
         target: "hoshidicts-worker",
         type: "hd_anki_setup",
         requestId: "client-anki-setup",
+        templateId: "sentence-template",
       })
       && setup.ok === true && setup.outcome?.status === "already-configured"
       && setup.outcome.model === "Basic" && setup.outcome.deck === "Default",
@@ -1916,9 +2336,20 @@ async function sharingTransitionStage() {
     }
     throw new Error("sharing transition did not settle");
   };
-  async function fixture({ overlayMode = false, initial = null, ankiService = null, ankiIndex = null } = {}) {
-    const bus = makeBus(), storage = makeStorage();
-    const chrome = makeChrome("sharing-transitions-worker", bus, storage);
+  async function fixture({
+    overlayMode = false,
+    initial = null,
+    ankiService = null,
+    ankiIndex = null,
+    automaticBackup = false,
+  } = {}) {
+    let now = Date.parse("2026-09-18T12:00:00.000Z");
+    class SharingDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [now])); }
+      static now() { return now; }
+    }
+    const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+    const chrome = makeChrome("sharing-transitions-worker", bus, storage, alarms);
     const text = "私語,しご,my personal entry\n";
     const semanticRevision = await customDictionarySemanticRevision(parseCustomDictionary(text).entries);
     const local = {
@@ -1931,13 +2362,47 @@ async function sharingTransitionStage() {
       customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
       dictionaryUpdates: null, lookupStats: null,
     };
-    await chrome.storage.local.set(initial ?? { sharing: { host: null },
-      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)) });
+    const automaticBackups = {
+      schemaVersion: 1,
+      backups: [{
+        id: "local-before-link",
+        createdAt: new SharingDate(now).toISOString(),
+        snapshot: {
+          state: local.dictionaryState,
+          options: local.options,
+          document: local.customDictionarySource,
+          updates: { revision: 0, schedule: "off", lastCheckedAt: null },
+          lookupStats: { generation: null, revision: 0 },
+        },
+        lookupStatsRows: [],
+      }],
+    };
+    await chrome.storage.local.set(initial ?? {
+      sharing: { host: null },
+      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== null)),
+      ...(automaticBackup ? { automaticBackups } : {}),
+    });
+    const automaticCleanups = [];
+    const pendingAutomaticCleanups = [];
+    let holdAutomaticCleanup = false;
+    bus.addListener("sharing-transition-automatic-engine", (message, _sender, sendResponse) => {
+      if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true
+          || message.type !== "hd_backup_auto_cleanup") return false;
+      automaticCleanups.push(structuredClone(message));
+      const reply = () => sendResponse({
+        type: "hd_backup_auto_cleanup_result", requestId: message.requestId, ok: true, error: null,
+      });
+      if (holdAutomaticCleanup) pendingAutomaticCleanups.push(reply);
+      else reply();
+      return true;
+    });
     const sockets = [];
     class Socket extends FakeSharingSocket {
       constructor(url) { super(url); sockets.push(this); }
     }
-    const sandbox = { chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket };
+    const sandbox = {
+      chrome, console, setTimeout, clearTimeout, Promise, Error, Date: SharingDate, WebSocket: Socket,
+    };
     if (ankiService !== null) sandbox.createAnkiWorkerService = () => ankiService;
     if (ankiIndex !== null) sandbox.createAnkiDuplicateIndex = () => ankiIndex;
     const context = loadBackgroundScript(sandbox, { overlayMode });
@@ -1965,16 +2430,24 @@ async function sharingTransitionStage() {
       await tick();
       return replies;
     }
-    return { chrome, storage, local, sockets, send, hello, finishLinks,
+    return { chrome, storage, alarms, automaticCleanups, pendingAutomaticCleanups, local, sockets, send, hello, finishLinks,
       record: outcomes => bus.sendMessage("local-installer", { target: "hoshidicts-worker", type: "hd_setup_record",
         runId: "local-linked-run", recordSetup: false, outcomes },
       { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") }),
       link: () => send("hd_sharing_client_link", { address: "127.0.0.1:9100" }),
+      advance: milliseconds => { now += milliseconds; },
+      holdAutomaticCleanup: value => { holdAutomaticCleanup = value; },
+      releaseAutomaticCleanups: () => {
+        for (const reply of pendingAutomaticCleanups.splice(0)) reply();
+      },
+      queueAutomatic: () => runInContext("queueAutomaticBackup(true)", context),
+      reconcileAutomatic: () => runInContext("reconcileAutomaticBackups()", context),
       dispose: () => runInContext("getSharingClient().unlink()", context) };
   }
 
   const f = await fixture();
   try {
+    f.hello.capabilities = ["linked-anki-v1"];
     const first = f.link(), second = f.link();
     await until(() => f.sockets.length > 0);
     const edit = await f.send("hd_options_write", { baseRevision: 3, options: { showLookupCounts: false } }, "hoshidicts-worker");
@@ -1987,6 +2460,10 @@ async function sharingTransitionStage() {
     const keptSocket = f.sockets.at(-1);
     const requestsBeforeOldAnki = keptSocket.requests().length;
     const oldAnki = await f.send("hd_anki_status", {}, "hachidori-anki");
+    const oldTemplateWrite = await f.send("hd_options_write", {
+      baseRevision: f.storage.raw.get("options").revision,
+      options: { customButtons: [{ id: "sentence", type: "anki", label: "Sentence", templateId: "sentence" }] },
+    }, "hoshidicts-worker");
     const oldDiscovery = await f.send("hd_anki_discover", {
       model: "Basic",
       url: "https://client.invalid/anki",
@@ -2013,8 +2490,10 @@ async function sharingTransitionStage() {
         && oldDiscovery.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && oldSetup.ok === false
         && oldSetup.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
+        && oldTemplateWrite.ok === false
+        && oldTemplateWrite.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && keptSocket.requests().length === requestsBeforeOldAnki,
-      JSON.stringify({ oldAnki, oldDiscovery, oldSetup, requests: keptSocket.requests() }));
+      JSON.stringify({ oldAnki, oldDiscovery, oldSetup, oldTemplateWrite, requests: keptSocket.requests() }));
     const writes = f.storage.sets.length, sockets = f.sockets.length;
     await f.finishLinks([f.link()]);
     check("a repeated Link returns the current link without probing or replacing its saved state",
@@ -2032,6 +2511,150 @@ async function sharingTransitionStage() {
         && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
         && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
   } finally { f.dispose(); }
+
+  const automatic = await fixture({ automaticBackup: true });
+  const originalAutomaticSet = automatic.chrome.storage.local.set;
+  let releaseLinkStorage = () => {};
+  try {
+    await until(() => automatic.alarms.values.has("hachidori-automatic-backup"));
+    const beforeLink = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    const automaticWritesBeforeLink = automatic.storage.sets.filter(keys =>
+      keys.length === 1 && keys[0] === "automaticBackups").length;
+    automatic.advance(24 * 60 * 60_000);
+    let linkStorageEntered = false;
+    const linkStorageGate = new Promise(resolve => { releaseLinkStorage = resolve; });
+    automatic.chrome.storage.local.set = async (items, callback) => {
+      if (!linkStorageEntered && items.sharing?.client?.address) {
+        linkStorageEntered = true;
+        await linkStorageGate;
+      }
+      return originalAutomaticSet(items, callback);
+    };
+    const linking = automatic.link();
+    await until(() => automatic.sockets.some(socket => socket.readyState === 0));
+    for (const socket of automatic.sockets.filter(item => item.readyState === 0)) {
+      socket.open();
+      socket.receive(automatic.hello);
+    }
+    await until(() => linkStorageEntered);
+    const queuedReconcile = automatic.reconcileAutomatic();
+    await tick();
+    releaseLinkStorage();
+    const [linked, queuedResult] = await Promise.all([linking, queuedReconcile]);
+    automatic.chrome.storage.local.set = originalAutomaticSet;
+    await until(() => !automatic.alarms.values.has("hachidori-automatic-backup"));
+    const whileLinked = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    const alarmWhileLinked = automatic.alarms.values.has("hachidori-automatic-backup");
+    const automaticWritesWhileLinked = automatic.storage.sets.filter(keys =>
+      keys.length === 1 && keys[0] === "automaticBackups").length;
+    check("an automatic backup queued behind Link rechecks linked ownership before it can snapshot the host mirror",
+      linked.ok && linked.sharing.client.linked
+        && queuedResult.linked === true && queuedResult.created === false
+        && automatic.storage.raw.get("dictionaryState").dictionaries[0].id === "host"
+        && JSON.stringify(whileLinked) === JSON.stringify(beforeLink)
+        && automaticWritesWhileLinked === automaticWritesBeforeLink
+        && automatic.automaticCleanups.length === 0
+        && alarmWhileLinked === false,
+      JSON.stringify({ linked, queuedResult, beforeLink, whileLinked,
+        automaticWritesBeforeLink, automaticWritesWhileLinked,
+        cleanups: automatic.automaticCleanups.length, alarmWhileLinked }));
+    const unlinked = await automatic.send("hd_sharing_client_unlink");
+    const resumed = structuredClone(automatic.storage.raw.get("automaticBackups"));
+    check("Link suppresses local automatic snapshots and Unlink resumes from the restored local snapshot store",
+      linked.ok && linked.sharing.client.linked
+        && JSON.stringify(whileLinked) === JSON.stringify(beforeLink)
+        && alarmWhileLinked === false
+        && unlinked.ok && !unlinked.sharing.client.linked
+        && resumed.backups.length === 2
+        && resumed.backups[0].snapshot.state.dictionaries[0].id === CUSTOM_DICTIONARY_ID
+        && resumed.backups[0].snapshot.state.dictionaries.every(dictionary => dictionary.id !== "host")
+        && resumed.backups[1].id === "local-before-link"
+        && automatic.alarms.values.get("hachidori-automatic-backup")?.scheduledTime
+          === Date.parse(resumed.backups[0].createdAt) + 24 * 60 * 60_000,
+      JSON.stringify({ linked, beforeLink, whileLinked, alarmWhileLinked, unlinked, resumed,
+        alarm: automatic.alarms.values.get("hachidori-automatic-backup") }));
+  } finally {
+    releaseLinkStorage();
+    automatic.chrome.storage.local.set = originalAutomaticSet;
+    automatic.dispose();
+  }
+
+  const transitionAutomatic = await fixture({ automaticBackup: true });
+  const originalTransitionClear = transitionAutomatic.alarms.api.clear;
+  let releaseLinkedSuppression = () => {};
+  try {
+    await until(() => transitionAutomatic.alarms.values.has("hachidori-automatic-backup"));
+    transitionAutomatic.advance(24 * 60 * 60_000);
+    transitionAutomatic.holdAutomaticCleanup(true);
+    const localAutomaticRun = transitionAutomatic.queueAutomatic();
+    await until(() => transitionAutomatic.pendingAutomaticCleanups.length === 1);
+    const alarmFromLocalRun = structuredClone(
+      transitionAutomatic.alarms.values.get("hachidori-automatic-backup"),
+    );
+    let linkSettled = false;
+    const finishingLink = transitionAutomatic.finishLinks([transitionAutomatic.link()])
+      .then(replies => {
+        linkSettled = true;
+        return replies;
+      });
+    await until(() => transitionAutomatic.storage.raw.get("sharing")?.client?.address
+      && transitionAutomatic.storage.raw.get("dictionaryState")?.dictionaries[0]?.id === "host");
+    await tick();
+    const linkWaitedForLocalRun = !linkSettled
+      && transitionAutomatic.alarms.values.has("hachidori-automatic-backup");
+    transitionAutomatic.releaseAutomaticCleanups();
+    const [linked] = await finishingLink;
+    await localAutomaticRun;
+    const alarmAfterLink = transitionAutomatic.alarms.values.get("hachidori-automatic-backup");
+    check("Link drains an in-flight local automatic run before fresh linked suppression",
+      linkWaitedForLocalRun
+        && linked.ok && linked.sharing.client.linked
+        && alarmFromLocalRun?.scheduledTime !== undefined
+        && alarmAfterLink === undefined,
+      JSON.stringify({ linkWaitedForLocalRun, linked, alarmFromLocalRun, alarmAfterLink }));
+
+    await transitionAutomatic.alarms.api.create("hachidori-automatic-backup", {
+      when: Date.now() + 24 * 60 * 60_000,
+    });
+    let linkedSuppressionEntered = false;
+    const linkedSuppressionGate = new Promise(resolve => { releaseLinkedSuppression = resolve; });
+    transitionAutomatic.alarms.api.clear = async name => {
+      if (!linkedSuppressionEntered && name === "hachidori-automatic-backup") {
+        linkedSuppressionEntered = true;
+        await linkedSuppressionGate;
+      }
+      return originalTransitionClear(name);
+    };
+    const linkedSuppression = transitionAutomatic.queueAutomatic();
+    await until(() => linkedSuppressionEntered);
+    let unlinkSettled = false;
+    const unlinking = transitionAutomatic.send("hd_sharing_client_unlink").then(reply => {
+      unlinkSettled = true;
+      return reply;
+    });
+    await until(() => transitionAutomatic.storage.raw.get("sharing")?.client === null
+      && transitionAutomatic.storage.raw.get("dictionaryState")?.dictionaries[0]?.id === CUSTOM_DICTIONARY_ID);
+    await tick();
+    const unlinkWaitedForLinkedRun = !unlinkSettled;
+    releaseLinkedSuppression();
+    const unlinked = await unlinking;
+    await linkedSuppression;
+    transitionAutomatic.alarms.api.clear = originalTransitionClear;
+    const resumedStore = transitionAutomatic.storage.raw.get("automaticBackups");
+    const resumedAlarm = transitionAutomatic.alarms.values.get("hachidori-automatic-backup");
+    check("Unlink drains an in-flight linked suppression before fresh local scheduling",
+      unlinkWaitedForLinkedRun
+        && unlinked.ok && !unlinked.sharing.client.linked
+        && resumedAlarm?.scheduledTime
+          === Date.parse(resumedStore.backups[0].createdAt) + 24 * 60 * 60_000,
+      JSON.stringify({ unlinkWaitedForLinkedRun, unlinked, resumedStore, resumedAlarm }));
+  } finally {
+    transitionAutomatic.holdAutomaticCleanup(false);
+    transitionAutomatic.releaseAutomaticCleanups();
+    releaseLinkedSuppression();
+    transitionAutomatic.alarms.api.clear = originalTransitionClear;
+    transitionAutomatic.dispose();
+  }
 
   const indexCalls = [];
   const indexRace = await fixture({ ankiIndex: {
@@ -2150,7 +2773,7 @@ async function sharingTransitionStage() {
     },
   } });
   try {
-    remote.hello.capabilities = ["linked-anki-v1"];
+    remote.hello.capabilities = ["linked-anki-v1", "linked-anki-v2"];
     await remote.finishLinks([remote.link()]);
     const oldAddress = "ws://127.0.0.1:9100/link";
     const oldSocket = remote.sockets.find(socket => socket.url === oldAddress && socket.readyState === 1);
@@ -2212,12 +2835,16 @@ async function sharingTransitionStage() {
   let restarted;
   let legacy;
   try {
+    overlay.hello.capabilities = ["linked-anki-v1"];
     await overlay.finishLinks([overlay.link()]);
     const socket = overlay.sockets.at(-1);
     const current = () => overlay.storage.raw.get("options");
     const write = (patch, baseRevision = current().revision) => overlay.send("hd_options_write",
       { baseRevision, options: patch }, "hoshidicts-worker");
     const initial = structuredClone(current());
+    const blockedTemplates = await write({
+      anki: globalThis.HDReaderOptions.normaliseOptions({}).anki,
+    });
     const local = await write({ hoverEnabled: false, popupWidthPx: 480 });
     const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
     socket.receive({ kind: "storage", changes: { options: rawHost } });
@@ -2228,12 +2855,14 @@ async function sharingTransitionStage() {
     check("a linked overlay keeps activation, highlighting and geometry local through host option batches",
       initial.hoverEnabled && initial.lookupMode === "hover" && !initial.sourceHighlightEnabled
         && initial.popupWidthPx === 420 && initial.popupTheme === "light"
+        && blockedTemplates.ok === false
+        && blockedTemplates.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
         && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
         && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
         && current().revision === mirrored.revision && current().popupTheme === "dracula"
         && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480,
-      JSON.stringify({ initial, local, mirrored, current: current() }));
+      JSON.stringify({ initial, blockedTemplates, local, mirrored, current: current() }));
 
     async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
       await until(() => socket.requests().length === expectedCount);
@@ -2340,7 +2969,9 @@ async function firstRunBackgroundStage() {
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
       anki: null,
     }) && validIso(seeded.setup?.startedAt)
-    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1 })
+    && JSON.stringify(seeded.options) === JSON.stringify({
+      popupTheme: "auto", showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
+    })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
 
   // The user edits a seeded preference; updates, browser starts, a restarted
@@ -2527,14 +3158,28 @@ async function firstRunAnkiStage() {
   // only a note type in Settings leaves the fields blank, which is not one.
   const configuredAnki = (model, deck) => ({ ...defaultAnki(), model, deck,
     fields: { ...defaultAnki().fields, expression: "Front" } });
-  function worldFor(name, { answer, options = null, setup = setupRecord() }) {
+  function worldFor(name, { answer, options = null, setup = setupRecord(), localAudio = false, sharing = null }) {
     const bus = makeBus();
     const storage = makeStorage();
     const chrome = makeChrome(`${name}-worker`, bus, storage);
     const requests = [];
     const held = [];
+    const audioRequests = [];
+    const audioHeld = [];
+    if (sharing !== null) storage.raw.set("sharing", structuredClone(sharing));
     loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, URL, Promise, Error,
       fetch(url, init) {
+        if (url.startsWith("http://127.0.0.1:5050/")) {
+          audioRequests.push({ url, init });
+          if (localAudio === false) return Promise.reject(new TypeError("Failed to fetch"));
+          const value = url.endsWith("/v1/info")
+            ? { lookupMode: "sqlite", sources: ["fixture"], audioPack: null }
+            : { type: "audioSourceList", audioSources: [] };
+          if (localAudio === "hold" && audioRequests.length === 1) {
+            return new Promise(resolve => audioHeld.push(() => resolve({ ok: true, async json() { return value; } })));
+          }
+          return Promise.resolve({ ok: true, async json() { return value; } });
+        }
         const body = JSON.parse(init.body);
         requests.push({ url, action: body.action, params: body.params, key: body.key ?? null });
         const result = answer(body.action, body.params, requests.length);
@@ -2549,7 +3194,7 @@ async function firstRunAnkiStage() {
     if (options) storage.raw.set("options", structuredClone(options));
     const send = (fields = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("startup.html") }) => bus.sendMessage(
       "startup-page", { target: "hoshidicts-worker", type: "hd_setup_anki", requestId: `anki-setup-${name}`, ...fields }, sender);
-    return { bus, storage, chrome, requests, held, send };
+    return { bus, storage, chrome, requests, held, audioRequests, audioHeld, send };
   }
   const collection = (action, params) => {
     switch (action) {
@@ -2617,7 +3262,8 @@ async function firstRunAnkiStage() {
   // A recognised setup: duplicate requests share one detection, the ranked
   // model and deck are saved with the preset through the options CAS, and the
   // outcome lands in the same storage write.
-  const found = worldFor("anki-found", { answer: collection, options: { revision: 2, anki: { ...defaultAnki(), apiKey: "local-key" } } });
+  const found = worldFor("anki-found", { answer: collection, localAudio: true,
+    options: { revision: 2, anki: { ...defaultAnki(), apiKey: "local-key" } } });
   const writesBefore = found.storage.sets.length;
   const [first, second] = await Promise.all([found.send(), found.send({ requestId: "anki-setup-duplicate" })]);
   const savedOptions = found.storage.raw.get("options");
@@ -2636,9 +3282,52 @@ async function firstRunAnkiStage() {
       && savedOptions.anki.fieldTemplates.SentenceAudio.value === ""
       && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
+      && savedOptions.audioSources[0].type === "custom-json"
+      && savedOptions.audioSources[0].enabled === true
+      && savedOptions.audioSources[0].url === "http://127.0.0.1:5050/?term={term}&reading={reading}"
+      && savedOptions.audioSources[1].id === "default-tts"
+      && JSON.stringify(found.audioRequests.map(request => request.url)) === JSON.stringify([
+        "http://127.0.0.1:5050/v1/info",
+        "http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93",
+      ])
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([[ANKI_INDEX_KEY, "options", "setupState"]])
       && first.state.revision === 5,
-    JSON.stringify({ first, second, actions, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
+    JSON.stringify({ first, second, actions, audioRequests: found.audioRequests, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
+
+  const exact = { id: "local-audio", type: "custom-json", enabled: false,
+    url: "http://127.0.0.1:5050/?term={term}&reading={reading}", voice: "" };
+  const speech = { id: "speech", type: "text-to-speech-reading", enabled: true, url: "", voice: "" };
+  const duplicate = worldFor("anki-audio-existing", { answer: collection, localAudio: true,
+    options: { revision: 2, anki: defaultAnki(), audioSources: [speech, exact] } });
+  await duplicate.send();
+  const duplicateSources = duplicate.storage.raw.get("options").audioSources;
+  const audioRace = worldFor("anki-audio-race", { answer: collection, localAudio: "hold",
+    options: { revision: 1, anki: defaultAnki(), audioSources: [speech] } });
+  const pendingAudio = audioRace.send();
+  for (let attempt = 0; attempt < 100 && audioRace.audioHeld.length === 0; attempt += 1) {
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 2));
+  }
+  const audioChoice = await audioRace.bus.sendMessage("settings-page", {
+    target: "hoshidicts-worker", type: "hd_options_write", requestId: "audio-user",
+    baseRevision: 1, options: { audioSources: [exact, speech] },
+  });
+  audioRace.audioHeld.forEach(release => release());
+  await pendingAudio;
+  const racedSources = audioRace.storage.raw.get("options").audioSources;
+  const linked = worldFor("anki-audio-linked", { answer: collection, localAudio: true,
+    sharing: { host: null, client: { address: "ws://127.0.0.1:9100/link" } },
+    options: { revision: 2, anki: defaultAnki(), audioSources: [speech] } });
+  await linked.send();
+  check("first-run setup prepends detected local audio once and leaves existing, racing and linked sources alone",
+    duplicate.audioRequests.length === 0 && JSON.stringify(duplicateSources) === JSON.stringify([speech, exact])
+      && audioRace.audioRequests.length === 2 && audioChoice?.ok === true
+      && JSON.stringify(racedSources) === JSON.stringify([exact, speech])
+      && racedSources.filter(source => source.url === exact.url).length === 1
+      && linked.audioRequests.length === 0
+      && JSON.stringify(linked.storage.raw.get("options").audioSources) === JSON.stringify([speech]),
+    JSON.stringify({ duplicateAudioRequests: duplicate.audioRequests, duplicateSources, audioChoice,
+      raceAudioRequests: audioRace.audioRequests, racedSources, linkedAudioRequests: linked.audioRequests,
+      linkedSources: linked.storage.raw.get("options").audioSources }));
 
   // A choice the user makes while detection runs is kept.
   const racing = worldFor("anki-racing", { answer: (action, params, count) => (action === "modelNamesAndIds" && count === 1 ? "hold" : collection(action, params)),
@@ -2901,7 +3590,8 @@ async function ankiBackgroundStage() {
 
 async function backupRelayStage() {
   const results = [];
-  for (const retry of [false, true]) {
+  for (const prepareType of ["hd_backup_prepare", "hd_backup_auto_prepare"]) {
+    for (const retry of [false, true]) {
     const bus = makeBus(), storage = makeStorage();
     const chrome = makeChrome("backup-relay", bus, storage);
     const sent = [], backoffs = [];
@@ -2913,7 +3603,7 @@ async function backupRelayStage() {
     };
     chrome.runtime.sendMessage = async message => {
       sent.push(message.type);
-      if (message.type === "hd_backup_prepare" && fail) { fail = false; return undefined; }
+      if (message.type === prepareType && fail) { fail = false; return undefined; }
       if (message.type === "hd_backup_cancel" && !releaseCancel) {
         return new Promise(resolve => { releaseCancel = () => resolve({ ok: true }); });
       }
@@ -2922,7 +3612,7 @@ async function backupRelayStage() {
     loadBackgroundScript({ chrome, console, clearTimeout, Promise, Error,
       setTimeout: resolve => backoffs.push(resolve) });
     const send = (type, token = "departed-page") => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token });
-    const pending = send("hd_backup_prepare");
+    const pending = send(prepareType);
     if (retry) {
       for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
       if (backoffs.length === 0) throw new Error("Backup relay did not reach its retry");
@@ -2940,10 +3630,12 @@ async function backupRelayStage() {
     releaseCancel();
     await Promise.all([cancelled, otherCancelled]);
     results.push(waitedForPreparation && serialized && reply.status === "cancelled"
-      && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
+      && sent.filter(type => type === prepareType).length === Number(retry)
       && sent.filter(type => type === "hd_backup_cancel").length === 2);
+    }
   }
-  check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
+  check("manual and automatic backup cancellation retire delayed startup and lost-reply retries before they can recreate staging",
+    results.every(Boolean));
 }
 
 async function backupLifecyclePortStage() {
@@ -3004,10 +3696,11 @@ async function audioRelayStage() {
   chrome.runtime.getContexts = async () => [{}];
   const sent = [];
   const backoffs = [];
-  let failNext = true;
+  // Keep failing until the relay has scheduled its backoff: an optimistic send
+  // to a previously answering document retries once immediately.
+  let failing = true;
   chrome.runtime.sendMessage = async message => {
-    if (message.type === "hd_audio_test" && failNext) {
-      failNext = false;
+    if (message.type === "hd_audio_test" && failing) {
       throw new Error("Receiving end does not exist");
     }
     sent.push(message);
@@ -3022,13 +3715,14 @@ async function audioRelayStage() {
   async function reachBackoff() {
     for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
     if (!backoffs.length) throw new Error("Audio relay never reached the startup retry");
+    failing = false;
   }
   const stopped = send("hd_audio_test", "stopped", { source });
   await reachBackoff();
   await send("hd_audio_stop", "stop", { playRequestId: "stopped" });
   backoffs.shift()();
   const stoppedReply = await stopped;
-  failNext = true;
+  failing = true;
   const old = send("hd_audio_test", "old", { source });
   await reachBackoff();
   const current = await send("hd_audio_test", "current", { source, owner: "spoofed" }, "settings-b");
@@ -3262,6 +3956,7 @@ async function customEngineStage() {
     URL,
   });
   const pageChrome = makeChrome("custom-engine-page", bus, storage, alarms);
+  const engineChrome = makeChrome("custom-engine-offscreen", bus, storage, alarms);
   const engineService = await import(
     `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?custom-engine-stage`
   );
@@ -3290,7 +3985,7 @@ async function customEngineStage() {
               : dictionary),
         });
       }
-      const reply = await pageChrome.runtime.sendMessage(message);
+      const reply = await engineChrome.runtime.sendMessage(message);
       if (message.type === "hd_custom_cas"
           && reply?.ok === true
           && advancePresentationAfterCustomCas) {
@@ -3655,15 +4350,21 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.IS_FIREFOX = false;
   window.HOST_BROWSER = overlayMode ? "electron" : "chrome";
   window.extensionApi = window.chrome;
+  window.selectExtensionApi = scope => scope.browser ?? scope.chrome ?? null;
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
 
     browserShortcuts: !overlayMode,
-    customLinks: !overlayMode,
+    linkButtons: true,
+    externalLinkHost: overlayMode,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.MINING_CAPABILITIES = {
+    screenshot: !overlayMode,
+    browserSpeech: !overlayMode,
+    embeddedSpeechCapture: false,
+  };
   window.chrome.runtime.connect ??= () => ({
     postMessage() {},
     onDisconnect: { addListener() {} },
@@ -3676,13 +4377,15 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.ankiSetupFamily = ankiSetupFamily;
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
-  const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
+  const customButtonSettings = readFileSync(resolve(EXTENSION, "custom-button-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(readFileSync(resolve(EXTENSION, "blob-download.js"), "utf8").replace(/^export\s+/gmu, ""));
+  const automaticBackups = readFileSync(resolve(EXTENSION, "backup-automatic.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
@@ -3695,6 +4398,11 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "")
     .replace(/^export\s+/gmu, "");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const localAudioSetup = readFileSync(resolve(EXTENSION, "local-audio-setup.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
+  window.eval(`{ ${localAudioSource}\n${localAudioSetup}; window.createLocalAudioSetup = createLocalAudioSetup; }`);
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -3710,6 +4418,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const dictionaryImport = readFileSync(resolve(EXTENSION, "dictionary-import.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
@@ -3718,23 +4428,37 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .* from "\.\/blob-download\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/settings-dom\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
-    .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
+    .replace(/import \{ createCustomButtonSettings \} from "\.\/custom-button-settings\.js";\s*/u, "")
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
-    .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
+    .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import \{ readDictionaryArchiveIdentity \} from "\.\/dictionary-import-archive\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
+  for (const dialog of window.document.querySelectorAll("dialog")) {
+    dialog.showModal ??= function showModal() {
+      this.open = true;
+      this.setAttribute("open", "");
+    };
+    dialog.close ??= function close(returnValue = "") {
+      this.returnValue = returnValue;
+      this.open = false;
+      this.removeAttribute("open");
+      this.dispatchEvent(new window.Event("close"));
+    };
+  }
   window.eval(
-    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -3813,10 +4537,10 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       Object.entries(appearanceDefaults).every(([key, value]) => reader.normaliseOptions({})[key] === value)
         && appearanceAccepted.every(Boolean) && appearanceRejected.every(Boolean),
       JSON.stringify({ appearanceAccepted, appearanceRejected }));
-    check("the grouped 42-theme catalogue matches the production palettes and validates every ID",
-      themes.length === 42 && new Set(themes.map(theme => theme.id)).size === 42
-        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[18,23,1]"
-        && themes.every(theme => cssThemes.has(theme.id) && typeof theme.label === "string"
+    check("AUTO plus the grouped 42-palette catalogue validates every persisted ID",
+      themes.length === 43 && new Set(themes.map(theme => theme.id)).size === 43
+        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[1,18,23,1]"
+        && themes.every(theme => (theme.id === "auto" || cssThemes.has(theme.id)) && typeof theme.label === "string"
           && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
         && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
       JSON.stringify({ themes, cssThemes: [...cssThemes] }));
@@ -3962,7 +4686,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       JSON.stringify({ imageSources, invalidImageSources }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
-      { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
+      { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { hoverDelayMs: 2000 }, { modifier: "meta" },
       { frequencyOrder: "sideways" }, { frequencyDictionary: {} },
       { kanjiClickDictionary: { title: "字", kind: "other" } },
       { kanjiClickDictionary: { title: "", kind: "kanji" } },
@@ -3974,11 +4698,11 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       rejected.push(reply.ok === false && reply.requestId === "options-contract" && await unchanged(saved));
     }
     await local.set({ options: saved.options });
-    const healthy = await send(message({ scanLength: 64, maxResults: 256, hoverDelayMs: 2000, modifier: "alt" }));
+    const healthy = await send(message({ scanLength: 64, maxResults: 256, hoverDelayMs: 0, modifier: "alt" }));
     check("reader options reject malformed known fields without committing and accept a healthy follow-up",
       rejected.every(Boolean) && healthy.ok === true && healthy.options?.revision === 3
         && healthy.options?.scanLength === 64 && healthy.options?.maxResults === 256
-        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.lookupMode === "activation"
+        && healthy.options?.hoverDelayMs === 0 && healthy.options?.lookupMode === "activation"
         && healthy.options?.activationKey === "Alt" && healthy.options?.modifier === undefined,
       JSON.stringify({ rejected, healthy }));
 
@@ -4003,7 +4727,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && conflict.options?.maxResults === 256 && conflict.options?.lookupMode === "hover"
         && conflict.options?.modifier === undefined
         && conflict.options?.kanjiClickDictionary?.ignored === undefined
-        && conflict.options?.hoverDelayMs === 50 && conflict.options?.frequencyOrder === undefined
+        && conflict.options?.hoverDelayMs === 0 && conflict.options?.frequencyOrder === undefined
         && repaired.ok === true
         && repaired.options?.revision === 3 && noOp.options?.revision === 3
         && JSON.stringify((await local.get("options")).options) === JSON.stringify(repaired.options),
@@ -4235,9 +4959,8 @@ function checkRecommendedDictionaries() {
     JSON.stringify([...webResources]),
   );
   check(
-    "the popup exposes the copied GSM toolbar icons to content-script shadow roots",
-    ["big-circle", "add-duplicate-big-circle", "overwrite-big-circle", "view-note"]
-      .every((name) => webResources.has(`render/icons/${name}.svg`)),
+    "the popup exposes the shared Fluent stylesheet to content-script shadow roots",
+    webResources.has("icons.css"),
     JSON.stringify([...webResources]),
   );
   const catalogueContract = (entry) => ({
@@ -4333,6 +5056,7 @@ async function main() {
   await firstRunAnkiStage();
   await backupRelayStage();
   await backupLifecyclePortStage();
+  await automaticBackupBackgroundStage();
   await managedScheduleStage();
   await lookupStatsStage();
   await audioRelayStage();
@@ -4514,7 +5238,7 @@ async function main() {
   globalThis.chrome = offscreenChrome;
 
   const swChrome = makeChrome("sw", bus, storage, alarms);
-  loadBackgroundScript({
+  const swContext = loadBackgroundScript({
     chrome: swChrome,
     console,
     fetch: globalThis.fetch,
@@ -4580,23 +5304,25 @@ async function main() {
   const streamChunk = new Uint8Array(1024 * 1024);
   let streamRemaining = formerArchiveByteLimit + 1;
   let streamedBytes = 0;
+  let streamWrites = 0;
+  let streamedPath = null;
   let streamClosed = false;
-  let streamUnlinked = false;
   let streamed = null;
   let streamError = null;
   try {
     streamed = await engineService.streamResponseToFile(
       {
-        open: () => ({}),
-        write(_stream, _value, _offset, length) {
-          streamedBytes += length;
+        open: (path) => ({ fd: 7, path }),
+        // WasmFS FS.write copies byte by byte from JavaScript, so the body must
+        // arrive as one write rather than one per stream chunk.
+        write(stream, data, offset, length) {
+          streamWrites += 1;
+          streamedPath = stream.path;
+          streamedBytes += length - offset;
           return length;
         },
         close() {
           streamClosed = true;
-        },
-        unlink() {
-          streamUnlinked = true;
         },
       },
       {
@@ -4620,8 +5346,8 @@ async function main() {
   }
   equal(
     "an actual streamed body crosses the former fixed byte cap",
-    [streamError?.message ?? null, streamed, streamedBytes, streamClosed, streamUnlinked],
-    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, true, false],
+    [streamError?.message ?? null, streamed, streamedBytes, streamWrites, streamedPath, streamClosed],
+    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, 1, "/streamed-boundary.zip", true],
   );
   const { default: createHoshidicts } = await import(
     `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?service`
@@ -4630,6 +5356,13 @@ async function main() {
   let observedEngine = null;
   let loadedDictionaryPaths = new Set();
   let peakLoadedDictionaryPaths = 0;
+  const transactionCounts = {
+    nativeImports: 0,
+    stateReads: 0,
+    stateCasAttempts: 0,
+    durableFilesystemWrites: 0,
+  };
+  const nativeCounts = { resets: 0, adds: 0, removes: 0, reorders: 0 };
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
     observedEngine = module;
@@ -4637,18 +5370,31 @@ async function main() {
     module.ccall = (name, returnType, argumentTypes, argumentValues) => {
       if (name === "hdw_import") {
         forwardedLowRam = argumentValues[2];
+        transactionCounts.nativeImports += 1;
       }
       const result = ccall(name, returnType, argumentTypes, argumentValues);
       if (name === "hdw_reset") {
+        nativeCounts.resets += 1;
         loadedDictionaryPaths = new Set();
       } else if (name === "hdw_add_dict" && result) {
+        nativeCounts.adds += 1;
         loadedDictionaryPaths.add(argumentValues[0]);
         peakLoadedDictionaryPaths = Math.max(
           peakLoadedDictionaryPaths,
           loadedDictionaryPaths.size,
         );
+      } else if (name === "hdw_remove_dict" && result) {
+        nativeCounts.removes += 1;
+        loadedDictionaryPaths.delete(argumentValues[0]);
+      } else if (name === "hdw_set_dict_order" && result) {
+        nativeCounts.reorders += 1;
       }
       return result;
+    };
+    const syncfs = module.FS.syncfs.bind(module.FS);
+    module.FS.syncfs = (populate, callback) => {
+      if (!populate) transactionCounts.durableFilesystemWrites += 1;
+      return syncfs(populate, callback);
     };
     return module;
   };
@@ -4656,8 +5402,34 @@ async function main() {
   let failAfterCommittedRevision = null;
   let advanceGroupsAfterCommittedRevision = null;
   let advancedStateDuringCleanup = null;
+  let advancePresentationBeforeStateCas = null;
+  let advancedPresentationDuringConflict = null;
   engineService.configureEngineService(
     async (message) => {
+      if (message.type === "hd_state_read") transactionCounts.stateReads += 1;
+      if (message.type === "hd_state_cas") transactionCounts.stateCasAttempts += 1;
+      if (message.type === "hd_state_cas"
+          && advancePresentationBeforeStateCas !== null
+          && message.dictionaries?.some((dictionary) =>
+            dictionary.id === advancePresentationBeforeStateCas.targetId
+              && dictionary.revision === advancePresentationBeforeStateCas.candidateRevision)) {
+        const advance = advancePresentationBeforeStateCas;
+        advancePresentationBeforeStateCas = null;
+        const current = await offscreenChrome.runtime.sendMessage({
+          target: "hoshidicts-worker",
+          type: "hd_state_read",
+        });
+        advancedPresentationDuringConflict = await offscreenChrome.runtime.sendMessage({
+          target: "hoshidicts-worker",
+          type: "hd_state_cas",
+          baseRevision: current.state.revision,
+          dictionaries: current.state.dictionaries.map((dictionary) =>
+            dictionary.id === advance.targetId
+              ? { ...dictionary, ...advance.patch }
+              : dictionary),
+          groups: current.state.groups,
+        });
+      }
       const reply = await offscreenChrome.runtime.sendMessage(message);
       if (message.type === "hd_state_cas"
           && reply?.ok === true
@@ -4858,6 +5630,577 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  section("interactive atomic replacement");
+  const atomicTitle = "atomic-replacement-fixture";
+  const atomicSource = {
+    sourceId: "atomic-managed-source",
+    indexUrl: "https://example.invalid/atomic/index.json",
+    downloadUrl: "https://example.invalid/atomic/archive.zip",
+  };
+  const atomicArchive = (revision, definition, overrides = {}) => buildTitledZip(atomicTitle, {
+    revision,
+    terms: [["原子語", "げんしご", "", "", 0, [definition], 1, ""]],
+    ...overrides,
+  });
+  const atomicIdentity = (revision, overrides = {}) => ({
+    title: atomicTitle,
+    revision,
+    indexUrl: null,
+    downloadUrl: null,
+    ...overrides,
+  });
+  const atomicInstall = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("1", "atomic version one")),
+    fileName: "atomic-v1.zip",
+    importDecision: {
+      action: "install",
+      identity: atomicIdentity("1"),
+      matchKind: null,
+      target: null,
+    },
+  });
+  const atomicInstalledState = await storedDictionaryState();
+  const atomicInstalled = atomicInstalledState.dictionaries.find(
+    dictionary => dictionary.title === atomicTitle,
+  );
+  const atomicIndex = atomicInstalledState.dictionaries.indexOf(atomicInstalled);
+  const atomicGroup = { id: "atomic-group", name: "Atomic", dictionaryIds: [atomicInstalled.id] };
+  const atomicPresentation = {
+    ...atomicInstalled,
+    displayName: "My atomic dictionary",
+    enabled: false,
+    favorite: true,
+    isUpdatable: true,
+    ...atomicSource,
+    updateScheduleOverride: "weekly",
+    lastUpdateCheck: {
+      checkedAt: "2026-09-17T00:00:00.000Z",
+      status: "update-available",
+      remoteRevision: "2",
+      error: null,
+    },
+    futureUserSetting: { retained: true },
+  };
+  const atomicPresented = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: atomicInstalledState.revision,
+    dictionaries: atomicInstalledState.dictionaries.map((dictionary, index) =>
+      index === atomicIndex ? atomicPresentation : dictionary),
+    groups: [atomicGroup],
+  });
+  const atomicBeforeReplace = atomicPresented.state.dictionaries[atomicIndex];
+  const atomicOldPath = atomicBeforeReplace.path;
+  const transactionSnapshot = () => ({ ...transactionCounts });
+  const transactionDelta = (before) => Object.fromEntries(
+    Object.entries(transactionCounts).map(([key, value]) => [key, value - before[key]]),
+  );
+  const generationRoots = () => new Set(idb.keys("/dicts").flatMap((path) => {
+    const match = /^\/dicts\/\.hdw-generation-[^/]+/u.exec(path);
+    return match === null ? [] : [match[0]];
+  }));
+  const atomicReplacementCountsBefore = transactionSnapshot();
+  const atomicReplacementRevisionBefore = atomicPresented.state.revision;
+  const atomicReplacementRootsBefore = generationRoots();
+  const hostileSource = {
+    indexUrl: "https://attacker.invalid/retarget.json",
+    downloadUrl: "https://attacker.invalid/retarget.zip",
+  };
+  const atomicReplacement = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("2", "atomic version two", hostileSource)),
+    fileName: "atomic-v2.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("2", hostileSource),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicBeforeReplace),
+    },
+  });
+  const atomicReplacedState = await storedDictionaryState();
+  const atomicReplaced = atomicReplacedState.dictionaries[atomicIndex];
+  const atomicOldPersisted = idb.keys("/dicts").some(path =>
+    path === atomicOldPath || path.startsWith(`${atomicOldPath}/`));
+  const atomicReplacementAccounting = {
+    ...transactionDelta(atomicReplacementCountsBefore),
+    stateRevisionWrites: atomicReplacedState.revision - atomicReplacementRevisionBefore,
+    generationRootsBefore: atomicReplacementRootsBefore.size,
+    generationRootsAfter: generationRoots().size,
+    obsoleteGenerationRetired: !atomicOldPersisted,
+    candidateGenerationPublished: idb.keys("/dicts").some(path =>
+      path === atomicReplaced.path || path.startsWith(`${atomicReplaced.path}/`)),
+  };
+  check(
+    "explicit local replacement preserves the stable package and every target-owned field",
+    atomicInstall.ok === true
+      && atomicPresented.ok === true
+      && atomicReplacement.ok === true
+      && atomicReplacement.report?.title === atomicTitle
+      && atomicReplacedState.dictionaries.length === atomicInstalledState.dictionaries.length
+      && atomicReplaced.id === atomicInstalled.id
+      && atomicReplaced.title === atomicTitle
+      && atomicReplaced.path !== atomicOldPath
+      && atomicReplaced.revision === "2"
+      && atomicReplaced.displayName === "My atomic dictionary"
+      && atomicReplaced.enabled === false
+      && atomicReplaced.favorite === true
+      && atomicReplaced.sourceId === atomicSource.sourceId
+      && atomicReplaced.indexUrl === atomicSource.indexUrl
+      && atomicReplaced.downloadUrl === atomicSource.downloadUrl
+      && atomicReplaced.isUpdatable === true
+      && atomicReplaced.updateScheduleOverride === "weekly"
+      && atomicReplaced.lastUpdateCheck === null
+      && atomicReplaced.futureUserSetting?.retained === true
+      && JSON.stringify(atomicReplacedState.groups) === JSON.stringify([atomicGroup])
+      && atomicOldPersisted === false
+      && JSON.stringify(atomicReplacementAccounting) === JSON.stringify({
+        nativeImports: 1,
+        stateReads: 2,
+        stateCasAttempts: 1,
+        durableFilesystemWrites: 2,
+        stateRevisionWrites: 1,
+        generationRootsBefore: atomicReplacementRootsBefore.size,
+        generationRootsAfter: atomicReplacementRootsBefore.size,
+        obsoleteGenerationRetired: true,
+        candidateGenerationPublished: true,
+      }),
+    JSON.stringify({
+      atomicInstall,
+      atomicPresented,
+      atomicReplacement,
+      atomicReplacedState,
+      atomicOldPersisted,
+      atomicReplacementAccounting,
+    }),
+  );
+  console.log(`     I04 replacement transaction accounting: ${JSON.stringify(atomicReplacementAccounting)}`);
+
+  const atomicGenerationRows = () => idb.keys("/dicts")
+    .filter((path) => path.startsWith("/dicts/.hdw-generation-"))
+    .sort();
+  const atomicSeparate = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("3", "atomic separate version")),
+    fileName: "atomic-v3.zip",
+    importDecision: {
+      action: "separate",
+      identity: atomicIdentity("3"),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicReplaced),
+    },
+  });
+  const atomicSeparateState = await storedDictionaryState();
+  const separateTitle = `${atomicTitle} (2)`;
+  const separatePackage = atomicSeparateState.dictionaries.find(
+    dictionary => dictionary.title === separateTitle,
+  );
+  const separateIndex = separatePackage && JSON.parse(new TextDecoder().decode(
+    observedEngine.FS.readFile(`${separatePackage.path}/index.json`),
+  ));
+  const separateLookup = await request("hd_lookup", {
+    text: "原子語",
+    maxResults: 32,
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const separateLabels = separateLookup.results?.flatMap(result =>
+    result.term?.glossaries?.map(glossary => glossary.dictionary) ?? []) ?? [];
+  check(
+    "Add separately persists and reports its suffixed canonical title through native lookup",
+    atomicSeparate.ok === true
+      && atomicSeparate.report?.title === separateTitle
+      && separatePackage?.id !== atomicReplaced.id
+      && separatePackage?.path.endsWith(`/${separateTitle}`)
+      && separatePackage?.revision === "3"
+      && separateIndex?.title === separateTitle
+      && separateLabels.includes(separateTitle)
+      && !separateLabels.includes(atomicTitle)
+      && atomicSeparateState.dictionaries[atomicIndex].id === atomicReplaced.id
+      && atomicSeparateState.dictionaries[atomicIndex].path === atomicReplaced.path
+      && JSON.stringify(atomicSeparateState.groups) === JSON.stringify([atomicGroup]),
+    JSON.stringify({ atomicSeparate, atomicSeparateState, separateIndex, separateLabels }),
+  );
+
+  const atomicSeparateThree = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("4", "atomic third copy")),
+    fileName: "atomic-v4.zip",
+    importDecision: {
+      action: "separate",
+      identity: atomicIdentity("4"),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicReplaced),
+    },
+  });
+  const atomicSeparateThreeState = await storedDictionaryState();
+  const separateThreeTitle = `${atomicTitle} (3)`;
+  const separateThreePackage = atomicSeparateThreeState.dictionaries.find(
+    dictionary => dictionary.title === separateThreeTitle,
+  );
+  const separateThreeIndex = separateThreePackage && JSON.parse(new TextDecoder().decode(
+    observedEngine.FS.readFile(`${separateThreePackage.path}/index.json`),
+  ));
+  const separateThreeLookup = await request("hd_lookup", {
+    text: "原子語",
+    maxResults: 32,
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const separateThreeLabels = separateThreeLookup.results?.flatMap(result =>
+    result.term?.glossaries?.map(glossary => glossary.dictionary) ?? []) ?? [];
+  check(
+    "an existing Title (2) makes Add separately persist native Title (3)",
+    atomicSeparateThree.ok === true
+      && atomicSeparateThree.report?.title === separateThreeTitle
+      && separateThreePackage?.id !== atomicReplaced.id
+      && separateThreePackage?.id !== separatePackage.id
+      && separateThreePackage?.path.endsWith(`/${separateThreeTitle}`)
+      && separateThreeIndex?.title === separateThreeTitle
+      && separateThreeLabels.includes(separateTitle)
+      && separateThreeLabels.includes(separateThreeTitle)
+      && !separateThreeLabels.includes(atomicTitle),
+    JSON.stringify({
+      atomicSeparateThree,
+      atomicSeparateThreeState,
+      separateThreeIndex,
+      separateThreeLabels,
+    }),
+  );
+
+  const atomicBeforeFailures = await storedDictionaryState();
+  const mismatchRowsBefore = atomicGenerationRows();
+  const atomicMetadataMismatch = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("5", "metadata mismatch")),
+    fileName: "atomic-metadata-mismatch.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("6"),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicBeforeFailures.dictionaries[atomicIndex]),
+    },
+  });
+  const atomicAfterMismatch = await storedDictionaryState();
+  const mismatchRowsAfter = atomicGenerationRows();
+  const corruptRowsBefore = atomicGenerationRows();
+  const atomicCorrupt = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("5", "corrupt bank", { rawTermBank: "{" })),
+    fileName: "atomic-corrupt.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("5"),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicBeforeFailures.dictionaries[atomicIndex]),
+    },
+  });
+  const atomicAfterFailures = await storedDictionaryState();
+  const corruptRowsAfter = atomicGenerationRows();
+  check(
+    "metadata mismatch and post-preflight native failure clean their generation roots",
+    atomicMetadataMismatch.ok === false
+      && atomicMetadataMismatch.error?.includes("did not match the reviewed archive")
+      && atomicCorrupt.ok === false
+      && JSON.stringify(atomicAfterMismatch) === JSON.stringify(atomicBeforeFailures)
+      && JSON.stringify(atomicAfterFailures) === JSON.stringify(atomicBeforeFailures)
+      && JSON.stringify(mismatchRowsAfter) === JSON.stringify(mismatchRowsBefore)
+      && JSON.stringify(corruptRowsAfter) === JSON.stringify(corruptRowsBefore),
+    JSON.stringify({
+      atomicMetadataMismatch,
+      atomicCorrupt,
+      atomicBeforeFailures,
+      atomicAfterMismatch,
+      atomicAfterFailures,
+      mismatchRowsBefore,
+      mismatchRowsAfter,
+      corruptRowsBefore,
+      corruptRowsAfter,
+    }),
+  );
+
+  const atomicConflictCountsBefore = transactionSnapshot();
+  const atomicConflictRevisionBefore = atomicAfterFailures.revision;
+  const atomicConflictRootsBefore = generationRoots();
+  advancePresentationBeforeStateCas = {
+    targetId: atomicReplaced.id,
+    candidateRevision: "6",
+    patch: {
+      displayName: "Concurrent atomic alias",
+      enabled: true,
+      favorite: false,
+      updateScheduleOverride: "daily",
+      futureUserSetting: { retained: "latest" },
+    },
+  };
+  const atomicConflictReplacement = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("6", "atomic conflict replacement")),
+    fileName: "atomic-v6-conflict.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("6"),
+      matchKind: "title",
+      target: dictionaryImportTarget(atomicAfterFailures.dictionaries[atomicIndex]),
+    },
+  });
+  const atomicConflictState = await storedDictionaryState();
+  const atomicConflictPackage = atomicConflictState.dictionaries.find(
+    dictionary => dictionary.id === atomicReplaced.id,
+  );
+  const atomicConflictAccounting = {
+    ...transactionDelta(atomicConflictCountsBefore),
+    stateRevisionWrites: atomicConflictState.revision - atomicConflictRevisionBefore,
+    generationRootsBefore: atomicConflictRootsBefore.size,
+    generationRootsAfter: generationRoots().size,
+    obsoleteGenerationRetired: !idb.keys("/dicts").some(path =>
+      path === atomicReplaced.path || path.startsWith(`${atomicReplaced.path}/`)),
+    candidateGenerationPublished: idb.keys("/dicts").some(path =>
+      path === atomicConflictPackage.path || path.startsWith(`${atomicConflictPackage.path}/`)),
+  };
+  check(
+    "replacement retries a CAS conflict and preserves the latest presentation fields",
+    atomicConflictReplacement.ok === true
+      && advancedPresentationDuringConflict?.ok === true
+      && advancePresentationBeforeStateCas === null
+      && atomicConflictPackage?.revision === "6"
+      && atomicConflictPackage?.path !== atomicReplaced.path
+      && atomicConflictPackage?.displayName === "Concurrent atomic alias"
+      && atomicConflictPackage?.enabled === true
+      && atomicConflictPackage?.favorite === false
+      && atomicConflictPackage?.updateScheduleOverride === "daily"
+      && atomicConflictPackage?.futureUserSetting?.retained === "latest"
+      && atomicConflictPackage?.sourceId === atomicSource.sourceId
+      && atomicConflictPackage?.indexUrl === atomicSource.indexUrl
+      && atomicConflictPackage?.downloadUrl === atomicSource.downloadUrl
+      && JSON.stringify(atomicConflictState.groups) === JSON.stringify([atomicGroup])
+      && JSON.stringify(atomicConflictAccounting) === JSON.stringify({
+        nativeImports: 1,
+        stateReads: 3,
+        stateCasAttempts: 2,
+        durableFilesystemWrites: 2,
+        stateRevisionWrites: 2,
+        generationRootsBefore: atomicConflictRootsBefore.size,
+        generationRootsAfter: atomicConflictRootsBefore.size,
+        obsoleteGenerationRetired: true,
+        candidateGenerationPublished: true,
+      }),
+    JSON.stringify({
+      atomicConflictReplacement,
+      advancedPresentationDuringConflict,
+      atomicConflictState,
+      atomicConflictAccounting,
+    }),
+  );
+  console.log(`     I04 CAS-conflict transaction accounting: ${JSON.stringify(atomicConflictAccounting)}`);
+
+  const staleGenerationTarget = dictionaryImportTarget(atomicConflictPackage);
+  const atomicGenerationAdvance = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("7", "atomic concurrent generation")),
+    fileName: "atomic-v7.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("7"),
+      matchKind: "title",
+      target: staleGenerationTarget,
+    },
+  });
+  const atomicGenerationState = await storedDictionaryState();
+  const atomicGenerationPackage = atomicGenerationState.dictionaries.find(
+    dictionary => dictionary.id === atomicReplaced.id,
+  );
+  const staleGenerationRowsBefore = atomicGenerationRows();
+  const staleGenerationImport = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("8", "stale generation candidate")),
+    fileName: "atomic-v8-stale.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("8"),
+      matchKind: "title",
+      target: staleGenerationTarget,
+    },
+  });
+  const staleGenerationState = await storedDictionaryState();
+  const staleGenerationRowsAfter = atomicGenerationRows();
+  check(
+    "a changed target generation refuses stale replacement without staged debris",
+    atomicGenerationAdvance.ok === true
+      && atomicGenerationPackage?.revision === "7"
+      && atomicGenerationPackage?.path !== staleGenerationTarget.path
+      && staleGenerationImport.ok === false
+      && staleGenerationImport.error?.includes("changed while")
+      && JSON.stringify(staleGenerationState) === JSON.stringify(atomicGenerationState)
+      && JSON.stringify(staleGenerationRowsAfter) === JSON.stringify(staleGenerationRowsBefore),
+    JSON.stringify({
+      atomicGenerationAdvance,
+      atomicGenerationState,
+      staleGenerationImport,
+      staleGenerationState,
+      staleGenerationRowsBefore,
+      staleGenerationRowsAfter,
+    }),
+  );
+
+  const removedTarget = dictionaryImportTarget(atomicGenerationPackage);
+  const atomicRemoved = await request("hd_remove", { title: atomicTitle });
+  const removedState = await storedDictionaryState();
+  const removedRowsBefore = atomicGenerationRows();
+  const staleRemovedImport = await request("hd_import", {
+    blobUrl: createObjectURL(atomicArchive("9", "removed target candidate")),
+    fileName: "atomic-v9-removed.zip",
+    importDecision: {
+      action: "replace",
+      identity: atomicIdentity("9"),
+      matchKind: "title",
+      target: removedTarget,
+    },
+  });
+  const staleRemovedState = await storedDictionaryState();
+  const removedRowsAfter = atomicGenerationRows();
+  check(
+    "a removed target refuses stale replacement without recreating or staging it",
+    atomicRemoved.ok === true
+      && !removedState.dictionaries.some(dictionary => dictionary.id === atomicReplaced.id)
+      && staleRemovedImport.ok === false
+      && staleRemovedImport.error?.includes("changed while")
+      && JSON.stringify(staleRemovedState) === JSON.stringify(removedState)
+      && JSON.stringify(removedRowsAfter) === JSON.stringify(removedRowsBefore),
+    JSON.stringify({
+      atomicRemoved,
+      removedState,
+      staleRemovedImport,
+      staleRemovedState,
+      removedRowsBefore,
+      removedRowsAfter,
+    }),
+  );
+
+  const selectorTitle = "atomic-selector-fixture";
+  const renamedSelectorTitle = "renamed-atomic-selector-fixture";
+  const selectorQuery = "選択語";
+  const selectorSource = {
+    sourceId: "atomic-selector-source",
+    indexUrl: "https://example.invalid/atomic-selector/index.json",
+    downloadUrl: "https://example.invalid/atomic-selector/archive.zip",
+  };
+  const selectorArchive = (title, revision, definition, overrides = {}) => buildTitledZip(title, {
+    revision,
+    indexUrl: selectorSource.indexUrl,
+    downloadUrl: selectorSource.downloadUrl,
+    indexOverrides: { isUpdatable: true },
+    terms: [[selectorQuery, "せんたくご", "", "", 0, [definition], 1, ""]],
+    termMeta: [[selectorQuery, "freq", { value: 1, displayValue: "1" }]],
+    ...overrides,
+  });
+  const selectorIdentity = (title, revision, overrides = {}) => ({
+    title,
+    revision,
+    indexUrl: selectorSource.indexUrl,
+    downloadUrl: selectorSource.downloadUrl,
+    ...overrides,
+  });
+  const selectorInstall = await request("hd_import", {
+    blobUrl: createObjectURL(selectorArchive(selectorTitle, "1", "selector version one")),
+    fileName: "atomic-selector-v1.zip",
+    importDecision: {
+      action: "install",
+      identity: selectorIdentity(selectorTitle, "1"),
+      matchKind: null,
+      target: null,
+    },
+  });
+  const selectorInstalledState = await storedDictionaryState();
+  const selectorInstalled = selectorInstalledState.dictionaries.find(
+    dictionary => dictionary.title === selectorTitle,
+  );
+  const selectorGroup = {
+    id: "atomic-selector-group",
+    name: "Atomic selector",
+    dictionaryIds: [selectorInstalled.id],
+  };
+  const selectorPresented = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: selectorInstalledState.revision,
+    dictionaries: selectorInstalledState.dictionaries.map(dictionary =>
+      dictionary.id === selectorInstalled.id ? {
+        ...dictionary,
+        displayName: "Selector alias",
+        favorite: true,
+        sourceId: selectorSource.sourceId,
+        futureSelectorSetting: { retained: true },
+      } : dictionary),
+    groups: [selectorGroup],
+  });
+  const selectorOptionsWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
+    options: {
+      frequencyDictionary: selectorTitle,
+      definitionBlurFrequencyDictionary: selectorTitle,
+      compactDefinitionSummaryDictionary: selectorTitle,
+      kanjiClickDictionary: { title: selectorTitle, kind: "term" },
+      popupImageSource: { kind: "dictionary", title: selectorTitle },
+      pitchAccentFuriganaDictionary: selectorTitle,
+    },
+  });
+  const selectorBeforeReplace = selectorPresented.state.dictionaries.find(
+    dictionary => dictionary.id === selectorInstalled.id,
+  );
+  const importedSelectorSource = {
+    indexUrl: selectorSource.indexUrl,
+    downloadUrl: "https://attacker.invalid/selector-retarget.zip",
+  };
+  const selectorReplacement = await request("hd_import", {
+    blobUrl: createObjectURL(selectorArchive(
+      renamedSelectorTitle,
+      "2",
+      "selector version two",
+      { downloadUrl: importedSelectorSource.downloadUrl },
+    )),
+    fileName: "atomic-selector-v2.zip",
+    importDecision: {
+      action: "replace",
+      identity: selectorIdentity(renamedSelectorTitle, "2", importedSelectorSource),
+      matchKind: "source",
+      target: dictionaryImportTarget(selectorBeforeReplace),
+    },
+  });
+  const selectorReplacedState = await storedDictionaryState();
+  const selectorReplaced = selectorReplacedState.dictionaries.find(
+    dictionary => dictionary.id === selectorInstalled.id,
+  );
+  const selectorOptions = (await storage.api().local.get("options")).options;
+  check(
+    "stable-ID replacement preserves groups and migrates every dictionary selector",
+    selectorInstall.ok === true
+      && selectorPresented.ok === true
+      && selectorOptionsWrite.ok === true
+      && selectorReplacement.ok === true
+      && selectorReplaced?.id === selectorInstalled.id
+      && selectorReplaced?.title === renamedSelectorTitle
+      && selectorReplaced?.displayName === "Selector alias"
+      && selectorReplaced?.favorite === true
+      && selectorReplaced?.sourceId === selectorSource.sourceId
+      && selectorReplaced?.indexUrl === selectorSource.indexUrl
+      && selectorReplaced?.downloadUrl === selectorSource.downloadUrl
+      && selectorReplaced?.futureSelectorSetting?.retained === true
+      && JSON.stringify(selectorReplacedState.groups) === JSON.stringify([selectorGroup])
+      && selectorOptions.frequencyDictionary === renamedSelectorTitle
+      && selectorOptions.definitionBlurFrequencyDictionary === renamedSelectorTitle
+      && selectorOptions.compactDefinitionSummaryDictionary === renamedSelectorTitle
+      && selectorOptions.kanjiClickDictionary?.title === renamedSelectorTitle
+      && selectorOptions.kanjiClickDictionary?.kind === "term"
+      && selectorOptions.popupImageSource?.title === renamedSelectorTitle
+      && selectorOptions.pitchAccentFuriganaDictionary === renamedSelectorTitle
+      && selectorOptions.revision === selectorOptionsWrite.options.revision + 1,
+    JSON.stringify({
+      selectorInstall,
+      selectorPresented,
+      selectorOptionsWrite,
+      selectorReplacement,
+      selectorReplacedState,
+      selectorOptions,
+    }),
+  );
+  await request("hd_remove", { title: renamedSelectorTitle });
+  await request("hd_remove", { title: separateTitle });
+  await request("hd_remove", { title: separateThreeTitle });
+
   section("trusted recommended imports");
   const recommended = RECOMMENDED_DICTIONARIES[0];
   const recommendedFields = {
@@ -4967,6 +6310,27 @@ async function main() {
       ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true, updateScheduleOverride: "off" }
       : dictionary),
   });
+  const presentedPackage = presentedState.state?.dictionaries?.[trustedIndex];
+  const stableMarkerTemplates = {
+    Alias: { value: "{single-glossary-starter-terms-plain-no-dictionary}", overwriteMode: "coalesce" },
+    Package: { value: `{single-glossary-id--${trustedPackage.id}-brief}`, overwriteMode: "coalesce" },
+    Historical: { value: "{single-glossary-jitendexorg-2026-08-11}", overwriteMode: "coalesce" },
+  };
+  const stableMarkerTemplateSnapshot = JSON.stringify(stableMarkerTemplates);
+  const markerFields = dictionary => buildAnkiFields({
+    term: { expression: "辞書", reading: "じしょ", rules: "", frequencies: [], pitches: [],
+      glossaries: [
+        { dictionary: dictionary.title, glossary: '["dictionary"]', definitionTags: "", termTags: "" },
+        { dictionary: dictionary.title, glossary: '["duplicate row"]', definitionTags: "", termTags: "" },
+      ] },
+    trace: [], sentence: "辞書", matchOffset: 0, matched: "辞書", popupSelectionText: "",
+    searchQuery: "辞書", documentTitle: "marker integration",
+    dictionaryAliases: { [dictionary.title]: dictionary.displayName },
+    dictionaryIds: { [dictionary.title]: dictionary.id },
+    frequencyDictionaries: [],
+  }, stableMarkerTemplates, { definition: ({ dictionary: selected } = {}) =>
+    selected === dictionary.title ? "matched" : "" });
+  const markersBeforeUpdate = await markerFields(presentedPackage);
   const updatedTitle = "Jitendex.org [2026-09-05]";
   const updatedRevision = "2026.09.05.0";
   const updatedImport = await request("hd_import", {
@@ -4996,6 +6360,17 @@ async function main() {
   const localUpdateImport = await request("hd_import", {
     blobUrl: recommendedArchive({ title: localUpdateTitle, revision: localUpdateRevision }),
     fileName: "jitendex-yomitan.zip",
+    importDecision: {
+      action: "replace",
+      identity: {
+        title: localUpdateTitle,
+        revision: localUpdateRevision,
+        indexUrl: recommended.indexUrl,
+        downloadUrl: recommended.downloadUrl,
+      },
+      matchKind: "source",
+      target: dictionaryImportTarget(updatedPackage),
+    },
   });
   const localUpdateState = await storedDictionaryState();
   const localUpdatePackage = localUpdateState.dictionaries[trustedIndex];
@@ -5022,15 +6397,26 @@ async function main() {
       revision: "2026.09.06.collision",
     }),
     fileName: "colliding-local-reimport.zip",
+    importDecision: {
+      action: "replace",
+      identity: {
+        title: FIXTURE_TITLE,
+        revision: "2026.09.06.collision",
+        indexUrl: recommended.indexUrl,
+        downloadUrl: recommended.downloadUrl,
+      },
+      matchKind: "source",
+      target: dictionaryImportTarget(localUpdatePackage),
+    },
   });
   const collisionState = await storedDictionaryState();
   const collisionRowsAfter = idb.keys("/dicts")
     .filter((path) => path.includes("/dicts/.hdw-generation-"))
     .sort();
   check(
-    "a local reimport matched by source cannot take another package's canonical title",
+    "a source-target decision cannot bypass an exact canonical-title match",
     collidingLocalReimport.ok === false
-      && collidingLocalReimport.error?.includes("already installed")
+      && collidingLocalReimport.error?.includes("no longer matches the imported source")
       && JSON.stringify(collisionState) === JSON.stringify(localUpdateState)
       && JSON.stringify(collisionRowsAfter) === JSON.stringify(collisionRowsBefore),
     JSON.stringify({
@@ -5044,6 +6430,7 @@ async function main() {
   const managedReload = await request("hd_reload");
   const reloadedManagedState = await storedDictionaryState();
   const reloadedManagedPackage = reloadedManagedState.dictionaries[trustedIndex];
+  const markersAfterRestart = await markerFields(reloadedManagedPackage);
   check(
     "managed package identity survives dictionary reconciliation",
     managedReload.ok === true
@@ -5054,6 +6441,25 @@ async function main() {
       && reloadedManagedPackage?.enabled === false
       && reloadedManagedPackage?.favorite === true,
     JSON.stringify({ managedReload, reloadedManagedState }),
+  );
+  check(
+    "stable single-glossary aliases and package IDs survive dated update and restart without rewriting templates",
+    /^[0-9a-f]{32}$/u.test(trustedPackage.id)
+      && markersBeforeUpdate.Alias === "matched"
+      && markersBeforeUpdate.Package === "matched"
+      && markersBeforeUpdate.Historical === "matched"
+      && markersAfterRestart.Alias === "matched"
+      && markersAfterRestart.Package === "matched"
+      && markersAfterRestart.Historical === ""
+      && JSON.stringify(stableMarkerTemplates) === stableMarkerTemplateSnapshot,
+    JSON.stringify({
+      packageId: trustedPackage.id,
+      beforeTitle: presentedPackage?.title,
+      afterTitle: reloadedManagedPackage?.title,
+      markersBeforeUpdate,
+      markersAfterRestart,
+      templatesUnchanged: JSON.stringify(stableMarkerTemplates) === stableMarkerTemplateSnapshot,
+    }),
   );
 
   section("managed dictionary updates");
@@ -5248,13 +6654,14 @@ async function main() {
     schedule: "hourly",
   });
   const hourlyAlarm = await alarms.api.get(updateAlarmName);
+  const managedAlarms = [...alarms.values.values()].filter(alarm => alarm.name === updateAlarmName);
   check(
     "one global schedule creates one browser alarm",
     scheduled?.ok === true
       && scheduled.settings?.schedule === "hourly"
       && hourlyAlarm?.periodInMinutes === undefined
       && hourlyAlarm?.scheduledTime === Date.parse(cleanupRacePackage.lastUpdateCheck.checkedAt) + 3_600_000
-      && alarms.values.size === 1,
+      && managedAlarms.length === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -5325,7 +6732,7 @@ async function main() {
     "service-worker startup recreates a missing configured alarm",
     repairedAlarm?.periodInMinutes === undefined
       && repairedAlarm?.scheduledTime === Date.parse(alarmUpdated.lastUpdateCheck.checkedAt) + 3_600_000
-      && alarms.values.size === 1,
+      && [...alarms.values].filter(([name]) => name === updateAlarmName).length === 1,
     JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -6131,27 +7538,73 @@ async function main() {
     JSON.stringify(canonicallyEquivalentPackages),
   );
   const stateWithThreePackages = await storedDictionaryState();
-  peakLoadedDictionaryPaths = 0;
-  const allDisabled = await request("hd_apply_state", {
+  const lookupBeforeReorder = await request("hd_lookup", { text: "食べる" });
+  const statusBeforeReorder = await request("hd_status");
+  const packageCount = stateWithThreePackages.dictionaries.length;
+  const nativeBeforeReorder = { ...nativeCounts };
+  const reorderedThreePackages = await request("hd_apply_state", {
     baseRevision: stateWithThreePackages.revision,
-    dictionaries: stateWithThreePackages.dictionaries.map((dictionary) => ({
+    dictionaries: [...stateWithThreePackages.dictionaries].reverse(),
+  });
+  const lookupAfterReorder = await request("hd_lookup", { text: "食べる" });
+  const statusAfterReorder = await request("hd_status");
+  const dictionaryNames = (lookup) => lookup.results.flatMap((result) =>
+    result.term.glossaries.map((glossary) => glossary.dictionary));
+  check(
+    "reordering loaded packages reorders the engine in place instead of reloading every package",
+    reorderedThreePackages.ok === true
+      && reorderedThreePackages.state.dictionaries.map(({ id }) => id).join()
+        === [...stateWithThreePackages.dictionaries].reverse().map(({ id }) => id).join()
+      && nativeCounts.resets === nativeBeforeReorder.resets
+      && nativeCounts.adds === nativeBeforeReorder.adds
+      && nativeCounts.reorders === nativeBeforeReorder.reorders + 1
+      && statusAfterReorder.dictionaryCount === statusBeforeReorder.dictionaryCount
+      && statusAfterReorder.generation === statusBeforeReorder.generation + 1
+      && lookupAfterReorder.ok === true
+      && dictionaryNames(lookupAfterReorder).length === dictionaryNames(lookupBeforeReorder).length
+      && dictionaryNames(lookupAfterReorder).length > 1
+      && dictionaryNames(lookupAfterReorder).join() !== dictionaryNames(lookupBeforeReorder).join(),
+    JSON.stringify({
+      reorderedThreePackages,
+      counts: { before: nativeBeforeReorder, after: nativeCounts },
+      before: dictionaryNames(lookupBeforeReorder),
+      after: dictionaryNames(lookupAfterReorder),
+    }),
+  );
+  peakLoadedDictionaryPaths = 0;
+  const nativeBeforeDisable = { ...nativeCounts };
+  const allDisabled = await request("hd_apply_state", {
+    baseRevision: reorderedThreePackages.state.revision,
+    dictionaries: reorderedThreePackages.state.dictionaries.map((dictionary) => ({
       ...dictionary,
       enabled: false,
     })),
   });
   const disabledValidationPeak = peakLoadedDictionaryPaths;
   const disabledStatusAfterValidation = await request("hd_status");
+  const nativeBeforeRestore = { ...nativeCounts };
   const restoredThreePackages = await request("hd_apply_state", {
     baseRevision: allDisabled.state.revision,
     dictionaries: stateWithThreePackages.dictionaries,
   });
+  const lookupAfterRestore = await request("hd_lookup", { text: "食べる" });
   check(
-    "disabled packages are validated independently before publishing an empty load set",
+    "disabling and re-enabling packages this session already loaded drops and re-adds only them",
     allDisabled.ok === true
       && disabledStatusAfterValidation.dictionaryCount === 0
-      && disabledValidationPeak === 1
-      && restoredThreePackages.ok === true,
-    JSON.stringify({ allDisabled, disabledValidationPeak, restoredThreePackages }),
+      && disabledValidationPeak === 0
+      && nativeCounts.resets === nativeBeforeDisable.resets
+      && nativeBeforeRestore.removes === nativeBeforeDisable.removes + packageCount
+      && restoredThreePackages.ok === true
+      && nativeCounts.adds === nativeBeforeRestore.adds + statusBeforeReorder.dictionaryCount
+      && (await request("hd_status")).dictionaryCount === statusBeforeReorder.dictionaryCount
+      && dictionaryNames(lookupAfterRestore).join() === dictionaryNames(lookupBeforeReorder).join(),
+    JSON.stringify({
+      allDisabled,
+      disabledValidationPeak,
+      restoredThreePackages,
+      counts: { beforeDisable: nativeBeforeDisable, beforeRestore: nativeBeforeRestore, after: nativeCounts },
+    }),
   );
   for (const title of canonicallyEquivalentTitles) {
     await request("hd_remove", { title });
@@ -6289,11 +7742,30 @@ async function main() {
         === JSON.stringify(authoritativeInvalidState.dictionaries.map(({ id, path }) => [id, path])),
     JSON.stringify({ invalidStateWrite, invalidReload, invalidStatus, lookupBesideInvalid, stateAfterInvalidReload }),
   );
-  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+  const disabledInvalidWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
     baseRevision: stateAfterInvalidReload.revision,
-    dictionaries: stateAfterInvalidReload.dictionaries.filter(
+    dictionaries: stateAfterInvalidReload.dictionaries.map((dictionary) =>
+      dictionary.title === invalidLoadTitle ? { ...dictionary, enabled: false } : dictionary),
+  });
+  const disabledInvalidReload = await request("hd_reload");
+  const disabledInvalidStatus = await request("hd_status");
+  const stateAfterDisabledInvalidReload = await storedDictionaryState();
+  check(
+    "a disabled package that never loaded this session is still validated and reported",
+    disabledInvalidWrite.ok === true
+      && disabledInvalidReload.ok === true
+      && disabledInvalidReload.dictionaryCount === 4
+      && disabledInvalidStatus.failedDictionaries.length === 1
+      && disabledInvalidStatus.failedDictionaries[0].id === invalidPackage.id,
+    JSON.stringify({ disabledInvalidWrite, disabledInvalidReload, disabledInvalidStatus }),
+  );
+  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateAfterDisabledInvalidReload.revision,
+    dictionaries: stateAfterDisabledInvalidReload.dictionaries.filter(
       (dictionary) => dictionary.title !== invalidLoadTitle,
     ),
   });
@@ -6943,7 +8415,7 @@ async function main() {
       && settingsBatch.outcomes[2].text.includes("Imported First")
       && settingsBatch.finalState === "Finished 3 of 3 archives — 2 imported, 1 failed."
       && settingsBatch.controlsRestored === true
-      && settingsBatch.stateReads === 1
+      && settingsBatch.stateReads === 3
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
   );
@@ -6957,6 +8429,8 @@ async function main() {
     navigationSettings?.design === true, JSON.stringify(navigationSettings));
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
+  check("Unlink refreshes retained automatic backups and a concurrent storage change cannot be erased by a stale list",
+    navigationSettings?.automaticRefresh === true, JSON.stringify(navigationSettings));
   const linkedAnkiSettings = await settingsLinkedAnkiDiscoveryStage();
   check("linked Anki Settings saves endpoint drafts on the host before running host-owned discovery or setup checks",
     linkedAnkiSettings?.discoveriesBeforeSave === 1
@@ -7499,7 +8973,23 @@ async function main() {
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
   );
 
-  await backupEngineScenarios({ request, pageChrome, hostChrome: offscreenChrome, storage, engine: observedEngine, check });
+  const backupScenarioEvidence = await backupEngineScenarios({
+    request,
+    pageChrome,
+    hostChrome: offscreenChrome,
+    workerChrome: swChrome,
+    storage,
+    engine: observedEngine,
+    transactionCounts,
+    reconcileAutomatic: () => runInContext("reconcileAutomaticBackups()", swContext),
+    check,
+  });
+  if (process.env.HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK) {
+    writeFileSync(
+      process.env.HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK,
+      `${JSON.stringify(backupScenarioEvidence.automaticBackupBenchmark, null, 2)}\n`,
+    );
+  }
 
   const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
   const unreferencedImport = await request("hd_import", {
@@ -7731,6 +9221,7 @@ async function settingsNavigationStage() {
   let listener;
   let pendingSave;
   const requests = [];
+  const automaticReplies = [];
   const storedOptions = { revision: 1, maxResults: 32 };
   let state = { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
     genericPackage({ id: "first", title: "First" }),
@@ -7743,6 +9234,9 @@ async function settingsNavigationStage() {
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
       if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
         semanticRevision: "a".repeat(64), text: "" } };
+      if (message.type === "hd_backup_auto_list") {
+        return new Promise(resolveReply => automaticReplies.push(resolveReply));
+      }
       if (message.type === "hd_options_write") return new Promise((resolveReply) => { pendingSave = resolveReply; });
       throw new Error(`Unexpected navigation request ${message.type}`);
     } },
@@ -7878,7 +9372,7 @@ async function settingsNavigationStage() {
     if (document.getElementById("design")) {
       await navigate("design");
       const preview = document.getElementById("design-preview");
-      design &&= document.getElementById("opt-popup-theme").options.length === 42;
+      design &&= document.getElementById("opt-popup-theme").options.length === 43;
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));
@@ -7914,7 +9408,42 @@ async function settingsNavigationStage() {
     resume &&= !resumeLink.hidden;
     listener({ setupState: { newValue: { schemaVersion: 2, revision: 4 } } }, "local");
     resume &&= resumeLink.hidden;
-    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design, resume };
+
+    listener({ sharing: { newValue: { client: { address: "ws://127.0.0.1:8771/link" } } } }, "local");
+    await navigate("backup");
+    await until(() => automaticReplies.length === 1);
+    automaticReplies[0]({ ok: true, backups: [], corruptCount: 0, linked: true });
+    await until(() => document.getElementById("automatic-backup-status").textContent.includes("No automatic backup"));
+    listener({ sharing: {
+      newValue: { host: { enabled: false, port: 8771, network: false }, client: null },
+    } }, "local");
+    await until(() => automaticReplies.length === 2);
+    listener({ automaticBackups: {
+      oldValue: undefined,
+      newValue: { schemaVersion: 1, backups: [{ id: "committed" }] },
+    } }, "local");
+    await until(() => automaticReplies.length === 3);
+    const automatic = {
+      id: "committed",
+      createdAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      dictionaries: [],
+      customEntryCount: 0,
+    };
+    automaticReplies[2]({ ok: true, backups: [automatic], corruptCount: 0 });
+    await until(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1);
+    automaticReplies[1]({ ok: true, backups: [], corruptCount: 0 });
+    await pause();
+    const automaticRefresh = document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1
+      && document.querySelector("#automatic-backup-list .automatic-backup-row")?.dataset.backupId === automatic.id
+      && !document.getElementById("automatic-backups").hidden;
+    return {
+      navigation,
+      draft: draft && unseenCompletion && mirror.textContent === "",
+      details,
+      design,
+      resume,
+      automaticRefresh,
+    };
   } finally {
     window.close();
   }
@@ -8022,6 +9551,8 @@ function loadStartupScript(window) {
   window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, ""));
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -8043,6 +9574,7 @@ function loadStartupScript(window) {
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
+    .replace(/import \{ findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
@@ -8050,7 +9582,7 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -8296,6 +9828,11 @@ async function startupPageStage() {
         { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
         { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
       ]);
+    storage({ options: { newValue: { ...options, revision: options.revision + 1, audioSources: [
+      { id: "local-audio", type: "custom-json", enabled: true,
+        url: "http://127.0.0.1:5050/?term={term}&reading={reading}", voice: "" },
+      { id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" },
+    ] } } });
     releaseConfiguredAnki();
     await until(() => readAnkiProgress()[0]?.detail === "Selected Kiku v2"
       && readAnkiProgress()[0]?.current, "the selected mining-card step");
@@ -8315,6 +9852,7 @@ async function startupPageStage() {
     const configuredAt = Date.now();
     const checkedHeading = heading();
     const automaticProgress = readAnkiProgress();
+    const localAudioOutcome = document.querySelector(".setup-local-audio-outcome")?.textContent ?? "";
     await new Promise((done) => setTimeout(done, 1500));
     const ankiHeld = heading() === "Anki is set up" && pendingReply === null
       && /Continuing to practice in [12] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
@@ -8331,6 +9869,7 @@ async function startupPageStage() {
     const practice = emptyReplyShown && pendingStayed && ankiRequests() === 3
       && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
       && checkedHeading === "Anki is set up" && ankiHeld
+      && localAudioOutcome === "Local audio is configured."
       && progressDwell.every((duration) => duration >= 1900) && ankiElapsed >= 2900
       && JSON.stringify(cardProgress) === JSON.stringify([
         { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: false, current: true },
@@ -8362,7 +9901,7 @@ async function startupPageStage() {
     const word = document.getElementById("setup-practice-word");
     scene.focus();
     window.getSelection().selectAllChildren(word);
-    storage({ options: { newValue: { ...options, revision: options.revision + 1, activationKey: "Shift" } } });
+    storage({ options: { newValue: { ...options, revision: options.revision + 2, activationKey: "Shift" } } });
     const practicePreserved = document.getElementById("setup-practice-text") === scene
       && window.getSelection().toString() === "辞書" && document.activeElement === scene
       && document.getElementById("setup-practice-instruction").textContent.includes("Hold Shift");
@@ -8578,7 +10117,7 @@ async function startupWelcomeStage() {
       && introduction === "Click Start Setup to automatically set up Hachidori"
         + "Already using Hachidori in another browser, on this computer or another one? Link to it from Settings instead of setting up again."
       && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
-        ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
+        ?.textContent.replace(/\s+/gu, " ").trim() === "Star Hachidori on GitHub"
       && page.document.querySelector('a[href*="privacy"]') === null;
     // A failed save leaves the introduction and no network work; a later click
     // still must wait until the accepted stage is committed.
@@ -9971,7 +11510,7 @@ async function settingsFrequencyStage() {
     }
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
-    await until(() => theme.options.length === 42);
+    await until(() => theme.options.length === 43);
     let settingsTheme = window.document.documentElement.dataset.hoshidictsTheme === "default";
     const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
     await editControl(toolbarSelect, "bottom");
@@ -10265,6 +11804,12 @@ async function settingsBatchImportStage() {
     return url;
   };
   window.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+  window.__readDictionaryArchiveIdentity = async (file) => ({
+    title: file.name.replace(/\.zip$/u, ""),
+    revision: "1",
+    indexUrl: null,
+    downloadUrl: null,
+  });
   window.chrome = {
     runtime: {
       id: "hachidorisettingsbatchsmoke",
@@ -14781,7 +16326,7 @@ async function contentNoteStage() {
       harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
       const unchangedRetained = harness.take("hd_lookup") === null;
       if (reason === "dictionary") harness.emitState(harness.state(2, "New dictionary generation"));
-      else harness.emitOptions({ maxResults: 5 });
+      else harness.emitOptions({ lookupMode: "hover", maxResults: 5 });
       if (phase === "pending" && first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
       await harness.settle();
       const oldRejected = phase !== "pending"
@@ -14805,7 +16350,11 @@ async function contentNoteStage() {
     const window = harness.popup.ownerDocument.defaultView;
     const query = harness.candidate.query;
     const exactResults = [harness.term("食"), { ...harness.term("食べる"), matched: query }];
-    harness.emitOptions({ scanLength: 1, kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    harness.emitOptions({
+      lookupMode: "hover",
+      scanLength: 1,
+      kanjiClickDictionary: { title: "Generic", kind: "term" },
+    });
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const first = harness.take("hd_lookup");
@@ -14878,8 +16427,8 @@ async function contentNoteStage() {
       await harness.settle();
       if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", code: "Escape", stopPropagation() {} });
       else if (reason === "disable") {
-        harness.emitOptions({ hoverEnabled: false });
-        harness.emitOptions({ hoverEnabled: true });
+        harness.emitOptions({ hoverEnabled: false, lookupMode: "hover" });
+        harness.emitOptions({ hoverEnabled: true, lookupMode: "hover" });
       } else if (reason === "blur") harness.driver.onWindowBlur();
       else harness.emitState(harness.state(2, "Changed dictionaries"));
       harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
@@ -14894,6 +16443,10 @@ async function contentNoteStage() {
     const window = harness.popup.ownerDocument.defaultView;
     const settings = { lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: true };
     harness.emitOptions(settings);
+    window.document.dispatchEvent(new window.KeyboardEvent(
+      "keydown",
+      { key: "k", code: "KeyK", bubbles: true },
+    ));
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const selected = harness.take("hd_lookup");
@@ -14909,6 +16462,132 @@ async function contentNoteStage() {
       "dismissed selections can be looked up again after Escape, enablement, blur and dictionary changes":
         recovered.every(Boolean) || recovered,
       "an explicit selection survives automatic scanning policy changes, key release and pointer motion": retained,
+    };
+  }
+
+  async function selectionActivationCase() {
+    const modifiers = [
+      ["Shift", "shiftKey"],
+      ["Control", "ctrlKey"],
+      ["Alt", "altKey"],
+      ["Meta", "metaKey"],
+    ];
+    const flags = held => Object.fromEntries(
+      modifiers.map(([key, property]) => [property, held.includes(key)]),
+    );
+
+    async function select(harness, held = []) {
+      const window = harness.popup.ownerDocument.defaultView;
+      const active = [];
+      harness.driver.hide();
+      window.getSelection().removeAllRanges();
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      for (const key of held) {
+        active.push(key);
+        window.document.dispatchEvent(new window.KeyboardEvent(
+          "keydown",
+          { bubbles: true, code: `${key}Left`, key, ...flags(active) },
+        ));
+      }
+      harness.anchor.dispatchEvent(new window.MouseEvent(
+        "mousedown",
+        { bubbles: true, button: 0, clientX: 200, clientY: 200, ...flags(active) },
+      ));
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      harness.anchor.dispatchEvent(new window.MouseEvent(
+        "mouseup",
+        { bubbles: true, button: 0, clientX: 200, clientY: 200, ...flags(active) },
+      ));
+      const request = harness.take("hd_lookup");
+      for (const key of held.toReversed()) {
+        active.splice(active.indexOf(key), 1);
+        window.document.dispatchEvent(new window.KeyboardEvent(
+          "keyup",
+          { bubbles: true, code: `${key}Left`, key, ...flags(active) },
+        ));
+      }
+      if (request) harness.reply(request, {
+        dictionaryCount: 1,
+        results: [harness.term(harness.candidate.query)],
+      });
+      await harness.settle();
+      const snapshot = harness.driver.snapshot();
+      return {
+        allowed: request?.request.text === harness.candidate.query
+          && !snapshot.popupHidden
+          && snapshot.activeHighlightText === harness.candidate.query
+          && harness.render()?.kind === "terms",
+        blocked: request === null && snapshot.popupHidden
+          && snapshot.activeHighlightText === "",
+      };
+    }
+
+    const hover = await createHarness();
+    let hoverAllowed = false;
+    try {
+      hover.emitOptions({ lookupMode: "hover", activationKey: "Shift", hoverDelayMs: 0 });
+      hoverAllowed = (await select(hover)).allowed;
+    } finally {
+      hover.close();
+    }
+
+    const results = [];
+    for (const lookupMode of ["activation", "activationSticky"]) {
+      for (let index = 0; index < modifiers.length; index += 1) {
+        const activationKey = modifiers[index][0];
+        const mismatch = modifiers[(index + 1) % modifiers.length][0];
+        const extra = modifiers[(index + 2) % modifiers.length][0];
+        const harness = await createHarness();
+        try {
+          harness.emitOptions({ lookupMode, activationKey, hoverDelayMs: 0 });
+          results.push({
+            activationKey,
+            lookupMode,
+            plain: (await select(harness)).blocked,
+            mismatch: (await select(harness, [mismatch])).blocked,
+            matching: (await select(harness, [activationKey])).allowed,
+            combined: (await select(harness, [activationKey, extra])).allowed,
+          });
+        } finally {
+          harness.close();
+        }
+      }
+    }
+
+    const explicit = await createHarness();
+    let explicitAllowed = false;
+    try {
+      const window = explicit.popup.ownerDocument.defaultView;
+      explicit.emitOptions({ lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 0 });
+      window.getSelection().selectAllChildren(explicit.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const automatic = explicit.take("hd_lookup");
+      explicit.runtimeMessage({
+        target: "hachidori-reader",
+        type: "hd_reader_command",
+        action: "scanSelectedText",
+      });
+      const request = explicit.take("hd_lookup");
+      if (request) {
+        explicit.reply(request, {
+          dictionaryCount: 1,
+          results: [explicit.term(explicit.candidate.query)],
+        });
+      }
+      await explicit.settle();
+      explicitAllowed = automatic === null && request?.request.text === explicit.candidate.query
+        && !explicit.driver.snapshot().popupHidden;
+    } finally {
+      explicit.close();
+    }
+
+    return {
+      "automatic selections follow hover and both activation modes for every modifier":
+        hoverAllowed && results.every(result =>
+          result.plain && result.mismatch && result.matching && result.combined)
+          || { hoverAllowed, results },
+      "explicit selected-text commands still bypass the automatic selection gate": explicitAllowed,
     };
   }
 
@@ -14995,20 +16674,27 @@ async function contentNoteStage() {
     const document = window.document;
     const selection = window.getSelection();
     harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1 });
+    const key = (type) => window.document.dispatchEvent(new window.KeyboardEvent(
+      type,
+      { key: "k", code: "KeyK", bubbles: true },
+    ));
     const mouse = (type) => harness.anchor.dispatchEvent(new window.MouseEvent(type, {
       bubbles: true, button: 0, clientX: 200, clientY: 200,
     }));
     const changed = () => document.dispatchEvent(new window.Event("selectionchange"));
     const selectText = (text) => {
+      key("keydown");
       mouse("mousedown");
       harness.anchor.textContent = text;
       selection.selectAllChildren(harness.anchor);
       changed();
       mouse("mouseup");
+      key("keyup");
       changed();
       return harness.take("hd_lookup");
     };
     harness.anchor.innerHTML = '<b style="display:inline"> 食べ</b><i style="display:inline">たかった </i>';
+    key("keydown");
     mouse("mousedown");
     selection.setBaseAndExtent(harness.anchor.lastChild.firstChild, 4, harness.anchor.firstChild.firstChild, 1);
     changed();
@@ -15016,6 +16702,7 @@ async function contentNoteStage() {
     await harness.settle();
     const dragQuiet = harness.take("hd_lookup") === null;
     mouse("mouseup");
+    key("keyup");
     changed();
     const exact = harness.take("hd_lookup");
     const query = "食べたかった";
@@ -15045,7 +16732,7 @@ async function contentNoteStage() {
       && harness.render()?.kind === "notice" && harness.render().candidate.query === long;
     harness.close();
     return {
-      "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
+      "matching activation preserves exact reverse inline selection context while rejecting prefix results": exactResult,
       "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
     };
   }
@@ -15635,12 +17322,27 @@ async function contentNoteStage() {
           lookupMode: "activation",
           popupNestingMaxDepth: 1,
         });
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keydown", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+            shiftKey: true,
+          }),
+        );
         const selection = activation.popup.ownerDocument.defaultView.getSelection();
         selection.selectAllChildren(activation.anchor);
         activation.popup.ownerDocument.dispatchEvent(
           new activation.popup.ownerDocument.defaultView.Event("selectionchange"),
         );
         const root = activation.take("hd_lookup");
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keyup", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+          }),
+        );
         if (root) activation.reply(root, {
           dictionaryCount: 1,
           results: [activation.term(activation.candidate.query)],
@@ -15710,37 +17412,37 @@ async function contentNoteStage() {
     const move = (target = window.document.body, extra = {}) => harness.driver.onMouseMove({
       clientX: 200, clientY: 200, target, ...extra,
     });
-    const settings = { lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 75, popupHideDelayMs: 250 };
+    const settings = { lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 0, popupHideDelayMs: 250 };
     harness.emitOptions(settings);
     harness.driver.setScanCandidate(harness.candidate);
     move();
-    fire(75);
+    fire(0);
     const gated = harness.take("hd_lookup") === null;
     key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
-    const delayed = harness.take("hd_lookup") === null && [...timers.values()].some((timer) => timer.delay === 75);
+    const immediate = harness.take("hd_lookup") === null && [...timers.values()].some((timer) => timer.delay === 0);
     key("keyup", "Shift", "ShiftLeft");
-    const cancelledTimer = !fire(75);
+    const cancelledTimer = !fire(0);
     key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
-    fire(75);
+    fire(0);
     const pending = harness.take("hd_lookup");
     key("keyup", "Shift", "ShiftLeft");
     if (pending) harness.reply(pending, { dictionaryCount: 1, results: [harness.term("released")] });
     await harness.settle();
-    result["activation release cancels delayed scans and a first pending reply without pointer motion"] =
-      gated && delayed && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
+    result["activation release cancels immediate scans and a first pending reply without pointer motion"] =
+      gated && immediate && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
 
     harness.emitOptions({ ...settings, lookupMode: "activationSticky" });
     key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
-    fire(75);
+    fire(0);
     const sticky = harness.take("hd_lookup");
     key("keyup", "Shift", "ShiftLeft");
     if (sticky) harness.reply(sticky, { dictionaryCount: 1, results: [harness.term("sticky")] });
     await harness.settle();
     harness.driver.setScanCandidate(null);
     move();
-    fire(75);
+    fire(0);
     key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
-    fire(75);
+    fire(0);
     key("keyup", "Shift", "ShiftLeft");
     harness.driver.onMouseOut({ relatedTarget: null });
     const stayed = sticky !== null && !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
@@ -15754,8 +17456,8 @@ async function contentNoteStage() {
     harness.emitOptions({ ...settings, activationKey: "/" });
     key("keydown", "/", "Slash");
     key("keydown", "/", "Slash", { repeat: true });
-    const oneTimer = [...timers.values()].filter((timer) => timer.delay === 75).length === 1;
-    fire(75);
+    const oneTimer = [...timers.values()].filter((timer) => timer.delay === 0).length === 1;
+    fire(0);
     const printable = harness.take("hd_lookup");
     key("keyup", "?", "Slash", { shiftKey: true });
     if (printable) harness.reply(printable, { dictionaryCount: 1, results: [harness.term("released punctuation")] });
@@ -15766,7 +17468,7 @@ async function contentNoteStage() {
     harness.emitOptions({ ...settings, activationKey: "Escape" });
     key("keydown", "Escape", "Escape");
     key("keydown", "Escape", "Escape", { repeat: true });
-    fire(75);
+    fire(0);
     const escaped = harness.take("hd_lookup");
     if (escaped) harness.reply(escaped, { dictionaryCount: 1, results: [harness.term("Escape key")] });
     await harness.settle();
@@ -15781,13 +17483,15 @@ async function contentNoteStage() {
     key("keydown", "Escape", "Escape");
     const escapeDismissed = harness.driver.snapshot().popupHidden;
     key("keyup", "Escape", "Escape");
+    key("keydown", "Escape", "Escape");
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const selectedMiss = harness.take("hd_lookup");
+    key("keyup", "Escape", "Escape");
     if (selectedMiss) harness.reply(selectedMiss, { dictionaryCount: 1, results: [] });
     await harness.settle();
     key("keydown", "Escape", "Escape");
-    const missTimer = fire(75);
+    const missTimer = fire(0);
     const unexpectedRetry = harness.take("hd_lookup");
     if (unexpectedRetry) harness.reply(unexpectedRetry, { dictionaryCount: 1, results: [] });
     await harness.settle();
@@ -15803,12 +17507,12 @@ async function contentNoteStage() {
       harness.emitOptions({ ...settings, lookupMode: "hover" });
       harness.driver.setScanCandidate(harness.candidate);
       move();
-      fire(75);
+      fire(0);
       const departed = harness.take("hd_lookup");
       if (reason === "no-candidate") {
         harness.driver.setScanCandidate(null);
         move();
-        fire(75);
+        fire(0);
       } else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
       else if (reason === "blur") harness.driver.onWindowBlur();
       else if (reason === "Escape") key("keydown", "Escape", "Escape");
@@ -15826,21 +17530,21 @@ async function contentNoteStage() {
     await harness.initialLookup();
     harness.driver.setScanCandidate(null);
     move();
-    fire(75);
+    fire(0);
     const transferDelay = harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden
       && [...timers.values()].some((timer) => timer.delay === 250);
     move(harness.popup.getRootNode().host);
     const transferred = !harness.driver.hideTimerPending();
-    fire(75);
+    fire(0);
     harness.edit(true);
     move();
-    fire(75);
+    fire(0);
     const draftProtected = !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
     harness.emitOptions({ ...settings, lookupMode: "hover", popupHideDelayMs: 0 });
     const retainedViewCurrent = harness.render().context.isCurrentRequest();
     move();
-    fire(75);
+    fire(0);
     fire(0);
     result["configured transfer delays preserve popup entry and Note editing and allow immediate hide"] =
       transferDelay && transferred && draftProtected && retainedViewCurrent && harness.driver.snapshot().popupHidden
@@ -15851,7 +17555,7 @@ async function contentNoteStage() {
     const oldViewContext = harness.render().context;
     harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
     move();
-    fire(75);
+    fire(0);
     const supersededPointer = harness.take("hd_lookup");
     const oldViewRetired = !harness.driver.snapshot().popupHidden && harness.popup.inert
       && !oldViewContext.isCurrentRequest() && !oldViewContext.isCurrentView()
@@ -15859,7 +17563,7 @@ async function contentNoteStage() {
     const rendersBeforeNote = harness.renders.length;
     harness.driver.setScanCandidate(null);
     move();
-    fire(75);
+    fire(0);
     if (supersededPointer) harness.reply(supersededPointer, { dictionaryCount: 1, results: [harness.term("late pointer")] });
     await harness.settle();
     const cancelledReplacement = harness.driver.snapshot().popupHidden && harness.renders.length === rendersBeforeNote;
@@ -15867,7 +17571,7 @@ async function contentNoteStage() {
     harness.edit(true);
     harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
     move();
-    fire(75);
+    fire(0);
     result["a new pointer candidate retains an inert old view while an open Note prevents replacement"] =
       supersededPointer !== null && oldViewRetired && cancelledReplacement
         && harness.driver.snapshot().noteEditing && harness.render().context.isCurrentRequest()
@@ -15876,7 +17580,7 @@ async function contentNoteStage() {
 
     harness.driver.setScanCandidate({ ...harness.candidate, query: "settings race" });
     move();
-    fire(75);
+    fire(0);
     const settingsLookup = harness.take("hd_lookup");
     harness.emitOptions({ ...settings, lookupMode: "hover", maxResults: 4 });
     harness.reply(settingsLookup, { dictionaryCount: 1, results: [harness.term("obsolete settings")] });
@@ -15890,7 +17594,7 @@ async function contentNoteStage() {
     harness.popup.append(focusedControl);
     focusedControl.focus();
     move();
-    fire(75);
+    fire(0);
     const focusedRequest = harness.take("hd_lookup");
     const focusKept = harness.popup.getRootNode().activeElement === focusedControl;
     const focusedVisible = !harness.driver.snapshot().popupHidden;
@@ -15903,9 +17607,9 @@ async function contentNoteStage() {
     harness.driver.setScanCandidate(harness.candidate);
     move();
     harness.emitOptions({ ...settings, hoverEnabled: false });
-    const disabledTimer = !fire(75);
+    const disabledTimer = !fire(0);
     move();
-    fire(75);
+    fire(0);
     const disabledScan = harness.take("hd_lookup") === null;
     harness.emitOptions({ ...settings, lookupMode: "hover" });
     const disabledPending = harness.driver.runLookup(harness.candidate);
@@ -16724,7 +18428,8 @@ async function contentNoteStage() {
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
-      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
+      ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
@@ -19023,6 +20728,54 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
 }
 
 async function mediaRenderStage({ HDGlossary, document, window }) {
+  const gaiji = gaijiSizingFixture();
+  const gaijiParent = document.createElement("div");
+  document.body.appendChild(gaijiParent);
+  let gaijiLayouts = 0;
+  let gaijiPreviewRefreshes = 0;
+  const gaijiRendered = [];
+  for (const fixtureCase of gaiji.cases) {
+    HDGlossary.appendStructuredImage(document, gaijiParent, {
+      path: gaiji.path,
+      data: gaiji.data,
+      ...fixtureCase.dimensions,
+    }, {
+      onLayoutChange() { gaijiLayouts += 1; },
+      refreshImagePreview() { gaijiPreviewRefreshes += 1; },
+      resolveMedia: async () => `data:image/png;base64,${gaiji.bytes.toString("base64")}`,
+    });
+    await Promise.resolve();
+    const link = gaijiParent.lastElementChild;
+    const image = link.querySelector("img");
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 16 },
+      naturalHeight: { configurable: true, value: 16 },
+    });
+    image.dispatchEvent(new window.Event("load"));
+    const container = link.querySelector(".gloss-image-container");
+    gaijiRendered.push({
+      name: fixtureCase.name,
+      width: Number.parseFloat(container.style.width),
+      padding: Number.parseFloat(container.querySelector(".gloss-image-sizer").style.paddingTop),
+      linkHook: link.classList.contains("gloss-sc-a"),
+      imageHook: image.classList.contains("gloss-sc-img"),
+      classData: link.getAttribute("data-sc-class"),
+      glyphData: link.getAttribute("data-sc-glyph"),
+      unsafeData: link.hasAttribute("data-sc-unsafe key"),
+    });
+  }
+  check("structured gaiji hooks preserve dictionary selectors while decoded natural sizing leaves explicit geometry unchanged",
+    gaijiRendered.every((rendered, index) =>
+      rendered.linkHook && rendered.imageHook
+      && rendered.classData === "gaiji" && rendered.glyphData === "bs-arrow"
+      && !rendered.unsafeData
+      && Math.abs(rendered.width - gaiji.cases[index].width) < 1e-12
+      && Math.abs(rendered.padding - gaiji.cases[index].height / gaiji.cases[index].width * 100) < 0.001)
+      && gaijiLayouts === gaiji.cases.length
+      && gaijiPreviewRefreshes === gaiji.cases.length,
+    JSON.stringify({ gaijiRendered, gaijiLayouts, gaijiPreviewRefreshes }));
+  gaijiParent.remove();
+
   const sizing = imageSizingFixture();
   const sizingParent = document.createElement("div");
   document.body.appendChild(sizingParent);
@@ -19121,14 +20874,14 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
 
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
   const rejected = (operation) => {
-    try { operation(); return false; }
+    try { operation(); return null; }
     catch (error) {
       if (error.name !== "RangeError" || !/structured.*limit/iu.test(error.message)) throw error;
-      return true;
+      return error;
     }
   };
-  const nested = (depth) => {
-    let value = "leaf";
+  const nested = (depth, leaf = "leaf") => {
+    let value = leaf;
     for (let index = 0; index < depth; index += 1) value = { type: "text", text: value };
     return JSON.stringify([value]);
   };
@@ -19136,11 +20889,13 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   HDGlossary.appendTextOnlyGlossary(document, parent, nested(24));
   const exactDepth = parent.textContent === "leaf";
   parent.replaceChildren();
-  const excessiveDepth = rejected(() => HDGlossary.appendTextOnlyGlossary(document, parent, nested(25)));
+  HDGlossary.appendTextOnlyGlossary(document, parent, nested(1000));
+  const deepContent = parent.textContent === "leaf";
+  parent.replaceChildren();
   HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
   HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
-  check("structured depth rejects overflow and preserves ordinary fallback text",
-    exactDepth && excessiveDepth && parent.textContent === "kept<literal>", parent.textContent);
+  check("structured content renders beyond the former depth limit and preserves ordinary fallback text",
+    exactDepth && deepContent && parent.textContent === "kept<literal>", parent.textContent);
 
   const limit = 1_048_576;
   const values = [
@@ -19153,13 +20908,30 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   ];
   const nodeCases = values.map(({ value, count }) => {
     const state = { nodes: limit - count };
-    const accepted = !rejected(() => HDGlossary.appendStructuredValue(document, parent, value, state, 0));
+    const accepted = rejected(() => HDGlossary.appendStructuredValue(document, parent, value, state, 0)) === null;
+    const full = rejected(() => HDGlossary.appendStructuredValue(document, parent, null, state, 0));
+    const overflow = rejected(() =>
+      HDGlossary.appendStructuredValue(document, parent, value, { nodes: limit - count + 1 }, 0));
     return accepted && state.nodes === limit
-      && rejected(() => HDGlossary.appendStructuredValue(document, parent, null, state, 0))
-      && rejected(() => HDGlossary.appendStructuredValue(document, parent, value, { nodes: limit - count + 1 }, 0));
+      && [full, overflow].every(error =>
+        error?.structuredContentLimitKind === "node count"
+        && error.structuredContentActual === limit + 1
+        && error.structuredContentLimit === limit
+        && error.structuredContentLocation.startsWith("structuredContent"));
   });
-  check("structured node accounting includes containers, wrappers and ignored values without truncation",
+  check("structured node accounting reports the exact limit across containers wrappers and ignored values",
     nodeCases.every(Boolean), JSON.stringify(nodeCases));
+  const deepValue = JSON.parse(nested(1000))[0];
+  const deepOverflow = rejected(() =>
+    HDGlossary.appendStructuredValue(document, parent, deepValue, { nodes: limit - 100 }, 0));
+  check("deep node-limit diagnostics keep a bounded structural path without exposing content",
+    deepOverflow?.structuredContentLimitKind === "node count"
+      && deepOverflow.structuredContentActual === limit + 1
+      && deepOverflow.structuredContentLimit === limit
+      && deepOverflow.structuredContentLocation.includes("path segments omitted")
+      && deepOverflow.structuredContentLocation.length < 1024
+      && !deepOverflow.message.includes("leaf"),
+    JSON.stringify({ message: deepOverflow?.message, location: deepOverflow?.structuredContentLocation }));
 
   const popup = document.createElement("div");
   document.body.appendChild(popup);
@@ -19169,13 +20941,26 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   let fills = 0;
   let layouts = 0;
   let media = 0;
-  let errors = 0;
+  const errors = [];
   let requestCurrent = true;
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     parseTagList: HDGlossary.parseTagList,
-    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendTextOnlyGlossary(...args) {
+      fills += 1;
+      if (args[2] === "structured-limit") {
+        const error = new RangeError("Structured content node count 1048577 exceeds limit 1048576 at glossary[0]");
+        error.code = "structured-content-limit";
+        error.structuredContentActual = 1_048_577;
+        error.structuredContentLimit = 1_048_576;
+        error.structuredContentLimitKind = "node count";
+        error.structuredContentLocation = "glossary[0]";
+        throw error;
+      }
+      if (args[2] === "unexpected-renderer-failure") throw new Error("unexpected renderer failure");
+      return HDGlossary.appendTextOnlyGlossary(...args);
+    },
     positionPopup() { layouts += 1; },
   });
   const entry = (dictionary, glossary) => ({
@@ -19183,12 +20968,16 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     term: { ...result.term, glossaries: [{ dictionary, glossary }] },
   });
   const healthy = entry("Healthy", '["healthy"]');
-  const invalid = entry("Invalid", nested(25));
+  const invalid = entry("Invalid", "structured-limit");
+  const unexpected = entry("Unexpected", "unexpected-renderer-failure");
   const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
   const context = {
     isCurrentRequest: () => requestCurrent,
-    dictionaryPresentation: [{ title: "Healthy", favorite: true }, { title: "Invalid", favorite: true }],
-    onRenderError() { errors += 1; view.clear(); },
+    dictionaryPresentation: [
+      { id: "healthy-id", title: "Healthy", favorite: true },
+      { id: "invalid-id", title: "Invalid", favorite: true },
+    ],
+    onRenderError(error) { errors.push(error); view.clear(); },
     resolveMedia() { media += 1; return Promise.resolve(null); },
   };
   const drain = () => {
@@ -19201,33 +20990,70 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const deferredHandled = errors === 1 && escaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const deferredHandled = errors.length === 0 && escaped === 0
+      && view.scrollElement.childElementCount === 1
+      && popup.textContent.includes("healthy");
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const tabHandled = errors.length === 0 && view.scrollElement.childElementCount > 0
+      && popup.textContent.includes("Invalid");
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
-    check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
-      JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
+    check("deferred, tab and expanded structured-limit failures omit only their glossary body",
+      deferredHandled && tabHandled && errors.length === 0 && moreEscaped === 0
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
+      JSON.stringify({ deferredHandled, tabHandled, errors: errors.map(error => error.message), escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
       dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Healthy"] }],
     };
     view.renderResults([healthy, invalid], candidate, projectionContext);
     let presentationEscaped = false;
-    const beforePresentationError = errors;
+    const beforePresentationError = errors.length;
     try {
       view.updateDictionaryPresentation({ ...projectionContext,
         dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Invalid"] }],
       });
     } catch { presentationEscaped = true; }
-    check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors === beforePresentationError + 1 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
-      JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
+    check("storage-driven projection failures omit only the affected glossary body",
+      !presentationEscaped && errors.length === beforePresentationError
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
+      JSON.stringify({ presentationEscaped, errors: errors.length, beforePresentationError }));
+
+    const manyDictionaries = Array.from({ length: 100 }, (_, index) => ({
+      dictionary: `Dictionary ${index}`,
+      glossary: index === 50 ? "structured-limit" : JSON.stringify([`definition ${index}`]),
+    }));
+    const manyDictionaryResult = {
+      ...result,
+      term: { ...result.term, glossaries: manyDictionaries },
+    };
+    view.renderResults([manyDictionaryResult], candidate, {
+      ...context,
+      dictionaryPresentation: manyDictionaries.map(({ dictionary }) => ({
+        id: `dictionary-${dictionary}`,
+        title: dictionary,
+        favorite: true,
+      })),
+    });
+    const manyEscaped = drain();
+    const manyCards = popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length;
+    check("one failed glossary does not cap a large dictionary result set",
+      manyEscaped === 0 && errors.length === 0 && manyCards === 100
+        && popup.textContent.includes("definition 0")
+        && popup.textContent.includes("definition 99"),
+      JSON.stringify({ manyEscaped, errors: errors.length, manyCards }));
+
+    view.renderResults([healthy, unexpected], candidate, context);
+    const unexpectedEscaped = drain();
+    check("unexpected glossary renderer failures still use the current view error boundary",
+      unexpectedEscaped === 0 && errors.length === 1
+        && errors[0].message === "unexpected renderer failure"
+        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+      JSON.stringify({ unexpectedEscaped, errors: errors.map(error => error.message) }));
 
     const replacements = [
       () => view.renderResults([healthy], candidate, context),
@@ -19240,9 +21066,10 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
       requestCurrent = true;
       view.renderResults([healthy, imageEntry], candidate, context);
       replace();
-      const before = { fills, layouts, media, errors };
+      const before = { fills, layouts, media, errors: errors.length };
       const staleEscaped = drain();
-      return staleEscaped === 0 && JSON.stringify(before) === JSON.stringify({ fills, layouts, media, errors });
+      return staleEscaped === 0
+        && JSON.stringify(before) === JSON.stringify({ fills, layouts, media, errors: errors.length });
     });
     check("superseded glossary tasks do no rendering, media or layout work",
       staleCases.every(Boolean), JSON.stringify(staleCases));

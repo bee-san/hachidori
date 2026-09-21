@@ -2,8 +2,8 @@
   "manifest_version": 2,
   "name": "Hachidori",
   "short_name": "Hachidori",
-  "version": "0.1.1",
-  "description": "Private Japanese hover lookups from your Yomitan dictionaries, entirely in Firefox.",
+  "version": "0.1.4",
+  "description": "Study Japanese vocabulary: look up words on any page and build Anki cards, optionally capturing on-screen context.",
   "icons": {
     "16": "icons/hachidori-16.png",
     "32": "icons/hachidori-32.png",
@@ -87,6 +87,7 @@
         "dictionary-group-state.js",
         "lookup-stats-identity.js",
         "external-links.js",
+        "external-link-host.js",
         "audio-content.js",
         "anki-content.js",
         "render/glossary.js",
@@ -103,10 +104,7 @@
     "overlay-mode.js",
     "browser-api.js",
     "render/reader.css",
-    "render/icons/big-circle.svg",
-    "render/icons/add-duplicate-big-circle.svg",
-    "render/icons/overwrite-big-circle.svg",
-    "render/icons/view-note.svg"
+    "icons.css"
   ],
   "browser_specific_settings": {
     "gecko": {

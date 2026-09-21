@@ -2,11 +2,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { createAnkiGateway, ankiAvailability } from "../extension/anki.js";
+import { AnkiTransportError, createAnkiGateway, ankiAvailability } from "../extension/anki.js";
 
 const { normaliseOptions, normaliseAnkiConnectUrl, validateOptionsPatch } = globalThis.HDReaderOptions;
 const config = (patch = {}) => ({ ...normaliseOptions({}).anki, ...patch });
 const reply = result => ({ ok: true, async json() { return { result, error: null }; } });
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(accept => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+};
+const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test("global Anki configuration validates complete mappings and duplicate policies without input caps", () => {
   const defaults = config();
@@ -18,8 +26,13 @@ test("global Anki configuration validates complete mappings and duplicate polici
   assert.equal(Object.hasOwn(defaults, "duplicateScopeCheckAllModels"), false);
   const value = config({ model: "日本語", tags: Array.from({ length: 300 }, (_, i) => `tag${i}`),
     fields: { ...defaults.fields, expression: "日本語".repeat(300) }, duplicateScope: "deck", duplicateBehavior: "new" });
-  assert.deepEqual(validateOptionsPatch({ anki: value }), { anki: value });
-  assert.deepEqual(normaliseOptions({ anki: value }).anki, value);
+  const canonical = normaliseOptions({ anki: value }).anki;
+  assert.deepEqual(validateOptionsPatch({ anki: value }), { anki: canonical });
+  assert.deepEqual(canonical.templates[0], {
+    id: "default",
+    name: "Default",
+    ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS.map(key => [key, canonical[key]])),
+  });
   for (const bad of [null, [], { ...value, model: 42 }, { ...value, fields: {} },
     { ...value, tags: [false] }, { ...value, duplicateScope: "profile" }]) {
     assert.throws(() => validateOptionsPatch({ anki: bad }));
@@ -45,7 +58,7 @@ test("global Anki configuration validates complete mappings and duplicate polici
   } }).anki.duplicateBehavior, "new");
 });
 
-test("Anki discovery defaults to localhost and fixes the envelope, reads lists concurrently and retains field order", async () => {
+test("Anki discovery defaults to localhost, fixes the envelope and retains field order", async () => {
   const requests = [];
   const gateway = createAnkiGateway({ fetch: async (url, options) => {
     const body = JSON.parse(options.body);
@@ -108,6 +121,123 @@ test("custom discovery and direct calls use only their selected endpoint; invali
   assert.equal(requests.length, 4);
 });
 
+test("Anki requests use bounded endpoint lanes and start each timeout only when transport dispatches", async () => {
+  const heldResponses = Array.from({ length: 4 }, deferred);
+  const requests = [];
+  const gateway = createAnkiGateway({ fetch: async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ url, action: body.action, signal: options.signal });
+    if (body.action.startsWith("held-")) return heldResponses[Number(body.action.slice(5))].promise;
+    return reply("queued-result");
+  } });
+  const url = "http://127.0.0.1:18769";
+  const held = heldResponses.map((_, index) => gateway.invoke(`held-${index}`, {}, "", 100, url));
+  const queued = gateway.invoke("queued", {}, "", 10, url);
+  await tick();
+  assert.deepEqual(requests.map(request => request.action), ["held-0", "held-1", "held-2", "held-3"]);
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.deepEqual(requests.map(request => request.action), ["held-0", "held-1", "held-2", "held-3"],
+    "a queued request must not consume its transport deadline");
+  heldResponses[0].resolve(reply("held-result-0"));
+  assert.equal(await queued, "queued-result");
+  assert.deepEqual(requests.map(request => request.action),
+    ["held-0", "held-1", "held-2", "held-3", "queued"]);
+  assert.equal(requests[4].signal.aborted, false);
+  for (let index = 1; index < heldResponses.length; index += 1) {
+    heldResponses[index].resolve(reply(`held-result-${index}`));
+  }
+  assert.deepEqual(await Promise.all(held),
+    ["held-result-0", "held-result-1", "held-result-2", "held-result-3"]);
+});
+
+test("Anki queues are isolated by normalized endpoint", async () => {
+  const responses = new Map();
+  const requests = [];
+  const gateway = createAnkiGateway({ fetch: async (url, options) => {
+    requests.push({ url, action: JSON.parse(options.body).action });
+    const response = deferred();
+    responses.set(url, response);
+    return response.promise;
+  } });
+  const first = gateway.invoke("first", {}, "", 100, "http://127.0.0.1:18769/");
+  const second = gateway.invoke("second", {}, "", 100, "http://127.0.0.1:18770");
+  await tick();
+  assert.deepEqual(requests, [
+    { url: "http://127.0.0.1:18769", action: "first" },
+    { url: "http://127.0.0.1:18770", action: "second" },
+  ]);
+  responses.get("http://127.0.0.1:18769").resolve(reply("first-result"));
+  responses.get("http://127.0.0.1:18770").resolve(reply("second-result"));
+  assert.deepEqual(await Promise.all([first, second]), ["first-result", "second-result"]);
+});
+
+test("Anki transport failure marks pending work unsent, aborts dispatched siblings conservatively and reconnects", async () => {
+  let mode = "stalled";
+  let requestCount = 0;
+  const signals = [];
+  const gateway = createAnkiGateway({ timeoutMs: 1000, fetch: async (_, { signal }) => {
+    requestCount += 1;
+    signals.push(signal);
+    if (mode === "connected") return reply("reconnected");
+    return new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  } });
+  const pending = Array.from({ length: 8 }, (_, index) =>
+    gateway.invoke(`request-${index}`, {}, "", index === 0 ? 10 : 1000));
+  const settled = await Promise.allSettled(pending);
+  assert.equal(requestCount, 4, "a failed transport must not spend another timeout on each queued request");
+  assert.ok(signals.slice(1).every(signal =>
+    signal.reason instanceof AnkiTransportError && signal.reason.dispatched === true),
+    "the first failure deliberately aborts already-dispatched siblings");
+  for (const [index, result] of settled.entries()) {
+    assert.equal(result.status, "rejected");
+    assert.ok(result.reason instanceof AnkiTransportError);
+    assert.match(result.reason.message, /timed out/u);
+    assert.equal(result.reason.dispatched, index < 4,
+      "only requests that entered a transport lane have an uncertain mutation outcome");
+    assert.equal(Object.getOwnPropertyDescriptor(result.reason, "dispatched").enumerable, false);
+  }
+  mode = "connected";
+  assert.equal(await gateway.invoke("retry", {}), "reconnected");
+  assert.equal(requestCount, 5);
+});
+
+test("Anki API failures do not poison unrelated queued requests", async () => {
+  let requestCount = 0;
+  const gateway = createAnkiGateway({ fetch: async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return { ok: true, async json() { return { result: null, error: "first request rejected" }; } };
+    }
+    return reply("second-result");
+  } });
+  const first = gateway.invoke("first", {});
+  const second = gateway.invoke("second", {});
+  await assert.rejects(first, /first request rejected/u);
+  assert.equal(await second, "second-result");
+  assert.equal(requestCount, 2);
+});
+
+test("Anki transport stress stays bounded and preserves request order", async () => {
+  let active = 0;
+  let maximumActive = 0;
+  const started = [];
+  const gateway = createAnkiGateway({ timeoutMs: 50, fetch: async (_, options) => {
+    const { action } = JSON.parse(options.body);
+    started.push(action);
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise(resolve => setTimeout(resolve, (Number(action.slice(7)) % 4) + 1));
+    active -= 1;
+    return reply(action);
+  } });
+  const actions = Array.from({ length: 80 }, (_, index) => `stress-${index}`);
+  assert.deepEqual(await Promise.all(actions.map(action => gateway.invoke(action, {}))), actions);
+  assert.deepEqual(started, actions);
+  assert.equal(maximumActive, 4);
+});
+
 test("discovery distinguishes partial, malformed, permission and offline failures and retries afresh", async () => {
   let mode = "partial";
   const gateway = createAnkiGateway({ fetch: async (_, options) => {
@@ -131,6 +261,14 @@ test("discovery distinguishes partial, malformed, permission and offline failure
   }
   mode = "success";
   assert.equal((await gateway.discover({ model: "Basic" })).errors.length, 0);
+});
+
+test("Anki discovery accepts replies slower than the old 1.25-second deadline", async () => {
+  const gateway = createAnkiGateway({ fetch: (_, { signal }) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ result: [], error: null }) }), 1500);
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  }) });
+  assert.equal((await gateway.discover({ model: "" })).connected, true);
 });
 
 test("Anki discovery timeouts abort the fetch and API errors are not mislabeled offline", async () => {

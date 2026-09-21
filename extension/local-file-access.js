@@ -15,7 +15,25 @@ export function createLocalFileAccessController({
       return false;
     }
   })();
-  const browserName = firefox ? "Firefox" : "Chrome";
+  // Setup shows this section with a dismiss action; Settings shows it without.
+  const surface = onDismiss ? "setup" : "Settings";
+  const COPY = {
+    firefox: {
+      browserName: "Firefox",
+      description: "allow Hachidori to access local files in Firefox’s Add-ons Manager.",
+      instruction: "Open Hachidori’s Permissions, allow local-file access, then return to this tab.",
+      reopen: "Open Hachidori’s extension options",
+      settingsUrl: () => "about:addons",
+    },
+    chrome: {
+      browserName: "Chrome",
+      description: "enable “Allow access to file URLs” in Hachidori’s extension settings.",
+      instruction: "Turn on “Allow access to file URLs”, then return to this tab.",
+      reopen: "On the extension details page, open Extension options",
+      settingsUrl: () => `chrome://extensions/?id=${chromeApi.runtime.id}`,
+    },
+  }[firefox ? "firefox" : "chrome"];
+  const { browserName } = COPY;
   const make = (tag, id, text, className = "") => {
     const node = document.createElement(tag);
     node.id = id;
@@ -25,20 +43,11 @@ export function createLocalFileAccessController({
   };
   const heading = make("h2", "local-file-heading", "Read saved pages too");
   const description = make("p", "local-file-description",
-    firefox
-      ? "To look up Japanese in HTML files opened from your computer, allow Hachidori to access local files in Firefox’s Add-ons Manager."
-      : "To look up Japanese in HTML files opened from your computer, enable “Allow access to file URLs” in Hachidori’s extension settings.");
-  const instruction = make("p", "local-file-instruction",
-    firefox
-      ? "Open Hachidori’s Permissions, allow local-file access, then return to this tab."
-      : "Turn on “Allow access to file URLs”, then return to this tab.");
-  const recovery = make("p", "local-file-recovery", firefox
-    ? (onDismiss
-      ? "Firefox may close setup when it reloads Hachidori. Open Hachidori’s extension options, then choose Resume setup."
-      : "Firefox may close Settings when it reloads Hachidori. Open Hachidori’s extension options to return.")
-    : (onDismiss
-      ? "Chrome may close setup when it reloads Hachidori. On the extension details page, open Extension options, then choose Resume setup."
-      : "Chrome may close Settings when it reloads Hachidori. On the extension details page, open Extension options to return."));
+    `To look up Japanese in HTML files opened from your computer, ${COPY.description}`);
+  const instruction = make("p", "local-file-instruction", COPY.instruction);
+  const recovery = make("p", "local-file-recovery",
+    `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}`
+      + (onDismiss ? ", then choose Resume setup." : " to return."));
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
@@ -96,7 +105,7 @@ export function createLocalFileAccessController({
     render();
     try {
       await chromeApi.tabs.create({
-        url: firefox ? "about:addons" : `chrome://extensions/?id=${chromeApi.runtime.id}`,
+        url: COPY.settingsUrl(),
       });
     }
     catch {

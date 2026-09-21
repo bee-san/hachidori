@@ -785,23 +785,23 @@ html[data-hoshidicts-theme="cmyk"],
 html[data-hoshidicts-theme="autumn"],
 :host([data-hoshidicts-theme="autumn"]) {
   --hoshidicts-palette-color-scheme: light;
-  --hoshidicts-palette-base-100: oklch(95.814% 0 0);
-  --hoshidicts-palette-base-200: oklch(89.107% 0 0);
-  --hoshidicts-palette-base-300: oklch(82.4% 0 0);
-  --hoshidicts-palette-base-content: oklch(19.162% 0 0);
-  --hoshidicts-palette-primary: oklch(40.723% 0.161 17.53);
-  --hoshidicts-palette-primary-content: oklch(88.144% 0.032 17.53);
-  --hoshidicts-palette-secondary: oklch(61.676% 0.169 23.865);
-  --hoshidicts-palette-secondary-content: oklch(12.335% 0.033 23.865);
-  --hoshidicts-palette-accent: oklch(73.425% 0.094 60.729);
-  --hoshidicts-palette-accent-content: oklch(14.685% 0.018 60.729);
-  --hoshidicts-palette-neutral: oklch(54.367% 0.037 51.902);
-  --hoshidicts-palette-neutral-content: oklch(90.873% 0.007 51.902);
-  --hoshidicts-palette-info: oklch(69.224% 0.097 207.284);
-  --hoshidicts-palette-info-content: oklch(13.844% 0.019 207.284);
-  --hoshidicts-palette-success: oklch(60.995% 0.08 174.616);
-  --hoshidicts-palette-warning: oklch(70.081% 0.164 56.844);
-  --hoshidicts-palette-error: oklch(53.07% 0.241 24.16);
+  --hoshidicts-palette-base-100: #fbf6e9;
+  --hoshidicts-palette-base-200: #f0e4cd;
+  --hoshidicts-palette-base-300: #ddc9a8;
+  --hoshidicts-palette-base-content: #2f3127;
+  --hoshidicts-palette-primary: #596b3b;
+  --hoshidicts-palette-primary-content: #fffdf7;
+  --hoshidicts-palette-secondary: #9a5136;
+  --hoshidicts-palette-secondary-content: #fffaf2;
+  --hoshidicts-palette-accent: #d09a46;
+  --hoshidicts-palette-accent-content: #302416;
+  --hoshidicts-palette-neutral: #675746;
+  --hoshidicts-palette-neutral-content: #fffaf2;
+  --hoshidicts-palette-info: #426879;
+  --hoshidicts-palette-info-content: #f8fcfb;
+  --hoshidicts-palette-success: #326b54;
+  --hoshidicts-palette-warning: #85520d;
+  --hoshidicts-palette-error: #983f35;
 }
 
 html[data-hoshidicts-theme="acid"],
@@ -1161,6 +1161,33 @@ html[data-hoshidicts-theme="girlypop"],
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: 0 0 0 2px #000000, 0 0 0 4px #ffffff;
+}
+
+:host([data-hoshidicts-theme="autumn"]) .gsm-hoshidicts-popup {
+  --hoshidicts-text-faint: #68685d;
+  --hoshidicts-border: #96866b;
+  --hoshidicts-border-strong: #71634e;
+  --hoshidicts-accent-soft: #e1e6d2;
+  --hoshidicts-link: #46602f;
+  --hoshidicts-link-hover: #793f2f;
+  --hoshidicts-scrollbar: #71634e;
+  --hoshidicts-pitch: #945b17;
+  background:
+    radial-gradient(
+      circle at 100% 0,
+      color-mix(in srgb, var(--hoshidicts-palette-accent) calc(var(--hoshidicts-background-opacity) * 0.15), transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 0 100%,
+      color-mix(in srgb, var(--hoshidicts-palette-primary) calc(var(--hoshidicts-background-opacity) * 0.1), transparent),
+      transparent 48%
+    ),
+    var(--hoshidicts-popup-background);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 253, 247, 0.8),
+    0 18px 48px rgba(72, 49, 25, 0.24),
+    0 2px 8px rgba(72, 49, 25, 0.18);
 }
 
 :host([data-hoshidicts-theme="girlypop"]) .gsm-hoshidicts-popup {
@@ -1621,10 +1648,17 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-entry-header {
   display: flex;
+  flex-wrap: wrap-reverse;
   align-items: center;
   justify-content: space-between;
   min-height: 42px;
   gap: 10px;
+}
+
+.gsm-hoshidicts-entry-header > .gsm-hoshidicts-headword,
+.gsm-hoshidicts-entry-header > .gsm-hoshidicts-kanji-navigation {
+  flex: 1 1 12em;
+  max-width: 100%;
 }
 
 .gsm-hoshidicts-headword {
@@ -1825,11 +1859,45 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-entry-actions {
   display: flex;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex: 1 1 270px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: -2px -2px -2px auto;
+  padding: 2px;
+  align-self: end;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: safe flex-end;
   gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 2px;
+  scrollbar-color: var(--hoshidicts-scrollbar) transparent;
+  scrollbar-width: thin;
+  touch-action: pan-x pan-y;
+}
+
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-external-link-button,
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-custom-anki-button {
+  /* Natural width, but still able to shrink so the row never overflows. */
+  flex: 0 1 auto;
+  min-width: 36px;
+}
+
+.gsm-hoshidicts-entry-actions::-webkit-scrollbar {
+  height: 5px;
+}
+
+.gsm-hoshidicts-entry-actions::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--hoshidicts-scrollbar);
+}
+
+.gsm-hoshidicts-entry-actions::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .gsm-hoshidicts-audio-button,
@@ -1855,36 +1923,6 @@ html[data-hoshidicts-theme="girlypop"],
   color: var(--text-color);
   font-family: inherit;
   font-size: 12px;
-}
-
-.gsm-hoshidicts-audio-button::before {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  background: currentColor;
-  content: "";
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3zm11.5 3a3.5 3.5 0 0 0-2-3.15v6.3A3.5 3.5 0 0 0 14.5 12zm0-6.2v2.05a5 5 0 0 1 0 8.3v2.05a7 7 0 0 0 0-12.4z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3zm11.5 3a3.5 3.5 0 0 0-2-3.15v6.3A3.5 3.5 0 0 0 14.5 12zm0-6.2v2.05a5 5 0 0 1 0 8.3v2.05a7 7 0 0 0 0-12.4z'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-
-.gsm-hoshidicts-audio-button[data-state="loading"]::before,
-.gsm-hoshidicts-audio-button[data-state="error"]::before {
-  width: auto;
-  height: auto;
-  background: transparent;
-  color: currentColor;
-  font-size: 18px;
-  font-weight: 700;
-  -webkit-mask: none;
-  mask: none;
-}
-
-.gsm-hoshidicts-audio-button[data-state="loading"]::before {
-  content: "…";
-}
-
-.gsm-hoshidicts-audio-button[data-state="error"]::before {
-  content: "!";
 }
 
 .gsm-hoshidicts-audio-button[hidden] {
@@ -1926,30 +1964,18 @@ html[data-hoshidicts-theme="girlypop"],
   font: 700 20px/1 "Segoe UI", sans-serif;
 }
 
-.gsm-hoshidicts-mine-icon {
-  display: inline-flex;
-  flex: 0 0 16px;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 16px 16px;
-  line-height: 1;
-  object-fit: contain;
-}
-
 .gsm-hoshidicts-mine-button:hover:not(:disabled) {
   background: var(--hoshidicts-accent-soft);
 }
 
+.gsm-hoshidicts-mine-button[data-state="view-existing"],
 .gsm-hoshidicts-mine-button[data-state="success"] {
   border-color: var(--hoshidicts-success);
   color: var(--hoshidicts-success);
 }
 
-.gsm-hoshidicts-mine-button[data-state="mining"] {
+.gsm-hoshidicts-mine-button[data-state="checking"] .hd-icon,
+.gsm-hoshidicts-mine-button[data-state="mining"] .hd-icon {
   animation: gsm-hoshidicts-spin 0.8s linear infinite;
 }
 
@@ -1964,11 +1990,6 @@ html[data-hoshidicts-theme="girlypop"],
   border-color: var(--accent-color);
   background: var(--hoshidicts-accent-soft);
   color: var(--accent-color);
-}
-
-.gsm-hoshidicts-note-icon {
-  font-size: 22px;
-  line-height: 1;
 }
 
 .gsm-hoshidicts-text-action-button {
@@ -2009,6 +2030,44 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-text-action-button:disabled {
   color: var(--hoshidicts-text-faint);
   cursor: default;
+}
+
+.gsm-hoshidicts-custom-anki-button[data-state="ready"],
+.gsm-hoshidicts-custom-anki-button[data-state="add-duplicate"],
+.gsm-hoshidicts-custom-anki-button[data-state="overwrite"] {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.gsm-hoshidicts-custom-anki-button[data-state="view-existing"],
+.gsm-hoshidicts-custom-anki-button[data-state="success"] {
+  border-color: var(--hoshidicts-success);
+  color: var(--hoshidicts-success);
+}
+
+.gsm-hoshidicts-custom-anki-button[data-state="error"] {
+  border-color: var(--hoshidicts-danger);
+  color: var(--hoshidicts-danger);
+}
+
+.gsm-hoshidicts-custom-anki-button[data-state="checking"]::before,
+.gsm-hoshidicts-custom-anki-button[data-state="mining"]::before {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: gsm-hoshidicts-spin 0.8s linear infinite;
+}
+
+.gsm-hoshidicts-text-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gsm-hoshidicts-audio-menu {
@@ -2114,7 +2173,10 @@ html[data-hoshidicts-theme="girlypop"],
     scroll-behavior: auto;
   }
 
-  .gsm-hoshidicts-mine-button[data-state="mining"] {
+  .gsm-hoshidicts-mine-button[data-state="checking"] .hd-icon,
+  .gsm-hoshidicts-mine-button[data-state="mining"] .hd-icon,
+  .gsm-hoshidicts-custom-anki-button[data-state="checking"]::before,
+  .gsm-hoshidicts-custom-anki-button[data-state="mining"]::before {
     animation: none;
   }
 }
@@ -2723,6 +2785,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-navigation {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -2731,6 +2794,12 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-back,
 .gsm-hoshidicts-popup-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
   padding: 4px 8px;
   border: 1px solid var(--hoshidicts-border);
   border-radius: 5px;
@@ -2738,6 +2807,17 @@ html[data-hoshidicts-theme="girlypop"],
   color: var(--text-color);
   font: inherit;
   cursor: pointer;
+}
+
+.gsm-hoshidicts-popup-close {
+  width: 36px;
+  padding: 0;
+}
+
+.gsm-hoshidicts-kanji-back:focus-visible,
+.gsm-hoshidicts-popup-close:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
 }
 
 .gsm-hoshidicts-kanji-glyph {

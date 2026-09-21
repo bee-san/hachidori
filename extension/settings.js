@@ -8,7 +8,8 @@ import { extensionApi as chrome, IS_FIREFOX } from "./browser-api.js";
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
-import { createAnkiSettingsController } from "./anki-settings.js";
+import { createAnkiTemplateSettingsController } from "./anki-settings.js";
+import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
@@ -18,7 +19,7 @@ import { createSettingsSearch } from "./settings-search.js";
 import { applyPageTheme, setStatusOutput } from "./settings-dom.js";
 import { HOST_BROWSER, HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
-import { createCustomLinkSettings } from "./custom-link-settings.js";
+import { createCustomButtonSettings } from "./custom-button-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryProgressList,
@@ -44,6 +45,12 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { SETUP_STATE_KEY, normaliseSetupState, setupIncomplete } from "./setup-state.js";
+import { readDictionaryArchiveIdentity } from "./dictionary-import-archive.js";
+import {
+  describeRevisionComparison,
+  dictionaryImportMatches,
+  dictionaryImportTarget,
+} from "./dictionary-import.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -65,7 +72,7 @@ const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS,
-  clampOption, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
+  clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -75,7 +82,6 @@ const STATUS_RETRY_MS = 5000;
 const NUMBER_FIELDS = [
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
-  { key: "hoverDelayMs", id: "opt-hover-delay" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
@@ -165,6 +171,7 @@ let requestCounter = 0;
 let audioController;
 let keybindController;
 let ankiController;
+let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
 let sharingLinkedAddress = null;
@@ -172,7 +179,7 @@ let backupController;
 let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
-let customLinkController;
+let customButtonController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
@@ -304,12 +311,18 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  if (activeSection === "design" && HOST_CAPABILITIES.customLinks) {
-    customLinkController ??= createCustomLinkSettings({ document,
-      readLinks: () => options.customLinks,
-      saveLinks: links => { options.customLinks = links; writeOptions(); },
+  if (activeSection === "design") {
+    customButtonController ??= createCustomButtonSettings({ document,
+      readButtons: () => options.customButtons,
+      readTemplates: () => options.anki.templates,
+      saveButtons: buttons => {
+        options.customButtons = normaliseCustomButtons(buttons);
+        options.customLinks = options.customButtons.filter(button => button.type === "link")
+          .map(({ label, url }) => ({ label, url }));
+        writeOptions();
+      },
     });
-    customLinkController.render();
+    customButtonController.render();
   }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (fragment === "settings-content") element("settings-content").focus();
@@ -347,9 +360,14 @@ function updateKeybindSettings() {
 
 function updateAnkiSettings() {
   if (activeSection !== "anki" || optionsRevision < 0) return;
-  ankiController ??= createAnkiSettingsController({ document, readConfig: () => options.anki,
+  ankiController ??= createAnkiTemplateSettingsController({ document, readAnki: () => options.anki,
     capabilities: MINING_CAPABILITIES,
-    editConfig: config => { options.anki = config; writeOptions(); },
+    readButtons: () => options.customButtons,
+    editAnki: anki => {
+      options.anki = anki;
+      customButtonController?.render();
+      writeOptions();
+    },
     send: async (type, fields) => {
       // Linked checks cannot forward draft endpoint credentials or mappings.
       // Commit them to the host first, then let the host read its saved copy.
@@ -360,17 +378,28 @@ function updateAnkiSettings() {
     },
   });
   ankiController.render();
+  localAudioSetup ??= createLocalAudioSetup({ document, readSources: () => options.audioSources,
+    isLinked: () => sharingLinkedAddress !== null,
+    editSources: sources => { options.audioSources = sources; writeOptions(); },
+  });
+  localAudioSetup.render();
 }
 
 // While linked, archives and backups belong to the host; the notices say so.
 function renderSharingLink(value) {
+  const wasLinked = sharingLinkedAddress !== null;
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
   const linked = sharingLinkedAddress !== null;
+  localAudioSetup?.render();
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
   element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;
   element("import-drop-zone").hidden = linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
+  element("automatic-backups").hidden = linked;
+  if (wasLinked && !linked) {
+    void backupController?.refreshAutomaticBackups();
+  }
 }
 
 // Save the pinned release through a blob download, including in Electron hosts.
@@ -498,6 +527,7 @@ function updateBackupSettings() {
     download: typeof chrome.downloads?.download === "function"
       ? () => send("hd_backup_download", {}, WORKER_TARGET) : null,
     browserName: HOST_BROWSER === "firefox" ? "Firefox" : "Chrome",
+    listAutomatic: () => send("hd_backup_auto_list", {}, WORKER_TARGET),
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {
       if (backupLifecycleTokens.has(token)) postBackupLifecycle({ type: "cancel", token });
@@ -506,7 +536,8 @@ function updateBackupSettings() {
       if (importing || installingRecommended || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
-      if (customDictionaryDirty() || customLinkController?.dirty() || savingOptions !== null || optionsEditRevision !== null
+      if (customDictionaryDirty() || customButtonController?.dirty() || ankiController?.dirty()
+          || savingOptions !== null || optionsEditRevision !== null
           || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
           || nameDrafts.hasPendingChanges()) {
         throw new Error("Save or discard your pending changes before working with a backup.");
@@ -597,8 +628,7 @@ function updateDesignPreview() {
   }
   if (frame.style.width !== `${options.popupWidthPx * options.popupScalePercent / 100 + 96}px`
       || frame.style.height !== `${options.popupHeightPx * options.popupScalePercent / 100 + 216}px`) resizeDesignPreview();
-  const previewOptions = HOST_CAPABILITIES.customLinks ? options : { ...options, customLinks: [] };
-  frame.contentWindow.HDDesignPreview?.update(previewOptions, dictionaryState);
+  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
 function resizeDesignPreview() {
@@ -692,6 +722,7 @@ function normaliseDictionary(row) {
   }
   const sourceId = nonemptyString(row?.sourceId);
   return {
+    ...(row && typeof row === "object" && !Array.isArray(row) ? row : {}),
     id: stringValue(row?.id),
     title,
     displayName: displayName(row?.displayName),
@@ -1620,7 +1651,7 @@ function renderOptions() {
   renderThemeChoices();
   renderCustomCss();
   renderCustomJavascript();
-  customLinkController?.render();
+  customButtonController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
@@ -1666,7 +1697,7 @@ function dictionaryMetadata(entry) {
       details.push(`Imported ${installed.toLocaleString()}`);
     }
   }
-  details.push(isUpdateCheckable(entry) ? "Update source available" : "Local archive");
+  details.push(`Package ID ${entry.id}`, isUpdateCheckable(entry) ? "Update source available" : "Local archive");
   return details.join(" · ");
 }
 
@@ -2444,10 +2475,109 @@ function summariseReport(report) {
   return counts.length === 0 ? "no entries" : counts.join(", ");
 }
 
-async function importFile(file, index, total, request = {}, label = file.name, started = Date.now()) {
+function revisionLabel(value) {
+  return value === null || value === "" ? "(missing)" : value;
+}
+
+function chooseDictionaryImport(identity, matches) {
+  const dialog = element("import-decision-dialog");
+  const target = element("import-decision-target");
+  const imported = element("import-decision-imported");
+  const installed = element("import-decision-installed");
+  const description = element("import-decision-description");
+  target.replaceChildren(...matches.map(({ dictionary }, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    const name = dictionary.displayName
+      ? `${dictionary.displayName} (${dictionary.title})`
+      : dictionary.title;
+    option.textContent = `${name} — revision ${revisionLabel(dictionary.revision)}`
+      + ` · ID ${dictionary.id.slice(0, 8)}`;
+    return option;
+  }));
+  element("import-decision-target-row").hidden = matches.length === 1;
+  imported.textContent = `${identity.title} — revision ${revisionLabel(identity.revision)}`;
+
+  const renderTarget = () => {
+    const match = matches[Number(target.value) || 0];
+    installed.textContent = `${match.dictionary.displayName || match.dictionary.title}`
+      + ` — revision ${revisionLabel(match.dictionary.revision)}`;
+    description.textContent = describeRevisionComparison(
+      identity.revision,
+      match.dictionary.revision,
+    );
+  };
+  target.value = "0";
+  target.onchange = renderTarget;
+  renderTarget();
+  dialog.returnValue = "";
+
+  return new Promise((resolve) => {
+    const finish = () => {
+      dialog.removeEventListener("cancel", cancel);
+      const action = ["replace", "separate"].includes(dialog.returnValue)
+        ? dialog.returnValue
+        : "cancel";
+      const match = matches[Number(target.value) || 0];
+      target.onchange = null;
+      resolve(action === "cancel" ? null : {
+        action,
+        identity,
+        matchKind: match.kind,
+        target: dictionaryImportTarget(match.dictionary),
+      });
+    };
+    const cancel = (event) => {
+      event.preventDefault();
+      dialog.close("cancel");
+    };
+    dialog.addEventListener("close", finish, { once: true });
+    dialog.addEventListener("cancel", cancel, { once: true });
+    dialog.showModal();
+  });
+}
+
+async function importFile(file, index, total, request = {}, label = file.name) {
+  updateImportResult(index, { text: "Reading dictionary metadata…", progress: { value: null } });
+  let identity;
+  try {
+    identity = await readDictionaryArchiveIdentity(file);
+  } catch (error) {
+    updateImportResult(index, {
+      text: `Failed before import: ${describe(error)}`,
+      tone: "error",
+    });
+    return "failed";
+  }
+
+  const matches = dictionaryImportMatches(identity, dictionaries);
+  let importDecision = {
+    action: "install",
+    identity,
+    matchKind: null,
+    target: null,
+  };
+  if (matches.length > 0) {
+    importDecision = await chooseDictionaryImport(identity, matches);
+    if (importDecision === null) {
+      updateImportResult(index, {
+        text: "Cancelled before import. Existing dictionary unchanged.",
+      });
+      return "cancelled";
+    }
+  }
+
+  // The decision happens before this URL exists, so Cancel cannot start a
+  // native import, create a generation, or mutate persistent storage.
+  const started = Date.now();
   const blobUrl = URL.createObjectURL(file);
   try {
-    return await importArchive({ blobUrl, fileName: file.name, ...request }, index, total, label, started);
+    return await importArchive({
+      blobUrl,
+      fileName: file.name,
+      ...request,
+      importDecision,
+    }, index, total, label, started);
   } finally {
     // The offscreen document has read the bytes by now; holding the URL any
     // longer just pins the file.
@@ -2475,7 +2605,7 @@ async function importArchive(request, index, total, label, started) {
         text: `Imported ${report.title} in ${importDuration(started)}: ${summariseReport(report)}.`,
         tone: "ok",
       });
-      return true;
+      return "imported";
     }
     const reason = reply.error ?? report.error ?? "The engine gave no reason.";
     updateImportResult(index, {
@@ -2490,7 +2620,7 @@ async function importArchive(request, index, total, label, started) {
   } finally {
     clearInterval(ticker);
   }
-  return false;
+  return "failed";
 }
 
 function renderRecommendedInstallation() {
@@ -2539,16 +2669,26 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   })));
 
   let imported = 0;
+  let cancelled = 0;
   try {
     for (const [index, item] of items.entries()) {
-      if (await importOne(item, index, items.length)) {
+      const outcome = await importOne(item, index, items.length);
+      if (outcome === "imported") {
         imported += 1;
-      }
+        // A later archive in the same batch must decide against the state the
+        // previous archive actually committed, not a delayed storage event.
+        await reloadDictionaries();
+      } else if (outcome === "cancelled") cancelled += 1;
     }
-    const failed = items.length - imported;
+    const failed = items.length - imported - cancelled;
     const itemLabel = items.length === 1 ? singular : plural;
+    const outcomes = [
+      `${imported} imported`,
+      ...(cancelled === 0 ? [] : [`${cancelled} cancelled`]),
+      `${failed} failed`,
+    ].join(", ");
     setImportState(
-      `Finished ${items.length} of ${items.length} ${itemLabel} — ${imported} imported, ${failed} failed.`,
+      `Finished ${items.length} of ${items.length} ${itemLabel} — ${outcomes}.`,
       failed === 0 ? "ready" : "error",
     );
     await reloadDictionaries();
@@ -2892,7 +3032,7 @@ function attachHandlers() {
   });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
-    customLinkController?.reset();
+    customButtonController?.reset();
     renderCustomCss(true);
     renderCustomJavascript(true);
     renderOptions();
@@ -3104,7 +3244,7 @@ function attachHandlers() {
   window.addEventListener("beforeunload", (event) => {
     if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
-        && !nameDrafts.hasPendingChanges() && !customLinkController?.dirty()) {
+        && !nameDrafts.hasPendingChanges() && !customButtonController?.dirty() && !ankiController?.dirty()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.
@@ -3204,6 +3344,9 @@ function handleStorageChange(changes, area) {
   if (changes.dictionaryUpdates) {
     if (adoptUpdateSettings(changes.dictionaryUpdates.newValue)) renderUpdateControls();
   }
+  if (changes.automaticBackups) {
+    void backupController?.refreshAutomaticBackups();
+  }
 }
 
 function setOptionsStatus(message, completed = false) {
@@ -3298,13 +3441,19 @@ async function flushOptionsUntilIdle() {
   }
 }
 
+function renderMiningCapabilityHelp() {
+  element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
+  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech
+    || MINING_CAPABILITIES.embeddedSpeechCapture;
+  element("audio-embedded-speech-capture-help").hidden = !MINING_CAPABILITIES.embeddedSpeechCapture;
+  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
+}
+
 async function start() {
   configureBrowserUi();
-  element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
-  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
-  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
-  element("custom-links-settings").disabled = !HOST_CAPABILITIES.customLinks;
-  element("custom-links-overlay-help").hidden = HOST_CAPABILITIES.customLinks;
+  renderMiningCapabilityHelp();
+  element("custom-buttons-settings").disabled = false;
+  element("custom-buttons-overlay-help").hidden = !HOST_CAPABILITIES.externalLinkHost;
   if (HOST_CAPABILITIES.localFileAccessPrompt) {
     createLocalFileAccessController({ document, container: element("settings-local-file-access") });
   }

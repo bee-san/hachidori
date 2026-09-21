@@ -106,10 +106,12 @@ test("template rendering substitutes once, preserves literal HTML and removes on
 
 test("revisioned Anki options retain uncapped templates and validate every overwrite mode", () => {
   const value = config({ fieldTemplates: { Front: { value: "text ".repeat(14000), overwriteMode: "coalesce-new" } } });
-  assert.deepEqual(globalThis.HDReaderOptions.validateOptionsPatch({ anki: value }), { anki: value });
+  assert.deepEqual(globalThis.HDReaderOptions.validateOptionsPatch({ anki: value }),
+    { anki: globalThis.HDReaderOptions.normaliseOptions({ anki: value }).anki });
   for (const mode of globalThis.HDReaderOptions.ANKI_OVERWRITE_MODES) {
     value.fieldTemplates.Front.overwriteMode = mode;
-    assert.deepEqual(globalThis.HDReaderOptions.validateOptionsPatch({ anki: value }), { anki: value });
+    assert.deepEqual(globalThis.HDReaderOptions.validateOptionsPatch({ anki: value }),
+      { anki: globalThis.HDReaderOptions.normaliseOptions({ anki: value }).anki });
   }
   for (const templates of [[], "", { Front: { value: 2, overwriteMode: "coalesce" } },
     { Front: { value: "x", overwriteMode: "guess" } }, { "": { value: "x", overwriteMode: "skip" } }]) {

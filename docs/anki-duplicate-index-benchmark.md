@@ -1,14 +1,19 @@
 # Anki duplicate index benchmark
 
-This benchmark compares only two equivalent production paths for the same
-known duplicate:
+This benchmark compares the two service-level paths that make the same known
+duplicate ready for **View in Anki**:
 
-1. A normal scoped Anki lookup that returns the exact matching note IDs.
-2. A warm local-index hit that returns those same IDs.
+1. An eligible canonical-index miss, followed by the popup's normal status and
+   preflight fallback. The scoped live lookup repairs the positive row and
+   returns the exact matching note IDs.
+2. A warm cache-only `view()` hit that returns those same IDs without discovery,
+   field rendering or an Anki request.
 
-Fixture creation, index priming, complete refreshes, cold-cache work and
-cache-miss repair are outside the measured interval. Runs alternate path order
-to reduce ordering bias.
+Fixture creation, warm-index priming, complete refreshes, browser messaging and
+DOM rendering are outside the measured interval. The live path includes the
+status discovery and positive repair that a popup miss actually performs. Each
+live sample uses a fresh empty in-memory canonical index; runs alternate path
+order to reduce ordering bias.
 
 ## Reproduce
 
@@ -19,6 +24,7 @@ then pass both that endpoint and the profile's exact media directory:
 node benchmark/anki-duplicate-index.mjs \
   --endpoint http://127.0.0.1:18765 \
   --expected-media-dir /tmp/hachidori-anki-index-benchmark/base/HachidoriBenchmark/collection.media \
+  --anki-version 26.09.2 \
   --warmups 40 \
   --runs 400 \
   --output /tmp/hachidori-anki-duplicate-index-benchmark.json
@@ -27,23 +33,13 @@ node benchmark/anki-duplicate-index.mjs \
 The driver refuses the standard AnkiConnect port `8765`, verifies
 `getMediaDirPath` against the expected isolated profile, creates a dedicated
 note type/deck if needed, and checks that both measured paths return identical
-note IDs. The live path calls the production `lookupAnkiIndex`; the warm path
-calls the production `createAnkiDuplicateIndex().lookup`.
+note IDs. The live path calls the production mining service's cache-only
+`view()`, `status()` and `preflight()` sequence. The warm path calls the same
+service's `view()` against a primed production `createAnkiDuplicateIndex`.
 
-## Recorded result
-
-Measured on 2026-09-14 against a warm throwaway Anki 26.05 profile with
-AnkiConnect commit `4064fa142785975255457abd6a496015f5b71f38`. The driver used
-40 excluded warmups and 400 alternating measured runs per path for note ID
-`1789392215981`.
-
-| Production path | median (ms) | p95 (ms) | requests | requests/run |
-| --- | ---: | ---: | ---: | ---: |
-| Live scoped Anki lookup | 74.716 | 76.573 | 1200 | 3.00 |
-| Warm local-index hit | 0.358 | 1.052 | 0 | 0.00 |
-
-Median speedup was **208.5×**. The p95 ratio was **72.8×**.
-
-The live request count is the expected three calls per lookup: `findNotes` for
-scoped candidates, `notesInfo` for exact direct-field verification, and
-`findNotes` for aggregate maturity. A warm hit performs no Anki request.
+The JSON report records every raw sample, medians, nearest-rank p95 values,
+request totals, action counts, the exact note IDs, endpoint/media-directory
+proof, Git commit, Node/OS/CPU/memory details, and the supplied Anki version.
+A warm positive must report zero Anki requests. Keep decision-grade reports
+with the pull request evidence instead of replacing this reproducible method
+with one machine's timings.

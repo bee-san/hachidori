@@ -25,6 +25,8 @@ const FIXTURES = join(HERE, 'fixtures');
 
 export const TITLE = 'hachidori-fixture';
 export const MEDIA_PATH = 'media/kanji.png';
+export const ATOMIC_REPLACEMENT_TITLE = 'hachidori-atomic-replacement';
+export const ATOMIC_REPLACEMENT_QUERY = '更新語';
 
 // ---------------------------------------------------------------------------
 // ZIP writer
@@ -499,16 +501,64 @@ export function buildFixtureZip() {
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
 // which is what the path-traversal and failed-re-import tests need.
-export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [], mediaEntries = [], frequencyMode } = {}) {
-  const entries = [zipEntry('index.json', JSON.stringify({ ...index, title, frequencyMode }))];
+export function buildTitledZip(title, {
+  banks = true,
+  terms = TERMS,
+  termMeta = [],
+  mediaEntries = [],
+  frequencyMode,
+  styles = '',
+  revision = index.revision,
+  indexUrl,
+  downloadUrl,
+  indexOverrides = {},
+  rawTermBank = null,
+} = {}) {
+  const archiveIndex = {
+    ...index,
+    title,
+    revision,
+    frequencyMode,
+    indexUrl,
+    downloadUrl,
+    ...indexOverrides,
+  };
+  const entries = [zipEntry('index.json', JSON.stringify(archiveIndex))];
   if (banks) {
-    entries.push(zipEntry('term_bank_1.json', JSON.stringify(terms)));
+    entries.push(zipEntry('term_bank_1.json', rawTermBank ?? JSON.stringify(terms)));
   }
   if (termMeta.length > 0) {
     entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify(termMeta)));
   }
+  if (styles) {
+    entries.push(zipEntry('styles.css', styles));
+  }
   for (const [path, bytes] of mediaEntries) entries.push(zipEntry(path, bytes));
   return buildZip(entries);
+}
+
+export function buildMisdeclaredOversizedIndexZip(actualBytes, declaredBytes = 1024) {
+  const padding = 'x'.repeat(actualBytes);
+  const raw = Buffer.from(JSON.stringify({ ...index, title: 'oversized-index', padding }));
+  const body = deflateRawSync(raw, { level: 9 });
+  return forgeZip([{
+    name: 'index.json',
+    method: DEFLATE,
+    body,
+    crc: crc32(raw) >>> 0,
+    lfhCompressed: body.length,
+    lfhUncompressed: declaredBytes,
+    cdCompressed: body.length,
+    cdUncompressed: declaredBytes,
+  }]);
+}
+
+export function buildAtomicReplacementZip(revision, definition, overrides = {}) {
+  return buildTitledZip(ATOMIC_REPLACEMENT_TITLE, {
+    revision,
+    terms: [[ATOMIC_REPLACEMENT_QUERY, 'こうしんご', '', '', 0, [definition], 1, '']],
+    ...overrides,
+  });
 }
 
 export function externalLinksFixture(destinationUrl) {
@@ -657,6 +707,45 @@ export function imageSizingFixture() {
       tag: 'div', content: [name, { tag: 'img', path, alt: name, ...dimensions }],
     } })), 1, '']], mediaEntries: [[path, bytes]] });
   return { archive, bytes, cases, path, query, title };
+}
+
+export function gaijiSizingFixture() {
+  const title = 'meikyo-gaiji-compat-fixture';
+  const query = '外字表示';
+  const path = 'gaiji/bs-arrow.png';
+  const bytes = makePng();
+  const data = { class: 'gaiji', glyph: 'bs-arrow', 'unsafe key': 'ignored' };
+  const cases = [
+    { name: 'natural', dimensions: {}, width: 16, height: 16 },
+    { name: 'explicit', dimensions: { width: 40, height: 20 }, width: 40, height: 20 },
+  ];
+  const styles = [
+    '.gloss-sc-span[data-sc-class="gaiji"] > .gloss-sc-a[data-sc-glyph="bs-arrow"] .gloss-sc-img {',
+    '  filter: invert(0.9);',
+    '}',
+  ].join('\n');
+  const archive = buildTitledZip(title, {
+    mediaEntries: [[path, bytes]],
+    styles,
+    terms: [[query, 'がいじひょうじ', '', '', 0, [{
+      type: 'structured-content',
+      content: {
+        tag: 'div',
+        content: cases.map(({ name, dimensions }) => ({
+          tag: 'p',
+          content: [
+            `${name}: `,
+            {
+              tag: 'span',
+              data,
+              content: { tag: 'img', path, alt: `${name} gaiji`, data, ...dimensions },
+            },
+          ],
+        })),
+      },
+    }], 1, '']],
+  });
+  return { archive, bytes, cases, data, path, query, styles, title };
 }
 
 export function imagePreviewFixture() {
@@ -941,6 +1030,17 @@ const OUTPUTS = [
   ['malformed-index.zip', buildMalformedIndexZip],
   ['no-index.zip', buildNoIndexZip],
   ['not-a-zip.txt', buildNotAZip],
+  ['atomic-replacement-v1.zip', () => buildAtomicReplacementZip('1', 'atomic replacement version one')],
+  ['atomic-replacement-v2.zip', () => buildAtomicReplacementZip('2', 'atomic replacement version two')],
+  ['atomic-replacement-v3.zip', () => buildAtomicReplacementZip('3', 'atomic replacement separate copy')],
+  ['atomic-replacement-same-v2.zip', () => buildAtomicReplacementZip('2', 'same revision reimport')],
+  ['atomic-replacement-lower-v1.zip', () => buildAtomicReplacementZip('1', 'lower revision reimport')],
+  ['atomic-replacement-missing-version.zip', () => buildAtomicReplacementZip(undefined, 'missing revision', {
+    indexOverrides: { revision: undefined },
+  })],
+  ['atomic-replacement-malformed-version.zip', () => buildAtomicReplacementZip('2..1', 'malformed revision')],
+  ['atomic-replacement-nonnumeric-version.zip', () => buildAtomicReplacementZip('release-two', 'nonnumeric revision')],
+  ['atomic-replacement-corrupt.zip', () => buildAtomicReplacementZip('4', 'corrupt bank', { rawTermBank: '{' })],
 ];
 
 export function writeFixtures(dir = FIXTURES) {

@@ -73,6 +73,12 @@ focused jsdom test with the locked tooling directly:
 HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
 ```
 
+`node --test test/anki-pitch.test.mjs test/anki-values.test.mjs test/anki-templates.test.mjs`
+checks pitch contours, kana, escaping, variants and existing text markers using
+the jsdom override above. The Chrome suite mines the fixture dictionary and
+renders both graph styles offline in light, dark and styled cards, including
+the hollow-particle regression for card CSS that colors mora dots by radius.
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
@@ -168,9 +174,12 @@ mode. The unpacked relay is temporary and removed on exit.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 
-`node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
-current word/reading/sentence expansion, background-tab clicks, live editing
-without replacing cards or Note drafts, and stale-control navigation rejection.
+`node --test test/custom-button-settings.test.mjs test/external-link-host.test.mjs test/custom-buttons-renderer.test.mjs`
+checks link URL-template validation, Anki Template selection, button
+create/edit/delete/reorder behavior, the overlay host request/result boundary,
+named toolbar actions, current word/reading/sentence expansion, background-tab
+clicks, live editing without replacing cards or Note drafts, and stale-control
+navigation rejection.
 
 The lower-level checks can also be run individually in this order. Node suites
 use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
@@ -180,10 +189,11 @@ use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
 cd /path/to/hachidori
 
 node test/submodule-identity.mjs # 1. submodule/runtime identity is internally consistent
-./wasm/build.sh                  # 2. produces threaded OPFS and fallback IDBFS bundles
+./wasm/build.sh                  # 2. produces threaded OPFS, threaded IDBFS and fallback IDBFS bundles
 node --test test/custom-dictionary.test.mjs # 3. custom source and ZIP contract
 node test/make-fixture.mjs       # 4. writes test/fixtures/
 node test/node-smoke.mjs         # 5. threaded C ABI contract test
+HACHIDORI_WASM_VARIANT=threaded-idbfs node test/node-smoke.mjs # 6a. threaded IDBFS C ABI contract test
 HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 6. fallback C ABI contract test
 node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control test
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
@@ -347,7 +357,8 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 ## `node-smoke.mjs`
 
-The real test. Loads the threaded bundle by default or the fallback bundle when
+The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
+`HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
 117 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
@@ -641,12 +652,17 @@ What it proves, in order:
    traces are safe even with grammar tags enabled. Secondary headers stay lazy;
    tab projection resets the disclosure, and stale toggles after replacement,
    clear, request supersession, or destruction cannot request positioning.
-   Focused boundary checks accept depth 24 and reject 25; seed the exported
-   traversal's node counter to test exact capacity without a million-node DOM;
-   and include containers, wrappers, nulls, and ignored tags in that budget.
-   Deferred, tab, and Show more failures reach the current view owner. Replaced,
-   cleared, destroyed, or request-superseded fills do no rendering, media, or
-   layout work, and the actual content callbacks cannot clear a newer request.
+   Deep structured content is rendered through explicit traversal frames rather
+   than a fixed nesting-depth limit. The exported traversal's node counter is
+   seeded to test exact capacity without a million-node DOM, and containers,
+   wrappers, nulls, and ignored tags remain in that budget. Rejections name the
+   attempted value and limit; shallow structural paths stay exact while deep
+   paths elide their middle and never copy glossary payload text.
+   Deferred, tab, Show more, and storage-projection node-limit failures omit
+   only their definition body, including among 100 dictionary cards. Unexpected
+   renderer failures still reach the current view owner. Replaced, cleared,
+   destroyed, or request-superseded fills do no rendering, media, or layout
+   work, and the actual content callbacks cannot clear a newer request.
    External links preserve safe native hrefs while routing current primary,
    keyboard and middle activation exactly once, including mixed nested links.
    Worker checks reject invalid URLs/senders before tab creation and bypass held
@@ -772,6 +788,12 @@ local pulls until resume. The offscreen service test verifies that
 the refresh worker returns only compact rows and terminates after success or
 failure. These focused suites never contact an Anki collection.
 
+`node --test test/anki-content.test.mjs` checks the reader action across initial
+cache lookup, warm hits, live repair, stale IDs, failures, retries, superseded
+requests and nested popup owners. An unresolved action is disabled and exposes
+an accessible busy Arrow Clockwise state before resolving to Add or View in
+Anki.
+
 The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, autoplay held until the hover reveal
 and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,
@@ -802,6 +824,41 @@ The real-WASM fixture also verifies frequency-only blur from native value `142`
 while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
 `HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
 Settings controls.
+
+### Real Custom buttons and Templates path
+
+`test/chrome-custom-buttons-templates.mjs` requires an explicitly isolated real
+Anki profile with AnkiConnect bound to a chosen `127.0.0.1` endpoint. It creates
+only the fixed `Hachidori I23 Words` and `Hachidori I23 Sentences` decks and
+note types, and deletes only notes carrying the `hachidori-i23-e2e` tag.
+
+```sh
+HACHIDORI_ANKI_URL=http://127.0.0.1:18773 \
+HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR=/tmp/hachidori-i23-evidence \
+node test/chrome-custom-buttons-templates.mjs
+```
+
+The harness starts a fresh Chrome profile, imports the production fixture,
+writes legacy flat Anki/custom-link settings and verifies their canonical
+migration, then drives Template and Custom button create, duplicate, navigation,
+reorder and delete controls with real keyboard input. For every field mapping,
+it checks the marker inventory and descriptions, filtering, active-option and
+selected state, Arrow/Home/End/Enter/Escape/Tab behavior, pointer insertion,
+free-form text, native copy/paste, IME composition, validation, focus exit and
+Chrome's accessibility tree. It switches Templates with distinct arbitrary
+drafts and reloads Settings to prove exact preservation. It then measures 40
+two-frame Template switches and captures Settings screenshots. A real lookup
+requires independent ready states for the built-in first Template and a custom
+second-Template action, plus a visible disabled action for a missing Template
+ID. It submits the custom action from the keyboard and the built-in action with
+the pointer, and finally reads Anki back to prove separate decks, note types,
+repeated-marker and literal mappings, tabs, newlines, tags and selected-Template
+screenshot media.
+
+`HACHIDORI_CUSTOM_BUTTONS_PROFILE` may name an empty profile for diagnosis.
+Setting `HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE=1` reuses a prior harness
+profile and fixture import; release evidence should omit both so migration and
+first-run storage are fresh.
 
 ### Upstream Anki note-type contracts
 
@@ -883,18 +940,37 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
-test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
+test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs
+test/embedded-speech-capture.test.mjs test/speech-capture-host.test.mjs`
 runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession, first-use voice loading, automatic Japanese voice selection,
 unavailable selected voices, captured-TTS WAV export and silent preflight,
-document-scoped cancellation,
+embedded host-page routing and frame-audio selection, mono WAV format, silence
+rejection and complete stream/audio-graph cleanup, zero-gain feedback
+prevention, matching host-synthesized WAV playback, pre-mutation
+pronunciation storage and no-write capture failure, document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
 including delayed initial options without repeating a manual play, quiet success
 feedback, and controls hidden when no source is configured. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
+
+`node --test test/anki-media.test.mjs test/anki-worker.test.mjs` checks the
+Anki media transaction. Referenced PNG and nested SVG files are deduplicated;
+CSS-only URL media remains outside the supported structured-image plan.
+Existing files skip retrieval and upload. New files require deterministic
+generated names, non-empty valid base64, and exact live inventory confirmation
+after `storeMediaFile`, including lost replies and false successful
+acknowledgements. Partial preparation and later generation or duplicate
+rejection retain deterministic confirmed files for a retry without another
+upload. Invalid base64, empty, colliding and renamed media cannot reach
+`addNote` or `updateNoteFields`. More than 64 legitimate references remain
+accepted, and browser-decoded pronunciation keeps its existing size, container
+and generated extension compatibility. The worker checks dictionary and
+first-field audio before mutation while preserving deferred non-first-field
+pronunciation.
 
 ```sh
 node test/chrome-e2e.mjs
@@ -1095,13 +1171,14 @@ settles. The extension harness also checks shared Reading/Design save feedback,
 unsaved preview updates, unchanged-echo render skips, unavailable image routes,
 preferred-source draft retention, and exact tab/disclosure restoration.
 
-Three further appearance assertions cover all 42 grouped theme IDs and real
-dark/light/high-contrast palette overrides, immediate unsaved opacity/dimension
-preview and scoped reset, and live reader/child geometry with exact highlight
-restoration and retained Note/cards/resources. Unit coverage checks strict
-option ranges and no-op CAS, first-layout width ordering, and native/term
-clicked-kanji preview switching without losing Note or Back state. Unrelated
-dictionary changes retain the current clicked-kanji cards and disclosures.
+Three further appearance assertions cover AUTO plus all 42 grouped palette IDs,
+live browser light/dark changes and real high-contrast overrides, immediate
+unsaved opacity/dimension preview and scoped reset, and live reader/child
+geometry with exact highlight restoration and retained Note/cards/resources.
+Unit coverage checks strict option ranges and no-op CAS, first-layout width
+ordering, and native/term clicked-kanji preview switching without losing Note
+or Back state. Unrelated dictionary changes retain the current clicked-kanji
+cards and disclosures.
 
 Three custom-CSS assertions check immediate unsaved preview, character count,
 persisted source and scoped reset; real CSS cascade after built-in and late
@@ -1141,6 +1218,15 @@ Every card must be a plain `div` outside any `details`, with a non-interactive
 title (no pointer cursor, no `::before` marker) carrying the display name and
 dictionary, a laid-out definition body, and the same geometry after a real mouse
 click on the title.
+
+The late bounded-response dictionary also carries legal structured-content
+entries that exceed the depth and node-count limits independently. Real Chrome
+checks that each one leaves an accessible visible error with the dictionary's
+canonical title and stable package ID, term/reading, entry/definition position,
+exact limit and structural path. The warning retains both contextual and cause
+stacks, stays bounded without glossary payload text, and the next healthy hover
+recovers. `HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT` and
+`HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT` capture the two visible states.
 
 The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
@@ -1200,14 +1286,23 @@ on release, and cancellation of a quick press/release. A non-default key is kept
 when switching back to Hover and checked with mode, enablement and hide delay
 after the full browser restart.
 
-Exact-selection checks use a real cross-inline mouse drag, verify the complete
-highlighted text, and reject prefix-only matches despite a one-character scan
-setting. They distinguish visible selection text from hidden DOM text and block
-separators, retain the popup while selecting its closed-shadow glossary, and
-observe real worker lookup relays while toggling Japanese-only scanning in the
-open tab. Native input, textarea and contenteditable typing stays intact; direct
-and spanning selections exclude visible editing controls, including boxless
-`display:contents` editors, without treating a hidden control as visible.
+Exact-selection checks first use a plain cross-inline mouse drag with Shift
+configured and prove that it sends no worker lookup, paints no source highlight
+and cannot open the personal-definition pencil. A real matrix then checks Hover
+without a modifier and Shift, Control, Alt and Meta activation, including plain
+input, a wrong modifier and the configured modifier held with another modifier.
+A matching Shift drag verifies the complete highlighted text, retained popup and
+pencil workflow, and rejects prefix-only matches despite a one-character scan
+setting. It distinguishes visible selection text from hidden DOM text and block
+separators, retains the popup while selecting its closed-shadow glossary, and
+observes real worker lookup relays while toggling Japanese-only scanning in the
+open tab. Set `HACHIDORI_SELECTION_BLOCKED_SCREENSHOT`,
+`HACHIDORI_SELECTION_ALLOWED_SCREENSHOT` and
+`HACHIDORI_SELECTION_EVIDENCE` to capture the two visible states and their
+request/highlight summary. Native input, textarea and contenteditable typing
+stays intact; direct and spanning selections exclude visible editing controls,
+including boxless `display:contents` editors, without treating a hidden control
+as visible.
 Nested open-shadow editors suppress printable activation typing and cancel
 pending scans when focused. A local Japanese example link beside an autofocused
 search field supports both hover and stationary Shift lookup while preserving

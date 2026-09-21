@@ -40,7 +40,7 @@ test("unknown selected words expose a pencil with a selected-text prefill and on
   const button = f.popup.querySelector(".gsm-hoshidicts-note-button");
   assert.ok(button, "a dictionary miss must still offer the editor");
   assert.equal(button.getAttribute("aria-label"), "Edit personal dictionary");
-  assert.equal(button.querySelector(".gsm-hoshidicts-note-icon").textContent, "✎");
+  assert.equal(button.querySelector(".gsm-hoshidicts-note-icon").dataset.icon, "edit");
   button.click();
   const form = f.popup.querySelector("form");
   assert.equal(form.hidden, false);

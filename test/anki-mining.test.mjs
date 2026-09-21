@@ -3,17 +3,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService } from "../extension/anki-mining.js";
-import { createAnkiGateway } from "../extension/anki.js";
+import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
 
 function testIndex(resolve = async () => []) {
-  const find = async (config, expression, invoke) => {
+  const find = async (config, expression, invoke, cached = false) => {
     const value = await resolve(config, expression, invoke);
     const result = Array.isArray(value) ? { noteIds: value } : value;
     return {
       wordKey: expression,
       mature: result?.mature === true,
       noteIds: [...new Set(result?.noteIds ?? [])].sort((left, right) => left - right),
-      cached: false,
+      cached: cached && (result?.noteIds ?? []).length > 0,
     };
   };
   return {
@@ -24,6 +24,7 @@ function testIndex(resolve = async () => []) {
           .map(([field]) => field);
       return fields.length ? { key: "test", model: config.model, fields: fields.map(field => field.toLowerCase()) } : null;
     },
+    peek: (config, expression) => find(config, expression, null, true),
     lookup: find,
     repair: find,
     async recordWrite() {},
@@ -68,6 +69,58 @@ test("mining readiness shares its short source-backed cache and skips Anki when 
   f.change({ model: "" });
   assert.equal((await f.service.status()).available, false);
   assert.equal(f.discovers, 1);
+});
+
+test("View readiness uses only the canonical cache and a live preflight repairs a positive miss", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  let cachedIds = [], liveLookups = 0, discoveries = 0;
+  const duplicateIndex = {
+    source: async () => ({ key: "test", model: "Basic", fields: ["front"] }),
+    async peek(configValue, expression) {
+      return { wordKey: expression, mature: false, noteIds: [...cachedIds], cached: cachedIds.length > 0 };
+    },
+    async lookup(configValue, expression) {
+      liveLookups++;
+      cachedIds = [42, 73];
+      return { wordKey: expression, mature: false, noteIds: [...cachedIds], cached: false };
+    },
+    async repair(configValue, expression) {
+      return this.lookup(configValue, expression);
+    },
+    async recordWrite() {},
+  };
+  const service = createAnkiMiningService({
+    gateway: {
+      async discover() {
+        discoveries++;
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      async invoke(action) { throw new Error(`Unexpected Anki request: ${action}`); },
+    },
+    readConfig: async () => config,
+    duplicateIndex,
+    buildFields: async request => ({ fields: { Front: request.term.expression, Back: "cat" } }),
+  });
+  const request = { term: { expression: "猫", reading: "" } };
+  const cold = await service.view(request);
+  assert.deepEqual(cold.noteIds, []);
+  assert.equal(cold.cached, false);
+  assert.equal(discoveries, 0);
+  assert.equal(liveLookups, 0, "a cache miss remains unknown");
+
+  const status = await service.status();
+  const repaired = await service.preflight({ ...request, configKey: status.configKey });
+  assert.deepEqual(repaired.noteIds, [42, 73]);
+  assert.equal(liveLookups, 1);
+
+  const warm = await service.view(request);
+  assert.deepEqual(warm.noteIds, [42, 73]);
+  assert.equal(warm.cached, true);
+  assert.equal(warm.state, "duplicate");
+  assert.equal(liveLookups, 1, "the repaired warm hit makes zero Anki lookups");
+  assert.equal(discoveries, 1, "cache-only readiness does not repeat model discovery");
 });
 
 test("endpoint changes invalidate mining readiness and bind duplicates, media, writes, enrichment and browsing to one endpoint", async () => {
@@ -118,7 +171,7 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   const request = { configKey: current.configKey };
   assert.equal((await service.preflight(request)).canAdd, true);
   assert.equal((await service.submit(request)).state, "added");
-  await service.browse({ configKey: current.configKey, noteIds: [27], expression: "猫" });
+  await service.browse({ configKey: current.configKey, noteIds: [27] });
   const currentRequests = requests.slice(boundary);
   assert.ok(currentRequests.every(value => value.url === config.url && value.key === config.apiKey));
   for (const action of ["canAddNotesWithErrorDetail", "storeMediaFile", "addNote", "notesInfo", "updateNoteFields", "guiBrowse"]) {
@@ -134,24 +187,43 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   assert.equal(requests.length, staleBrowseBoundary, "stale browsing never reaches AnkiConnect");
 });
 
-test("View in Anki uses cached IDs directly and repairs a partially stale row without inspecting fields", async () => {
+test("View in Anki repairs cached IDs before opening the exact live notes", async () => {
   const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
   const calls = [];
   const service = createAnkiMiningService({
-    gateway: { async invoke(action, params) {
+    gateway: { async invoke(action, params, apiKey, timeoutMs) {
       calls.push({ action, params });
       assert.equal(action, "guiBrowse");
-      return calls.length === 1 ? [7] : [8, 9];
+      assert.equal(timeoutMs, 30_000, "opening Anki's browser gets time to finish before timing out");
+      return [];
     } },
     readConfig: async () => config,
     duplicateIndex: testIndex(() => [8, 9]),
   });
-  await service.browse({ expression: "猫", noteIds: [7, 8] });
-  assert.deepEqual(calls, [
-    { action: "guiBrowse", params: { query: "nid:7,8" } },
-    { action: "guiBrowse", params: { query: "nid:8,9" } },
-  ]);
+  assert.deepEqual(await service.browse({ expression: "猫", noteIds: [7, 8] }), {
+    opened: true,
+    noteIds: [8, 9],
+    repaired: true,
+  });
+  assert.deepEqual(calls, [{ action: "guiBrowse", params: { query: "nid:8,9" } }]);
+});
+
+test("View in Anki removes a stale positive row without opening an unrelated search", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  let requests = 0;
+  const service = createAnkiMiningService({
+    gateway: { async invoke() { requests++; throw new Error("stale removal must not browse"); } },
+    readConfig: async () => config,
+    duplicateIndex: testIndex(() => []),
+  });
+  assert.deepEqual(await service.browse({ expression: "猫", noteIds: [7, 8] }), {
+    opened: false,
+    noteIds: [],
+    repaired: true,
+  });
+  assert.equal(requests, 0);
 });
 
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {
@@ -215,6 +287,119 @@ test("an ambiguous mutation failure is not retried or reported as a confirmed fa
   assert.equal(result.state, "uncertain");
   assert.match(result.error, /Check Anki/u);
   assert.equal(writes, 1);
+});
+
+test("mining releases a queued unsent mutation but keeps a dispatched transport failure uncertain", async t => {
+  for (const dispatched of [false, true]) await t.test(dispatched ? "dispatched" : "queued", async () => {
+    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+      fieldTemplates: {
+        Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{definition}", overwriteMode: "overwrite" },
+      } };
+    const actions = [];
+    let blockers = [];
+    const transport = createAnkiGateway({ fetch: async (_, options) => {
+      const { action } = JSON.parse(options.body);
+      actions.push(action);
+      if (action === "canAddNotesWithErrorDetail") {
+        return { ok: true, async json() { return { result: [{ canAdd: true, error: null }], error: null }; } };
+      }
+      if (action.startsWith("block-")) {
+        return new Promise((_, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        });
+      }
+      if (action === "addNote") throw new TypeError("connection reset after dispatch");
+      assert.fail(`Unexpected ${action}`);
+    } });
+    const gateway = {
+      async discover() {
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      invoke: transport.invoke,
+    };
+    const released = [];
+    const service = createAnkiMiningService({
+      gateway,
+      readConfig: async () => config,
+      duplicateIndex: testIndex(),
+      buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
+      beforeWrite: async () => ({ owned: "request-media" }),
+      beforeMutation: async () => {
+        if (dispatched) return;
+        blockers = Array.from({ length: 4 }, (_, index) =>
+          transport.invoke(`block-${index}`, {}, "", index === 0 ? 10 : 1000, config.url).catch(error => error));
+      },
+      afterRejected: async ({ writeResources }) => { released.push(writeResources.owned); },
+      enrich: async () => [],
+    });
+    const { configKey } = await service.status();
+    const operation = service.submit({ expression: "猫", configKey });
+    if (dispatched) {
+      const result = await operation;
+      assert.equal(result.state, "uncertain");
+      assert.match(result.error, /Check Anki/u);
+      assert.deepEqual(released, [], "a dispatched mutation may have written and must retain its resources");
+      assert.equal(actions.filter(action => action === "addNote").length, 1);
+    } else {
+      await assert.rejects(operation, error =>
+        error instanceof AnkiTransportError && error.dispatched === false && /timed out/u.test(error.message));
+      assert.deepEqual(released, ["request-media"], "an unsent mutation has a definitive cleanup path");
+      assert.equal(actions.includes("addNote"), false, "the rejected queued mutation never entered fetch");
+      const blockerErrors = await Promise.all(blockers);
+      assert.ok(blockerErrors.every(error => error instanceof AnkiTransportError && error.dispatched === true),
+        "active sibling aborts remain outcome-uncertain");
+    }
+  });
+});
+
+test("overwrite mutations use the same pending-versus-dispatched failure boundary", async t => {
+  for (const dispatched of [false, true]) await t.test(dispatched ? "dispatched" : "queued", async () => {
+    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+      duplicateBehavior: "overwrite",
+      fieldTemplates: {
+        Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{definition}", overwriteMode: "overwrite" },
+      } };
+    const calls = [];
+    const gateway = {
+      async discover() {
+        return { connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+          fields: ["Front", "Back"], errors: [] };
+      },
+      async invoke(action) {
+        calls.push(action);
+        if (action === "notesInfo") return [{ noteId: 123, modelName: "Basic",
+          fields: { Front: { value: "猫" }, Back: { value: "old" } } }];
+        if (action === "updateNoteFields") {
+          throw new AnkiTransportError("update transport failed", { dispatched });
+        }
+        assert.fail(`Unexpected ${action}`);
+      },
+    };
+    let releases = 0;
+    const service = createAnkiMiningService({
+      gateway,
+      readConfig: async () => config,
+      duplicateIndex: testIndex(() => [123]),
+      buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
+      beforeWrite: async () => ({ owned: true }),
+      afterRejected: async () => { releases++; },
+      enrich: async () => [],
+    });
+    const { configKey } = await service.status();
+    const operation = service.submit({ expression: "猫", configKey });
+    if (dispatched) {
+      assert.equal((await operation).state, "uncertain");
+      assert.equal(releases, 0);
+    } else {
+      await assert.rejects(operation, error =>
+        error instanceof AnkiTransportError && error.dispatched === false);
+      assert.equal(releases, 1);
+    }
+    assert.equal(calls.filter(action => action === "updateNoteFields").length, 1);
+  });
 });
 
 test("overwrite mode still prevents an external duplicate created after preflight found no target", async () => {
@@ -330,4 +515,55 @@ test("overwrite leaves preserved fields out of the mutation when Anki changes du
   assert.deepEqual(result.warnings, []);
   assert.deepEqual(updates, [{ Back: "cat" }]);
   assert.deepEqual(fields, { Front: "猫", Keep: "edited keep", Fill: "edited fill", Fallback: "edited fallback", Back: "cat" });
+});
+
+test("each Template has an independent configuration identity and routes its note to the selected destination", async () => {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const configs = new Map([
+    ["word", { ...base, url: "https://anki.example.test", apiKey: "key", model: "Word", deck: "Words",
+      fields: { ...base.fields, expression: "Front" } }],
+    ["sentence", { ...base, url: "https://anki.example.test", apiKey: "key", model: "Sentence", deck: "Sentences",
+      fields: { ...base.fields, expression: "Front" } }],
+  ]);
+  const writes = [];
+  let nextNoteId = 40;
+  const saved = new Map();
+  const gateway = {
+    async discover(config) { return { connected: true, model: config.model, models: [config.model],
+      decks: [config.deck], fields: ["Front"], errors: [] }; },
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "addNote") {
+        const noteId = ++nextNoteId;
+        writes.push({ noteId, deck: params.note.deckName, model: params.note.modelName, fields: params.note.fields });
+        saved.set(noteId, params.note);
+        return noteId;
+      }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+        modelName: saved.get(noteId).modelName, cards: [], fields: Object.fromEntries(
+          Object.entries(saved.get(noteId).fields).map(([field, value]) => [field, { value }])) }));
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiMiningService({ gateway,
+    readConfig: async templateId => configs.get(templateId) ?? null,
+    duplicateIndex: testIndex(),
+    buildFields: async request => ({ fields: { Front: request.term.expression } }),
+    beforeWrite: async () => {}, enrich: async () => [],
+  });
+  const word = await service.status("word");
+  const sentence = await service.status("sentence");
+  assert.notEqual(word.configKey, sentence.configKey);
+  assert.equal((await service.submit({ templateId: "word", configKey: word.configKey,
+    term: { expression: "猫", reading: "ねこ" } })).state, "added");
+  assert.equal((await service.submit({ templateId: "sentence", configKey: sentence.configKey,
+    term: { expression: "猫がいる", reading: "ねこがいる" } })).state, "added");
+  assert.deepEqual(writes.map(({ deck, model, fields }) => ({ deck, model, fields })), [
+    { deck: "Words", model: "Word", fields: { Front: "猫" } },
+    { deck: "Sentences", model: "Sentence", fields: { Front: "猫がいる" } },
+  ]);
+  configs.set("sentence", { ...configs.get("sentence"), deck: "Changed" });
+  await assert.rejects(service.submit({ templateId: "sentence", configKey: sentence.configKey,
+    term: { expression: "古い", reading: "ふるい" } }), /configuration changed/u);
+  await assert.rejects(service.status("deleted"), /no longer available/u);
 });

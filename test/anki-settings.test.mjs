@@ -5,13 +5,14 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { createAnkiSettingsController } from "../extension/anki-settings.js";
+import { createAnkiSettingsController, createAnkiTemplateSettingsController } from "../extension/anki-settings.js";
+import { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } from "../extension/anki-templates.js";
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, capabilities) {
+function fixture(t, capabilities, readOwnerKey = () => "") {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
   window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
@@ -19,6 +20,7 @@ function fixture(t, capabilities) {
   const edits = [], sent = [];
   const controller = createAnkiSettingsController({ document: window.document, readConfig: () => config,
     capabilities,
+    readOwnerKey,
     editConfig(value) { config = value; edits.push(value); },
     send(type, fields) { return new Promise(resolve => sent.push({ type, ...fields, resolve })); } });
   const el = id => window.document.getElementById(id);
@@ -30,6 +32,9 @@ function discovery(request, patch = {}) {
   request.resolve({ ok: true, connected: true, decks: ["Default"], models: ["A", "B"],
     model: request.model, fields: ["Front", "Back"], errors: [], ...patch });
 }
+const rows = f => [...f.el("anki-templates").children];
+const row = (f, field) => rows(f).find(candidate => candidate.dataset.ankiField === field);
+const editor = (f, field) => row(f, field)?.querySelector('[role="combobox"]');
 
 test("overlay screenshot controls show the effective capability while preserving saved mappings", async t => {
   const f = fixture(t, { screenshot: false });
@@ -96,6 +101,34 @@ test("a setup proposal cannot replace intervening Settings edits, and a verified
   assert.equal(f.el("anki-setup-status").hidden, true);
 });
 
+test("setup discovery belongs to the selected Template even when two Templates have identical Anki settings", async t => {
+  let owner = "word";
+  const f = fixture(t, undefined, () => owner);
+  f.controller.render();
+  discovery(f.sent[0]);
+  await tick();
+  f.el("anki-find-setup").click();
+  const stale = f.sent.at(-1);
+  assert.equal(stale.templateId, "word");
+  owner = "sentence";
+  f.controller.render();
+  assert.equal(f.el("anki-find-setup").disabled, false);
+  assert.equal(f.el("anki-setup-status").hidden, true);
+  stale.resolve({ ok: true,
+    proposal: { status: "configured", model: "Kiku", deck: "Mining", fieldTemplates: {} },
+    outcome: { status: "configured", model: "Kiku", deck: "Mining" } });
+  await tick();
+  assert.equal(f.edits.length, 0);
+  assert.equal(f.el("anki-setup-status").hidden, true);
+
+  f.el("anki-find-setup").click();
+  assert.equal(f.sent.at(-1).templateId, "sentence");
+  f.sent.at(-1).resolve({ ok: true, proposal: null,
+    outcome: { status: "unavailable", detail: "Open Anki for this Template.", model: null, deck: null } });
+  await tick();
+  assert.match(f.el("anki-setup-status").textContent, /this Template/u);
+});
+
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
   const f = fixture(t);
   assert.equal(f.el("anki-status").classList.contains("operational-status"), true);
@@ -113,8 +146,8 @@ test("lazy Anki Settings ignores A→B→A stale successes/errors and never writ
   discovery(f.sent[0], { fields: ["Old"] });
   f.sent[1].resolve({ ok: false, error: "Stale failure" });
   await tick();
-  assert.match(f.el("opt-anki-field-expression").textContent, /Newest/u);
-  assert.doesNotMatch(f.el("opt-anki-field-expression").textContent, /Old/u);
+  assert.ok(row(f, "Newest"));
+  assert.equal(row(f, "Old"), undefined);
   assert.doesNotMatch(f.el("anki-status").textContent, /Stale failure/u);
   f.controller.render();
   assert.equal(f.sent.length, 3);
@@ -134,7 +167,8 @@ test("refresh retains unavailable saved choices and focused drafts; explicit mod
   await tick();
   assert.equal(f.el("opt-anki-deck").value, "Deleted");
   assert.match(f.el("opt-anki-deck").textContent, /Deleted.*unavailable/u);
-  assert.equal(f.el("opt-anki-field-expression").value, "Missing");
+  assert.equal(editor(f, "Missing").value, "{expression}");
+  assert.equal(row(f, "Missing").querySelector("button.ghost").hidden, false);
   assert.match(f.el("anki-status").textContent, /Missing.*unavailable/u);
   assert.equal(f.el("anki-status").classList.contains("is-error"), true);
   const tags = f.el("opt-anki-tags");
@@ -156,9 +190,8 @@ test("case-only Anki field renames stay available without rewriting saved mappin
   f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
   discovery(f.sent[0], { fields: ["front", "Back"] });
   await tick();
-  const select = f.el("opt-anki-field-expression");
-  assert.equal(select.value, "Front");
-  assert.equal(select.selectedOptions[0].textContent, "front");
+  assert.equal(editor(f, "front").value, "{expression}");
+  assert.equal(f.read().fields.expression, "Front");
   assert.match(f.el("anki-status").textContent, /configuration ready/u);
   assert.equal(f.el("anki-status").classList.contains("is-ready"), true);
   assert.equal(f.el("anki-status").classList.contains("is-working"), false);
@@ -166,27 +199,29 @@ test("case-only Anki field renames stay available without rewriting saved mappin
   assert.equal(f.edits.length, 0);
 });
 
-test("presets and advanced templates save one complete snapshot, retain invalid drafts and clear on model change", async t => {
+test("presets and field comboboxes save one complete snapshot, retain invalid drafts and clear on model change", async t => {
   const f = fixture(t);
   f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
   discovery(f.sent[0]);
   await tick();
-  const rows = () => [...f.el("anki-templates").children];
-  assert.equal(rows().length, 2);
-  assert.equal(rows()[0].querySelector("textarea").value, "{expression}");
-  assert.equal(rows()[0].querySelector("textarea").readOnly, true);
+  assert.equal(rows(f).length, 2);
+  assert.equal(editor(f, "Front").value, "{expression}");
+  assert.equal(editor(f, "Front").readOnly, false);
+  assert.equal(f.edits.length, 0, "projecting a simple mapping must not rewrite it");
   f.el("anki-preset").value = "automatic";
   f.el("anki-apply-preset").click();
   assert.equal(f.edits.length, 1);
   assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
   assert.equal(f.read().fieldTemplates.Back.value, "");
-  const editor = rows()[0].querySelector("textarea");
-  editor.focus();
-  editor.value = "literal {unknown}";
-  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  const control = editor(f, "Front");
+  control.focus();
+  control.value = "literal {unknown}";
+  control.dispatchEvent(new f.window.Event("input", { bubbles: true }));
   assert.equal(f.read().fieldTemplates.Front.value, "literal {unknown}");
   assert.match(f.el("anki-status").textContent, /Unknown marker/u);
-  const mode = rows()[0].querySelector("select");
+  assert.equal(control.getAttribute("aria-invalid"), "true");
+  assert.match(row(f, "Front").querySelector(".anki-template-error").textContent, /Unknown marker/u);
+  const mode = row(f, "Front").querySelector("select");
   mode.value = "coalesce-new";
   mode.dispatchEvent(new f.window.Event("change", { bubbles: true }));
   assert.equal(f.read().fieldTemplates.Front.overwriteMode, "coalesce-new");
@@ -197,23 +232,154 @@ test("presets and advanced templates save one complete snapshot, retain invalid 
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
 });
 
-test("entering template mode waits for discovered fields instead of replacing basic mappings with an empty snapshot", async t => {
+test("simple mappings project without writes and the first explicit edit materializes their exact field templates", async t => {
   const f = fixture(t);
   f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
-  const advanced = f.el("opt-anki-advanced");
-  assert.equal(advanced.disabled, true);
-  advanced.click();
+  assert.equal(editor(f, "Front").value, "{expression}");
   assert.equal(f.edits.length, 0);
-  f.sent[0].resolve({ ok: false, error: "Offline" });
-  await tick();
-  assert.equal(advanced.disabled, true);
+  const control = editor(f, "Front");
+  control.value = "  custom {expression}\n";
+  control.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "  custom {expression}\n");
   const pending = f.controller.refresh();
   discovery(f.sent[1]);
   await pending;
-  assert.equal(advanced.disabled, false);
-  advanced.click();
-  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "  custom {expression}\n");
+  assert.equal(f.read().fieldTemplates.Back, undefined,
+    "discovery must not rewrite an explicit mapping snapshot");
+  assert.equal(editor(f, "Back").value, "");
+});
+
+test("field marker comboboxes expose every option and preserve free-form input across keyboard, pointer, paste and composition", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: {
+    Front: { value: "", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" },
+  } });
+  discovery(f.sent[0]);
+  await tick();
+  const control = editor(f, "Front");
+  const owner = row(f, "Front");
+  const toggle = owner.querySelector(".anki-marker-combobox-toggle");
+  const listbox = owner.querySelector('[role="listbox"]');
+  const options = [...listbox.querySelectorAll('[role="option"]')];
+  const input = (value, { inputType = "insertText", isComposing = false } = {}) => {
+    control.value = value;
+    control.setSelectionRange(value.length, value.length);
+    control.dispatchEvent(new f.window.InputEvent("input", { bubbles: true, inputType, isComposing }));
+  };
+  const key = (value, options = {}) => {
+    const event = new f.window.KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...options });
+    const allowed = control.dispatchEvent(event);
+    return { event, allowed };
+  };
+
+  assert.equal(control.getAttribute("role"), "combobox");
+  assert.equal(control.getAttribute("aria-autocomplete"), "list");
+  assert.equal(control.getAttribute("aria-expanded"), "false");
+  assert.equal(control.getAttribute("aria-controls"), listbox.id);
+  assert.equal(f.window.document.querySelector(`label[for="${control.id}"]`)?.textContent, "Front");
+  assert.equal(options.length, ANKI_TEMPLATE_MARKER_OPTIONS.length);
+  assert.deepEqual(options.map(option => option.dataset.marker),
+    ANKI_TEMPLATE_MARKER_OPTIONS.map(option => option.value));
+  assert.ok(ANKI_TEMPLATE_MARKERS.every(marker =>
+    options.some(option => option.dataset.marker === `{${marker}}`)));
+  assert.ok(options.every(option => option.getAttribute("aria-label")?.includes(": ")));
+
+  control.focus();
+  input("{expr");
+  assert.equal(control.getAttribute("aria-expanded"), "true");
+  assert.equal(listbox.hidden, false);
+  const visible = options.filter(option => !option.hidden);
+  assert.deepEqual(visible.map(option => option.dataset.marker), ["{expression}"]);
+  assert.equal(control.getAttribute("aria-activedescendant"), visible[0].id);
+  assert.equal(visible[0].getAttribute("aria-selected"), "true");
+  const shiftEnter = key("Enter", { shiftKey: true });
+  assert.equal(shiftEnter.allowed, true);
+  assert.equal(shiftEnter.event.defaultPrevented, false,
+    "Shift+Enter remains available for literal multiline text");
+  key("Enter");
+  assert.equal(control.value, "{expression}");
   assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
+  assert.equal(control.getAttribute("aria-expanded"), "false");
+
+  toggle.click();
+  const firstActive = control.getAttribute("aria-activedescendant");
+  key("ArrowDown");
+  assert.notEqual(control.getAttribute("aria-activedescendant"), firstActive);
+  assert.equal(options.find(option => option.id === control.getAttribute("aria-activedescendant"))
+    ?.getAttribute("aria-selected"), "true");
+  key("Escape");
+  assert.equal(control.value, "{expression}", "Escape closes without choosing the highlighted option");
+  assert.equal(control.getAttribute("aria-expanded"), "false");
+
+  input("before  after");
+  control.setSelectionRange(7, 7);
+  options.find(option => option.dataset.marker === "{glossary}").click();
+  assert.equal(control.value, "before {glossary} after");
+  assert.equal(f.read().fieldTemplates.Front.value, "before {glossary} after");
+
+  input("{expression}{expression}");
+  control.setSelectionRange("{expression}".length, "{expression}".length);
+  options.find(option => option.dataset.marker === "{reading}").click();
+  assert.equal(control.value, "{expression}{reading}{expression}",
+    "a caret between adjacent markers inserts without replacing either marker");
+  assert.equal(f.read().fieldTemplates.Front.value, "{expression}{reading}{expression}");
+
+  input("{expression}");
+  control.setSelectionRange("{expression}".length, "{expression}".length);
+  options.find(option => option.dataset.marker === "{reading}").click();
+  assert.equal(control.value, "{expression}{reading}",
+    "a caret at the closing boundary inserts after the complete marker");
+
+  input("{expression}");
+  control.setSelectionRange(0, 0);
+  options.find(option => option.dataset.marker === "{reading}").click();
+  assert.equal(control.value, "{reading}{expression}",
+    "a caret at the opening boundary inserts before the complete marker");
+
+  input("{expression}");
+  control.setSelectionRange(2, 7);
+  options.find(option => option.dataset.marker === "{reading}").click();
+  assert.equal(control.value, "{reading}",
+    "a range intersecting a marker replaces the complete marker");
+
+  input("{definitely-no-marker");
+  assert.equal(options.every(option => option.hidden), true);
+  assert.equal(owner.querySelector(".anki-marker-empty").hidden, false);
+  assert.equal(control.hasAttribute("aria-activedescendant"), false);
+  key("Escape");
+
+  const exact = " \t literal {unknown} {unknown}\n{expression}  ";
+  input(exact, { inputType: "insertFromPaste" });
+  assert.equal(f.read().fieldTemplates.Front.value, exact);
+  assert.equal(control.value, exact);
+  assert.equal(control.getAttribute("aria-invalid"), "true");
+  assert.match(owner.querySelector(".anki-template-error").textContent, /Unknown marker: \{unknown\}/u);
+  toggle.click();
+  const tab = key("Tab");
+  assert.equal(tab.allowed, true);
+  assert.equal(tab.event.defaultPrevented, false);
+  owner.querySelector("select").focus();
+  await tick();
+  assert.equal(control.getAttribute("aria-expanded"), "false");
+  assert.equal(f.read().fieldTemplates.Front.value, exact,
+    "Tab and focus exit must not replace free-form text with the active option");
+
+  control.focus();
+  input("composition: ");
+  control.dispatchEvent(new f.window.CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+  control.value = "composition: 日本";
+  control.setSelectionRange(control.value.length, control.value.length);
+  control.dispatchEvent(new f.window.InputEvent("input",
+    { bubbles: true, inputType: "insertCompositionText", data: "日本", isComposing: true }));
+  assert.equal(f.read().fieldTemplates.Front.value, "composition: ");
+  control.value = "composition: 日本語\t";
+  control.setSelectionRange(control.value.length, control.value.length);
+  control.dispatchEvent(new f.window.CompositionEvent("compositionend", { bubbles: true, data: "日本語" }));
+  assert.equal(f.read().fieldTemplates.Front.value, "composition: 日本語\t");
+  assert.equal(control.value, "composition: 日本語\t");
 });
 
 test("case-only field refresh preserves the focused template row and subsequent edits target its current name", async t => {
@@ -372,4 +538,190 @@ test("duplicate scope labels follow the exact configured destination and replace
   assert.equal(f.read().duplicateScope, "all");
   assert.deepEqual([...f.el("opt-anki-duplicate-behavior").options].map(option => option.textContent),
     ["Prevent", "Add anyway", "Overwrite"]);
+});
+
+function templateFixture(t, { send: sendRequest } = {}) {
+  const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
+    { runScripts: "outside-only", pretendToBeVisual: true });
+  const { window } = dom;
+  window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
+  const base = window.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const first = { ...base, id: "default", name: "Word card", model: "Basic", deck: "Words",
+    tags: ["word"], fields: { ...base.fields, expression: "Front", screenshot: "Picture" },
+    fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "coalesce" },
+      Picture: { value: "{screenshot}", overwriteMode: "overwrite" },
+    } };
+  const second = { ...base, id: "sentence", name: "Sentence card", model: "Sentence", deck: "Sentences",
+    tags: ["sentence"], fields: { ...base.fields, sentence: "Front" }, fieldTemplates: null };
+  let anki = window.HDReaderOptions.normaliseAnki({ url: "http://127.0.0.1:8765", apiKey: "", templates: [first, second] });
+  let buttons = [];
+  let sequence = 0;
+  const edits = [], sent = [];
+  const controller = createAnkiTemplateSettingsController({ document: window.document,
+    readAnki: () => anki, readButtons: () => buttons, createId: () => `template-${++sequence}`,
+    editAnki(value) { anki = value; edits.push(value); },
+    async send(type, fields) {
+      const request = { type, ...fields };
+      sent.push(request);
+      if (sendRequest) return sendRequest(request);
+      if (type === "hd_anki_discover") return { ok: true, connected: true,
+        decks: ["Words", "Sentences", "Context"], models: ["Basic", "Sentence"], model: fields.model,
+        fields: fields.model === "Sentence" ? ["Front", "Back"] : ["Front", "Picture"], errors: [] };
+      return { ok: true, proposal: null,
+        outcome: { status: "unavailable", detail: "Open Anki.", model: null, deck: null } };
+    },
+  });
+  const el = id => window.document.getElementById(id);
+  t.after(() => window.close());
+  return { window, controller, edits, sent, el, read: () => anki,
+    adopt(value) {
+      anki = window.HDReaderOptions.normaliseAnki(value);
+      controller.render();
+    },
+    buttons(value) { buttons = value; },
+  };
+}
+
+test("Template manager edits the selected mapping while connection settings remain shared", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  assert.deepEqual([...f.el("anki-template-select").options].map(option => option.textContent),
+    ["Word card", "Sentence card"]);
+  assert.equal(f.el("anki-template-role").hidden, false);
+  assert.equal(f.el("anki-template-position").textContent, "1 of 2");
+
+  f.el("anki-template-next").click();
+  await tick();
+  assert.equal(f.el("anki-template-select").value, "sentence");
+  assert.equal(f.el("anki-template-role").hidden, true);
+  assert.equal(f.el("opt-anki-tags").value, "sentence");
+  f.el("opt-anki-tags").value = "sentence context";
+  f.el("opt-anki-tags").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.deepEqual(f.read().templates[0].tags, ["word"]);
+  assert.deepEqual(f.read().templates[1].tags, ["sentence", "context"]);
+
+  const url = f.el("opt-anki-url");
+  url.value = "https://anki.example.test/connect";
+  url.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().url, "https://anki.example.test/connect");
+  assert.deepEqual(f.read().templates.map(template => template.id), ["default", "sentence"]);
+
+  f.el("anki-template-up").click();
+  assert.deepEqual(f.read().templates.map(template => template.id), ["sentence", "default"]);
+  assert.equal(f.read().model, "Sentence", "the first Template remains the built-in button projection");
+  assert.equal(f.el("anki-template-role").hidden, false);
+  assert.equal(f.window.document.activeElement, f.el("anki-template-down"));
+});
+
+test("Template switching and unrelated edits retain each Template's mapping byte-for-byte", async t => {
+  const f = templateFixture(t);
+  const firstValue = " \tfirst {expression}{expression} {unknown}\n ";
+  const secondValue = "\nsecond literal {sentence}\t{sentence}  ";
+  const current = f.read();
+  f.adopt({
+    url: current.url,
+    apiKey: current.apiKey,
+    templates: current.templates.map(template => ({
+      ...template,
+      fieldTemplates: {
+        Front: {
+          value: template.id === "default" ? firstValue : secondValue,
+          overwriteMode: "coalesce",
+        },
+      },
+    })),
+  });
+  await tick();
+  assert.equal(editor(f, "Front").value, firstValue);
+
+  const tags = f.el("opt-anki-tags");
+  tags.value = "word unrelated";
+  tags.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().templates[0].fieldTemplates.Front.value, firstValue);
+  assert.equal(f.read().templates[1].fieldTemplates.Front.value, secondValue);
+
+  f.el("anki-template-select").value = "sentence";
+  f.el("anki-template-select").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  await tick();
+  assert.equal(editor(f, "Front").value, secondValue);
+  const editedSecond = `${secondValue}追加`;
+  const secondEditor = editor(f, "Front");
+  secondEditor.value = editedSecond;
+  secondEditor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.read().templates[0].fieldTemplates.Front.value, firstValue);
+  assert.equal(f.read().templates[1].fieldTemplates.Front.value, editedSecond);
+
+  f.el("anki-template-select").value = "default";
+  f.el("anki-template-select").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  await tick();
+  assert.equal(editor(f, "Front").value, firstValue);
+  assert.equal(f.read().templates[0].fieldTemplates.Front.value, firstValue);
+  assert.equal(f.read().templates[1].fieldTemplates.Front.value, editedSecond);
+});
+
+test("a pending note-type preset cannot cross into another Template with the same connection and model", async t => {
+  const f = templateFixture(t, {
+    send: request => new Promise(resolve => { request.resolve = resolve; }),
+  });
+  f.controller.render();
+  f.sent[0].resolve({ ok: true, connected: true, decks: ["Words", "Sentences"],
+    models: ["Basic", "Kiku"], model: "Basic", fields: ["Front", "Picture"], errors: [] });
+  await tick();
+  const initial = f.read();
+  f.adopt({ ...initial, templates: initial.templates.map(template => template.id === "sentence"
+    ? { ...template, model: "Kiku", fields: { ...template.fields }, fieldTemplates: null }
+    : template) });
+
+  const model = f.el("opt-anki-model");
+  model.value = "Kiku";
+  model.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  const preset = f.sent.at(-1);
+  f.el("anki-template-select").value = "sentence";
+  f.el("anki-template-select").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  preset.resolve({ ok: true, connected: true, decks: ["Words", "Sentences"],
+    models: ["Basic", "Kiku"], model: "Kiku",
+    fields: ["Expression", "ExpressionReading", "Sentence", "MainDefinition"], errors: [] });
+  await tick();
+
+  assert.equal(f.read().templates.find(template => template.id === "sentence").fieldTemplates, null);
+  assert.equal(f.read().templates.find(template => template.id === "default").fieldTemplates, null);
+  assert.equal(f.edits.filter(edit => edit.templates.some(template => template.fieldTemplates !== null)).length, 0);
+});
+
+test("Template CRUD preserves mappings, uses stable IDs and blocks deletion while a custom button refers to one", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  f.el("anki-template-select").value = "default";
+  f.el("anki-template-select").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  f.el("anki-template-duplicate").click();
+  const copy = f.read().templates[1];
+  assert.equal(copy.id, "template-1");
+  assert.equal(copy.name, "Word card copy");
+  assert.deepEqual(copy.fieldTemplates, f.read().templates[0].fieldTemplates);
+  assert.notEqual(copy.fieldTemplates, f.read().templates[0].fieldTemplates);
+  assert.equal(copy.fieldTemplates.Picture.value, "{screenshot}");
+
+  const name = f.el("opt-anki-template-name");
+  name.value = "Picture card";
+  name.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().templates[1].name, "Picture card");
+  assert.match(f.el("anki-template-select").textContent, /Picture card/u);
+
+  f.buttons([{ id: "button", type: "anki", label: "Mine picture", templateId: copy.id }]);
+  f.el("anki-template-delete").click();
+  assert.equal(f.read().templates.some(template => template.id === copy.id), true);
+  assert.match(f.el("anki-template-status").textContent, /Mine picture/u);
+  f.buttons([]);
+  f.el("anki-template-delete").click();
+  assert.equal(f.read().templates.some(template => template.id === copy.id), false);
+  assert.equal(f.window.document.activeElement, f.el("anki-template-select"));
+
+  f.el("anki-template-add").click();
+  assert.equal(f.read().templates.at(-1).id, "template-2");
+  assert.equal(f.read().templates.at(-1).name, "Template");
+  assert.equal(f.window.document.activeElement, f.el("opt-anki-template-name"));
+  assert.equal(f.el("opt-anki-template-name").selectionStart, 0);
 });

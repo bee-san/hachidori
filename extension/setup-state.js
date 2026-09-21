@@ -18,6 +18,7 @@ export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configu
 // stored options, so an extension update never changes an existing user's
 // reader defaults or overrides a later edit.
 export const FIRST_INSTALL_OPTIONS = Object.freeze({
+  popupTheme: "auto",
   showCompactDefinitionSummary: true,
   compactDefinitionSummaryCount: 2,
 });
@@ -32,7 +33,7 @@ export const OVERLAY_MODE_OPTIONS = Object.freeze({
 
 // These describe the local reading surface, even while its library is shared.
 export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
-  "hoverEnabled", "onlyScanJapaneseText", "lookupMode", "activationKey", "hoverDelayMs", "popupHideDelayMs",
+  "hoverEnabled", "onlyScanJapaneseText", "lookupMode", "activationKey", "popupHideDelayMs",
   "sourceHighlightEnabled", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupColumns", "popupToolbarPosition", "popupNestingMaxDepth",
 ]);
 
@@ -45,7 +46,13 @@ export function capabilityAnkiOptions(options, {
 } = {}) {
   return {
     ...options,
-    anki: { ...options.anki, captureScreenshot: screenshot && options.anki.captureScreenshot },
+    anki: {
+      ...options.anki,
+      captureScreenshot: screenshot && options.anki.captureScreenshot,
+      templates: screenshot
+        ? options.anki.templates
+        : options.anki.templates.map(template => ({ ...template, captureScreenshot: false })),
+    },
     audioSources: browserSpeech
       ? options.audioSources
       : options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
@@ -53,11 +60,13 @@ export function capabilityAnkiOptions(options, {
   };
 }
 
-// Electron has neither viewport capture nor a capture host.
-export function overlayAnkiOptions(options) {
+// Electron has neither viewport capture (no chrome.tabs.captureVisibleTab) nor
+// a capture host. Generic overlays also have no byte-backed speech capture,
+// while hosts that explicitly provide it keep TTS.
+export function overlayAnkiOptions(options, { browserSpeech = false } = {}) {
   return capabilityAnkiOptions(options, {
     screenshot: false,
-    browserSpeech: false,
+    browserSpeech,
     mediaCapture: false,
   });
 }

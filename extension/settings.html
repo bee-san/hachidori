@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hachidori settings</title>
+    <link rel="stylesheet" href="icons.css" />
     <link rel="stylesheet" href="render/reader.css" />
     <link rel="stylesheet" href="settings.css" />
     <link rel="stylesheet" href="dictionary-progress.css" />
@@ -443,20 +444,6 @@
             </label>
             <div class="fields">
               <label class="field">
-                <span class="field-label">Open delay</span>
-                <span class="input-suffix">
-                  <input
-                    id="opt-hover-delay"
-                    type="number"
-                    min="0"
-                    max="2000"
-                    step="10"
-                  />
-                  <span class="suffix">ms</span>
-                </span>
-                <span class="field-hint">Pause before the popup appears.</span>
-              </label>
-              <label class="field">
                 <span class="field-label">Hide delay</span>
                 <span class="input-suffix">
                   <input id="opt-hide-delay" type="number" min="0" max="5000" step="10" />
@@ -768,30 +755,43 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group" id="custom-links-settings">
-                <legend>Custom toolbar links</legend>
-                <p id="custom-links-overlay-help" class="section-note" hidden>Custom toolbar links are unavailable in this overlay because Electron cannot open browser tabs. Saved links are preserved for browser mode.</p>
-                <p class="field-hint">Use %w for the word, %r for its reading and %s for the sentence.</p>
-                <ol id="custom-link-list" class="custom-link-list"></ol>
-                <p id="custom-link-empty" class="field-hint">No custom links yet.</p>
-                <form id="custom-link-form" class="custom-link-form" novalidate>
+              <fieldset class="lookup-group" id="custom-buttons-settings">
+                <legend>Custom buttons</legend>
+                <p id="custom-buttons-overlay-help" class="section-note" hidden>Link buttons open in your system browser from a real lookup popup. The live preview cannot launch links in this overlay.</p>
+                <p class="field-hint">Add link buttons or Anki buttons that use a chosen Template. Buttons appear in this order after the built-in actions.</p>
+                <ol id="custom-button-list" class="custom-button-list"></ol>
+                <p id="custom-button-empty" class="field-hint">No custom buttons yet.</p>
+                <form id="custom-button-form" class="custom-button-form" novalidate>
                   <div class="fields">
                     <label class="field">
-                      <span class="field-label">Link name</span>
-                      <input id="opt-custom-link-name" type="text" autocomplete="off" placeholder="Jisho"
-                        aria-describedby="custom-links-status" />
+                      <span class="field-label">Button name</span>
+                      <input id="opt-custom-button-name" type="text" autocomplete="off" placeholder="Search Jisho"
+                        aria-describedby="custom-buttons-status" />
                     </label>
                     <label class="field">
+                      <span class="field-label">Action</span>
+                      <select id="opt-custom-button-type">
+                        <option value="link">Open a link</option>
+                        <option value="anki">Send to Anki</option>
+                      </select>
+                    </label>
+                    <label class="field" id="custom-button-link-field">
                       <span class="field-label">URL template</span>
-                      <input id="opt-custom-link-url" type="text" spellcheck="false" autocomplete="off"
-                        placeholder="https://jisho.org/search/%w" aria-describedby="custom-links-status" />
+                      <input id="opt-custom-button-url" type="text" spellcheck="false" autocomplete="off"
+                        placeholder="https://jisho.org/search/%w" aria-describedby="custom-button-url-help custom-buttons-status" />
+                      <span id="custom-button-url-help" class="field-hint">Use %w for the word, %r for its reading and %s for the sentence.</span>
+                    </label>
+                    <label class="field" id="custom-button-anki-field" hidden>
+                      <span class="field-label">Template</span>
+                      <select id="opt-custom-button-template" aria-describedby="custom-buttons-status"></select>
+                      <span class="field-hint">This button uses that Template’s deck, note type, fields and duplicate handling.</span>
                     </label>
                   </div>
                   <div class="custom-dictionary-actions">
-                    <button id="custom-link-submit" type="submit" class="ghost">Add link</button>
-                    <button id="custom-link-cancel" type="button" class="ghost" hidden>Cancel</button>
+                    <button id="custom-button-submit" type="submit" class="ghost">Add button</button>
+                    <button id="custom-button-cancel" type="button" class="ghost" hidden>Cancel</button>
                   </div>
-                  <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+                  <output id="custom-buttons-status" class="is-error" aria-live="polite"></output>
                 </form>
               </fieldset>
               <details class="settings-disclosure custom-css-disclosure">
@@ -852,6 +852,7 @@
             <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code>, URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
             <p class="field-hint">Shift-click or right-click the popup's audio button to choose a pronunciation.</p>
             <p id="audio-speech-capture-help" class="field-hint">To add browser speech to Anki, start Media capture with shared audio.</p>
+            <p id="audio-embedded-speech-capture-help" class="field-hint" hidden>GameSentenceMiner records the selected browser voice when you mine and sends its WAV to Anki.</p>
             <p class="field-hint">Sources receive the word and reading. Remote URLs need HTTPS; localhost may use HTTP. Some system voices are online.</p>
           </details>
         </section>
@@ -976,10 +977,10 @@
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>
           <div class="section-heading">
             <div class="card-head">
-              <h1 id="anki-heading" tabindex="-1" data-search-keywords="deck note type field mapping note templates tags API key flashcards AnkiConnect URL endpoint">Anki</h1>
+              <h1 id="anki-heading" tabindex="-1" data-search-keywords="deck note type field mapping marker combobox Template templates tags API key flashcards AnkiConnect URL endpoint"><span class="hd-icon" data-icon="document-add" aria-hidden="true"></span>Anki</h1>
               <p class="hint">Save words to Anki. Changes save automatically.</p>
             </div>
-            <button id="anki-refresh" type="button" class="ghost">Refresh connection</button>
+            <button id="anki-refresh" type="button" class="ghost"><span class="hd-icon" data-icon="arrow-clockwise" aria-hidden="true"></span>Refresh connection</button>
           </div>
           <div class="options-feedback-slot"></div>
           <div class="anki-connection-summary">
@@ -990,29 +991,67 @@
               <span class="field-hint">Find your most-used Kiku, Lapis or Senren setup, or check your saved mapping. Open Anki and retry if it was unavailable.</span>
             </div>
             <output id="anki-setup-status" class="operational-status" aria-live="polite" aria-atomic="true" hidden></output>
+            <div class="sharing-actions">
+              <button id="anki-audio-check" type="button" class="ghost">Detect local audio</button>
+              <button id="anki-audio-add" type="button" class="ghost" hidden>Add detected audio source</button>
+            </div>
+            <p class="field-hint">Checks <a href="https://github.com/bee-san/yomitan-audio-fast" target="_blank" rel="noopener noreferrer">Local Audio Server</a> on this device at 127.0.0.1:5050. Keep Anki open. Adding appends a Custom JSON source without changing your existing sources. For custom ports, use <a href="#audio">Audio settings</a>.</p>
+            <output id="anki-audio-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
           </div>
-          <fieldset class="lookup-group">
-            <legend>Destination</legend>
+          <fieldset class="lookup-group anki-panel anki-template-manager" id="anki-template-manager">
+            <legend><span class="hd-icon" data-icon="document-add" aria-hidden="true"></span>Templates</legend>
+            <p class="field-hint">A Template keeps one Anki destination, note type, field mapping and duplicate policy together. The first Template powers the built-in Anki button.</p>
+            <div class="anki-template-navigation">
+              <button id="anki-template-previous" type="button" class="ghost" aria-label="Previous Template">
+                <span aria-hidden="true">‹</span>
+              </button>
+              <label class="anki-template-picker">
+                <span class="field-label">Editing</span>
+                <select id="anki-template-select"></select>
+              </label>
+              <button id="anki-template-next" type="button" class="ghost" aria-label="Next Template">
+                <span aria-hidden="true">›</span>
+              </button>
+              <span id="anki-template-position" class="anki-template-position" aria-live="polite"></span>
+              <span id="anki-template-role" class="anki-template-role">Built-in button</span>
+            </div>
+            <label class="field">
+              <span class="field-label">Template name</span>
+              <input id="opt-anki-template-name" type="text" autocomplete="off" aria-describedby="anki-template-status">
+              <span class="field-hint">Custom Anki buttons choose Templates by this name.</span>
+            </label>
+            <div class="anki-template-actions">
+              <button id="anki-template-add" type="button" class="ghost anki-primary-action"><span class="hd-icon" data-icon="add" aria-hidden="true"></span>Add Template</button>
+              <button id="anki-template-duplicate" type="button" class="ghost"><span class="hd-icon" data-icon="document-add" aria-hidden="true"></span>Duplicate</button>
+              <button id="anki-template-up" type="button" class="ghost"><span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span>Move up</button>
+              <button id="anki-template-down" type="button" class="ghost"><span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span>Move down</button>
+              <button id="anki-template-delete" type="button" class="ghost danger"><span class="hd-icon" data-icon="dismiss" aria-hidden="true"></span>Delete</button>
+            </div>
+            <output id="anki-template-status" class="is-error" aria-live="polite"></output>
+          </fieldset>
+          <fieldset class="lookup-group anki-panel anki-destination">
+            <legend><span class="hd-icon" data-icon="arrow-right" aria-hidden="true"></span>Destination</legend>
             <div class="fields">
               <label class="field"><span class="field-label">Deck</span><select id="opt-anki-deck"></select></label>
               <label class="field"><span class="field-label">Note type</span><select id="opt-anki-model"></select><span class="field-hint">Kiku, Lapis and Senren fill their matching fields automatically.</span></label>
               <label class="field"><span class="field-label">Tags</span><input id="opt-anki-tags" type="text" spellcheck="false"><span class="field-hint">Separate tags with spaces.</span></label>
             </div>
           </fieldset>
-          <fieldset class="lookup-group">
-            <legend>Field mapping</legend>
-            <p class="field-hint">Blank fields stay disabled. Anki requires the first field to be filled.</p>
+          <fieldset class="lookup-group anki-panel" id="anki-field-mapping">
+            <legend><span class="hd-icon" data-icon="settings" aria-hidden="true"></span>Field mapping</legend>
+            <p class="field-hint">Each Anki field accepts markers, literal text, or both. Blank fields stay disabled. Anki requires the first field to be filled.</p>
             <div class="anki-preset-tools">
               <label class="anki-preset"><span class="field-label">Preset</span><select id="anki-preset"><option value="automatic">Automatic suggestions</option><option value="kiku">Kiku</option><option value="lapis">Lapis</option><option value="senren">Senren</option></select></label>
-              <button id="anki-apply-preset" class="ghost" type="button">Apply preset</button>
+              <button id="anki-apply-preset" class="ghost" type="button"><span class="hd-icon" data-icon="arrow-sync" aria-hidden="true"></span>Apply preset</button>
             </div>
-            <div id="anki-fields" class="fields"></div>
+            <p class="field-hint">Open a field’s marker list or start typing to filter it. Choosing a marker inserts it at the cursor; your other text and whitespace stay unchanged.</p>
+            <details class="anki-marker-reference"><summary>Dictionary-specific markers</summary><p class="field-hint">Replace <code>DICTIONARY</code> in <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code> with the dictionary marker shown in its Details. Single-glossary variants also support <code>-brief</code>, <code>-no-dictionary</code>, <code>-plain</code> and <code>-plain-no-dictionary</code>. Empty, colliding or shadowed names can use <code>{single-glossary-id--PACKAGE-ID}</code>, where <code>PACKAGE-ID</code> is the dictionary's 32-character lowercase hexadecimal ID.</p></details>
+            <div id="anki-templates" class="anki-templates"></div>
+          </fieldset>
+          <fieldset class="lookup-group anki-panel anki-screenshot-options">
+            <legend><span class="hd-icon" data-icon="desktop" aria-hidden="true"></span>Screenshot options</legend>
             <label class="lookup-enable"><span>Screenshot the page when mining</span><input id="opt-anki-screenshot" type="checkbox" aria-describedby="anki-screenshot-help"></label>
             <p id="anki-screenshot-help" class="field-hint">Adds the visible page to fields using <code>{screenshot}</code>.</p>
-            <label class="lookup-enable"><span>Edit field templates directly</span><input id="opt-anki-advanced" type="checkbox"></label>
-            <p class="field-hint">Combine text with markers such as <code>{expression}</code> and <code>{glossary}</code>.</p>
-            <details class="anki-marker-reference"><summary>Available markers</summary><p id="anki-markers" class="anki-markers"></p><p class="field-hint">Dictionary-specific values also use <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code>.</p></details>
-            <div id="anki-templates" class="anki-templates"></div>
           </fieldset>
           <details class="anki-details">
             <summary>Duplicate handling</summary>
@@ -1023,9 +1062,9 @@
           </details>
           <details class="anki-details">
             <summary>Connection settings</summary>
-            <label class="field"><span class="field-label">AnkiConnect URL</span><input id="opt-anki-url" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" aria-describedby="anki-url-help anki-url-error"><span id="anki-url-help" class="field-hint">The address where AnkiConnect is running.</span></label>
+            <label class="field"><span class="field-label">AnkiConnect URL</span><input id="opt-anki-url" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" aria-describedby="anki-url-help anki-url-error"><span id="anki-url-help" class="field-hint">The address where AnkiConnect is running. Shared by every Template.</span></label>
             <output id="anki-url-error" class="field-hint is-error" aria-live="polite"></output>
-            <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Stored locally in this browser.</span></label>
+            <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Shared by every Template and stored locally in this browser.</span></label>
           </details>
         </section>
         <section class="card" id="keybinds" aria-labelledby="keybinds-heading" hidden>
@@ -1112,6 +1151,26 @@
             <button id="backup-export" class="ghost" type="button">Export backup</button>
           </div>
           <p class="section-note">The archive is not encrypted. Keep it private: it includes custom URLs and your AnkiConnect API key, if configured. Unsaved edits are not included.</p>
+          <div id="automatic-backups" class="automatic-backups">
+            <div class="backup-action">
+              <div>
+                <h2>Automatic backups</h2>
+                <p>Hachidori keeps the newest two daily snapshots on this device. They contain the same saved settings and personal data as an export, including your AnkiConnect API key if configured.</p>
+              </div>
+            </div>
+            <p id="automatic-backup-status" class="section-note" aria-live="polite"></p>
+            <ul id="automatic-backup-list" class="automatic-backup-list"></ul>
+          </div>
+          <template id="automatic-backup-template">
+            <li class="automatic-backup-row">
+              <div>
+                <strong class="automatic-backup-age"></strong>
+                <span class="automatic-backup-detail"></span>
+                <time class="automatic-backup-created"></time>
+              </div>
+              <button class="automatic-backup-restore ghost" type="button"></button>
+            </li>
+          </template>
           <div class="backup-action">
             <div>
               <h2>Restore a backup</h2>
@@ -1135,6 +1194,42 @@
       </main>
     </div>
 
+    <dialog
+      class="import-decision-dialog"
+      id="import-decision-dialog"
+      aria-labelledby="import-decision-heading"
+      aria-describedby="import-decision-description"
+    >
+      <form method="dialog">
+        <h2 id="import-decision-heading">Dictionary already installed</h2>
+        <p id="import-decision-description"></p>
+        <dl class="import-decision-revisions">
+          <div>
+            <dt>Imported dictionary</dt>
+            <dd id="import-decision-imported"></dd>
+          </div>
+          <div>
+            <dt>Installed dictionary</dt>
+            <dd id="import-decision-installed"></dd>
+          </div>
+        </dl>
+        <label class="field import-decision-target" id="import-decision-target-row" hidden>
+          <span class="field-label">Dictionary to replace</span>
+          <select id="import-decision-target"></select>
+          <span class="field-hint">The archive source matches more than one installed dictionary.</span>
+        </label>
+        <p class="field-hint">
+          Replace keeps this dictionary’s position, display name, enabled state,
+          favourite, groups, and other saved settings. Add separately keeps both.
+        </p>
+        <div class="import-decision-actions">
+          <button class="primary-button" type="submit" value="replace">Replace existing</button>
+          <button class="ghost" type="submit" value="separate">Add separately</button>
+          <button class="ghost" type="submit" value="cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
     <template id="dict-row-template">
       <li class="dict-row">
         <label class="dict-row-select">
@@ -1145,17 +1240,13 @@
           />
         </label>
         <span class="dict-order">
-          <span class="dict-drag" draggable="true" aria-hidden="true"
-            >&#10247;</span
-          >
+          <span class="dict-drag" draggable="true" aria-hidden="true"><span class="hd-icon" data-icon="reorder" aria-hidden="true"></span></span>
           <span class="dict-rank" aria-hidden="true"></span>
         </span>
         <div class="dict-main">
           <div class="dict-heading">
             <span class="dict-title"></span>
-            <span class="dict-favorite" title="Favourite" aria-label="Favourite"
-              >&#9733;</span
-            >
+            <span class="dict-favorite" title="Favourite" aria-label="Favourite"><span class="hd-icon" data-icon="star" aria-hidden="true"></span></span>
           </div>
           <span class="dict-canonical"></span>
           <div class="dict-badges" aria-label="Dictionary entry counts"></div>
@@ -1168,8 +1259,8 @@
             <span class="cell-label">Enabled</span>
           </label>
           <span class="dict-order-actions">
-            <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
-            <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
+            <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up"><span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span></button>
+            <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down"><span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span></button>
           </span>
         </div>
         <details class="dict-details">
@@ -1242,7 +1333,7 @@
               aria-label="Move group up"
               title="Move group up"
             >
-              &#8593;
+              <span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span>
             </button>
             <button
               type="button"
@@ -1250,7 +1341,7 @@
               aria-label="Move group down"
               title="Move group down"
             >
-              &#8595;
+              <span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span>
             </button>
             <button type="button" class="ghost danger dict-group-delete">
               Delete
@@ -1284,7 +1375,7 @@
             aria-label="Move dictionary up"
             title="Move dictionary up"
           >
-            &#8593;
+            <span class="hd-icon" data-icon="arrow-up" aria-hidden="true"></span>
           </button>
           <button
             type="button"
@@ -1292,7 +1383,7 @@
             aria-label="Move dictionary down"
             title="Move dictionary down"
           >
-            &#8595;
+            <span class="hd-icon" data-icon="arrow-down" aria-hidden="true"></span>
           </button>
           <button type="button" class="ghost dict-group-member-remove">
             Remove

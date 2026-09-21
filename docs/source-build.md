@@ -27,11 +27,14 @@ SDK environment so `emcmake`, `emcc`, and `em++` are on `PATH`. Run these comman
 from the extracted archive's top-level directory:
 
 ```sh
-emcmake cmake -S wasm -B wasm/build -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON
+emcmake cmake -S wasm -B wasm/build -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=ON
 cmake --build wasm/build --parallel
+emcmake cmake -S wasm -B wasm/build-idbfs -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=OFF
+cmake --build wasm/build-idbfs --parallel
 emcmake cmake -S wasm -B wasm/build-fallback -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=OFF
 cmake --build wasm/build-fallback --parallel
 cp wasm/build/hoshidicts-threaded.mjs wasm/build/hoshidicts-threaded.wasm extension/vendor/
+cp wasm/build-idbfs/hoshidicts-threaded-idbfs.mjs wasm/build-idbfs/hoshidicts-threaded-idbfs.wasm extension/vendor/
 cp wasm/build-fallback/hoshidicts.mjs wasm/build-fallback/hoshidicts.wasm extension/vendor/
 ```
 
@@ -109,7 +112,7 @@ CI runs this packaging command and verifies the checksums for every release
 candidate. The **Release** workflow supports package-only manual runs by default.
 Enabling **Publish** for a manual run requires an existing bare
 `<manifest.version>` release tag at the selected commit; the workflow uploads
-its assets and submits the Chrome package. Pushing `v<manifest.version>` keeps
+its assets and submits the Chrome package. Pushing `<manifest.version>` keeps
 the automatic release path. Both paths publish only after the version,
 minimum/current Chrome pins, archive integrity, and checksums pass. Chrome Web
 Store automation requires the service-account secret and the publisher and

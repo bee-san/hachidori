@@ -6,9 +6,13 @@ import {
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
 
-test("overlay mining never takes a screenshot or records browser speech or captured media", () => {
+test("overlay mining applies the host's byte-backed media capabilities without changing saved options", () => {
+  const template = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
   const stored = globalThis.HDReaderOptions.normaliseOptions({
-    anki: { captureScreenshot: true },
+    anki: { templates: [
+      { ...template, id: "default", name: "Words", captureScreenshot: true },
+      { ...template, id: "sentence", name: "Sentences", captureScreenshot: true },
+    ] },
     mediaCapture: { enabled: true },
     audioSources: [
       { id: "tts", type: "text-to-speech", enabled: true, url: "", voice: "" },
@@ -18,11 +22,19 @@ test("overlay mining never takes a screenshot or records browser speech or captu
   });
   const overlay = overlayAnkiOptions(stored);
   assert.equal(overlay.anki.captureScreenshot, false);
+  assert.deepEqual(overlay.anki.templates.map(value => value.captureScreenshot), [false, false]);
   assert.equal(overlay.mediaCapture.enabled, false);
   assert.deepEqual(overlay.audioSources.map(source => source.id), ["jpod"]);
   assert.equal(stored.anki.captureScreenshot, true, "the stored options are not changed");
+  assert.deepEqual(stored.anki.templates.map(value => value.captureScreenshot), [true, true]);
   assert.equal(stored.mediaCapture.enabled, true);
   assert.equal(stored.audioSources.length, 3);
+
+  const speechCaptureHost = overlayAnkiOptions(stored, { browserSpeech: true });
+  assert.equal(speechCaptureHost.anki.captureScreenshot, false);
+  assert.deepEqual(speechCaptureHost.anki.templates.map(value => value.captureScreenshot), [false, false]);
+  assert.equal(speechCaptureHost.mediaCapture.enabled, false);
+  assert.deepEqual(speechCaptureHost.audioSources.map(source => source.id), ["tts", "reading", "jpod"]);
 });
 
 test("Firefox mining projection preserves saved Chrome media settings", () => {
@@ -174,10 +186,14 @@ test("absent state is null and malformed or unsupported state is refused", () =>
 });
 
 test("first-install preferences are a valid options patch that leaves reader defaults untouched", () => {
-  const { DEFAULT_OPTIONS, validateOptionsPatch } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
   assert.deepEqual(validateOptionsPatch(FIRST_INSTALL_OPTIONS), { ...FIRST_INSTALL_OPTIONS });
+  assert.equal(FIRST_INSTALL_OPTIONS.popupTheme, "auto");
   assert.equal(DEFAULT_OPTIONS.showCompactDefinitionSummary, false);
   assert.equal(DEFAULT_OPTIONS.popupTheme, "default");
+  assert.equal(normaliseOptions({}).popupTheme, "default");
+  assert.deepEqual(["default", "light", "dark", "dracula"].map(popupTheme =>
+    normaliseOptions({ popupTheme }).popupTheme), ["default", "light", "dark", "dracula"]);
   assert.equal(DEFAULT_OPTIONS.popupOpacityPercent, 85);
   assert.equal(DEFAULT_OPTIONS.audioAutoplay, false);
   assert.deepEqual(DEFAULT_OPTIONS.audioSources.map(source => [source.type, source.enabled]), [["text-to-speech-reading", true]]);

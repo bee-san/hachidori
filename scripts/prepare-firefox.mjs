@@ -9,25 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = resolve(ROOT, "extension");
 export const DEFAULT_FIREFOX_EXTENSION = resolve(ROOT, "test/tmp/firefox-extension");
-export const FIREFOX_EXCLUDED_FILES = Object.freeze([
-  "avif-sequence.js",
-  "capture-audio-worklet.js",
-  "capture-buffer.js",
-  "capture-content.js",
-  "capture-encoder-client.js",
-  "capture-encoder-worker.js",
-  "capture-frame-client.js",
-  "capture-frame-worker.js",
-  "capture-host.js",
-  "capture-session.js",
-  "capture-speech.js",
-  "capture-timeline.js",
-  "capture.css",
-  "capture.html",
-  "capture.js",
-  "vendor/avif-encoder.mjs",
-  "vendor/avif-encoder.wasm",
-]);
+// Chrome-only capture and speech-recording files; scripts/package-store.py
+// reads the same list so the release XPI and the test build agree.
+export const FIREFOX_EXCLUDED_FILES = Object.freeze(
+  JSON.parse(await readFile(resolve(ROOT, "scripts/firefox-package.json"), "utf8")).excludedFiles,
+);
 
 function outputArgument(arguments_) {
   if (arguments_.length === 0) return DEFAULT_FIREFOX_EXTENSION;

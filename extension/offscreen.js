@@ -1,8 +1,10 @@
 /*
  * Bridges extension runtime messages to the Hoshidicts engine.
  *
- * Browsers with pthread and OPFS support use the dedicated worker. Other
- * browsers use the single-thread IDBFS compatibility runtime.
+ * Browsers with pthread and OPFS support use the dedicated worker on direct
+ * OPFS. Hosts with pthread support but no OPFS access handles (Electron) use
+ * the dedicated worker on IDBFS. Other browsers use the single-thread IDBFS
+ * compatibility runtime on this document.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -45,6 +47,8 @@ const MUTATION_TYPES = new Set([
   "hd_custom_save",
   "hd_backup_export",
   "hd_backup_prepare",
+  "hd_backup_auto_prepare",
+  "hd_backup_auto_cleanup",
   "hd_backup_restore",
   "hd_backup_cancel",
 ]);
@@ -189,20 +193,26 @@ function probeDirectOpfs() {
   });
 }
 
-async function shouldUseThreadedEngine() {
-  if (!CAN_THREAD || typeof globalThis.Worker !== "function"
-      || typeof navigator.storage?.getDirectory !== "function") {
-    return false;
+// "opfs": pthread worker on direct OPFS; "threaded-idbfs": pthread worker on
+// IDBFS; "local": single-thread IDBFS runtime on this document.
+async function selectEngine() {
+  if (!CAN_THREAD || typeof globalThis.Worker !== "function") {
+    return "local";
+  }
+  if (typeof navigator.storage?.getDirectory !== "function") {
+    console.warn("hoshidicts: the origin private file system is unavailable, using threaded IDBFS");
+    return "threaded-idbfs";
   }
   const result = await probeDirectOpfs();
   if (!result.ok) {
-    console.warn(`hoshidicts: direct OPFS is unavailable, using IDBFS: ${result.error}`);
+    console.warn(`hoshidicts: direct OPFS is unavailable, using threaded IDBFS: ${result.error}`);
+    return "threaded-idbfs";
   }
-  return result.ok;
+  return "opfs";
 }
 
-function startWorkerEngine() {
-  worker = new Worker(new URL("./engine-worker.js", import.meta.url), {
+function startWorkerEngine(script) {
+  worker = new Worker(new URL(script, import.meta.url), {
     type: "module",
     name: "hoshidicts-engine",
   });
@@ -260,10 +270,11 @@ function startLocalEngine() {
   });
 }
 
-const engineSelection = shouldUseThreadedEngine().then((threaded) => {
-  lastEngineStatus.storageBackend = threaded ? "opfs" : "idbfs";
-  lastEngineStatus.threaded = threaded;
-  return threaded ? startWorkerEngine() : startLocalEngine();
+const engineSelection = selectEngine().then((mode) => {
+  lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
+  lastEngineStatus.threaded = mode !== "local";
+  if (mode === "local") return startLocalEngine();
+  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js");
 }).catch(failEngine);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -378,4 +389,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-void announceFirefoxOffscreen().catch(failEngine);
+try {
+  await announceFirefoxOffscreen();
+} catch (error) {
+  failEngine(error);
+}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
+import { overwriteAnkiFields } from "./anki-duplicates.js";
+import { createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
 import {
   CAPTURE_FILENAMES, CAPTURE_LIMITS, MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
@@ -48,10 +50,12 @@ export function createAnkiWorkerService({
   offscreen,
   capture = null,
   duplicateIndex,
+  requireAudioBeforeMutation = false,
 }) {
   const confirmedCaptureUploads = new Map();
   const linkedClientMedia = new WeakMap();
   const linkedClientPreflights = new WeakSet();
+  const ankiMediaStore = createAnkiMediaStore();
 
   function isLinkedSubmission(request) {
     return linkedClientMedia.has(request);
@@ -62,6 +66,15 @@ export function createAnkiWorkerService({
     if (!status.ready || status.loading || status.generation !== request.generation) {
       throw new Error("The dictionary generation changed or is being updated. Look up this result again before adding it.");
     }
+  }
+
+  async function dictionaryMedia(item, generation) {
+    const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
+    const match = typeof reply.dataUrl === "string"
+      ? /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(reply.dataUrl)
+      : null;
+    if (!match) throw new Error("The dictionary image is no longer available or is malformed.");
+    return match[2];
   }
   const audio = (request, config, { recordSpeech = true } = {}) => {
     const clientSpeech = linkedClientMedia.get(request)?.speech;
@@ -77,6 +90,28 @@ export function createAnkiWorkerService({
   };
   const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
     dictionaryPaths: resources.dictionaryPaths });
+
+  async function prepareRequiredAudio({
+    request,
+    config,
+    resources,
+    appliedFields,
+    appliedTemplates,
+    target,
+  }) {
+    if (!requireAudioBeforeMutation || resources.audioPrepared || config.audioSources.length === 0
+        || !Object.values(appliedTemplates).some(template =>
+          ankiTemplateMarkerNames(template.value).includes("audio"))) return;
+    const file = await audio(request, config);
+    resources.audioPrepared = true;
+    resources.audio = file;
+    const rendered = await render(request, appliedTemplates, `[sound:${file.filename}]`, resources);
+    const incoming = target
+      ? overwriteAnkiFields(rendered.fields, target.fields, appliedTemplates, { includeAudio: true })
+      : rendered.fields;
+    for (const field of Object.keys(appliedFields)) delete appliedFields[field];
+    Object.assign(appliedFields, incoming);
+  }
 
   async function captureRequest(type, fields) {
     if (typeof capture !== "function") throw new Error("The captured-media host is unavailable.");
@@ -180,6 +215,22 @@ export function createAnkiWorkerService({
     return { ...clip, ...screenshot, warnings: [...clip.warnings, ...screenshot.warnings] };
   }
 
+  async function prepareWrite(context) {
+    await prepareRequiredAudio(context);
+    const captureResources = await prepareCapture(context);
+    try {
+      await ankiMediaStore.prepare({
+        ...context,
+        media: dictionaryMedia,
+        validate: () => currentGeneration(context.request),
+      });
+    } catch (error) {
+      await releaseScreenshot({ writeResources: captureResources, invoke: context.invoke }).catch(() => undefined);
+      throw error;
+    }
+    return captureResources;
+  }
+
   async function prepareClipCapture(context) {
     const { appliedFields, capture: selected, request } = context;
     await currentGeneration(request);
@@ -232,10 +283,12 @@ export function createAnkiWorkerService({
   }
 
   const mining = createAnkiMiningService({ gateway,
-    readConfig: async () => {
+    readConfig: async templateId => {
       const options = await readOptions();
+      const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
+      if (template === null) return null;
       return {
-        ...options.anki,
+        ...template,
         audioSources: options.audioSources.filter(source => source.enabled),
         mediaCapture: options.mediaCapture,
       };
@@ -272,7 +325,7 @@ export function createAnkiWorkerService({
       return { ...resources, ...built };
     },
     validateCapture,
-    beforeWrite: prepareCapture,
+    beforeWrite: prepareWrite,
     beforeMutation,
     preflightExtra: async ({ request, prepared, applied }) => {
       if (!linkedClientPreflights.has(request)) return {};
@@ -295,11 +348,16 @@ export function createAnkiWorkerService({
     afterConfirmed: completeCapture,
     afterRejected: releaseScreenshot,
     duplicateIndex,
-    enrich: context => enrichAnkiNote(context, { audio, render, media: async (item, generation) => {
-      const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
-      if (!reply.dataUrl) throw new Error("The dictionary image is no longer available.");
-      return reply.dataUrl.slice(reply.dataUrl.indexOf(",") + 1);
-    } }),
+    enrich: context => enrichAnkiNote(context, {
+      audio,
+      render,
+      store: (file, kind) => ankiMediaStore.ensure({
+        invoke: context.invoke,
+        filename: file.filename,
+        data: file.data,
+        kind,
+      }),
+    }),
   });
 
   // One viewport screenshot for the mining action being taken now. The caller
@@ -307,11 +365,13 @@ export function createAnkiWorkerService({
   // is held here under a name a field may reference and uploaded only when the
   // note is written, so this reply is immediate and the reader can show itself
   // again without waiting for Anki.
-  async function screenshot(captureViewport) {
+  async function screenshot(captureViewport, templateId) {
     const token = crypto.randomUUID();
     screenshotRequestToken = token;
     const { anki } = await readOptions();
-    if (anki.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
+    const template = globalThis.HDReaderOptions.ankiTemplateConfig(anki, templateId);
+    if (template === null) throw new Error("The selected Anki Template is no longer available.");
+    if (template.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
     const dataUrl = await captureViewport();
     // Capture retries can complete out of order. Only the latest request may
     // publish its bytes, even if a newer picture has already been consumed.

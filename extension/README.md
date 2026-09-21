@@ -28,23 +28,32 @@ the popup. Reloading or navigating the page (or restarting the browser) starts a
 new reading session with the saved Design dimensions. Dragging does not change
 those saved settings or other tabs.
 
+The popup action row is one non-wrapping keyboard and visual group: a nested
+Close or Back control first, then Anki, pronunciation, personal-dictionary
+edit, and custom buttons in saved order. A custom button opens a URL template
+or mines with a chosen Anki Template. Actions share a 36-pixel height and a
+5-pixel gap. At narrow popup widths the whole action row scrolls horizontally
+instead of wrapping, clipping, or overlapping controls. Browser mode opens link
+buttons in a Chrome tab; overlay mode asks its embedding host to open the same
+validated URL in the system browser.
+
 `manifest.json` names them.
 
 | File | Runs as | Role |
 | --- | --- | --- |
-| `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
+| `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
 | `firefox-background.html`, `firefox-background.js` | Firefox’s persistent MV2 background page | Loads the shared background module and hosts `offscreen.html` in one authenticated hidden iframe so the engine remains warm. |
-| `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki and pronunciation controls. Chrome also injects `capture-content.js`; Firefox does not. `content.css` is the only style the page itself receives: the source highlight. |
-| `offscreen.html`, `offscreen.js` | Chrome’s offscreen document or Firefox’s hidden background iframe | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can; `engine-service.js` is the single-thread IDBFS fallback. Pronunciation, Anki and the first-run installer load here on demand. Chrome also hosts media capture here. |
+| `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). Chrome also injects `capture-content.js`; Firefox does not. `content.css` is the only style the page itself receives: the source highlight. |
+| `offscreen.html`, `offscreen.js` | Chrome’s offscreen document or Firefox’s hidden background iframe | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), both through `engine-worker-runtime.js`; `engine-service.js` is also the single-thread IDBFS fallback. Pronunciation, Anki and the first-run installer load here on demand. Chrome also hosts media capture here. |
 | `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, backup and sharing, with media capture where supported and global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
 | `startup.html`, `startup.js` | a tab opened once after install | First-run setup: recommended dictionaries, Anki detection, a practice lookup, and the offer to use a Hachidori that another browser on this computer already shares. Overlay mode skips it. |
 | `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state and opens Settings. Chrome also exposes the recording action here. |
 | `capture.html`, `capture.js` | a Chrome-only tab opened from the toolbar or Settings | Controls media capture. The recorder itself, `capture-host.js`, runs in the offscreen document and keeps going when this tab closes. Firefox does not expose this entry point. |
 
-`overlay-mode.js`, its `browser-api.js` dependency, `render/reader.css`, and
-the icons in `render/icons/` are the only files web pages may fetch
-(`web_accessible_resources`); the popup and its Anki controls
-load them.
+`overlay-mode.js`, its `browser-api.js` dependency, `render/reader.css` and
+`icons.css` are the only files web pages may fetch
+(`web_accessible_resources`). The popup and its Anki controls load the two
+stylesheets; overlay hosts use the shared mode contract.
 
 ## Modules by feature
 
@@ -67,14 +76,20 @@ the service worker and both engine runtimes run the same code.
   content script can use it, and `lookup-stats.js`.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
-  `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
-  fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
+  `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note
+  fields and media. Stored Anki Templates group each destination, note type,
+  field mapping and duplicate policy; the first powers the built-in action and
+  custom Anki buttons select the others by stable ID. Settings edits every
+  field mapping through an accessible marker combobox while retaining the
+  mapping string exactly. `anki-duplicates.js` and
+  `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
   `anki-client-media.js` validates final screenshot, capture and browser-speech
   media crossing a linked-browser boundary. `anki-mining.js` and
   `anki-worker.js` are the mining service in the
   service worker. `anki-index.js` and `anki-index-cache.js` provide the shared
-  scoped duplicate and maturity index. `anki-offscreen.js` launches
+  scoped duplicate and maturity index, including cache-only View readiness and
+  click-time live ID repair. `anki-offscreen.js` launches
   `anki-index-worker.js` for complete refreshes without moving note fields
   through the service worker.
 - **Pronunciation.** `audio-sources.js`, `audio-repository.js`,
@@ -89,9 +104,10 @@ the service worker and both engine runtimes run the same code.
   `capture-encoder-worker.js` move audio sampling, frame grabbing and animated
   AVIF encoding (`avif-sequence.js`) off the main thread.
   `texthooker-protocol.js` parses the text a texthooker sends.
-- **Backup.** `backup-archive.js` is the archive format, `backup-state.js`
-  the snapshot rules, `backup-downloads.js` the pending downloads and
-  `backup-settings.js` the controls.
+- **Backup.** `backup-archive.js` is the manual ZIP format, `backup-state.js`
+  the shared snapshot rules, `backup-automatic.js` the two-record daily
+  retention, cadence and age rules, `backup-downloads.js` the pending downloads,
+  and `backup-settings.js` the manual and automatic restore controls.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
   worker; `sharing-settings.js` is the Settings section. `anki-addon.js` pins
@@ -99,8 +115,8 @@ the service worker and both engine runtimes run the same code.
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
-  `keybind-settings.js`, `custom-link-settings.js` and `external-links.js`
-  the keybinds and the custom links in the popup; `local-file-access.js` the
+  `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`
+  the keybinds and custom buttons in the popup; `local-file-access.js` the
   notice about Chrome's *Allow access to file URLs* permission;
   `startup-practice.js` the practice step. `visual-novel.js` and
   `visual-novel.css` draw the background scenes behind the startup page and
@@ -113,10 +129,14 @@ the service worker and both engine runtimes run the same code.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
   GameSentenceMiner overlay flips in its copy. It also defines the shared
   host-capability policy used by Settings, the toolbar, the reader and the
-  service worker; see
+  service worker. A separate embedded-speech capability is enabled only by a
+  host that creates `speech-capture.html` and can return that page's exact audio
+  bytes or a matching system-synthesized WAV to the dictionary offscreen
+  document; see
   [overlay mode](../docs/overlay-mode.md).
-- **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}` and
-  `vendor/hoshidicts.{mjs,wasm}` are the two builds of the hoshidicts engine
+- **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}`,
+  `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
+  `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
   from `wasm/build.sh`, `vendor/avif-encoder.{mjs,wasm}` the AVIF encoder
   from `wasm/avif/`, and `vendor/zip.js` the pinned zip.js runtime. They are
   committed build output: update them with their source change and otherwise
