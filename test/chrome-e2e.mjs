@@ -290,6 +290,7 @@ const PLANNED = [
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+  "Anki {audio} in a non-first field uploads the selected pronunciation after the note is added",
   "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
@@ -4602,6 +4603,32 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && routes.get(other.url).requests === 0 && playCount === 0
         && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+
+    // Issue #260: {audio} only in a later field. The pronunciation is deferred
+    // past the note write, so it must still be the popup's selected recording
+    // and must actually reach the note instead of leaving the field empty.
+    const overwrite = value => ({ value, overwriteMode: "overwrite" });
+    await configure(false, { fieldTemplates: { Front: overwrite("{expression} deferred-audio"), Back: overwrite("{glossary}"), Audio: overwrite("{audio}") } });
+    const deferredRequest = { ...request, audioSelection: { ...request.audioSelection } };
+    deferredRequest.configKey = (await operation("hd_anki_status")).configKey;
+    // The first-field check already stored this recording; drop it so the
+    // deferred path has to upload the bytes itself.
+    files.delete(filename);
+    const deferredUploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
+    const deferredAdded = await operation("hd_anki_submit", deferredRequest);
+    const deferredNote = notes.get(deferredAdded.noteId);
+    const deferredFilename = /^\[sound:([^\]]+)\]$/u.exec(deferredNote?.Audio ?? "")?.[1];
+    const deferredActions = calls.map(call => call.action);
+    check("Anki {audio} in a non-first field uploads the selected pronunciation after the note is added",
+      deferredAdded.state === "added" && deferredAdded.warnings.length === 0
+        && deferredNote.Front === "漢字 deferred-audio"
+        && deferredFilename !== undefined && files.get(deferredFilename) === wav.toString("base64")
+        && deferredFilename === filename
+        && routes.get(other.url).requests === 0
+        && calls.filter(call => call.action === "storeMediaFile").length === deferredUploadsBefore + 1
+        && deferredActions.lastIndexOf("storeMediaFile") > deferredActions.lastIndexOf("addNote")
+        && deferredActions.lastIndexOf("updateNoteFields") > deferredActions.lastIndexOf("storeMediaFile"),
+      JSON.stringify({ deferredAdded, deferredNote, deferredFilename, filename, actions: deferredActions.slice(deferredActions.lastIndexOf("addNote") - 3) }));
     await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
   } finally {
     await settings.evaluate(async original => {
