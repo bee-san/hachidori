@@ -65,7 +65,7 @@ Dictionary files are immutable generation roots. Automatic records reference
 those existing roots in place, so several snapshots can share one generation
 without copying its blobs or issuing a filesystem write. Every ordinary
 generation cleanup and restart reconciliation includes roots referenced by
-both records. The one-key metadata replacement becomes authoritative before
+every retained record. The one-key metadata replacement becomes authoritative before
 any newly unreferenced generation may be removed. A refused write performs no
 cleanup; a lost reply requires exact readback; an uncertain outcome retains the
 roots. Cleanup after confirmed replacement is best effort and can be completed
