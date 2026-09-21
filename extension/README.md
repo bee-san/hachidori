@@ -121,10 +121,7 @@ the service worker and both engine runtimes run the same code.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
   GameSentenceMiner overlay flips in its copy. It also defines the shared
   host-capability policy used by Settings, the toolbar, the reader and the
-  service worker. A separate embedded-speech capability is enabled only by a
-  host that creates `speech-capture.html` and can return that page's exact audio
-  bytes or a matching system-synthesized WAV to the dictionary offscreen
-  document; see
+  service worker; see
   [overlay mode](../docs/overlay-mode.md).
 - **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}`,
   `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and

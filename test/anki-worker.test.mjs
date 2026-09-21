@@ -54,10 +54,7 @@ function testIndex(resolve = async () => []) {
   };
 }
 
-function fixture(firstAudio = false, overwrite = false, {
-  audioSources,
-  requireAudioBeforeMutation = false,
-} = {}) {
+function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const calls = [], audioRequests = [];
   const mediaFiles = new Set();
   let fields = overwrite ? { Front: "猫", Audio: `pronunciation[sound:${AUDIO_FILENAME}]` } : undefined;
@@ -83,7 +80,6 @@ function fixture(firstAudio = false, overwrite = false, {
     throw new Error(`Unexpected ${action}`);
   } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
-    requireAudioBeforeMutation,
     duplicateIndex: testIndex(() => overwrite ? [12] : []),
     readDictionaries: async () => [{ title: "A", path: "/dicts/generation/A", enabled: true }],
     engine: async message => { calls.push(message.type); return { generation, ready: true, loading: false }; },
@@ -141,27 +137,6 @@ test("the worker defers ordinary audio until verified note success and rejects s
   f.changedGeneration();
   await assert.rejects(f.service.submit(f.request), /dictionary generation changed/u);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
-});
-
-test("an embedded host stores non-first-field pronunciation before the note mutation", async () => {
-  const source = { id: "embedded-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
-  const f = fixture(false, false, { audioSources: [source], requireAudioBeforeMutation: true });
-  f.request.configKey = (await f.service.status()).configKey;
-  const result = await f.service.submit(f.request);
-  assert.equal(result.state, "added");
-  assert.ok(f.calls.indexOf("hd_anki_audio") < f.calls.indexOf("storeMediaFile"));
-  assert.ok(f.calls.indexOf("storeMediaFile") < f.calls.indexOf("addNote"));
-  assert.equal(f.fields.Audio, `[sound:${AUDIO_FILENAME}]`);
-});
-
-test("an embedded pronunciation failure leaves no note or Anki media", async () => {
-  const source = { id: "embedded-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
-  const f = fixture(false, false, { audioSources: [source], requireAudioBeforeMutation: true });
-  f.failAudio();
-  f.request.configKey = (await f.service.status()).configKey;
-  await assert.rejects(f.service.submit(f.request), /chosen pronunciation is unavailable/u);
-  assert.equal(f.calls.includes("storeMediaFile"), false);
-  assert.equal(f.calls.includes("addNote"), false);
 });
 
 test("first-field audio is resolved before duplicate checking and its exact prepared bytes are reused after add", async () => {

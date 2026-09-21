@@ -3418,9 +3418,7 @@ async function flushOptionsUntilIdle() {
 
 function renderMiningCapabilityHelp() {
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
-  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech
-    || MINING_CAPABILITIES.embeddedSpeechCapture;
-  element("audio-embedded-speech-capture-help").hidden = !MINING_CAPABILITIES.embeddedSpeechCapture;
+  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
   element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
 }
 

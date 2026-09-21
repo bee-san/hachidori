@@ -932,16 +932,12 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
-test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs
-test/embedded-speech-capture.test.mjs test/speech-capture-host.test.mjs`
+test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
 runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession, first-use voice loading, automatic Japanese voice selection,
 unavailable selected voices, captured-TTS WAV export and silent preflight,
-embedded host-page routing and frame-audio selection, mono WAV format, silence
-rejection and complete stream/audio-graph cleanup, zero-gain feedback
-prevention, matching host-synthesized WAV playback, pre-mutation
-pronunciation storage and no-write capture failure, document-scoped cancellation,
+document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
 including delayed initial options without repeating a manual play, quiet success
