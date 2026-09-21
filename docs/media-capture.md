@@ -32,6 +32,8 @@ opens Advanced instead. Turning the switch off later hides the section again,
 switches the recorder off, and keeps every other capture setting for the next
 time it is turned on.
 
+![Settings → Advanced with the Media mining switch on and Media capture back in the navigation](assets/settings-advanced-experimental.png)
+
 1. Open **Settings → Advanced** and turn on **Media mining** under
    Experimental features, then open **Media capture** from the navigation or
    the switch's *Open its settings* link.
