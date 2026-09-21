@@ -866,7 +866,9 @@ aggregate maturity and inserts a found row. A true miss creates no negative row.
 AnkiConnect polls its socket on a timer, so each request costs one poll interval
 and parallel requests serialise: discovery is one `multi` batch (`deckNames`,
 `modelNames`, `modelFieldNames`), and the live lookup batches its candidate and
-mature-subset `findNotes` searches before the single `notesInfo` stage.
+mature-subset `findNotes` searches before the single `notesInfo` stage. Both
+index paths judge maturity on the same scoped card search, so in deck scope a
+note is mature only through a mature card inside the configured deck.
 Other duplicate policies retain their full preflight because Add duplicate and
 Overwrite require live validation beyond membership.
 

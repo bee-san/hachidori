@@ -17,7 +17,7 @@ import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_URL, ANKI_ADDON_VERSION } from "../ext
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_TITLE } from "../extension/custom-dictionary.js";
 import { BlobReader, TextWriter, ZipReader } from "../extension/vendor/zip.js";
 import { startAnkiRelayServer } from "./anki-relay-server.mjs";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION = resolve(ROOT, "extension");
@@ -286,7 +286,7 @@ async function startMockAnkiConnect(apiKey) {
       // Like AnkiConnect, each `multi` sub-action is checked and run on its own.
       const handle = (action, params, { key = "" }) => {
         record(action, params, key);
-        if (key !== state.apiKey) throw new Error("invalid api key");
+        if (key !== state.apiKey) throw new AnkiConnectError("invalid api key");
         if (action === "deckNames") return ["Default"];
         if (action === "modelNames") return ["Basic"];
         if (action === "modelNamesAndIds") return { Basic: 1 };
