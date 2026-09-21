@@ -39,8 +39,15 @@ bytes in. Four things follow:
 
 Settings → Advanced → **Memory** shows *Engine memory: X GB across N
 dictionaries*: the size of the engine's linear memory and the number of loaded
-packages. Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
-package's mapped bytes as described above. Both come from the engine's
+packages.
+
+![Settings → Advanced → Memory with the engine total and the Low memory mode switch](assets/memory-settings.png)
+
+Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
+package's mapped bytes as described above.
+
+![A Library row's Details with its In memory line](assets/memory-library-details.png)
+ Both come from the engine's
 `hd_memory` read (see [architecture.md](architecture.md), "Runtime messages")
 and are refreshed when you open Advanced, when the Library changes, and when
 the engine publishes a new generation after an import, reload or recycle;
