@@ -17,6 +17,7 @@ import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXTENSION = resolve(ROOT, "extension");
@@ -365,23 +366,24 @@ const server = createServer((request, response) => {
       try {
         let body = "";
         for await (const chunk of request) body += chunk;
-        const { action, params = {} } = JSON.parse(body);
-        overlayAnkiCalls.push({ action, params });
-        let result;
-        if (action === "deckNames") result = ["Default"];
-        else if (action === "modelNames") result = ["Basic"];
-        else if (action === "modelNamesAndIds") result = { Basic: 1 };
-        else if (action === "modelFieldNames") result = ["Front", "Back"];
-        else if (action === "findNotes" || action === "findCards" || action === "cardsToNotes"
-            || action === "cardsInfo" || action === "notesInfo" || action === "guiBrowse") result = [];
-        else if (action === "getDecks") result = {};
-        else if (action === "canAddNotesWithErrorDetail") {
-          const gate = overlayAnkiGate;
-          if (gate) await gate.promise;
-          result = params.notes.map(() => ({ canAdd: true, error: null }));
-        } else throw new Error(`Unexpected overlay Anki action ${action}`);
+        const envelope = await answerAnkiConnect(JSON.parse(body), async (action, params) => {
+          overlayAnkiCalls.push({ action, params });
+          if (action === "deckNames") return ["Default"];
+          if (action === "modelNames") return ["Basic"];
+          if (action === "modelNamesAndIds") return { Basic: 1 };
+          if (action === "modelFieldNames") return ["Front", "Back"];
+          if (action === "findNotes" || action === "findCards" || action === "cardsToNotes"
+              || action === "cardsInfo" || action === "notesInfo" || action === "guiBrowse") return [];
+          if (action === "getDecks") return {};
+          if (action === "canAddNotesWithErrorDetail") {
+            const gate = overlayAnkiGate;
+            if (gate) await gate.promise;
+            return params.notes.map(() => ({ canAdd: true, error: null }));
+          }
+          throw new Error(`Unexpected overlay Anki action ${action}`);
+        });
         response.writeHead(200, headers);
-        response.end(JSON.stringify({ result, error: null }));
+        response.end(JSON.stringify(envelope));
       } catch (error) {
         response.writeHead(500, headers);
         response.end(JSON.stringify({ result: null, error: error.message }));

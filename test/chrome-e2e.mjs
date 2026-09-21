@@ -51,6 +51,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -4392,44 +4393,46 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   // Flags the checks below flip to make the mock refuse specific work.
   const control = { failScreenshotUpload: false, preflightGate: null };
   const apiRoute = { requests: 0, async respond(request) {
-    const { action, params } = JSON.parse(request.postData);
-    calls.push({ action, params });
-    let result;
-    if (action === "deckNames") result = ["Default"];
-    else if (action === "modelNames") result = ["Basic"];
-    else if (action === "modelNamesAndIds") result = { Basic: 1 };
-    else if (action === "modelFieldNames") result = ["Front", "Back", "Audio"];
-    else if (action === "canAddNotesWithErrorDetail") {
-      const gate = control.preflightGate;
-      if (gate) await gate.promise;
-      result = params.notes.map(note => {
-        const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
-        return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
-      });
-    }
-    else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
-    else if (action === "findNotes") {
-      const expression = queryExpression(params.query);
-      result = params.query === '"note:Basic"'
-        ? [...notes.keys()]
-        : expression === null ? [] : [...notes]
-          .filter(([, fields]) => fields.Front === expression).map(([noteId]) => noteId);
-    }
-    else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
-      fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
-    else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
-    else if (action === "getMediaFilesNames") result = files.has(params.pattern) ? [params.pattern] : [];
-    else if (action === "storeMediaFile") {
-      if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
-        return { body: JSON.stringify({ result: null, error: "media folder is read-only" }), status: 200, contentType: "application/json" };
+    const reply = await answerAnkiConnect(JSON.parse(request.postData), async (action, params) => {
+      calls.push({ action, params });
+      if (action === "deckNames") return ["Default"];
+      if (action === "modelNames") return ["Basic"];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "modelFieldNames") return ["Front", "Back", "Audio"];
+      if (action === "canAddNotesWithErrorDetail") {
+        const gate = control.preflightGate;
+        if (gate) await gate.promise;
+        return params.notes.map(note => {
+          const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
+          return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
+        });
       }
-      files.set(params.filename, params.data);
-      result = params.filename;
-    }
-    else if (action === "deleteMediaFile") { files.delete(params.filename); result = null; }
-    else if (action === "guiBrowse") result = [...notes.keys()];
-    else throw new Error(`Unexpected Anki action ${action}`);
-    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+      if (action === "addNote") { const noteId = notes.size + 1; notes.set(noteId, params.note.fields); return noteId; }
+      if (action === "findNotes") {
+        const expression = queryExpression(params.query);
+        const matched = params.query === '"note:Basic"'
+          ? [...notes.keys()]
+          : expression === null ? [] : [...notes]
+            .filter(([, fields]) => fields.Front === expression).map(([noteId]) => noteId);
+        // The mock schedules nothing, so no note is mature.
+        return params.query.endsWith(" is:review -is:learn prop:ivl>=21") ? [] : matched;
+      }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
+      if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); return null; }
+      if (action === "getMediaFilesNames") return files.has(params.pattern) ? [params.pattern] : [];
+      if (action === "storeMediaFile") {
+        if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
+          throw new Error("media folder is read-only");
+        }
+        files.set(params.filename, params.data);
+        return params.filename;
+      }
+      if (action === "deleteMediaFile") { files.delete(params.filename); return null; }
+      if (action === "guiBrowse") return [...notes.keys()];
+      throw new Error(`Unexpected Anki action ${action}`);
+    });
+    return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
   } };
   const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
   const api = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", apiRoute]]), "anki-submission");
@@ -4729,11 +4732,14 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
         && repairCalls.some(call => call.action === "findNotes"
-          && call.params.query.includes('"note:Basic"') && call.params.query.includes('"front:食べる"'))
+          && call.params.query.includes('"note:Basic"') && call.params.query.includes('"front:食べる"')
+          && !call.params.query.includes("is:review"))
         && repairCalls.some(call => call.action === "notesInfo"
           && JSON.stringify(call.params.notes) === JSON.stringify([...notes.keys()].slice(-1)))
         && repairCalls.some(call => call.action === "findNotes"
-          && call.params.query === `nid:${[...notes.keys()].at(-1)} is:review -is:learn prop:ivl>=21`)
+          && call.params.query.includes('"front:食べる"')
+          && call.params.query.endsWith(" is:review -is:learn prop:ivl>=21"))
+        && !repairCalls.some(call => call.action === "findNotes" && call.params.query.startsWith("nid:"))
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
@@ -5274,20 +5280,22 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
     "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const calls = [];
-  const route = { requests: 0, respond(request) {
-    const { action, params, version } = JSON.parse(request.postData);
-    calls.push({ action, params, version });
-    // Two notes live in Mining and one in the child deck, so Mining wins.
-    const result = action === "modelNamesAndIds" ? { Basic: 1, "Kiku v2": 2, "My Kiku": 3 }
-      : action === "modelNames" ? ["Basic", "Kiku v2", "My Kiku"]
-        : action === "deckNames" ? ["Default", "Mining", "Mining::Old"]
-      : action === "modelFieldNames" ? (params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"])
-        : action === "findNotes" ? [21, 22, 23]
-          : action === "findCards" ? [211, 212, 221, 231]
-            : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
-              : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
-    if (result === null) return { body: JSON.stringify({ result: null, error: `unexpected ${action}` }), status: 200, contentType: "application/json" };
-    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  const route = { requests: 0, async respond(request) {
+    const reply = await answerAnkiConnect(JSON.parse(request.postData), (action, params, { version }) => {
+      calls.push({ action, params, version });
+      // Two notes live in Mining and one in the child deck, so Mining wins.
+      const result = action === "modelNamesAndIds" ? { Basic: 1, "Kiku v2": 2, "My Kiku": 3 }
+        : action === "modelNames" ? ["Basic", "Kiku v2", "My Kiku"]
+          : action === "deckNames" ? ["Default", "Mining", "Mining::Old"]
+        : action === "modelFieldNames" ? (params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"])
+          : action === "findNotes" ? [21, 22, 23]
+            : action === "findCards" ? [211, 212, 221, 231]
+              : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
+                : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
+      if (result === null) throw new Error(`unexpected ${action}`);
+      return result;
+    });
+    return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
   } };
   const worker = await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js"));
   const session = await interceptFetches(worker, new Map([
@@ -5510,18 +5518,22 @@ async function checkAnkiSettings(page, browser) {
   let releaseA;
   const calls = [];
   const route = { requests: 0, async respond(request) {
-    const { action, params } = JSON.parse(request.postData);
-    calls.push({ action, params });
-    if (offline) return { body: "Unavailable", status: 503, contentType: "text/plain" };
-    if (action === "modelFieldNames" && params.modelName === "Japanese" && holdA) {
-      holdA = false;
-      await new Promise(resolve => { releaseA = resolve; });
+    if (offline) {
+      calls.push(JSON.parse(request.postData));
+      return { body: "Unavailable", status: 503, contentType: "text/plain" };
     }
-    const fields = params.modelName === "Basic" ? ["Front", "Back"]
-      : missingField ? ["Changed"] : ["Expression", "Reading", "Meaning", "Sentence", "Frequency", "Pitch", "Audio"];
-    const result = action === "deckNames" ? ["Default", "Japanese"]
-      : action === "modelNames" ? ["Japanese", "Basic"] : fields;
-    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+    const reply = await answerAnkiConnect(JSON.parse(request.postData), async (action, params) => {
+      calls.push({ action, params });
+      if (action === "modelFieldNames" && params.modelName === "Japanese" && holdA) {
+        holdA = false;
+        await new Promise(resolve => { releaseA = resolve; });
+      }
+      const fields = params.modelName === "Basic" ? ["Front", "Back"]
+        : missingField ? ["Changed"] : ["Expression", "Reading", "Meaning", "Sentence", "Frequency", "Pitch", "Audio"];
+      return action === "deckNames" ? ["Default", "Japanese"]
+        : action === "modelNames" ? ["Japanese", "Basic"] : fields;
+    });
+    return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
   } };
   const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
   const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki");
@@ -6227,27 +6239,30 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
   // Cover the entire endpoint, including mining discovery and preflight, so
   // fixtures never depend on the user's Anki notes or scheduling data.
   const route = { requests: 0, async respond(request) {
-    const { action, params } = JSON.parse(request.postData);
-    calls.push({ action, params });
     if (mode === "offline") {
+      calls.push(JSON.parse(request.postData));
       return { body: "Anki unavailable", status: 503, contentType: "text/plain" };
     }
-    let result;
-    if (action === "notesInfo") {
-      result = mode.endsWith("mature") ? [{ noteId: 70, modelName: "Basic", cards: [70],
-        fields: { Front: { value: "食べる", order: 0 }, Back: { value: "to eat", order: 1 } } }] : [];
-    } else if (action === "findNotes") {
-      if (params.query === refreshCandidateQuery && mode.startsWith("held-")) {
-        await new Promise(resolve => { releaseIndex = resolve; });
+    const reply = await answerAnkiConnect(JSON.parse(request.postData), async (action, params) => {
+      calls.push({ action, params });
+      if (action === "notesInfo") {
+        return mode.endsWith("mature") ? [{ noteId: 70, modelName: "Basic", cards: [70],
+          fields: { Front: { value: "食べる", order: 0 }, Back: { value: "to eat", order: 1 } } }] : [];
       }
-      result = mode.endsWith("mature") && (params.query === refreshCandidateQuery
-        || params.query === `${refreshCandidateQuery} is:review -is:learn prop:ivl>=21`) ? [70] : [];
-    } else if (action === "deckNames") result = ["Default"];
-    else if (action === "modelNames") result = ["Basic"];
-    else if (action === "modelFieldNames") result = ["Front", "Back"];
-    else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(() => ({ canAdd: true, error: null }));
-    else throw new Error(`Unexpected Anki index action ${action}`);
-    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+      if (action === "findNotes") {
+        if (params.query === refreshCandidateQuery && mode.startsWith("held-")) {
+          await new Promise(resolve => { releaseIndex = resolve; });
+        }
+        return mode.endsWith("mature") && (params.query === refreshCandidateQuery
+          || params.query === `${refreshCandidateQuery} is:review -is:learn prop:ivl>=21`) ? [70] : [];
+      }
+      if (action === "deckNames") return ["Default"];
+      if (action === "modelNames") return ["Basic"];
+      if (action === "modelFieldNames") return ["Front", "Back"];
+      if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
+      throw new Error(`Unexpected Anki index action ${action}`);
+    });
+    return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
   } };
   const routes = new Map([["http://127.0.0.1:8765/", route]]);
   let worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));

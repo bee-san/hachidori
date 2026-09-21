@@ -17,6 +17,7 @@ import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_URL, ANKI_ADDON_VERSION } from "../ext
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_TITLE } from "../extension/custom-dictionary.js";
 import { BlobReader, TextWriter, ZipReader } from "../extension/vendor/zip.js";
 import { startAnkiRelayServer } from "./anki-relay-server.mjs";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION = resolve(ROOT, "extension");
@@ -265,8 +266,7 @@ async function startMockAnkiConnect(apiKey) {
     }
     try {
       const body = await readHttpJson(request);
-      const { action, params = {}, key = "" } = body;
-      state.calls.push({
+      const record = (action, params, key = "") => state.calls.push({
         action,
         key,
         params: action === "storeMediaFile"
@@ -274,64 +274,76 @@ async function startMockAnkiConnect(apiKey) {
           : structuredClone(params),
       });
       if (!state.online) {
+        record(body.action, body.params ?? {}, body.key);
         writeHttpJson(response, 503, { result: null, error: "Anki is unavailable" });
         return;
       }
-      if (key !== state.apiKey) {
+      if ((body.key ?? "") !== state.apiKey) {
+        record(body.action, body.params ?? {}, body.key);
         writeHttpJson(response, 200, { result: null, error: "invalid api key" });
         return;
       }
-      let result;
-      if (action === "deckNames") result = ["Default"];
-      else if (action === "modelNames") result = ["Basic"];
-      else if (action === "modelNamesAndIds") result = { Basic: 1 };
-      else if (action === "modelFieldNames") result = ["Front", "Back", "Picture"];
-      else if (action === "canAddNotesWithErrorDetail") {
-        result = params.notes.map(note => {
-          const duplicate = [...state.notes.values()].some(existing => existing.fields.Front === note.fields.Front);
-          return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
-        });
-      } else if (action === "canAddNotes") {
-        result = params.notes.map(note =>
-          ![...state.notes.values()].some(existing => existing.fields.Front === note.fields.Front));
-      } else if (action === "addNote") {
-        const noteId = ++state.nextNoteId;
-        state.notes.set(noteId, structuredClone(params.note));
-        result = noteId;
-      } else if (action === "findNotes") {
-        const expression = queryExpression(params.query);
-        result = params.query === '"note:Basic"'
-          ? [...state.notes.keys()]
-          : expression === null ? [] : [...state.notes]
-            .filter(([, note]) => note.fields.Front === expression).map(([noteId]) => noteId);
-      } else if (action === "notesInfo") {
-        result = params.notes.filter(noteId => state.notes.has(noteId)).map(noteId => {
-          const note = state.notes.get(noteId);
-          return {
-            noteId,
-            modelName: note.modelName,
-            cards: [],
-            fields: Object.fromEntries(Object.entries(note.fields).map(([field, value]) => [field, { value }])),
-          };
-        });
-      } else if (action === "updateNoteFields") {
-        const current = state.notes.get(params.note.id);
-        state.notes.set(params.note.id, { ...current, fields: { ...current.fields, ...params.note.fields } });
-        result = null;
-      } else if (action === "getMediaFilesNames") {
-        result = state.media.has(params.pattern) ? [params.pattern] : [];
-      } else if (action === "storeMediaFile") {
-        state.media.set(params.filename, params.data);
-        result = params.filename;
-      } else if (action === "deleteMediaFile") {
-        state.media.delete(params.filename);
-        result = null;
-      } else if (action === "guiBrowse") {
-        result = [...state.notes.keys()];
-      } else {
+      // Like AnkiConnect, each `multi` sub-action is checked and run on its own.
+      const handle = (action, params, { key = "" }) => {
+        record(action, params, key);
+        if (key !== state.apiKey) throw new Error("invalid api key");
+        if (action === "deckNames") return ["Default"];
+        if (action === "modelNames") return ["Basic"];
+        if (action === "modelNamesAndIds") return { Basic: 1 };
+        if (action === "modelFieldNames") return ["Front", "Back", "Picture"];
+        if (action === "canAddNotesWithErrorDetail") {
+          return params.notes.map(note => {
+            const duplicate = [...state.notes.values()].some(existing => existing.fields.Front === note.fields.Front);
+            return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
+          });
+        }
+        if (action === "canAddNotes") {
+          return params.notes.map(note =>
+            ![...state.notes.values()].some(existing => existing.fields.Front === note.fields.Front));
+        }
+        if (action === "addNote") {
+          const noteId = ++state.nextNoteId;
+          state.notes.set(noteId, structuredClone(params.note));
+          return noteId;
+        }
+        if (action === "findNotes") {
+          // The mock schedules nothing, so no note is mature.
+          if (params.query.endsWith(" is:review -is:learn prop:ivl>=21")) return [];
+          const expression = queryExpression(params.query);
+          return params.query === '"note:Basic"'
+            ? [...state.notes.keys()]
+            : expression === null ? [] : [...state.notes]
+              .filter(([, note]) => note.fields.Front === expression).map(([noteId]) => noteId);
+        }
+        if (action === "notesInfo") {
+          return params.notes.filter(noteId => state.notes.has(noteId)).map(noteId => {
+            const note = state.notes.get(noteId);
+            return {
+              noteId,
+              modelName: note.modelName,
+              cards: [],
+              fields: Object.fromEntries(Object.entries(note.fields).map(([field, value]) => [field, { value }])),
+            };
+          });
+        }
+        if (action === "updateNoteFields") {
+          const current = state.notes.get(params.note.id);
+          state.notes.set(params.note.id, { ...current, fields: { ...current.fields, ...params.note.fields } });
+          return null;
+        }
+        if (action === "getMediaFilesNames") return state.media.has(params.pattern) ? [params.pattern] : [];
+        if (action === "storeMediaFile") {
+          state.media.set(params.filename, params.data);
+          return params.filename;
+        }
+        if (action === "deleteMediaFile") {
+          state.media.delete(params.filename);
+          return null;
+        }
+        if (action === "guiBrowse") return [...state.notes.keys()];
         throw new Error(`unexpected AnkiConnect action ${action}`);
-      }
-      writeHttpJson(response, 200, { result, error: null });
+      };
+      writeHttpJson(response, 200, await answerAnkiConnect(body, handle));
     } catch (error) {
       writeHttpJson(response, 200, { result: null, error: error.message || String(error) });
     }
@@ -903,7 +915,9 @@ try {
       && browseCalls.some(call => call.action === "notesInfo"
         && JSON.stringify(call.params.notes) === JSON.stringify([submitted.noteId]))
       && browseCalls.some(call => call.action === "findNotes"
-        && call.params.query === `nid:${submitted.noteId} is:review -is:learn prop:ivl>=21`)
+        && call.params.query.includes(`"front:${request.term.expression}"`)
+        && call.params.query.endsWith(" is:review -is:learn prop:ivl>=21"))
+      && !browseCalls.some(call => call.action === "findNotes" && call.params.query.startsWith("nid:"))
       && stale?.ok === false && /dictionary generation changed/iu.test(stale.error)
       && addsBeforeStale === 1 && addsAfterStale === addsBeforeStale
       && unavailableAnki?.ok === true && unavailableAnki.available === false
