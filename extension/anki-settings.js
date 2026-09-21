@@ -347,20 +347,6 @@ export function createAnkiSettingsController({
     if (element("anki-api-key-panel").hidden !== !expanded) element("anki-api-key-panel").hidden = !expanded;
   }
 
-  function renderAudioPill() {
-    const message = element("anki-audio-status").textContent;
-    const ready = message.startsWith("Found local audio:")
-      || message === "Local audio is already in Audio settings.";
-    const pill = element("anki-audio-pill");
-    const label = ready ? "Ready" : "Not detected";
-    if (pill.textContent !== label) pill.textContent = label;
-    setAttributeIfChanged(pill, "data-state", ready ? "connected" : "offline");
-  }
-
-  const audioStatusObserver = new document.defaultView.MutationObserver(renderAudioPill);
-  audioStatusObserver.observe(element("anki-audio-status"), { childList: true, characterData: true, subtree: true });
-  renderAudioPill();
-
   if (!capabilities.screenshot) {
     element("opt-anki-screenshot").disabled = true;
     element("anki-screenshot-help").textContent = "Page screenshots are unavailable in this overlay. Screenshot fields stay empty.";

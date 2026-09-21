@@ -183,24 +183,6 @@ test("API key disclosure opens on first render for a saved key and keeps aria st
   assert.equal(panel.hidden, false);
 });
 
-test("local audio pill reflects the detailed audio status", async t => {
-  const f = fixture(t);
-  const status = f.el("anki-audio-status");
-  const pill = f.el("anki-audio-pill");
-  assert.equal(pill.textContent, "Not detected");
-  assert.equal(pill.dataset.state, "offline");
-
-  status.textContent = "Found local audio: http://127.0.0.1:5050";
-  await tick();
-  assert.equal(pill.textContent, "Ready");
-  assert.equal(pill.dataset.state, "connected");
-
-  status.textContent = "No compatible local audio service found.";
-  await tick();
-  assert.equal(pill.textContent, "Not detected");
-  assert.equal(pill.dataset.state, "offline");
-});
-
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
   const f = fixture(t);
   assert.equal(f.el("anki-status").classList.contains("operational-status"), true);
