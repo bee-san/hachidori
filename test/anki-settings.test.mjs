@@ -77,6 +77,29 @@ test("Settings explicitly retries setup discovery and applies its proposal throu
   assert.match(f.el("anki-setup-status").textContent, /Found Kiku/u);
 });
 
+test("setup proposals appear in Suggested destination groups with known model field counts", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  discovery(f.sent[0], { decks: ["Default", "Mining"], models: ["Basic", "Kiku v2"], fields: [] });
+  await tick();
+  f.el("anki-find-setup").click();
+  f.sent.at(-1).resolve({ ok: true,
+    proposal: { status: "configured", model: "Kiku v2", deck: "Mining", fieldTemplates: {} },
+    outcome: { status: "configured", model: "Kiku v2", deck: "Mining", detail: null } });
+  await tick();
+  discovery(f.sent.at(-1), { decks: ["Default", "Mining"], models: ["Basic", "Kiku v2"],
+    fields: ["Expression", "Reading", "Sentence", "Definition"] });
+  await tick();
+
+  const deckGroups = [...f.el("opt-anki-deck").querySelectorAll("optgroup")];
+  assert.deepEqual(deckGroups.map(group => group.label), ["Suggested", "All decks"]);
+  assert.equal(deckGroups[0].querySelector("option").textContent, "Suggested: Mining");
+  const modelGroups = [...f.el("opt-anki-model").querySelectorAll("optgroup")];
+  assert.deepEqual(modelGroups.map(group => group.label), ["Suggested", "All note types"]);
+  assert.equal(modelGroups[0].querySelector("option").textContent, "Suggested: Kiku v2 (4 fields)");
+  assert.deepEqual([...modelGroups[1].querySelectorAll("option")].map(option => option.textContent), ["Basic"]);
+});
+
 test("a setup proposal cannot replace intervening Settings edits, and a verified mapping is never rewritten", async t => {
   const f = fixture(t);
   f.controller.render();

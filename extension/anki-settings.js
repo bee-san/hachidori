@@ -336,6 +336,7 @@ export function createAnkiSettingsController({
   let findingSetup = false;
   let setupRequestSequence = 0;
   let setupSnapshot = null;
+  let setupProposal = null;
   let ownerKey = String(readOwnerKey() ?? "");
   const templateRows = new Map();
   let nextTemplateId = 0;
@@ -481,14 +482,33 @@ export function createAnkiSettingsController({
     if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
   }
 
-  function selectChoices(id, names, value, placeholder, canonical = "") {
+  function selectChoices(id, names, value, placeholder, {
+    canonical = "", suggested = "", allLabel, labels = {},
+  }) {
     const select = element(id);
     if (select === document.activeElement) return;
-    const key = JSON.stringify([names, value, canonical]);
+    const key = JSON.stringify([names, value, canonical, suggested, allLabel, labels]);
     if (selects.get(select) === key) return;
-    const choices = [["", placeholder], ...names.filter(name => name !== canonical || name === value).map(name => [name, name])];
-    if (value && !names.includes(value)) choices.push([value, canonical || `${value} (unavailable)`]);
-    select.replaceChildren(...choices.map(([name, label]) => new document.defaultView.Option(label, name)));
+    const optionLabel = name => {
+      if (Object.hasOwn(labels, name)) return labels[name];
+      if (name === value && !names.includes(name)) return canonical || `${name} (unavailable)`;
+      return name;
+    };
+    const placeholderOption = new document.defaultView.Option(placeholder, "");
+    const groups = [];
+    if (suggested) {
+      const group = document.createElement("optgroup");
+      group.label = "Suggested";
+      group.append(new document.defaultView.Option(`Suggested: ${optionLabel(suggested)}`, suggested));
+      groups.push(group);
+    }
+    const all = document.createElement("optgroup");
+    all.label = allLabel;
+    const choices = names.filter(name => name !== suggested && (name !== canonical || name === value));
+    if (value && !names.includes(value) && value !== suggested) choices.push(value);
+    all.append(...choices.map(name => new document.defaultView.Option(optionLabel(name), name)));
+    groups.push(all);
+    select.replaceChildren(placeholderOption, ...groups);
     select.value = value;
     selects.set(select, key);
   }
@@ -537,6 +557,7 @@ export function createAnkiSettingsController({
     ownerKey = next;
     pendingPreset = null;
     setupSnapshot = null;
+    setupProposal = null;
     setupRequestSequence += 1;
     findingSetup = false;
     for (const row of templateRows.values()) row.combobox.close();
@@ -565,6 +586,9 @@ export function createAnkiSettingsController({
       }
       if (!reply.ok) throw new Error(reply.error || "Anki setup discovery did not reply.");
       const { proposal, outcome } = reply;
+      setupProposal = proposal?.status === "configured"
+        ? { model: proposal.model, deck: proposal.deck }
+        : null;
       if (proposal?.status === "configured") {
         change({ model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates });
         setupStatus(`Found ${outcome.model} in deck ‘${outcome.deck}’. Changes save automatically.`, "ready");
@@ -647,8 +671,26 @@ export function createAnkiSettingsController({
       presetModel = config.model;
       element("anki-preset").value = ankiSetupFamily(config.model) || "automatic";
     }
-    selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
-    selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
+    const currentProposal = setupProposal?.model === config.model && setupProposal.deck === config.deck
+      ? setupProposal
+      : null;
+    const models = discovery?.models || [];
+    const suggestedModel = currentProposal?.model
+      || (ankiSetupFamily(config.model) ? config.model : models.find(model => ankiSetupFamily(model)) || "");
+    const modelLabels = {};
+    if (discoveryKey === connectionKey(config) && discovery?.connected && discovery.model === config.model
+        && models.includes(config.model)) {
+      modelLabels[config.model] = `${config.model} (${discovery.fields.length} fields)`;
+    }
+    selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck", {
+      suggested: currentProposal?.deck || config.deck,
+      allLabel: "All decks",
+    });
+    selectChoices("opt-anki-model", models, config.model, "Choose a note type", {
+      suggested: suggestedModel,
+      allLabel: "All note types",
+      labels: modelLabels,
+    });
     renderDuplicateScope(config);
     const url = element("opt-anki-url");
     if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
