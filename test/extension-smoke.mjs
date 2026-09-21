@@ -48,6 +48,12 @@ import {
   TRAINED_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  buildLongKeyZip,
+  LONG_KEY_TITLE,
+  LONG_KEY_PROVERB,
+  LONG_KEY_PHRASE,
+  LONG_KEY_PHRASE_INFLECTED,
+  LONG_KEY_LENGTH,
   buildTrainedZip,
   frequencyRankingFixture,
   gaijiSizingFixture,
@@ -89,6 +95,7 @@ const DICTIONARY_PACKAGE_KEYS = [
   "kanjiCount",
   "language",
   "lastUpdateCheck",
+  "longKeyLength",
   "mediaCount",
   "path",
   "pitchCount",
@@ -5698,6 +5705,37 @@ async function main() {
   const afterLogicalImport = await request("hd_status");
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
+
+  // A dictionary with keys longer than the scan length: the import records the
+  // longest such key on the package row (from scan.idx), and the same
+  // scanLength 16 lookup that could never reach a 27-code-point key now returns
+  // it when the text begins like it.
+  const longKeyImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildLongKeyZip()), fileName: "long-key.zip", lowRam: false,
+  });
+  const longKeyState = await storedDictionaryState();
+  const longKeyPackage = longKeyState.dictionaries.find((dictionary) => dictionary.title === LONG_KEY_TITLE);
+  const longKeyLookup = await request("hd_lookup", {
+    text: `${LONG_KEY_PROVERB}と昔から言われている。`, maxResults: 32, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const longKeyInflected = await request("hd_lookup", {
+    text: `${LONG_KEY_PHRASE_INFLECTED}と昔から言われている。`, maxResults: 32, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const expressions = (reply) => reply.results?.map((result) => result.term?.expression) ?? [];
+  check(
+    "an import records its longest indexed key and scanLength 16 lookups reach keys longer than 16",
+    longKeyImport.ok === true
+      && longKeyPackage?.longKeyLength === LONG_KEY_LENGTH
+      && importedPackage.longKeyLength === 0
+      && expressions(longKeyLookup).includes(LONG_KEY_PROVERB)
+      && longKeyLookup.results.find((result) => result.term?.expression === LONG_KEY_PROVERB)?.matched === LONG_KEY_PROVERB
+      && expressions(longKeyInflected).includes(LONG_KEY_PHRASE),
+    JSON.stringify({ ok: longKeyImport.ok, error: longKeyImport.error, longKeyLength: longKeyPackage?.longKeyLength,
+      proverb: expressions(longKeyLookup), inflected: expressions(longKeyInflected) }),
+  );
+  await request("hd_remove", { id: longKeyPackage?.id, title: LONG_KEY_TITLE });
 
   section("interactive atomic replacement");
   const atomicTitle = "atomic-replacement-fixture";
@@ -16960,6 +16998,55 @@ async function contentNoteStage() {
       held && recovered?.request.text === harness.candidate.query && visible };
   }
 
+  // The engine finds dictionary keys longer than the scan length only if it is
+  // handed enough text: each package row carries the longest key its long-key
+  // index lists, and the reader collects that many code points plus eight for
+  // an inflected ending while still requesting options.scanLength.
+  async function longKeyWindowCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    window.Range.prototype.getClientRects = () => [];
+    const document = window.document;
+    const block = document.createElement("p");
+    block.style.display = "block";
+    block.textContent = "\u3042".repeat(300);
+    document.body.append(block);
+    const scan = () => {
+      const range = document.createRange();
+      range.setStart(block.firstChild, 0);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      return harness.driver.resolveCandidate(0, 0);
+    };
+    const state = (rows) => ({ schemaVersion: 1, revision: 0, groups: [], dictionaries: rows });
+    let revision = 1;
+    const emit = (rows) => harness.emitState({ ...state(rows), revision: ++revision });
+    const base = genericPackage({ favorite: true });
+    const length = (candidate) => Array.from(candidate?.query ?? "").length;
+
+    const plain = length(scan());
+    emit([{ ...base, longKeyLength: 37 }]);
+    const withLongKeys = length(scan());
+    emit([{ ...base, longKeyLength: 37, enabled: false }, genericPackage({ id: "other", title: "Other" })]);
+    const disabledLongKeys = length(scan());
+    emit([{ ...base, longKeyLength: 37 }, genericPackage({ id: "longer", title: "Longer", longKeyLength: 250 })]);
+    const capped = length(scan());
+    emit([{ ...base, longKeyLength: 37, termCount: 0, frequencyCount: 3 }]);
+    const frequencyOnly = length(scan());
+    emit([{ ...base, longKeyLength: 1 }]);
+    const shorterThanScan = length(scan());
+
+    emit([{ ...base, longKeyLength: 37 }]);
+    harness.driver.onMouseMove({ target: block, clientX: 10, clientY: 10 });
+    await harness.settle();
+    const request = harness.take("hd_lookup");
+    harness.close();
+    return { "the reader hands the engine the longest indexed key plus eight while requesting its own scan length":
+      plain === 9 && withLongKeys === 45 && disabledLongKeys === 9 && capped === 256 && frequencyOnly === 9
+        && shorterThanScan === 9 && request?.request.scanLength === 9 && Array.from(request?.request.text ?? "").length === 45
+        || { plain, withLongKeys, disabledLongKeys, capped, frequencyOnly, shorterThanScan, request: request?.request && { scanLength: request.request.scanLength, textLength: Array.from(request.request.text).length } } };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -18585,7 +18672,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await longKeyWindowCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),

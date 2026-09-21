@@ -658,6 +658,18 @@ and opens `chrome://extensions/shortcuts`.
 
 ## Page scanning and exact selections
 
+Dictionary keys longer than the configured scan length are still found.
+Hoshidicts' importer lists every key longer than 16 code points by its first
+eight code points in a per-dictionary `scan.idx`, and `Lookup::lookup` extends
+past `scanLength` only when the processed text begins like one of those keys, up
+to that key's length plus eight code points for an inflected ending; other text
+keeps the cost of `scanLength`. `packageFromIndex` records the longest such key
+on the package row as `longKeyLength` (0 for packages imported before the index
+existed), and the reader collects `max(scanLength, longKeyLength + 8)` code
+points of page text across enabled term packages, capped at 256, while still
+requesting `scanLength`. Scans shorter than eight code points never extend, so a
+clicked-kanji lookup stays one character.
+
 Automatic scanning reads page text in DOM order regardless of layout, as
 Yomitan's default layout-unaware scan does: it crosses inline and block elements
 alike, including glyphs boxed one per absolutely positioned span by an overlay,

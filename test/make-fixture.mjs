@@ -462,6 +462,30 @@ export function buildGenericKanjiZip() {
   ]);
 }
 
+// Long-key fixture: keys longer than 16 code points, which the ordinary scan
+// (scanLength 16) can never reach. The importer lists them in scan.idx by their
+// first eight code points and the engine extends a lookup to them only when the
+// text begins like one (hoshidicts src/scan_index.hpp).
+export const LONG_KEY_TITLE = 'hachidori-long-key-fixture';
+// 27 code points.
+export const LONG_KEY_PROVERB = '身体髪膚これを父母に受くあえて毀傷せざるは孝の始めなり';
+export const LONG_KEY_PROVERB_READING = 'しんたいはっぷこれをふぼにうくあえてきしょうせざるはこうのはじめなり';
+// 17 code points, ichidan, so 〜られなかった deinflects to it.
+export const LONG_KEY_PHRASE = '自分の思うところをはっきりと述べる';
+export const LONG_KEY_PHRASE_INFLECTED = '自分の思うところをはっきりと述べられなかった';
+export const LONG_KEY_LENGTH = Array.from(LONG_KEY_PROVERB_READING).length;
+
+export function buildLongKeyZip() {
+  return buildZip([
+    zipEntry('index.json', JSON.stringify({ ...index, title: LONG_KEY_TITLE })),
+    zipEntry('term_bank_1.json', JSON.stringify([
+      [LONG_KEY_PROVERB, LONG_KEY_PROVERB_READING, '', '', 100, ['the body is a gift from one\'s parents'], 1, ''],
+      [LONG_KEY_PHRASE, 'じぶんのおもうところをはっきりとのべる', '', 'v1', 90, ['to state one\'s view plainly'], 2, ''],
+      ['身体', 'しんたい', '', '', 80, ['body'], 3, ''],
+    ])),
+  ]);
+}
+
 // DictionaryQuery keys terms on (expression, reading), with an empty reading in
 // the bank meaning "same as the expression".
 export const termKey = (expression, reading) => [expression, reading || expression].join('|');

@@ -587,6 +587,38 @@ async function stableDictionaryId(title) {
   return Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+// Longest key, in code points, that the dictionary's long-key scan index
+// records: the importer lists every key longer than 16 code points by its
+// first eight, and the engine extends a lookup past its scan length only when
+// the text begins like one of them (hoshidicts src/scan_index.hpp). The reader
+// adds this to the page text it collects so such a key can be seen at all.
+// Header: u32 magic "HDSI", u32 version, u32 count, u16 longest key. 0 for a
+// dictionary imported before the index existed or with no long key.
+const SCAN_INDEX_MAGIC = 0x49534448;
+const SCAN_INDEX_VERSION = 1;
+const SCAN_INDEX_HEADER_BYTES = 16;
+
+function longKeyLengthFromScanIndex(path) {
+  const file = `${path}/scan.idx`;
+  if (!exists(file)) return 0;
+  const header = new Uint8Array(SCAN_INDEX_HEADER_BYTES);
+  let read = 0;
+  try {
+    const stream = engine.FS.open(file, "r");
+    try {
+      read = engine.FS.read(stream, header, 0, SCAN_INDEX_HEADER_BYTES, 0);
+    } finally {
+      engine.FS.close(stream);
+    }
+  } catch (error) {
+    return 0;
+  }
+  if (read < SCAN_INDEX_HEADER_BYTES) return 0;
+  const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  if (view.getUint32(0, true) !== SCAN_INDEX_MAGIC || view.getUint32(4, true) !== SCAN_INDEX_VERSION) return 0;
+  return view.getUint16(12, true);
+}
+
 function readDictionaryIndex(path) {
   const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
   return parseJson(json, `${path}/index.json`);
@@ -620,6 +652,7 @@ async function packageFromIndex(path) {
     pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
     kanjiCount: count(index?.counts?.kanji?.total),
     mediaCount: count(index?.counts?.media?.total),
+    longKeyLength: longKeyLengthFromScanIndex(path),
     installedAt: installedAt(index?.importDate, path),
     lastUpdateCheck: null,
   };

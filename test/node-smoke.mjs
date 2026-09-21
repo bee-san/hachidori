@@ -23,6 +23,12 @@ import {
   MEDIA_PATH,
   STYLES,
   TERMS,
+  LONG_KEY_TITLE,
+  LONG_KEY_PROVERB,
+  LONG_KEY_PHRASE,
+  LONG_KEY_PHRASE_INFLECTED,
+  LONG_KEY_LENGTH,
+  buildLongKeyZip,
   TITLE,
   TRAINED_TERMS,
   TRAINED_TITLE,
@@ -1153,6 +1159,55 @@ check('a dictionary-scoped lookup returns only the requested term dictionary', (
 check('a dictionary-scoped lookup retains shared frequency and pitch metadata', () => {
   eq(selectedLookup.results[0].term.frequencies[0]?.dictionary, TITLE, 'frequency dictionary');
   eq(selectedLookup.results[0].term.pitches[0]?.dictionary, TITLE, 'pitch dictionary');
+});
+
+G('long keys beyond the scan length');
+
+const LONG_KEY_DIR = `/dicts/${LONG_KEY_TITLE}`;
+M.FS.writeFile('/work/long-key.zip', buildLongKeyZip());
+const longKeyReport = hdwImport('/work/long-key.zip', '/dicts');
+const longKeyTail = 'と昔から言われている。';
+const longKeyExpressions = (response) => response.results.map((result) => result.term.expression);
+
+check('the importer writes a long-key scan index', () => {
+  ok(longKeyReport.success, `long-key fixture import failed: ${longKeyReport.error}`);
+  const header = M.FS.readFile(`${LONG_KEY_DIR}/scan.idx`).subarray(0, 16);
+  const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  eq(view.getUint32(0, true), 0x49534448, 'scan.idx magic');
+  eq(view.getUint32(4, true), 1, 'scan.idx version');
+  eq(view.getUint16(12, true), LONG_KEY_LENGTH, 'scan.idx longest key');
+});
+
+reset();
+eq(addDict(LONG_KEY_DIR, 0), 1, `add long-key dictionary: ${lastError()}`);
+
+check('scanLength 16 still finds a 27-code-point key when the text begins like it', () => {
+  const response = lookup(LONG_KEY_PROVERB + longKeyTail, 32, 16, AUTO_OPTIONS);
+  conforms(response, LOOKUP_RESPONSE, 'long-key lookup');
+  const proverb = response.results.find((result) => result.term.expression === LONG_KEY_PROVERB);
+  ok(proverb !== undefined, `proverb missing from ${JSON.stringify(longKeyExpressions(response))}`);
+  eq(proverb?.matched, LONG_KEY_PROVERB, 'the whole proverb is the matched text');
+  ok(longKeyExpressions(response).includes('身体'), 'the short key is still reported');
+});
+
+check('an inflected long phrase is found through deinflection', () => {
+  const response = lookup(LONG_KEY_PHRASE_INFLECTED + longKeyTail, 32, 16, AUTO_OPTIONS);
+  ok(longKeyExpressions(response).includes(LONG_KEY_PHRASE), JSON.stringify(longKeyExpressions(response)));
+});
+
+check('text that does not begin like a long key keeps the ordinary scan', () => {
+  const response = lookup('食べられなかった' + LONG_KEY_PROVERB, 32, 16, AUTO_OPTIONS);
+  ok(!longKeyExpressions(response).includes(LONG_KEY_PROVERB), 'no extension for an unrelated prefix');
+});
+
+check('a scan shorter than eight code points never extends', () => {
+  const response = lookup(LONG_KEY_PROVERB + longKeyTail, 32, 4, AUTO_OPTIONS);
+  same(longKeyExpressions(response), ['身体'], 'scan 4 results');
+});
+
+check('a dictionary-scoped lookup extends through its own index', () => {
+  const response = lookupDictionary(LONG_KEY_PROVERB + longKeyTail, LONG_KEY_DIR, 32, 16, AUTO_OPTIONS);
+  ok(longKeyExpressions(response).includes(LONG_KEY_PROVERB), JSON.stringify(longKeyExpressions(response)));
 });
 
 G('production custom dictionary ZIP');
