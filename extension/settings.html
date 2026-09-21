@@ -41,6 +41,7 @@
             <option value="keybinds">Keybinds</option>
             <option value="sharing">Sharing</option>
             <option value="backup">Backup &amp; restore</option>
+            <option value="advanced">Advanced</option>
           </select>
         </label>
         <output id="settings-navigation-status" class="compact-nav-status" aria-live="polite"></output>
@@ -80,6 +81,10 @@
           <div class="nav-item">
             <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
             <output class="nav-status" id="nav-status-backup" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
+            <a href="#advanced" aria-describedby="nav-status-advanced">Advanced</a>
+            <output class="nav-status" id="nav-status-advanced" aria-live="polite"></output>
           </div>
         </nav>
         <a class="setup-resume" href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md" target="_blank" rel="noopener noreferrer">Privacy policy</a>
@@ -1197,6 +1202,19 @@
               <button id="backup-cancel" class="ghost" type="button">Cancel</button>
             </div>
           </div>
+        </section>
+        <section class="card" id="advanced" aria-labelledby="advanced-heading" hidden>
+          <div class="card-head">
+            <h1 id="advanced-heading" tabindex="-1" data-search-keywords="experimental beta labs flags preview">Advanced</h1>
+            <p class="hint">Features that are still changing. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <fieldset class="lookup-group" id="experimental-settings">
+            <legend>Experimental features</legend>
+            <p class="section-note">Experimental features may change or be removed in a later version. Turning one off hides it but keeps its settings for the next time you turn it on.</p>
+            <ul id="experimental-features" class="experimental-list"></ul>
+            <p id="experimental-empty" class="hint" hidden>No experimental features are available in this version.</p>
+          </fieldset>
         </section>
       </main>
     </div>
