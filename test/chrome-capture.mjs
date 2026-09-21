@@ -742,8 +742,10 @@ async function main() {
     }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue());
     assert.equal(importState, "Finished 1 of 1 archive — 1 imported, 0 failed.",
       await settings.$eval("#import-progress", element => element.textContent));
-    await settings.goto(`chrome-extension://${id}/settings.html#media`, { waitUntil: "domcontentloaded" });
-    await settings.waitForSelector("#media:not([hidden])");
+    await settings.goto(`chrome-extension://${id}/settings.html#advanced`, { waitUntil: "domcontentloaded" });
+    await settings.waitForSelector("#advanced:not([hidden])");
+    assert.equal(await settings.$eval('.settings-nav a[href="#media"]', link => link.parentElement.hidden), true,
+      "Media capture stays out of the navigation until the experimental flag is on");
 
     const mediaCapture = {
       enabled: true,
@@ -783,8 +785,8 @@ async function main() {
         SentenceAudio: { value: "", overwriteMode: "overwrite" },
       },
     };
-    await writeOptions(settings, { mediaCapture, anki: ankiConfig });
-    await settings.reload({ waitUntil: "domcontentloaded" });
+    await writeOptions(settings, { experimental: { mediaMining: true }, mediaCapture, anki: ankiConfig });
+    await settings.goto(`chrome-extension://${id}/settings.html#media`, { waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
     const savedAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options?.anki);
     assert.equal(savedAnki.model, ANKI_MODEL);

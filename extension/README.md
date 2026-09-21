@@ -107,6 +107,8 @@ the service worker and both engine runtimes run the same code.
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
+  `experimental-settings.js` renders the Advanced → Experimental features
+  switches from the registry in `reader-options.js`;
   `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`
   the keybinds and custom buttons in the popup; `local-file-access.js` the
   notice about Chrome's *Allow access to file URLs* permission;

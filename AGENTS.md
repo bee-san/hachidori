@@ -70,6 +70,17 @@ When implementing the dictionary-only scope from issue #9:
 - Blur decisions live on the request, so tabs, Show more, Note refresh and Back keep them and a new request starts fresh. The view renders pending before the count and never re-blurs once revealed. One absolute deadline runs from first display; navigating away cancels only the live timer, Back and a persisted `pageshow` re-arm the remainder. The decision waits for the stored options when a lookup renders before the initial storage read.
 - Autoplay stays held while a request's definitions are pending or blurred, and every reveal (a non-qualifying decision, hover, the deadline, Back past it, or disabling blur) releases the held first result once. The first count still decides the blur for the whole visit. The audio controller keys held first results by owner, settles them only for the request being revealed, and keeps a retired hold's visit unspent; a manual play consumes every waiting result.
 
+## Experimental features
+
+Settings → Advanced → Experimental features is the one place a feature that is still changing is switched on or off.
+
+- An experimental feature is one entry in `EXPERIMENTAL_FEATURES` in `extension/reader-options.js` (`id`, `label`, `description`, optional `section`) plus its `false` default under `options.experimental`. Add the entry and the default together; do not introduce a parallel storage key, a separate save path, or a second registry. `experimental-settings.js` renders the switches from that registry and needs no per-feature code.
+- Flags are booleans under `options.experimental` and travel through the existing revisioned `hd_options_write`, `normaliseOptions`, and backup paths. A patch must carry the complete record with known ids and boolean values, as `mediaCapture` does; stored garbage normalises to the default without throwing.
+- A feature's own settings live where they always did. Turning a flag off hides the feature and keeps those settings; it must not clear them. When a feature has an enable switch that keeps runtime work going (Media mining → `mediaCapture.enabled`), the Settings toggle is responsible for switching it off in the same save so nothing stays active behind a hidden section. Runtime code gates on the feature's own enable switch, not on the flag.
+- A feature that names a Settings `section` keeps that section, its rail link and its picker option hidden while off, and a hash request for it resolves to `#advanced`. Real-Chrome suites that open a gated section turn its switch on first.
+- Migration is stateless and lives in `normaliseOptions`: only a stored record with no `experimental` key derives a flag from legacy state (Media mining from `mediaCapture.enabled`). Once Settings has written the record, the stored value wins.
+- Removing a flag means deleting its registry entry and default, dropping its gate, and leaving its feature permanently on or removing the feature; do not keep dead flags.
+
 ## Repository map
 
 - `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer; `extension/README.md` maps its files.

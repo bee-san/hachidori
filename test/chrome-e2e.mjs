@@ -10306,7 +10306,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 9
+      && links.length === 10
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -10411,12 +10411,18 @@ async function main() {
     JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, pickerKeepsFocus, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
   const themeLayouts = [];
+  // Media capture is experimental: its section joins the navigation only after
+  // the Advanced switch is on, so the layout sweep turns it on first.
+  await showSettingsSection(page, "advanced");
+  await page.click("#opt-experimental-mediaMining");
+  await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden
+    && document.getElementById("options-status").textContent.trim() === "Saved.", { timeout: 10_000, polling: 100 });
   for (const width of [320, 1280]) {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "default"]) {
       await setSettingsTheme(theme);
       for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "keybinds", "custom-dictionary",
-        "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
+        "add-dictionaries", "updates", "dictionary-groups", "backup", "advanced"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const panel = document.getElementById(section);
@@ -10425,6 +10431,7 @@ async function main() {
             audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
+            advanced: "opt-experimental-mediaMining",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());

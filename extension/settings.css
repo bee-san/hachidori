@@ -873,7 +873,8 @@ input[type="checkbox"] {
 }
 .dict-list,
 .dict-group-list,
-.dict-group-members {
+.dict-group-members,
+.experimental-list {
   margin: 0;
   padding: 0;
   list-style: none;
