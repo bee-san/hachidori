@@ -10,6 +10,7 @@
 
 import assert from "node:assert/strict";
 import { captureResourceMonitor } from "./capture-resources.mjs";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -204,37 +205,37 @@ function createFixtureServer(anki) {
     }
     try {
       const request = JSON.parse((await readRequest(req)).toString("utf8"));
-      const { action, params = {} } = request;
-      anki.actions.push(action);
-      let result;
-      if (action === "deckNames") result = ["Default"];
-      else if (action === "modelNames") result = [ANKI_MODEL];
-      else if (action === "modelFieldNames") result = ANKI_FIELDS;
-      else if (action === "canAddNotesWithErrorDetail") result = [{ canAdd: true, error: null }];
-      else if (action === "addNote") {
-        anki.note = structuredClone(params.note);
-        result = 101;
-      } else if (action === "notesInfo") {
-        result = [{
-          noteId: 101,
-          modelName: ANKI_MODEL,
-          cards: [],
-          fields: Object.fromEntries(Object.entries(anki.note?.fields ?? {})
-            .map(([field, value]) => [field, { value }])),
-        }];
-      } else if (action === "getMediaFilesNames") {
-        result = anki.media.has(params.pattern) ? [params.pattern] : [];
-      } else if (action === "storeMediaFile") {
-        anki.activeUploads += 1;
-        anki.maxActiveUploads = Math.max(anki.maxActiveUploads, anki.activeUploads);
-        await new Promise(done => setTimeout(done, 20));
-        anki.media.set(params.filename, params.data);
-        anki.activeUploads -= 1;
-        result = params.filename;
-      } else {
+      const envelope = await answerAnkiConnect(request, async (action, params) => {
+        anki.actions.push(action);
+        if (action === "deckNames") return ["Default"];
+        if (action === "modelNames") return [ANKI_MODEL];
+        if (action === "modelFieldNames") return ANKI_FIELDS;
+        if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+        if (action === "addNote") {
+          anki.note = structuredClone(params.note);
+          return 101;
+        }
+        if (action === "notesInfo") {
+          return [{
+            noteId: 101,
+            modelName: ANKI_MODEL,
+            cards: [],
+            fields: Object.fromEntries(Object.entries(anki.note?.fields ?? {})
+              .map(([field, value]) => [field, { value }])),
+          }];
+        }
+        if (action === "getMediaFilesNames") return anki.media.has(params.pattern) ? [params.pattern] : [];
+        if (action === "storeMediaFile") {
+          anki.activeUploads += 1;
+          anki.maxActiveUploads = Math.max(anki.maxActiveUploads, anki.activeUploads);
+          await new Promise(done => setTimeout(done, 20));
+          anki.media.set(params.filename, params.data);
+          anki.activeUploads -= 1;
+          return params.filename;
+        }
         throw new Error(`unexpected AnkiConnect action ${action}`);
-      }
-      reply(res, 200, JSON.stringify({ result, error: null }));
+      });
+      reply(res, 200, JSON.stringify(envelope));
     } catch (error) {
       reply(res, 200, JSON.stringify({ result: null, error: error.message || String(error) }));
     }

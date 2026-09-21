@@ -2,11 +2,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { AnkiTransportError, createAnkiGateway, ankiAvailability } from "../extension/anki.js";
+import { AnkiTransportError, ankiMultiResults, createAnkiGateway, ankiAvailability } from "../extension/anki.js";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const { normaliseOptions, normaliseAnkiConnectUrl, validateOptionsPatch } = globalThis.HDReaderOptions;
 const config = (patch = {}) => ({ ...normaliseOptions({}).anki, ...patch });
-const reply = result => ({ ok: true, async json() { return { result, error: null }; } });
+const envelope = payload => ({ ok: true, async json() { return payload; } });
+const reply = result => envelope({ result, error: null });
+// A fake AnkiConnect answering `body` through `handle(action, params)`.
+const answer = async (body, handle) => envelope(await answerAnkiConnect(body, handle));
 const deferred = () => {
   let resolve;
   const promise = new Promise(accept => {
@@ -58,27 +62,48 @@ test("global Anki configuration validates complete mappings and duplicate polici
   } }).anki.duplicateBehavior, "new");
 });
 
-test("Anki discovery defaults to localhost, fixes the envelope and retains field order", async () => {
+test("Anki discovery is one multi batch that binds every sub-action, fixes the envelope and retains field order", async () => {
   const requests = [];
   const gateway = createAnkiGateway({ fetch: async (url, options) => {
     const body = JSON.parse(options.body);
     requests.push({ url, options, body });
-    return reply({ deckNames: ["Default", "日本語", "Default"], modelNames: ["Basic"],
-      modelFieldNames: ["Front", "Back"] }[body.action]);
+    return answer(body, action => ({ deckNames: ["Default", "日本語", "Default"], modelNames: ["Basic"],
+      modelFieldNames: ["Front", "Back"] }[action]));
   } });
   const result = await gateway.discover({ model: "Basic", apiKey: "local-key" });
   assert.deepEqual(result, { connected: true, model: "Basic", decks: ["Default", "日本語"],
     models: ["Basic"], fields: ["Front", "Back"], errors: [] });
-  assert.deepEqual(requests.map(r => r.body.action), ["deckNames", "modelNames", "modelFieldNames"]);
-  for (const { url, options, body } of requests) {
-    assert.equal(url, "http://127.0.0.1:8765");
-    assert.equal(options.method, "POST");
-    assert.equal(options.credentials, "omit");
-    assert.equal(options.redirect, "error");
-    assert.equal(body.version, 6);
-    assert.equal(body.key, "local-key");
+  assert.equal(requests.length, 1, "discovery costs one AnkiConnect round trip");
+  const [{ url, options, body }] = requests;
+  assert.equal(url, "http://127.0.0.1:8765");
+  assert.equal(options.method, "POST");
+  assert.equal(options.credentials, "omit");
+  assert.equal(options.redirect, "error");
+  assert.equal(body.action, "multi");
+  assert.equal(body.version, 6);
+  assert.equal(body.key, "local-key");
+  // AnkiConnect checks the key and picks the reply shape per sub-action.
+  assert.deepEqual(body.params.actions, [
+    { action: "deckNames", params: {}, version: 6, key: "local-key" },
+    { action: "modelNames", params: {}, version: 6, key: "local-key" },
+    { action: "modelFieldNames", params: { modelName: "Basic" }, version: 6, key: "local-key" },
+  ]);
+});
+
+test("multi replies must be one API-v6 envelope per sub-action and unwrap to the first sub-action failure", async () => {
+  let result;
+  const gateway = createAnkiGateway({ fetch: async () => reply(result) });
+  const actions = [{ action: "findNotes", params: { query: "a" } }, { action: "findNotes", params: { query: "b" } }];
+  for (result of [null, [], [{ result: [1], error: null }], [{ result: [1], error: null }, [2]],
+    [{ result: [1], error: null }, { result: [2] }], [{ result: [1], error: null }, { result: [2], error: 5 }]]) {
+    await assert.rejects(gateway.invoke("multi", { actions }), /invalid response/u);
   }
-  assert.deepEqual(requests[2].body.params, { modelName: "Basic" });
+  result = [{ result: [1], error: null }, { result: null, error: "collection is not available" }];
+  const replies = await gateway.invoke("multi", { actions });
+  assert.deepEqual(replies, result);
+  assert.throws(() => ankiMultiResults(replies), /AnkiConnect: collection is not available/u);
+  assert.throws(() => ankiMultiResults([{ result: null, error: "valid api key must be provided" }]), /API key/u);
+  assert.deepEqual(ankiMultiResults([{ result: [1], error: null }, { result: [], error: null }]), [[1], []]);
 });
 
 test("Anki endpoint settings normalize HTTP(S) URLs and preserve legacy defaults without repairing invalid URLs to localhost", () => {
@@ -105,20 +130,21 @@ test("custom discovery and direct calls use only their selected endpoint; invali
   const gateway = createAnkiGateway({ fetch: async (url, options) => {
     const body = JSON.parse(options.body);
     requests.push({ url, body });
-    return reply({ deckNames: ["Default"], modelNames: ["Basic"], modelFieldNames: ["Front", "Back"], guiBrowse: [] }[body.action]);
+    return answer(body, action => ({ deckNames: ["Default"], modelNames: ["Basic"], modelFieldNames: ["Front", "Back"], guiBrowse: [] }[action]));
   } });
   const url = "https://anki.example/connect?profile=Japanese";
   assert.equal((await gateway.discover({ model: "Basic", apiKey: "remote-key", url })).connected, true);
   await gateway.invoke("guiBrowse", { query: "猫" }, "remote-key", 500, url);
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 2);
   assert.ok(requests.every(request => request.url === url && request.body.key === "remote-key"));
+  assert.ok(requests[0].body.params.actions.every(entry => entry.key === "remote-key"));
   for (const invalid of ["", "file:///tmp/anki", "http://user:secret@anki.example", "https://anki.example/\n"]) {
     const result = await gateway.discover({ model: "Basic", url: invalid });
     assert.equal(result.connected, false);
     assert.match(result.errors.join(" "), /valid HTTP or HTTPS/u);
     await assert.rejects(gateway.invoke("guiBrowse", {}, "remote-key", 500, invalid), /valid HTTP or HTTPS/u);
   }
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 2);
 });
 
 test("Anki requests use bounded endpoint lanes and start each timeout only when transport dispatches", async () => {
@@ -241,17 +267,20 @@ test("Anki transport stress stays bounded and preserves request order", async ()
 test("discovery distinguishes partial, malformed, permission and offline failures and retries afresh", async () => {
   let mode = "partial";
   const gateway = createAnkiGateway({ fetch: async (_, options) => {
-    const { action } = JSON.parse(options.body);
+    const body = JSON.parse(options.body);
     if (mode === "offline") throw new TypeError("Failed to fetch");
     if (mode === "permission") return { ok: false, status: 403 };
     if (mode === "malformed") return { ok: true, async json() { return { result: [] }; } };
-    if (mode === "partial" && action === "deckNames") return reply([12]);
-    return reply(action === "modelNames" ? ["Basic"] : action === "modelFieldNames" ? ["Front"] : ["Default"]);
+    return answer(body, (action, params) => {
+      if (mode === "partial" && action === "deckNames") return [12];
+      if (action === "modelFieldNames" && params.modelName !== "Basic") throw new Error(`model was not found: ${params.modelName}`);
+      return action === "modelNames" ? ["Basic"] : action === "modelFieldNames" ? ["Front"] : ["Default"];
+    });
   } });
   const partial = await gateway.discover({ model: "Basic" });
   assert.equal(partial.connected, true);
   assert.deepEqual(partial.fields, ["Front"]);
-  assert.equal(partial.errors.length, 1);
+  assert.deepEqual(partial.errors, ["AnkiConnect returned an invalid deckNames list."]);
   for (const [next, pattern] of [["offline", /Open Anki/u], ["permission", /permission/u], ["malformed", /invalid response/u]]) {
     mode = next;
     const result = await gateway.discover({ model: "Basic" });
@@ -261,11 +290,14 @@ test("discovery distinguishes partial, malformed, permission and offline failure
   }
   mode = "success";
   assert.equal((await gateway.discover({ model: "Basic" })).errors.length, 0);
+  // The speculative field request for an absent note type is not an error.
+  const absent = await gateway.discover({ model: "Missing" });
+  assert.deepEqual(absent, { connected: true, model: "Missing", decks: ["Default"], models: ["Basic"], fields: [], errors: [] });
 });
 
 test("Anki discovery accepts replies slower than the old 1.25-second deadline", async () => {
-  const gateway = createAnkiGateway({ fetch: (_, { signal }) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ result: [], error: null }) }), 1500);
+  const gateway = createAnkiGateway({ fetch: (_, { body, signal }) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(answer(JSON.parse(body), () => [])), 1500);
     signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
   }) });
   assert.equal((await gateway.discover({ model: "" })).connected, true);
