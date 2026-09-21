@@ -24,23 +24,6 @@ voice and shared-audio capture and records the exact WAV locally. Transient PCM
 never crosses the relay; only the final bounded WAV accompanies the submission
 to the host.
 
-An embedded Electron host may provide the same byte requirement without
-enabling Hachidori's gameplay recorder. GameSentenceMiner grants only
-Hachidori's host-owned `speech-capture.html` frame as an audio/video
-display-media source and may expose a byte-exporting system synthesizer to that
-page. The dictionary offscreen document asks the dedicated page for the exact
-selected voice. A supported system exporter returns a bounded WAV, which the
-page plays as the audible pronunciation before returning the same bytes. Other
-voices fall back to frame capture: the page rejects an absent or silent track,
-trims the captured audio, and encodes a 16-bit mono WAV. Its temporary stream,
-audio graph, PCM and utterance are released on success, failure or cancellation.
-The processor stays scheduled through a zero-gain output, so it cannot echo the
-captured frame audio or create a feedback loop. The host's local echo remains
-audible. Preflight remains silent, and submission confirms the WAV in Anki
-media before adding or updating the note. A failed recording leaves neither a
-note mutation nor media residue. Audible system playback alone is never treated
-as downloadable pronunciation.
-
 ## Setup
 
 1. Open **Settings → Media capture**.

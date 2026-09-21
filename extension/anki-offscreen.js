@@ -2,7 +2,6 @@
 import { decodeBase64 } from "./base64.js";
 import { buildAnkiResourceFields } from "./anki-resources.js";
 import { exportAnkiAudio } from "./anki-audio.js";
-import { MINING_CAPABILITIES } from "./overlay-mode.js";
 
 // Resolve and parse the complete scoped note set away from the background and
 // engine request threads; only compact index rows cross back to the commit.
@@ -20,10 +19,6 @@ async function refreshAnkiIndex(window, source) {
 }
 
 async function recordSpeechAudio(...args) {
-  if (MINING_CAPABILITIES.embeddedSpeechCapture) {
-    const capture = await import("./embedded-speech-capture.js");
-    return capture.requestEmbeddedSpeech(globalThis, ...args);
-  }
   const capture = await import("./capture-host.js");
   return capture.recordSpeechAudio(...args);
 }

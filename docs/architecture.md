@@ -1837,21 +1837,7 @@ has no cross-client CAS, so its final read/write interval is not atomic. Browser
 TTS can be attached while an active media-capture share supplies audio: the
 selected voice is spoken only after the mining action, read back from the
 transient PCM ring with short leading/trailing padding, encoded as WAV, and
-uploaded through the same pronunciation path. An embedded host may instead
-advertise byte-backed speech capture. GameSentenceMiner binds the display-media
-request to Hachidori's dedicated normal extension page. The dictionary
-offscreen document requests the selected utterance from that host-owned page,
-which first uses a byte-exporting system synthesizer when one matches the
-selected browser voice. The page plays that WAV and returns the same bytes. A
-voice without an exporter falls back to capturing the page's own frame audio
-while local echo keeps playback audible. The bounded mono WAV follows the
-existing pronunciation media transaction. Embedded hosts
-resolve and confirm every applied pronunciation before the Anki mutation, so a
-capture failure leaves no audio-less note or orphan media. Playback without
-captured bytes never satisfies mining. The capture processor's scheduling
-output passes through a zero-gain node, preventing the frame stream from being
-echoed back into itself; Electron's separately requested local echo remains the
-only audible path.
+uploaded through the same pronunciation path.
 Silent preflight checks only recording availability and defers first-field
 duplicate identity until the authoritative submission. Missing, incomplete or
 effectively silent capture falls through to later URL sources; an explicit TTS

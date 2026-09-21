@@ -13,7 +13,7 @@ const extension = file => readFileSync(new URL(`../extension/${file}`, import.me
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechCapture = false } = {}) {
+function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -26,11 +26,7 @@ function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechC
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = {
-    screenshot: !overlayMode,
-    browserSpeech: !overlayMode || embeddedSpeechCapture,
-    embeddedSpeechCapture: overlayMode && embeddedSpeechCapture,
-  };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.settingsReplies = {
     hd_capture_status: { ok: true, state: "stopped" },
     hd_capture_open: { ok: true },
@@ -133,10 +129,9 @@ test("overlay Settings preserves but cannot activate remote media capture option
   assert.equal(requests.length, 0);
 });
 
-test("an embedded speech-capture host advertises byte-backed TTS without enabling media capture", t => {
-  const { el } = fixture(t, { overlayMode: true, embeddedSpeechCapture: true });
-  assert.equal(el("audio-mining-help").hidden, true);
+test("overlay browser speech is playback-only without enabling media capture", t => {
+  const { el } = fixture(t, { overlayMode: true });
+  assert.equal(el("audio-mining-help").hidden, false);
   assert.equal(el("audio-speech-capture-help").hidden, true);
-  assert.equal(el("audio-embedded-speech-capture-help").hidden, false);
   assert.equal(el("media-overlay-help").hidden, false);
 });
