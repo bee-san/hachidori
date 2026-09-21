@@ -35,6 +35,16 @@ export function ankiMultiResults(replies) {
   return replies.map(unwrap);
 }
 
+function names(action, reply) {
+  const result = unwrap(reply);
+  if (!Array.isArray(result) || result.some(name => typeof name !== "string" || name.trim() === "")) {
+    throw new Error(`AnkiConnect returned an invalid ${action} list.`);
+  }
+  // Exact names remain authoritative; model field order determines Anki's
+  // required first field. Never sort the returned list or truncate it.
+  return [...new Set(result)];
+}
+
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. AnkiConnect
 // handles requests through Anki's UI loop, so each endpoint gets a small,
 // bounded set of transport lanes. Four lanes let a replacement Settings check
@@ -151,16 +161,6 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000
       throw invalidResponse();
     }
     return result;
-  }
-
-  function names(action, reply) {
-    const result = unwrap(reply);
-    if (!Array.isArray(result) || result.some(name => typeof name !== "string" || name.trim() === "")) {
-      throw new Error(`AnkiConnect returned an invalid ${action} list.`);
-    }
-    // Exact names remain authoritative; model field order determines Anki's
-    // required first field. Never sort the returned list or truncate it.
-    return [...new Set(result)];
   }
 
   // One round trip: decks, note types and, speculatively, the configured note
