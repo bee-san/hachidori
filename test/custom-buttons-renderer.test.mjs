@@ -27,6 +27,7 @@ function fixture(t) {
   const links = [{ id: "lookup", type: "link", label: "Look up", url: "https://example.test/search?word=%w&reading=%r&sentence=%s" }];
   const view = window.HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
     parseTagList: window.HDGlossary.parseTagList, positionPopup() {}, customButtons: links,
     onCustomLinkClick: link => opened.push({ ...link }),

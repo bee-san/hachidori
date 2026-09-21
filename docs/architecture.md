@@ -766,8 +766,12 @@ dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
 Contour and pitch badges remain on, and averages remain off. IPA transcriptions
-and definition tags remain visible independently. Pitch and IPA show pronunciation
-data without source-name labels; tooltips and accessibility labels retain source
+and definition tags remain visible independently. Every pitch badge draws its
+dictionary's accent as the same mora contour the header furigana uses, followed
+by the `[n]` position, so several pitch dictionaries compare at a glance; a
+position outside the reading's morae keeps the plain `reading [n]` text, and the
+text stays in every badge's tooltip and accessibility label. Pitch and IPA show
+pronunciation data without source-name labels; tooltips and accessibility labels retain source
 attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
 and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
