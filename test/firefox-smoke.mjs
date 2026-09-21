@@ -401,16 +401,20 @@ async function main() {
     assert.ok(ankiRequests.every(record => record.origin?.startsWith("moz-extension://")),
       `AnkiConnect requests carry the extension origin: ${JSON.stringify(ankiRequests.map(record => record.origin))}`);
 
-    // Pronunciation: the hidden iframe fetches and plays a downloadable source.
+    // Pronunciation: the hidden iframe fetches a downloadable source and hands
+    // it to a media element. A runner without an audio output device cannot
+    // play it; that exact decode/playback error is the only accepted failure.
     const audio = await sendRuntime({
       target: "hachidori-audio",
       type: "hd_audio_test",
       requestId: "firefox-audio-test",
       source: { id: "firefox-smoke-audio", type: "custom", enabled: true, url: `${fixtureServer.origin}/audio/{term}`, voice: "" },
     });
-    assert.equal(audio.ok, true, audio.error);
-    assert.equal(audio.status, "success");
     assert.ok(fixtureServer.requests.some(record => record.url.startsWith("/audio/")), "the audio file was fetched");
+    const audioOutcome = audio.ok && audio.status === "success" ? "played" : `not played (${audio.error})`;
+    if (audioOutcome !== "played") {
+      assert.match(audio.error ?? "", /could not be decoded or played/u, JSON.stringify(audio));
+    }
 
     // Backup: export from the engine, then prepare and restore that archive.
     const exported = await sendRuntime({ target: "hoshidicts-offscreen", type: "hd_backup_export", requestId: "firefox-backup-export" });
@@ -502,7 +506,7 @@ async function main() {
       `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension},`
         + ` ${engine.storageBackend} import/lookup,`
         + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI,`
-        + ` Anki status, pronunciation, backup round-trip, sharing status and screenshot passed.`
+        + ` Anki status, pronunciation fetched and ${audioOutcome}, backup round-trip, sharing status and screenshot passed.`
         + ` Settings: ${settingsUrl}; toolbar: ${toolbarUrl}`,
     );
     passed = true;
