@@ -10,7 +10,7 @@ test("downloads the pinned Anki release as binary without repackaging it", async
     requests.push(url);
     return new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } });
   });
-  assert.deepEqual(requests, ["https://github.com/bee-san/hachidori-anki/releases/download/v0.0.3/hachidori-relay.ankiaddon"]);
+  assert.deepEqual(requests, ["https://github.com/bee-san/hachidori-anki/releases/download/v0.0.4/hachidori-relay.ankiaddon"]);
   assert.equal(ANKI_ADDON_FILE_NAME, "hachidori-relay.ankiaddon");
   assert.deepEqual(new Uint8Array(await archive.arrayBuffer()), bytes);
 });
