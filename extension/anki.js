@@ -152,12 +152,13 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 10_000
     const url = globalThis.HDReaderOptions.normaliseAnkiConnectUrl(endpoint);
     if (url === null) throw new Error("Enter a valid HTTP or HTTPS AnkiConnect URL in Settings, without a username or password.");
     const key = apiKey ? { key: apiKey } : {};
-    const bound = action === "multi"
-      ? { actions: params.actions.map(entry => ({ ...entry, version: 6, ...key })) } : params;
-    const body = JSON.stringify({ action, version: 6, params: bound, ...key });
+    // Sub-actions are rebuilt from their action and params so nothing else a
+    // caller passes reaches the wire.
+    const actions = action === "multi"
+      ? params.actions.map(entry => ({ action: entry.action, params: entry.params, version: 6, ...key })) : null;
+    const body = JSON.stringify({ action, version: 6, params: actions ? { actions } : params, ...key });
     const result = await enqueue({ url, body, requestTimeoutMs });
-    if (action === "multi" && (!Array.isArray(result) || result.length !== params.actions.length
-        || !result.every(isEnvelope))) {
+    if (actions && (!Array.isArray(result) || result.length !== actions.length || !result.every(isEnvelope))) {
       throw invalidResponse();
     }
     return result;

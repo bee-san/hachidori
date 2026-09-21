@@ -51,7 +51,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -4423,7 +4423,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       if (action === "getMediaFilesNames") return files.has(params.pattern) ? [params.pattern] : [];
       if (action === "storeMediaFile") {
         if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
-          throw new Error("media folder is read-only");
+          throw new AnkiConnectError("media folder is read-only");
         }
         files.set(params.filename, params.data);
         return params.filename;
@@ -5292,7 +5292,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
             : action === "findCards" ? [211, 212, 221, 231]
               : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
                 : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
-      if (result === null) throw new Error(`unexpected ${action}`);
+      if (result === null) throw new AnkiConnectError(`unexpected ${action}`);
       return result;
     });
     return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
