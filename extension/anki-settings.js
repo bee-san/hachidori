@@ -398,9 +398,10 @@ export function createAnkiSettingsController({
   function createTemplateRow(field) {
     const row = document.createElement("div");
     row.className = "anki-template-row";
-    row.innerHTML = `<div class="anki-template-heading"><label class="field-label"></label><button type="button" class="ghost">Remove unavailable field</button></div>
+    row.innerHTML = `<div class="anki-template-heading"><span class="anki-field-index" aria-hidden="true"></span><label class="field-label"></label><button type="button" class="ghost">Remove unavailable field</button></div>
       <label class="anki-template-mode"><span>On overwrite</span><select></select></label>`;
     const label = row.querySelector(".field-label"), mode = row.querySelector("select");
+    const indexBadge = row.querySelector(".anki-field-index");
     const id = `opt-anki-template-${++nextTemplateId}`;
     let record;
     const combobox = createMarkerCombobox(document, id, field, value => editTemplate(record.field, { value }));
@@ -416,7 +417,7 @@ export function createAnkiSettingsController({
     for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
     const remove = row.querySelector("button");
     remove.setAttribute("aria-label", `Remove unavailable field: ${field}`);
-    record = { field, row, label, editor, combobox, mode, remove, modeLabel: mode.parentElement };
+    record = { field, row, label, editor, combobox, mode, remove, indexBadge, modeLabel: mode.parentElement };
     mode.addEventListener("change", () => editTemplate(record.field, { overwriteMode: mode.value }));
     remove.addEventListener("click", () => {
       const templates = materializeTemplates();
@@ -427,13 +428,17 @@ export function createAnkiSettingsController({
     return record;
   }
 
-  function updateTemplateRow(row, template, showMode, unavailable) {
+  function updateTemplateRow(row, template, showMode, unavailable, index) {
     const errors = ankiTemplateErrors(template.value);
     row.combobox.update({ value: template.value, label: row.field, errors });
     if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
     if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
     if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
     if (row.row.dataset.ankiField !== row.field) row.row.dataset.ankiField = row.field;
+    const displayIndex = String(index + 1).padStart(2, "0");
+    if (row.indexBadge.textContent !== displayIndex) row.indexBadge.textContent = displayIndex;
+    const unmapped = template.value.trim() === "";
+    if (row.row.classList.contains("is-unmapped") !== unmapped) row.row.classList.toggle("is-unmapped", unmapped);
   }
 
   function renderTemplates(config, presentation) {
@@ -443,7 +448,7 @@ export function createAnkiSettingsController({
     const renamedRows = new Map([...templateRows].filter(([field]) => !retained.has(field))
       .map(([field, row]) => [field.toLowerCase(), row]));
     const container = element("anki-templates");
-    for (const [field, template] of templates) {
+    for (const [index, [field, template]] of templates.entries()) {
       if (!templateRows.has(field)) {
         const previous = renamedRows.get(field.toLowerCase());
         if (previous) {
@@ -456,12 +461,22 @@ export function createAnkiSettingsController({
         }
         templateRows.set(field, previous || createTemplateRow(field));
       }
-      updateTemplateRow(templateRows.get(field), template, showMode, presentation.unavailable.has(field));
+      updateTemplateRow(templateRows.get(field), template, showMode, presentation.unavailable.has(field), index);
     }
     for (const [field, row] of templateRows) {
       if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
     }
     reorderSettingsRows(container, templates.map(([field]) => templateRows.get(field).row));
+    const query = element("anki-field-filter").value.trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const [field] of templates) {
+      const row = templateRows.get(field).row;
+      const hidden = query !== "" && !field.toLocaleLowerCase().includes(query);
+      if (row.hidden !== hidden) row.hidden = hidden;
+      if (!hidden) visible += 1;
+    }
+    const count = query === "" ? `Showing ${templates.length} fields` : `Showing ${visible} of ${templates.length} fields`;
+    if (element("anki-field-count").textContent !== count) element("anki-field-count").textContent = count;
     const canApply = !loading && currentFields().length > 0;
     if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
   }
@@ -682,6 +697,10 @@ export function createAnkiSettingsController({
   });
   element("anki-find-setup").addEventListener("click", () => { void findSetup(); });
   element("anki-preset").addEventListener("change", () => { pendingPreset = null; });
+  element("anki-field-filter").addEventListener("input", () => {
+    const config = readConfig();
+    renderTemplates(config, templatePresentation(config));
+  });
   element("anki-apply-preset").addEventListener("click", () => {
     pendingPreset = null;
     editConfig(applyAnkiPreset(readConfig(), currentFields(), element("anki-preset").value));

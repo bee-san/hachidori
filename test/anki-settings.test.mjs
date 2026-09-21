@@ -232,6 +232,33 @@ test("presets and field comboboxes save one complete snapshot, retain invalid dr
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
 });
 
+test("field mapping filter hides retained rows and reports the visible count", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: {
+    Front: { value: "", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" },
+  } });
+  discovery(f.sent[0], { fields: ["Front", "Back", "Extra"] });
+  await tick();
+
+  assert.equal(f.el("anki-field-count").textContent, "Showing 3 fields");
+  assert.deepEqual(rows(f).map(item => item.querySelector(".anki-field-index")?.textContent), ["01", "02", "03"]);
+  assert.equal(row(f, "Front").classList.contains("is-unmapped"), true);
+  assert.equal(row(f, "Back").classList.contains("is-unmapped"), false);
+
+  const filter = f.el("anki-field-filter");
+  filter.value = "ba";
+  filter.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(rows(f).length, 3, "filtering retains every mapping row in the DOM");
+  assert.deepEqual(rows(f).map(item => item.hidden), [true, false, true]);
+  assert.equal(f.el("anki-field-count").textContent, "Showing 1 of 3 fields");
+
+  filter.value = "";
+  filter.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.deepEqual(rows(f).map(item => item.hidden), [false, false, false]);
+  assert.equal(f.el("anki-field-count").textContent, "Showing 3 fields");
+});
+
 test("simple mappings project without writes and the first explicit edit materializes their exact field templates", async t => {
   const f = fixture(t);
   f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
