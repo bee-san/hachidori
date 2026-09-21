@@ -1265,7 +1265,11 @@ handler checks it after loading and before native extraction, so queued media
 cannot accidentally read a replacement dictionary. Only an accepted current
 lookup/kanji response adopts the reader's generation; late media or styles
 cannot roll it backward. A restarted engine may legitimately report a lower
-generation number.
+generation number. The engine compares the term bank `path` with the archive
+entry name byte for byte; the handler retries a miss with the NFC and NFD
+spellings and the percent-decoded form of the path, because macOS-built
+archives store decomposed Japanese names and some converters percent-encode
+paths. Entry names in another byte encoding are not recoverable.
 
 Image-source selection is independent of the dictionary supplying the text.
 Automatic retains that dictionary's direct media path; an explicit dictionary or

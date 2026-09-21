@@ -8171,6 +8171,35 @@ async function main() {
     JSON.stringify({ imported: largeMediaImport.ok, exact: exactNativeMedia.ok, over: overNativeMedia.ok,
       error: overNativeMedia.error, healthy: healthyMediaAfterError.ok, removed: largeMediaRemoved.ok }));
 
+  // Issue #260: a macOS-built archive stores media names decomposed (NFD)
+  // while the term bank spells them composed, and some converters
+  // percent-encode the path. The engine compares bytes, so the worker tries
+  // those equivalents before reporting the file missing.
+  const spellingTitle = "media-spelling-fixture";
+  const composed = "がぞう";
+  const spellingSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+  const spellingArchive = buildTitledZip(spellingTitle, { mediaEntries: [
+    [`media/${composed.normalize("NFD")}.svg`, spellingSvg],
+    [`media/${composed}.png`, makePng()],
+  ] });
+  const spellingImport = await request("hd_import", { blobUrl: createObjectURL(spellingArchive), fileName: "media-spelling.zip" });
+  const spellingMedia = await Promise.all([
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed}.svg` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${encodeURIComponent(composed)}.png` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed.normalize("NFD")}.png` }),
+    request("hd_media", { generation: spellingImport.generation, dictionary: spellingTitle, path: `media/${composed}.gif` }),
+  ]);
+  const spellingRemoved = await request("hd_remove", { title: spellingTitle });
+  check("media paths resolve their decomposed and percent-encoded spellings of the same archive entry",
+    spellingImport.ok === true && spellingImport.report.mediaCount === 2
+      && spellingMedia[0].ok && spellingMedia[0].dataUrl === `data:image/svg+xml;base64,${spellingSvg.toString("base64")}`
+      && spellingMedia[1].ok && spellingMedia[1].dataUrl?.startsWith("data:image/png;base64,")
+      && spellingMedia[2].ok && spellingMedia[2].dataUrl === spellingMedia[1].dataUrl
+      && spellingMedia[3].ok && spellingMedia[3].dataUrl === null
+      && spellingRemoved.ok === true,
+    JSON.stringify({ imported: spellingImport.ok, count: spellingImport.report?.mediaCount,
+      replies: spellingMedia.map(reply => [reply.ok, reply.dataUrl?.slice(0, 30) ?? null]) }));
+
   let nativeMediaCalls = 0;
   observedEngine.ccall = (name, ...args) => {
     if (name === "hdw_media") nativeMediaCalls += 1;
