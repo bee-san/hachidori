@@ -13,7 +13,7 @@
 //
 //   HDW_ELECTRON=/path/to/electron node benchmark/anki-index-electron.mjs \
 //     --extension extension --endpoint http://127.0.0.1:18765 --output out.json
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -156,7 +156,7 @@ try {
   // extension service worker actually offers: chrome.alarms may exist without
   // ever dispatching onAlarm, and storage.onChanged may never reach the worker.
   let host = await launch();
-  report.electron = await host.page.evaluate(() => navigator.userAgent.match(/(Electron\/\S+).*?(Chrome\/\S+)/)?.slice(1).join(" "));
+  report.electron = `${execFileSync(ELECTRON, ["--version"], { encoding: "utf8" }).trim()} ${await host.page.evaluate(() => navigator.userAgent.match(/Chrome\/\S+/)?.[0])}`;
   report.extensionId = host.extensionId;
   report.overlayMode = await host.page.evaluate(async () => (await import(chrome.runtime.getURL("overlay-mode.js"))).OVERLAY_MODE);
   report.workerApis = await host.worker.evaluate(() => ({
