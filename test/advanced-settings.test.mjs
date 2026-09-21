@@ -76,7 +76,8 @@ test("Advanced lists the media mining switch and reveals Media capture only whil
   toggle.click();
   await tick();
   assert.equal(window.readOptions().experimental.mediaMining, true);
-  assert.equal(JSON.stringify(window.readPending()), JSON.stringify({ experimental: { mediaMining: true } }));
+  assert.equal(JSON.stringify(window.readPending()),
+    JSON.stringify({ experimental: { ...window.HDReaderOptions.DEFAULT_OPTIONS.experimental, mediaMining: true } }));
   assert.equal(window.readOptions().mediaCapture.enabled, false, "turning the flag on does not start capturing");
   assert.equal(mediaNav().hidden, false);
   assert.equal(mediaOption().hidden, false);

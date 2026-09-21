@@ -697,11 +697,14 @@
   // text begins like a dictionary key longer than that (hoshidicts long-key
   // index; each package row carries the longest such key it lists). Eight more
   // leaves room for an inflected ending, matching the engine. Dictionaries
-  // imported before the index existed report 0 and cost nothing extra.
+  // imported before the index existed report 0 and cost nothing extra. Off by
+  // default: Settings → Advanced → Experimental features → Long dictionary
+  // entries switches it on.
   const LONG_KEY_INFLECTION_SLACK = 8;
   const MAX_SCAN_WINDOW = 256;
 
   function scanWindow() {
+    if (options.experimental.longKeyScan !== true) return options.scanLength;
     let longest = 0;
     for (const entry of dictionaries) {
       if (entry.enabled !== false && entry.termCount > 0 && entry.longKeyLength > longest) {

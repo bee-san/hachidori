@@ -785,7 +785,8 @@ async function main() {
         SentenceAudio: { value: "", overwriteMode: "overwrite" },
       },
     };
-    await writeOptions(settings, { experimental: { mediaMining: true }, mediaCapture, anki: ankiConfig });
+    const experimental = await settings.evaluate(() => ({ ...window.HDReaderOptions.DEFAULT_OPTIONS.experimental, mediaMining: true }));
+    await writeOptions(settings, { experimental, mediaCapture, anki: ankiConfig });
     await settings.goto(`chrome-extension://${id}/settings.html#media`, { waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
     const savedAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options?.anki);
