@@ -1636,6 +1636,8 @@ textarea {
 }
 #opt-blur-frequency-threshold { width: 12ch; }
 #opt-media-offset { width: 10ch; }
+#opt-automatic-backup-days { width: 8ch; }
+.automatic-backups .backup-action > .field { flex: 0 1 auto; }
 #sharing-host-port { width: 12ch; }
 #definition-blur-count-paused label {
   cursor: pointer;

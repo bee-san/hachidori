@@ -67,29 +67,42 @@ test("automatic backup cadence handles time progression and backward or forward 
   const empty = emptyAutomaticBackupStore();
   assert.equal(automaticBackupDue(empty, start), true);
   assert.equal(nextAutomaticBackupTime(empty, start), start);
-  const first = await replaceAutomaticBackup(empty, record("first", new Date(start).toISOString()));
+  const first = await replaceAutomaticBackup(empty, record("first", new Date(start).toISOString()), 2);
   assert.equal(newestAutomaticBackupTime(first), start);
   assert.equal(automaticBackupDue(first, start + AUTOMATIC_BACKUP_INTERVAL_MS - 1), false);
   assert.equal(automaticBackupDue(first, start + AUTOMATIC_BACKUP_INTERVAL_MS), true);
   assert.equal(automaticBackupDue(first, start - 7 * AUTOMATIC_BACKUP_INTERVAL_MS), false);
   assert.equal(automaticBackupDue(first, start + 30 * AUTOMATIC_BACKUP_INTERVAL_MS), true);
   const forward = start + 30 * AUTOMATIC_BACKUP_INTERVAL_MS;
-  const second = await replaceAutomaticBackup(first, record("second", new Date(forward).toISOString()));
+  const second = await replaceAutomaticBackup(first, record("second", new Date(forward).toISOString()), 2);
   assert.equal(automaticBackupDue(second, forward), false);
   assert.equal(automaticBackupDue(second, start), false);
 });
 
-test("replacement retains the newest two payloads and shares unchanged dictionary paths", async () => {
+test("replacement retains the newest payloads up to the limit and shares unchanged dictionary paths", async () => {
   const day = AUTOMATIC_BACKUP_INTERVAL_MS;
   const start = Date.parse("2026-09-16T12:00:00.000Z");
   let store = emptyAutomaticBackupStore();
   for (const [index, id] of ["old", "middle", "new"].entries()) {
-    store = await replaceAutomaticBackup(store, record(id, new Date(start + index * day).toISOString()));
+    store = await replaceAutomaticBackup(store, record(id, new Date(start + index * day).toISOString()), 2);
   }
   assert.deepEqual(store.backups.map(entry => entry.id), ["new", "middle"]);
   assert.equal(new Set(store.backups.flatMap(entry =>
     entry.snapshot.state.dictionaries.map(dictionary => dictionary.path))).size, 1);
   assert.ok(automaticBackupJsonBytes(store) > 0);
+});
+
+test("the retention limit keeps that many daily snapshots and a lowered limit prunes on the next snapshot", async () => {
+  const day = AUTOMATIC_BACKUP_INTERVAL_MS;
+  const start = Date.parse("2026-09-10T12:00:00.000Z");
+  let store = emptyAutomaticBackupStore();
+  for (let index = 0; index < 6; index += 1) {
+    store = await replaceAutomaticBackup(store, record(`day-${index}`, new Date(start + index * day).toISOString()), 5);
+  }
+  assert.deepEqual(store.backups.map(entry => entry.id), ["day-5", "day-4", "day-3", "day-2", "day-1"]);
+  // Lowering the option does not touch the index until the next snapshot is written.
+  const lowered = await replaceAutomaticBackup(store, record("day-6", new Date(start + 6 * day).toISOString()), 1);
+  assert.deepEqual(lowered.backups.map(entry => entry.id), ["day-6"]);
 });
 
 test("a corrupt newest record does not hide a valid older backup or reset its cadence", async () => {
