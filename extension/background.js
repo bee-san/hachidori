@@ -1009,7 +1009,7 @@ async function reconcileAutomaticBackups() {
       snapshot: payload.snapshot,
       lookupStatsRows: payload.lookupStatsRows,
     };
-    const next = await replaceAutomaticBackup(store, record);
+    const next = await replaceAutomaticBackup(store, record, normaliseOptions(payload.snapshot.options).automaticBackupDays);
     await commitAutomaticBackupStore(current, next);
     return {
       created: true,
@@ -1109,7 +1109,7 @@ const WORKER_HANDLERS = {
     if (sharingLinked) return { backups: [], corruptCount: 0, linked: true };
     const stored = (await chrome.storage.local.get(AUTOMATIC_BACKUPS_KEY))[AUTOMATIC_BACKUPS_KEY];
     const { backups, corruptCount } = await validAutomaticBackups(stored);
-    return { backups: backups.slice(0, 2).map(automaticBackupSummary), corruptCount };
+    return { backups: backups.map(automaticBackupSummary), corruptCount };
   },
 
   async hd_backup_auto_get(message, sender) {

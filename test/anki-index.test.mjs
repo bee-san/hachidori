@@ -142,6 +142,27 @@ test("live lookup filters the configured deck and subdecks, verifies exact field
   assert.deepEqual(await lookupAnkiIndex(immature, source, "猫"), { wordKey: "猫", mature: false, noteIds: [10] });
 });
 
+test("deck-scope maturity is judged per card inside the configured deck, identically for the complete index and the live lookup", async () => {
+  // Anki searches cards, so a note whose only mature card sits in another deck
+  // is not mature within this scope. Both index paths therefore append the
+  // maturity predicates to the same deck-scoped card search rather than asking
+  // about matched note IDs across all decks.
+  const source = await ankiIndexSource(baseConfig({ duplicateScope: "deck" }));
+  const queries = [];
+  const invoke = ankiInvokeFake(async (action, params) => {
+    if (action === "findNotes") { queries.push(params.query); return []; }
+    if (action === "modelNamesAndIds") return { Japanese: 1 };
+    throw new Error(`Unexpected ${action}`);
+  });
+  await fetchAnkiIndex(invoke, source);
+  await lookupAnkiIndex(invoke, source, "猫");
+  assert.equal(queries.length, 4);
+  for (const [candidate, mature] of [queries.slice(0, 2), queries.slice(2)]) {
+    assert.match(candidate, /"deck:Mining\\:\\:Words"/u);
+    assert.equal(mature, `${candidate} is:review -is:learn prop:ivl>=21`);
+  }
+});
+
 test("cached note inspection selects only an exact configured-type overwrite target and reports stale IDs", async () => {
   const source = await ankiIndexSource(baseConfig({ duplicateScope: "all" }));
   const invoke = async (action, params) => {

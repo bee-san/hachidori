@@ -1028,7 +1028,7 @@ async function automaticBackupBackgroundStage() {
   await delayed;
   const secondStore = structuredClone(storage.raw.get("automaticBackups"));
   const automaticWrites = storage.sets.filter(keys => keys.length === 1 && keys[0] === "automaticBackups").length;
-  check("automatic backups timestamp serialized creation after queue delay and retain only the newest two payloads",
+  check("automatic backups timestamp serialized creation after queue delay and retain only the default two payloads",
     firstStore.backups.length === 1
       && firstWrites === 1
       && secondStore.backups.length === 2
@@ -1168,6 +1168,33 @@ async function automaticBackupBackgroundStage() {
       && (await noStoreAlarms.api.get("hachidori-automatic-backup"))?.scheduledTime === now + day,
     JSON.stringify({ waitedWithoutStore, restartedStore,
       alarm: await noStoreAlarms.api.get("hachidori-automatic-backup") }));
+
+  // The saved automaticBackupDays option decides how many daily snapshots the
+  // next write retains; lowering it prunes at that write, not immediately.
+  const retentionReconcile = () => runInContext("reconcileAutomaticBackups()", noStoreRestart);
+  noStoreStorage.raw.set("options", { revision: 2, automaticBackupDays: 3 });
+  for (let index = 0; index < 3; index += 1) {
+    now += day;
+    await retentionReconcile();
+  }
+  const threeDayStore = structuredClone(noStoreStorage.raw.get("automaticBackups"));
+  const threeDayListed = await makeChrome("automatic-backup-retention-settings", noStoreRestartBus, noStoreStorage, noStoreAlarms)
+    .runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_auto_list" });
+  noStoreStorage.raw.set("options", { revision: 3, automaticBackupDays: 1 });
+  const beforeLowered = structuredClone(noStoreStorage.raw.get("automaticBackups"));
+  now += day;
+  await retentionReconcile();
+  const loweredStore = structuredClone(noStoreStorage.raw.get("automaticBackups"));
+  check("automatic backups retain the configured number of daily snapshots and prune to a lowered count on the next snapshot",
+    threeDayStore.backups.length === 3
+      && Date.parse(threeDayStore.backups[0].createdAt) === now - day
+      && Date.parse(threeDayStore.backups[2].createdAt) === now - 3 * day
+      && threeDayListed?.ok === true && threeDayListed.backups.length === 3
+      && JSON.stringify(beforeLowered) === JSON.stringify(threeDayStore)
+      && loweredStore.backups.length === 1
+      && Date.parse(loweredStore.backups[0].createdAt) === now,
+    JSON.stringify({ threeDay: threeDayStore.backups.map(record => record.createdAt), threeDayListed,
+      lowered: loweredStore.backups.map(record => record.createdAt) }));
 }
 
 async function managedScheduleStage() {
@@ -8255,6 +8282,15 @@ async function main() {
         `  NODE_PATH=${DEFAULT_JSDOM_TREE}/node_modules node test/extension-smoke.mjs`,
     );
   }
+  const backupRetention = await settingsBackupRetentionStage();
+  check("the Backup section saves the automatic snapshot retention and clamps it to the shared option range",
+    backupRetention?.section === "backup"
+      && backupRetention.rendered === "7"
+      && backupRetention.min === "1" && backupRetention.max === "30"
+      && backupRetention.afterFive === "5"
+      && backupRetention.afterClamp === "30"
+      && JSON.stringify(backupRetention.writes) === JSON.stringify([{ automaticBackupDays: 5 }, { automaticBackupDays: 30 }]),
+    JSON.stringify(backupRetention));
   const settingsCustom = await settingsCustomDictionaryStage();
   check(
     "settings coalesces source validation while saving the exact current draft",
@@ -8324,12 +8360,19 @@ async function main() {
         === `Enabled for ${CUSTOM_DICTIONARY_TITLE} (managed; always enabled)`
       && settingsCustom.fixedControls.upLabel
         === `Move ${CUSTOM_DICTIONARY_TITLE} up (managed; fixed first)`
+      && JSON.stringify(settingsCustom.positionOneClamp) === JSON.stringify({
+        order: [CUSTOM_DICTIONARY_ID, "third-id", "ordinary-id"],
+        inputValue: "2",
+        rank: "2",
+      })
       && JSON.stringify(settingsCustom.bulkState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, enabled: true },
+        { id: "third-id", enabled: false },
         { id: "ordinary-id", enabled: false },
       ])
       && JSON.stringify(settingsCustom.favoriteState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, favorite: true },
+        { id: "third-id", favorite: true },
         { id: "ordinary-id", favorite: true },
       ]),
     JSON.stringify(settingsCustom),
@@ -12478,6 +12521,64 @@ async function settingsManagedUpdatesStage() {
   return result;
 }
 
+async function settingsBackupRetentionStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html#backup`,
+  });
+  const { window } = dom;
+  const document = window.document;
+  let storedOptions = { revision: 1, automaticBackupDays: 7 };
+  const writes = [];
+  window.chrome = {
+    runtime: {
+      id: "hachidoribackupretentionsmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] } };
+        }
+        if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+        if (message.type === "hd_backup_auto_list") return { ok: true, backups: [], corruptCount: 0 };
+        if (message.type === "hd_options_write") {
+          writes.push(structuredClone(message.options));
+          storedOptions = { ...storedOptions, ...message.options, revision: storedOptions.revision + 1 };
+          return { ok: true, options: structuredClone(storedOptions) };
+        }
+        throw new Error(`unexpected backup retention request ${message.type}`);
+      },
+    },
+    storage: {
+      local: { async get() { return { options: structuredClone(storedOptions) }; } },
+      onChanged: { addListener() {} },
+    },
+  };
+  const waitFor = async (predicate) => {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) {
+      await new Promise((done) => window.setTimeout(done, 5));
+    }
+  };
+  try {
+    loadSettingsScript(window);
+    await waitFor(() => document.getElementById("engine-status")?.textContent?.startsWith("Ready"));
+    const input = document.getElementById("opt-automatic-backup-days");
+    const result = { section: input?.closest("section")?.id, rendered: input?.value, min: input?.min, max: input?.max };
+    input.value = "5";
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitFor(() => writes.length === 1);
+    result.afterFive = input.value;
+    input.value = "99";
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitFor(() => writes.length === 2);
+    result.afterClamp = input.value;
+    result.writes = writes;
+    return result;
+  } finally {
+    window.close();
+  }
+}
+
 async function settingsCustomDictionaryStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) {
@@ -12501,7 +12602,11 @@ async function settingsCustomDictionaryStage() {
   let state = {
     schemaVersion: 1,
     revision: 40,
-    dictionaries: [customPackage, genericPackage({ id: "ordinary-id", title: "Ordinary" })],
+    dictionaries: [
+      customPackage,
+      genericPackage({ id: "ordinary-id", title: "Ordinary" }),
+      genericPackage({ id: "third-id", title: "Third" }),
+    ],
     groups: [],
   };
   let customDocument = {
@@ -12533,7 +12638,7 @@ async function settingsCustomDictionaryStage() {
           return { ok: true, state: structuredClone(state) };
         }
         if (message.type === "hd_status") {
-          return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+          return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
         }
         if (message.type === "hd_options_write") {
           return { ok: true, options: structuredClone(message.options) };
@@ -12665,15 +12770,27 @@ async function settingsCustomDictionaryStage() {
     enabledLabel: fixed?.querySelector(".dict-enabled")?.getAttribute("aria-label"),
     upLabel: fixed?.querySelector(".dict-up")?.getAttribute("aria-label"),
   };
+  // Typing 1 while the managed package is pinned first is the reporter's way of
+  // saying "as high as possible": it must land on the first movable slot
+  // instead of being discarded.
+  const thirdPosition = window.document.querySelector('[data-dictionary-id="third-id"] .dict-position-input');
+  thirdPosition.value = "1";
+  thirdPosition.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  await waitFor(() => stateRequests.length === 1);
+  result.positionOneClamp = {
+    order: stateRequests[0]?.dictionaries?.map(({ id }) => id),
+    inputValue: window.document.querySelector('[data-dictionary-id="third-id"] .dict-position-input')?.value,
+    rank: window.document.querySelector('[data-dictionary-id="third-id"] .dict-rank')?.textContent,
+  };
   await navigateSettingsSection(window, "dictionaries");
   window.document.getElementById("dict-select-visible")?.click();
   window.document.getElementById("dict-bulk-disable")?.click();
-  await waitFor(() => stateRequests.length === 1
+  await waitFor(() => stateRequests.length === 2
     && window.document.getElementById("dict-bulk-favorite")?.disabled === false);
-  result.bulkState = stateRequests[0]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
+  result.bulkState = stateRequests[1]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
   window.document.getElementById("dict-bulk-favorite")?.click();
-  await waitFor(() => stateRequests.length === 2);
-  result.favoriteState = stateRequests[1]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
+  await waitFor(() => stateRequests.length === 3);
+  result.favoriteState = stateRequests[2]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
 
   await navigateSettingsSection(window, "custom-dictionary");
   source.focus();

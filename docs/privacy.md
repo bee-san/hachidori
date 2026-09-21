@@ -171,8 +171,9 @@ a backup, or uninstall the extension. Settings lets you remove dictionaries
 and edit personal entries. Uninstalling removes the extension's browser-profile
 storage.
 
-Hachidori keeps the newest two automatic daily snapshots in this device's
-browser profile. They use the same saved-state payload as an exported backup,
+Hachidori keeps the newest automatic daily snapshots in this device's
+browser profile; Settings → Backup & restore chooses how many days are kept
+(two by default). They use the same saved-state payload as an exported backup,
 including personal entries, lookup statistics, custom URLs, settings and a
 configured AnkiConnect API key. Hachidori does not upload them. Clearing a value
 from current settings does not erase it from an older snapshot; it remains

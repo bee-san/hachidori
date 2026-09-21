@@ -202,8 +202,10 @@ export async function fetchAnkiIndex(invoke, source) {
 
 // A popup cache miss waits on this, and each AnkiConnect request costs one
 // poll interval, so the candidate and maturity searches share one `multi`
-// round trip and `notesInfo` is the only other stage. The maturity set is the
-// scoped query's mature subset, intersected with the exactly matching notes.
+// round trip and `notesInfo` is the only other stage. Maturity is the scoped
+// query's mature subset intersected with the exactly matching notes: Anki
+// searches cards, so in deck scope a note counts as mature only through a
+// mature card inside the configured deck, exactly as the complete index does.
 export async function lookupAnkiIndex(invoke, source, expression) {
   const wordKey = ankiWordKey(expression);
   if (wordKey === null) return { wordKey, mature: false, noteIds: [] };

@@ -39,8 +39,14 @@ Cleanup does not depend on the closed page receiving a preparation reply.
 
 ## Automatic snapshots
 
-The service worker keeps at most two automatic snapshots in the browser profile
-under the `automaticBackups` storage key. An absent key initializes as schema
+The service worker keeps the newest automatic snapshots in the browser profile
+under the `automaticBackups` storage key. The `automaticBackupDays` reader
+option (Settings → Backup & restore, 1–30, default 2) sets how many are kept;
+with one snapshot per 24 hours that count is the number of days retained. The
+limit read from the state being snapshotted applies when the next record is
+written, so lowering it prunes at the next snapshot rather than immediately.
+The upper bound exists because every record is a complete saved-state payload
+with lookup-statistics rows. An absent key initializes as schema
 version 1 on the first successful snapshot; an unsupported future schema fails
 closed without replacing metadata or cleaning dictionary files. Snapshot
 creation is serialized with other storage writes, timestamped when that queued
@@ -51,16 +57,15 @@ metadata after worker or browser restart.
 Each record uses the same complete snapshot and lookup-statistics rows as a
 manual export. It therefore retains personal entries, custom URLs, saved
 settings and a configured AnkiConnect API key as well as dictionary metadata.
-The two records stay on this device and are not ZIP archives or cloud uploads.
+The records stay on this device and are not ZIP archives or cloud uploads.
 Clearing a value from current settings does not remove it from an older retained
-snapshot; later successful snapshots replace it through the two-record
-retention policy.
+snapshot; later successful snapshots replace it through the retention count.
 
 Dictionary files are immutable generation roots. Automatic records reference
-those existing roots in place, so two snapshots can share one generation
+those existing roots in place, so several snapshots can share one generation
 without copying its blobs or issuing a filesystem write. Every ordinary
 generation cleanup and restart reconciliation includes roots referenced by
-both records. The one-key metadata replacement becomes authoritative before
+every retained record. The one-key metadata replacement becomes authoritative before
 any newly unreferenced generation may be removed. A refused write performs no
 cleanup; a lost reply requires exact readback; an uncertain outcome retains the
 roots. Cleanup after confirmed replacement is best effort and can be completed
@@ -123,7 +128,8 @@ failure, lost replies, storage failures, uncertain commits, corrupt-newest
 fallback, interrupted cleanup, disabled-package validation, damaged-installation
 recovery and empty restores through real WASM. Seven shared browser assertions
 in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
-confirmation and a real older-snapshot restore, plus the actual Chrome download,
+confirmation and a real oldest-retained-snapshot restore that brings back its
+saved retention count, plus the actual Chrome download,
 immutable preview/conflict, complete restore, corrupt-archive cleanup and actual
 page closure during staged preparation in both OPFS and IDBFS suites, followed
 by browser restart.

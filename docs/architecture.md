@@ -113,7 +113,8 @@ was `.hdw-remove`.
 ## Automatic backup cycle
 
 `automaticBackups` is a schema-versioned service-worker-owned index containing
-at most two records. Each record carries the same five-key snapshot and
+at most `automaticBackupDays` records (a reader option, default 2), pruned when
+the next record is written. Each record carries the same five-key snapshot and
 lookup-statistics rows used by manual backup, but references committed immutable
 dictionary generation paths instead of copying their files. Snapshot creation
 runs inside the background storage queue, captures its timestamp after reaching
@@ -877,7 +878,9 @@ aggregate maturity and inserts a found row. A true miss creates no negative row.
 AnkiConnect polls its socket on a timer, so each request costs one poll interval
 and parallel requests serialise: discovery is one `multi` batch (`deckNames`,
 `modelNames`, `modelFieldNames`), and the live lookup batches its candidate and
-mature-subset `findNotes` searches before the single `notesInfo` stage.
+mature-subset `findNotes` searches before the single `notesInfo` stage. Both
+index paths judge maturity on the same scoped card search, so in deck scope a
+note is mature only through a mature card inside the configured deck.
 Other duplicate policies retain their full preflight because Add duplicate and
 Overwrite require live validation beyond membership.
 
@@ -2352,7 +2355,7 @@ Template/custom-button settings writes unavailable before a request is sent.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Newest two automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
+| Newest `automaticBackupDays` automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
@@ -2427,7 +2430,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |
 | `hd_custom_append` | Append one validated popup Note entry to the latest queued source and compile it |
 | `hd_backup_read`, `hd_backup_export`, `hd_backup_prepare`, `hd_backup_restore`, `hd_backup_cancel` | Read the complete manual payload, export it, stage and confirm a complete replacement, or discard staged roots |
-| `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect both records' immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
+| `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect every retained record's immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |

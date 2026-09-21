@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 import { openBackupArchive } from "../extension/backup-archive.js";
 
 export const BACKUP_CHROME_CHECKS = [
-  "automatic backup list shows two actual relative ages and requires explicit restore confirmation",
-  "a corrupt newest automatic backup leaves the valid older browser snapshot restorable in place",
+  "automatic backup list shows three actual relative ages and requires explicit restore confirmation",
+  "a corrupt newest automatic backup leaves the oldest retained browser snapshot restorable with its saved retention",
   "Settings exports a complete ZIP through Chrome downloads and releases its engine-owned URL",
   "backup preview preserves the working generation and refuses a concurrent Settings edit",
   "confirmed restore atomically replaces browser generations and retains the complete saved state",
@@ -82,14 +82,26 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
         snapshot: structuredClone(automaticPayload.snapshot),
         lookupStatsRows: structuredClone(automaticPayload.lookupStatsRows),
       },
+      {
+        // A third retained day, kept by a raised automaticBackupDays that the
+        // snapshot itself carries so a restore brings the setting back.
+        id: "browser-oldest",
+        createdAt: new Date(automaticNow - 48 * 60 * 60_000).toISOString(),
+        snapshot: {
+          ...structuredClone(automaticPayload.snapshot),
+          options: { ...structuredClone(automaticPayload.snapshot.options), automaticBackupDays: 3 },
+        },
+        lookupStatsRows: structuredClone(automaticPayload.lookupStatsRows),
+      },
     ],
   };
+  assert.notEqual(automaticPayload.snapshot.options.automaticBackupDays, 3);
   await page.evaluate(store => chrome.storage.local.set({ automaticBackups: store }), automaticStore);
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForBackupSettings();
   await page.evaluate(() => { location.hash = "#backup"; });
   await page.waitForSelector("#backup-export", { visible: true });
-  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 2);
+  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 3);
   const automaticRows = await page.$$eval("#automatic-backup-list .automatic-backup-row", rows => rows.map(row => ({
     age: row.querySelector(".automatic-backup-age").textContent,
     action: row.querySelector(".automatic-backup-restore").textContent,
@@ -182,13 +194,15 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const corruptAutomatic = structuredClone(automaticStore);
   corruptAutomatic.backups[0].snapshot.state.schemaVersion = 99;
   assert.equal(corruptAutomatic.backups[1].snapshot.state.schemaVersion, 1);
+  assert.equal(corruptAutomatic.backups[2].snapshot.state.schemaVersion, 1);
   await page.evaluate(store => chrome.storage.local.set({ automaticBackups: store }), corruptAutomatic);
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForBackupSettings();
   await page.evaluate(() => { location.hash = "#backup"; });
-  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 1
+  await page.waitForFunction(() => document.querySelectorAll("#automatic-backup-list .automatic-backup-row").length === 2
     && /damaged.*valid older/iu.test(document.getElementById("automatic-backup-status").textContent));
-  await page.click("#automatic-backup-list .automatic-backup-restore");
+  const retentionBeforeRestore = await page.$eval("#opt-automatic-backup-days", element => element.value);
+  await page.click("#automatic-backup-list .automatic-backup-row:last-child .automatic-backup-restore");
   await page.waitForFunction(() => !document.getElementById("backup-preview").hidden
     || document.getElementById("backup-status").classList.contains("is-error"), { timeout: 120_000 });
   const automaticConfirmation = {
@@ -197,13 +211,15 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     status: await page.$eval("#automatic-backup-status", element => element.textContent),
   };
   check(BACKUP_CHROME_CHECKS[0],
-    automaticRows.length === 2
+    automaticRows.length === 3
       && /3 hours ago/u.test(automaticRows[0].age)
       && /Restore from 3 hours ago/u.test(automaticRows[0].action)
       && /1 day ago/u.test(automaticRows[1].age)
       && /Restore from 1 day ago/u.test(automaticRows[1].action)
+      && /2 days ago/u.test(automaticRows[2].age)
+      && /Restore from 2 days ago/u.test(automaticRows[2].action)
       && automaticConfirmation.restoreDisabled
-      && /Automatic backup from 1 day ago/u.test(automaticConfirmation.fileName),
+      && /Automatic backup from 2 days ago/u.test(automaticConfirmation.fileName),
     JSON.stringify({ automaticRows, automaticConfirmation }));
 
   const beforeAutomaticRestore = await read();
@@ -215,15 +231,19 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     automaticRestored[key].revision === beforeAutomaticRestore[key].revision + 1);
   const automaticLookup = await page.evaluate(() =>
     chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
+  const retentionAfterRestore = await page.$eval("#opt-automatic-backup-days", element => element.value);
   check(BACKUP_CHROME_CHECKS[1],
     /Restored successfully/u.test(automaticNotice)
       && /damaged.*valid older/iu.test(automaticConfirmation.status)
       && automaticRevisions
       && JSON.stringify(automaticRestored.state.dictionaries.map(dictionary => dictionary.path))
         === JSON.stringify(automaticPayload.snapshot.state.dictionaries.map(dictionary => dictionary.path))
+      && automaticRestored.options.automaticBackupDays === 3
+      && retentionBeforeRestore !== "3" && retentionAfterRestore === "3"
       && JSON.stringify(await roots()) === JSON.stringify(rootsBeforeAutomaticRestore)
       && automaticLookup.ok && automaticLookup.results.length > 0,
-    JSON.stringify({ automaticNotice, automaticRevisions, automaticLookup: automaticLookup.ok }));
+    JSON.stringify({ automaticNotice, automaticRevisions, automaticLookup: automaticLookup.ok,
+      retentionBeforeRestore, retentionAfterRestore, restoredRetention: automaticRestored.options.automaticBackupDays }));
 
   await page.evaluate(() => chrome.storage.local.set({
     automaticBackups: { schemaVersion: 1, backups: [] },

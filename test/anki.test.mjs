@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { AnkiTransportError, ankiMultiResults, createAnkiGateway, ankiAvailability } from "../extension/anki.js";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const { normaliseOptions, normaliseAnkiConnectUrl, validateOptionsPatch } = globalThis.HDReaderOptions;
 const config = (patch = {}) => ({ ...normaliseOptions({}).anki, ...patch });
@@ -92,7 +92,8 @@ test("Anki discovery is one multi batch that binds every sub-action, fixes the e
 
 test("multi replies must be one API-v6 envelope per sub-action and unwrap to the first sub-action failure", async () => {
   let result;
-  const gateway = createAnkiGateway({ fetch: async () => reply(result) });
+  const requests = [];
+  const gateway = createAnkiGateway({ fetch: async (_, options) => { requests.push(JSON.parse(options.body)); return reply(result); } });
   const actions = [{ action: "findNotes", params: { query: "a" } }, { action: "findNotes", params: { query: "b" } }];
   for (result of [null, [], [{ result: [1], error: null }], [{ result: [1], error: null }, [2]],
     [{ result: [1], error: null }, { result: [2] }], [{ result: [1], error: null }, { result: [2], error: 5 }]]) {
@@ -104,6 +105,31 @@ test("multi replies must be one API-v6 envelope per sub-action and unwrap to the
   assert.throws(() => ankiMultiResults(replies), /AnkiConnect: collection is not available/u);
   assert.throws(() => ankiMultiResults([{ result: null, error: "valid api key must be provided" }]), /API key/u);
   assert.deepEqual(ankiMultiResults([{ result: [1], error: null }, { result: [], error: null }]), [[1], []]);
+  // Only the action and params of a sub-action reach the wire; a caller cannot
+  // smuggle another key or version into the conversation.
+  result = [{ result: ["Default"], error: null }];
+  await gateway.invoke("multi", { actions: [{ action: "deckNames", params: {}, key: "other", version: 5, extra: true }] }, "");
+  assert.deepEqual(requests.at(-1).params.actions, [{ action: "deckNames", params: {}, version: 6 }]);
+  await gateway.invoke("multi", { actions: [{ action: "deckNames", params: {}, key: "other" }] }, "mine");
+  assert.deepEqual(requests.at(-1).params.actions, [{ action: "deckNames", params: {}, version: 6, key: "mine" }]);
+});
+
+test("the AnkiConnect fake answers like the add-on: bare results below API v5, envelopes otherwise, fixture faults propagate", async () => {
+  const handle = action => { if (action === "boom") throw new Error("fixture fault"); return [action]; };
+  assert.deepEqual(await answerAnkiConnect({ action: "deckNames" }, handle), ["deckNames"]);
+  assert.deepEqual(await answerAnkiConnect({ action: "multi", version: 6, params: { actions: [
+    { action: "deckNames" }, { action: "modelNames", version: 6 }] } }, handle),
+  { result: [["deckNames"], { result: ["modelNames"], error: null }], error: null });
+  assert.deepEqual(await answerAnkiConnect({ action: "x", version: 6 }, () => { throw new AnkiConnectError("nope"); }),
+    { result: null, error: "nope" });
+  await assert.rejects(answerAnkiConnect({ action: "boom", version: 6 }, handle), /fixture fault/u);
+  // A gateway that stopped binding API v6 to sub-actions fails the envelope check.
+  const unbound = createAnkiGateway({ fetch: async (_, options) => {
+    const body = JSON.parse(options.body);
+    body.params.actions.forEach(entry => delete entry.version);
+    return answer(body, () => []);
+  } });
+  assert.match((await unbound.discover({ model: "" })).errors.join(" "), /invalid response/u);
 });
 
 test("Anki endpoint settings normalize HTTP(S) URLs and preserve legacy defaults without repairing invalid URLs to localhost", () => {
@@ -273,7 +299,7 @@ test("discovery distinguishes partial, malformed, permission and offline failure
     if (mode === "malformed") return { ok: true, async json() { return { result: [] }; } };
     return answer(body, (action, params) => {
       if (mode === "partial" && action === "deckNames") return [12];
-      if (action === "modelFieldNames" && params.modelName !== "Basic") throw new Error(`model was not found: ${params.modelName}`);
+      if (action === "modelFieldNames" && params.modelName !== "Basic") throw new AnkiConnectError(`model was not found: ${params.modelName}`);
       return action === "modelNames" ? ["Basic"] : action === "modelFieldNames" ? ["Front"] : ["Default"];
     });
   } });

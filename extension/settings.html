@@ -1157,8 +1157,16 @@
             <div class="backup-action">
               <div>
                 <h2>Automatic backups</h2>
-                <p>Hachidori keeps the newest two daily snapshots on this device. They contain the same saved settings and personal data as an export, including your AnkiConnect API key if configured.</p>
+                <p>Hachidori takes one snapshot a day and keeps the newest ones on this device. They contain the same saved settings and personal data as an export, including your AnkiConnect API key if configured.</p>
               </div>
+              <label class="field">
+                <span class="field-label">Days kept</span>
+                <span class="input-suffix">
+                  <input id="opt-automatic-backup-days" type="number" min="1" max="30" step="1" inputmode="numeric" />
+                  <span class="suffix">days</span>
+                </span>
+                <span class="field-hint">Older snapshots are removed when the next daily snapshot is taken.</span>
+              </label>
             </div>
             <p id="automatic-backup-status" class="section-note" aria-live="polite"></p>
             <ul id="automatic-backup-list" class="automatic-backup-list"></ul>

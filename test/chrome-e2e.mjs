@@ -51,7 +51,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -290,6 +290,7 @@ const PLANNED = [
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+  "Anki {audio} in a non-first field uploads the selected pronunciation after the note is added",
   "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
@@ -4423,7 +4424,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       if (action === "getMediaFilesNames") return files.has(params.pattern) ? [params.pattern] : [];
       if (action === "storeMediaFile") {
         if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
-          throw new Error("media folder is read-only");
+          throw new AnkiConnectError("media folder is read-only");
         }
         files.set(params.filename, params.data);
         return params.filename;
@@ -4602,6 +4603,32 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && routes.get(other.url).requests === 0 && playCount === 0
         && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+
+    // Issue #260: {audio} only in a later field. The pronunciation is deferred
+    // past the note write, so it must still be the popup's selected recording
+    // and must actually reach the note instead of leaving the field empty.
+    const overwrite = value => ({ value, overwriteMode: "overwrite" });
+    await configure(false, { fieldTemplates: { Front: overwrite("{expression} deferred-audio"), Back: overwrite("{glossary}"), Audio: overwrite("{audio}") } });
+    const deferredRequest = { ...request, audioSelection: { ...request.audioSelection } };
+    deferredRequest.configKey = (await operation("hd_anki_status")).configKey;
+    // The first-field check already stored this recording; drop it so the
+    // deferred path has to upload the bytes itself.
+    files.delete(filename);
+    const deferredUploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
+    const deferredAdded = await operation("hd_anki_submit", deferredRequest);
+    const deferredNote = notes.get(deferredAdded.noteId);
+    const deferredFilename = /^\[sound:([^\]]+)\]$/u.exec(deferredNote?.Audio ?? "")?.[1];
+    const deferredActions = calls.map(call => call.action);
+    check("Anki {audio} in a non-first field uploads the selected pronunciation after the note is added",
+      deferredAdded.state === "added" && deferredAdded.warnings.length === 0
+        && deferredNote.Front === "漢字 deferred-audio"
+        && deferredFilename !== undefined && files.get(deferredFilename) === wav.toString("base64")
+        && deferredFilename === filename
+        && routes.get(other.url).requests === 0
+        && calls.filter(call => call.action === "storeMediaFile").length === deferredUploadsBefore + 1
+        && deferredActions.lastIndexOf("storeMediaFile") > deferredActions.lastIndexOf("addNote")
+        && deferredActions.lastIndexOf("updateNoteFields") > deferredActions.lastIndexOf("storeMediaFile"),
+      JSON.stringify({ deferredAdded, deferredNote, deferredFilename, filename, actions: deferredActions.slice(deferredActions.lastIndexOf("addNote") - 3) }));
     await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
   } finally {
     await settings.evaluate(async original => {
@@ -5292,7 +5319,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
             : action === "findCards" ? [211, 212, 221, 231]
               : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
                 : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
-      if (result === null) throw new Error(`unexpected ${action}`);
+      if (result === null) throw new AnkiConnectError(`unexpected ${action}`);
       return result;
     });
     return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
