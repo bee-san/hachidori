@@ -2474,6 +2474,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
+| `hd_memory` | Report the engine heap size and each loaded package's resident bytes (its mapped files, once per native kind); see [memory.md](memory.md) |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
 | `hd_state_read` | Read revisioned dictionary state through the service worker |

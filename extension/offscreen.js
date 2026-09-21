@@ -59,6 +59,7 @@ const IMPORT_READ_TYPES = new Set([
   "hd_kanji",
   "hd_styles",
   "hd_media",
+  "hd_memory",
   "hd_backup_release",
   "hd_api_dictionary_read",
   "hd_api_dictionary_close",
@@ -69,6 +70,7 @@ const STAGED_MUTATION_READ_TYPES = new Set([
   "hd_kanji",
   "hd_styles",
   "hd_media",
+  "hd_memory",
   "hd_api_dictionary_read",
   "hd_api_dictionary_close",
 ]);
