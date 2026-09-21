@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a committed extension and its matching source using only Git/Python."""
+"""Package the committed Chrome ZIP, Firefox XPI and matching source using only Git/Python."""
 
 import argparse
 import hashlib
@@ -102,6 +102,36 @@ def write_zip(path, entries):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def firefox_upload(upload, sources):
+    """The Firefox XPI is the Chrome upload minus Chrome-only capture files, with the reviewed MV2 manifest."""
+    excluded = json.loads(sources["scripts/firefox-package.json"][0])["excludedFiles"]
+    chrome_manifest = json.loads(upload["manifest.json"][0])
+    firefox_manifest = json.loads(upload["manifest.firefox.json"][0])
+    if firefox_manifest["version"] != chrome_manifest["version"]:
+        raise ValueError("The Firefox manifest version does not match the Chrome manifest version.")
+    if firefox_manifest["manifest_version"] != 2:
+        raise ValueError("The Firefox manifest must stay on manifest_version 2.")
+    missing = [name for name in excluded if name not in upload]
+    if missing:
+        raise ValueError(f"Firefox exclusions name files absent from the Chrome package: {', '.join(missing)}")
+    referenced = set(firefox_manifest.get("web_accessible_resources", []))
+    for script in firefox_manifest.get("content_scripts", []):
+        referenced.update(script.get("js", []))
+        referenced.update(script.get("css", []))
+    referenced.add(firefox_manifest["background"]["page"])
+    referenced.add(firefox_manifest["browser_action"]["default_popup"])
+    referenced.add(firefox_manifest["options_page"])
+    leaked = sorted(referenced.intersection(excluded))
+    if leaked:
+        raise ValueError(f"The Firefox manifest references excluded files: {', '.join(leaked)}")
+    absent = sorted(name for name in referenced if name not in upload)
+    if absent:
+        raise ValueError(f"The Firefox manifest references missing files: {', '.join(absent)}")
+    firefox = {name: entry for name, entry in upload.items() if name not in excluded}
+    firefox["manifest.json"] = firefox.pop("manifest.firefox.json")
+    return firefox
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory outside the checkout for both ZIPs and checksums")
@@ -150,13 +180,20 @@ def main():
         "The publisher distributes this source archive alongside this release.\n"
         "It includes recursive submodule sources, pinned AVIF and zip.js sources,\n"
         "and docs/source-build.md. The store listing provides the download location.\n"
+        "The same source archive matches the Chrome ZIP and the unsigned Firefox XPI\n"
+        "of this release; scripts/firefox-package.json lists the files Firefox omits.\n"
     ).encode(), 0o100644)
+    firefox = firefox_upload(upload, sources)
+    del upload["manifest.firefox.json"]
     upload_name = stem + "-chrome.zip"
     upload_hash = write_zip(args.output_dir / upload_name, upload)
-    checksums = f"{upload_hash}  {upload_name}\n{source_hash}  {source_name}\n"
+    firefox_name = stem + "-firefox-unsigned.xpi"
+    firefox_hash = write_zip(args.output_dir / firefox_name, firefox)
+    checksums = f"{upload_hash}  {upload_name}\n{firefox_hash}  {firefox_name}\n{source_hash}  {source_name}\n"
     (args.output_dir / (stem + "-SHA256SUMS.txt")).write_text(checksums)
     print(checksums, end="")
     print("Publish the matching source archive before uploading the Chrome ZIP; add its public location to the store listing.")
+    print("The Firefox XPI is unsigned: install it temporarily from about:debugging#/runtime/this-firefox.")
 
 
 if __name__ == "__main__":

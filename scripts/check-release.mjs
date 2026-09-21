@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Validate the manifest, supported-browser pins, and optional release tag.
+// Validate both manifests, supported-browser pins, and optional release tag.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { readFileSync } from "node:fs";
@@ -11,6 +11,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const MANIFEST_VERSION_COMPONENT = /^(0|[1-9]\d*)$/u;
 const MAX_MANIFEST_VERSION_COMPONENT = 65_535;
+const FIREFOX_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/u;
+const FIREFOX_BUILD = /^stable_((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?)$/u;
 
 function fail(message) {
   throw new Error(message);
@@ -26,6 +28,18 @@ export function chromeVersion(value, label) {
   return components;
 }
 
+export function firefoxVersion(value, label) {
+  const match = FIREFOX_VERSION.exec(value);
+  if (match === null) fail(`${label} must be a Firefox version such as 153.0`);
+  return match.slice(1).filter(component => component !== undefined).map(Number);
+}
+
+export function firefoxBuildVersion(value, label) {
+  const match = FIREFOX_BUILD.exec(value ?? "");
+  if (match === null) fail(`${label} must be a pinned stable Firefox build such as stable_155.0.1`);
+  return firefoxVersion(match[1], label);
+}
+
 export function compareVersions(left, right) {
   for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
     const difference = (left[index] ?? 0) - (right[index] ?? 0);
@@ -34,7 +48,23 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function validateReleaseContract(manifest, tooling, tag = null) {
+// The Firefox XPI ships the same version, and the pinned test Firefox must
+// satisfy the manifest's own minimum, or the smoke test proves nothing.
+export function validateFirefoxContract(manifest, firefoxManifest, tooling) {
+  if (firefoxManifest?.manifest_version !== 2) fail("manifest.firefox.json must stay on manifest_version 2");
+  if (firefoxManifest.version !== manifest.version) {
+    fail("manifest.firefox.json version does not match manifest.json");
+  }
+  const gecko = firefoxManifest.browser_specific_settings?.gecko;
+  const minimum = firefoxVersion(gecko?.strict_min_version, "gecko.strict_min_version");
+  const current = firefoxBuildVersion(tooling?.config?.firefox, "config.firefox");
+  if (compareVersions(current, minimum) < 0) {
+    fail("the pinned Firefox test build is older than the manifest minimum");
+  }
+  return { minimumFirefox: gecko.strict_min_version, currentFirefox: tooling.config.firefox };
+}
+
+export function validateReleaseContract(manifest, tooling, tag = null, firefoxManifest = null) {
   const versionComponents = String(manifest?.version ?? "").split(".");
   if (versionComponents.length < 1 || versionComponents.length > 4
       || !versionComponents.every((component) =>
@@ -62,6 +92,7 @@ export function validateReleaseContract(manifest, tooling, tag = null) {
     expectedTag,
     minimumChrome: tooling.config.minimumChrome,
     currentChrome: tooling.config.chrome,
+    ...(firefoxManifest === null ? {} : validateFirefoxContract(manifest, firefoxManifest, tooling)),
   };
 }
 
@@ -83,10 +114,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       readJson(resolve(ROOT, "extension/manifest.json")),
       readJson(resolve(ROOT, "test/tooling/package.json")),
       commandLineTag(process.argv.slice(2)),
+      readJson(resolve(ROOT, "extension/manifest.firefox.json")),
     );
     console.log(
       `Hachidori ${contract.version}: Chrome ${contract.minimumChrome} minimum, `
-      + `${contract.currentChrome} current; tag ${contract.expectedTag}`,
+      + `${contract.currentChrome} current; Firefox ${contract.minimumFirefox} minimum, `
+      + `${contract.currentFirefox} current; tag ${contract.expectedTag}`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

@@ -24,7 +24,7 @@
     "test:overlay": "node ../run.mjs chrome-overlay",
     "test:firefox": "node ../run.mjs firefox-smoke",
     "prepare:firefox": "node ../../scripts/prepare-firefox.mjs",
-    "package:firefox": "node ../../scripts/package-firefox.mjs",
+    "lint:firefox": "node ../../scripts/lint-firefox.mjs",
     "install:chrome": "node ../run.mjs install-chrome",
     "install:firefox": "node ../run.mjs install-firefox"
   },

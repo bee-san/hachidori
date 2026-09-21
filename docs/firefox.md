@@ -1,47 +1,67 @@
-# Firefox draft
+# Firefox
 
-Hachidori has an unsigned Firefox 153+ desktop draft for Windows, macOS, and
-Linux. It uses the same dictionaries, popup, settings, Anki integration,
-pronunciation, sharing, backup format, and WebAssembly engine as Chrome.
+Hachidori ships an unsigned Firefox 153+ desktop package for Windows, macOS,
+and Linux with every GitHub release. It uses the same dictionaries, popup,
+settings, Anki integration, pronunciation, sharing, backup format, and
+WebAssembly engine as Chrome. It is not on addons.mozilla.org yet.
 
 Media recording is intentionally unavailable. Firefox does not show the Media
 capture settings or toolbar recording action, does not inject the capture
-content script, and rejects capture messages. Ordinary page screenshots and
-pronunciation playback remain available. Saved capture settings and custom
-template markers are preserved for backup compatibility with Chrome.
+content script, and rejects capture messages. Browser text-to-speech plays but
+is not recorded into Anki. Ordinary page screenshots and pronunciation playback
+remain available. Saved capture settings and custom template markers are
+preserved for backup compatibility with Chrome.
 
-## Build the temporary-install XPI
+Custom JavaScript is also unavailable. Chrome registers it through the MV3
+`userScripts` API, which Firefox's MV2 extensions do not offer; Settings hides
+the editor and any saved code stays inert. Custom CSS works in both browsers.
 
-```sh
-npm ci --prefix test/tooling
-npm --prefix test/tooling run package:firefox
-```
+Firefox runs the dictionary engine on the single-thread IDBFS backend, because
+an MV2 extension page cannot set the cross-origin isolation headers that
+`SharedArrayBuffer` needs. Imports and lookups are slower than Chrome's
+threaded OPFS engine but use the same dictionaries.
 
-The command runs `web-ext lint`, assembles the Firefox manifest without editing
-`extension/manifest.json`, excludes the Chrome capture controls, recorder, WAV
-capture, and animated-AVIF encoder, and writes:
+## Install a release
 
-```text
-test/tmp/firefox-artifacts/hachidori-0.1.1-firefox-unsigned.xpi
-```
-
-## Install temporarily
-
-1. Open `about:debugging#/runtime/this-firefox`.
-2. Choose **Load Temporary Add-on**.
-3. Select the generated `.xpi` (or the staged `manifest.json` under
-   `test/tmp/firefox-extension`).
+1. Download `hachidori-<version>-<commit>-firefox-unsigned.xpi` from the
+   [latest release](https://github.com/bee-san/hachidori/releases). The
+   `*-SHA256SUMS.txt` in the same release lists its checksum.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Choose **Load Temporary Add-on** and select the `.xpi`.
 4. Finish Hachidori setup and install or import a dictionary.
 
 Firefox removes temporary add-ons when the browser closes. The XPI is unsigned;
-normal permanent installation remains gated on AMO review and signing.
+permanent installation waits on AMO review and signing.
 
-Use Firefox’s Add-ons Manager (`about:addons`) for extension permissions and
-browser-owned shortcuts. Hachidori’s backup/export and Sharing features are the
-supported ways to move state between Chrome and Firefox.
+Use Firefox’s Add-ons Manager (`about:addons`) for extension permissions,
+local-file access, and browser-owned shortcuts. Hachidori’s backup and Sharing
+features are the supported ways to move state between Chrome and Firefox.
 
-Pull requests also publish the same unsigned XPI as the
-`firefox-draft-unsigned-xpi` workflow artifact.
+## Build from a checkout
+
+```sh
+npm ci --prefix test/tooling
+python3 scripts/package-store.py --output-dir /tmp/hachidori-release
+```
+
+The one packager writes the Chrome ZIP, the Firefox XPI, the matching source
+archive, and `SHA256SUMS.txt` from the committed tree. The XPI is the Chrome
+upload minus the files in `scripts/firefox-package.json` (the capture
+controls, recorder, WAV and speech capture, and animated-AVIF encoder), with
+`manifest.firefox.json` in place of `manifest.json`. The packager refuses a
+Firefox manifest whose version differs from Chrome's or that references an
+excluded file, and `scripts/verify-firefox-package.mjs` re-checks the written
+XPI in CI.
+
+For a directory Firefox can load without packaging, and for `web-ext lint`:
+
+```sh
+npm --prefix test/tooling run lint:firefox        # stages test/tmp/firefox-extension, then lints it
+```
+
+Pull requests run the packager and publish the XPI as the
+`firefox-unsigned-xpi` workflow artifact, then install that XPI in the pinned
+Firefox for the smoke test (`npm --prefix test/tooling run test:firefox`).
 
 ## Lint review
 
@@ -65,3 +85,9 @@ host, imports a dictionary, performs a lookup, and checks the same iframe and
 engine generation after 31 seconds.
 
 None of these warnings adds remote executable code to the Firefox package.
+
+## Follow-up
+
+- Cross-platform and minimum-version (Firefox 153) CI.
+- AMO submission and signing.
+- Custom JavaScript through a Firefox-compatible `userScripts` registration.

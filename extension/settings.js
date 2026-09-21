@@ -204,6 +204,11 @@ function element(id) {
 }
 
 function configureBrowserUi() {
+  if (!HOST_CAPABILITIES.customJavaScript) {
+    const customJavascript = element("custom-javascript");
+    customJavascript.dataset.settingsUnavailable = "true";
+    customJavascript.hidden = true;
+  }
   if (!IS_FIREFOX) return;
   const media = element("media");
   media.dataset.settingsUnavailable = "true";

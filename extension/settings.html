@@ -806,14 +806,16 @@
                   <button id="reset-custom-css" type="button" class="ghost">Reset custom CSS</button>
                 </div>
                 <p class="field-hint">Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
-                <label class="field-label" for="opt-custom-popup-javascript">Custom JavaScript</label>
-                <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
-                <p class="field-hint">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
-                <textarea id="opt-custom-popup-javascript" rows="8" spellcheck="false" autocapitalize="off"
-                  aria-describedby="custom-javascript-warning custom-javascript-count"></textarea>
-                <div class="custom-css-footer">
-                  <span id="custom-javascript-count" class="field-hint">0 characters</span>
-                  <button id="reset-custom-javascript" type="button" class="ghost">Reset custom JavaScript</button>
+                <div id="custom-javascript">
+                  <label class="field-label" for="opt-custom-popup-javascript">Custom JavaScript</label>
+                  <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
+                  <p class="field-hint">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
+                  <textarea id="opt-custom-popup-javascript" rows="8" spellcheck="false" autocapitalize="off"
+                    aria-describedby="custom-javascript-warning custom-javascript-count"></textarea>
+                  <div class="custom-css-footer">
+                    <span id="custom-javascript-count" class="field-hint">0 characters</span>
+                    <button id="reset-custom-javascript" type="button" class="ghost">Reset custom JavaScript</button>
+                  </div>
                 </div>
               </details>
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>

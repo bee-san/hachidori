@@ -76,12 +76,13 @@ jobs:
           fi
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
-      - name: Build and verify the release pair
+      - name: Build and verify the release set
         run: |
           output="$RUNNER_TEMP/hachidori-release"
           python3 scripts/package-store.py --output-dir "$output"
           cd "$output"
           sha256sum -c ./*-SHA256SUMS.txt
+          node "$GITHUB_WORKSPACE/scripts/verify-firefox-package.mjs" ./*-firefox-unsigned.xpi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hachidori-release-${{ github.run_id }}
@@ -106,7 +107,7 @@ jobs:
         with:
           name: hachidori-release-${{ github.run_id }}
           path: ${{ runner.temp }}/hachidori-release/
-      - name: Publish the verified package pair
+      - name: Publish the verified package set
         env:
           GH_TOKEN: ${{ github.token }}
           MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' }}
@@ -131,6 +132,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --generate-notes \
+              --notes-file "$GITHUB_WORKSPACE/.github/release-notes-header.md" \
               --title "Hachidori ${RELEASE_TAG}"
           fi
 

@@ -4357,6 +4357,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     browserShortcuts: !overlayMode,
     linkButtons: true,
     externalLinkHost: overlayMode,
+    customJavaScript: true,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };

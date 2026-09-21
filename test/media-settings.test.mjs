@@ -13,24 +13,25 @@ const extension = file => readFileSync(new URL(`../extension/${file}`, import.me
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechCapture = false } = {}) {
+function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechCapture = false, firefox = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
   const requests = [];
-  window.IS_FIREFOX = false;
-  window.HOST_BROWSER = "chrome";
+  window.IS_FIREFOX = firefox;
+  window.HOST_BROWSER = firefox ? "firefox" : "chrome";
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode,
     linkButtons: true,
     externalLinkHost: overlayMode,
+    customJavaScript: !firefox,
     localFileAccessPrompt: !overlayMode,
-    mediaCapture: !overlayMode,
+    mediaCapture: !overlayMode && !firefox,
   };
   window.MINING_CAPABILITIES = {
     screenshot: !overlayMode,
-    browserSpeech: !overlayMode || embeddedSpeechCapture,
+    browserSpeech: (!overlayMode && !firefox) || embeddedSpeechCapture,
     embeddedSpeechCapture: overlayMode && embeddedSpeechCapture,
   };
   window.settingsReplies = {
@@ -57,6 +58,7 @@ function fixture(t, { overlayMode = false, mediaEnabled = false, embeddedSpeechC
   const source = withoutModules(extension("settings.js"));
   assert.ok(source.endsWith("start();\n"));
   window.eval(source.replace(/start\(\);\s*$/u, `
+    configureBrowserUi();
     renderMiningCapabilityHelp();
     attachHandlers();
     options.mediaCapture.enabled = ${mediaEnabled};
@@ -141,4 +143,17 @@ test("an embedded speech-capture host advertises byte-backed TTS without enablin
   assert.equal(el("audio-speech-capture-help").hidden, true);
   assert.equal(el("audio-embedded-speech-capture-help").hidden, false);
   assert.equal(el("media-overlay-help").hidden, false);
+});
+
+test("Firefox Settings hides media capture and custom JavaScript while keeping custom CSS", t => {
+  const { window, el } = fixture(t, { firefox: true });
+  assert.equal(el("media").hidden, true);
+  assert.equal(el("media").dataset.settingsUnavailable, "true");
+  assert.equal(el("custom-javascript").hidden, true);
+  assert.equal(el("custom-javascript").dataset.settingsUnavailable, "true");
+  assert.equal(el("opt-custom-popup-css").closest("details").hidden, false, "custom CSS stays available");
+  assert.equal(el("audio-mining-help").hidden, false);
+  assert.match(el("audio-mining-help").textContent, /Firefox/u);
+  assert.equal(el("audio-speech-capture-help").hidden, true);
+  assert.equal(window.document.querySelector('.settings-nav a[href="#media"]').closest(".nav-item").hidden, true);
 });

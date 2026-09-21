@@ -2810,7 +2810,7 @@ async function handleWorkerRequest(message, sender) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   if (type === "hd_backup_download" && typeof chrome.downloads?.download !== "function") {
-    return failureReply(message, new Error("Chrome downloads are unavailable. Export the backup from Hachidori Settings."));
+    return failureReply(message, new Error("Browser downloads are unavailable. Export the backup from Hachidori Settings."));
   }
   if (type === "hd_open_external" && HOST_CAPABILITIES.externalLinkHost) {
     return failureReply(message, new Error(

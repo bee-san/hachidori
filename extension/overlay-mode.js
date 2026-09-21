@@ -21,6 +21,8 @@ export const HOST_CAPABILITIES = Object.freeze({
   // an embedding host can update its reader before updating its capability
   // projection.
   customLinks: true,
+  // Chrome MV3 `userScripts` registration; Firefox MV2 has no equivalent yet.
+  customJavaScript: !IS_FIREFOX,
   linkButtons: true,
   externalLinkHost: OVERLAY_MODE,
   localFileAccessPrompt: !OVERLAY_MODE,

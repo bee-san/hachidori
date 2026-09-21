@@ -18,7 +18,7 @@
 
 ## Firefox behavior
 
-- Disable media capture and browser-speech capture while retaining screenshots, pronunciation, backup, sharing, custom links, shortcuts, and local-file reading.
+- Disable media capture, browser-speech capture, and MV3-only custom JavaScript while retaining screenshots, pronunciation, backup, sharing, custom buttons, custom CSS, shortcuts, and local-file reading.
 - Hide media navigation, settings search results, and the toolbar recording action.
 - Reject crafted media-capture messages with an explicit unsupported response.
 - Preserve saved capture configuration and custom template text so moving a backup back to Chrome is lossless.
@@ -29,14 +29,12 @@
 
 - Keep `extension/manifest.firefox.json` reviewed beside the Chrome manifest and test shared-field parity.
 - Assemble an ignored Firefox directory without modifying `extension/manifest.json`.
-- Pin `web-ext`, lint the assembled package with zero errors, and emit an unsigned XPI suitable for temporary installation.
-- Extend release packaging later to publish Chrome ZIP, Firefox XPI, one complete matching source archive, and checksums.
+- Pin `web-ext` and lint the assembled directory with zero errors.
+- `scripts/package-store.py` publishes the Chrome ZIP, the unsigned Firefox XPI, one complete matching source archive, and checksums from the same committed tree; `scripts/firefox-package.json` is the single list of Chrome-only files, and `scripts/verify-firefox-package.mjs` re-checks the written XPI.
 - Add Firefox WebDriver coverage incrementally, beginning with temporary installation, engine readiness, import, lookup, hidden capture UI, and fail-closed capture messages.
 
 ## Review sequence
 
-1. Browser API seam, Firefox manifest, persistent background/offscreen host, preparation/package command, and core install/import/lookup smoke.
-2. Complete non-capture feature parity, Firefox-specific UI copy, and Anki/audio/backup/sharing coverage.
-3. Cross-platform CI, release validation, full documentation, performance evidence, and AMO readiness.
-
-This draft PR implements the installable first slice and leaves the later parity and release work explicitly reviewable.
+1. Delivered: browser API seam, Firefox manifest, persistent background/offscreen host, preparation command, and core install/import/lookup smoke.
+2. Delivered: non-capture feature parity (custom JavaScript explicitly unavailable), Firefox-specific UI copy, and the release XPI built and verified beside the Chrome ZIP.
+3. Follow-up: cross-platform and Firefox-minimum CI, performance evidence, a Firefox path for custom JavaScript, and AMO readiness.

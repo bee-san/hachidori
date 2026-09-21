@@ -23,7 +23,7 @@ npm --prefix test/tooling run test:fallback     # IDBFS path
 npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
 npm --prefix test/tooling run install:firefox   # Firefox 155.0.1
 npm --prefix test/tooling run test:firefox      # temporary install, import/lookup, 31 s persistence
-npm --prefix test/tooling run package:firefox   # lint and build the unsigned XPI
+npm --prefix test/tooling run lint:firefox      # web-ext lint on the prepared Firefox directory
 HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
 ```

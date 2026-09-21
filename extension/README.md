@@ -10,10 +10,12 @@ from a checkout, open `chrome://extensions`, turn on **Developer mode**, choose
 **Load unpacked** and select this folder. `scripts/package-store.py` zips this
 same folder, with the licence files, for the Chrome Web Store.
 
-`manifest.firefox.json` is the reviewed Firefox MV2 manifest. The preparation
-script copies these shared sources to an ignored directory, replaces only the
-staged manifest, and leaves `extension/manifest.json` untouched. See the
-[Firefox draft guide](../docs/firefox.md) to build and temporarily install its
+`manifest.firefox.json` is the reviewed Firefox MV2 manifest. The same
+packager writes the Firefox XPI from these sources minus the Chrome-only files
+listed in `scripts/firefox-package.json`, with that manifest in place of
+`manifest.json`; `scripts/prepare-firefox.mjs` stages the same layout in an
+ignored directory for lint and the Firefox smoke test. See the
+[Firefox guide](../docs/firefox.md) to build and temporarily install the
 unsigned XPI.
 
 [The architecture guide](../docs/architecture.md) explains how the pieces

@@ -1,7 +1,7 @@
 # Architecture
 
 Hachidori shares one WebAssembly dictionary engine and extension codebase across
-Chrome and the Firefox desktop draft. Chrome uses a Manifest V3 service worker
+Chrome and Firefox desktop. Chrome uses a Manifest V3 service worker
 and offscreen document. Firefox uses a Manifest V2 persistent background page
 with the same offscreen page mounted as a hidden iframe.
 
