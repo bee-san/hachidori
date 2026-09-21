@@ -144,7 +144,9 @@ test("waiting for Anki, a refusal by another host, and sharing are told apart", 
   assert.equal(f.el("sharing-client-use").hidden, false);
 
   f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ dictionaries: 3, connected: true, clients: [
-    { id: "c1", name: "Microsoft Edge", address: "127.0.0.1", local: true }, { id: "c2", name: "", address: "100.75.152.76", local: false }] }) });
+    { id: "c1", name: "Microsoft Edge", address: "127.0.0.1", local: true }, { id: "c2", name: "", address: "100.75.152.76", local: false },
+    // The relay's own Yomitan API session is not a linked browser.
+    { id: "c3", name: "Hachidori Relay API", origin: "relay://yomitan-api", address: "127.0.0.1", local: true }] }) });
   f.controller.stop();
   f.controller.start();
   await settle();

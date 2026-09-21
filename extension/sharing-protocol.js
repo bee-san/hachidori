@@ -20,6 +20,10 @@ export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
 ]);
+// The relay's own client for its Yomitan-compatible API (hachidori-anki
+// docs/host-contract.md). Never a remote computer, never a linked browser.
+export const API_CAPABILITY = "hoshidicts-api-v1";
+export const API_CLIENT_ORIGIN = "relay://yomitan-api";
 export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support host-owned Anki mining. Update it and try again.";
 export const MAX_LINKED_ANKI_FRAME_BYTES = 16 * 1024 * 1024;
 const HOST_PATH = "/host";

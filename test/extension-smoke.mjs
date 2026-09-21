@@ -805,6 +805,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const sharingClient = readFileSync(resolve(EXTENSION, "sharing-client.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const glossary = readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8");
+  const apiHost = readFileSync(resolve(EXTENSION, "api-host.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+\{[^}]*\}\s*from[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -828,6 +831,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/api-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
@@ -856,7 +860,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `const BROWSER_KIND = "chrome";\nconst IS_FIREFOX = false;\nasync function waitForFirefoxOffscreen() {}\n`
       + `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n`
       + background,
     context,
@@ -1648,7 +1652,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "hoshidicts-api-v1"])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
     JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
@@ -1664,20 +1668,34 @@ async function sharingHostStage() {
       && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
     JSON.stringify({ relayed, lookup }));
 
+  // The relay's Yomitan API asks as a client of its own; the answers are the
+  // contract's plain objects, not runtime reply envelopes.
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-1", message: { target: "hoshidicts-offscreen", type: "hd_api_version" } }));
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-2", message: { target: "hoshidicts-offscreen", type: "hd_api_dictionaries" } }));
+  clientText(socket, JSON.stringify({ kind: "request", id: "api-3", message: { target: "hoshidicts-offscreen", type: "hd_api_dictionary_open", id: "missing" } }));
+  await settle(() => sent(socket).length >= 5);
+  const api = Object.fromEntries(sent(socket).slice(2, 5).map(frame => [frame.id, frame.response]));
+  check("the relay's API requests are answered by the host with the contract's objects",
+    JSON.stringify(api["api-1"]) === JSON.stringify({ version: "0.0.0-smoke" })
+      && JSON.stringify(api["api-2"]) === JSON.stringify({ dictionaries: [{ id: "host-dict", title: "Host", revision: "1", fileName: "Host.hachidori.zip" }] })
+      && JSON.stringify(api["api-3"]) === JSON.stringify({ error: "unknown dictionary", notFound: true })
+      && !relayed.some(message => message.type.startsWith("hd_api_")),
+    JSON.stringify(api));
+
   clientText(socket, JSON.stringify({ kind: "request", id: "r2",
     message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "write-1", baseRevision: 0, options: { hoverEnabled: false } } }));
-  await settle(() => sent(socket).length >= 3 && broadcasts(socket).length >= 1);
-  const written = sent(socket)[2];
+  await settle(() => sent(socket).length >= 6 && broadcasts(socket).length >= 1);
+  const written = sent(socket)[5];
   const broadcast = broadcasts(socket)[0];
   await storage.api().local.set({ setupState: { stage: "welcome" } });
   await settle();
   clientText(socket, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
-  await settle(() => sent(socket).length >= 4);
-  const refused = sent(socket)[3];
+  await settle(() => sent(socket).length >= 7);
+  const refused = sent(socket)[6];
   clientText(socket, JSON.stringify({ kind: "request", id: "r4",
     message: { target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-1", url: "https://client.invalid/" } }));
-  await settle(() => sent(socket).length >= 5);
-  const refusedWorker = sent(socket)[4];
+  await settle(() => sent(socket).length >= 8);
+  const refusedWorker = sent(socket)[7];
   check("the host accepts only forwardable linked requests, commits shared writes and keeps local-only actions home",
     written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
       && storage.raw.get("options")?.hoverEnabled === false
