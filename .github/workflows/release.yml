@@ -127,6 +127,12 @@ jobs:
             gh release upload "$RELEASE_TAG" ./* \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
+          elif gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A release drafted by hand before its tag was pushed keeps its
+            # notes; the tag run only supplies the verified package set.
+            gh release upload "$RELEASE_TAG" ./* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
           else
             gh release create "$RELEASE_TAG" ./* \
               --repo "$GITHUB_REPOSITORY" \
