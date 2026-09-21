@@ -545,12 +545,22 @@ export function createAnkiSettingsController({
     // replacement request (or a linked host-side save) is still pending.
     const currentDiscovery = discoveryKey === connectionKey(config) ? discovery : null;
     const errors = ankiAvailability(config, currentDiscovery, resolved);
+    const connected = currentDiscovery?.connected === true;
     let state = "Not connected";
-    if (currentDiscovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
+    if (connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
     const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
-    const invalid = !loading && errors.length > 0;
-    const tone = loading ? "working" : invalid ? "error" : currentDiscovery?.connected ? "ready" : undefined;
-    setAttributeIfChanged(status, "data-state", loading ? "checking" : currentDiscovery?.connected ? "connected" : "offline");
+    let tone;
+    let connection = "offline";
+    if (loading) {
+      tone = "working";
+      connection = "checking";
+    } else if (connected) {
+      tone = errors.length ? "error" : "ready";
+      connection = "connected";
+    } else if (errors.length) {
+      tone = "error";
+    }
+    setAttributeIfChanged(status, "data-state", connection);
     setStatusOutput(status, message, tone);
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
