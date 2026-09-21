@@ -5655,10 +5655,13 @@ async function checkAnkiSettings(page, browser) {
       statusCard: (() => {
         const node = document.getElementById("anki-status");
         const style = getComputedStyle(node);
+        const marker = getComputedStyle(node, "::before");
         return {
           display: style.display,
           fontSize: Number.parseFloat(style.fontSize),
-          marker: getComputedStyle(node, "::before").maskImage,
+          markerMask: marker.maskImage,
+          markerWidth: Number.parseFloat(marker.width),
+          state: node.dataset.state,
           ready: node.classList.contains("is-ready"),
           height: node.getBoundingClientRect().height,
         };
@@ -5669,9 +5672,10 @@ async function checkAnkiSettings(page, browser) {
         && persisted.anki.fieldTemplates.Expression.value === "{expression}"
         && persisted.anki.fieldTemplates.Audio.value === "{audio}"
         && persisted.status.generation === original.status.generation
-        && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
-        && persisted.statusCard.marker.includes("data:image/svg+xml,") && persisted.statusCard.ready
-        && persisted.statusCard.height >= 56, JSON.stringify(persisted));
+        && persisted.statusCard.display === "flex" && persisted.statusCard.fontSize <= 13
+        && persisted.statusCard.markerMask === "none" && persisted.statusCard.markerWidth === 7
+        && persisted.statusCard.state === "connected" && persisted.statusCard.ready
+        && persisted.statusCard.height < 56, JSON.stringify(persisted));
 
     const comboboxContract = await page.evaluate(async () => {
       const { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } = await import("./anki-templates.js");
@@ -5929,7 +5933,6 @@ async function checkAnkiSettings(page, browser) {
     await editTemplate("<b>{expression}</b> {unknown}");
     const invalidMarker = await status();
     await editTemplate("<b>{expression}</b>");
-    await page.$eval(".anki-details", node => { node.open = true; });
     await choose("duplicate-behavior", "overwrite");
     await page.select(`#${templateId}-mode`, "coalesce-new");
     await saved();
@@ -5960,17 +5963,13 @@ async function checkAnkiSettings(page, browser) {
         && templateReload.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
         && templateReload.editor === "<b>{expression}</b>" && templateReload.status.generation === original.status.generation,
       JSON.stringify({ beforeTemplateRefresh, afterTemplateRefresh, templateReload }));
-    if (process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT
-        || process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT) {
-      await page.$eval(".anki-details", node => { node.open = true; });
-    }
     if (process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT) {
       const section = await page.$("#anki");
       await section.screenshot({ path: process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT });
     }
     if (process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT) {
-      const details = await page.$(".anki-details");
-      await details.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT });
+      const duplicateRow = await page.$(".anki-duplicate-row");
+      await duplicateRow.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT });
     }
     await checkAnkiGlossaryExport(page);
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
@@ -10430,8 +10429,12 @@ async function main() {
               const rect = control.getBoundingClientRect();
               return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
             }),
-            statusFits: status === null || (status.checkVisibility() && statusStyle.display === "grid"
-              && Number.parseFloat(statusStyle.fontSize) >= 16 && statusRect.left >= 0 && statusRect.right <= innerWidth + 1
+            statusFits: status === null || (status.checkVisibility()
+              && (section === "anki"
+                ? statusStyle.display === "flex" && Number.parseFloat(statusStyle.fontSize) >= 12
+                  && ["connected", "checking", "offline"].includes(status.dataset.state)
+                : statusStyle.display === "grid" && Number.parseFloat(statusStyle.fontSize) >= 16)
+              && statusRect.left >= 0 && statusRect.right <= innerWidth + 1
               && getComputedStyle(status, "::before").content !== "none"),
           };
         }, { theme, section }));
