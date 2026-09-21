@@ -5672,6 +5672,40 @@ async function main() {
     [true, { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] }, false],
   );
 
+  // hd_engine_config: the offscreen document reads the engine's own option;
+  // a page cannot, and a change to the stored option is pushed to the document.
+  const engineConfigSender = { id: swChrome.runtime.id, url: swChrome.runtime.getURL("offscreen.html") };
+  const readEngineConfig = (sender) => bus.sendMessage("offscreen-config", {
+    target: "hoshidicts-worker", type: "hd_engine_config", requestId: "engine-config",
+  }, sender);
+  const configFromPage = await readEngineConfig({ id: swChrome.runtime.id, url: swChrome.runtime.getURL("settings.html") });
+  const pushFromPage = await pageChrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_engine_config", lowMemoryMode: true });
+  const configOff = await readEngineConfig(engineConfigSender);
+  const optionsBeforeLowMemory = (await storage.api().local.get("options")).options;
+  const pushesBefore = bus.log.filter((row) => row.type === "hd_engine_config" && row.from === "sw").length;
+  const lowMemoryWrite = await writeReaderOptions(optionsBeforeLowMemory.revision, { lowMemoryMode: true });
+  const enginePushes = () => bus.log.filter((row) => row.type === "hd_engine_config" && row.from === "sw").length;
+  for (let attempt = 0; attempt < 50 && enginePushes() === pushesBefore; attempt += 1) {
+    await new Promise((done) => setTimeout(done, 2));
+  }
+  const configOn = await readEngineConfig(engineConfigSender);
+  // An unrelated option write does not push.
+  const unrelatedWrite = await writeReaderOptions(lowMemoryWrite.options.revision, { scanLength: 20 });
+  await new Promise((done) => setTimeout(done, 20));
+  const pushesAfterUnrelated = enginePushes();
+  check(
+    "hd_engine_config is read by the engine host only and pushed when the option changes",
+    configFromPage?.ok === false
+      && pushFromPage?.ok === false
+      && configOff?.ok === true && configOff.lowMemoryMode === false
+      && lowMemoryWrite.ok === true
+      && configOn?.ok === true && configOn.lowMemoryMode === true
+      && unrelatedWrite.ok === true
+      && pushesAfterUnrelated === pushesBefore + 1,
+    JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, pushesBefore, pushesAfterUnrelated }),
+  );
+  await writeReaderOptions(unrelatedWrite.options.revision, { lowMemoryMode: false, scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
+
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);
   const imported = await request("hd_import", { blobUrl, fileName: "hachidori-fixture.zip", lowRam: false });

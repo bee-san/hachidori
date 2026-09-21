@@ -1441,6 +1441,14 @@ const WORKER_HANDLERS = {
     return ankiSetupDetection;
   },
 
+  // The offscreen document reads the engine's own options once at start; the
+  // storage listener below pushes later changes to it.
+  async hd_engine_config(message, sender) {
+    if (!engineSender(sender)) throw new Error("The engine configuration is read only by the dictionary engine host.");
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    return { lowMemoryMode: normaliseOptions(stored[OPTIONS_KEY]).lowMemoryMode };
+  },
+
   async hd_setup_record(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
       throw new Error("Setup outcomes are recorded only by the dictionary engine host.");
@@ -1998,6 +2006,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
   void reconcileAnkiIndex();
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
+  const lowMemoryMode = normaliseOptions(changes[OPTIONS_KEY].newValue).lowMemoryMode;
+  if (lowMemoryMode === normaliseOptions(changes[OPTIONS_KEY].oldValue).lowMemoryMode) return;
+  // Sent to the offscreen document only if it exists: a document created later
+  // reads the option itself. A busy engine picks the change up when idle.
+  Promise.resolve(chrome.runtime.sendMessage({ target: TARGET, type: "hd_engine_config", relayed: true, lowMemoryMode }))
+    .catch(() => {});
 });
 
 async function applyAnkiIndexRole() {
@@ -2655,6 +2669,8 @@ const backupPreparations = new Map();
 let backupCancelTail = Promise.resolve();
 
 async function relayEngineRequest(message) {
+  // Pushed by the options storage listener only; a page cannot relay it.
+  if (message.type === "hd_engine_config") throw new Error("Unknown engine request.");
   await sharingReady;
   if (sharingLinked && forwardableRequest(message)) return forwardToHost(message);
   if (message.type === "hd_backup_cancel") {
@@ -2903,7 +2919,7 @@ async function handleWorkerRequest(message, sender) {
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const run = () => [
     "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
-    "hd_lookup_stats_record", "hd_lookup_stats_read",
+    "hd_lookup_stats_record", "hd_lookup_stats_read", "hd_engine_config",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
   const operation = ["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)
     ? trackAnkiOperation(run) : run();
