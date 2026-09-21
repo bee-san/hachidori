@@ -360,3 +360,42 @@ test("availability revalidates retained choices, all mappings and the first mode
   assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /captured media.*first field/iu);
   assert.deepEqual(value, before);
 });
+
+test("AnkiConnect failures name the missing deck, note type or open collection and keep the raw text", () => {
+  const message = error => { try { ankiMultiResults([{ result: null, error }]); } catch (thrown) { return thrown.message; } return null; };
+  assert.equal(message("deck was not found: Words::JP"),
+    "Anki has no deck named “Words::JP”. Choose an available deck in Anki Settings. (AnkiConnect: deck was not found: Words::JP)");
+  assert.equal(message("model was not found: Lapis"),
+    "Anki has no note type named “Lapis”. Choose an available note type in Anki Settings. (AnkiConnect: model was not found: Lapis)");
+  assert.match(message("collection is not available"), /^Anki has no open collection\. .* \(AnkiConnect: collection is not available\)$/u);
+  assert.match(message("cannot create note because it is empty"), /first field is empty.*\(AnkiConnect: cannot create note because it is empty\)/u);
+  assert.match(message("cannot create note because it is a duplicate"), /same first field already exists.*\(AnkiConnect: cannot create note because it is a duplicate\)/u);
+  assert.match(message("note was not found: 42"), /^Anki no longer has note 42\./u);
+  assert.match(message("unsupported action"), /AnkiConnect add-on is too old/u);
+  assert.equal(message("something else entirely"), "AnkiConnect: something else entirely");
+  assert.equal(message("valid api key must be provided"), "AnkiConnect requires a valid API key. Enter the key from its add-on configuration.");
+});
+
+test("availability errors name the configured deck, note type, missing fields and the available fields", () => {
+  const value = config({ model: "Basic", deck: "Gone", fields: { ...config().fields, expression: "front", definition: "Back" } });
+  const discovery = { connected: true, model: "Basic", decks: ["Default"], models: ["Basic"], fields: ["Other", "Back"], errors: [] };
+  assert.deepEqual(ankiAvailability(value, discovery), [
+    "Anki has no deck named “Gone”. Choose an available deck.",
+    "The expression mapping points at field “front”, which is unavailable in note type “Basic”. Its fields are “Other”, “Back”.",
+    "Map the first field, “Other”, of note type “Basic” before adding notes. Anki requires it.",
+  ]);
+  assert.deepEqual(ankiAvailability(config({ model: "Lapis", deck: "" }), { ...discovery, models: ["Basic"] }), [
+    "Choose an available deck.",
+    "Anki has no note type named “Lapis”. Choose an available note type.",
+    "Refresh fields for the selected note type, “Lapis”.",
+  ]);
+  const templated = config({ model: "Basic", deck: "Default", fieldTemplates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Back: { value: "{definition} {nope}", overwriteMode: "overwrite" },
+  } });
+  assert.deepEqual(ankiAvailability(templated, discovery), [
+    "Template field “Front” is unavailable in note type “Basic”. Its fields are “Other”, “Back”.",
+    "Field “Back”: Unknown marker: {nope}",
+    "Map the first field, “Other”, of note type “Basic” before adding notes. Anki requires it.",
+  ]);
+});

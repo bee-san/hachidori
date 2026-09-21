@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { createAnkiMiningService } from "../extension/anki-mining.js";
+import { createAnkiMiningService, verifyAnkiFields } from "../extension/anki-mining.js";
 import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
@@ -567,4 +567,39 @@ test("each Template has an independent configuration identity and routes its not
   await assert.rejects(service.submit({ templateId: "sentence", configKey: sentence.configKey,
     term: { expression: "古い", reading: "ふるい" } }), /configuration changed/u);
   await assert.rejects(service.status("deleted"), /no longer available/u);
+});
+
+test("an empty first field names the note type, field, template and looked-up word", async () => {
+  const f = fixture();
+  const { configKey } = await f.service.status();
+  await assert.rejects(f.service.submit({ expression: "  ", configKey }),
+    /^Error: The first field of note type “Basic”, “Front”, is empty for this result: its template \{expression\} produced nothing for this result\. Anki requires it\.$/u);
+  await assert.rejects(f.service.submit({ expression: "", term: { expression: "猫" }, configKey }),
+    /produced nothing for “猫”\. Anki requires it\.$/u);
+});
+
+test("write-time refusals name the deck, note type and first field", async () => {
+  const f = fixture();
+  const invoke = f.gateway.invoke;
+  let refusal = "cannot create note because it is a duplicate";
+  f.gateway.invoke = async (action, params) => {
+    if (action === "addNote") throw new Error(`AnkiConnect: ${refusal}`);
+    return invoke(action, params);
+  };
+  const { configKey } = await f.service.status();
+  const duplicate = await f.service.submit({ expression: "猫", configKey });
+  assert.equal(duplicate.state, "duplicate");
+  assert.equal(duplicate.error, "Anki already has a note in deck “Default” (note type “Basic”) whose first field “Front” is “猫”.");
+  refusal = "cannot create note because it is empty";
+  const empty = await f.service.submit({ expression: "<br>", configKey });
+  assert.equal(empty.state, "uncertain");
+  assert.match(empty.error, /Anki refused the note for deck “Default”, note type “Basic” because its first field “Front” is empty once Anki stripped its formatting\. \(AnkiConnect: cannot create note because it is empty\)$/u);
+});
+
+test("saved-field verification names the fields Anki lost or changed", async () => {
+  const notes = { Front: "猫", Back: "dog" };
+  const invoke = async () => [{ noteId: 5, fields: Object.fromEntries(Object.entries(notes).map(([field, value]) => [field, { value }])) }];
+  await assert.rejects(verifyAnkiFields(invoke, 5, { Front: "猫", Back: "cat", Extra: "x" }),
+    /^Error: Anki's saved note differs from the submitted values: field “Extra” is missing from note 5; field “Back” was saved with different content\. Inspect note 5 in Anki\.$/u);
+  await assert.doesNotReject(verifyAnkiFields(invoke, 5, { Front: "猫" }));
 });

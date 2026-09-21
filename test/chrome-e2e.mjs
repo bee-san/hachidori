@@ -3358,16 +3358,29 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
   await installMediaArchive(page, fixture.archive);
   const worker = await installMediaReplyProbe(browser, page);
   const expected = [...fixture.images, fixture.images[1]];
-  async function waitForPreview(predicate, index = 0) {
+  async function waitForPreview(predicate, index = 0, retry = null) {
     const deadline = Date.now() + 6000;
     let state;
     do {
       state = await popup.imagePreview(index);
       if (predicate(state)) return state;
+      await retry?.();
       await new Promise(done => setTimeout(done, 25));
     } while (Date.now() < deadline);
     throw new Error(`Image preview did not reach its expected state: ${JSON.stringify(state)}`);
   }
+  // Hover previews open on mouseenter. A single move can land while the popup
+  // is still re-rendering, so the pointer then rests inside the new image
+  // without ever entering it; nudge it until the browser re-hit-tests.
+  let nudges = 0;
+  const hoverInline = (rect) => tab.mouse.move(
+    rect.left + rect.width / 2 + (nudges++ % 2), rect.top + rect.height / 2);
+  const hoverForPreview = async (index, width) => {
+    const rect = (await popup.imagePreview(index)).sourceRect;
+    await hoverInline(rect);
+    return waitForPreview(state => state?.preview?.width === width, index,
+      async () => hoverInline((await popup.imagePreview(index))?.sourceRect ?? rect));
+  };
   try {
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
     await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
@@ -3379,9 +3392,8 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
       && state.images.every((image, index) => image.width === expected[index].width && image.height === expected[index].height));
     const requestCount = () => worker.evaluate(() => globalThis.__ownedMediaProbe.count);
     const initialCount = await requestCount();
-    const inline = decoded.sourceRect;
-    await tab.mouse.move(inline.left + inline.width / 2, inline.top + inline.height / 2);
-    const hovered = await waitForPreview(state => state?.preview?.width === fixture.images[0].width);
+    const hovered = await hoverForPreview(0, fixture.images[0].width);
+    const inline = hovered.sourceRect;
     await tab.mouse.move(1, 1);
     const left = await waitForPreview(state => state?.preview === null);
     await popup.imagePreview(0, "focus");
@@ -8444,6 +8456,14 @@ async function atomicReplacementBrowserScenarios(page) {
       elapsed: replacementFinishedAt - shownAt, beforeReplace, replaced, replacedState }),
   );
 
+  // The replacement resets the managed package's lastUpdateCheck, which makes
+  // it due at once: the update alarm checks example.invalid and records a
+  // failed check with a new state revision. Let that land before snapshotting
+  // the state the failure paths must leave untouched.
+  await page.waitForFunction((id) =>
+    chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+      dictionaryState?.dictionaries?.find(dictionary => dictionary.id === id)?.lastUpdateCheck != null),
+  { timeout: 60_000, polling: 100 }, installed.id).catch(() => null);
   const failureStateBefore = await state();
   const failureOpfsBefore = await listOpfsPaths(page);
   const metadataMismatch = await page.evaluate(async ({ base64, target, title }) => {

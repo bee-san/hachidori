@@ -946,7 +946,12 @@ async function timerAlarmsStage({ overlayMode, alarmsApi }) {
       async recordWrite() {}, async has() { return false; },
     }),
   }, { overlayMode });
-  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  // Startup writes options in overlay mode, and the storage fake delivers that
+  // onChanged event on a real zero-delay timer which then resumes the index.
+  // A setImmediate loop can finish before that timer is due on a fast host, so
+  // settle on the timer phase: a timer queued here runs after any already
+  // pending one and after the microtasks that one started.
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setTimeout(resolve, 2)); };
   const fire = () => {
     const [id, timer] = [...timers].find(([, entry]) => entry.armed) ?? [];
     timers.delete(id);
@@ -3358,7 +3363,7 @@ async function firstRunAnkiStage() {
       && JSON.stringify(existing.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && existing.storage.raw.get("options").revision === 3
       && partialReply?.ok === true && partialReply.state.anki?.status === "needs-attention"
-      && partialReply.state.anki.detail === "Map the first field, “Front”, before adding notes."
+      && partialReply.state.anki.detail === "Map the first field, “Front”, of note type “Basic” before adding notes. Anki requires it."
       && partialReply.state.anki.model === null
       && JSON.stringify(partial.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && partial.storage.raw.get("options").revision === 3

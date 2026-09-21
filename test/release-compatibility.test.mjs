@@ -127,6 +127,8 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /publish:[\s\S]*needs: package[\s\S]*permissions:\n      contents: write/u);
   assert.match(workflow, /gh release create/u);
   assert.match(workflow, /gh release upload[\s\S]*--clobber/u);
+  // A tag pushed after its release was drafted by hand uploads into it.
+  assert.match(workflow, /elif gh release view "\$RELEASE_TAG"[\s\S]*gh release upload "\$RELEASE_TAG"[\s\S]*--clobber[\s\S]*else\n\s*gh release create/u);
   assert.match(workflow, /Release tag \$RELEASE_TAG points to \$tag_commit/u);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
   assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
