@@ -638,17 +638,17 @@ What it proves, in order:
    traces are safe even with grammar tags enabled. Secondary headers stay lazy;
    tab projection resets the disclosure, and stale toggles after replacement,
    clear, request supersession, or destruction cannot request positioning.
-   Focused boundary checks accept depth 24 and reject 25; seed the exported
-   traversal's node counter to test exact capacity without a million-node DOM;
-   and include containers, wrappers, nulls, and ignored tags in that budget.
-   Each rejection names the exact kind, attempted value, limit and structural
-   path. Popup failures add the canonical dictionary title, stable package ID,
-   entry/definition number and bounded term/reading while retaining the original
-   `RangeError` and stack as the cause; glossary payload text is never copied
-   into the diagnostic.
-   Deferred, tab, and Show more failures reach the current view owner. Replaced,
-   cleared, destroyed, or request-superseded fills do no rendering, media, or
-   layout work, and the actual content callbacks cannot clear a newer request.
+   Deep structured content is rendered through explicit traversal frames rather
+   than a fixed nesting-depth limit. The exported traversal's node counter is
+   seeded to test exact capacity without a million-node DOM, and containers,
+   wrappers, nulls, and ignored tags remain in that budget. Rejections name the
+   attempted value and limit; shallow structural paths stay exact while deep
+   paths elide their middle and never copy glossary payload text.
+   Deferred, tab, Show more, and storage-projection node-limit failures omit
+   only their definition body, including among 100 dictionary cards. Unexpected
+   renderer failures still reach the current view owner. Replaced, cleared,
+   destroyed, or request-superseded fills do no rendering, media, or layout
+   work, and the actual content callbacks cannot clear a newer request.
    External links preserve safe native hrefs while routing current primary,
    keyboard and middle activation exactly once, including mixed nested links.
    Worker checks reject invalid URLs/senders before tab creation and bypass held

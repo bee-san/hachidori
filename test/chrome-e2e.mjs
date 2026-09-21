@@ -444,7 +444,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
-  "structured node and depth failures show bounded dictionary diagnostics and preserve recovery",
+  "deep structured content renders while node-limit failures omit only their definition",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -12663,7 +12663,7 @@ async function main() {
 
   const boundedTitle = "bounded-response-fixture";
   let deepGlossary = "private-depth-leaf-must-not-be-logged";
-  for (let depth = 0; depth < 25; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
+  for (let depth = 0; depth < 1000; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
   let nodeGlossaryContent = Array.from({ length: 1_048_575 }, () => null);
   nodeGlossaryContent.push("private-node-leaf-must-not-be-logged");
   const exactMediaBytes = Buffer.alloc(4 * 1024 * 1024);
@@ -12743,7 +12743,7 @@ async function main() {
 
   const renderFailureLogs = [];
   const onRenderConsole = (message) => {
-    if (!message.text().includes("could not render results")) return;
+    if (!message.text().includes("omitted dictionary definition after render failure")) return;
     renderFailureLogs.push((async () => {
       const args = await Promise.all(message.args().map(async (handle) => {
         try {
@@ -12783,66 +12783,22 @@ async function main() {
     })());
   };
   tab2.on("console", onRenderConsole);
-  const renderFailure = async (term, screenshotPath) => {
+  const rendered = async (term, accept) => {
     await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, term);
-    const failure = await hoverForPopup(tab2, popup2, "#kanjiword", {
-      accept: state => state.failure?.detail.includes(`term ${JSON.stringify(term)}`),
-    });
-    if (failure && screenshotPath) {
-      mkdirSync(dirname(screenshotPath), { recursive: true });
-      await tab2.screenshot({ path: screenshotPath });
-    }
+    const value = await hoverForPopup(tab2, popup2, "#kanjiword", { accept });
     const recovered = await hoverForPopup(tab2, popup2, "#verb", {
       accept: state => !state.failure && state.plain.includes("healthy bounded lookup"),
     });
-    return { failure, recovered };
+    return { value, recovered };
   };
-  const depthFailure = await renderFailure(
-    "深度",
-    process.env.HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT,
-  );
-  const nodeFailure = await renderFailure(
-    "節点",
-    process.env.HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT,
-  );
+  const deepRender = await rendered("深度",
+    state => !state.failure && state.plain.includes("private-depth-leaf-must-not-be-logged"));
+  const nodeRender = await rendered("節点",
+    state => !state.failure && state.plain.startsWith("節点"));
   tab2.off("console", onRenderConsole);
   const renderFailures = await Promise.all(renderFailureLogs);
-  const visible = [
-    {
-      actual: "25",
-      failure: depthFailure.failure,
-      kind: "depth",
-      limit: "24",
-      location: `glossary[0]${".text".repeat(25)}`,
-      reading: "しんど",
-      term: "深度",
-    },
-    {
-      actual: "1048577",
-      failure: nodeFailure.failure,
-      kind: "node count",
-      limit: "1048576",
-      location: "glossary[0].content[1048574]",
-      reading: "せってん",
-      term: "節点",
-    },
-  ].every(({ actual, failure, kind, limit, location, reading, term }) => {
-    const detail = failure?.failure?.detail ?? "";
-    return failure?.failure?.kind === "render"
-      && failure.failure.role === "alert"
-      && failure.failure.title === "Dictionary content could not be rendered."
-      && detail.includes(`Dictionary ${JSON.stringify(boundedTitle)}`)
-      && detail.includes(`stable ID ${JSON.stringify(boundedPackage.id)}`)
-      && detail.includes("entry 1, definition 1")
-      && detail.includes(`term ${JSON.stringify(term)}, reading ${JSON.stringify(reading)}`)
-      && detail.includes(`${kind} ${actual} exceeds limit ${limit} at ${location}`)
-      && detail.length < 2048
-      && !detail.includes("private-depth-leaf")
-      && !detail.includes("private-node-leaf");
-  });
-  const logged = renderFailures.length === 2 && renderFailures.every((failure) => {
+  const logged = renderFailures.length === 1 && renderFailures.every((failure) => {
     const contextual = failure.args[1];
-    const original = failure.args[3];
     return failure.type === "warn"
       && failure.text.length < 4096
       && contextual?.code === "dictionary-structured-content-limit"
@@ -12852,16 +12808,23 @@ async function main() {
       && contextual.stack.includes("structuredContentRenderError")
       && contextual.originalStack === contextual.cause?.stack
       && contextual.cause?.stack.includes("appendStructuredValue")
-      && original?.stack === contextual.cause.stack
-      && !JSON.stringify(failure).includes("private-depth-leaf")
+      && contextual.cause?.kind === "node count"
+      && contextual.cause?.actual === 1_048_577
+      && contextual.cause?.limit === 1_048_576
+      && contextual.cause?.location === "glossary[0].content[1048574]"
       && !JSON.stringify(failure).includes("private-node-leaf");
   });
   check(
-    "structured node and depth failures show bounded dictionary diagnostics and preserve recovery",
-    visible && logged
-      && depthFailure.recovered?.plain?.includes("healthy bounded lookup")
-      && nodeFailure.recovered?.plain?.includes("healthy bounded lookup"),
-    JSON.stringify({ boundedPackage, renderFailures, depthFailure, nodeFailure }),
+    "deep structured content renders while node-limit failures omit only their definition",
+    deepRender.value?.plain?.includes("private-depth-leaf-must-not-be-logged")
+      && !deepRender.value?.failure
+      && nodeRender.value && !nodeRender.value.failure
+      && nodeRender.value.plain.includes(boundedTitle)
+      && !nodeRender.value.plain.includes("private-node-leaf")
+      && logged
+      && deepRender.recovered?.plain?.includes("healthy bounded lookup")
+      && nodeRender.recovered?.plain?.includes("healthy bounded lookup"),
+    JSON.stringify({ boundedPackage, renderFailures, deepRender, nodeRender }),
   );
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {

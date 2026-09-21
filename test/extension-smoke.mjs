@@ -20871,19 +20871,13 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   HDGlossary.appendTextOnlyGlossary(document, parent, nested(24));
   const exactDepth = parent.textContent === "leaf";
   parent.replaceChildren();
-  const excessiveDepth = rejected(() => HDGlossary.appendTextOnlyGlossary(document, parent, nested(25)));
+  HDGlossary.appendTextOnlyGlossary(document, parent, nested(1000));
+  const deepContent = parent.textContent === "leaf";
+  parent.replaceChildren();
   HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
   HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
-  check("structured depth reports its exact limit and content path without exposing the leaf",
-    exactDepth
-      && excessiveDepth?.structuredContentLimitKind === "depth"
-      && excessiveDepth.structuredContentActual === 25
-      && excessiveDepth.structuredContentLimit === 24
-      && excessiveDepth.structuredContentLocation === `glossary[0]${".text".repeat(25)}`
-      && !excessiveDepth.message.includes("leaf")
-      && parent.textContent === "kept<literal>",
-    JSON.stringify({ message: excessiveDepth?.message, location: excessiveDepth?.structuredContentLocation,
-      text: parent.textContent }));
+  check("structured content renders beyond the former depth limit and preserves ordinary fallback text",
+    exactDepth && deepContent && parent.textContent === "kept<literal>", parent.textContent);
 
   const limit = 1_048_576;
   const values = [
@@ -20909,6 +20903,17 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   });
   check("structured node accounting reports the exact limit across containers wrappers and ignored values",
     nodeCases.every(Boolean), JSON.stringify(nodeCases));
+  const deepValue = JSON.parse(nested(1000))[0];
+  const deepOverflow = rejected(() =>
+    HDGlossary.appendStructuredValue(document, parent, deepValue, { nodes: limit - 100 }, 0));
+  check("deep node-limit diagnostics keep a bounded structural path without exposing content",
+    deepOverflow?.structuredContentLimitKind === "node count"
+      && deepOverflow.structuredContentActual === limit + 1
+      && deepOverflow.structuredContentLimit === limit
+      && deepOverflow.structuredContentLocation.includes("path segments omitted")
+      && deepOverflow.structuredContentLocation.length < 1024
+      && !deepOverflow.message.includes("leaf"),
+    JSON.stringify({ message: deepOverflow?.message, location: deepOverflow?.structuredContentLocation }));
 
   const popup = document.createElement("div");
   document.body.appendChild(popup);
@@ -20924,7 +20929,20 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     parseTagList: HDGlossary.parseTagList,
-    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendTextOnlyGlossary(...args) {
+      fills += 1;
+      if (args[2] === "structured-limit") {
+        const error = new RangeError("Structured content node count 1048577 exceeds limit 1048576 at glossary[0]");
+        error.code = "structured-content-limit";
+        error.structuredContentActual = 1_048_577;
+        error.structuredContentLimit = 1_048_576;
+        error.structuredContentLimitKind = "node count";
+        error.structuredContentLocation = "glossary[0]";
+        throw error;
+      }
+      if (args[2] === "unexpected-renderer-failure") throw new Error("unexpected renderer failure");
+      return HDGlossary.appendTextOnlyGlossary(...args);
+    },
     positionPopup() { layouts += 1; },
   });
   const entry = (dictionary, glossary) => ({
@@ -20932,7 +20950,8 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     term: { ...result.term, glossaries: [{ dictionary, glossary }] },
   });
   const healthy = entry("Healthy", '["healthy"]');
-  const invalid = entry("Invalid", nested(25, "private-depth-leaf-must-not-be-logged"));
+  const invalid = entry("Invalid", "structured-limit");
+  const unexpected = entry("Unexpected", "unexpected-renderer-failure");
   const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
   const context = {
     isCurrentRequest: () => requestCurrent,
@@ -20953,36 +20972,21 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const diagnostic = errors[0];
-    const deferredHandled = errors.length === 1 && escaped === 0
-      && diagnostic?.code === "dictionary-structured-content-limit"
-      && diagnostic.dictionaryTitle === "Invalid"
-      && diagnostic.dictionaryId === "invalid-id"
-      && diagnostic.entryIndex === 1 && diagnostic.definitionIndex === 0
-      && diagnostic.termExpression === result.term.expression
-      && diagnostic.termReading === result.term.reading
-      && diagnostic.message.includes("entry 2, definition 1")
-      && diagnostic.cause?.name === "RangeError"
-      && diagnostic.message.includes(diagnostic.cause.structuredContentLocation)
-      && diagnostic.cause.structuredContentLimitKind === "depth"
-      && diagnostic.cause.structuredContentActual === 25
-      && diagnostic.cause.structuredContentLimit === 24
-      && diagnostic.originalStack === diagnostic.cause.stack
-      && diagnostic.stack.includes("structuredContentRenderError")
-      && diagnostic.cause.stack.includes("appendStructuredValue")
-      && !diagnostic.message.includes("private-depth-leaf")
-      && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const deferredHandled = errors.length === 0 && escaped === 0
+      && view.scrollElement.childElementCount === 1
+      && popup.textContent.includes("healthy");
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors.length === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
+    const tabHandled = errors.length === 0 && view.scrollElement.childElementCount > 0
+      && popup.textContent.includes("Invalid");
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
-    check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors.length === 3 && moreEscaped === 0
-        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+    check("deferred, tab and expanded structured-limit failures omit only their glossary body",
+      deferredHandled && tabHandled && errors.length === 0 && moreEscaped === 0
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
       JSON.stringify({ deferredHandled, tabHandled, errors: errors.map(error => error.message), escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
@@ -20996,10 +21000,42 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
         dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Invalid"] }],
       });
     } catch { presentationEscaped = true; }
-    check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors.length === beforePresentationError + 1
-        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+    check("storage-driven projection failures omit only the affected glossary body",
+      !presentationEscaped && errors.length === beforePresentationError
+        && view.scrollElement.childElementCount > 0 && popup.textContent.includes("Invalid"),
       JSON.stringify({ presentationEscaped, errors: errors.length, beforePresentationError }));
+
+    const manyDictionaries = Array.from({ length: 100 }, (_, index) => ({
+      dictionary: `Dictionary ${index}`,
+      glossary: index === 50 ? "structured-limit" : JSON.stringify([`definition ${index}`]),
+    }));
+    const manyDictionaryResult = {
+      ...result,
+      term: { ...result.term, glossaries: manyDictionaries },
+    };
+    view.renderResults([manyDictionaryResult], candidate, {
+      ...context,
+      dictionaryPresentation: manyDictionaries.map(({ dictionary }) => ({
+        id: `dictionary-${dictionary}`,
+        title: dictionary,
+        favorite: true,
+      })),
+    });
+    const manyEscaped = drain();
+    const manyCards = popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length;
+    check("one failed glossary does not cap a large dictionary result set",
+      manyEscaped === 0 && errors.length === 0 && manyCards === 100
+        && popup.textContent.includes("definition 0")
+        && popup.textContent.includes("definition 99"),
+      JSON.stringify({ manyEscaped, errors: errors.length, manyCards }));
+
+    view.renderResults([healthy, unexpected], candidate, context);
+    const unexpectedEscaped = drain();
+    check("unexpected glossary renderer failures still use the current view error boundary",
+      unexpectedEscaped === 0 && errors.length === 1
+        && errors[0].message === "unexpected renderer failure"
+        && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
+      JSON.stringify({ unexpectedEscaped, errors: errors.map(error => error.message) }));
 
     const replacements = [
       () => view.renderResults([healthy], candidate, context),

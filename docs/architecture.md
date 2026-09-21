@@ -931,25 +931,29 @@ script clears the failed request's popup, but an older failed request cannot
 hide a newer result. These are lookup transport bounds, not archive-size,
 dictionary-entry, source-document, or media-count product limits.
 
-Structured glossary traversal rejects values beyond depth 24 or 1,048,576
-visited values per glossary, rather than silently truncating content. Containers,
-wrappers, and ignored values consume the same traversal budget as rendered text
-and elements; ordinary unknown-wrapper child text and literal glossary fallback
-remain supported. Rendering still uses one traversal after JSON parsing.
+Structured glossary traversal uses explicit frames, so valid content has no
+renderer-imposed nesting-depth limit or JavaScript call-stack dependency. It
+still rejects more than 1,048,576 visited values per glossary. Containers,
+wrappers, and ignored values consume the same per-glossary traversal budget as
+rendered text and elements; ordinary unknown-wrapper child text and literal
+glossary fallback remain supported. A glossary that exceeds that work budget is
+omitted without clearing the surrounding entry or other dictionary cards.
 
-Each limit rejection reports its exact kind, attempted actual value, configured
-limit, and structural path. The popup boundary adds the canonical dictionary
-title, stable package ID, entry/definition position, and bounded term/reading
-when known. Visible and logged diagnostics stay bounded and contain no raw
-glossary payload; the existing accessible error offers Retry, while the
-contextual error retains the original `RangeError` as its cause and preserves
-both stacks for the console.
+Each node-limit rejection reports its exact attempted value and configured
+limit. Structural paths remain exact for ordinary content and elide the middle
+of unusually deep paths, keeping diagnostics bounded without copying glossary
+payload text. The popup adds the canonical dictionary title, stable package ID,
+entry/definition position, and bounded term/reading before logging the omitted
+definition. Unexpected renderer errors still reach the existing accessible
+error and Retry boundary.
 
 Deferred glossary fills and their layout callbacks belong to both the current
 lookup request and the current result panel. A newer pending request, a tab
 projection, clear, or destroy invalidates obsolete work before it can render or
-request media. Initial synchronous render errors reach the content-script catch;
-later tab, expansion, and deferred errors clear only their owning current view.
+request media. Initial synchronous renderer errors reach the content-script
+catch; later tab, expansion, and deferred renderer errors clear only their
+owning current view. Structured node-limit failures instead clear only their
+partially rendered definition body.
 
 ### External dictionary links
 
