@@ -126,7 +126,8 @@ the pure recycle scheduler (no restart while busy, the two-second idle window,
 one restart for back-to-back mutations, a restart on option mismatch in either
 direction), the Settings → Advanced → Memory readout and each Library row's
 *In memory* line from a stubbed `hd_memory` reply (an em dash when the engine
-is busy or unreachable, a refresh on a new engine generation, the switch saving
+is busy or unreachable, a refresh on a new engine generation while Advanced is
+shown and when a row's Details opens, the switch saving
 through the ordinary options queue, and the switch hidden on Firefox and with
 the single-thread engine), and the `lowMemoryMode` option's normalisation. The
 memory settings suite uses the same external jsdom dependency. `node-smoke.mjs`

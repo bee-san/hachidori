@@ -83,10 +83,12 @@ function fixture(t, { hash = "#advanced", stored = {}, firefox = false, threaded
     globalThis.readPending = () => pendingOptions;
     globalThis.pollStatus = refreshStatus;
     globalThis.rerenderDictionaries = () => renderDictionaries();
+    globalThis.showSection = (id) => { location.hash = id; showSettingsSection(); };
   `));
   const el = id => window.document.getElementById(id);
   const rowMemory = id => window.document.querySelector(`.dict-row[data-dictionary-id="${id}"] .dict-memory`).textContent;
-  return { window, el, requests, rowMemory };
+  const openDetails = id => window.document.querySelector(`.dict-row[data-dictionary-id="${id}"] .dict-details-toggle`).click();
+  return { window, el, requests, rowMemory, openDetails };
 }
 
 test("Advanced shows the engine total and each Library row shows its share", async t => {
@@ -95,7 +97,26 @@ test("Advanced shows the engine total and each Library row shows its share", asy
   assert.equal(el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
   assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2248 512.0 MB");
   assert.equal(rowMemory(DICTIONARIES[1].id), "In memory: \u2248 1.40 GB");
-  assert.equal(requests.filter(message => message.type === "hd_memory").length, 1, "one read per trigger, not a poll");
+  assert.equal(requests.filter(message => message.type === "hd_memory").length, 1, "one read for the Advanced visit, not a poll");
+});
+
+test("the Library asks only when a reader opens a row's Details", async t => {
+  const { window, requests, rowMemory, openDetails } = fixture(t, { hash: "#dictionaries" });
+  await settle();
+  const reads = () => requests.filter(message => message.type === "hd_memory").length;
+  assert.equal(reads(), 0, "rendering the Library requests nothing");
+  assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2014");
+  window.rerenderDictionaries();
+  await window.pollStatus();
+  await settle();
+  assert.equal(reads(), 0, "rerenders and status polls outside Advanced request nothing");
+  openDetails(DICTIONARIES[0].id);
+  await settle();
+  assert.equal(reads(), 1);
+  assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2248 512.0 MB");
+  window.rerenderDictionaries();
+  assert.equal(rowMemory(DICTIONARIES[1].id), "In memory: \u2248 1.40 GB", "rebuilt rows show the last reading at once");
+  assert.equal(reads(), 1, "a rebuilt open row does not ask again");
 });
 
 test("a busy or unreachable engine renders a dash rather than an error", async t => {
@@ -109,7 +130,7 @@ test("a busy or unreachable engine renders a dash rather than an error", async t
   assert.equal(unreachable.el("memory-total").textContent, "Engine memory: \u2014");
 });
 
-test("a new engine generation refreshes the readout; a Library rerender reuses the last reading", async t => {
+test("a new engine generation refreshes the readout while Advanced is shown", async t => {
   const { window, el, requests, rowMemory } = fixture(t);
   await settle();
   const reads = () => requests.filter(message => message.type === "hd_memory").length;
@@ -126,8 +147,11 @@ test("a new engine generation refreshes the readout; a Library rerender reuses t
   await settle();
   assert.equal(reads(), before + 1, "an unchanged generation does not read again");
 
-  window.rerenderDictionaries();
-  assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2248 512.0 MB", "rebuilt rows show the last reading at once");
+  window.showSection("dictionaries");
+  window.replies.hd_status = { ...window.replies.hd_status, generation: 3 };
+  await window.pollStatus();
+  await settle();
+  assert.equal(reads(), before + 1, "a generation change outside Advanced does not read");
 });
 
 test("the low memory switch saves through the ordinary options queue and reflects the stored value", async t => {

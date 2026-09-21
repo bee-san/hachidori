@@ -48,10 +48,10 @@ package's mapped bytes as described above.
 
 ![A Library row's Details with its In memory line](assets/memory-library-details.png)
  Both come from the engine's
-`hd_memory` read (see [architecture.md](architecture.md), "Runtime messages")
-and are refreshed when you open Advanced, when the Library changes, and when
-the engine publishes a new generation after an import, reload or recycle;
-nothing polls. While the engine is busy or unreachable the readout shows an em
+`hd_memory` read (see [architecture.md](architecture.md), "Runtime messages"),
+asked for when you open Advanced (and again there when the engine publishes a
+new generation after an import, reload or recycle) and when you open a row's
+Details; nothing polls. While the engine is busy or unreachable the readout shows an em
 dash rather than an error.
 
 The total is usually larger than the sum of the rows: the difference is the

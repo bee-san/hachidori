@@ -606,9 +606,10 @@ function memorySettings() {
   return memoryController;
 }
 
-// The readout is asked for on demand, not polled: when Advanced is shown, when
-// the Library rows are rebuilt, and when the engine publishes a new generation
-// (import, reload, recycle).
+// The readout is asked for on demand, not polled: when Advanced is shown or
+// the engine publishes a new generation while it is shown, and when a Library
+// row's Details opens. Nothing is requested while the Library is being worked
+// on: a rebuilt row shows the last reading.
 function refreshMemorySettings() {
   void memorySettings().refresh();
 }
@@ -1399,7 +1400,9 @@ async function refreshStatus() {
   lastEngineStatus = reply;
   renderEngineStatus();
   renderLowMemoryMode();
-  if (reply.ready && !reply.loading && reply.generation !== previousGeneration) refreshMemorySettings();
+  if (activeSection === "advanced" && reply.ready && !reply.loading && reply.generation !== previousGeneration) {
+    refreshMemorySettings();
+  }
   if (!reply.ready || reply.loading) {
     scheduleStatusPoll();
   }
@@ -2171,8 +2174,13 @@ function bindDictionaryOrder(row, entry, index) {
 function renderDictionaryRow(template, entry, index) {
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.dictionaryId = entry.id;
-  row.querySelector(".dict-details").open = expandedDictionaryIds.has(entry.id);
-  row.querySelector(".dict-details-toggle").setAttribute("aria-label", `Details for ${entry.title}`);
+  const details = row.querySelector(".dict-details");
+  details.open = expandedDictionaryIds.has(entry.id);
+  const toggle = row.querySelector(".dict-details-toggle");
+  toggle.setAttribute("aria-label", `Details for ${entry.title}`);
+  // A reader opening Details asks for the In memory line; a rebuilt row that
+  // is already open shows the last reading.
+  toggle.addEventListener("click", () => { if (!details.open) refreshMemorySettings(); });
   row.querySelector(".dict-pinned").hidden = !isManagedCustomDictionary(entry);
   row.classList.toggle("is-off", !entry.enabled);
   bindDictionarySelection(row, entry);
@@ -2284,7 +2292,6 @@ function renderDictionaries(reuseRows = false) {
   renderDictionarySelection(visible);
   setControlsDisabled(importing);
   memorySettings().renderRows();
-  refreshMemorySettings();
 }
 
 function dictionaryMoveTarget(current, index, move) {

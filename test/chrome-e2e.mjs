@@ -12867,18 +12867,29 @@ async function main() {
   }, { timeout: 90_000, polling: 100 }, lowMemoryTitle).then((handle) => handle.jsonValue()).catch(() => null);
   const recycledAfterImport = lowMemoryImported
     ? await waitForRecycle(true, lowMemoryImported.status.generation).catch(() => null) : null;
-  const afterRecycle = recycledAfterImport ? await page.evaluate(async (title) => {
-    const memory = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory-2" });
-    const lookup = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "e2e-lm-lookup", text: "食べる" });
-    // Settings refreshes the readout on the new generation; give the poll a moment.
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      if (document.querySelector(".dict-row .dict-memory")?.textContent.includes("\u2248")) break;
-      await new Promise((done) => setTimeout(done, 100));
-    }
-    const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.querySelector(".dict-title").textContent === title);
-    return { memory, lookup, rowMemory: row?.querySelector(".dict-memory")?.textContent ?? null,
-      total: document.getElementById("memory-total").textContent };
-  }, lowMemoryTitle) : null;
+  let afterRecycle = null;
+  if (recycledAfterImport) {
+    afterRecycle = await page.evaluate(async () => ({
+      memory: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory-2" }),
+      lookup: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "e2e-lm-lookup", text: "食べる" }),
+    }));
+    // Opening a row's Details asks for its In memory line; showing Advanced asks for the total.
+    await showSettingsSection(page, "dictionaries");
+    await page.evaluate((title) => {
+      const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.querySelector(".dict-title").textContent === title);
+      row.querySelector(".dict-details-toggle").click();
+    }, lowMemoryTitle);
+    afterRecycle.rowMemory = await page.waitForFunction((title) => {
+      const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.querySelector(".dict-title").textContent === title);
+      const text = row?.querySelector(".dict-memory")?.textContent ?? "";
+      return text.includes("\u2248") ? text : false;
+    }, { timeout: 10_000, polling: 100 }, lowMemoryTitle).then((handle) => handle.jsonValue()).catch(() => null);
+    await showSettingsSection(page, "advanced");
+    afterRecycle.total = await page.waitForFunction(() => {
+      const text = document.getElementById("memory-total").textContent;
+      return /across 1 dictionary$/u.test(text) ? text : false;
+    }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  }
   check(
     "low memory mode imports single-threaded and recycles the import high-water mark",
     lowMemoryImported?.memory.ok === true
@@ -12891,11 +12902,10 @@ async function main() {
       && afterRecycle.memory.dictionaries[0]?.bytes === lowMemoryImported.memory.dictionaries[0].bytes
       && afterRecycle.lookup.ok === true && afterRecycle.lookup.results[0]?.term.expression === "食べる"
       && /^In memory: \u2248 [\d.]+ (KB|MB|GB)$/u.test(afterRecycle.rowMemory ?? "")
-      && /across 1 dictionary$/u.test(afterRecycle.total),
+      && /across 1 dictionary$/u.test(afterRecycle.total ?? ""),
     JSON.stringify({ imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
   );
 
-  await showSettingsSection(page, "advanced");
   await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());
   const fullPoolStatus = recycledAfterImport ? await waitForRecycle(false, null).catch(() => null) : null;
   const fullPoolOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
