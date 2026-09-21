@@ -136,12 +136,15 @@ test("overlay Settings toggles the flag without touching the browser's saved rec
 test("Firefox does not list the media mining switch and a stored flag cannot reveal Media capture", async t => {
   // A backup restored from Chrome may carry mediaMining: true; Firefox has no
   // media capture, so the section, its navigation, and the switch stay away.
-  const { el, visible, mediaNav, mediaOption } = fixture(t, {
+  const { window, el, visible, mediaNav, mediaOption } = fixture(t, {
     hash: "#media", firefox: true, stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } },
   });
   assert.deepEqual(visible(), ["dictionaries"], "an unavailable section falls back rather than landing on Advanced");
   assert.equal(el("opt-experimental-mediaMining"), null);
-  assert.equal(el("experimental-empty").hidden, false);
+  // Flags without a section are browser-independent and stay listed.
+  const others = window.HDReaderOptions.EXPERIMENTAL_FEATURES.filter(feature => !feature.section);
+  for (const feature of others) assert.notEqual(el(`opt-experimental-${feature.id}`), null, feature.id);
+  assert.equal(el("experimental-empty").hidden, others.length > 0);
   assert.equal(mediaNav().hidden, true);
   assert.equal(mediaOption().hidden, true);
   assert.equal(el("media").hidden, true);
