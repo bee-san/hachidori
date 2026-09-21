@@ -72,6 +72,8 @@ async function startFixtureServer() {
           if (action === "deckNames") return ["Default", "Mining"];
           if (action === "modelNames") return ["Basic"];
           if (action === "modelFieldNames" && params.modelName === "Basic") return ["Front", "Back"];
+          // The duplicate index may refresh as soon as a note type is configured.
+          if (action === "findNotes") return [];
           throw new Error(`unexpected ${action}`);
         }).then(reply => {
           response.writeHead(200, { "content-type": "application/json" });
@@ -392,10 +394,10 @@ async function main() {
     assert.equal(ankiStatus.available, true, ankiStatus.error);
     assert.match(ankiStatus.configKey, /^[0-9a-f-]+$/u);
     const ankiRequests = fixtureServer.requests.filter(record => record.url === "/");
-    assert.deepEqual(
-      [...new Set(ankiRequests.flatMap(record => record.actions ?? []))].sort(),
-      ["deckNames", "modelFieldNames", "modelNames"],
-    );
+    const ankiActions = new Set(ankiRequests.flatMap(record => record.actions ?? []));
+    for (const action of ["deckNames", "modelNames", "modelFieldNames"]) {
+      assert.ok(ankiActions.has(action), `${action} reached AnkiConnect: ${JSON.stringify([...ankiActions])}`);
+    }
     assert.ok(ankiRequests.every(record => record.origin?.startsWith("moz-extension://")),
       `AnkiConnect requests carry the extension origin: ${JSON.stringify(ankiRequests.map(record => record.origin))}`);
 
