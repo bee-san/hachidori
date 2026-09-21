@@ -71,8 +71,8 @@ test("the release XPI must carry the MV2 manifest, the release files, and no Chr
   }
   assert.throws(() => verifyFirefoxPackage(zipEntries(zip(goodPackage({ "capture.js": "" }))), options),
     /Chrome-only files: capture\.js/u);
-  assert.throws(() => verifyFirefoxPackage(zipEntries(zip(goodPackage({ "speech-capture.html": "" }))), options),
-    /Chrome-only files: speech-capture\.html/u);
+  assert.throws(() => verifyFirefoxPackage(zipEntries(zip(goodPackage({ "vendor/avif-encoder.wasm": "" }))), options),
+    /Chrome-only files: vendor\/avif-encoder\.wasm/u);
   assert.throws(() => verifyFirefoxPackage(zipEntries(zip(goodPackage({ "manifest.firefox.json": "{}" }))), options),
     /still contains manifest\.firefox\.json/u);
   assert.throws(() => verifyFirefoxPackage(zipEntries(zip(goodPackage({
@@ -87,12 +87,12 @@ test("the release XPI must carry the MV2 manifest, the release files, and no Chr
   assert.throws(() => zipEntries(Buffer.from("not a zip")), /not a ZIP archive/u);
 });
 
-test("the excluded-file list names only Chrome capture and speech-recording files that exist", async () => {
+test("the excluded-file list names only Chrome capture and recording files that exist", async () => {
   assert.deepEqual(excludedFiles, [...excludedFiles].sort(), "sorted for review");
   assert.equal(new Set(excludedFiles).size, excludedFiles.length);
   for (const name of excludedFiles) {
     await assert.doesNotReject(readFile(resolve(ROOT, "extension", name)), name);
-    assert.match(name, /^(?:capture|avif-sequence|speech-capture|embedded-speech-capture|vendor\/avif-encoder)/u, name);
+    assert.match(name, /^(?:capture|avif-sequence|vendor\/avif-encoder)/u, name);
   }
   const packager = await readFile(resolve(ROOT, "scripts/package-store.py"), "utf8");
   assert.match(packager, /scripts\/firefox-package\.json/u);

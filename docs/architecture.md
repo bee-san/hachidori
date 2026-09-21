@@ -766,18 +766,24 @@ before the change event completes.
 
 Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-metadata defaults to one neutral `Freq:` pill with compact numbers and no
-dictionary names. Kana-derived values retain the visible Yomitan/Jiten `㋕`
+metadata defaults to compact numbers without dictionary names. The first
+result's frequency tags are the same Yomitan-like two-tone tags as every later
+entry's metadata row; a filled source segment appears only when names or
+averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`
 marker, while source and numeric detail remain available on hover and to screen
-readers. The pill sits inside the primary result, before its pronunciation
+readers. The tags sit inside the primary result, before its pronunciation
 metadata and definition cards, instead of occupying the popup-wide headword
 header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
 Contour and pitch badges remain on, and averages remain off. IPA transcriptions
-and definition tags remain visible independently. Pitch and IPA show pronunciation
-data without source-name labels; tooltips and accessibility labels retain source
+and definition tags remain visible independently. Every pitch badge draws its
+dictionary's accent as the same mora contour the header furigana uses, followed
+by the `[n]` position, so several pitch dictionaries compare at a glance; a
+position outside the reading's morae keeps the plain `reading [n]` text, and the
+text stays in every badge's tooltip and accessibility label. Pitch and IPA show
+pronunciation data without source-name labels; tooltips and accessibility labels retain source
 attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
 and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
@@ -852,10 +858,15 @@ enter the index. Operator-named fields remain excluded.
 The dedicated `hachidori-anki-index` alarm refreshes the complete index when
 the source changes and every 30 minutes while Anki mining remains configured.
 Recording the attempt and next alarm before network I/O prevents worker
-restarts from repeatedly retrying unavailable Anki. Startup restores a missing
-alarm without resetting its due time; an overdue attempt runs once. Triggers
-share one in-flight refresh. Source changes invalidate old membership
-immediately, while policy-only changes retain it.
+restarts from repeatedly retrying unavailable Anki: a pull records its outcome
+on the attempt when it commits or fails, and only an attempt that never
+recorded one — its worker or host stopped mid-pull — is due immediately on the
+next worker start. Startup restores a missing alarm without resetting its due
+time; an overdue attempt runs once. Triggers share one in-flight refresh.
+Source changes invalidate old membership immediately, while policy-only
+changes retain it. In overlay mode, and in any host without `chrome.alarms`,
+the worker keeps every one-shot alarm on its own timers, because the Electron
+host's `chrome.alarms` records alarms but never dispatches `onAlarm`.
 
 A refresh resolves the scoped IDs and mature subset with `findNotes`, then
 loads those IDs through `notesInfo`. Maturity means a review card outside
@@ -1860,21 +1871,7 @@ has no cross-client CAS, so its final read/write interval is not atomic. Browser
 TTS can be attached while an active media-capture share supplies audio: the
 selected voice is spoken only after the mining action, read back from the
 transient PCM ring with short leading/trailing padding, encoded as WAV, and
-uploaded through the same pronunciation path. An embedded host may instead
-advertise byte-backed speech capture. GameSentenceMiner binds the display-media
-request to Hachidori's dedicated normal extension page. The dictionary
-offscreen document requests the selected utterance from that host-owned page,
-which first uses a byte-exporting system synthesizer when one matches the
-selected browser voice. The page plays that WAV and returns the same bytes. A
-voice without an exporter falls back to capturing the page's own frame audio
-while local echo keeps playback audible. The bounded mono WAV follows the
-existing pronunciation media transaction. Embedded hosts
-resolve and confirm every applied pronunciation before the Anki mutation, so a
-capture failure leaves no audio-less note or orphan media. Playback without
-captured bytes never satisfies mining. The capture processor's scheduling
-output passes through a zero-gain node, preventing the frame stream from being
-echoed back into itself; Electron's separately requested local echo remains the
-only audible path.
+uploaded through the same pronunciation path.
 Silent preflight checks only recording availability and defers first-field
 duplicate identity until the authoritative submission. Missing, incomplete or
 effectively silent capture falls through to later URL sources; an explicit TTS

@@ -1912,6 +1912,7 @@
     level.highlighter = highlighter.scope(level);
     level.view = window.HDPopup.createPopupView({
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
+      buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
       appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,

@@ -831,7 +831,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
-    .replace(/import \{ HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -909,6 +909,63 @@ async function hostedExtensionBackgroundStage() {
       && relayed.length === 1
       && offscreenState.created === 0,
     JSON.stringify({ loadError: loadError?.message, reply, relayed, offscreenState }),
+  );
+}
+
+// The Electron overlay host exposes chrome.alarms but never dispatches
+// onAlarm, and a host may lack the API entirely; in both shapes the worker
+// keeps one-shot alarms on its own timers so the duplicate-index refresh (and
+// the other alarm consumers) still fire at their scheduled time.
+async function timerAlarmsStage({ overlayMode, alarmsApi }) {
+  const bus = makeBus(), storage = makeStorage(), hostAlarms = makeAlarms();
+  const chrome = makeChrome(`timer-alarms-${overlayMode ? "overlay" : "bare"}-worker`, bus, storage, hostAlarms);
+  if (!alarmsApi) delete chrome.alarms;
+  delete chrome.downloads;
+  delete chrome.offscreen;
+  let clock = 1_800_000_000_000, nextTimer = 1, resumes = 0;
+  const timers = new Map();
+  const context = loadBackgroundScript({
+    chrome, console, Promise, Error,
+    Date: class extends Date { static now() { return clock; } },
+    setTimeout(callback, delay) { const id = nextTimer++; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    createAnkiDuplicateIndex: () => ({
+      async reconcile() {}, async suspend() {}, async resume() { resumes += 1; },
+      source: async () => null, async peek() { return { noteIds: [] }; }, async lookup() {}, async repair() {},
+      async recordWrite() {}, async has() { return false; },
+    }),
+  }, { overlayMode });
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  const fire = () => {
+    const [id, timer] = [...timers].find(([, entry]) => entry.armed) ?? [];
+    timers.delete(id);
+    timer?.callback();
+    return timer?.delay;
+  };
+  await settle();
+  const before = resumes;
+  const known = new Set(timers.keys());
+  await runInContext(`alarms.create(${JSON.stringify(ANKI_INDEX_ALARM)}, { when: Date.now() + 60_000 })`, context);
+  for (const [id, timer] of timers) if (!known.has(id)) timer.armed = true;
+  const armed = await runInContext(`alarms.get(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  const armedDelay = fire();
+  await settle();
+  const earlyResumes = resumes;
+  for (const [id, timer] of timers) if (!known.has(id)) timer.armed = true;
+  clock += 60_000;
+  const rearmedDelay = fire();
+  await settle();
+  const afterFire = await runInContext(`alarms.get(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  await runInContext(`alarms.create(${JSON.stringify(ANKI_INDEX_ALARM)}, { when: Date.now() + 5_000 })`, context);
+  const cleared = await runInContext(`alarms.clear(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  const clearedAgain = await runInContext(`alarms.clear(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  check(
+    `${overlayMode ? "an overlay host's inert chrome.alarms is bypassed:" : "without chrome.alarms"} a worker timer fires the index alarm handler at its scheduled time, not before`,
+    armed?.scheduledTime === clock && armedDelay === 60_000 && earlyResumes === before
+      && rearmedDelay === 60_000 && resumes === before + 1 && afterFire === undefined
+      && cleared === true && clearedAgain === false && hostAlarms.values.size === 0,
+    JSON.stringify({ armed, armedDelay, before, earlyResumes, rearmedDelay, resumes, afterFire, cleared, clearedAgain,
+      hostAlarms: [...hostAlarms.values.keys()] }),
   );
 }
 
@@ -4393,11 +4450,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
   };
-  window.MINING_CAPABILITIES = {
-    screenshot: !overlayMode,
-    browserSpeech: !overlayMode,
-    embeddedSpeechCapture: false,
-  };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.chrome.runtime.connect ??= () => ({
     postMessage() {},
     onDisconnect: { addListener() {} },
@@ -5080,6 +5133,8 @@ async function main() {
 
   section("external dictionary links");
   await hostedExtensionBackgroundStage();
+  await timerAlarmsStage({ overlayMode: true, alarmsApi: true });
+  await timerAlarmsStage({ overlayMode: false, alarmsApi: false });
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await overlayModeBackgroundStage();
@@ -10977,10 +11032,11 @@ async function designPreviewStage() {
       && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"] .gsm-hoshidicts-frequency-values')?.textContent === "120 · 240"
       && !query(".gsm-hoshidicts-frequency-source")
       && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
-      && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
+      && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
+      && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
       && !popup.textContent.includes("Sample pitch")
-      && query(".gsm-hoshidicts-tag-pitch")?.title.includes("Sample pitch");
+      && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -18901,6 +18957,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   let addNoteEntry = async () => {};
   const view = HDPopup.createPopupView({
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     document,
     getPopupColumns: () => 1,
@@ -19429,6 +19486,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
   const settle = () => new Promise(resolve => window.setTimeout(resolve, 0));
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     queueMasonry: callback => layouts.add(callback),
@@ -19543,6 +19601,7 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
   let positions = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
@@ -19656,6 +19715,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
   let fills = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
@@ -19892,6 +19952,7 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   let showCounts = false;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     // The owner decides visibility; the renderer only provides the slot.
@@ -19928,6 +19989,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
   const expanded = [];
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     onResultsExpanded: ({ audioButtons }) => {
@@ -19986,6 +20048,7 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
   let layouts = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     queueMasonry() { layouts += 1; },
@@ -20105,6 +20168,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   }
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) {
       fills += 1;
       linkPredicates.push(args[3].isCurrentLink);
@@ -20446,6 +20510,7 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
   let current = true;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
   });
@@ -20538,6 +20603,7 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
   const view = HDPopup.createPopupView({
     document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     positionPopup() { layouts += 1; },
@@ -21069,6 +21135,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     parseTagList: HDGlossary.parseTagList,
     appendTextOnlyGlossary(...args) {
       fills += 1;

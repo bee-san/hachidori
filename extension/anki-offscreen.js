@@ -21,10 +21,6 @@ async function refreshAnkiIndex(window, source) {
 }
 
 async function recordSpeechAudio(...args) {
-  if (MINING_CAPABILITIES.embeddedSpeechCapture) {
-    const capture = await import("./embedded-speech-capture.js");
-    return capture.requestEmbeddedSpeech(globalThis, ...args);
-  }
   if (!MINING_CAPABILITIES.browserSpeech) {
     throw new Error("Browser text-to-speech recording is unavailable in Firefox.");
   }

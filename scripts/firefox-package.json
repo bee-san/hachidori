@@ -15,9 +15,6 @@
     "capture.css",
     "capture.html",
     "capture.js",
-    "embedded-speech-capture.js",
-    "speech-capture.html",
-    "speech-capture.js",
     "vendor/avif-encoder.mjs",
     "vendor/avif-encoder.wasm"
   ]

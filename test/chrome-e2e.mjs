@@ -1403,15 +1403,23 @@ async function popupReader(page, depth = 0) {
             frequencyNames: [...this.querySelectorAll(".gsm-hoshidicts-frequency-source")].map(node => node.textContent),
             frequencies: [...this.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => Number(node.dataset.frequency)),
             frequencyText: primaryFrequencies?.textContent ?? "",
-            defaultFrequencyLabel: primaryFrequencies
-              ?.querySelector(".gsm-hoshidicts-primary-frequency-label")?.textContent ?? null,
-            defaultFrequencyPill: Boolean(
-              primaryFrequencies?.classList.contains("gsm-hoshidicts-primary-frequencies-default")
-              && primaryFrequencyStyle
-              && primaryFrequencyStyle.borderTopStyle === "solid"
-              && primaryFrequencyStyle.borderRadius === "13px"
-              && primaryFrequencyStyle.backgroundColor !== "rgba(0, 0, 0, 0)"
-            ),
+            // The first entry's tags are the same bordered two-tone tags as a
+            // later entry's metadata row: no label, no wrapping pill.
+            frequencyTagsUniform: (() => {
+              const primary = primaryFrequencies?.querySelector(".gsm-hoshidicts-tag-frequency");
+              if (!primary || primaryFrequencies.className !== "gsm-hoshidicts-primary-frequencies") return false;
+              const style = getComputedStyle(primary);
+              const body = getComputedStyle(primary.querySelector(".gsm-hoshidicts-frequency-body"));
+              const later = this.querySelector(".gsm-hoshidicts-frequency-metadata .gsm-hoshidicts-tag-frequency");
+              const laterStyle = later ? getComputedStyle(later) : style;
+              return style.borderTopStyle === "solid" && style.borderRadius === "4px"
+                && primaryFrequencyStyle.borderTopStyle === "none"
+                && primaryFrequencyStyle.backgroundColor === "rgba(0, 0, 0, 0)"
+                && body.backgroundColor !== "rgba(0, 0, 0, 0)"
+                && !primary.querySelector(".gsm-hoshidicts-primary-frequency-label")
+                && laterStyle.borderTopColor === style.borderTopColor
+                && laterStyle.borderRadius === style.borderRadius && laterStyle.fontSize === style.fontSize;
+            })(),
             clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
               const value = node.getBoundingClientRect();
               const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
@@ -1441,8 +1449,11 @@ async function popupReader(page, depth = 0) {
             outsideHeader: !primaryHeader?.contains(metadataCapsule),
             insideResult: Boolean(capsuleRect && entryRect
               && capsuleRect.top >= entryRect.top - 1 && capsuleRect.bottom <= entryRect.bottom + 1),
+            // Same row: baseline-aligned tags sit a little lower than the
+            // lookup pill's top, so overlap is the row test, not equal tops.
             besideLookupCount: Boolean(capsuleRect && lookupCountRect && !metadataCapsule.hidden
-              && Math.abs(capsuleRect.top - lookupCountRect.top) <= 1 && capsuleRect.left >= lookupCountRect.right),
+              && capsuleRect.top < lookupCountRect.bottom && capsuleRect.bottom > lookupCountRect.top
+              && capsuleRect.left >= lookupCountRect.right),
             plain: Boolean(capsuleStyle
               && capsuleStyle.borderTopStyle === "none"
               && capsuleStyle.backgroundColor === "rgba(0, 0, 0, 0)"),
@@ -7153,7 +7164,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const normal = await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
       && value.ruby.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
     evidence.push(normal.rect.width === 560 && !normal.metadata.clippedFrequencies
-      && normal.metadata.insidePrimaryEntry && normal.metadata.outsideHeader && normal.metadata.insideResult
+      && normal.metadata.frequencyTagsUniform && normal.metadata.insidePrimaryEntry && normal.metadata.outsideHeader && normal.metadata.insideResult
       && normal.metadata.plain
       && normal.metadata.separateFromTabStrip && normal.metadata.tabStripOnly);
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
@@ -7187,15 +7198,15 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const plainFurigana = (await popup.state())?.furiganaAlignment;
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
     const defaultNarrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
-      && value.metadata.defaultFrequencyPill);
+      && value.metadata.frequencyTagsUniform);
     await editSettingsControls(settings, { "opt-popup-width": "560", "opt-popup-toolbar": "top" });
     await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
       && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchRubies === 0
-      && hidden.metadata.defaultFrequencyPill && hidden.metadata.defaultFrequencyLabel === "Freq:"
-      && hidden.metadata.frequencyText.startsWith("Freq: ") && hidden.metadata.besideLookupCount
-      && defaultNarrow.metadata.defaultFrequencyPill && !defaultNarrow.metadata.clippedFrequencies
+      && hidden.metadata.frequencyTagsUniform && hidden.metadata.frequencyText.length > 0
+      && hidden.metadata.besideLookupCount
+      && defaultNarrow.metadata.frequencyTagsUniform && !defaultNarrow.metadata.clippedFrequencies
       && before.metadata.capsuleAria === "Entry metadata"
       && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
       && before.metadata.insidePrimaryEntry && before.metadata.outsideHeader && before.metadata.insideResult
@@ -7207,7 +7218,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-average-frequency": true });
     const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
-      && !averaged.metadata.clippedFrequencies
+      && !averaged.metadata.clippedFrequencies && averaged.metadata.frequencyTagsUniform
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
@@ -7218,7 +7229,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
-      await expectMetadata(value => value.defaultFrequencyPill);
+      await expectMetadata(value => value.frequencyTagsUniform);
       await popup.click(".gsm-hoshidicts-note-cancel");
       const { x, y, width, height } = (await read()).rect;
       await tab.screenshot({ path: process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT, clip: { x, y, width, height } });

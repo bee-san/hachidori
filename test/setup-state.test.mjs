@@ -6,7 +6,7 @@ import {
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
 
-test("overlay mining applies the host's byte-backed media capabilities without changing saved options", () => {
+test("overlay mining never takes a screenshot or records browser speech or captured media", () => {
   const template = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
   const stored = globalThis.HDReaderOptions.normaliseOptions({
     anki: { templates: [
@@ -29,12 +29,6 @@ test("overlay mining applies the host's byte-backed media capabilities without c
   assert.deepEqual(stored.anki.templates.map(value => value.captureScreenshot), [true, true]);
   assert.equal(stored.mediaCapture.enabled, true);
   assert.equal(stored.audioSources.length, 3);
-
-  const speechCaptureHost = overlayAnkiOptions(stored, { browserSpeech: true });
-  assert.equal(speechCaptureHost.anki.captureScreenshot, false);
-  assert.deepEqual(speechCaptureHost.anki.templates.map(value => value.captureScreenshot), [false, false]);
-  assert.equal(speechCaptureHost.mediaCapture.enabled, false);
-  assert.deepEqual(speechCaptureHost.audioSources.map(source => source.id), ["tts", "reading", "jpod"]);
 });
 
 test("Firefox mining projection preserves saved Chrome media settings", () => {

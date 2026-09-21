@@ -147,11 +147,46 @@ const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const AUTOMATIC_BACKUP_RETRY_MS = 60 * 60 * 1000;
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
-const alarms = chrome.alarms ?? {
-  async clear() { return false; },
-  async get() { return undefined; },
-  create() {},
-};
+// The overlay host (Electron 43) exposes chrome.alarms, and create()/get()
+// even record the alarm, but onAlarm never dispatches to the worker; a host
+// without the API at all behaves the same. Keep the one-shot contract on
+// worker-lifetime timers there: a worker restart re-runs the module-load
+// reconciliation, which re-arms whatever is still due.
+const alarms = chrome.alarms && !OVERLAY_MODE ? chrome.alarms : createTimerAlarms();
+
+function createTimerAlarms() {
+  const MAX_TIMER_MS = 2 ** 31 - 1;
+  const pending = new Map();
+  function arm(name, when) {
+    pending.get(name).timer = setTimeout(() => {
+      if (Date.now() < when) {
+        arm(name, when);
+        return;
+      }
+      pending.delete(name);
+      handleAlarm({ name, scheduledTime: when });
+    }, Math.min(Math.max(when - Date.now(), 0), MAX_TIMER_MS));
+  }
+  return {
+    async create(name, { when, delayInMinutes }) {
+      clearTimeout(pending.get(name)?.timer);
+      const scheduledTime = when ?? Date.now() + delayInMinutes * 60_000;
+      pending.set(name, { when: scheduledTime });
+      arm(name, scheduledTime);
+    },
+    async get(name) {
+      const entry = pending.get(name);
+      return entry ? { name, scheduledTime: entry.when } : undefined;
+    },
+    async clear(name) {
+      const entry = pending.get(name);
+      if (!entry) return false;
+      clearTimeout(entry.timer);
+      pending.delete(name);
+      return true;
+    },
+  };
+}
 
 // The user data a linked browser mirrors: the same five keys a backup carries,
 // plus the lookup-count rows.
@@ -2510,7 +2545,6 @@ function getAnkiMining() {
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
       duplicateIndex: getAnkiDuplicateIndex(),
-      requireAudioBeforeMutation: MINING_CAPABILITIES.embeddedSpeechCapture,
       readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
       engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
       capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
@@ -3128,7 +3162,7 @@ async function initialiseSharing() {
   }
 }
 
-chrome.alarms?.onAlarm?.addListener((alarm) => {
+function handleAlarm(alarm) {
   if (alarm.name === AUTOMATIC_BACKUP_ALARM) {
     automaticBackupNextAt = null;
     void queueAutomaticBackup(true);
@@ -3148,7 +3182,9 @@ chrome.alarms?.onAlarm?.addListener((alarm) => {
   void sharingReady.then(() => (sharingLinked ? undefined : queueManagedUpdate({ install: true, dueOnly: true }))).catch((error) => {
     console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
   });
-});
+}
+
+if (alarms === chrome.alarms) chrome.alarms.onAlarm.addListener(handleAlarm);
 
 chrome.downloads?.onChanged?.addListener(delta => {
   if (!delta.state || delta.state.current === "in_progress") return;
@@ -3200,7 +3236,7 @@ async function seedOverlayModeOptions() {
     const options = validateOptionsPatch({
       ...FIRST_INSTALL_OPTIONS,
       ...OVERLAY_MODE_OPTIONS,
-      anki: overlayAnkiOptions(DEFAULT_OPTIONS, MINING_CAPABILITIES).anki,
+      anki: overlayAnkiOptions(DEFAULT_OPTIONS).anki,
     });
     await writeLocalState({ [OPTIONS_KEY]: { ...options, revision: 1 } });
   });

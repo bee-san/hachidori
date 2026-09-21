@@ -86,10 +86,15 @@ the same external jsdom dependency described below. The toolbar tests do not
 start a capture session.
 
 `node --test test/frequency-presentation.test.mjs` checks compact numeric
-frequency defaults, the neutral primary-result `Freq:` pill, visible kana
-markers, tabs-only lower chrome, concise typed harmonic averages, preserved
+frequency defaults, the primary result's frequency tags sharing the later
+entries' tag structure, visible kana markers, tabs-only lower chrome, concise typed harmonic averages, preserved
 explicit display choices, source details, and live grammar/name controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
+
+`node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's
+badge draws its own mora contour with the `[n]` position, keeps `reading [n]`
+in its tooltip and accessibility label through alias changes, and falls back to
+the text badge when the position lies outside the reading's morae.
 
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
@@ -940,16 +945,12 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
-test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs
-test/embedded-speech-capture.test.mjs test/speech-capture-host.test.mjs`
+test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
 runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession, first-use voice loading, automatic Japanese voice selection,
 unavailable selected voices, captured-TTS WAV export and silent preflight,
-embedded host-page routing and frame-audio selection, mono WAV format, silence
-rejection and complete stream/audio-graph cleanup, zero-gain feedback
-prevention, matching host-synthesized WAV playback, pre-mutation
-pronunciation storage and no-write capture failure, document-scoped cancellation,
+document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
 including delayed initial options without repeating a manual play, quiet success

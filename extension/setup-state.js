@@ -60,15 +60,10 @@ export function capabilityAnkiOptions(options, {
   };
 }
 
-// Electron has neither viewport capture (no chrome.tabs.captureVisibleTab) nor
-// a capture host. Generic overlays also have no byte-backed speech capture,
-// while hosts that explicitly provide it keep TTS.
-export function overlayAnkiOptions(options, { browserSpeech = false } = {}) {
-  return capabilityAnkiOptions(options, {
-    screenshot: false,
-    browserSpeech,
-    mediaCapture: false,
-  });
+// Electron has no chrome.tabs.captureVisibleTab, and no capture host can record
+// browser text-to-speech, so only downloadable pronunciations reach Anki.
+export function overlayAnkiOptions(options) {
+  return capabilityAnkiOptions(options, { screenshot: false, browserSpeech: false, mediaCapture: false });
 }
 
 // How each first-install option's value is built from a committed title.

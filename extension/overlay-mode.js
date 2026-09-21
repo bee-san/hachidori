@@ -5,10 +5,6 @@ import { BROWSER_KIND, IS_FIREFOX } from "./browser-api.js";
 
 export const OVERLAY_MODE = false;
 export const HOST_BROWSER = OVERLAY_MODE ? "electron" : BROWSER_KIND;
-// An embedding host may create and grant the extension's dedicated speech page
-// as its own audible display-media source. GameSentenceMiner enables this in
-// its synced copy.
-export const EMBEDDED_SPEECH_CAPTURE = false;
 
 // Electron's extension host deliberately exposes less of Chrome than a normal
 // browser window, and Firefox deliberately omits Chrome's recording stack.
@@ -31,6 +27,5 @@ export const HOST_CAPABILITIES = Object.freeze({
 
 export const MINING_CAPABILITIES = Object.freeze({
   screenshot: !OVERLAY_MODE,
-  browserSpeech: (!OVERLAY_MODE && !IS_FIREFOX) || EMBEDDED_SPEECH_CAPTURE,
-  embeddedSpeechCapture: OVERLAY_MODE && EMBEDDED_SPEECH_CAPTURE,
+  browserSpeech: !OVERLAY_MODE && !IS_FIREFOX,
 });
