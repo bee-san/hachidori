@@ -356,9 +356,11 @@ function updateKeybindSettings() {
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
     getBrowserCommands: () => chrome.commands.getAll(),
-    openBrowserShortcuts: () => chrome.tabs.create({
-      url: IS_FIREFOX ? "about:addons" : "chrome://extensions/shortcuts",
-    }),
+    // Firefox refuses tabs.create for privileged about: URLs, so it exposes
+    // the Manage Extension Shortcuts view through commands instead.
+    openBrowserShortcuts: () => (IS_FIREFOX
+      ? chrome.commands.openShortcutSettings()
+      : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
   });
   keybindController.render();
