@@ -9,6 +9,7 @@ import {
   inspectAnkiNoteIds,
   lookupAnkiIndex,
 } from "../extension/anki-index.js";
+import { ankiInvokeFake } from "./anki-connect-fake.mjs";
 
 const template = value => ({ value, overwriteMode: "coalesce" });
 const baseConfig = patch => globalThis.HDReaderOptions.normaliseOptions({ anki: {
@@ -102,14 +103,15 @@ test("a complete refresh stores compact sorted rows across recognized note types
     /Basic/u);
 });
 
-test("live lookup filters the configured deck and subdecks, verifies exact field values and calculates maturity", async () => {
+test("live lookup filters the configured deck and subdecks, verifies exact field values and batches maturity with the candidate search", async () => {
   const source = await ankiIndexSource(baseConfig({ duplicateScope: "deck" }));
   const calls = [];
-  const invoke = async (action, params) => {
+  const invoke = ankiInvokeFake(async (action, params) => {
     calls.push({ action, params });
     if (action === "modelNamesAndIds") return { Japanese: 1, Lapis: 2, Other: 3 };
     if (action === "modelFieldNames") return KIKU_FIELDS;
-    if (action === "findNotes") return params.query.includes("is:review") ? [20] : [30, 20, 10];
+    // Note 30 is mature but its value is not an exact match, so it must not count.
+    if (action === "findNotes") return params.query.includes("is:review") ? [30, 20] : [30, 20, 10];
     if (action === "notesInfo") {
       assert.deepEqual(params.notes, [10, 20, 30]);
       return [
@@ -119,19 +121,25 @@ test("live lookup filters the configured deck and subdecks, verifies exact field
       ];
     }
     throw new Error(`Unexpected ${action}`);
-  };
-  assert.deepEqual(await lookupAnkiIndex(invoke, source, "猫"), {
+  });
+  const requests = [];
+  const counted = async (action, params) => { requests.push(action); return invoke(action, params); };
+  assert.deepEqual(await lookupAnkiIndex(counted, source, "猫"), {
     wordKey: "猫",
     mature: true,
     noteIds: [10, 20],
   });
-  const lookup = calls.find(call => call.action === "findNotes"
-    && !call.params.query.includes("is:review")).params.query;
+  // Two AnkiConnect round trips after discovery: one multi, then notesInfo.
+  assert.deepEqual(requests, ["modelNamesAndIds", "modelFieldNames", "multi", "notesInfo"]);
+  const [lookup, mature] = calls.filter(call => call.action === "findNotes").map(call => call.params.query);
   assert.match(lookup, /deck:Mining\\:\\:Words/u);
   assert.match(lookup, /expression:猫/iu);
-  assert.deepEqual(calls.find(call => call.action === "findNotes"
-    && call.params.query.includes("is:review")).params,
-    { query: "nid:10,20 is:review -is:learn prop:ivl>=21" });
+  assert.equal(mature, `${lookup} is:review -is:learn prop:ivl>=21`);
+
+  const immature = ankiInvokeFake(async (action, params) => action === "notesInfo"
+    ? [note(10, "Japanese", { Expression: "猫" }), note(30, "Japanese", { Expression: "猫です" })]
+    : action === "findNotes" ? (params.query.includes("is:review") ? [30] : [10, 30]) : { Japanese: 1 });
+  assert.deepEqual(await lookupAnkiIndex(immature, source, "猫"), { wordKey: "猫", mature: false, noteIds: [10] });
 });
 
 test("cached note inspection selects only an exact configured-type overwrite target and reports stale IDs", async () => {
@@ -204,6 +212,12 @@ test("malformed bulk and live replies reject instead of publishing partial index
   await assert.rejects(fetchAnkiIndex(async (action, params) => action === "notesInfo"
     ? [note(1, "Japanese", { Expression: "猫" })] : params.query.includes("is:review") ? [0] : [1], source),
   /invalid mature note IDs/u);
-  await assert.rejects(lookupAnkiIndex(async action => action === "notesInfo" ? invalid[4] : [1], source, "猫"),
+  await assert.rejects(lookupAnkiIndex(ankiInvokeFake(async action => action === "notesInfo" ? invalid[4] : [1]), source, "猫"),
     /invalid note/iu);
+  await assert.rejects(lookupAnkiIndex(ankiInvokeFake(async (action, params) => action === "notesInfo"
+    ? [note(1, "Japanese", { Expression: "猫" })] : params.query.includes("is:review") ? [2] : [1]), source, "猫"),
+  /invalid mature note IDs/u);
+  await assert.rejects(lookupAnkiIndex(async action => action === "multi"
+    ? [{ result: [1], error: null }, { result: null, error: "collection is not available" }] : [1], source, "猫"),
+  /AnkiConnect: collection is not available/u);
 });
