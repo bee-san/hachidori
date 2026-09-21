@@ -16,12 +16,15 @@ const require = createRequire(resolve(TOOLING, "package.json"));
 const { config } = JSON.parse(readFileSync(resolve(TOOLING, "package.json"), "utf8"));
 const { Browser, computeExecutablePath, install } = await import(require.resolve("@puppeteer/browsers"));
 const chromeBuild = process.env.HACHIDORI_CHROME_BUILD || config.chrome;
+const firefoxBuild = process.env.HACHIDORI_FIREFOX_BUILD || config.firefox;
 const env = {
   ...process.env,
   HACHIDORI_JSDOM: process.env.HACHIDORI_JSDOM || TOOLING,
   HACHIDORI_PUPPETEER: process.env.HACHIDORI_PUPPETEER || require.resolve("puppeteer-core"),
   HACHIDORI_CHROME: process.env.HACHIDORI_CHROME
     || computeExecutablePath({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild }),
+  HACHIDORI_FIREFOX: process.env.HACHIDORI_FIREFOX
+    || computeExecutablePath({ cacheDir: CACHE, browser: Browser.FIREFOX, buildId: firefoxBuild }),
 };
 
 async function run(name, args, overrides = {}) {
@@ -51,6 +54,9 @@ try {
     const browser = await install({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild,
       installDeps: process.argv.includes("--install-deps") });
     console.log(`Chrome ${chromeBuild}: ${browser.executablePath}`);
+  } else if (suite === "install-firefox") {
+    const browser = await install({ cacheDir: CACHE, browser: Browser.FIREFOX, buildId: firefoxBuild });
+    console.log(`Firefox ${firefoxBuild}: ${browser.executablePath}`);
   } else if (suite === "node") {
     const tests = ["test", "benchmark"].flatMap(directory => readdirSync(resolve(ROOT, directory))
       .filter(file => file.endsWith(".test.mjs")).sort().map(file => `${directory}/${file}`));
@@ -63,6 +69,9 @@ try {
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", ["test/extension-smoke.mjs"]);
+  } else if (suite === "firefox-smoke") {
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await run("firefox-smoke", ["test/firefox-smoke.mjs"]);
   } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
     await run(suite, [`test/${suite}.mjs`], {
@@ -71,7 +80,10 @@ try {
     });
     if (suite === "chrome-e2e") await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
   } else {
-    throw new Error("Choose node, smoke, chrome-e2e, chrome-sharing, chrome-fallback, chrome-overlay or install-chrome.");
+    throw new Error(
+      "Choose node, smoke, firefox-smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
+        + " chrome-overlay, install-chrome or install-firefox.",
+    );
   }
 } catch (error) {
   console.error(error);

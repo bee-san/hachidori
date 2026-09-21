@@ -115,7 +115,10 @@ export function parseLinkAddress(text) {
 // Chrome": the first brand that is not the placeholder and not plain Chromium.
 export function browserName(navigator) {
   const brands = (navigator?.userAgentData?.brands ?? []).map(entry => String(entry?.brand ?? "")).filter(brand => brand !== "" && !/not.?a.?brand/iu.test(brand));
-  return brands.find(brand => brand !== "Chromium") ?? brands[0] ?? "another browser";
+  const brand = brands.find(name => name !== "Chromium") ?? brands[0];
+  if (brand) return brand;
+  if (/\bFirefox\//u.test(String(navigator?.userAgent ?? ""))) return "Firefox";
+  return "another browser";
 }
 
 function parseJsonObject(text) {

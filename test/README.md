@@ -21,22 +21,29 @@ npm --prefix test/tooling run test:chrome       # primary OPFS path and UI
 npm --prefix test/tooling run test:sharing      # two browsers and the Python relay
 npm --prefix test/tooling run test:fallback     # IDBFS path
 npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
+npm --prefix test/tooling run install:firefox   # Firefox 155.0.1
+npm --prefix test/tooling run test:firefox      # temporary install, first-run setup, import/lookup, 31 s persistence
+npm --prefix test/tooling run lint:firefox      # web-ext lint on the prepared Firefox directory
 HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
 ```
 
 `test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.10.0**,
-the browser installer **3.2.2**, and their transitive dependencies. The small
+the browser installer **3.2.2**, web-ext **10.6.0**, and the geckodriver
+downloader **6.1.1** (with geckodriver **0.36.0**), plus their transitive
+dependencies. The small
 `test/run.mjs` launcher supplies the existing environment overrides, generates
 fixtures, runs each existing suite in a separate Node process, and propagates
 every nonzero exit or signal. It selects the exact Chrome build from
-`test/tooling/package.json` rather than whichever browser happens to be newest
-in a developer's cache. Dependencies are isolated from the extension under
+`test/tooling/package.json` and the pinned Firefox build rather than whichever
+browser happens to be newest in a developer's cache. Dependencies are isolated from the extension under
 `test/tooling/node_modules`; the browser is ignored under `test/tmp/browsers`.
 The launcher ignores a machine-wide `CHROME_BIN` (GitHub runners set it to their
 system browser). Use `HACHIDORI_CHROME` for an intentional browser executable
 override, or `HACHIDORI_CHROME_BUILD` to install and select an exact Chrome for
-Testing build.
+Testing build. Use `HACHIDORI_FIREFOX` or `HACHIDORI_FIREFOX_BUILD` for the
+corresponding Firefox overrides. `HACHIDORI_FIREFOX_IDLE_MS` can shorten the
+31-second continuity wait during local test development.
 
 On Ubuntu/Debian, install the browser's system dependencies with
 `sudo "$(command -v node)" test/run.mjs install-chrome --install-deps` and install
@@ -45,17 +52,18 @@ For a Linux container that cannot run Chrome's sandbox, set
 `HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
 non-loopback network address for its other-computer checks.
 
-`.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, and
-all four browser suites on every PR and push to `main`, or manually. It also
+`.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, the
+Firefox temporary-install smoke, and all four Chrome browser suites on every PR
+and push to `main`, or manually. It also
 runs the primary Chrome suite on the exact Chrome 128 build recorded beside the
-current Chrome 152 pin, and creates and checksum-verifies the Chrome/source
-release pair. The release contract fails if the tested minimum drifts from the
-manifest. The browser matrix runs independently so one failing suite cannot
-hide the others. Logs are saved to `test/tmp/ci`; failing CI jobs upload them,
-the available screenshots, and the browser profiles retained by failed suites,
-for seven days. The same commands reproduce the failure locally. The optional
-native checks below and headful media-capture suites remain separate checks for
-their domains.
+current Chrome 152 pin, builds an installable unsigned Firefox XPI, and creates
+and checksum-verifies the Chrome/source release pair. The release contract fails
+if the tested minimum drifts from the manifest. The browser matrix runs
+independently so one failing suite cannot hide the others. Logs are saved to
+`test/tmp/ci`; failing CI jobs upload them, the available screenshots, and the
+browser profiles retained by failed suites, for seven days. The same commands
+reproduce the failure locally. The optional native checks below and headful
+media-capture suites remain separate checks for their domains.
 
 Direct `node test/...` commands below still support the external cache and
 `HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a

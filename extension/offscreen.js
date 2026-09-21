@@ -1,5 +1,5 @@
 /*
- * Bridges Chrome runtime messages to the Hoshidicts engine.
+ * Bridges extension runtime messages to the Hoshidicts engine.
  *
  * Browsers with pthread and OPFS support use the dedicated worker on direct
  * OPFS. Hosts with pthread support but no OPFS access handles (Electron) use
@@ -9,6 +9,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js";
+import { announceFirefoxOffscreen } from "./firefox-host.js";
 import { boundResponseFailure } from "./response-limits.js";
 
 const TARGET = "hoshidicts-offscreen";
@@ -20,7 +22,7 @@ let captureService;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-capture-page" || message.relayed !== true
-      || sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("background.js")
+      || sender.id !== chrome.runtime.id || sender.url !== expectedBackgroundUrl(chrome)
       || sender.tab !== undefined) return false;
   captureService ??= import("./capture-host.js");
   captureService.then(module => module.handleCaptureMessage(message)).then(
@@ -390,3 +392,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   );
   return true;
 });
+
+try {
+  await announceFirefoxOffscreen();
+} catch (error) {
+  failEngine(error);
+}

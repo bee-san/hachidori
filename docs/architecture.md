@@ -1,6 +1,9 @@
 # Architecture
 
-Hachidori is a Manifest V3 Chrome extension with a native C++ dictionary engine compiled to WebAssembly. Extension pages send typed runtime messages; the service worker routes them to an offscreen document whose lifetime is independent of service-worker idling.
+Hachidori shares one WebAssembly dictionary engine and extension codebase across
+Chrome and Firefox desktop. Chrome uses a Manifest V3 service worker
+and offscreen document. Firefox uses a Manifest V2 persistent background page
+with the same offscreen page mounted as a hidden iframe.
 
 ## Runtime layout
 
@@ -12,13 +15,16 @@ web page
        └─ appends popup Note entries to the managed custom source
 
 settings.html / content.js
-  └─ chrome.runtime.sendMessage
-       └─ background.js (MV3 service worker)
+  └─ extension runtime messaging
+       └─ background.js
+            ├─ Chrome: MV3 service worker
+            ├─ Firefox: module loaded by persistent firefox-background.html
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one next-due alarm
             ├─ owns two retained daily snapshots and their next-due alarm
-            ├─ creates or reconnects to offscreen.html
+            ├─ Chrome: creates or reconnects to offscreen.html
+            ├─ Firefox: waits for the authenticated persistent iframe
             └─ relays requests without holding engine state
                  └─ offscreen.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
@@ -30,7 +36,12 @@ settings.html / content.js
                            └─ single-thread Wasm + IDBFS
 ```
 
-The service worker can be terminated after an idle period without discarding loaded dictionaries. A later request recreates the routing context while the offscreen engine remains authoritative. Runtime requests carry explicit IDs, generations, and result message types so stale or malformed replies fail closed.
+Chrome’s service worker can be terminated after an idle period without
+discarding loaded dictionaries. A later request recreates the routing context
+while the offscreen engine remains authoritative. Firefox keeps both the
+background page and its hidden engine iframe alive. Runtime requests carry
+explicit IDs, generations, and result message types so stale or malformed
+replies fail closed.
 
 ## Primary engine path
 
@@ -650,7 +661,8 @@ keybind action, with a count of one for entry moves. Only a frame with an open
 popup, or a selection for the scans, acts on it. Chrome alone can change these
 shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
-and opens `chrome://extensions/shortcuts`.
+and opens `chrome://extensions/shortcuts` (Firefox: `commands.openShortcutSettings()`,
+since `tabs.create` refuses `about:addons`).
 
 ![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
 
@@ -1959,7 +1971,8 @@ still show the document that asked. The post-capture check also requires the
 same window ID: dragging the reading tab to another window can otherwise leave
 it active while the original window captures a different tab.
 Before and after each attempt, a read-only message addressed to the original
-sender's Chrome document ID must also receive a presence reply. The packaged
+sender's document ID (`hd_anki_document`, answered by `anki-content.js`, which
+both browsers inject) must also receive a presence reply. The packaged
 startup reader instead resolves that document ID through Chrome's live TAB
 extension contexts, which supplies its tab ID and confirms the same document
 without content-script messaging. Reloading the
@@ -2219,7 +2232,9 @@ network listener is on, the addresses found from the routes to Tailscale's
 resolver and the default route, or the bind error), `client-open` (with the
 peer address), `client-close` and `client-text`; from the host it takes
 `send`, `broadcast`, `close` and `network`. Its rules: a handshake's `Origin`
-must start with `chrome-extension://`, `/host` is accepted from loopback peers
+must start with `chrome-extension://` (or, from the relay release that follows
+[hachidori-anki#8](https://github.com/bee-san/hachidori-anki/pull/8),
+`moz-extension://`), `/host` is accepted from loopback peers
 only, a client is refused (503) while no host is connected, and turning the
 network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,

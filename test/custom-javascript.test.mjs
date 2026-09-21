@@ -39,7 +39,7 @@ test("saved JavaScript is registered unchanged for every reader page", async () 
     async register(scripts) { calls.push(["register", scripts]); },
   } };
   const code = "window.addEventListener('hachidori-popup-shown', () => {});";
-  await applyCustomJavaScript(browser, code);
+  assert.deepEqual(await applyCustomJavaScript(browser, code), { supported: true, registered: true });
   assert.deepEqual(calls, [
     ["get", { ids: ["hachidori-custom-javascript"] }],
     ["unregister", { ids: ["hachidori-custom-javascript"] }],
@@ -54,9 +54,10 @@ test("clearing JavaScript removes its registration and unavailable user scripts 
     async getScripts() { return [{ id: "hachidori-custom-javascript" }]; },
     async unregister(filter) { calls.push(filter); },
   } };
-  await applyCustomJavaScript(browser, "");
+  assert.deepEqual(await applyCustomJavaScript(browser, ""), { supported: true, registered: false });
   assert.deepEqual(calls, [{ ids: ["hachidori-custom-javascript"] }]);
-  await assert.doesNotReject(applyCustomJavaScript({}, "window.test = true;"));
+  // Firefox MV2 and other hosts without `userScripts` report the gap instead of throwing.
+  assert.deepEqual(await applyCustomJavaScript({}, "window.test = true;"), { supported: false, registered: false });
 });
 
 test("rapid edits are applied in order without duplicate registrations", async () => {

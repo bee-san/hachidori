@@ -11,7 +11,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture(t, { allowed = false, dismissible = true } = {}) {
+async function fixture(t, { allowed = false, dismissible = true, firefox = false } = {}) {
   const dom = new JSDOM('<div id="files"></div><button id="finish">Finish</button>', { pretendToBeVisual: true });
   const { document } = dom.window;
   // Let jsdom's initial pageshow settle before mounting the controller.
@@ -23,7 +23,10 @@ async function fixture(t, { allowed = false, dismissible = true } = {}) {
       queries.push(current);
       return current;
     } },
-    runtime: { id: "hachidori-test-extension" },
+    runtime: {
+      id: "hachidori-test-extension",
+      getURL: path => `${firefox ? "moz-extension" : "chrome-extension"}://hachidori-test-extension/${path}`,
+    },
     tabs: { async create(details) { tabs.push(details); } },
   };
   const el = id => document.getElementById(id);
@@ -125,4 +128,35 @@ test("Settings retains the shortcut, pageshow refreshes it, and stale checks can
   assert.match(f.el("local-file-status").textContent, /Could not check/u);
   assert.doesNotMatch(f.el("local-file-status").textContent, /enabled/u);
   assert.equal(f.el("local-file-actions").hidden, false);
+});
+
+test("Firefox shows the about:addons path at once instead of an Open button it cannot honour", async t => {
+  // Firefox rejects tabs.create({ url: "about:addons" }) as an illegal URL and
+  // offers no API that opens the Add-ons Manager for a full-tab options page.
+  const f = await fixture(t, { firefox: true });
+  await tick();
+  assert.equal(f.el("local-file-open"), null);
+  assert.equal(f.el("local-file-recovery"), null);
+  assert.equal(f.el("local-file-actions").hidden, false, "Not now stays available in setup");
+  assert.equal(f.el("local-file-instruction").hidden, false);
+  assert.match(f.el("local-file-instruction").textContent, /about:addons.*Access local files on your computer/u);
+  assert.match(f.el("local-file-description").textContent, /Firefox’s Add-ons Manager/u);
+  assert.equal(f.tabs.length, 0);
+  f.access(true);
+  f.returnToTab();
+  await tick();
+  assert.equal(f.el("local-file-instruction").hidden, true);
+  assert.equal(f.el("local-file-status").textContent, "Local-file lookups enabled");
+  f.access(Promise.reject(new Error("Disconnected")));
+  await f.controller.refresh();
+  assert.match(f.el("local-file-status").textContent, /Firefox’s extension settings/u);
+});
+
+test("Firefox Settings hides the empty actions row", async t => {
+  const f = await fixture(t, { firefox: true, dismissible: false });
+  await tick();
+  assert.equal(f.el("local-file-skip"), null);
+  assert.equal(f.el("local-file-open"), null);
+  assert.equal(f.el("local-file-actions").hidden, true);
+  assert.equal(f.el("local-file-instruction").hidden, false);
 });

@@ -1,0 +1,21 @@
+{
+  "excludedFiles": [
+    "avif-sequence.js",
+    "capture-audio-worklet.js",
+    "capture-buffer.js",
+    "capture-content.js",
+    "capture-encoder-client.js",
+    "capture-encoder-worker.js",
+    "capture-frame-client.js",
+    "capture-frame-worker.js",
+    "capture-host.js",
+    "capture-session.js",
+    "capture-speech.js",
+    "capture-timeline.js",
+    "capture.css",
+    "capture.html",
+    "capture.js",
+    "vendor/avif-encoder.mjs",
+    "vendor/avif-encoder.wasm"
+  ]
+}

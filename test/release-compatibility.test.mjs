@@ -6,12 +6,16 @@ import { resolve } from "node:path";
 import {
   chromeVersion,
   compareVersions,
+  firefoxBuildVersion,
+  firefoxVersion,
+  validateFirefoxContract,
   validateReleaseContract,
 } from "../scripts/check-release.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(ROOT, path), "utf8");
 const manifest = JSON.parse(read("extension/manifest.json"));
+const firefoxManifest = JSON.parse(read("extension/manifest.firefox.json"));
 const tooling = JSON.parse(read("test/tooling/package.json"));
 
 test("manifest, minimum Chrome, current Chrome and bare release tag share one contract", () => {
@@ -20,6 +24,14 @@ test("manifest, minimum Chrome, current Chrome and bare release tag share one co
     expectedTag: manifest.version,
     minimumChrome: "128.0.6613.137",
     currentChrome: "152.0.7977.75",
+  });
+  assert.deepEqual(validateReleaseContract(manifest, tooling, manifest.version, firefoxManifest), {
+    version: manifest.version,
+    expectedTag: manifest.version,
+    minimumChrome: "128.0.6613.137",
+    currentChrome: "152.0.7977.75",
+    minimumFirefox: "153.0",
+    currentFirefox: "stable_155.0.1",
   });
   assert.equal(
     compareVersions(
@@ -61,6 +73,25 @@ test("release validation rejects browser drift and a tag that does not match the
   );
 });
 
+test("the Firefox package shares the release version and is tested on a Firefox at or above its minimum", () => {
+  assert.deepEqual(firefoxVersion("153.0", "minimum"), [153, 0]);
+  assert.deepEqual(firefoxBuildVersion("stable_155.0.1", "current"), [155, 0, 1]);
+  assert.throws(() => firefoxVersion("153", "minimum"), /Firefox version such as 153\.0/u);
+  assert.throws(() => firefoxBuildVersion("latest", "current"), /pinned stable Firefox build/u);
+  assert.throws(
+    () => validateFirefoxContract(manifest, { ...firefoxManifest, version: "0.0.1" }, tooling),
+    /version does not match manifest\.json/u,
+  );
+  assert.throws(
+    () => validateFirefoxContract(manifest, { ...firefoxManifest, manifest_version: 3 }, tooling),
+    /manifest_version 2/u,
+  );
+  assert.throws(
+    () => validateFirefoxContract(manifest, firefoxManifest, { config: { ...tooling.config, firefox: "stable_152.0" } }),
+    /pinned Firefox test build is older/u,
+  );
+});
+
 test("CI checks both supported-browser edges and packages every release candidate", () => {
   const runtime = read(".github/workflows/runtime-tests.yml");
   assert.match(runtime, /name: chrome-e2e \(Chrome minimum\)/u);
@@ -69,6 +100,13 @@ test("CI checks both supported-browser edges and packages every release candidat
   assert.match(runtime, /name: Release package/u);
   assert.match(runtime, /python3 scripts\/package-store\.py/u);
   assert.match(runtime, /sha256sum -c/u);
+  assert.match(runtime, /node "\$GITHUB_WORKSPACE\/scripts\/verify-firefox-package\.mjs" \.\/\*-firefox-unsigned\.xpi/u);
+  assert.match(runtime, /name: firefox-unsigned-xpi/u);
+  assert.match(runtime, /name: Firefox smoke and package/u);
+  assert.match(runtime, /npm --prefix test\/tooling run install:firefox/u);
+  assert.match(runtime, /npm --prefix test\/tooling run lint:firefox/u);
+  assert.match(runtime, /HACHIDORI_FIREFOX_EXTENSION="\$\{xpi\[0\]\}" npm --prefix test\/tooling run test:firefox/u);
+  assert.doesNotMatch(runtime, /package:firefox|firefox-draft/u);
 });
 
 test("bare-tag and manual release runs verify and publish the checksummed package pair", () => {
@@ -81,6 +119,9 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /git merge-base --is-ancestor/u);
   assert.match(workflow, /python3 scripts\/package-store\.py/u);
   assert.match(workflow, /sha256sum -c/u);
+  assert.match(workflow, /node "\$GITHUB_WORKSPACE\/scripts\/verify-firefox-package\.mjs" \.\/\*-firefox-unsigned\.xpi/u);
+  assert.match(workflow, /--notes-file "\$GITHUB_WORKSPACE\/\.github\/release-notes-header\.md"/u);
+  assert.match(read(".github/release-notes-header.md"), /about:debugging#\/runtime\/this-firefox/u);
   assert.match(workflow, /outputs:[\s\S]*release_tag:[\s\S]*release_commit:/u);
   assert.match(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish/u);
   assert.match(workflow, /publish:[\s\S]*needs: package[\s\S]*permissions:\n      contents: write/u);

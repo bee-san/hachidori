@@ -14,16 +14,18 @@ const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").r
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 // Settings as a user opens it: navigation attached, then stored options adopted.
-function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {}) {
+function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, firefox = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
+  window.IS_FIREFOX = firefox;
+  window.HOST_BROWSER = firefox ? "firefox" : "chrome";
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
-    browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode,
-    localFileAccessPrompt: !overlayMode, mediaCapture: !overlayMode,
+    browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: !firefox,
+    localFileAccessPrompt: !overlayMode, mediaCapture: !overlayMode && !firefox,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode && !firefox };
   window.chrome = {
     runtime: { sendMessage: () => Promise.resolve({ ok: true, state: "stopped" }) },
     storage: { onChanged: { addListener() {} }, local: { get: () => Promise.resolve({}) } },
@@ -43,6 +45,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
   const source = withoutModules(extension("settings.js"));
   assert.ok(source.endsWith("start();\n"));
   window.eval(source.replace(/start\(\);\s*$/u, `
+    configureBrowserUi();
     renderMiningCapabilityHelp();
     attachSettingsNavigation();
     attachHandlers();
@@ -127,4 +130,18 @@ test("overlay Settings toggles the flag without touching the browser's saved rec
   assert.equal(window.readOptions().experimental.mediaMining, false);
   assert.equal(window.readOptions().mediaCapture.enabled, true, "the overlay cannot edit recorder settings");
   assert.deepEqual(Object.keys(window.readPending()), ["experimental"]);
+});
+
+test("Firefox does not list the media mining switch and a stored flag cannot reveal Media capture", async t => {
+  // A backup restored from Chrome may carry mediaMining: true; Firefox has no
+  // media capture, so the section, its navigation, and the switch stay away.
+  const { el, visible, mediaNav, mediaOption } = fixture(t, {
+    hash: "#media", firefox: true, stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } },
+  });
+  assert.deepEqual(visible(), ["dictionaries"], "an unavailable section falls back rather than landing on Advanced");
+  assert.equal(el("opt-experimental-mediaMining"), null);
+  assert.equal(el("experimental-empty").hidden, false);
+  assert.equal(mediaNav().hidden, true);
+  assert.equal(mediaOption().hidden, true);
+  assert.equal(el("media").hidden, true);
 });

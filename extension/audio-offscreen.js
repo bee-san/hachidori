@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { selectExtensionApi } from "./browser-api.js";
 import { createAudioPlayer } from "./audio-player.js";
 import { createAudioRepository, selectedAudioPlan } from "./audio-repository.js";
 
@@ -17,6 +18,7 @@ function withSourceKey(played, sources) {
 }
 
 export function createAudioService(window, repository = createAudioRepository({ window, fetch: window.fetch.bind(window), now: () => window.performance.now() })) {
+  const extensionApi = selectExtensionApi(window);
   const player = createAudioPlayer({ window, repository });
   let active = null;
   let watchingVoices = false;
@@ -30,7 +32,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
   function voices() {
     if (!watchingVoices) {
       window.speechSynthesis.addEventListener("voiceschanged", () => {
-        window.chrome.runtime.sendMessage({ target: "hachidori-audio-ui", type: "hd_audio_voices_changed", voices: voices() })
+        extensionApi.runtime.sendMessage({ target: "hachidori-audio-ui", type: "hd_audio_voices_changed", voices: voices() })
           .catch(() => {}); // The Settings page may already have closed.
       });
       watchingVoices = true;
@@ -95,7 +97,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
           if (active !== operation) return;
           // This bounds discovery/fallback, not the duration of a playable file.
           pauseDeadline();
-          window.chrome.runtime.sendMessage({ target: "hachidori-audio-events", type: "hd_audio_playing",
+          extensionApi.runtime.sendMessage({ target: "hachidori-audio-events", type: "hd_audio_playing",
             owner: operation.owner, requestId: operation.requestId, ...value }).catch(() => {});
         },
       });

@@ -11,7 +11,9 @@
   "packageManager": "npm@10.9.8",
   "config": {
     "chrome": "152.0.7977.75",
-    "minimumChrome": "128.0.6613.137"
+    "minimumChrome": "128.0.6613.137",
+    "firefox": "stable_155.0.1",
+    "geckodriver": "0.36.0"
   },
   "scripts": {
     "test": "node ../run.mjs node",
@@ -20,11 +22,17 @@
     "test:sharing": "node ../run.mjs chrome-sharing",
     "test:fallback": "node ../run.mjs chrome-fallback",
     "test:overlay": "node ../run.mjs chrome-overlay",
-    "install:chrome": "node ../run.mjs install-chrome"
+    "test:firefox": "node ../run.mjs firefox-smoke",
+    "prepare:firefox": "node ../../scripts/prepare-firefox.mjs",
+    "lint:firefox": "node ../../scripts/lint-firefox.mjs",
+    "install:chrome": "node ../run.mjs install-chrome",
+    "install:firefox": "node ../run.mjs install-firefox"
   },
   "devDependencies": {
     "@puppeteer/browsers": "3.2.2",
+    "geckodriver": "6.1.1",
     "jsdom": "30.0.1",
-    "puppeteer-core": "25.10.0"
+    "puppeteer-core": "25.10.0",
+    "web-ext": "10.6.0"
   }
 }

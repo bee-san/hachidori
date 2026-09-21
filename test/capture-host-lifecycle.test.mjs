@@ -246,6 +246,7 @@ test("only the background worker may dispatch capture Start to the offscreen hos
   const calls = [];
   vm.runInNewContext(offscreen.slice(start, end), {
     captureService: Promise.resolve({ handleCaptureMessage(message) { calls.push(message); return { state: "recording" }; } }),
+    expectedBackgroundUrl: chrome => chrome.runtime.getURL("background.js"),
     chrome: { runtime: { id: "hachidori", getURL: file => `chrome-extension://hachidori/${file}`,
       onMessage: { addListener(value) { listener = value; } } } },
   });

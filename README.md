@@ -31,6 +31,11 @@ Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature
 
 Click <a href="https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe">here to install from Chrome store.</a> (note: this will always lag behind the repo and may have bugs fixed in the repo)
 
+Every GitHub release also ships an unsigned Firefox 153+ desktop package
+(`*-firefox-unsigned.xpi`) for temporary installation; it is not on
+addons.mozilla.org yet. See [the Firefox guide](docs/firefox.md); media
+recording is not included in that edition.
+
 <p align="center">
   <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">
 </p>
