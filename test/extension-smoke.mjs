@@ -28,6 +28,7 @@ import { buildAnkiFields } from "../extension/anki-values.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
 import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { detectLocalAudioSource as realDetectLocalAudioSource } from "../extension/local-audio-setup.js";
 import { lookupAnkiIndex } from "../extension/anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
@@ -3526,8 +3527,8 @@ async function ankiBackgroundStage() {
     fetch(url, options) {
       const body = JSON.parse(options.body);
       requests.push({ url, body });
-      return new Promise(resolve => releases.push(() => resolve({ ok: true,
-        async json() { return { result: body.action === "deckNames" ? ["Default"] : [], error: null }; } })));
+      return new Promise(resolve => releases.push(async () => resolve({ ok: true,
+        json: async () => answerAnkiConnect(body, action => action === "deckNames" ? ["Default"] : []) })));
     },
   });
   const send = (patch = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html#anki") }) =>
@@ -3539,13 +3540,17 @@ async function ankiBackgroundStage() {
   const written = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
     requestId: "anki-parallel-options", baseRevision: 0, options: { scanLength: 19 } });
   const read = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_state_read" });
-  const independent = releases.length === 2 && written.ok && read.ok;
+  const independent = releases.length === 1 && written.ok && read.ok;
   releases.forEach(release => release());
   const result = await pending;
-  check("Anki discovery uses only fixed read-only calls from Settings and never holds the storage queue",
+  // Discovery is one `multi` round trip whose sub-actions are the fixed
+  // read-only trio; the message's own action name never reaches Anki.
+  check("Anki discovery uses only fixed read-only calls from Settings in one batch and never holds the storage queue",
     !rejected.ok && !invalid.ok && independent && result.ok && result.connected
       && requests.every(({ url }) => url === "http://127.0.0.1:8765")
-      && requests.map(({ body }) => body.action).join() === "deckNames,modelNames"
+      && requests.map(({ body }) => body.action).join() === "multi"
+      && requests[0].body.params.actions.map(entry => entry.action).join() === "deckNames,modelNames,modelFieldNames"
+      && requests[0].body.params.actions.every(entry => entry.version === 6)
       && !bus.log.some(message => message.relayed), JSON.stringify({ rejected, invalid, independent, result, requests }));
   const options = context.HDReaderOptions.normaliseOptions({}).anki;
   const commit = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",

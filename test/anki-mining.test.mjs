@@ -4,6 +4,7 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService } from "../extension/anki-mining.js";
 import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 function testIndex(resolve = async () => []) {
   const find = async (config, expression, invoke, cached = false) => {
@@ -133,21 +134,21 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   const gateway = createAnkiGateway({ fetch: async (url, options) => {
     const request = JSON.parse(options.body);
     requests.push({ url, ...request });
-    let result;
-    switch (request.action) {
-      case "deckNames": result = ["Default"]; break;
-      case "modelNames": result = ["Basic"]; break;
-      case "modelFieldNames": result = ["Front", "Back"]; break;
-      case "canAddNotesWithErrorDetail": result = [{ canAdd: true }]; break;
-      case "storeMediaFile": result = request.params.filename; break;
-      case "addNote": fields = request.params.note.fields; result = 27; break;
-      case "notesInfo": result = [{ noteId: 27, fields: Object.fromEntries(Object.entries(fields)
-        .map(([field, value]) => [field, { value }])) }]; break;
-      case "updateNoteFields": fields = { ...fields, ...request.params.note.fields }; result = null; break;
-      case "guiBrowse": result = []; break;
-      default: throw new Error(`Unexpected action: ${request.action}`);
-    }
-    return { ok: true, json: async () => ({ result, error: null }) };
+    return { ok: true, json: async () => answerAnkiConnect(request, (action, params) => {
+      switch (action) {
+        case "deckNames": return ["Default"];
+        case "modelNames": return ["Basic"];
+        case "modelFieldNames": return ["Front", "Back"];
+        case "canAddNotesWithErrorDetail": return [{ canAdd: true }];
+        case "storeMediaFile": return params.filename;
+        case "addNote": fields = params.note.fields; return 27;
+        case "notesInfo": return [{ noteId: 27, fields: Object.fromEntries(Object.entries(fields)
+          .map(([field, value]) => [field, { value }])) }];
+        case "updateNoteFields": fields = { ...fields, ...params.note.fields }; return null;
+        case "guiBrowse": return [];
+        default: throw new Error(`Unexpected action: ${action}`);
+      }
+    }) };
   } });
   const service = createAnkiMiningService({ gateway, readConfig: async () => config,
     duplicateIndex: testIndex(),
