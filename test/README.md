@@ -465,10 +465,11 @@ What it proves, in order:
     at 4 MiB and one byte larger both import and load; the exact fetch preserves
     all bytes, the oversized fetch reports a native error, and healthy media
     and term lookups still work afterward.
-14. **MDX import.** Hoshidicts' own `tests/fixtures/mdict/v2_utf8_lzo_html.mdx`
-    and `.mdd` (an HTML MDX with an `@@@LINK` alias, duplicate headwords, a
-    StyleSheet substitution, and an MDD holding a PNG, CSS files and a traversal
-    key) go through `hdw_import` from a MEMFS directory: the title comes from the
+14. **MDX import.** `test/mdict/v2_utf8_lzo_html.mdx` and `.mdd`, copies of
+    Hoshidicts' own `tests/fixtures/mdict` pair (an HTML MDX with an `@@@LINK`
+    alias, duplicate headwords, a StyleSheet substitution, and an MDD holding a
+    PNG, CSS files and a traversal key; committed here because the smoke suites
+    run without the submodule) go through `hdw_import` from a MEMFS directory: the title comes from the
     MDX header, eight term rows and four media entries are reported, the
     package loads and answers `食べる`, the alias is a headword and the missing
     alias is dropped, the MDD CSS is the dictionary stylesheet, the PNG comes

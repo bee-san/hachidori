@@ -5782,7 +5782,7 @@ async function main() {
   // finds the resource file, and the result is an ordinary package whose media
   // and stylesheet come from the MDD. The staging directory must not outlive
   // the import. A resource list on a ZIP import is refused before any staging.
-  const mdxFixtures = resolve(ROOT, "third_party", "hoshidicts", "tests", "fixtures", "mdict");
+  const mdxFixtures = resolve(HERE, "mdict");
   const mdxBytes = (name) => new Uint8Array(readFileSync(resolve(mdxFixtures, name)));
   const mdxImport = await request("hd_import", {
     blobUrl: createObjectURL(mdxBytes("v2_utf8_lzo_html.mdx")), fileName: "v2_utf8_lzo_html.mdx", lowRam: false,
