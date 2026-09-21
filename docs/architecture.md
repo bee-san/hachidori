@@ -94,6 +94,25 @@ Each dictionary import follows one logical transaction:
 
 Multiple selected local archives remain separate transactions. Settings runs
 them sequentially, keeps an outcome for each file, and continues after a failure.
+
+While the experimental **MDX dictionaries** flag (`options.experimental.mdxImport`)
+is on, the same picker and drop zone also take MDict files. Settings groups one
+`.mdx` with the `.mdd` files named after its stem (`Dict.mdd`, `Dict.1.mdd`, …,
+case-insensitively), sends them as one `hd_import` whose `resources` list the
+MDD blob URLs, and reports a `.mdd` without its `.mdx` instead of importing it.
+`resources` are accepted only on an ordinary local import of a `.mdx`. The engine
+service stages a Yomitan ZIP at its fixed scratch name, but an MDX under its own
+file name inside `/.hdw-mdx` with the MDD files beside it, because Hoshidicts
+finds resource files as siblings of the `.mdx` stem and falls back to that stem as
+the title; the directory is removed with the import. `hdw_import` decides the
+format from the file's first bytes like the importer does: a Yomitan archive's
+declared title is still read out of `index.json` and checked before the import,
+while an MDict title comes from the engine's sanitiser, which yields one plain
+path component, so only the post-import folder-name check applies to it. An MDX
+package is otherwise ordinary: its glossaries are structured content converted
+from the entry HTML, its MDD assets live under `mdict-media/`, and its revision is
+`mdx import`. There is no interactive duplicate review for MDX files: a same-title
+import replaces the installed package in place, as a re-import does.
 Recommended installation uses the same offscreen runner from both Settings and
 startup: either page attaches with `hd_setup_install`, and the run continues when
 that page closes. `recommended-install-client.js` observes ordered progress and

@@ -5,6 +5,7 @@
 // static, valid until the next call to the same function.
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cerrno>
 #include <cstddef>
@@ -33,9 +34,11 @@
 #include <glaze/glaze.hpp>
 #include <hoshidicts.h>
 
-// Not part of the engine's public headers; see the include path added for it in
-// CMakeLists.txt. hdw_import needs the archive's declared title before the
-// importer turns it into a directory path.
+// Not part of the engine's public headers; see the include path added for them
+// in CMakeLists.txt. hdw_import needs a Yomitan archive's declared title before
+// the importer turns it into a directory path, and the MDict header sniff to
+// know when there is no such archive.
+#include "mdict/mdict_reader.hpp"
 #include "zip/zip.hpp"
 
 // Not an anonymous namespace: glaze's field-name reflection takes the address of
@@ -515,6 +518,17 @@ std::string unusable_title_error(std::string_view title) {
          "\" cannot be used as a folder name";
 }
 
+// The importer decides the format from the file's first bytes (an MDict header
+// or a ZIP), so the same sniff decides here whether there is an index.json to
+// read at all.
+bool looks_like_mdict(const std::string &path) {
+  std::array<uint8_t, 64> head{};
+  std::ifstream in(path, std::ios::binary);
+  in.read(reinterpret_cast<char *>(head.data()), static_cast<std::streamsize>(head.size()));
+  const auto read = static_cast<size_t>(std::max<std::streamsize>(0, in.gcount()));
+  return mdict::looks_like_mdict(head.data(), read);
+}
+
 bool peek_title(const std::string &zip_path, std::string &title,
                 std::string &error) {
   Zip zip;
@@ -769,15 +783,22 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
 
   const std::filesystem::path staging = root / STAGING_DIR;
   const std::filesystem::path work = staging / STAGING_WORK;
-  std::string title;
-  if (!peek_title(zip_path, title, report.error)) {
-    return report;
-  }
-  const std::filesystem::path staged = (work / title).lexically_normal();
-  if (!usable_as_directory_name(title) || staged.parent_path() != work.lexically_normal()) {
-    report.title = title;
-    report.error = unusable_title_error(title);
-    return report;
+  // A Yomitan archive's title is whatever index.json says, so it is checked
+  // before the importer can turn it into a path. An MDict title comes from
+  // MdictSource::sanitize_title, which yields one plain path component (no
+  // separators, NUL, "." or ".."), so the importer cannot leave `work`; the
+  // post-import usable_as_directory_name check below still applies to it.
+  if (!looks_like_mdict(zip_path)) {
+    std::string title;
+    if (!peek_title(zip_path, title, report.error)) {
+      return report;
+    }
+    const std::filesystem::path staged = (work / title).lexically_normal();
+    if (!usable_as_directory_name(title) || staged.parent_path() != work.lexically_normal()) {
+      report.title = title;
+      report.error = unusable_title_error(title);
+      return report;
+    }
   }
   try {
     recover_interrupted_install(root);

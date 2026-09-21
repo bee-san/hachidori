@@ -581,9 +581,21 @@ function renderExperimentalSettings() {
     document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
     element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
   }
+  renderImportPicker();
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.
   if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
+}
+
+// With the MDX dictionaries flag on, the picker and drop zone also take .mdx
+// and .mdd files; off, they take Yomitan ZIP files as before.
+function renderImportPicker() {
+  const mdx = options.experimental.mdxImport === true;
+  element("import-file").accept = mdx ? ".zip,application/zip,.mdx,.mdd" : ".zip,application/zip";
+  element("import-file-label").textContent = mdx ? "Choose dictionary files" : "Choose ZIP files";
+  element("import-drop-hint").textContent = mdx
+    ? "Or drag and drop Yomitan ZIP files, or an MDX dictionary with its MDD files, here."
+    : "Or drag and drop Yomitan ZIP files here.";
 }
 
 function updateBackupSettings() {
@@ -2770,11 +2782,83 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   }
 }
 
+// An MDX dictionary is one .mdx plus the .mdd resource files named after its
+// stem (`Dict.mdd`, `Dict.1.mdd`, ...; case does not matter), which the engine
+// discovers as siblings. Every other file imports as a Yomitan ZIP, and a .mdd
+// without its .mdx is reported rather than imported on its own.
+function isMddResourceOf(mdxName, name) {
+  const stem = mdxName.slice(0, -".mdx".length).toLowerCase();
+  const lower = name.toLowerCase();
+  return lower.startsWith(`${stem}.`) && /^(\d+\.)?mdd$/u.test(lower.slice(stem.length + 1));
+}
+
+function groupImportFiles(files) {
+  if (options.experimental.mdxImport !== true) {
+    return files.map((file) => ({ kind: "zip", file }));
+  }
+  const items = [];
+  const resourceFiles = files.filter((file) => /\.mdd$/iu.test(file.name));
+  const claimed = new Set();
+  for (const file of files) {
+    if (/\.mdd$/iu.test(file.name)) continue;
+    if (!/\.mdx$/iu.test(file.name)) {
+      items.push({ kind: "zip", file });
+      continue;
+    }
+    const resources = resourceFiles.filter((resource) => !claimed.has(resource) && isMddResourceOf(file.name, resource.name));
+    for (const resource of resources) claimed.add(resource);
+    items.push({ kind: "mdx", file, resources });
+  }
+  for (const resource of resourceFiles) {
+    if (!claimed.has(resource)) items.push({ kind: "orphan-mdd", file: resource });
+  }
+  return items;
+}
+
+async function importMdx(item, index, total) {
+  const { file, resources } = item;
+  const started = Date.now();
+  const urls = [file, ...resources].map((entry) => URL.createObjectURL(entry));
+  try {
+    return await importArchive({
+      blobUrl: urls[0],
+      fileName: file.name,
+      resources: resources.map((resource, position) => ({ fileName: resource.name, blobUrl: urls[position + 1] })),
+    }, index, total, file.name, started);
+  } finally {
+    for (const url of urls) URL.revokeObjectURL(url);
+  }
+}
+
+async function importGroupedItem(item, index, total) {
+  if (item.kind === "mdx") return importMdx(item, index, total);
+  if (item.kind === "orphan-mdd") {
+    updateImportResult(index, {
+      text: "Not imported: choose this .mdd together with the .mdx it belongs to.",
+      tone: "error",
+    });
+    return "failed";
+  }
+  return importFile(item.file, index, total);
+}
+
+function importItemPurpose(item) {
+  if (item.kind === "orphan-mdd") return "MDD resource file";
+  if (item.kind !== "mdx") return "Yomitan ZIP file";
+  const count = item.resources.length;
+  if (count === 0) return "MDX dictionary";
+  return `MDX dictionary with ${count} MDD ${count === 1 ? "file" : "files"}`;
+}
+
+function describeImportItem(item) {
+  return { name: item.file.name, purpose: importItemPurpose(item) };
+}
+
 function runImports(files) {
-  return runImportBatch(files, importFile, "archive", "archives", (file) => ({
-    name: file.name,
-    purpose: "Yomitan ZIP file",
-  }));
+  const items = groupImportFiles(files);
+  const onlyArchives = items.every((item) => item.kind === "zip");
+  return runImportBatch(items, importGroupedItem, onlyArchives ? "archive" : "file",
+    onlyArchives ? "archives" : "files", describeImportItem);
 }
 
 function hasDroppedFiles(event) {

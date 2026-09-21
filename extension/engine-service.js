@@ -48,6 +48,10 @@ const REMOVAL_ROOT = `${DICT_ROOT}/.hdw-remove`;
 const GENERATION_PREFIX = ".hdw-generation-";
 const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IMPORT_ZIP = "/.hdw-archive.zip";
+// An MDX dictionary is staged under its own file name because the engine finds
+// its MDD resource files as siblings named after the .mdx stem and falls back
+// to that stem when the header has no title.
+const IMPORT_MDX_DIR = "/.hdw-mdx";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 
 // Index into this array is the `kind` argument of hdw_add_dict.
@@ -1846,16 +1850,45 @@ export async function stageImportArchive(response, onProgress = null) {
   return collectResponse(response, onProgress);
 }
 
+function removeStagedFile(FS, path) {
+  try {
+    FS.unlink(path);
+  } catch (error) {
+    // Never written, or already gone.
+  }
+}
+
+// Where the archive is staged. A Yomitan ZIP has a fixed scratch name; an MDX
+// keeps its own name inside IMPORT_MDX_DIR with its MDD files beside it.
+function importStagingPaths(fileName, resources) {
+  if (resources.length === 0 && !isMdxFileName(fileName)) {
+    return { directory: null, archivePath: IMPORT_ZIP, resourcePaths: [] };
+  }
+  return {
+    directory: IMPORT_MDX_DIR,
+    archivePath: `${IMPORT_MDX_DIR}/${fileName}`,
+    resourcePaths: resources.map((resource) => `${IMPORT_MDX_DIR}/${resource.fileName}`),
+  };
+}
+
 async function importDictionaryArchive(
   archiveSource,
-  archivePath,
   generationRoot,
   importLowRam,
   fileName,
   expectedArchiveBytes = null,
+  resources = [],
 ) {
   const FS = engine.FS;
+  const { directory, archivePath, resourcePaths } = importStagingPaths(fileName, resources);
   try {
+    if (directory !== null) {
+      try {
+        FS.mkdir(directory);
+      } catch (error) {
+        // Left by an interrupted import; its files are overwritten below.
+      }
+    }
     const archiveBytes = await streamResponseToFile(FS, archiveSource, archivePath);
     if (archiveBytes === 0) {
       throw new Error(`${fileName} is empty`);
@@ -1863,6 +1896,9 @@ async function importDictionaryArchive(
     if (expectedArchiveBytes !== null && archiveBytes !== expectedArchiveBytes) {
       throw new Error(`${fileName} changed while it was staged`);
     }
+    resources.forEach((resource, index) => {
+      writeFileBytes(FS, resourcePaths[index], resource.bytes);
+    });
     return normaliseReport(
       parseJson(
         engine.ccall(
@@ -1875,10 +1911,14 @@ async function importDictionaryArchive(
       ),
     );
   } finally {
-    try {
-      FS.unlink(archivePath);
-    } catch (error) {
-      // Never written, or already gone.
+    removeStagedFile(FS, archivePath);
+    for (const path of resourcePaths) removeStagedFile(FS, path);
+    if (directory !== null) {
+      try {
+        FS.rmdir(directory);
+      } catch (error) {
+        // Never created, or already gone.
+      }
     }
   }
 }
@@ -1924,6 +1964,43 @@ function validateLocalImportRequest(message, managedSource, recommendedSource) {
       && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
     throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
   }
+}
+
+function plainFileName(value) {
+  return typeof value === "string" && value !== "" && value !== "." && value !== ".."
+    && !/[/\\\0]/u.test(value);
+}
+
+function isMdxFileName(fileName) {
+  return /\.mdx$/iu.test(fileName);
+}
+
+// The MDD resource files chosen with an .mdx: staged next to it under their own
+// names so the engine's sibling discovery (`<stem>.mdd`, `<stem>.1.mdd`, ...)
+// sees them. Only an ordinary local import of an .mdx can carry them.
+function importResources(message, remote, fileName) {
+  const value = message.resources;
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new TypeError("the import request carried an invalid resource list");
+  }
+  if (value.length === 0) return [];
+  if (remote || !isMdxFileName(fileName)) {
+    throw new Error("only a local .mdx import can carry resource files");
+  }
+  const names = new Set([fileName]);
+  return value.map((resource) => {
+    const name = resource?.fileName;
+    const blobUrl = text(resource?.blobUrl);
+    if (!plainFileName(name) || !/\.mdd$/iu.test(name) || blobUrl === "") {
+      throw new Error("the import request carried an invalid resource file");
+    }
+    if (names.has(name)) {
+      throw new Error(`the import request lists ${name} twice`);
+    }
+    names.add(name);
+    return { fileName: name, blobUrl };
+  });
 }
 
 function exactNullableString(value, label, { empty = false } = {}) {
@@ -2037,15 +2114,17 @@ async function prepareImportRequest(message) {
     managedSource,
     recommendedSource,
   );
+  const fileName = text(message.fileName) || recommendedSource?.archiveName || "the archive";
   return {
     archiveUrl,
     expectedRevision,
-    fileName: text(message.fileName) || recommendedSource?.archiveName || "the archive",
+    fileName,
     importDecision,
     importLowRam,
     managedSource,
     recommendedSource,
     remote,
+    resources: importResources(message, remote, fileName),
   };
 }
 
@@ -2056,6 +2135,7 @@ function samePreparedImport(left, right) {
     && left.importLowRam === right.importLowRam
     && left.remote === right.remote
     && JSON.stringify(left.importDecision) === JSON.stringify(right.importDecision)
+    && JSON.stringify(left.resources) === JSON.stringify(right.resources)
     && left.recommendedSource?.sourceId === right.recommendedSource?.sourceId
     && left.managedSource?.checkedAt === right.managedSource?.checkedAt
     && JSON.stringify(left.managedSource?.fingerprint ?? null)
@@ -2080,12 +2160,31 @@ async function fetchImportArchive(request) {
   return response;
 }
 
+// The MDD files are read like the archive, one at a time, and held as bytes
+// until the import stages them next to the .mdx.
+async function stageImportResources(request) {
+  const staged = [];
+  for (const resource of request.resources) {
+    const response = await fetch(resource.blobUrl, { credentials: "omit" });
+    if (!response.ok) {
+      throw new Error(`could not read ${resource.fileName}: HTTP ${response.status}`);
+    }
+    const { bytes, byteLength } = await collectResponse(response);
+    if (byteLength === 0) {
+      throw new Error(`${resource.fileName} is empty`);
+    }
+    staged.push({ fileName: resource.fileName, bytes });
+  }
+  return staged;
+}
+
 async function runImportTransaction(
   archiveSource,
   fileName,
   importLowRam,
   commit,
   expectedArchiveBytes = null,
+  resources = [],
 ) {
   const generationRoot = createGenerationRoot();
   // Unload before importing: the loaded dictionaries are mapped into the same
@@ -2097,17 +2196,16 @@ async function runImportTransaction(
   // proxied write, read-back mapping, and unlink (about 50 ms of hdw_import for
   // Jitendex) and writes nothing to disk that the importer does not keep. The
   // heap holds one extra copy of the archive for the duration of the import.
-  const archivePath = IMPORT_ZIP;
   let report;
   let rollbackAttempted = false;
   try {
     report = await importDictionaryArchive(
       archiveSource,
-      archivePath,
       generationRoot,
       importLowRam,
       fileName,
       expectedArchiveBytes,
+      resources,
     );
     if (report.success && report.title === "") {
       // hdw_import refuses a title it cannot use as a folder name, so this is
@@ -2844,6 +2942,7 @@ const HANDLERS = {
       if (staged.byteLength === 0) {
         throw new Error(`${stagedRequest.fileName} is empty`);
       }
+      const stagedResources = await stageImportResources(stagedRequest);
 
       return await serialise(async () => {
         requireEngine();
@@ -2882,6 +2981,7 @@ const HANDLERS = {
               importDecision,
             ),
           staged.byteLength,
+          stagedResources,
         );
 
         if (!report.success) {
