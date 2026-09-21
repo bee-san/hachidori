@@ -50,11 +50,12 @@ export function createLocalFileAccessController({
   const description = make("p", "local-file-description",
     `To look up Japanese in HTML files opened from your computer, ${COPY.description}`);
   const instruction = make("p", "local-file-instruction", COPY.instruction);
-  const recovery = canOpenSettings
-    ? make("p", "local-file-recovery",
-      `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}`
-        + (onDismiss ? ", then choose Resume setup." : " to return."))
-    : null;
+  let recovery = null;
+  if (canOpenSettings) {
+    const returnPath = onDismiss ? ", then choose Resume setup." : " to return.";
+    recovery = make("p", "local-file-recovery",
+      `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}${returnPath}`);
+  }
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
