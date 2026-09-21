@@ -709,43 +709,76 @@ export function imageSizingFixture() {
   return { archive, bytes, cases, path, query, title };
 }
 
+// Meikyo-style gaiji: a PNG glyph, plus the shapes the real 明鏡国語辞典 第三版
+// and 小学館例解学習国語 conversions use. Their gaiji are viewBox-only SVGs
+// (no intrinsic size) sized by dictionary CSS in Yomitan's em-per-pixel
+// convention, and their appendix entries hide a converter `<head>` tail
+// through a Japanese-keyed data attribute.
 export function gaijiSizingFixture() {
   const title = 'meikyo-gaiji-compat-fixture';
   const query = '外字表示';
   const path = 'gaiji/bs-arrow.png';
+  const svgPath = 'gaiji/参考.svg';
   const bytes = makePng();
+  const svgBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
+    + '<path d="M992,512L512,992L32,512L512,32Z" fill="#c00"/></svg>');
   const data = { class: 'gaiji', glyph: 'bs-arrow', 'unsafe key': 'ignored' };
+  const svgData = { ...data, img: '' };
+  // `width`/`height` are the rendered box in a real browser at the 16px
+  // glossary font; `inlineWidth` is the style the renderer writes (null: the
+  // decoded natural width in px).
   const cases = [
-    { name: 'natural', dimensions: {}, width: 16, height: 16 },
-    { name: 'explicit', dimensions: { width: 40, height: 20 }, width: 40, height: 20 },
+    { name: 'natural', dimensions: {}, inlineWidth: null, width: 16, height: 16 },
+    { name: 'explicit', dimensions: { width: 40, height: 20 }, inlineWidth: '40px', width: 40, height: 20 },
+    { name: 'em', dimensions: { width: 2, height: 1, sizeUnits: 'em' }, inlineWidth: '2em', width: 32, height: 16 },
+    // Chrome decodes a viewBox-only SVG as 150x150; the dictionary's Yomitan
+    // rule `width: 15em !important` must land at 15px, not 15 text ems.
+    { name: 'viewbox-svg', path: svgPath, data: svgData, dimensions: {}, inlineWidth: null, width: 15, height: 15 },
   ];
+  const hiddenHeadText = 'content="width=device-width, initial-scale = 1.0" />';
   const styles = [
     '.gloss-sc-span[data-sc-class="gaiji"] > .gloss-sc-a[data-sc-glyph="bs-arrow"] .gloss-sc-img {',
     '  filter: invert(0.9);',
     '}',
+    'span[data-sc-img][data-sc-class="gaiji"] .gloss-image-container {',
+    '  width: 15em !important;',
+    '}',
+    '[data-sc付録] [data-sc-head] {',
+    '  display: none;',
+    '}',
   ].join('\n');
   const archive = buildTitledZip(title, {
-    mediaEntries: [[path, bytes]],
+    mediaEntries: [[path, bytes], [svgPath, svgBytes]],
     styles,
     terms: [[query, 'がいじひょうじ', '', '', 0, [{
       type: 'structured-content',
       content: {
         tag: 'div',
-        content: cases.map(({ name, dimensions }) => ({
-          tag: 'p',
-          content: [
-            `${name}: `,
-            {
-              tag: 'span',
-              data,
-              content: { tag: 'img', path, alt: `${name} gaiji`, data, ...dimensions },
-            },
-          ],
-        })),
+        content: [
+          ...cases.map((entry) => ({
+            tag: 'p',
+            content: [
+              `${entry.name}: `,
+              {
+                tag: 'span',
+                data: entry.data ?? data,
+                content: { tag: 'img', path: entry.path ?? path, alt: `${entry.name} gaiji`, data: entry.data ?? data, ...entry.dimensions },
+              },
+            ],
+          })),
+          {
+            tag: 'p',
+            data: { '付録': '' },
+            content: [
+              { tag: 'span', data: { head: '' }, content: { tag: 'span', data: { meta: '', name: 'viewport' }, content: hiddenHeadText } },
+              '記号一覧',
+            ],
+          },
+        ],
       },
     }], 1, '']],
   });
-  return { archive, bytes, cases, data, path, query, styles, title };
+  return { archive, bytes, cases, data, hiddenHeadText, path, query, styles, svgBytes, svgPath, title };
 }
 
 export function imagePreviewFixture() {

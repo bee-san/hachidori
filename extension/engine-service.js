@@ -1637,6 +1637,29 @@ function rollbackImportedGeneration(generationRoot, failure) {
   return rollbackImportedGenerations([generationRoot], failure);
 }
 
+// The engine matches a term bank `path` to a ZIP entry name byte for byte.
+// Archives built on macOS store decomposed (NFD) Japanese names while the
+// term bank keeps the composed (NFC) form, and some converters percent-encode
+// the path; in both cases the same file is meant. Try the spelled path first,
+// then those equivalents. Names in another byte encoding cannot be recovered
+// here.
+function mediaPathCandidates(path) {
+  const candidates = [path];
+  let decoded = path;
+  if (path.includes("%")) {
+    try {
+      decoded = decodeURIComponent(path);
+      candidates.push(decoded);
+    } catch {
+      // Not percent-encoded; keep the raw path only.
+    }
+  }
+  for (const source of new Set([path, decoded])) {
+    candidates.push(source.normalize("NFC"), source.normalize("NFD"));
+  }
+  return [...new Set(candidates)];
+}
+
 function mediaType(path) {
   const dot = path.lastIndexOf(".");
   const extension = dot < 0 ? "" : path.slice(dot + 1).toLowerCase();
@@ -2667,8 +2690,12 @@ const HANDLERS = {
     if (dictionary === "" || path === "") {
       return { dataUrl: null };
     }
-    const length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, path]);
-    throwIfEngineFailed("hdw_media");
+    let length = 0;
+    for (const candidate of mediaPathCandidates(path)) {
+      length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, candidate]);
+      throwIfEngineFailed("hdw_media");
+      if (length > 0) break;
+    }
     if (length <= 0) {
       return { dataUrl: null };
     }

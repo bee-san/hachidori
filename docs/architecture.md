@@ -1269,7 +1269,11 @@ handler checks it after loading and before native extraction, so queued media
 cannot accidentally read a replacement dictionary. Only an accepted current
 lookup/kanji response adopts the reader's generation; late media or styles
 cannot roll it backward. A restarted engine may legitimately report a lower
-generation number.
+generation number. The engine compares the term bank `path` with the archive
+entry name byte for byte; the handler retries a miss with the NFC and NFD
+spellings and the percent-decoded form of the path, because macOS-built
+archives store decomposed Japanese names and some converters percent-encode
+paths. Entry names in another byte encoding are not recoverable.
 
 Image-source selection is independent of the dictionary supplying the text.
 Automatic retains that dictionary's direct media path; an explicit dictionary or
@@ -1570,8 +1574,10 @@ the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
 after expiry. Failed choices are forgotten so ordinary playback can fall back.
-The content controller retains the explicit selection for the later Anki path;
-this stage does not add Anki submission.
+An ordinary play that ends on a downloadable recording pins that recording the
+same way, so `{audio}` attaches the reading the user heard; browser speech is
+not pinned and keeps the ordinary source fallback. The content controller
+retains the selection for the Anki path.
 
 Optional autoplay is off by default and runs once for the first current result
 of a logical lookup/tab. Expansion, presentation echoes, Note refresh and Back
