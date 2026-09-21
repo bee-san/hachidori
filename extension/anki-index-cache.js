@@ -83,6 +83,10 @@ function normalizedLookup(value, wordKey) {
   };
 }
 
+function ownsAttempt(current, source, token) {
+  return current.attempt?.sourceKey === source.key && current.attempt.startedAt === token.startedAt;
+}
+
 export function createAnkiDuplicateIndex({
   fetchRows,
   lookupLive,
@@ -159,10 +163,6 @@ export function createAnkiDuplicateIndex({
       });
       if (changed) install(saved);
     });
-  }
-
-  function ownsAttempt(current, source, token) {
-    return current.attempt?.sourceKey === source.key && current.attempt.startedAt === token.startedAt;
   }
 
   async function pull(source, token) {
