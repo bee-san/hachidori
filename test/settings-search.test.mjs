@@ -61,6 +61,10 @@ test("global search finds inactive section controls and lazy Audio by its voice 
   assert.ok(f.match("Audio"), "voice is discoverable before lazy Audio rows are mounted");
   f.query("flashcards");
   assert.ok(f.match("Anki"), "flashcard settings are discoverable before lazy field mappings are mounted");
+  f.query("experimental");
+  const experimental = f.match("Experimental features");
+  assert.ok(experimental, "the experimental group is discoverable before its rows are mounted");
+  assert.match(experimental.querySelector("small").textContent, /Advanced/u);
 });
 
 test("Library exposes its related views together and search reports that hierarchy", t => {

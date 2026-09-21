@@ -458,6 +458,7 @@ const PLANNED = [
   "image previews close on leave, blur, scrolling and pending navigation",
   "dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
   "Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
+  "dictionary CSS hides a converter head tail through a Japanese-keyed data attribute",
 ];
 
 const results = [];
@@ -1061,6 +1062,8 @@ async function popupReader(page, depth = 0) {
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
           theme: root.host?.dataset.hoshidictsTheme ?? null,
+          hiddenHeads: [...this.querySelectorAll("[data-sc付録] [data-sc-head]")]
+            .map(node => ({ display: view.getComputedStyle(node).display, text: node.textContent })),
           preview: preview ? {
             rect: preview.getBoundingClientRect().toJSON(),
             source: expanded.src, width: expanded.naturalWidth, height: expanded.naturalHeight,
@@ -3517,27 +3520,35 @@ async function gaijiSizingChrome({ page, tab, popup }) {
       state = await popup.imagePreview();
       if (state?.theme === "dark"
           && state.images.length === fixture.cases.length
-          && state.images.every(image => image.width === 16 && image.height === 16)) break;
+          && state.images.every(image => image.width > 0 && image.height > 0)) break;
       await new Promise(done => setTimeout(done, 25));
     } while (Date.now() < deadline);
-    const expectedSource = `data:image/png;base64,${fixture.bytes.toString("base64")}`;
+    const expectedSources = {
+      [fixture.path]: `data:image/png;base64,${fixture.bytes.toString("base64")}`,
+      [fixture.svgPath]: `data:image/svg+xml;base64,${fixture.svgBytes.toString("base64")}`,
+    };
     check("Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
       state?.theme === "dark" && state.images.length === fixture.cases.length
         && state.images.every((image, index) => {
           const expected = fixture.cases[index];
-          return image.source === expectedSource
+          return image.source === expectedSources[expected.path ?? fixture.path]
             && image.linkClasses.includes("gloss-sc-a")
             && image.imageClasses.includes("gloss-sc-img")
             && image.structuredData["data-sc-class"] === "gaiji"
             && image.structuredData["data-sc-glyph"] === "bs-arrow"
             && !Object.hasOwn(image.structuredData, "data-sc-unsafe key")
             && image.filter !== "none"
-            && image.display.inlineWidth === `${expected.width}px`
+            && image.display.inlineWidth === (expected.inlineWidth ?? `${image.width}px`)
             && Math.abs(image.display.width - expected.width) <= 1 / 64
             && Math.abs(image.display.height - expected.height) <= 1 / 64
             && image.overflow?.clientWidth > 0
             && image.overflow.scrollWidth <= image.overflow.clientWidth + 1;
         }), JSON.stringify(state));
+    check("dictionary CSS hides a converter head tail through a Japanese-keyed data attribute",
+      state?.hiddenHeads?.length === 1
+        && state.hiddenHeads[0].display === "none"
+        && state.hiddenHeads[0].text === fixture.hiddenHeadText,
+      JSON.stringify(state?.hiddenHeads));
   } finally {
     await setTheme(originalTheme);
   }
@@ -5655,10 +5666,13 @@ async function checkAnkiSettings(page, browser) {
       statusCard: (() => {
         const node = document.getElementById("anki-status");
         const style = getComputedStyle(node);
+        const marker = getComputedStyle(node, "::before");
         return {
           display: style.display,
           fontSize: Number.parseFloat(style.fontSize),
-          marker: getComputedStyle(node, "::before").maskImage,
+          markerMask: marker.maskImage,
+          markerWidth: Number.parseFloat(marker.width),
+          state: node.dataset.state,
           ready: node.classList.contains("is-ready"),
           height: node.getBoundingClientRect().height,
         };
@@ -5669,9 +5683,10 @@ async function checkAnkiSettings(page, browser) {
         && persisted.anki.fieldTemplates.Expression.value === "{expression}"
         && persisted.anki.fieldTemplates.Audio.value === "{audio}"
         && persisted.status.generation === original.status.generation
-        && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
-        && persisted.statusCard.marker.includes("data:image/svg+xml,") && persisted.statusCard.ready
-        && persisted.statusCard.height >= 56, JSON.stringify(persisted));
+        && persisted.statusCard.display === "flex" && persisted.statusCard.fontSize <= 13
+        && persisted.statusCard.markerMask === "none" && persisted.statusCard.markerWidth === 7
+        && persisted.statusCard.state === "connected" && persisted.statusCard.ready
+        && persisted.statusCard.height < 56, JSON.stringify(persisted));
 
     const comboboxContract = await page.evaluate(async () => {
       const { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } = await import("./anki-templates.js");
@@ -5929,7 +5944,6 @@ async function checkAnkiSettings(page, browser) {
     await editTemplate("<b>{expression}</b> {unknown}");
     const invalidMarker = await status();
     await editTemplate("<b>{expression}</b>");
-    await page.$eval(".anki-details", node => { node.open = true; });
     await choose("duplicate-behavior", "overwrite");
     await page.select(`#${templateId}-mode`, "coalesce-new");
     await saved();
@@ -5960,17 +5974,13 @@ async function checkAnkiSettings(page, browser) {
         && templateReload.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
         && templateReload.editor === "<b>{expression}</b>" && templateReload.status.generation === original.status.generation,
       JSON.stringify({ beforeTemplateRefresh, afterTemplateRefresh, templateReload }));
-    if (process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT
-        || process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT) {
-      await page.$eval(".anki-details", node => { node.open = true; });
-    }
     if (process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT) {
       const section = await page.$("#anki");
       await section.screenshot({ path: process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT });
     }
     if (process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT) {
-      const details = await page.$(".anki-details");
-      await details.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT });
+      const duplicateRow = await page.$(".anki-duplicate-row");
+      await duplicateRow.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SETTINGS_SCREENSHOT });
     }
     await checkAnkiGlossaryExport(page);
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
@@ -10296,7 +10306,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 9
+      && links.length === 10
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -10401,12 +10411,18 @@ async function main() {
     JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, pickerKeepsFocus, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
   const themeLayouts = [];
+  // Media capture is experimental: its section joins the navigation only after
+  // the Advanced switch is on, so the layout sweep turns it on first.
+  await showSettingsSection(page, "advanced");
+  await page.click("#opt-experimental-mediaMining");
+  await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden
+    && document.getElementById("options-status").textContent.trim() === "Saved.", { timeout: 10_000, polling: 100 });
   for (const width of [320, 1280]) {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "default"]) {
       await setSettingsTheme(theme);
       for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "keybinds", "custom-dictionary",
-        "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
+        "add-dictionaries", "updates", "dictionary-groups", "backup", "advanced"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const panel = document.getElementById(section);
@@ -10415,6 +10431,7 @@ async function main() {
             audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
+            advanced: "opt-experimental-mediaMining",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
@@ -10430,8 +10447,12 @@ async function main() {
               const rect = control.getBoundingClientRect();
               return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
             }),
-            statusFits: status === null || (status.checkVisibility() && statusStyle.display === "grid"
-              && Number.parseFloat(statusStyle.fontSize) >= 16 && statusRect.left >= 0 && statusRect.right <= innerWidth + 1
+            statusFits: status === null || (status.checkVisibility()
+              && (section === "anki"
+                ? statusStyle.display === "flex" && Number.parseFloat(statusStyle.fontSize) >= 12
+                  && ["connected", "checking", "offline"].includes(status.dataset.state)
+                : statusStyle.display === "grid" && Number.parseFloat(statusStyle.fontSize) >= 16)
+              && statusRect.left >= 0 && statusRect.right <= innerWidth + 1
               && getComputedStyle(status, "::before").content !== "none"),
           };
         }, { theme, section }));

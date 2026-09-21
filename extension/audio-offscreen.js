@@ -9,6 +9,14 @@ const TEST_TERM = { expression: "聞く", reading: "きく" };
 const TEST_TIMEOUT_MS = 15_000;
 const FALLBACK_TIMEOUT_MS = 12_000;
 
+// Identify the played source the way the candidate menu does, so the reader
+// can pin the pronunciation it just played as its Anki selection.
+function withSourceKey(played, sources) {
+  if (played.status !== "success") return played;
+  const source = sources.find(candidate => candidate.id === played.sourceId);
+  return { ...played, sourceKey: JSON.stringify(source) };
+}
+
 export function createAudioService(window, repository = createAudioRepository({ window, fetch: window.fetch.bind(window), now: () => window.performance.now() })) {
   const extensionApi = selectExtensionApi(window);
   const player = createAudioPlayer({ window, repository });
@@ -83,7 +91,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
       const plan = message.selection
         ? await selectedAudioPlan(repository, message.sources, message.term, message.selection, signal) : { sources: message.sources };
       signal.throwIfAborted();
-      return await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
+      const played = await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
         onResolving: resumeDeadline,
         onPlaying(value) {
           if (active !== operation) return;
@@ -93,6 +101,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
             owner: operation.owner, requestId: operation.requestId, ...value }).catch(() => {});
         },
       });
+      return withSourceKey(played, plan.sources);
     } catch (error) {
       if (operation.controller.signal.aborted && error?.name === "AbortError") return { status: "cancelled" };
       throw error;

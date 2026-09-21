@@ -77,6 +77,29 @@ test("Settings explicitly retries setup discovery and applies its proposal throu
   assert.match(f.el("anki-setup-status").textContent, /Found Kiku/u);
 });
 
+test("setup proposals appear in Suggested destination groups with known model field counts", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  discovery(f.sent[0], { decks: ["Default", "Mining"], models: ["Basic", "Kiku v2"], fields: [] });
+  await tick();
+  f.el("anki-find-setup").click();
+  f.sent.at(-1).resolve({ ok: true,
+    proposal: { status: "configured", model: "Kiku v2", deck: "Mining", fieldTemplates: {} },
+    outcome: { status: "configured", model: "Kiku v2", deck: "Mining", detail: null } });
+  await tick();
+  discovery(f.sent.at(-1), { decks: ["Default", "Mining"], models: ["Basic", "Kiku v2"],
+    fields: ["Expression", "Reading", "Sentence", "Definition"] });
+  await tick();
+
+  const deckGroups = [...f.el("opt-anki-deck").querySelectorAll("optgroup")];
+  assert.deepEqual(deckGroups.map(group => group.label), ["Suggested", "All decks"]);
+  assert.equal(deckGroups[0].querySelector("option").textContent, "Suggested: Mining");
+  const modelGroups = [...f.el("opt-anki-model").querySelectorAll("optgroup")];
+  assert.deepEqual(modelGroups.map(group => group.label), ["Suggested", "All note types"]);
+  assert.equal(modelGroups[0].querySelector("option").textContent, "Suggested: Kiku v2 (4 fields)");
+  assert.deepEqual([...modelGroups[1].querySelectorAll("option")].map(option => option.textContent), ["Basic"]);
+});
+
 test("a setup proposal cannot replace intervening Settings edits, and a verified mapping is never rewritten", async t => {
   const f = fixture(t);
   f.controller.render();
@@ -127,6 +150,37 @@ test("setup discovery belongs to the selected Template even when two Templates h
     outcome: { status: "unavailable", detail: "Open Anki for this Template.", model: null, deck: null } });
   await tick();
   assert.match(f.el("anki-setup-status").textContent, /this Template/u);
+});
+
+test("connection status data-state follows checking, connected and offline discovery", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  assert.equal(f.el("anki-status").dataset.state, "checking");
+  discovery(f.sent[0]);
+  await tick();
+  assert.equal(f.el("anki-status").dataset.state, "connected");
+
+  const pending = f.controller.refresh();
+  assert.equal(f.el("anki-status").dataset.state, "checking");
+  f.sent.at(-1).resolve({ ok: true, connected: false, decks: [], models: [],
+    model: f.read().model, fields: [], errors: ["Anki is offline."] });
+  await pending;
+  assert.equal(f.el("anki-status").dataset.state, "offline");
+});
+
+test("API key disclosure opens on first render for a saved key and keeps aria state in sync", t => {
+  const f = fixture(t);
+  f.adopt({ apiKey: "saved-secret" });
+  const toggle = f.el("anki-api-key-toggle");
+  const panel = f.el("anki-api-key-panel");
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.hidden, false);
+  toggle.click();
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(panel.hidden, true);
+  toggle.click();
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.hidden, false);
 });
 
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
@@ -230,6 +284,33 @@ test("presets and field comboboxes save one complete snapshot, retain invalid dr
   model.dispatchEvent(new f.window.Event("change", { bubbles: true }));
   assert.equal(f.read().fieldTemplates, null);
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
+});
+
+test("field mapping filter hides retained rows and reports the visible count", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: {
+    Front: { value: "", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" },
+  } });
+  discovery(f.sent[0], { fields: ["Front", "Back", "Extra"] });
+  await tick();
+
+  assert.equal(f.el("anki-field-count").textContent, "Showing 3 fields");
+  assert.deepEqual(rows(f).map(item => item.querySelector(".anki-field-index")?.textContent), ["01", "02", "03"]);
+  assert.equal(row(f, "Front").classList.contains("is-unmapped"), true);
+  assert.equal(row(f, "Back").classList.contains("is-unmapped"), false);
+
+  const filter = f.el("anki-field-filter");
+  filter.value = "ba";
+  filter.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(rows(f).length, 3, "filtering retains every mapping row in the DOM");
+  assert.deepEqual(rows(f).map(item => item.hidden), [true, false, true]);
+  assert.equal(f.el("anki-field-count").textContent, "Showing 1 of 3 fields");
+
+  filter.value = "";
+  filter.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.deepEqual(rows(f).map(item => item.hidden), [false, false, false]);
+  assert.equal(f.el("anki-field-count").textContent, "Showing 3 fields");
 });
 
 test("simple mappings project without writes and the first explicit edit materializes their exact field templates", async t => {
@@ -582,6 +663,40 @@ function templateFixture(t, { send: sendRequest } = {}) {
     buttons(value) { buttons = value; },
   };
 }
+
+test("Template pills select through the existing Template change path", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  const pills = [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")];
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["true", "false"]);
+  assert.equal(pills[0].querySelector(".anki-template-pill-badge")?.textContent, "Built-in");
+
+  pills[1].click();
+  await tick();
+  assert.equal(f.el("anki-template-select").value, "sentence");
+  assert.equal(f.el("opt-anki-template-name").value, "Sentence card");
+  assert.deepEqual([...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")]
+    .map(pill => pill.getAttribute("aria-pressed")), ["false", "true"]);
+});
+
+test("Set built-in moves the selected Template first and updates its badge", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")][1].click();
+  await tick();
+  const setBuiltin = f.el("anki-template-set-builtin");
+  assert.equal(setBuiltin.disabled, false);
+  setBuiltin.click();
+
+  assert.deepEqual(f.read().templates.map(template => template.id), ["sentence", "default"]);
+  const pills = [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")];
+  assert.match(pills[0].textContent, /Sentence card/u);
+  assert.equal(pills[0].querySelector(".anki-template-pill-badge")?.textContent, "Built-in");
+  assert.equal(pills[0].getAttribute("aria-pressed"), "true");
+  assert.equal(setBuiltin.disabled, true);
+});
 
 test("Template manager edits the selected mapping while connection settings remain shared", async t => {
   const f = templateFixture(t);

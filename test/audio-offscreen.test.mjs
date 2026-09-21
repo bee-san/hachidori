@@ -61,6 +61,7 @@ test("a selected pronunciation binds its exact source, term and candidate even a
   const selection = { sourceId: source.id, sourceKey: groups[0].sourceKey, ...term, index: 1, ...candidates[1] };
   const result = await service({ ...message, type: "hd_audio_play", selection });
   assert.equal(result.candidate.index, 1);
+  assert.equal(result.sourceKey, groups[0].sourceKey, "a played recording names its source like the candidate menu");
   assert.deepEqual(downloads, [candidates[1].url]);
   assert.equal(events[0].requestId, message.requestId);
   assert.equal(events[0].candidate.name, "Osaka");
@@ -71,6 +72,9 @@ test("a selected pronunciation binds its exact source, term and candidate even a
   await assert.rejects(service({ ...message, sources: [{ ...source, url: "https://example.test/replacement" }],
     type: "hd_audio_play", selection }), /no longer current/u);
   assert.equal(downloads.length, 1);
+  const unselected = await service({ ...message, type: "hd_audio_play", requestId: "first" });
+  assert.deepEqual([unselected.status, unselected.sourceId, unselected.sourceKey, unselected.candidate.index],
+    ["success", source.id, groups[0].sourceKey, 0], "an unselected play still reports which recording it chose");
 });
 
 test("fallback resumes the remaining discovery deadline after a playing recording fails", async () => {
