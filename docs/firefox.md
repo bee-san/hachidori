@@ -33,8 +33,13 @@ threaded OPFS engine but use the same dictionaries.
 Firefox removes temporary add-ons when the browser closes. The XPI is unsigned;
 permanent installation waits on AMO review and signing.
 
-Use Firefox’s Add-ons Manager (`about:addons`) for extension permissions,
-local-file access, and browser-owned shortcuts. Hachidori’s backup and Sharing
+Firefox 153 gates `file://` reading behind its own **Access local files on your
+computer** permission, off by default. Extensions cannot open the Add-ons
+Manager, so Hachidori’s **Read saved pages too** panel gives the path instead of
+a button: open `about:addons`, choose Hachidori, open **Permissions and data**,
+and turn the permission on; the panel confirms when you return. The Keybinds
+section’s **Change in Firefox** opens Firefox’s Manage Extension Shortcuts view
+through `commands.openShortcutSettings()`. Hachidori’s backup and Sharing
 features are the supported ways to move state between Chrome and Firefox.
 
 ## Build from a checkout
@@ -80,9 +85,10 @@ shared with Chrome:
 The other two warnings identify guarded `chrome.offscreen.createDocument()`
 references in `chrome-offscreen.js`. Firefox imports the shared background
 module but takes the persistent-iframe branch before this helper can run. The
-real Firefox smoke installs the packaged XPI, verifies the authenticated iframe
-host, imports a dictionary, performs a lookup, and checks the same iframe and
-engine generation after 31 seconds.
+real Firefox smoke installs the packaged XPI, confirms first-run setup opened the
+startup reader, verifies the authenticated iframe host, imports a dictionary,
+performs a lookup, and checks the same iframe and engine generation after 31
+seconds.
 
 None of these warnings adds remote executable code to the Firefox package.
 

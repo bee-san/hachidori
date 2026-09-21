@@ -23,7 +23,7 @@
 - Reject crafted media-capture messages with an explicit unsupported response.
 - Preserve saved capture configuration and custom template text so moving a backup back to Chrome is lossless.
 - Derive extension origins and internal URLs from `runtime.getURL()`.
-- Use Firefox wording and `about:addons` for browser-owned extension and shortcut controls.
+- Use Firefox wording for browser-owned controls: `commands.openShortcutSettings()` opens the shortcut manager, and the local-file panel gives the `about:addons` path because Firefox lets no extension open it.
 
 ## Packaging and validation
 

@@ -165,6 +165,37 @@ async function main() {
     );
   }
 
+  // Tab URLs as the browser sees them: extension pages hide their URL from
+  // tabs.query, and about: pages opened by Firefox itself are invisible to it.
+  async function browserTabUrls() {
+    await setContext("chrome");
+    try {
+      return await execute(`
+        const windowMediator = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
+        return [...windowMediator.getMostRecentWindow("navigator:browser").gBrowser.tabs]
+          .map(tab => tab.linkedBrowser.currentURI.spec);
+      `);
+    } finally {
+      await setContext("content");
+    }
+  }
+
+  async function closeBrowserTabs(pattern) {
+    await setContext("chrome");
+    try {
+      await execute(`
+        const windowMediator = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
+        const { gBrowser } = windowMediator.getMostRecentWindow("navigator:browser");
+        const pattern = new RegExp(arguments[0], "u");
+        for (const tab of [...gBrowser.tabs]) {
+          if (pattern.test(tab.linkedBrowser.currentURI.spec)) gBrowser.removeTab(tab);
+        }
+      `, [pattern.source]);
+    } finally {
+      await setContext("content");
+    }
+  }
+
   async function navigateInitial(path) {
     await setContext("chrome");
     let details = null;
@@ -266,7 +297,24 @@ async function main() {
       "hachidori@bee-san",
     );
 
+    // First run: runtime.onInstalled reaches the persistent background page only
+    // if background.js registered its listener during synchronous evaluation.
+    // The handler seeds setup state and opens the startup reader exactly once.
+    const startupTab = /^moz-extension:\/\/[^/]+\/startup\.html$/u;
+    let openTabs = [];
+    for (let attempt = 0; attempt < 100 && !openTabs.some(url => startupTab.test(url)); attempt += 1) {
+      await sleep(100);
+      openTabs = await browserTabUrls();
+    }
+    assert.ok(openTabs.some(url => startupTab.test(url)), `first-run setup did not open startup.html: ${JSON.stringify(openTabs)}`);
+    await closeBrowserTabs(startupTab);
+
     const settingsUrl = await navigateInitial("settings.html");
+    const seeded = await execute(`
+      const done = arguments[arguments.length - 1];
+      browser.storage.local.get("setupState").then(stored => done(stored.setupState?.stage ?? null), error => done(String(error)));
+    `, [], true);
+    assert.equal(typeof seeded, "string", `first-run setup state was not seeded: ${JSON.stringify(seeded)}`);
     let host = null;
     let engine = null;
     for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -321,11 +369,16 @@ async function main() {
     // APIs are absent from the package rather than failing at call time.
     const parity = await execute(`
       const customJavascript = document.getElementById("custom-javascript");
+      const localFile = document.getElementById("settings-local-file-access");
       return {
         customJavascriptHidden: customJavascript.hidden,
         customJavascriptUnavailable: customJavascript.dataset.settingsUnavailable,
         customCssPresent: document.getElementById("opt-custom-popup-css") !== null,
         shortcutsButton: document.getElementById("browser-shortcuts-open").textContent.trim(),
+        localFileOpenButton: document.getElementById("local-file-open"),
+        localFileInstructionHidden: document.getElementById("local-file-instruction").hidden,
+        localFileInstruction: document.getElementById("local-file-instruction").textContent,
+        localFileHidden: localFile.hidden,
         downloadsApi: typeof browser.downloads?.download,
         userScriptsApi: typeof browser.userScripts,
         extensionProtocol: new URL(browser.runtime.getURL("")).protocol,
@@ -336,10 +389,37 @@ async function main() {
       customJavascriptUnavailable: "true",
       customCssPresent: true,
       shortcutsButton: "Change in Firefox",
+      // Firefox 153+ gates file:// behind its own permission and refuses
+      // tabs.create("about:addons"), so Settings shows the manual path instead.
+      localFileOpenButton: null,
+      localFileInstructionHidden: false,
+      localFileInstruction: "Open about:addons, choose Hachidori, open the Permissions and data tab,"
+        + " turn on “Access local files on your computer”, then return to this tab.",
+      localFileHidden: false,
       downloadsApi: "function",
       userScriptsApi: "undefined",
       extensionProtocol: "moz-extension:",
     });
+
+    // The shortcuts button must reach Firefox's Manage Extension Shortcuts
+    // view, which lives in about:addons and is only reachable through
+    // commands.openShortcutSettings(). Its controller mounts with the section.
+    await execute(`location.hash = "#keybinds";`);
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (await execute(`return document.getElementById("browser-shortcut-list").childElementCount > 0;`)) break;
+      await sleep(100);
+    }
+    await execute(`document.getElementById("browser-shortcuts-open").click();`);
+    let tabsAfterShortcuts = [];
+    for (let attempt = 0; attempt < 50 && !tabsAfterShortcuts.some(url => url.startsWith("about:addons")); attempt += 1) {
+      await sleep(100);
+      tabsAfterShortcuts = await browserTabUrls();
+    }
+    assert.ok(
+      tabsAfterShortcuts.some(url => url.startsWith("about:addons")),
+      `Change in Firefox did not open the shortcuts manager: ${JSON.stringify(tabsAfterShortcuts)}`,
+    );
+    await closeBrowserTabs(/^about:addons/u);
 
     const imported = await execute(`
       const done = arguments[arguments.length - 1];
@@ -506,9 +586,10 @@ async function main() {
     assert.deepEqual(toolbar, { hidden: true, disabled: true });
 
     console.log(
-      `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension},`
+      `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension}, first-run setup,`
         + ` ${engine.storageBackend} import/lookup,`
         + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI,`
+        + ` shortcuts manager, local-file instructions,`
         + ` Anki status, pronunciation fetched and ${audioOutcome}, backup round-trip, sharing status and screenshot passed.`
         + ` Settings: ${settingsUrl}; toolbar: ${toolbarUrl}`,
     );

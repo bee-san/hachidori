@@ -661,7 +661,8 @@ keybind action, with a count of one for entry moves. Only a frame with an open
 popup, or a selection for the scans, acts on it. Chrome alone can change these
 shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
-and opens `chrome://extensions/shortcuts`.
+and opens `chrome://extensions/shortcuts` (Firefox: `commands.openShortcutSettings()`,
+since `tabs.create` refuses `about:addons`).
 
 ![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
 
