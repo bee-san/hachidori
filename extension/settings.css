@@ -1027,8 +1027,7 @@ input[type="checkbox"] {
 .dict-details-toggle:hover,
 .anki-marker-reference > summary:hover,
 .settings-disclosure > summary:hover,
-.format-help > summary:hover,
-.anki-details > summary:hover {
+.format-help > summary:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1269,8 +1268,7 @@ textarea {
   font-weight: var(--weight-bold);
 }
 .settings-disclosure,
-.format-help,
-.anki-details {
+.format-help {
   min-width: 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -1278,14 +1276,12 @@ textarea {
   background: var(--surface-sunken);
 }
 .settings-disclosure > summary,
-.format-help > summary,
-.anki-details > summary {
+.format-help > summary {
   cursor: pointer;
   font-weight: var(--weight-medium);
 }
 .settings-disclosure[open] > summary,
-.format-help[open] > summary,
-.anki-details[open] > summary {
+.format-help[open] > summary {
   margin-bottom: 16px;
 }
 .settings-disclosure > p:last-child {
@@ -2125,9 +2121,6 @@ textarea {
     grid-column: 2;
     grid-row: 1 / 3;
     justify-self: end;
-  }
-  .anki-destination .fields {
-    grid-template-columns: minmax(0, 1fr);
   }
   .automatic-backup-row {
     align-items: stretch;
