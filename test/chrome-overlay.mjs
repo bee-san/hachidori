@@ -172,6 +172,15 @@ async function showSection(page, id) {
   }, { timeout: 30_000, polling: 100 }, id);
 }
 
+// Media capture is an experimental feature: its section only joins the
+// navigation after the Advanced switch is on.
+async function enableMediaMining(page) {
+  await showSection(page, "advanced");
+  await page.click("#opt-experimental-mediaMining");
+  await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden,
+    { timeout: 10_000, polling: 100 });
+}
+
 async function editSettingsControls(settings, values) {
   const section = await settings.evaluate((id) => {
     const owner = document.getElementById(id).closest("section");
@@ -443,6 +452,7 @@ try {
     { effective: "light", stored: "auto" }, { effective: "dark", stored: "auto" },
   ], "overlay Settings follows the live browser preference from its first seeded options");
   await importFixture(settings);
+  await enableMediaMining(settings);
   await showSection(settings, "media");
   await settings.waitForFunction(() =>
     [...document.querySelectorAll("#media button, #media input, #media select")].every(control => control.disabled));

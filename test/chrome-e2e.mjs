@@ -10285,7 +10285,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 9
+      && links.length === 10
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",

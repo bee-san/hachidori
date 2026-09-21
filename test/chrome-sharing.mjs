@@ -589,6 +589,10 @@ async function checkOverlaySharing(hostPage) {
     const speech = await page.evaluate(() => ({ visible: !document.getElementById("audio-mining-help").hidden,
       help: document.getElementById("audio-mining-help").textContent,
       captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
+    await showSection(page, "advanced");
+    await page.click("#opt-experimental-mediaMining");
+    await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden,
+      { timeout: 10_000, polling: 100 });
     await showSection(page, "media");
     const media = await page.evaluate(() => ({
       allDisabled: [...document.querySelectorAll("#media button, #media input, #media select")]
