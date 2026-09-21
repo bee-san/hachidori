@@ -5777,6 +5777,48 @@ async function main() {
   );
   await request("hd_remove", { id: longKeyPackage?.id, title: LONG_KEY_TITLE });
 
+  // An MDict dictionary: the .mdx plus its .mdd travel as blob URLs, the engine
+  // service stages them side by side under their own names so the importer
+  // finds the resource file, and the result is an ordinary package whose media
+  // and stylesheet come from the MDD. The staging directory must not outlive
+  // the import. A resource list on a ZIP import is refused before any staging.
+  const mdxFixtures = resolve(ROOT, "third_party", "hoshidicts", "tests", "fixtures", "mdict");
+  const mdxBytes = (name) => new Uint8Array(readFileSync(resolve(mdxFixtures, name)));
+  const mdxImport = await request("hd_import", {
+    blobUrl: createObjectURL(mdxBytes("v2_utf8_lzo_html.mdx")), fileName: "v2_utf8_lzo_html.mdx", lowRam: false,
+    resources: [{ fileName: "v2_utf8_lzo_html.mdd", blobUrl: createObjectURL(mdxBytes("v2_utf8_lzo_html.mdd")) }],
+  });
+  const mdxState = await storedDictionaryState();
+  const mdxPackage = mdxState.dictionaries.find((dictionary) => dictionary.title === "HTML Fixture");
+  const mdxLookup = await request("hd_lookup", {
+    text: "食べる", maxResults: 32, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const mdxStyles = await request("hd_styles");
+  const mdxMedia = await request("hd_media", { generation: mdxLookup.generation, dictionary: "HTML Fixture", path: "mdict-media/img/pic.png" });
+  const mdxZipWithResources = await request("hd_import", {
+    blobUrl: createObjectURL(buildLongKeyZip()), fileName: "long-key.zip", lowRam: false,
+    resources: [{ fileName: "long-key.mdd", blobUrl: createObjectURL(mdxBytes("v2_utf8_lzo_html.mdd")) }],
+  });
+  check(
+    "an .mdx with its .mdd imports through hd_import as a package with MDD media and styles",
+    mdxImport.ok === true
+      && mdxImport.report?.title === "HTML Fixture"
+      && mdxPackage?.termCount === 8
+      && mdxPackage?.mediaCount === 4
+      && mdxPackage?.revision === "mdx import"
+      && expressions(mdxLookup).includes("食べる")
+      && mdxStyles.styles?.some((entry) => entry.dictionary === "HTML Fixture" && entry.styles.includes(".mdx-red"))
+      && /^data:image\/png;base64,/u.test(mdxMedia.dataUrl ?? "")
+      && !observedEngine.FS.analyzePath("/.hdw-mdx").exists
+      && mdxZipWithResources.ok === false
+      && /only a local \.mdx import can carry resource files/u.test(mdxZipWithResources.error ?? ""),
+    JSON.stringify({ import: mdxImport, package: mdxPackage, lookup: expressions(mdxLookup), styles: mdxStyles.styles,
+      media: mdxMedia.dataUrl?.slice(0, 32), staging: observedEngine.FS.analyzePath("/.hdw-mdx").exists,
+      zipWithResources: mdxZipWithResources }),
+  );
+  await request("hd_remove", { id: mdxPackage?.id, title: "HTML Fixture" });
+
   section("interactive atomic replacement");
   const atomicTitle = "atomic-replacement-fixture";
   const atomicSource = {
@@ -8610,6 +8652,28 @@ async function main() {
       && settingsBatch.stateReads === 3
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
+  );
+  const settingsMdx = await settingsMdxImportStage();
+  check(
+    "settings groups an .mdx with its .mdd files into one resourced import and reports an orphan .mdd",
+    settingsMdx?.accept === ".zip,application/zip,.mdx,.mdd"
+      && settingsMdx.label === "Choose dictionary files"
+      && JSON.stringify(settingsMdx.importRequests) === JSON.stringify([
+        { fileName: "Dict.mdx", blobUrl: settingsMdx.createdUrls[0],
+          resources: [{ fileName: "dict.MDD", blobUrl: settingsMdx.createdUrls[1] },
+            { fileName: "Dict.1.mdd", blobUrl: settingsMdx.createdUrls[2] }],
+          importDecision: "absent" },
+        { fileName: "plain.zip", blobUrl: settingsMdx.createdUrls[3], resources: undefined, importDecision: "present" },
+      ])
+      && JSON.stringify(settingsMdx.identityReads) === JSON.stringify(["plain.zip"])
+      && JSON.stringify([...settingsMdx.revokedUrls].sort()) === JSON.stringify([...settingsMdx.createdUrls].sort())
+      && settingsMdx.createdUrls.length === 4
+      && JSON.stringify(settingsMdx.outcomes.map(({ name, error }) => [name, error]))
+        === JSON.stringify([["Dict.mdx", false], ["plain.zip", false], ["Other.mdd", true]])
+      && settingsMdx.outcomes[0].text.includes("Imported Dict")
+      && settingsMdx.outcomes[2].text.includes("together with the .mdx")
+      && settingsMdx.finalState === "Finished 3 of 3 files — 2 imported, 1 failed.",
+    JSON.stringify(settingsMdx),
   );
   const navigationSettings = await settingsNavigationStage();
   check("Settings navigation loads personal source on first visit and preserves mounted drafts",
@@ -12100,6 +12164,103 @@ async function settingsBatchImportStage() {
     controlsRestored: input.disabled === false,
     stateReads,
     statusReads,
+  };
+  dom.window.close();
+  return result;
+}
+
+// With the MDX dictionaries flag on, a dropped batch groups each .mdx with the
+// .mdd files named after its stem into one hd_import carrying `resources`,
+// still imports ZIPs on their own, and reports an .mdd without its .mdx.
+async function settingsMdxImportStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html#add-dictionaries`,
+  });
+  const { window } = dom;
+  const state = { schemaVersion: 1, revision: 0, dictionaries: [] };
+  const importRequests = [];
+  const identityReads = [];
+  const createdUrls = [];
+  const revokedUrls = [];
+  window.URL.createObjectURL = (file) => {
+    const url = `blob:settings-mdx/${createdUrls.length}-${file.name}`;
+    createdUrls.push(url);
+    return url;
+  };
+  window.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+  window.__readDictionaryArchiveIdentity = async (file) => {
+    identityReads.push(file.name);
+    return { title: file.name.replace(/\.zip$/u, ""), revision: "1", indexUrl: null, downloadUrl: null };
+  };
+  window.chrome = {
+    runtime: {
+      id: "hachidorisettingsmdxsmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
+        if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+        if (message.type === "hd_options_write") return { ok: true, options: structuredClone(message.options) };
+        if (message.type === "hd_import") {
+          importRequests.push({ fileName: message.fileName, blobUrl: message.blobUrl,
+            resources: message.resources, importDecision: message.importDecision === undefined ? "absent" : "present" });
+          await new Promise((done) => window.setTimeout(done, 0));
+          return { ok: true, report: { success: true, title: message.fileName.replace(/\.\w+$/u, ""), termCount: 1 } };
+        }
+        throw new Error(`unexpected settings mdx request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return { options: { kanjiClickDictionary: "",
+            experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, mdxImport: true } } };
+        },
+      },
+      onChanged: { addListener() {} },
+    },
+  };
+  loadSettingsScript(window);
+  const deadline = Date.now() + 2000;
+  while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+
+  const input = window.document.getElementById("import-file");
+  const accept = input.accept;
+  const files = [
+    new window.File(["mdx"], "Dict.mdx"),
+    new window.File(["mdd"], "dict.MDD"),
+    new window.File(["zip"], "plain.zip", { type: "application/zip" }),
+    new window.File(["mdd1"], "Dict.1.mdd"),
+    new window.File(["orphan"], "Other.mdd"),
+  ];
+  Object.defineProperty(input, "files", { configurable: true, value: files });
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const batchDeadline = Date.now() + 2000;
+  while ((importRequests.length < 2 || input.disabled) && Date.now() < batchDeadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const outcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+    name: item.querySelector(".setup-dictionary-name")?.textContent ?? "",
+    text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
+    error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
+  }));
+  const result = {
+    accept,
+    label: window.document.getElementById("import-file-label")?.textContent ?? "",
+    importRequests,
+    identityReads,
+    createdUrls,
+    revokedUrls,
+    outcomes,
+    finalState: window.document.getElementById("import-state")?.textContent ?? "",
   };
   dom.window.close();
   return result;
