@@ -45,6 +45,8 @@
   const EXPERIMENTAL_FEATURES = [
     { id: "mediaMining", label: "Media mining", section: "media",
       description: "Record screen and audio clips from the page for Anki notes. Shows the Media capture section." },
+    { id: "longKeyScan", label: "Long dictionary entries",
+      description: "Find dictionary entries longer than the scan length. The reader collects more page text only when an installed dictionary lists such entries, and the engine reads further only when the text starts like one of them." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in

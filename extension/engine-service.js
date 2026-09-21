@@ -54,11 +54,12 @@ const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 const KINDS = ["term", "freq", "pitch", "kanji"];
 
 // A directory holding one of these is an imported dictionary; anything else
-// under /dicts is debris. _4 means the importer trained a zstd dictionary for
-// the term banks and wrote a dict.zstd alongside; _3 means it did not, which is
-// also how every dictionary imported by an older engine looks. Both load, so the
-// presence of dict.zstd is deliberately not part of the test.
-const MARKER_FILES = [".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshidicts_1"];
+// under /dicts is debris. _6 and _4 mean the importer trained a zstd dictionary
+// for the term banks and wrote a dict.zstd alongside; _5 and _3 mean it did not,
+// which is also how every dictionary imported by an older engine looks. _5 and
+// _6 store the term score as a double, _4 and older as an int32. All load, so
+// the presence of dict.zstd is deliberately not part of the test.
+const MARKER_FILES = [".hoshidicts_6", ".hoshidicts_5", ".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshidicts_1"];
 
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
@@ -589,6 +590,40 @@ async function stableDictionaryId(title) {
   return Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+// Longest key, in code points, that the dictionary's long-key scan index
+// records: the importer lists every key longer than 16 code points by its
+// first eight, and the engine extends a lookup past its scan length only when
+// the text begins like one of them (hoshidicts src/scan_index.hpp). The reader
+// adds this to the page text it collects so such a key can be seen at all.
+// Header: u32 magic "HDSI", u32 version, u32 count, u16 longest key. 0 for a
+// dictionary imported before the index existed or with no long key.
+const SCAN_INDEX_MAGIC = 0x49534448;
+const SCAN_INDEX_VERSION = 1;
+const SCAN_INDEX_HEADER_BYTES = 16;
+
+function longKeyLengthFromScanIndex(path) {
+  const file = `${path}/scan.idx`;
+  if (!exists(file)) return 0;
+  const header = new Uint8Array(SCAN_INDEX_HEADER_BYTES);
+  let read = 0;
+  try {
+    const stream = engine.FS.open(file, "r");
+    try {
+      read = engine.FS.read(stream, header, 0, SCAN_INDEX_HEADER_BYTES, 0);
+    } finally {
+      engine.FS.close(stream);
+    }
+  } catch {
+    // An unreadable index only costs the long-key window; the dictionary
+    // itself still loads and lookups stay at the configured scan length.
+    return 0;
+  }
+  if (read < SCAN_INDEX_HEADER_BYTES) return 0;
+  const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  if (view.getUint32(0, true) !== SCAN_INDEX_MAGIC || view.getUint32(4, true) !== SCAN_INDEX_VERSION) return 0;
+  return view.getUint16(12, true);
+}
+
 function readDictionaryIndex(path) {
   const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
   return parseJson(json, `${path}/index.json`);
@@ -622,6 +657,7 @@ async function packageFromIndex(path) {
     pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
     kanjiCount: count(index?.counts?.kanji?.total),
     mediaCount: count(index?.counts?.media?.total),
+    longKeyLength: longKeyLengthFromScanIndex(path),
     installedAt: installedAt(index?.importDate, path),
     lastUpdateCheck: null,
   };

@@ -308,23 +308,30 @@ mediaCount      1
 and the imported directory must be:
 
 ```
-       0  .hoshidicts_3
-    1307  blobs.bin
+       0  .hoshidicts_5
+    1447  blobs.bin
       32  bloom.filter
      260  hash.table
-     719  index.json
+     738  index.json
      160  media.bin
       12  media.idx
 ```
+
+(`blobs.bin` grew from 1307 bytes when the term score became a double; `index.json`
+from 719 when the importer began recording the long-key scan index.)
 
 ### the trained fixture, and why there are two markers
 
 The importer trains a zstd dictionary from the **first** term bank when it can
 sample at least eight glossaries out of it, and then compresses every glossary
-against it. That changes the directory: the marker becomes `.hoshidicts_4` and a
-`dict.zstd` appears next to `blobs.bin`. Below the floor it writes `.hoshidicts_3`
-and no `dict.zstd`, which is byte-for-byte what every dictionary imported by a
-pre-`.hoshidicts_4` engine looks like.
+against it. That changes the directory: the marker becomes `.hoshidicts_6` and a
+`dict.zstd` appears next to `blobs.bin`. Below the floor it writes `.hoshidicts_5`
+and no `dict.zstd`. `.hoshidicts_4` and `.hoshidicts_3` are the same pair written
+by engines that stored the term score as an int32 rather than a double; the
+engine still reads them, and `test/legacy/` keeps one directory of each, written
+by the engine at hoshidicts `1ec66fe` from these same fixture zips, so that the
+compatibility check loads bytes the current importer no longer produces rather
+than a fresh import under another name.
 
 `hachidori-fixture.zip` has six term rows, deliberately under that floor, so it stays
 the compatibility case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
@@ -427,14 +434,17 @@ What it proves, in order:
    and after, and no staging debris is left behind), and a re-import that fails
    after the title is parsed leaves the installed copy complete, loadable and
    answering lookups.
-9. **Both on-disk layouts, side by side.** The 6-row fixture lands in the pre-4
-   layout and the 49-row one trains a zstd dictionary, so `.hoshidicts_3` with no
-   `dict.zstd` and `.hoshidicts_4` with one are both imported, both loaded — at
-   the same time, from one query object, which is the state of a profile after an
-   engine upgrade — and both asserted through a real lookup whose glossary bytes
-   only come back if the dictionary the importer trained was found. Then the other
-   direction: a `_4` directory whose `dict.zstd` is missing, empty, or not a
-   valid trained dictionary must be *refused* by `add_dict`.
+9. **Every on-disk layout, side by side.** The 6-row fixture lands in the
+   untrained layout and the 49-row one trains a zstd dictionary, so `.hoshidicts_5`
+   with no `dict.zstd` and `.hoshidicts_6` with one are both imported, both loaded,
+   and both asserted through a real lookup whose glossary bytes only come back if
+   the dictionary the importer trained was found. Then the previous engine's
+   `test/legacy/legacy-3` (`.hoshidicts_3`, int32 score) loads at the same time as
+   a fresh `_5` import, from one query object — the state of a profile after an
+   engine upgrade — and the merged term reports the same score from both, and
+   `legacy-4` (`.hoshidicts_4`, `dict.zstd`) still decompresses its glossaries.
+   Then the other direction: a `_6` directory whose `dict.zstd` is missing, empty,
+   or not a valid trained dictionary must be *refused* by `add_dict`.
 10. **Interrupted installation recovery.** Synthetic transaction trees cover a
     partial old-dictionary backup, a committed backup beside a partial new
     destination, a complete new destination beside its retained backup, and an
@@ -723,7 +733,7 @@ What it proves, in order:
    failure case injects a `chrome.storage.local.set` rejection: the original
    generation and live engine must remain intact. Startup recovery also preserves
    a legitimate legacy dictionary whose title is `.hdw-remove`.
-10. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
+10. **A trained (`.hoshidicts_6`) dictionary through the extension layer.**
    Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
    engine writes for a real dictionary. `buildTrainedZip()` goes through

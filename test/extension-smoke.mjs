@@ -48,6 +48,12 @@ import {
   TRAINED_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  buildLongKeyZip,
+  LONG_KEY_TITLE,
+  LONG_KEY_PROVERB,
+  LONG_KEY_PHRASE,
+  LONG_KEY_PHRASE_INFLECTED,
+  LONG_KEY_LENGTH,
   buildTrainedZip,
   frequencyRankingFixture,
   gaijiSizingFixture,
@@ -89,6 +95,7 @@ const DICTIONARY_PACKAGE_KEYS = [
   "kanjiCount",
   "language",
   "lastUpdateCheck",
+  "longKeyLength",
   "mediaCount",
   "path",
   "pitchCount",
@@ -5739,6 +5746,37 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  // A dictionary with keys longer than the scan length: the import records the
+  // longest such key on the package row (from scan.idx), and the same
+  // scanLength 16 lookup that could never reach a 27-code-point key now returns
+  // it when the text begins like it.
+  const longKeyImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildLongKeyZip()), fileName: "long-key.zip", lowRam: false,
+  });
+  const longKeyState = await storedDictionaryState();
+  const longKeyPackage = longKeyState.dictionaries.find((dictionary) => dictionary.title === LONG_KEY_TITLE);
+  const longKeyLookup = await request("hd_lookup", {
+    text: `${LONG_KEY_PROVERB}と昔から言われている。`, maxResults: 32, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const longKeyInflected = await request("hd_lookup", {
+    text: `${LONG_KEY_PHRASE_INFLECTED}と昔から言われている。`, maxResults: 32, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const expressions = (reply) => reply.results?.map((result) => result.term?.expression) ?? [];
+  check(
+    "an import records its longest indexed key and scanLength 16 lookups reach keys longer than 16",
+    longKeyImport.ok === true
+      && longKeyPackage?.longKeyLength === LONG_KEY_LENGTH
+      && importedPackage.longKeyLength === 0
+      && expressions(longKeyLookup).includes(LONG_KEY_PROVERB)
+      && longKeyLookup.results.find((result) => result.term?.expression === LONG_KEY_PROVERB)?.matched === LONG_KEY_PROVERB
+      && expressions(longKeyInflected).includes(LONG_KEY_PHRASE),
+    JSON.stringify({ ok: longKeyImport.ok, error: longKeyImport.error, longKeyLength: longKeyPackage?.longKeyLength,
+      proverb: expressions(longKeyLookup), inflected: expressions(longKeyInflected) }),
+  );
+  await request("hd_remove", { id: longKeyPackage?.id, title: LONG_KEY_TITLE });
+
   section("interactive atomic replacement");
   const atomicTitle = "atomic-replacement-fixture";
   const atomicSource = {
@@ -7771,8 +7809,8 @@ async function main() {
   check(
     "removal recovery preserves a legacy .hdw-remove dictionary and restores its staged child",
     legacyRemovalReload.ok === true
-      && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_3`).exists
-      && observedEngine.FS.analyzePath(`/dicts/${FIXTURE_TITLE}/.hoshidicts_3`).exists
+      && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_5`).exists
+      && observedEngine.FS.analyzePath(`/dicts/${FIXTURE_TITLE}/.hoshidicts_5`).exists
       && !observedEngine.FS.analyzePath(stagedBesideLegacyPath).exists
       && afterLegacyRemovalReload.dictionaries.some((dictionary) => dictionary.title === legacyRemovalTitle),
     JSON.stringify({ legacyRemovalReload, afterLegacyRemovalReload }),
@@ -9063,11 +9101,11 @@ async function main() {
     [true, generationBefore],
   );
 
-  section("a trained (.hoshidicts_4) dictionary through the extension layer");
+  section("a trained (.hoshidicts_6) dictionary through the extension layer");
   // Everything above imports the 6-row fixture, which is under the importer's
-  // zstd-training floor and therefore lands in the pre-4 layout. Nothing outside
-  // node-smoke.mjs had ever seen the layout the current engine writes for a real
-  // dictionary: a .hoshidicts_4 marker, a dict.zstd, and glossaries compressed
+  // zstd-training floor and therefore lands in the untrained layout. Nothing
+  // outside node-smoke.mjs had ever seen the layout the current engine writes for
+  // a real dictionary: a .hoshidicts_6 marker, a dict.zstd, and glossaries compressed
   // against it. That layout has to survive the extension's strict-load and IDBFS
   // round trip, neither of which node-smoke.mjs touches.
   const trainedImport = await request("hd_import", {
@@ -9080,10 +9118,10 @@ async function main() {
     [true, TRAINED_TITLE, TRAINED_TERMS.length],
   );
   // The import is not published until its exact manifest path strict-loads. A
-  // runtime that does not recognise .hoshidicts_4 rejects this package instead.
+  // runtime that does not recognise .hoshidicts_6 rejects this package instead.
   const trainedStatus = await request("hd_status");
   equal(
-    "offscreen.js recognises the .hoshidicts_4 directory as a dictionary",
+    "offscreen.js recognises the .hoshidicts_6 directory as a dictionary",
     [trainedStatus.ok, trainedStatus.dictionaryCount],
     [true, 1],
   );
@@ -9109,7 +9147,7 @@ async function main() {
   check(
     "syncfs(false) persisted the marker and dict.zstd, not just the banks",
     persisted.includes(`${trainedPath}/dict.zstd`)
-      && persisted.includes(`${trainedPath}/.hoshidicts_4`),
+      && persisted.includes(`${trainedPath}/.hoshidicts_6`),
     JSON.stringify(persisted.sort()),
   );
   // The real assertion: these bytes only come back if the dictionary the importer
@@ -17030,6 +17068,65 @@ async function contentNoteStage() {
       held && recovered?.request.text === harness.candidate.query && visible };
   }
 
+  // The engine finds dictionary keys longer than the scan length only if it is
+  // handed enough text: each package row carries the longest key its long-key
+  // index lists, and while the experimental Long dictionary entries flag is on
+  // the reader collects that many code points plus eight for an inflected
+  // ending while still requesting options.scanLength. Off, it collects
+  // options.scanLength whatever the packages list.
+  async function longKeyWindowCase() {
+    const experimental = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, longKeyScan: true };
+    const harness = await createHarness(undefined, { options: { experimental } });
+    const window = harness.popup.ownerDocument.defaultView;
+    window.Range.prototype.getClientRects = () => [];
+    const document = window.document;
+    const block = document.createElement("p");
+    block.style.display = "block";
+    block.textContent = "\u3042".repeat(300);
+    document.body.append(block);
+    const scan = () => {
+      const range = document.createRange();
+      range.setStart(block.firstChild, 0);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      return harness.driver.resolveCandidate(0, 0);
+    };
+    const state = (rows) => ({ schemaVersion: 1, revision: 0, groups: [], dictionaries: rows });
+    let revision = 1;
+    const emit = (rows) => harness.emitState({ ...state(rows), revision: ++revision });
+    const base = genericPackage({ favorite: true });
+    const length = (candidate) => Array.from(candidate?.query ?? "").length;
+
+    const plain = length(scan());
+    emit([{ ...base, longKeyLength: 37 }]);
+    const withLongKeys = length(scan());
+    emit([{ ...base, longKeyLength: 37, enabled: false }, genericPackage({ id: "other", title: "Other" })]);
+    const disabledLongKeys = length(scan());
+    emit([{ ...base, longKeyLength: 37 }, genericPackage({ id: "longer", title: "Longer", longKeyLength: 250 })]);
+    const capped = length(scan());
+    emit([{ ...base, longKeyLength: 37, termCount: 0, frequencyCount: 3 }]);
+    const frequencyOnly = length(scan());
+    emit([{ ...base, longKeyLength: 1 }]);
+    const shorterThanScan = length(scan());
+
+    emit([{ ...base, longKeyLength: 37 }]);
+    harness.driver.onMouseMove({ target: block, clientX: 10, clientY: 10 });
+    await harness.settle();
+    const request = harness.take("hd_lookup");
+
+    harness.emitOptions({ scanLength: 9, experimental: { ...experimental, longKeyScan: false } });
+    const flagOff = length(scan());
+    harness.emitOptions({ scanLength: 9, experimental });
+    const flagBackOn = length(scan());
+    harness.close();
+    return { "the reader hands the engine the longest indexed key plus eight while requesting its own scan length":
+      plain === 9 && withLongKeys === 45 && disabledLongKeys === 9 && capped === 256 && frequencyOnly === 9
+        && shorterThanScan === 9 && request?.request.scanLength === 9 && Array.from(request?.request.text ?? "").length === 45
+        || { plain, withLongKeys, disabledLongKeys, capped, frequencyOnly, shorterThanScan, request: request?.request && { scanLength: request.request.scanLength, textLength: Array.from(request.request.text).length } },
+      "the long-key window applies only while the Long dictionary entries flag is on":
+        flagOff === 9 && flagBackOn === 45 || { flagOff, flagBackOn } };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -18655,7 +18752,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await longKeyWindowCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),

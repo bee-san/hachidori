@@ -26,14 +26,15 @@ test("experimental features are registered with defaults that start off", () => 
 });
 
 test("experimental patches accept only registered boolean flags", () => {
-  assert.deepEqual(validateOptionsPatch({ experimental: { mediaMining: true } }),
-    { experimental: { mediaMining: true } });
+  const complete = { ...DEFAULT_OPTIONS.experimental, mediaMining: true };
+  assert.deepEqual(validateOptionsPatch({ experimental: complete }), { experimental: complete });
   // A complete record is required, as for mediaCapture, so a writer cannot silently drop a flag.
-  for (const invalid of [null, [], "on", {}, { mediaMining: "yes" }, { mediaMining: true, unknown: true }]) {
+  for (const invalid of [null, [], "on", {}, { mediaMining: true }, { ...complete, mediaMining: "yes" },
+    { ...complete, unknown: true }]) {
     assert.throws(() => validateOptionsPatch({ experimental: invalid }), /invalid reader option/);
   }
   assert.deepEqual(projectStoredOptions({ experimental: { mediaMining: 1, extra: true } }).experimental,
-    { mediaMining: false }, "stored garbage falls back to the default without throwing");
+    DEFAULT_OPTIONS.experimental, "stored garbage falls back to the default without throwing");
 });
 
 test("a missing experimental record inherits media mining from the legacy capture switch", () => {
