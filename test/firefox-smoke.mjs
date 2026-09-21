@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { prepareFirefoxExtension } from "../scripts/prepare-firefox.mjs";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TOOLING = resolve(ROOT, "test/tooling");
@@ -66,16 +67,16 @@ async function startFixtureServer() {
       const record = { method: request.method, url: request.url, origin: request.headers.origin ?? null, body };
       requests.push(record);
       if (request.method === "POST" && request.url === "/") {
-        const { action, params } = JSON.parse(body);
-        const results = {
-          deckNames: ["Default", "Mining"],
-          modelNames: ["Basic"],
-          modelFieldNames: params?.modelName === "Basic" ? ["Front", "Back"] : null,
-        };
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(Object.hasOwn(results, action) && results[action] !== null
-          ? { result: results[action], error: null }
-          : { result: null, error: `unexpected ${action}` }));
+        answerAnkiConnect(JSON.parse(body), (action, params) => {
+          record.actions = [...(record.actions ?? []), action];
+          if (action === "deckNames") return ["Default", "Mining"];
+          if (action === "modelNames") return ["Basic"];
+          if (action === "modelFieldNames" && params.modelName === "Basic") return ["Front", "Back"];
+          throw new Error(`unexpected ${action}`);
+        }).then(reply => {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify(reply));
+        });
         return;
       }
       if (request.method === "GET" && request.url === "/page") {
@@ -392,7 +393,7 @@ async function main() {
     assert.match(ankiStatus.configKey, /^[0-9a-f-]+$/u);
     const ankiRequests = fixtureServer.requests.filter(record => record.url === "/");
     assert.deepEqual(
-      [...new Set(ankiRequests.map(record => JSON.parse(record.body).action))].sort(),
+      [...new Set(ankiRequests.flatMap(record => record.actions ?? []))].sort(),
       ["deckNames", "modelFieldNames", "modelNames"],
     );
     assert.ok(ankiRequests.every(record => record.origin?.startsWith("moz-extension://")),
@@ -457,7 +458,7 @@ async function main() {
       })().then(done, error => done({ error: String(error) }));
     `, [`${fixtureServer.origin}/page`], true);
     assert.deepEqual(contentScripts.anki, { present: true }, JSON.stringify(contentScripts));
-    assert.equal(contentScripts.capture.reply, undefined, `the capture content script must not be injected in Firefox: ${JSON.stringify(contentScripts.capture)}`);
+    assert.equal(contentScripts.capture.reply ?? null, null, `the capture content script must not be injected in Firefox: ${JSON.stringify(contentScripts.capture)}`);
 
     // Screenshots: the packaged startup reader is the one extension page that
     // may capture itself; Firefox resolves its tab from the sender instead of
