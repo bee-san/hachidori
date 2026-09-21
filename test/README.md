@@ -83,6 +83,11 @@ entries' tag structure, visible kana markers, tabs-only lower chrome, concise ty
 explicit display choices, source details, and live grammar/name controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
+`node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's
+badge draws its own mora contour with the `[n]` position, keeps `reading [n]`
+in its tooltip and accessibility label through alias changes, and falls back to
+the text badge when the position lies outside the reading's morae.
+
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
 pending save. The extension smoke suite also verifies that selected missing

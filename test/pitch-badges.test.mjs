@@ -52,7 +52,7 @@ test("every pitch badge draws its own mora contour and keeps the reading [n] lab
     const body = tag.querySelector(".gsm-hoshidicts-pitch-body");
     const contour = body.querySelector(".gsm-hoshidicts-pitch-contour");
     assert.ok(contour, "badge body holds a contour");
-    assert.deepEqual(morae(contour), f.HDGlossary.buildPitchAccentMorae("しょうわ", index));
+    assert.equal(JSON.stringify(morae(contour)), JSON.stringify(f.HDGlossary.buildPitchAccentMorae("しょうわ", index)));
     assert.equal(morae(contour).length, 3);
     assert.equal(body.querySelector(".gsm-hoshidicts-pitch-position").textContent, `[${index}]`);
     assert.equal(tag.title, `${["NHK", "Daijirin"][index]}: しょうわ [${index}]`);

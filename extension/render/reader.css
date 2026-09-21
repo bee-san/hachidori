@@ -2347,8 +2347,21 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-pitch-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 3px 5px;
   background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
+}
+
+/* A badge draws the same mora contour as the header furigana at tag size. */
+.gsm-hoshidicts-pitch-body > .gsm-hoshidicts-pitch-contour {
+  color: inherit;
+}
+
+.gsm-hoshidicts-pitch-position {
+  color: var(--text-color-light1);
+  font-variant-numeric: tabular-nums;
 }
 
 .gsm-hoshidicts-glossary-grid {

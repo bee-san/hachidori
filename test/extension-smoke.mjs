@@ -18937,6 +18937,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   let addNoteEntry = async () => {};
   const view = HDPopup.createPopupView({
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     document,
     getPopupColumns: () => 1,
@@ -19465,6 +19466,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
   const settle = () => new Promise(resolve => window.setTimeout(resolve, 0));
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     queueMasonry: callback => layouts.add(callback),
@@ -19579,6 +19581,7 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
   let positions = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
@@ -19692,6 +19695,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
   let fills = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
@@ -19928,6 +19932,7 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   let showCounts = false;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     // The owner decides visibility; the renderer only provides the slot.
@@ -19964,6 +19969,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
   const expanded = [];
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     onResultsExpanded: ({ audioButtons }) => {
@@ -20141,6 +20147,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   }
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) {
       fills += 1;
       linkPredicates.push(args[3].isCurrentLink);
@@ -20482,6 +20489,7 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
   let current = true;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
   });
@@ -20574,6 +20582,7 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
   const view = HDPopup.createPopupView({
     document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     positionPopup() { layouts += 1; },
@@ -21105,6 +21114,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     parseTagList: HDGlossary.parseTagList,
     appendTextOnlyGlossary(...args) {
       fills += 1;
