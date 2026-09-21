@@ -35,8 +35,10 @@ function pitchGraph(reading, pitch, kana) {
   if (!contour) return "";
   const { morae, levels } = contour;
   const step = kana ? 35 : 50, height = kana ? 80 : 100, radius = kana ? 5 : 15;
+  const highY = kana ? 10 : 25;
+  const lowY = kana ? 35 : 75;
   const points = levels.map((level, index) => ({ x: step * (index + 0.5),
-    y: level === "H" ? (kana ? 10 : 25) : (kana ? 35 : 75) }));
+    y: level === "H" ? highY : lowY }));
   const width = step * points.length;
   const label = `${reading}: pitch accent ${pitch.pattern || pitch.position}`;
   const lines = points.slice(1).map((point, index) => {
