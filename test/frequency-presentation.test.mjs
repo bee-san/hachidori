@@ -36,7 +36,7 @@ function fixture(t) {
   const candidate = { anchor: source, query: RESULT.matched, sentence: source.textContent,
     sourceElements: [source], matchOffset: 7 };
   t.after(() => { view.destroy(); window.close(); });
-  return { popup, view, options: HDReaderOptions, render: (options, result = RESULT) => {
+  return { popup, view, candidate, options: HDReaderOptions, render: (options, result = RESULT) => {
     view.renderResults([result], candidate, options);
     return popup.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
   } };
@@ -54,21 +54,55 @@ test("fresh and partial stored options default to numeric frequencies while expl
   assert.equal(chosen.hidePopupGrammarTags, false);
 });
 
-test("the default Jiten frequency is a labelled pill that preserves the kana marker", t => {
+// The class path from the frequency tag down to its values, so the first
+// entry's capsule and a later entry's metadata row can be compared as DOM
+// shape rather than by their (different) numbers.
+function tagShape(tag) {
+  return [tag.className, ...[...tag.querySelectorAll("*")].map(node => node.className)];
+}
+
+test("the first entry's frequency tags share the later entries' Yomitan-like tag structure", t => {
+  const f = fixture(t);
+  const defaults = f.options.normaliseOptions({});
+  const second = { ...RESULT, term: { ...RESULT.term, expression: "食う", reading: "くう", frequencies: [
+    { dictionary: "Jiten", frequencies: [{ value: 2048, displayValue: "2,048" }, { value: 3100, displayValue: "3,100㋕" }] },
+  ] } };
+  const cases = [
+    { ...defaults },
+    { ...defaults, showFrequencyDictionaryNames: true },
+    { ...defaults, averageFrequency: true, dictionaryPresentation: [{ title: "Jiten", frequencyMode: "rank-based" }] },
+  ];
+  for (const options of cases) {
+    f.view.renderResults([RESULT, second], f.candidate, { ...options, expandAll: true });
+    const capsule = f.popup.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
+    const primary = capsule.querySelector(".gsm-hoshidicts-primary-frequencies > .gsm-hoshidicts-tag-frequency");
+    const later = f.popup.querySelectorAll(".gsm-hoshidicts-entry")[1]
+      .querySelector(".gsm-hoshidicts-frequency-metadata > .gsm-hoshidicts-tag-frequency");
+    assert.ok(primary, "first entry keeps a frequency tag in its capsule");
+    assert.ok(later, "second entry renders a frequency tag in its metadata row");
+    assert.deepEqual(tagShape(primary), tagShape(later));
+    assert.equal(Boolean(primary.querySelector(".gsm-hoshidicts-frequency-source")),
+      Boolean(options.showFrequencyDictionaryNames || options.averageFrequency));
+    assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-frequency-label"), null);
+    assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-frequencies-default"), null);
+    assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-frequencies[data-average]"), null);
+  }
+});
+
+test("the default Jiten frequency is a plain tag that preserves the kana marker", t => {
   const f = fixture(t);
   for (const options of [undefined, f.options.normaliseOptions({})]) {
     const capsule = f.render(options);
     const entry = f.popup.querySelector(".gsm-hoshidicts-entry");
     const frequencies = capsule.querySelector(".gsm-hoshidicts-primary-frequencies");
-    assert.equal(capsule.textContent, "Freq: 14.2k㋕ · 191");
+    assert.equal(capsule.textContent, "14.2k㋕ · 191");
     assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
     assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-header").contains(capsule), false);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-source"), null);
-    assert.equal(frequencies.classList.contains("gsm-hoshidicts-primary-frequencies-default"), true);
-    assert.equal(frequencies.querySelector(".gsm-hoshidicts-primary-frequency-label")?.textContent, "Freq:");
+    assert.equal(frequencies.className, "gsm-hoshidicts-primary-frequencies");
     assert.deepEqual(
       [...frequencies.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => node.textContent),
       ["14.2k㋕", "191"]
@@ -96,11 +130,9 @@ test("live display choices keep frequency and grammar in the primary result and 
   form.elements.definition.value = "keep my draft";
   f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true, hidePopupGrammarTags: false });
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").textContent, "Jiten14.2k㋕ · 191");
-  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies-default"), null);
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
-  assert.equal(capsule.textContent, "Freq: 14.2k㋕ · 191");
-  assert.ok(capsule.querySelector(".gsm-hoshidicts-primary-frequencies-default"));
+  assert.equal(capsule.textContent, "14.2k㋕ · 191");
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
   assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
