@@ -364,7 +364,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // learns of a running one; Settings hides the switch when threaded is false.
   recycler.setDesired(message.lowMemoryMode === true);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
-  return false;
+  return true;
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -452,7 +452,7 @@ function dispatchEngine(message, sendResponse) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target !== TARGET || message.relayed !== true || message.type === "hd_engine_config") {
+  if (message?.target !== TARGET || message.relayed !== true || message.type === "hd_engine_config") {
     return false;
   }
   dispatchEngine(message, sendResponse);

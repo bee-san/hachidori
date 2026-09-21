@@ -27,7 +27,8 @@ export function createMemorySettings({ document, readMemory, numberFormat = new 
     const target = row.querySelector(".dict-memory");
     if (!target) return;
     const bytes = latest?.dictionaries.find((entry) => entry.id === row.dataset.dictionaryId)?.bytes;
-    target.textContent = `In memory: ${typeof bytes === "number" ? `\u2248 ${formatBytes(bytes)}` : UNAVAILABLE}`;
+    const share = typeof bytes === "number" ? `\u2248 ${formatBytes(bytes)}` : UNAVAILABLE;
+    target.textContent = `In memory: ${share}`;
   }
 
   function renderRows() {
