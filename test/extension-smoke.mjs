@@ -9548,6 +9548,7 @@ async function settingsNavigationStage() {
       requests.push(structuredClone(message));
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+      if (message.type === "hd_memory") return { ok: true, heapBytes: 0, dictionaries: [] };
       if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
         semanticRevision: "a".repeat(64), text: "" } };
       if (message.type === "hd_backup_auto_list") {

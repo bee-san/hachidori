@@ -345,7 +345,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  refreshMemorySettings();
+  if (activeSection === "advanced") refreshMemorySettings();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
@@ -606,11 +606,10 @@ function memorySettings() {
   return memoryController;
 }
 
-// The readout is asked for on demand, not polled: when Advanced or a Library
-// section is shown, when the Library rows are rebuilt, and when the engine
-// publishes a new generation (import, reload, recycle).
+// The readout is asked for on demand, not polled: when Advanced is shown, when
+// the Library rows are rebuilt, and when the engine publishes a new generation
+// (import, reload, recycle).
 function refreshMemorySettings() {
-  if (activeSection !== "advanced" && !LIBRARY_SECTIONS.has(activeSection)) return;
   void memorySettings().refresh();
 }
 

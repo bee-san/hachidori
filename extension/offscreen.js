@@ -55,6 +55,7 @@ const MUTATION_TYPES = new Set([
   "hd_backup_cancel",
 ]);
 const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
+const POLL_TYPES = new Set(["hd_status", "hd_memory"]);
 const IMPORT_READ_TYPES = new Set([
   "hd_lookup",
   "hd_lookup_dictionary",
@@ -180,7 +181,9 @@ function finishRequest(id, response) {
   if (id === activeImportRequestId) activeImportRequestId = null;
   trackHeldState(request.message, response);
   if (mutated) recycler.noteMutationSettled();
-  recycler.noteIdle();
+  // A status or memory poll is not activity; only requests that touch the
+  // dictionaries keep the idle window open.
+  if (!POLL_TYPES.has(request.message.type)) recycler.noteIdle();
   if (response?.type === "hd_status_result") {
     lastEngineStatus = {
       ...lastEngineStatus,
