@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { prepareFirefoxExtension } from "../scripts/prepare-firefox.mjs";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TOOLING = resolve(ROOT, "test/tooling");
@@ -74,10 +74,13 @@ async function startFixtureServer() {
           if (action === "modelFieldNames" && params.modelName === "Basic") return ["Front", "Back"];
           // The duplicate index may refresh as soon as a note type is configured.
           if (action === "findNotes") return [];
-          throw new Error(`unexpected ${action}`);
+          throw new AnkiConnectError(`unexpected ${action}`);
         }).then(reply => {
           response.writeHead(200, { "content-type": "application/json" });
           response.end(JSON.stringify(reply));
+        }, error => {
+          response.writeHead(500);
+          response.end(String(error));
         });
         return;
       }
