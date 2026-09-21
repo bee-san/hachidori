@@ -20914,7 +20914,7 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     const container = link.querySelector(".gloss-image-container");
     gaijiRendered.push({
       name: fixtureCase.name,
-      width: Number.parseFloat(container.style.width),
+      inlineWidth: container.style.width,
       padding: Number.parseFloat(container.querySelector(".gloss-image-sizer").style.paddingTop),
       linkHook: link.classList.contains("gloss-sc-a"),
       imageHook: image.classList.contains("gloss-sc-img"),
@@ -20928,11 +20928,27 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       rendered.linkHook && rendered.imageHook
       && rendered.classData === "gaiji" && rendered.glyphData === "bs-arrow"
       && !rendered.unsafeData
-      && Math.abs(rendered.width - gaiji.cases[index].width) < 1e-12
+      // Every image decodes as 16x16 here, so a natural case writes 16px.
+      && rendered.inlineWidth === (gaiji.cases[index].inlineWidth ?? "16px")
       && Math.abs(rendered.padding - gaiji.cases[index].height / gaiji.cases[index].width * 100) < 0.001)
       && gaijiLayouts === gaiji.cases.length
       && gaijiPreviewRefreshes === gaiji.cases.length,
     JSON.stringify({ gaijiRendered, gaijiLayouts, gaijiPreviewRefreshes }));
+
+  // Converted Monokakido dictionaries key their data by Japanese words (付録,
+  // 外字) and select on the names Yomitan's dataset setter produces, so the
+  // renderer must derive the same names: `data-sc付録`, `data-sc-head`.
+  const dataParent = document.createElement("div");
+  HDGlossary.appendStructuredValue(document, dataParent, { tag: "span", content: "x",
+    data: { "付録": "", head: "", someKey: "camel", a_b: "underscore", ABC: "caps", "sc-x": "rejected", "unsafe key": "rejected", "1st": "digit" } },
+    { nodes: 0 }, 0);
+  const dataAttributes = Object.fromEntries([...dataParent.firstElementChild.attributes]
+    .filter(attribute => attribute.name.startsWith("data-sc")).map(attribute => [attribute.name, attribute.value]));
+  check("structured data keys become the attribute names Yomitan's dataset setter produces, including Japanese keys",
+    JSON.stringify(dataAttributes) === JSON.stringify({
+      "data-sc付録": "", "data-sc-head": "", "data-sc-some-key": "camel", "data-sc-a_b": "underscore",
+      "data-sc-a-b-c": "caps", "data-sc1st": "digit",
+    }), JSON.stringify(dataAttributes));
   gaijiParent.remove();
 
   const sizing = imageSizingFixture();

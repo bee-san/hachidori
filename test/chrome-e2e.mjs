@@ -458,6 +458,7 @@ const PLANNED = [
   "image previews close on leave, blur, scrolling and pending navigation",
   "dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
   "Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
+  "dictionary CSS hides a converter head tail through a Japanese-keyed data attribute",
 ];
 
 const results = [];
@@ -1061,6 +1062,8 @@ async function popupReader(page, depth = 0) {
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
           theme: root.host?.dataset.hoshidictsTheme ?? null,
+          hiddenHeads: [...this.querySelectorAll("[data-sc付録] [data-sc-head]")]
+            .map(node => ({ display: view.getComputedStyle(node).display, text: node.textContent })),
           preview: preview ? {
             rect: preview.getBoundingClientRect().toJSON(),
             source: expanded.src, width: expanded.naturalWidth, height: expanded.naturalHeight,
@@ -3517,27 +3520,35 @@ async function gaijiSizingChrome({ page, tab, popup }) {
       state = await popup.imagePreview();
       if (state?.theme === "dark"
           && state.images.length === fixture.cases.length
-          && state.images.every(image => image.width === 16 && image.height === 16)) break;
+          && state.images.every(image => image.width > 0 && image.height > 0)) break;
       await new Promise(done => setTimeout(done, 25));
     } while (Date.now() < deadline);
-    const expectedSource = `data:image/png;base64,${fixture.bytes.toString("base64")}`;
+    const expectedSources = {
+      [fixture.path]: `data:image/png;base64,${fixture.bytes.toString("base64")}`,
+      [fixture.svgPath]: `data:image/svg+xml;base64,${fixture.svgBytes.toString("base64")}`,
+    };
     check("Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
       state?.theme === "dark" && state.images.length === fixture.cases.length
         && state.images.every((image, index) => {
           const expected = fixture.cases[index];
-          return image.source === expectedSource
+          return image.source === expectedSources[expected.path ?? fixture.path]
             && image.linkClasses.includes("gloss-sc-a")
             && image.imageClasses.includes("gloss-sc-img")
             && image.structuredData["data-sc-class"] === "gaiji"
             && image.structuredData["data-sc-glyph"] === "bs-arrow"
             && !Object.hasOwn(image.structuredData, "data-sc-unsafe key")
             && image.filter !== "none"
-            && image.display.inlineWidth === `${expected.width}px`
+            && image.display.inlineWidth === (expected.inlineWidth ?? `${image.width}px`)
             && Math.abs(image.display.width - expected.width) <= 1 / 64
             && Math.abs(image.display.height - expected.height) <= 1 / 64
             && image.overflow?.clientWidth > 0
             && image.overflow.scrollWidth <= image.overflow.clientWidth + 1;
         }), JSON.stringify(state));
+    check("dictionary CSS hides a converter head tail through a Japanese-keyed data attribute",
+      state?.hiddenHeads?.length === 1
+        && state.hiddenHeads[0].display === "none"
+        && state.hiddenHeads[0].text === fixture.hiddenHeadText,
+      JSON.stringify(state?.hiddenHeads));
   } finally {
     await setTheme(originalTheme);
   }

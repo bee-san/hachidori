@@ -2577,8 +2577,17 @@ html[data-hoshidicts-theme="girlypop"],
   max-width: 100%;
   overflow: hidden;
   background: transparent;
+  /* Yomitan sizes this box in em with 1em equal to one CSS pixel at its base
+     text size, and converted dictionaries write their gaiji rules against
+     that (`width: 15em` means 15px). The glossary text here is 16px, so the
+     same unit keeps dictionary CSS at the size its author saw. */
+  font-size: calc(1em / 16);
   line-height: 0;
   vertical-align: top;
+}
+
+.gloss-image-link[data-size-units="em"] .gloss-image-container {
+  font-size: 1em;
 }
 
 .gloss-image-link[data-background="true"] > .gloss-image-container {
