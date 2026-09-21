@@ -11013,10 +11013,11 @@ async function designPreviewStage() {
       && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"] .gsm-hoshidicts-frequency-values')?.textContent === "120 · 240"
       && !query(".gsm-hoshidicts-frequency-source")
       && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
-      && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
+      && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
+      && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
       && !popup.textContent.includes("Sample pitch")
-      && query(".gsm-hoshidicts-tag-pitch")?.title.includes("Sample pitch");
+      && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -20028,6 +20029,7 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
   let layouts = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
+    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     queueMasonry() { layouts += 1; },
