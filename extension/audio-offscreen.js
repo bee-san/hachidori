@@ -81,7 +81,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
       const plan = message.selection
         ? await selectedAudioPlan(repository, message.sources, message.term, message.selection, signal) : { sources: message.sources };
       signal.throwIfAborted();
-      return await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
+      const played = await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
         onResolving: resumeDeadline,
         onPlaying(value) {
           if (active !== operation) return;
@@ -91,6 +91,11 @@ export function createAudioService(window, repository = createAudioRepository({ 
             owner: operation.owner, requestId: operation.requestId, ...value }).catch(() => {});
         },
       });
+      if (played.status !== "success") return played;
+      // Identify the source the way the candidate menu does, so the reader can
+      // pin the pronunciation it just played as its Anki selection.
+      const source = plan.sources.find(candidate => candidate.id === played.sourceId);
+      return { ...played, sourceKey: JSON.stringify(source) };
     } catch (error) {
       if (operation.controller.signal.aborted && error?.name === "AbortError") return { status: "cancelled" };
       throw error;

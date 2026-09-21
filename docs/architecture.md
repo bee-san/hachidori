@@ -1570,8 +1570,10 @@ the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
 after expiry. Failed choices are forgotten so ordinary playback can fall back.
-The content controller retains the explicit selection for the later Anki path;
-this stage does not add Anki submission.
+An ordinary play that ends on a downloadable recording pins that recording the
+same way, so `{audio}` attaches the reading the user heard; browser speech is
+not pinned and keeps the ordinary source fallback. The content controller
+retains the selection for the Anki path.
 
 Optional autoplay is off by default and runs once for the first current result
 of a logical lookup/tab. Expansion, presentation echoes, Note refresh and Back

@@ -114,6 +114,40 @@ test("candidate choice carries exact identity and closes with focus restoration"
   assert.equal(f.controller.selectionFor(v.item.result), null);
 });
 
+test("the pronunciation that played becomes the Anki selection, unless it was browser speech", async t => {
+  const f = fixture(t), v = f.view();
+  const changes = [];
+  const controller = f.window.HDAudio.createAudioController({ window: f.window, onMenuChange() {},
+    onSelectionChange: owner => changes.push(owner),
+    send(type, fields) { return new Promise(resolveReply => f.sent.push({ type, ...fields, resolveReply })); } });
+  t.after(() => controller.dispose());
+  controller.bind([v.item], v.context);
+  v.item.button.click();
+  const speech = f.sent.at(-1);
+  assert.equal(speech.selection, undefined);
+  speech.resolveReply({ ok: true, status: "success", sourceId: "tts", sourceKey: "speech descriptor", candidate: { name: "Automatic Japanese", index: 0 } });
+  await settle();
+  assert.equal(controller.selectionFor(v.item.result), null, "browser speech leaves the selection open to fallback");
+  assert.deepEqual(changes, []);
+  v.item.button.click();
+  const recording = f.sent.at(-1);
+  recording.resolveReply({ ok: true, status: "success", sourceId: "json", sourceKey: "source descriptor",
+    candidate: { url: "https://example.test/2", name: "Osaka", index: 1 } });
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(controller.selectionFor(v.item.result))), {
+    sourceId: "json", sourceKey: "source descriptor", expression: "聞く", reading: "きく",
+    index: 1, url: "https://example.test/2", name: "Osaka",
+  });
+  assert.deepEqual(changes, [v.context.owner]);
+  v.item.button.click();
+  const replay = f.sent.at(-1);
+  assert.equal(replay.selection, controller.selectionFor(v.item.result), "replay keeps playing the pinned recording");
+  replay.resolveReply({ ok: true, status: "success", sourceId: "json", sourceKey: "source descriptor",
+    candidate: { url: "https://example.test/2", name: "Osaka", index: 1 } });
+  await settle();
+  assert.deepEqual(changes, [v.context.owner], "an already pinned recording does not re-run Anki preflight");
+});
+
 test("pagehide retires active playback while runtime messaging is still available", async t => {
   const f = fixture(t), v = f.view();
   v.bind();
