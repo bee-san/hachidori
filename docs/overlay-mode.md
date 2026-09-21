@@ -50,6 +50,12 @@ normal first-install preferences plus:
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
+- **Alarms:** the service worker keeps its one-shot alarms (the Anki duplicate
+  index refresh, automatic backup retry, dictionary update schedule and sharing
+  reconnect) on its own timers instead of `chrome.alarms`. Electron exposes that
+  API and records the alarm, but never dispatches `onAlarm` to the worker.
+  Timers last as long as the worker; a worker restart re-checks what is due,
+  and a refresh left unfinished by a stopped host is retried at once.
 - **Screenshot:** the worker reads screenshot capture as `false` for every
   Template in an overlay profile. Settings also shows the effective
   off/disabled capability when a carried or shared Template has the stored

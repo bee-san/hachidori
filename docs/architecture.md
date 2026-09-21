@@ -839,10 +839,15 @@ enter the index. Operator-named fields remain excluded.
 The dedicated `hachidori-anki-index` alarm refreshes the complete index when
 the source changes and every 30 minutes while Anki mining remains configured.
 Recording the attempt and next alarm before network I/O prevents worker
-restarts from repeatedly retrying unavailable Anki. Startup restores a missing
-alarm without resetting its due time; an overdue attempt runs once. Triggers
-share one in-flight refresh. Source changes invalidate old membership
-immediately, while policy-only changes retain it.
+restarts from repeatedly retrying unavailable Anki: a pull records its outcome
+on the attempt when it commits or fails, and only an attempt that never
+recorded one — its worker or host stopped mid-pull — is due immediately on the
+next worker start. Startup restores a missing alarm without resetting its due
+time; an overdue attempt runs once. Triggers share one in-flight refresh.
+Source changes invalidate old membership immediately, while policy-only
+changes retain it. In overlay mode, and in any host without `chrome.alarms`,
+the worker keeps every one-shot alarm on its own timers, because the Electron
+host's `chrome.alarms` records alarms but never dispatches `onAlarm`.
 
 A refresh resolves the scoped IDs and mature subset with `findNotes`, then
 loads those IDs through `notesInfo`. Maturity means a review card outside

@@ -473,6 +473,48 @@ are excluded. The JSON includes every raw sample, action counts and environment
 details. The driver refuses AnkiConnect's standard port and verifies the
 isolated profile's media directory before measuring.
 
+### Complete index refresh against a seeded collection
+
+`anki-index-refresh.mjs` times the production complete pull (`fetchAnkiIndex`:
+two `findNotes` plus one whole-collection `notesInfo`) and the live per-word
+miss path (`lookupAnkiIndex`) against the same isolated Anki, after seeding the
+benchmark note type to a chosen size. It reports per-action wall time and reply
+bytes for every run, so the `notesInfo` duration can be compared with the
+worker's 25 s request timeout:
+
+```sh
+node benchmark/anki-index-refresh.mjs --notes 20000 --runs 5 \
+  --endpoint http://127.0.0.1:18765 \
+  --expected-media-dir /tmp/hachidori-anki-index-benchmark/base/HachidoriBenchmark/collection.media \
+  --output /tmp/anki-index-refresh-20k.json
+```
+
+`--back-bytes 2000` pads the second field of newly seeded notes to a realistic
+mined-note size; use another `--model`/`--deck` for that collection so the
+plain one stays comparable. Seeding is idempotent and only adds missing notes.
+
+### Scheduling inside a real Electron overlay host
+
+`anki-index-electron.mjs` loads a copy of the extension with `OVERLAY_MODE` on
+into the minimal Electron host (`electron-host/`), the GameSentenceMiner shape,
+and drives three launches on one profile against the isolated Anki: a fresh
+profile with Anki reachable, an attempt record left without an outcome (a host
+torn down mid-pull), and a failed attempt whose 30-minute backoff ends shortly
+after launch. It records whether `chrome.alarms` exists and dispatches, whether
+`storage.onChanged` reaches the worker, when the snapshot appears, and the
+page-clock latency of `hd_anki_preflight` for the first request and the next
+twenty:
+
+```sh
+HDW_ELECTRON=/path/to/electron node benchmark/anki-index-electron.mjs \
+  --extension extension --endpoint http://127.0.0.1:18765 \
+  --model "Hachidori Duplicate Index Benchmark" --deck "Hachidori Duplicate Index Benchmark" \
+  --output /tmp/anki-index-electron.json
+```
+
+Pass `--extension /path/to/other/checkout/extension` to compare revisions with
+the same harness. Needs `xvfb-run` and puppeteer-core like `electron.mjs`.
+
 ## Electron (classic FS + IDBFS)
 
 `benchmark/electron.mjs` drives the extension inside a minimal Electron host
