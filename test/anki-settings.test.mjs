@@ -583,6 +583,40 @@ function templateFixture(t, { send: sendRequest } = {}) {
   };
 }
 
+test("Template pills select through the existing Template change path", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  const pills = [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")];
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["true", "false"]);
+  assert.equal(pills[0].querySelector(".anki-template-pill-badge")?.textContent, "Built-in");
+
+  pills[1].click();
+  await tick();
+  assert.equal(f.el("anki-template-select").value, "sentence");
+  assert.equal(f.el("opt-anki-template-name").value, "Sentence card");
+  assert.deepEqual([...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")]
+    .map(pill => pill.getAttribute("aria-pressed")), ["false", "true"]);
+});
+
+test("Set built-in moves the selected Template first and updates its badge", async t => {
+  const f = templateFixture(t);
+  f.controller.render();
+  await tick();
+  [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")][1].click();
+  await tick();
+  const setBuiltin = f.el("anki-template-set-builtin");
+  assert.equal(setBuiltin.disabled, false);
+  setBuiltin.click();
+
+  assert.deepEqual(f.read().templates.map(template => template.id), ["sentence", "default"]);
+  const pills = [...f.el("anki-template-pills").querySelectorAll(".anki-template-pill")];
+  assert.match(pills[0].textContent, /Sentence card/u);
+  assert.equal(pills[0].querySelector(".anki-template-pill-badge")?.textContent, "Built-in");
+  assert.equal(pills[0].getAttribute("aria-pressed"), "true");
+  assert.equal(setBuiltin.disabled, true);
+});
+
 test("Template manager edits the selected mapping while connection settings remain shared", async t => {
   const f = templateFixture(t);
   f.controller.render();

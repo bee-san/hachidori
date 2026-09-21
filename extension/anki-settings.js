@@ -774,20 +774,30 @@ export function createAnkiTemplateSettingsController({
     if (focus) element("anki-template-select").focus();
   }
 
-  function move(offset) {
-    const { anki, index } = selected();
-    const destination = index + offset;
-    if (destination < 0 || destination >= anki.templates.length) return;
+  function reorder(anki, index, destination) {
+    if (destination < 0 || destination >= anki.templates.length || destination === index) return false;
     const templates = anki.templates.slice();
-    [templates[index], templates[destination]] = [templates[destination], templates[index]];
+    const [template] = templates.splice(index, 1);
+    templates.splice(destination, 0, template);
     saveTemplates(anki, templates);
     render();
+    return true;
+  }
+
+  function move(offset) {
+    const { anki, index } = selected();
+    if (!reorder(anki, index, index + offset)) return;
     const preferred = element(offset < 0 ? "anki-template-up" : "anki-template-down");
     let focusTarget = preferred;
     if (preferred.disabled) {
       focusTarget = element(offset < 0 ? "anki-template-down" : "anki-template-up");
     }
     focusTarget.focus();
+  }
+
+  function setBuiltin() {
+    const { anki, index } = selected();
+    reorder(anki, index, 0);
   }
 
   function add() {
@@ -839,14 +849,35 @@ export function createAnkiTemplateSettingsController({
     element("anki-template-select").focus();
   }
 
+  function handleTemplateSelection(event) {
+    setSelected(event.currentTarget.value);
+  }
+
   function renderChoices(anki) {
     const select = element("anki-template-select");
+    const pills = element("anki-template-pills");
     const key = JSON.stringify(anki.templates.map(({ id, name }) => [id, name]));
     if (renderedChoices !== key) {
       select.replaceChildren(...anki.templates.map(template => new document.defaultView.Option(template.name, template.id)));
+      pills.replaceChildren(...anki.templates.map((template, index) => {
+        const pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = "anki-template-pill";
+        pill.value = template.id;
+        pill.append(template.name);
+        if (index === 0) {
+          const badge = document.createElement("span");
+          badge.className = "anki-template-pill-badge";
+          badge.textContent = "Built-in";
+          pill.append(badge);
+        }
+        pill.addEventListener("click", handleTemplateSelection);
+        return pill;
+      }));
       renderedChoices = key;
     }
     select.value = selectedId;
+    for (const pill of pills.children) pill.setAttribute("aria-pressed", `${pill.value === selectedId}`);
   }
 
   function renderManager() {
@@ -860,6 +891,7 @@ export function createAnkiTemplateSettingsController({
     element("anki-template-next").disabled = index === anki.templates.length - 1;
     element("anki-template-up").disabled = index === 0;
     element("anki-template-down").disabled = index === anki.templates.length - 1;
+    element("anki-template-set-builtin").disabled = index === 0;
     element("anki-template-delete").disabled = anki.templates.length === 1;
   }
 
@@ -868,7 +900,7 @@ export function createAnkiTemplateSettingsController({
     editor.render();
   }
 
-  element("anki-template-select").addEventListener("change", event => setSelected(event.target.value));
+  element("anki-template-select").addEventListener("change", handleTemplateSelection);
   element("anki-template-previous").addEventListener("click", () => {
     const { anki, index } = selected();
     if (index > 0) setSelected(anki.templates[index - 1].id, true);
@@ -893,6 +925,7 @@ export function createAnkiTemplateSettingsController({
   });
   element("anki-template-add").addEventListener("click", add);
   element("anki-template-duplicate").addEventListener("click", duplicate);
+  element("anki-template-set-builtin").addEventListener("click", setBuiltin);
   element("anki-template-up").addEventListener("click", () => move(-1));
   element("anki-template-down").addEventListener("click", () => move(1));
   element("anki-template-delete").addEventListener("click", remove);
