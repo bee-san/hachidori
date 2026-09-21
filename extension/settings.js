@@ -2830,7 +2830,7 @@ async function importMdx(item, index, total) {
   }
 }
 
-function importGroupedItem(item, index, total) {
+async function importGroupedItem(item, index, total) {
   if (item.kind === "mdx") return importMdx(item, index, total);
   if (item.kind === "orphan-mdd") {
     updateImportResult(index, {
@@ -2842,13 +2842,16 @@ function importGroupedItem(item, index, total) {
   return importFile(item.file, index, total);
 }
 
+function importItemPurpose(item) {
+  if (item.kind === "orphan-mdd") return "MDD resource file";
+  if (item.kind !== "mdx") return "Yomitan ZIP file";
+  const count = item.resources.length;
+  if (count === 0) return "MDX dictionary";
+  return `MDX dictionary with ${count} MDD ${count === 1 ? "file" : "files"}`;
+}
+
 function describeImportItem(item) {
-  if (item.kind === "mdx") {
-    const count = item.resources.length;
-    return { name: item.file.name,
-      purpose: count === 0 ? "MDX dictionary" : `MDX dictionary with ${count} MDD ${count === 1 ? "file" : "files"}` };
-  }
-  return { name: item.file.name, purpose: item.kind === "orphan-mdd" ? "MDD resource file" : "Yomitan ZIP file" };
+  return { name: item.file.name, purpose: importItemPurpose(item) };
 }
 
 function runImports(files) {
