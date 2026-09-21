@@ -2417,6 +2417,8 @@ Template/custom-button settings writes unavailable before a request is sent.
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
+The engine holds every loaded dictionary's generated files in WebAssembly linear memory (Emscripten emulates `mmap` by copying), and that memory never shrinks, so an import's high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's mapped bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`). [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
+
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
 `reader-options.js` supplies one synchronous stored-value view to Settings, the
@@ -2475,6 +2477,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
 | `hd_memory` | Report the engine heap size and each loaded package's resident bytes (its mapped files, once per native kind); see [memory.md](memory.md) |
+| `hd_engine_config` | Read `options.lowMemoryMode` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when the stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
 | `hd_state_read` | Read revisioned dictionary state through the service worker |
