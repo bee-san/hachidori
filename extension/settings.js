@@ -252,9 +252,9 @@ function setSectionStatus(id, message, tone, completed = false) {
   syncNavigationStatus(id);
 }
 
-// The experimental flag that hides `section` while off, if any.
-function sectionGate(section) {
-  return EXPERIMENTAL_FEATURES.find(feature => feature.section === section && !options.experimental[feature.id]) ?? null;
+// Whether an experimental flag that is off hides `section`.
+function sectionGated(section) {
+  return EXPERIMENTAL_FEATURES.some(feature => feature.section === section && !options.experimental[feature.id]);
 }
 
 function requestedSection() {
@@ -266,7 +266,7 @@ function resolveSection(requested) {
   const sections = [...document.querySelectorAll("main > section")];
   if (!sections.some((section) => section.id === requested)) return "dictionaries";
   // A gated section leads to the switch that reveals it.
-  return sectionGate(requested) ? "advanced" : requested;
+  return sectionGated(requested) ? "advanced" : requested;
 }
 
 function showSettingsSection(focus = false) {
@@ -531,9 +531,9 @@ function renderExperimentalSettings() {
   experimentalController.render(options.experimental);
   for (const feature of EXPERIMENTAL_FEATURES) {
     if (!feature.section) continue;
-    const gated = sectionGate(feature.section) !== null;
-    document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = gated;
-    element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = gated;
+    const hidden = !options.experimental[feature.id];
+    document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
+    element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
   }
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.

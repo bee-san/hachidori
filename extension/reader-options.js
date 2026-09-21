@@ -759,11 +759,10 @@
     }
     options.customLinks = customLinksFromButtons(options.customButtons);
     options.mediaCapture = cloneMediaCapture(options.mediaCapture);
+    options.experimental = { ...options.experimental };
     // Media capture predates the flag. A profile that never saved an
     // experimental record keeps the feature exactly as it was switched on.
-    options.experimental = Object.hasOwn(source, "experimental")
-      ? { ...options.experimental }
-      : { ...options.experimental, mediaMining: options.mediaCapture.enabled };
+    if (!Object.hasOwn(source, "experimental")) options.experimental.mediaMining = options.mediaCapture.enabled;
     return options;
   }
 
