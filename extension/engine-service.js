@@ -610,7 +610,9 @@ function longKeyLengthFromScanIndex(path) {
     } finally {
       engine.FS.close(stream);
     }
-  } catch (error) {
+  } catch {
+    // An unreadable index only costs the long-key window; the dictionary
+    // itself still loads and lookups stay at the configured scan length.
     return 0;
   }
   if (read < SCAN_INDEX_HEADER_BYTES) return 0;
