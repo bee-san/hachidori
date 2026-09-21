@@ -26,7 +26,15 @@ to the host.
 
 ## Setup
 
-1. Open **Settings → Media capture**.
+Media mining is an experimental feature. Until its switch is on, the Media
+capture section stays out of Settings navigation and a direct `#media` link
+opens Advanced instead. Turning the switch off later hides the section again,
+switches the recorder off, and keeps every other capture setting for the next
+time it is turned on.
+
+1. Open **Settings → Advanced** and turn on **Media mining** under
+   Experimental features, then open **Media capture** from the navigation or
+   the switch's *Open its settings* link.
 2. Enable media capture and keep at least one output enabled.
 3. Kiku, Lapis and Senren use their stock fields automatically for a pinned
    clip: animation replaces `{screenshot}` in `Picture`/`picture`, and captured

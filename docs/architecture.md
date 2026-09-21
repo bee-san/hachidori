@@ -1463,10 +1463,18 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes nine destinations. Library owns five local,
+The primary rail exposes ten destinations. Library owns five local,
 hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
-dictionary. Backup and restore remains a global destination. The compact picker
-keeps all thirteen task views available and groups those five Library choices.
+dictionary. Backup and restore remains a global destination. Advanced is the
+last destination and holds Experimental features: one switch per entry in the
+`EXPERIMENTAL_FEATURES` registry in `reader-options.js`, stored as booleans
+under `options.experimental` and saved through the same revisioned option
+writes. A feature that names a Settings section keeps that section, its rail
+link and its picker option hidden while the switch is off; a hash request for
+the hidden section resolves to Advanced and is re-resolved when the stored
+options arrive or change. The feature's own settings stay where they were, so
+turning a switch off preserves them. The compact picker
+keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
@@ -1981,7 +1989,15 @@ name.
 ## Generic media capture
 
 Media capture is default-off and starts only through an explicit **Start
-capture** action in `capture.html`. That page is a control surface;
+capture** action in `capture.html`. It is also the first experimental feature:
+`options.experimental.mediaMining` reveals the Media capture section in
+Settings. Runtime code keeps gating on `mediaCapture.enabled`; when the
+Settings switch turns media mining off it also turns `mediaCapture.enabled`
+off in the same save, so no recorder stays active behind a hidden section,
+and the overlay only toggles the flag because it cannot edit the browser's
+recorder settings. A stored options record without `experimental` inherits
+`mediaMining` from `mediaCapture.enabled`, so a profile that enabled capture
+before the flag existed keeps its section. That page is a control surface;
 `capture-host.js` owns the stream in the shared `offscreen.html` document.
 Closing or reopening controls leaves recording running. The service worker
 creates the offscreen document with `DOM_SCRAPING`, `AUDIO_PLAYBACK`, and
