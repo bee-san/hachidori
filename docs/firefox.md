@@ -88,6 +88,12 @@ None of these warnings adds remote executable code to the Firefox package.
 
 ## Follow-up
 
+- Sharing through Anki: the released relay add-on (v0.0.3) accepts only
+  `chrome-extension://` origins, so a Firefox Hachidori cannot host or link
+  until the relay release that includes
+  [hachidori-anki#8](https://github.com/bee-san/hachidori-anki/pull/8) and the
+  extension's pinned add-on version moves to it. Sharing between two Chrome
+  installs is unaffected.
 - Cross-platform and minimum-version (Firefox 153) CI.
 - AMO submission and signing.
 - Custom JavaScript through a Firefox-compatible `userScripts` registration.
