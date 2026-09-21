@@ -147,7 +147,9 @@ function trackHeldState(message, response) {
     case "hd_backup_prepare":
     case "hd_backup_auto_prepare":
       // Preparing discards any earlier prepared backup first.
-      for (const key of held) if (key.startsWith("backup:")) held.delete(key);
+      for (const key of held) {
+        if (key.startsWith("backup:")) held.delete(key);
+      }
       if (ok) held.add(`backup:${response.token}`);
       break;
     case "hd_backup_restore":

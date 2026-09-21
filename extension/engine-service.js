@@ -3150,6 +3150,9 @@ const HANDLERS = {
       generation,
       storageBackend,
       threaded,
+      // Which worker is serving: the low-memory one imports single-threaded
+      // inside the small pool (docs/memory.md).
+      lowMemory: threaded && lowRam,
     };
   },
 

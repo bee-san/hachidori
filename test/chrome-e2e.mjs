@@ -12795,10 +12795,13 @@ async function main() {
   const engineRequest = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({
     target: "hoshidicts-offscreen", type, requestId: `e2e-low-memory-${type}`, ...fields,
   }), type, fields);
-  const waitForRecycle = (generation) => page.waitForFunction(async (previous) => {
+  // A recycled worker reports the mode it was created with, and publishes its
+  // generations from zero again.
+  const waitForRecycle = (lowMemory, generation) => page.waitForFunction(async (expected, previous) => {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-    return status?.ok && status.ready && !status.loading && status.generation < previous ? status : false;
-  }, { timeout: 30_000, polling: 250 }, generation).then((handle) => handle.jsonValue());
+    return status?.ok && status.ready && !status.loading && status.lowMemory === expected
+      && (previous === null || status.generation < previous) ? status : false;
+  }, { timeout: 30_000, polling: 250 }, lowMemory, generation).then((handle) => handle.jsonValue());
   await showSettingsSection(page, "advanced");
   const lowMemoryBefore = await page.evaluate(async () => {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-lm-status" });
@@ -12811,11 +12814,12 @@ async function main() {
     toggle.click();
     return { status, memory, total, available, wasChecked };
   });
-  const lowMemoryStatus = await waitForRecycle(lowMemoryBefore.status.generation).catch(() => null);
+  const lowMemoryStatus = await waitForRecycle(true, null).catch(() => null);
   const lowMemoryOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   check(
     "low memory mode recycles the engine worker and reports memory in Settings",
     lowMemoryBefore.available && !lowMemoryBefore.wasChecked
+      && lowMemoryBefore.status.lowMemory === false
       && lowMemoryBefore.memory.ok === true && Number.isInteger(lowMemoryBefore.memory.heapBytes)
       && lowMemoryBefore.memory.dictionaries.length === 0
       && /^Engine memory: [\d.]+ (KB|MB|GB) across 0 dictionaries$/u.test(lowMemoryBefore.total)
@@ -12842,7 +12846,7 @@ async function main() {
     return { dictionary, status, memory };
   }, { timeout: 90_000, polling: 100 }, lowMemoryTitle).then((handle) => handle.jsonValue()).catch(() => null);
   const recycledAfterImport = lowMemoryImported
-    ? await waitForRecycle(lowMemoryImported.status.generation).catch(() => null) : null;
+    ? await waitForRecycle(true, lowMemoryImported.status.generation).catch(() => null) : null;
   const afterRecycle = recycledAfterImport ? await page.evaluate(async (title) => {
     const memory = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory-2" });
     const lookup = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "e2e-lm-lookup", text: "食べる" });
@@ -12873,7 +12877,7 @@ async function main() {
 
   await showSettingsSection(page, "advanced");
   await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());
-  const fullPoolStatus = recycledAfterImport ? await waitForRecycle(recycledAfterImport.generation).catch(() => null) : null;
+  const fullPoolStatus = recycledAfterImport ? await waitForRecycle(false, null).catch(() => null) : null;
   const fullPoolOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const fullPoolLookup = await engineRequest("hd_lookup", { text: "食べる" });
   check(

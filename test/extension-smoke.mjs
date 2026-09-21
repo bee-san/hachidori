@@ -5599,6 +5599,7 @@ async function main() {
     "failedDictionaries",
     "generation",
     "loading",
+    "lowMemory",
     "ok",
     "ready",
     "requestId",
