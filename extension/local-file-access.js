@@ -17,13 +17,17 @@ export function createLocalFileAccessController({
   })();
   // Setup shows this section with a dismiss action; Settings shows it without.
   const surface = onDismiss ? "setup" : "Settings";
+  // Firefox refuses tabs.create for about:addons and has no API that opens the
+  // Add-ons Manager for a full-tab options page, so it gets the exact manual
+  // path instead of an Open button.
   const COPY = {
     firefox: {
       browserName: "Firefox",
       description: "allow Hachidori to access local files in Firefox’s Add-ons Manager.",
-      instruction: "Open Hachidori’s Permissions, allow local-file access, then return to this tab.",
-      reopen: "Open Hachidori’s extension options",
-      settingsUrl: () => "about:addons",
+      instruction: "Open about:addons, choose Hachidori, open the Permissions and data tab,"
+        + " turn on “Access local files on your computer”, then return to this tab.",
+      reopen: null,
+      settingsUrl: null,
     },
     chrome: {
       browserName: "Chrome",
@@ -34,6 +38,7 @@ export function createLocalFileAccessController({
     },
   }[firefox ? "firefox" : "chrome"];
   const { browserName } = COPY;
+  const canOpenSettings = COPY.settingsUrl !== null;
   const make = (tag, id, text, className = "") => {
     const node = document.createElement(tag);
     node.id = id;
@@ -45,16 +50,21 @@ export function createLocalFileAccessController({
   const description = make("p", "local-file-description",
     `To look up Japanese in HTML files opened from your computer, ${COPY.description}`);
   const instruction = make("p", "local-file-instruction", COPY.instruction);
-  const recovery = make("p", "local-file-recovery",
-    `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}`
-      + (onDismiss ? ", then choose Resume setup." : " to return."));
+  const recovery = canOpenSettings
+    ? make("p", "local-file-recovery",
+      `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}`
+        + (onDismiss ? ", then choose Resume setup." : " to return."))
+    : null;
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
   const actions = make("div", "local-file-actions", "", "local-file-actions");
-  const open = make("button", "local-file-open", "Open extension settings", "ghost");
-  open.type = "button";
-  actions.append(open);
+  let open;
+  if (canOpenSettings) {
+    open = make("button", "local-file-open", "Open extension settings", "ghost");
+    open.type = "button";
+    actions.append(open);
+  }
   let skip;
   if (onDismiss) {
     skip = make("button", "local-file-skip", "Not now", "ghost");
@@ -63,7 +73,7 @@ export function createLocalFileAccessController({
   }
   container.classList.add("local-file-access");
   container.setAttribute("aria-labelledby", heading.id);
-  container.replaceChildren(heading, description, actions, instruction, recovery, status);
+  container.replaceChildren(...[heading, description, actions, instruction, recovery, status].filter(Boolean));
   container.hidden = true;
 
   let allowed = null, opened = false, error = "", dismissed = false, disposed = false;
@@ -71,13 +81,14 @@ export function createLocalFileAccessController({
 
   function render() {
     const enabled = allowed === true;
-    const hideActions = enabled && Boolean(onDismiss);
+    const hideActions = (enabled && Boolean(onDismiss)) || actions.childElementCount === 0;
     const focusedAction = actions.contains(document.activeElement);
     container.hidden = dismissed;
     heading.hidden = enabled;
     description.hidden = enabled;
-    instruction.hidden = !opened || enabled;
-    recovery.hidden = instruction.hidden;
+    // Without an Open button the manual path is the only path, so it shows at once.
+    instruction.hidden = (canOpenSettings && !opened) || enabled;
+    if (recovery) recovery.hidden = instruction.hidden;
     actions.hidden = hideActions;
     container.classList.toggle("is-enabled", enabled);
     const message = enabled ? "Local-file lookups enabled" : error;
@@ -124,7 +135,7 @@ export function createLocalFileAccessController({
   function visible() {
     if (document.visibilityState === "visible") void refresh();
   }
-  open.addEventListener("click", openSettings);
+  open?.addEventListener("click", openSettings);
   skip?.addEventListener("click", dismiss);
   document.addEventListener("visibilitychange", visible);
   window.addEventListener("pageshow", visible);
@@ -134,7 +145,7 @@ export function createLocalFileAccessController({
     refresh,
     destroy() {
       disposed = true;
-      open.removeEventListener("click", openSettings);
+      open?.removeEventListener("click", openSettings);
       skip?.removeEventListener("click", dismiss);
       document.removeEventListener("visibilitychange", visible);
       window.removeEventListener("pageshow", visible);
