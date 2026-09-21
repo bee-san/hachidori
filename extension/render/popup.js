@@ -2989,16 +2989,6 @@
         if (frequencyTags.length > 0) {
           const frequencies = documentRef.createElement("span");
           frequencies.className = "gsm-hoshidicts-primary-frequencies";
-          frequencies.dataset.average = String(averageFrequency);
-          if (!averageFrequency && !showFrequencyDictionaryNames) {
-            frequencies.classList.add("gsm-hoshidicts-primary-frequencies-default");
-            const label = documentRef.createElement("span");
-            label.className = "gsm-hoshidicts-primary-frequency-label";
-            label.textContent = "Freq:";
-            label.setAttribute("aria-hidden", "true");
-            // Inside the first tag, so a wrap never leaves the label alone.
-            frequencyTags[0].prepend(label, " ");
-          }
           frequencies.append(...frequencyTags);
           capsule.prepend(frequencies);
         }

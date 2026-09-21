@@ -754,10 +754,12 @@ before the change event completes.
 
 Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-metadata defaults to one neutral `Freq:` pill with compact numbers and no
-dictionary names. Kana-derived values retain the visible Yomitan/Jiten `㋕`
+metadata defaults to compact numbers without dictionary names. The first
+result's frequency tags are the same Yomitan-like two-tone tags as every later
+entry's metadata row; a filled source segment appears only when names or
+averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`
 marker, while source and numeric detail remain available on hover and to screen
-readers. The pill sits inside the primary result, before its pronunciation
+readers. The tags sit inside the primary result, before its pronunciation
 metadata and definition cards, instead of occupying the popup-wide headword
 header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to

@@ -78,8 +78,8 @@ the same external jsdom dependency described below. The toolbar tests do not
 start a capture session.
 
 `node --test test/frequency-presentation.test.mjs` checks compact numeric
-frequency defaults, the neutral primary-result `Freq:` pill, visible kana
-markers, tabs-only lower chrome, concise typed harmonic averages, preserved
+frequency defaults, the primary result's frequency tags sharing the later
+entries' tag structure, visible kana markers, tabs-only lower chrome, concise typed harmonic averages, preserved
 explicit display choices, source details, and live grammar/name controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
