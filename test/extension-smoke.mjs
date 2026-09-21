@@ -903,6 +903,63 @@ async function hostedExtensionBackgroundStage() {
   );
 }
 
+// The Electron overlay host exposes chrome.alarms but never dispatches
+// onAlarm, and a host may lack the API entirely; in both shapes the worker
+// keeps one-shot alarms on its own timers so the duplicate-index refresh (and
+// the other alarm consumers) still fire at their scheduled time.
+async function timerAlarmsStage({ overlayMode, alarmsApi }) {
+  const bus = makeBus(), storage = makeStorage(), hostAlarms = makeAlarms();
+  const chrome = makeChrome(`timer-alarms-${overlayMode ? "overlay" : "bare"}-worker`, bus, storage, hostAlarms);
+  if (!alarmsApi) delete chrome.alarms;
+  delete chrome.downloads;
+  delete chrome.offscreen;
+  let clock = 1_800_000_000_000, nextTimer = 1, resumes = 0;
+  const timers = new Map();
+  const context = loadBackgroundScript({
+    chrome, console, Promise, Error,
+    Date: class extends Date { static now() { return clock; } },
+    setTimeout(callback, delay) { const id = nextTimer++; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    createAnkiDuplicateIndex: () => ({
+      async reconcile() {}, async suspend() {}, async resume() { resumes += 1; },
+      source: async () => null, async peek() { return { noteIds: [] }; }, async lookup() {}, async repair() {},
+      async recordWrite() {}, async has() { return false; },
+    }),
+  }, { overlayMode });
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  const fire = () => {
+    const [id, timer] = [...timers].find(([, entry]) => entry.armed) ?? [];
+    timers.delete(id);
+    timer?.callback();
+    return timer?.delay;
+  };
+  await settle();
+  const before = resumes;
+  const known = new Set(timers.keys());
+  await runInContext(`alarms.create(${JSON.stringify(ANKI_INDEX_ALARM)}, { when: Date.now() + 60_000 })`, context);
+  for (const [id, timer] of timers) if (!known.has(id)) timer.armed = true;
+  const armed = await runInContext(`alarms.get(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  const armedDelay = fire();
+  await settle();
+  const earlyResumes = resumes;
+  for (const [id, timer] of timers) if (!known.has(id)) timer.armed = true;
+  clock += 60_000;
+  const rearmedDelay = fire();
+  await settle();
+  const afterFire = await runInContext(`alarms.get(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  await runInContext(`alarms.create(${JSON.stringify(ANKI_INDEX_ALARM)}, { when: Date.now() + 5_000 })`, context);
+  const cleared = await runInContext(`alarms.clear(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  const clearedAgain = await runInContext(`alarms.clear(${JSON.stringify(ANKI_INDEX_ALARM)})`, context);
+  check(
+    `${overlayMode ? "an overlay host's inert chrome.alarms is bypassed:" : "without chrome.alarms"} a worker timer fires the index alarm handler at its scheduled time, not before`,
+    armed?.scheduledTime === clock && armedDelay === 60_000 && earlyResumes === before
+      && rearmedDelay === 60_000 && resumes === before + 1 && afterFire === undefined
+      && cleared === true && clearedAgain === false && hostAlarms.values.size === 0,
+    JSON.stringify({ armed, armedDelay, before, earlyResumes, rearmedDelay, resumes, afterFire, cleared, clearedAgain,
+      hostAlarms: [...hostAlarms.values.keys()] }),
+  );
+}
+
 async function lookupStatsStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("lookup-stats-worker", bus, storage);
@@ -5057,6 +5114,8 @@ async function main() {
 
   section("external dictionary links");
   await hostedExtensionBackgroundStage();
+  await timerAlarmsStage({ overlayMode: true, alarmsApi: true });
+  await timerAlarmsStage({ overlayMode: false, alarmsApi: false });
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await overlayModeBackgroundStage();
