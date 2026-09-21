@@ -152,6 +152,55 @@ test("setup discovery belongs to the selected Template even when two Templates h
   assert.match(f.el("anki-setup-status").textContent, /this Template/u);
 });
 
+test("connection status data-state follows checking, connected and offline discovery", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  assert.equal(f.el("anki-status").dataset.state, "checking");
+  discovery(f.sent[0]);
+  await tick();
+  assert.equal(f.el("anki-status").dataset.state, "connected");
+
+  const pending = f.controller.refresh();
+  assert.equal(f.el("anki-status").dataset.state, "checking");
+  f.sent.at(-1).resolve({ ok: true, connected: false, decks: [], models: [],
+    model: f.read().model, fields: [], errors: ["Anki is offline."] });
+  await pending;
+  assert.equal(f.el("anki-status").dataset.state, "offline");
+});
+
+test("API key disclosure opens on first render for a saved key and keeps aria state in sync", t => {
+  const f = fixture(t);
+  f.adopt({ apiKey: "saved-secret" });
+  const toggle = f.el("anki-api-key-toggle");
+  const panel = f.el("anki-api-key-panel");
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.hidden, false);
+  toggle.click();
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(panel.hidden, true);
+  toggle.click();
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.hidden, false);
+});
+
+test("local audio pill reflects the detailed audio status", async t => {
+  const f = fixture(t);
+  const status = f.el("anki-audio-status");
+  const pill = f.el("anki-audio-pill");
+  assert.equal(pill.textContent, "Not detected");
+  assert.equal(pill.dataset.state, "offline");
+
+  status.textContent = "Found local audio: http://127.0.0.1:5050";
+  await tick();
+  assert.equal(pill.textContent, "Ready");
+  assert.equal(pill.dataset.state, "connected");
+
+  status.textContent = "No compatible local audio service found.";
+  await tick();
+  assert.equal(pill.textContent, "Not detected");
+  assert.equal(pill.dataset.state, "offline");
+});
+
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
   const f = fixture(t);
   assert.equal(f.el("anki-status").classList.contains("operational-status"), true);
