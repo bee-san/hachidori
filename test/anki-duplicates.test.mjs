@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate,
-  findAnkiDuplicateNotes, findAnkiOverwriteTarget, validateAnkiNote } from "../extension/anki-duplicates.js";
+  findAnkiDuplicateNotes, findAnkiOverwriteTarget, validateAnkiNote, canonicalAnkiFields } from "../extension/anki-duplicates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
   model: "Basic", deck: "Japanese::Words", ...patch });
@@ -136,4 +136,10 @@ test("overwrite queries use Anki's exact stripped-HTML duplicate identity, not c
     assert.equal(target.noteId, 2);
     assert.equal(target.fields.Front, `<b>${text}</b>`);
   }
+});
+
+test("overwriting a note whose note type lost a mapped field names that field and the note's fields", () => {
+  const templates = { Front: { value: "{expression}", overwriteMode: "overwrite" }, Extra: { value: "{reading}", overwriteMode: "overwrite" } };
+  assert.throws(() => canonicalAnkiFields({ Front: "猫", Extra: "ねこ" }, templates, { Front: "old", Back: "old" }),
+    /^Error: Anki's note has no field “Extra” to overwrite; its fields are “Front”, “Back”\. The note type's fields changed\. Refresh fields in Anki Settings before overwriting this note\.$/u);
 });

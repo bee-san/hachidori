@@ -3363,7 +3363,7 @@ async function firstRunAnkiStage() {
       && JSON.stringify(existing.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && existing.storage.raw.get("options").revision === 3
       && partialReply?.ok === true && partialReply.state.anki?.status === "needs-attention"
-      && partialReply.state.anki.detail === "Map the first field, “Front”, before adding notes."
+      && partialReply.state.anki.detail === "Map the first field, “Front”, of note type “Basic” before adding notes. Anki requires it."
       && partialReply.state.anki.model === null
       && JSON.stringify(partial.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && partial.storage.raw.get("options").revision === 3
