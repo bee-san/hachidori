@@ -91,7 +91,9 @@ struct WireTerm {
   std::string expression;
   std::string reading;
   std::string rules;
-  int score = 0;
+  // hoshidicts stores the score as a double since .hoshidicts_5 (a Yomitan
+  // score is any JSON number); older layouts still hold an int32.
+  double score = 0;
   std::vector<WireGlossary> glossaries;
   std::vector<WireFrequencyEntry> frequencies;
   std::vector<WirePitchEntry> pitches;
@@ -385,7 +387,7 @@ bool non_empty_file(const std::filesystem::path& path) {
 // Highest marker first, as query.cpp picks it, because the marker decides how the
 // glossaries are encoded. 0 means the directory is not a dictionary at all.
 int dictionary_version(const std::filesystem::path& dir) {
-  for (const int version : {4, 3, 2, 1}) {
+  for (const int version : {6, 5, 4, 3, 2, 1}) {
     if (std::filesystem::is_regular_file(dir / (".hoshidicts_" + std::to_string(version)))) {
       return version;
     }
@@ -394,12 +396,13 @@ int dictionary_version(const std::filesystem::path& dir) {
 }
 
 // The marker list must track the versions query.cpp still reads. dict.zstd
-// belongs to exactly one of them: the importer writes .hoshidicts_4 only when it
-// trained a zstd dictionary for the term banks, and then compresses every
-// glossary against that dictionary, so a _4 directory missing it loads with an
-// empty DDict and every glossary decompresses to "" -- add_dict cannot see that
-// and reports success, which is worse than refusing the directory. _3 and older
-// never have one, which is also what every dictionary imported by an older engine
+// belongs to exactly two of them: the importer writes .hoshidicts_4 (int32
+// score) or .hoshidicts_6 (double score) only when it trained a zstd dictionary
+// for the term banks, and then compresses every glossary against that
+// dictionary, so a _4 or _6 directory missing it loads with an empty DDict and
+// every glossary decompresses to "" -- add_dict cannot see that and reports
+// success, which is worse than refusing the directory. _5, _3 and older never
+// have one, which is also what every dictionary imported by an older engine
 // looks like. A zero-length dict.zstd is exactly as unusable as a missing one,
 // since ZSTD_createDDict() accepts an empty buffer without complaint.
 struct WireIndexTitle {
@@ -451,7 +454,7 @@ bool dictionary_files_present(const std::filesystem::path &dir) {
   if (version == 0) {
     return false;
   }
-  if (version >= 4 && !non_empty_file(dir / "dict.zstd")) {
+  if ((version == 4 || version == 6) && !non_empty_file(dir / "dict.zstd")) {
     return false;
   }
   return valid_dictionary_index(dir / "index.json") &&

@@ -54,11 +54,12 @@ const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 const KINDS = ["term", "freq", "pitch", "kanji"];
 
 // A directory holding one of these is an imported dictionary; anything else
-// under /dicts is debris. _4 means the importer trained a zstd dictionary for
-// the term banks and wrote a dict.zstd alongside; _3 means it did not, which is
-// also how every dictionary imported by an older engine looks. Both load, so the
-// presence of dict.zstd is deliberately not part of the test.
-const MARKER_FILES = [".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshidicts_1"];
+// under /dicts is debris. _6 and _4 mean the importer trained a zstd dictionary
+// for the term banks and wrote a dict.zstd alongside; _5 and _3 mean it did not,
+// which is also how every dictionary imported by an older engine looks. _5 and
+// _6 store the term score as a double, _4 and older as an int32. All load, so
+// the presence of dict.zstd is deliberately not part of the test.
+const MARKER_FILES = [".hoshidicts_6", ".hoshidicts_5", ".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshidicts_1"];
 
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;

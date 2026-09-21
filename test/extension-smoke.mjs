@@ -7790,8 +7790,8 @@ async function main() {
   check(
     "removal recovery preserves a legacy .hdw-remove dictionary and restores its staged child",
     legacyRemovalReload.ok === true
-      && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_3`).exists
-      && observedEngine.FS.analyzePath(`/dicts/${FIXTURE_TITLE}/.hoshidicts_3`).exists
+      && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_5`).exists
+      && observedEngine.FS.analyzePath(`/dicts/${FIXTURE_TITLE}/.hoshidicts_5`).exists
       && !observedEngine.FS.analyzePath(stagedBesideLegacyPath).exists
       && afterLegacyRemovalReload.dictionaries.some((dictionary) => dictionary.title === legacyRemovalTitle),
     JSON.stringify({ legacyRemovalReload, afterLegacyRemovalReload }),
@@ -9082,11 +9082,11 @@ async function main() {
     [true, generationBefore],
   );
 
-  section("a trained (.hoshidicts_4) dictionary through the extension layer");
+  section("a trained (.hoshidicts_6) dictionary through the extension layer");
   // Everything above imports the 6-row fixture, which is under the importer's
-  // zstd-training floor and therefore lands in the pre-4 layout. Nothing outside
-  // node-smoke.mjs had ever seen the layout the current engine writes for a real
-  // dictionary: a .hoshidicts_4 marker, a dict.zstd, and glossaries compressed
+  // zstd-training floor and therefore lands in the untrained layout. Nothing
+  // outside node-smoke.mjs had ever seen the layout the current engine writes for
+  // a real dictionary: a .hoshidicts_6 marker, a dict.zstd, and glossaries compressed
   // against it. That layout has to survive the extension's strict-load and IDBFS
   // round trip, neither of which node-smoke.mjs touches.
   const trainedImport = await request("hd_import", {
@@ -9099,10 +9099,10 @@ async function main() {
     [true, TRAINED_TITLE, TRAINED_TERMS.length],
   );
   // The import is not published until its exact manifest path strict-loads. A
-  // runtime that does not recognise .hoshidicts_4 rejects this package instead.
+  // runtime that does not recognise .hoshidicts_6 rejects this package instead.
   const trainedStatus = await request("hd_status");
   equal(
-    "offscreen.js recognises the .hoshidicts_4 directory as a dictionary",
+    "offscreen.js recognises the .hoshidicts_6 directory as a dictionary",
     [trainedStatus.ok, trainedStatus.dictionaryCount],
     [true, 1],
   );
@@ -9128,7 +9128,7 @@ async function main() {
   check(
     "syncfs(false) persisted the marker and dict.zstd, not just the banks",
     persisted.includes(`${trainedPath}/dict.zstd`)
-      && persisted.includes(`${trainedPath}/.hoshidicts_4`),
+      && persisted.includes(`${trainedPath}/.hoshidicts_6`),
     JSON.stringify(persisted.sort()),
   );
   // The real assertion: these bytes only come back if the dictionary the importer

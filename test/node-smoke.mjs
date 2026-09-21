@@ -9,7 +9,7 @@
 // (import -> add_dict -> lookup -> error paths -> reset). Every check prints its
 // own PASS/FAIL line so a failure names exactly which part of the contract broke.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
@@ -27,6 +27,8 @@ import {
   LONG_KEY_PROVERB,
   LONG_KEY_PHRASE,
   LONG_KEY_PHRASE_INFLECTED,
+  LONG_KEY_PHRASE_SCORE,
+  LONG_KEY_PROVERB_SCORE,
   LONG_KEY_LENGTH,
   buildLongKeyZip,
   TITLE,
@@ -67,15 +69,16 @@ const MANY_BANK_DIR = `/dicts/${MANY_BANK_TITLE}`;
 const CUSTOM_DICTIONARY_DIR = `/dicts/${CUSTOM_DICTIONARY_TITLE}`;
 
 // Every marker query.cpp still recognises, newest first. The importer writes
-// .hoshidicts_4 when it trained a zstd dictionary for the term banks and
-// .hoshidicts_3 when it did not, so a test that pins one specific marker pins
-// which branch the fixture happened to take. This list is what both
-// wasm/bindings.cpp's dictionary_files_present and offscreen.js's MARKER_FILES
-// have to accept.
-const MARKER_FILES = ['.hoshidicts_4', '.hoshidicts_3', '.hoshidicts_2', '.hoshidicts_1'];
+// .hoshidicts_6 when it trained a zstd dictionary for the term banks and
+// .hoshidicts_5 when it did not, so a test that pins one specific marker pins
+// which branch the fixture happened to take. _4 and _3 are the same pair from
+// engines that stored the term score as an int32 rather than a double. This
+// list is what both wasm/bindings.cpp's dictionary_files_present and
+// engine-service.js's MARKER_FILES have to accept.
+const MARKER_FILES = ['.hoshidicts_6', '.hoshidicts_5', '.hoshidicts_4', '.hoshidicts_3', '.hoshidicts_2', '.hoshidicts_1'];
 
-// dict.zstd exists only alongside .hoshidicts_4, so it is never part of the
-// required set.
+// dict.zstd exists only alongside .hoshidicts_6 (or _4), so it is never part of
+// the required set.
 const REQUIRED_FILES = ['index.json', 'hash.table', 'bloom.filter', 'blobs.bin'];
 
 // ---------------------------------------------------------------------------
@@ -141,7 +144,9 @@ const TERM = {
   expression: 'string',
   reading: 'string',
   rules: 'string',
-  score: 'int',
+  // A double since .hoshidicts_5; older layouts hold an int32 and read back as
+  // an integral number.
+  score: 'number',
   glossaries: arrayOf(GLOSSARY),
   frequencies: arrayOf(FREQUENCY_ENTRY),
   pitches: arrayOf(PITCH_ENTRY),
@@ -323,9 +328,9 @@ check('the primary fixture stays under the zstd training floor', () =>
       `dictionary and this fixture stops covering the pre-4 layout`,
   ));
 
-check('the untrained import is a .hoshidicts_3 directory with no dict.zstd', () => {
+check('the untrained import is a .hoshidicts_5 directory with no dict.zstd', () => {
   const entries = entriesOf(DICT_DIR);
-  eq(markerOf(entries), '.hoshidicts_3', `marker in ${DICT_DIR}: ${JSON.stringify(entries.sort())}`);
+  eq(markerOf(entries), '.hoshidicts_5', `marker in ${DICT_DIR}: ${JSON.stringify(entries.sort())}`);
   ok(!entries.includes('dict.zstd'), 'dict.zstd should not exist without a trained dictionary');
 });
 
@@ -885,11 +890,11 @@ check('a successful re-import replaces the dictionary in place', () => {
 
 // ---------------------------------------------------------------------------
 
-G('trained zstd dictionary (.hoshidicts_4) and the pre-4 layout beside it');
+G('trained zstd dictionary (.hoshidicts_6) and the previous engine\'s layouts beside it');
 
 // Upstream trains a zstd dictionary from the first term bank when it can sample
 // enough glossaries. Doing so changes two things on disk -- the marker becomes
-// .hoshidicts_4 and a dict.zstd appears -- and it changes how blobs.bin is
+// .hoshidicts_6 and a dict.zstd appears -- and it changes how blobs.bin is
 // encoded: glossaries are compressed against that dictionary, so a lookup only
 // returns the right bytes if query.cpp found and loaded it. The lookups below are
 // the real assertion; the marker checks only say which branch was taken.
@@ -905,9 +910,9 @@ check('the trained import succeeds', () => {
   eq(trained.termCount, TRAINED_TERMS.length, 'termCount');
 });
 
-check('a trained import is a .hoshidicts_4 directory with a dict.zstd', () => {
+check('a trained import is a .hoshidicts_6 directory with a dict.zstd', () => {
   const entries = entriesOf(TRAINED_DIR);
-  eq(markerOf(entries), '.hoshidicts_4', `marker in ${TRAINED_DIR}: ${JSON.stringify(entries.sort())}`);
+  eq(markerOf(entries), '.hoshidicts_6', `marker in ${TRAINED_DIR}: ${JSON.stringify(entries.sort())}`);
   ok(entries.includes('dict.zstd'), `dict.zstd missing; got ${JSON.stringify(entries.sort())}`);
   ok(M.FS.readFile(`${TRAINED_DIR}/dict.zstd`).length > 0, 'dict.zstd is empty');
   for (const required of REQUIRED_FILES) {
@@ -915,7 +920,7 @@ check('a trained import is a .hoshidicts_4 directory with a dict.zstd', () => {
   }
 });
 
-check('add_dict accepts the .hoshidicts_4 directory', () =>
+check('add_dict accepts the .hoshidicts_6 directory', () =>
   eq(addDict(TRAINED_DIR, 0), 1, `add_dict: ${lastError()}`));
 
 check('glossaries compressed against the trained dictionary decompress', () => {
@@ -950,7 +955,7 @@ for (const [what, write] of [
   ['zero length', new Uint8Array(0)],
   ['invalid', new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])],
 ]) {
-  check(`add_dict refuses a .hoshidicts_4 directory whose dict.zstd is ${what}`, () => {
+  check(`add_dict refuses a .hoshidicts_6 directory whose dict.zstd is ${what}`, () => {
     reset();
     M.FS.unlink(trainedDictionaryPath);
     if (write !== null) {
@@ -976,22 +981,60 @@ check('the restored trained dictionary remains loadable', () => {
   eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
 });
 
-// The compatibility case, stated on its own rather than inferred from the earlier
-// groups: after upgrading the engine a user still has .hoshidicts_3 directories
-// with no dict.zstd sitting next to whatever they import next. query.cpp still
-// reads _3, so both have to load, at the same time, from the same query object.
-check('a .hoshidicts_3 directory with no dict.zstd still loads', () => {
+// The compatibility case, stated on its own rather than inferred from the
+// earlier groups: after upgrading the engine a user still has directories the
+// previous engine imported sitting next to whatever they import next. test/legacy
+// holds two such directories, written by the engine at hoshidicts 1ec66fe from
+// the same fixture zips make-fixture.mjs produces today: legacy-3 is the
+// untrained layout (.hoshidicts_3, int32 score, no dict.zstd) and legacy-4 the
+// trained one (.hoshidicts_4, dict.zstd). They are not regenerated by the
+// build, which is the point -- they pin bytes the current importer no longer
+// writes. query.cpp still reads both, so each has to load, at the same time as
+// a fresh .hoshidicts_5 import, from the same query object, and report the
+// same expression and score as that import does.
+const LEGACY_ROOT = join(HERE, 'legacy');
+const copyLegacy = (name, dir) => {
+  M.FS.mkdir(dir);
+  for (const entry of readdirSync(join(LEGACY_ROOT, name))) {
+    M.FS.writeFile(`${dir}/${entry}`, new Uint8Array(readFileSync(join(LEGACY_ROOT, name, entry))));
+  }
+};
+const LEGACY_3_DIR = '/dicts/legacy-3';
+const LEGACY_4_DIR = '/dicts/legacy-4';
+copyLegacy('legacy-3', LEGACY_3_DIR);
+copyLegacy('legacy-4', LEGACY_4_DIR);
+
+check('a .hoshidicts_3 directory from the previous engine still loads beside a fresh import', () => {
   reset();
-  const entries = entriesOf(DICT_DIR);
-  eq(markerOf(entries), '.hoshidicts_3', 'marker');
-  ok(!entries.includes('dict.zstd'), 'dict.zstd should be absent');
-  eq(addDict(DICT_DIR, 0), 1, `add_dict: ${lastError()}`);
-  const hit = lookup('食べたかった').results[0];
-  eq(hit.term.expression, '食べる', 'expression');
+  eq(markerOf(entriesOf(LEGACY_3_DIR)), '.hoshidicts_3', 'legacy marker');
+  ok(!entriesOf(LEGACY_3_DIR).includes('dict.zstd'), 'dict.zstd should be absent');
+  eq(markerOf(entriesOf(DICT_DIR)), '.hoshidicts_5', 'fresh marker');
+  eq(addDict(LEGACY_3_DIR, 0), 1, `add_dict legacy: ${lastError()}`);
+  eq(addDict(DICT_DIR, 0), 1, `add_dict fresh: ${lastError()}`);
+  const response = lookup('食べたかった');
+  eq(response.dictionaryCount, 2, 'both directories are loaded');
+  // Same expression and reading from two dictionaries merge into one term, so
+  // the legacy directory shows up as a second copy of each fresh glossary.
+  const merged = response.results.find((r) => r.term.expression === '食べる');
+  ok(merged, `no 食べる in ${JSON.stringify(response.results.map((r) => r.term.expression))}`);
+  const fresh = TERMS.filter((row) => row[0] === '食べる').length;
+  eq(merged.term.glossaries.length, fresh * 2, `glossaries from both directories; got ${JSON.stringify(merged.term.glossaries)}`);
+  // The int32 score of the old layout and the double of the new one must read
+  // back as the same number, or the score change silently reorders results.
+  eq(merged.term.score, 120, 'score across both layouts');
+});
+
+check('a .hoshidicts_4 directory from the previous engine still decompresses its glossaries', () => {
+  reset();
+  eq(markerOf(entriesOf(LEGACY_4_DIR)), '.hoshidicts_4', 'legacy marker');
+  ok(entriesOf(LEGACY_4_DIR).includes('dict.zstd'), 'dict.zstd should be present');
+  eq(addDict(LEGACY_4_DIR, 0), 1, `add_dict: ${lastError()}`);
+  const first = lookup('食べたかった').results[0];
+  eq(first.term.expression, '食べる', 'expression');
   same(
-    hit.term.glossaries.map((g) => g.glossary),
-    EXPECTED_GLOSSARIES.get(termKey('食べる', 'たべる')),
-    'glossary bytes from the pre-4 layout',
+    first.term.glossaries.map((g) => g.glossary),
+    [JSON.stringify(TRAINED_TERMS[0][5])],
+    'glossaries decompressed against the trained dictionary',
   );
 });
 
@@ -1017,7 +1060,7 @@ const manyBankReport = hdwImport('/work/many-banks.zip', '/dicts', 0);
 check('twenty term banks import through the bounded worker pool', () => {
   eq(manyBankReport.success, true, manyBankReport.error);
   eq(manyBankReport.termCount, MANY_BANK_COUNT, 'term count');
-  eq(markerOf(entriesOf(MANY_BANK_DIR)), '.hoshidicts_4', 'trained marker');
+  eq(markerOf(entriesOf(MANY_BANK_DIR)), '.hoshidicts_6', 'trained marker');
 });
 check('the last scheduled bank is indexed and loadable', () => {
   reset();
@@ -1180,6 +1223,15 @@ check('the importer writes a long-key scan index', () => {
 
 reset();
 eq(addDict(LONG_KEY_DIR, 0), 1, `add long-key dictionary: ${lastError()}`);
+
+check('fractional and beyond-int32 scores survive import, lookup and the JSON boundary', () => {
+  const response = lookup(LONG_KEY_PROVERB + longKeyTail, 32, 16, AUTO_OPTIONS);
+  const proverb = response.results.find((result) => result.term.expression === LONG_KEY_PROVERB);
+  eq(proverb?.term.score, LONG_KEY_PROVERB_SCORE, 'a score past int32 with a fraction');
+  const phrase = lookup(LONG_KEY_PHRASE_INFLECTED + longKeyTail, 32, 16, AUTO_OPTIONS)
+    .results.find((result) => result.term.expression === LONG_KEY_PHRASE);
+  eq(phrase?.term.score, LONG_KEY_PHRASE_SCORE, 'a negative fractional score');
+});
 
 check('scanLength 16 still finds a 27-code-point key when the text begins like it', () => {
   const response = lookup(LONG_KEY_PROVERB + longKeyTail, 32, 16, AUTO_OPTIONS);

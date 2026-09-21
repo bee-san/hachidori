@@ -474,13 +474,19 @@ export const LONG_KEY_PROVERB_READING = 'しんたいはっぷこれをふぼに
 export const LONG_KEY_PHRASE = '自分の思うところをはっきりと述べる';
 export const LONG_KEY_PHRASE_INFLECTED = '自分の思うところをはっきりと述べられなかった';
 export const LONG_KEY_LENGTH = Array.from(LONG_KEY_PROVERB_READING).length;
+// Yomitan scores are JSON numbers, not integers: real dictionaries carry
+// fractions (frequency-derived scores) and values past int32. hoshidicts stores
+// the score as a double since .hoshidicts_5, and these two pin that the whole
+// path -- importer, blobs.bin, lookup, the wasm JSON boundary -- keeps them.
+export const LONG_KEY_PROVERB_SCORE = 1099511627776.5;
+export const LONG_KEY_PHRASE_SCORE = -0.25;
 
 export function buildLongKeyZip() {
   return buildZip([
     zipEntry('index.json', JSON.stringify({ ...index, title: LONG_KEY_TITLE })),
     zipEntry('term_bank_1.json', JSON.stringify([
-      [LONG_KEY_PROVERB, LONG_KEY_PROVERB_READING, '', '', 100, ['the body is a gift from one\'s parents'], 1, ''],
-      [LONG_KEY_PHRASE, 'じぶんのおもうところをはっきりとのべる', '', 'v1', 90, ['to state one\'s view plainly'], 2, ''],
+      [LONG_KEY_PROVERB, LONG_KEY_PROVERB_READING, '', '', LONG_KEY_PROVERB_SCORE, ['the body is a gift from one\'s parents'], 1, ''],
+      [LONG_KEY_PHRASE, 'じぶんのおもうところをはっきりとのべる', '', 'v1', LONG_KEY_PHRASE_SCORE, ['to state one\'s view plainly'], 2, ''],
       ['身体', 'しんたい', '', '', 80, ['body'], 3, ''],
     ])),
   ]);

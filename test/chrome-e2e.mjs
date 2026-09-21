@@ -110,8 +110,8 @@ function opfsPath(path) {
 
 function generationExists(paths, dictionaryPath) {
   const relative = opfsPath(dictionaryPath);
-  return paths.includes(`${relative}/.hoshidicts_3`)
-    || paths.includes(`${relative}/.hoshidicts_4`);
+  return [".hoshidicts_5", ".hoshidicts_6", ".hoshidicts_3", ".hoshidicts_4"]
+    .some((marker) => paths.includes(`${relative}/${marker}`));
 }
 
 function generationIsAbsent(paths, generationRoot) {
