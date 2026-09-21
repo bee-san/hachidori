@@ -8305,12 +8305,19 @@ async function main() {
         === `Enabled for ${CUSTOM_DICTIONARY_TITLE} (managed; always enabled)`
       && settingsCustom.fixedControls.upLabel
         === `Move ${CUSTOM_DICTIONARY_TITLE} up (managed; fixed first)`
+      && JSON.stringify(settingsCustom.positionOneClamp) === JSON.stringify({
+        order: [CUSTOM_DICTIONARY_ID, "third-id", "ordinary-id"],
+        inputValue: "2",
+        rank: "2",
+      })
       && JSON.stringify(settingsCustom.bulkState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, enabled: true },
+        { id: "third-id", enabled: false },
         { id: "ordinary-id", enabled: false },
       ])
       && JSON.stringify(settingsCustom.favoriteState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, favorite: true },
+        { id: "third-id", favorite: true },
         { id: "ordinary-id", favorite: true },
       ]),
     JSON.stringify(settingsCustom),
@@ -12482,7 +12489,11 @@ async function settingsCustomDictionaryStage() {
   let state = {
     schemaVersion: 1,
     revision: 40,
-    dictionaries: [customPackage, genericPackage({ id: "ordinary-id", title: "Ordinary" })],
+    dictionaries: [
+      customPackage,
+      genericPackage({ id: "ordinary-id", title: "Ordinary" }),
+      genericPackage({ id: "third-id", title: "Third" }),
+    ],
     groups: [],
   };
   let customDocument = {
@@ -12514,7 +12525,7 @@ async function settingsCustomDictionaryStage() {
           return { ok: true, state: structuredClone(state) };
         }
         if (message.type === "hd_status") {
-          return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+          return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
         }
         if (message.type === "hd_options_write") {
           return { ok: true, options: structuredClone(message.options) };
@@ -12646,15 +12657,27 @@ async function settingsCustomDictionaryStage() {
     enabledLabel: fixed?.querySelector(".dict-enabled")?.getAttribute("aria-label"),
     upLabel: fixed?.querySelector(".dict-up")?.getAttribute("aria-label"),
   };
+  // Typing 1 while the managed package is pinned first is the reporter's way of
+  // saying "as high as possible": it must land on the first movable slot
+  // instead of being discarded.
+  const thirdPosition = window.document.querySelector('[data-dictionary-id="third-id"] .dict-position-input');
+  thirdPosition.value = "1";
+  thirdPosition.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  await waitFor(() => stateRequests.length === 1);
+  result.positionOneClamp = {
+    order: stateRequests[0]?.dictionaries?.map(({ id }) => id),
+    inputValue: window.document.querySelector('[data-dictionary-id="third-id"] .dict-position-input')?.value,
+    rank: window.document.querySelector('[data-dictionary-id="third-id"] .dict-rank')?.textContent,
+  };
   await navigateSettingsSection(window, "dictionaries");
   window.document.getElementById("dict-select-visible")?.click();
   window.document.getElementById("dict-bulk-disable")?.click();
-  await waitFor(() => stateRequests.length === 1
+  await waitFor(() => stateRequests.length === 2
     && window.document.getElementById("dict-bulk-favorite")?.disabled === false);
-  result.bulkState = stateRequests[0]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
+  result.bulkState = stateRequests[1]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
   window.document.getElementById("dict-bulk-favorite")?.click();
-  await waitFor(() => stateRequests.length === 2);
-  result.favoriteState = stateRequests[1]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
+  await waitFor(() => stateRequests.length === 3);
+  result.favoriteState = stateRequests[2]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
 
   await navigateSettingsSection(window, "custom-dictionary");
   source.focus();
