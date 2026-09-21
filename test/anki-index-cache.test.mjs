@@ -76,6 +76,7 @@ function fixture(saved) {
     failWrites(value = true) { writeFailure = value; },
     hold() { return held = deferred(); },
     due() { clock += ANKI_INDEX_REFRESH_MS; },
+    tick() { clock += 1; },
     async change(patch, notify = true) {
       const commit = storageTail.then(async () => {
         const nextOptions = globalThis.HDReaderOptions.normaliseOptions({ ...options, ...patch });
@@ -262,6 +263,28 @@ test("a restarted worker restores the snapshot and missing alarm without repeati
   assert.equal(await restarted.has(f.options.anki, "猫"), true);
   assert.equal(f.refreshes.length, calls);
   assert.equal(f.alarms.get(ANKI_INDEX_ALARM).scheduledTime, 5_400_000);
+});
+
+test("a refresh interrupted before commit is retried by the next worker start", async () => {
+  const f = fixture(), hold = f.hold();
+  const interrupted = f.service.reconcile();
+  while (!f.refreshes.length) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.state.attempt.finishedAt, undefined, "a reservation carries no outcome until its pull ends");
+  // The worker that reserved this pull is gone; a repaired miss in between
+  // must not disguise the unfinished refresh as a complete one.
+  f.tick();
+  const restarted = createAnkiDuplicateIndex(f.dependencies);
+  await restarted.lookup(f.options.anki, "犬", f.invoke(() => ({ wordKey: "犬", mature: true, noteIds: [12] })));
+  await restarted.reconcile();
+  assert.equal(f.refreshes.length, 2, "an orphaned attempt is due immediately, not at its 30-minute mark");
+  hold.resolve();
+  await interrupted;
+  assert.equal(typeof f.state.attempt.finishedAt, "number");
+  assert.equal(await restarted.has(f.options.anki, "猫"), true);
+  // Its own reservation is never mistaken for an orphan: a repeat reconcile waits.
+  await restarted.reconcile();
+  assert.equal(f.refreshes.length, 2);
+  assert.equal(f.alarms.get(ANKI_INDEX_ALARM).scheduledTime, 3_600_001);
 });
 
 test("scope changes invalidate membership and schedule an immediate replacement, while policy changes retain it", async () => {
