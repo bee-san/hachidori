@@ -18,6 +18,7 @@ export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configu
 // stored options, so an extension update never changes an existing user's
 // reader defaults or overrides a later edit.
 export const FIRST_INSTALL_OPTIONS = Object.freeze({
+  popupTheme: "auto",
   showCompactDefinitionSummary: true,
   compactDefinitionSummaryCount: 2,
 });
@@ -37,13 +38,19 @@ export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
 ]);
 
 // What mining may use in an overlay host, whatever the stored options say.
-// Electron has no chrome.tabs.captureVisibleTab, and no capture host can record
-// browser text-to-speech, so only downloadable pronunciations reach Anki.
-export function overlayAnkiOptions(options) {
+// Electron has no chrome.tabs.captureVisibleTab. Generic overlays also have no
+// byte-backed speech capture, while hosts that explicitly provide it keep TTS.
+export function overlayAnkiOptions(options, { browserSpeech = false } = {}) {
   return {
     ...options,
-    anki: { ...options.anki, captureScreenshot: false },
-    audioSources: options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
+    anki: {
+      ...options.anki,
+      captureScreenshot: false,
+      templates: options.anki.templates.map(template => ({ ...template, captureScreenshot: false })),
+    },
+    audioSources: browserSpeech
+      ? options.audioSources
+      : options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
     mediaCapture: { ...options.mediaCapture, enabled: false },
   };
 }

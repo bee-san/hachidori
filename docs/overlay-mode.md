@@ -11,7 +11,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text; with no entry for it, the popup offers the pencil to add your own definition.
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - Hachidori's **screen recorder** is unavailable. GameSentenceMiner owns game screenshots, recordings and sentence audio instead.
-- Chrome-owned pages are unavailable, so **browser shortcut management**, the **local-file access prompt**, and **custom toolbar links** are disabled. Page/popup keybinds still work. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
+- Chrome-owned pages are unavailable, so **browser shortcut management** and the **local-file access prompt** are disabled. Page/popup keybinds still work. **Custom toolbar links** remain editable and the reader asks the host to open their validated HTTP(S) URLs in the system browser. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -26,7 +26,11 @@ Then load the extension as usual, for example with Electron's
 `session.extensions.loadExtension()`. There is nothing to change in storage or Settings.
 
 GameSentenceMiner does this in `scripts/sync-hachidori.mjs` when it vendors a
-Hachidori commit, and records the change in the vendored `SOURCE.json`.
+Hachidori commit. It also enables `EMBEDDED_SPEECH_CAPTURE` because its Electron
+host creates and grants Hachidori's dedicated `speech-capture.html` frame as a
+display-media source and can expose byte-exporting system voices to that page.
+Both changes are recorded in the vendored `SOURCE.json`. Other hosts must leave
+that capability off unless they provide the same byte-backed contract.
 
 ## What it changes
 
@@ -37,7 +41,7 @@ normal first-install preferences plus:
 | --- | --- | --- |
 | `lookupMode` | `"hover"` | Lookup → Activation → Lookup mode → Hover |
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
-| `anki.captureScreenshot` | `false` | Anki → Screenshot the page when mining |
+| every `anki.templates[].captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
 - **Reading defaults:** lookup activation and word highlighting remain editable
   in Settings, and later choices persist.
@@ -46,16 +50,20 @@ normal first-install preferences plus:
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
-- **Screenshot:** the worker reads `anki.captureScreenshot` as `false` in every
-  overlay profile. Settings also shows the effective off/disabled capability
-  when a carried or shared configuration has the stored option on. It preserves
-  that configuration and its field mappings.
-- **Pronunciation:** no media capture host runs in an overlay, so browser
-  text-to-speech cannot be recorded. Mining skips text-to-speech audio sources.
-  With no downloadable source left,
-  `{audio}` fields stay empty without a warning; add one under Audio to fill them.
-  Audio Settings explains this playback-only speech capability and hides the
-  browser instruction to start capture for speech recording.
+- **Screenshot:** the worker reads screenshot capture as `false` for every
+  Template in an overlay profile. Settings also shows the effective
+  off/disabled capability when a carried or shared Template has the stored
+  option on. It preserves each Template and its field mappings.
+- **Pronunciation:** a generic overlay has no byte-backed speech capture, so
+  mining skips text-to-speech audio sources. With no downloadable source left,
+  `{audio}` fields stay empty without a warning; add one under Audio to fill
+  them. A host with `EMBEDDED_SPEECH_CAPTURE` keeps those sources. Hachidori
+  asks its host-owned speech page for the selected browser voice. A matching
+  system exporter returns a WAV that the page plays and attaches; other voices
+  use the page's frame-audio capture. Hachidori submits the resulting bounded
+  mono WAV through the normal pronunciation media path before mutating the
+  note. Capture failure therefore leaves no audio-less note or media residue.
+  Local playback by itself never counts as an attachment.
 
 ## Settings capabilities
 
@@ -67,9 +75,9 @@ turn an Electron-only control back on remotely.
 | --- | --- |
 | Media capture | Every recorder control and the toolbar Record button are disabled. The service worker also rejects capture requests and does not wake a capture host. |
 | Anki screenshot | The switch is effectively off and disabled; existing mappings and the stored choice are preserved. |
-| Audio | Downloadable pronunciation and browser-speech playback work. Browser speech and captured audio are not recorded for mining. |
+| Audio | Downloadable pronunciation and browser-speech playback work. Generic overlays do not record browser speech. A host that explicitly supplies embedded speech capture records the selected voice at mining time and sends its WAV through the normal Anki media transaction. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
-| Design | Appearance, layout and custom CSS work. Custom toolbar links are disabled and omitted from the live/reader popup because Electron cannot open their tabs. |
+| Design | Appearance, layout, custom CSS and Custom buttons work. Link buttons ask the embedding host to open the URL in the system browser; Anki buttons use their selected Template. The Settings live preview cannot launch links. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
 | Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission. |
 
@@ -77,6 +85,13 @@ turn an Electron-only control back on remotely.
 the content script and the service worker. Unsupported runtime requests fail
 with an explicit overlay error even if they came from stale UI or a remotely
 shared option.
+
+For link-type Custom buttons, the content script dispatches `hachidori-open-external` with
+a request ID, a normalized credential-free HTTP(S) URL and the saved activation
+choice. The host answers with `hachidori-open-external-result` carrying the same
+request ID and either `ok: true` or an error. Hosts must validate the URL again
+at their privileged browser-opening boundary and bind that operation to the
+intended overlay window.
 
 The page scan is layout-unaware like Yomitan's default: an overlay may box every glyph in its own
 absolutely positioned span and Hachidori still reads the word across the boxes,
@@ -157,15 +172,16 @@ once and never opens setup" check covers:
 - a pre-existing profile staying untouched.
 
 Its "overlay mode never takes a mining screenshot, even when the stored option
-is on" check asks the worker for a screenshot from a profile that has it on. It
-also verifies that recorder and custom-link requests fail before opening a tab
+is on" check asks the worker for a screenshot from a Template that has it on. It
+also verifies that recorder and link-button requests fail before opening a tab
 or capture host, and that the worker download endpoint checks the actual API.
 
 `node test/chrome-overlay.mjs` loads a copy of the extension with the flag set
 into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
-does. It checks the Settings capability matrix and backend guards before
-checking glyph selection, the pencil for an unknown selection, and the host
-events around a drag.
+does. It checks the Settings capability matrix, editable Custom buttons,
+rendered link and Anki buttons, and backend guards before checking glyph
+selection, the pencil for an unknown selection, and the host events around a
+drag.
 
 `test/electron-backup.cjs` exercises export, download cancellation and restore in
 a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1

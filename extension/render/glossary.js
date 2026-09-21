@@ -29,6 +29,7 @@
   const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
   const MAX_MEDIA_DISPLAY_SIZE = 1024;
   const MAX_STRUCTURED_NODES = 1_048_576;
+  const MAX_STRUCTURED_LOCATION_SEGMENTS = 64;
   const MAX_STRUCTURED_DATA_ATTRIBUTES = 64;
   const MAX_STRUCTURED_DATA_KEY_LENGTH = 64;
   const MAX_STRUCTURED_DATA_VALUE_LENGTH = 4096;
@@ -140,6 +141,38 @@
 
   function boundedString(value, maxLength = MAX_TEXT_LENGTH) {
     return typeof value === "string" ? value.slice(0, maxLength) : "";
+  }
+
+  function structuredContentLocation(path) {
+    const omitted = Math.max(0, path.length - MAX_STRUCTURED_LOCATION_SEGMENTS);
+    const segments = omitted > 0
+      ? [...path.slice(0, MAX_STRUCTURED_LOCATION_SEGMENTS / 2),
+          `[${omitted} path segments omitted]`,
+          ...path.slice(-MAX_STRUCTURED_LOCATION_SEGMENTS / 2)]
+      : path;
+    let location = "";
+    for (const segment of segments) {
+      if (typeof segment === "string" && segment.startsWith("[")) {
+        location += segment;
+        continue;
+      }
+      location += typeof segment === "number"
+        ? `[${segment}]`
+        : `${location ? "." : ""}${segment}`;
+    }
+    return location || "structuredContent";
+  }
+
+  function structuredContentLimitError(kind, actual, limit, path) {
+    const error = new RangeError(
+      `Structured content ${kind} ${actual} exceeds limit ${limit} at ${structuredContentLocation(path)}`
+    );
+    error.code = "structured-content-limit";
+    error.structuredContentActual = actual;
+    error.structuredContentLimit = limit;
+    error.structuredContentLimitKind = kind;
+    error.structuredContentLocation = structuredContentLocation(path);
+    return error;
   }
 
   function toHiragana(text) {
@@ -1017,14 +1050,38 @@
     return element.isConnected && (typeof isCurrent !== "function" || isCurrent());
   }
 
-  function appendStructuredValue(documentRef, parent, value, state) {
-    // Use explicit traversal frames instead of recursive calls. Structured
-    // content is dictionary-authored and valid entries can be much deeper
-    // than the old arbitrary depth bound; the node budget still bounds work
-    // for one glossary.
+  function appendStructuredValue(
+    documentRef,
+    parent,
+    value,
+    state,
+    _depth,
+    path = ["structuredContent"]
+  ) {
+    const currentPath = [...path];
     const stack = [{ kind: "value", parent, value }];
+    const pushChild = (childParent, childValue, segment) => {
+      stack.push({ kind: "leave" });
+      stack.push({ kind: "value", parent: childParent, value: childValue });
+      stack.push({ kind: "enter", segment });
+    };
     while (stack.length > 0) {
       const frame = stack.pop();
+      if (frame.kind === "enter") {
+        currentPath.push(frame.segment);
+        continue;
+      }
+      if (frame.kind === "leave") {
+        currentPath.pop();
+        continue;
+      }
+      if (frame.kind === "array") {
+        if (frame.index < frame.value.length) {
+          stack.push({ ...frame, index: frame.index + 1 });
+          pushChild(frame.parent, frame.value[frame.index], frame.index);
+        }
+        continue;
+      }
       if (frame.kind === "append-external-icon") {
         const icon = documentRef.createElement("span");
         icon.className = "gloss-link-external-icon";
@@ -1033,15 +1090,13 @@
         continue;
       }
 
-      if (frame.kind === "array") {
-        if (frame.index >= frame.value.length) continue;
-        stack.push({ ...frame, index: frame.index + 1 });
-        stack.push({ kind: "value", parent: frame.parent, value: frame.value[frame.index] });
-        continue;
-      }
-
       if (state.nodes >= MAX_STRUCTURED_NODES) {
-        throw new RangeError("Structured content exceeds its node limit");
+        throw structuredContentLimitError(
+          "node count",
+          state.nodes + 1,
+          MAX_STRUCTURED_NODES,
+          currentPath
+        );
       }
       // Bound traversal work, including containers and values that render no DOM.
       state.nodes += 1;
@@ -1064,15 +1119,12 @@
       }
 
       if (value.type === "structured-content") {
-        stack.push({ kind: "value", parent, value: value.content });
+        pushChild(parent, value.content, "content");
         continue;
       }
       if (value.type === "text") {
-        stack.push({
-          kind: "value",
-          parent,
-          value: Object.prototype.hasOwnProperty.call(value, "text") ? value.text : value.content,
-        });
+        const property = Object.prototype.hasOwnProperty.call(value, "text") ? "text" : "content";
+        pushChild(parent, value[property], property);
         continue;
       }
       if (value.type === "image") {
@@ -1085,7 +1137,7 @@
       }
       if (!ALLOWED_STRUCTURED_TAGS.has(tag)) {
         if (Object.prototype.hasOwnProperty.call(value, "content")) {
-          stack.push({ kind: "value", parent, value: value.content });
+          pushChild(parent, value.content, "content");
         }
         continue;
       }
@@ -1189,7 +1241,7 @@
         !STRUCTURED_TAGS_WITHOUT_CONTENT.has(tag) &&
         Object.prototype.hasOwnProperty.call(value, "content")
       ) {
-        stack.push({ kind: "value", parent: contentParent, value: value.content });
+        pushChild(contentParent, value.content, "content");
       }
     }
   }
@@ -1244,15 +1296,15 @@
         : null,
     };
     if (items.length === 1) {
-      appendStructuredValue(documentRef, parent, items[0], state, 0);
+      appendStructuredValue(documentRef, parent, items[0], state, 0, ["glossary", 0]);
       return;
     }
     const list = documentRef.createElement("ul");
     list.className = "gloss-list";
-    for (const item of items) {
+    for (let index = 0; index < items.length; index += 1) {
       const listItem = documentRef.createElement("li");
       listItem.className = "gloss-item";
-      appendStructuredValue(documentRef, listItem, item, state, 0);
+      appendStructuredValue(documentRef, listItem, items[index], state, 0, ["glossary", index]);
       list.appendChild(listItem);
     }
     parent.appendChild(list);

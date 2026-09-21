@@ -45,6 +45,339 @@ Aggregate Chrome RSS sums descendant-process RSS and can count shared pages more
 
 The benchmark checks exact import counts, hits, misses, deinflection, result signatures, and every persistent OPFS file's path, length, and SHA-256 before and after a complete Chrome restart. Raw evidence remains under the ignored local `benchmark/results/` directory; the benchmark source itself is versioned.
 
+## Archive transport, relay, and first-lookup warm-up
+
+On 2026-09-18 the standard Jitendex + Pixiv Light matrix (one excluded warmup,
+three measured samples per corpus, five lookup passes, Chrome 152.0.7977.75,
+16-vCPU Intel Xeon Platinum 8488C) was rerun on `ba9171bc` (extension tree
+SHA-256 `75eddb68…c62353`). Jitendex import to first valid lookup had grown to
+2.181 `[2.136–2.236]` s against the 1.281 s recorded above. Instrumenting the
+engine worker showed where the time went:
+
+- 0.90–1.02 s writing the 38.7 MB archive into OPFS through WasmFS's `FS.write`,
+  which copies from JavaScript into the wasm heap one byte at a time (about
+  25 ns per byte, independent of the destination backend);
+- 0.88–0.97 s in `hdw_import` (zstd dictionary training 0.16–0.18 s, term banks
+  0.47–0.56 s of which ~0.24 s waits for the eight parse/compress workers and
+  ~0.05 s is file writing, index and hash tables ~0.08 s);
+- 0.13–0.15 s loading the generated dictionary; the same load costs 0.15 s on
+  restart.
+
+The first `hd_lookup` after a load also spent 7–20 ms inside the native call
+against 0.3–0.5 ms once warm (V8 tiering the wasm), and every relayed request
+paid a `chrome.runtime.getContexts()` round trip of about 0.2 ms.
+
+Four changes:
+
+1. `streamResponseToFile` collects the body and writes it once through a shared
+   writable mapping (`FS.mmap`, one `HEAPU8.set`, `FS.msync`, `FS.munmap`). WasmFS's
+   `FS.writeFile` was not usable: on the OPFS backend it appends to an existing
+   file and leaves it undeletable until the next start, which the benchmark's
+   durable-storage manifest check caught.
+2. `relay()` sends to the offscreen document directly once it has answered and
+   only verifies the document again when a reply is missing.
+3. Publishing a non-empty dictionary set runs one warm-up lookup inside the
+   serialised load.
+4. The archive is staged in MEMFS for the WasmFS build as well, which removes
+   the proxied OPFS write, read-back mapping, and unlink (about 50 ms of
+   `hdw_import` for Jitendex) and writes nothing to disk the importer does not
+   keep.
+
+| Metric | `ba9171bc` | With changes |
+| --- | ---: | ---: |
+| Jitendex import to first correctness-checked lookup | 2.181 `[2.136–2.236]` s | 1.322 `[1.175–1.325]` s |
+| Pixiv Light import to first correctness-checked lookup | 2.832 `[2.791–2.884]` s | 1.627 `[1.623–1.680]` s |
+| Jitendex Chrome restart to first correctness-checked lookup | 0.987 `[0.983–0.990]` s | 1.037 `[0.986–1.047]` s |
+| Pixiv Light Chrome restart to first correctness-checked lookup | 1.055 `[0.999–1.066]` s | 1.068 `[1.034–1.095]` s |
+| Jitendex first hit after import / after restart | 10.100 / 10.450 ms | 3.550 / 4.030 ms |
+| Pixiv Light first hit after import / after restart | 8.780 / 8.885 ms | 2.830 / 3.420 ms |
+| Jitendex steady hit p50 after import / after restart | 2.345 / 2.327 ms | 2.000 / 2.070 ms |
+| Pixiv Light steady hit p50 after import / after restart | 1.872 / 1.933 ms | 1.720 / 1.790 ms |
+
+Durable OPFS bytes are unchanged (99,440,781 and 154,655,950). Restart is not
+a target of these changes: its cost is Chrome and extension startup (about
+0.8 s for the six-term fixture) plus the dictionary load, and the three-sample
+restart spreads of the two runs overlap (0.94–1.04 s against 0.97–1.04 s for
+Jitendex). An earlier run of the first three changes alone measured 1.227 s and
+1.673 s for the two imports; the import medians move by about the same amount
+between runs.
+
+Under Electron 42.3.2 (Chromium 148, the GameSentenceMiner host) the base
+commit ran the single-thread IDBFS fallback: shared memory and workers are
+available, but `createSyncAccessHandle` is refused for `chrome-extension://`
+origins. Its Jitendex import took 3.9–4.2 s, 3.3 s of it in the single-threaded
+native importer and 0.35 s in the IDBFS `syncfs`. A third runtime variant,
+`hoshidicts-threaded-idbfs` (pthreads on the classic FS with IDBFS, run by
+`engine-worker-idbfs.js`), is now selected when the OPFS probe fails on an
+isolated origin. Measured with the same Electron harness, two runs each:
+
+| Metric (Electron, Jitendex) | Base (single-thread, local) | Threaded IDBFS worker |
+| --- | ---: | ---: |
+| Import message wall | 3.99 / 4.15 s | 1.66 / 1.58 s |
+| First hit after import / after restart | 10.3 / 10.2 ms | 2.9–3.2 / 3.0–3.5 ms |
+| Steady hit p50 after import / after restart | 2.12 / 1.71 ms | 2.26–2.10 / 1.97–2.17 ms |
+| App ready to engine ready after restart | 442 / 444 ms | 493 / 477 ms |
+
+The worker hop and the eager pthread pool cost about 0.2 ms per lookup and
+40 ms at startup against the base's in-document engine; the import no longer
+blocks the offscreen document's thread, which also hosts pronunciation and Anki
+work.
+
+## Incremental dictionary reorder, disable, and enable
+
+Loading a package copies its files out of OPFS into the wasm heap: `blobs.bin`
+alone is 80 MB for Jitendex and 128 MB for Pixiv Light, and the copy runs at
+about 1.3 GB/s, so one package costs 100–150 ms (65% of it the blob copy, the
+rest the hash table, bloom filter, and zstd dictionary). Until now every
+dictionary change in Settings, including a drag to reorder, went through
+`hdw_reset` and re-added every package, so two dictionaries cost about 250 ms
+per change and every disabled package was probe-loaded again on top.
+
+Hoshidicts now exposes `remove_dict` and `set_dict_order` (`hdw_remove_dict`
+and `hdw_set_dict_order` in the wasm ABI), and `engine-service.js` keeps a
+record of which packages loaded this session. A change whose packages all
+loaded before is applied in place: packages that leave the enabled set are
+removed, packages that rejoin it are added alone, and the engine order is set to
+the new list. Anything else (a first load, an import, a package that never
+loaded, a rejected in-place step) falls back to the full rebuild, whose
+`hdw_reset` also discards anything a partial step left behind. Package paths
+are generation-scoped and immutable once loaded, which is what makes "loaded
+once this session" a safe proxy for "loads now".
+
+Measured with Jitendex and Pixiv Light loaded (`hd_apply_state` wall from a
+settings page, five samples each):
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| Reorder two dictionaries | 256 ms | 6 ms |
+| Disable one dictionary | 240 ms | 8 ms |
+| Re-enable one dictionary | 240 ms | 146 ms (only that package is copied) |
+| Reorder with one dictionary disabled | 246 ms | 4 ms |
+| Restart to ready with one disabled | 1182 ms | 1147 ms (unchanged: nothing is verified yet) |
+
+## Importer: one glossary buffer per bank
+
+A CPU profile of the import workers (Jitendex, `--profiling-funcs` build,
+Chrome's sampling profiler attached to every pthread) put the work at roughly
+1.5 s of JSON parsing, 1.45 s of zstd, 0.3 s of inflate and 0.17 s of malloc
+and free across the eight workers, with the writer thread spending 80 ms
+deduplicating glossaries and copying them into a per-bank buffer. The
+allocator and copy costs came from keeping one heap vector per distinct
+glossary (350k for Jitendex, 650k for Pixiv Light). Workers now compress
+straight into one per-bank blob and record spans; the writer emits the blob
+with one write per run between glossaries an earlier bank already wrote. The
+files produced are byte-identical.
+
+| Import (settings upload to "Finished", 3 runs) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1222–1253 ms | 1138–1162 ms |
+| Pixiv Light | 1445–1614 ms | 1247–1281 ms |
+
+The native `hdw_import` alone in node: Jitendex 844 → 746 ms, Pixiv Light
+961 → 829 ms (medians of three).
+
+## Runtime build: wasm SIMD and link-time optimisation
+
+Every supported host (Chrome ≥ 128, Electron, Node) runs wasm SIMD, so the
+runtimes are now compiled with `-msimd128` and linked with `-flto`. Output
+files are byte-identical; the compiler vectorises the parsers and inlines
+across the engine, zstd, glaze, and libdeflate. xxHash stays scalar because its
+wasm SIMD path goes through the SIMDe `arm_neon.h` shim, which pulls C++
+headers inside an `extern "C"` block and does not compile.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Native `hdw_lookup` in node, p50 (食べました / 走り出した / 美しい景色 / 日本語を勉強しています) | 186 / 222 / 59 / 279 µs | 155 / 158 / 50 / 254 µs |
+| Native `hdw_import` in node, Jitendex / Pixiv Light | 769 / 802 ms | 731 / 764 ms |
+| Import from the settings page, Jitendex / Pixiv Light (median of 3) | 1187 / 1348 ms | 1127 / 1314 ms |
+| End-to-end hover lookup (Jitendex hit, median) | 2.0 ms | 2.0 ms (transport-bound) |
+
+The threaded runtime shrinks by 4 KB. Builds stay byte-reproducible.
+
+## Importer: no UTF-8 re-validation of bank strings
+
+The bank parsers capture every string raw (`raw_string`, `raw_json_view`) and
+copy it through unchanged, yet glaze's default `validate_utf8` re-walked every
+skipped string. Turning it off for the bank parsers (not `index.json`) leaves
+the produced files byte-identical and removes 12–18% of a Jitendex import.
+
+| Import (settings upload to "Finished", 3 runs) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1070–1254 ms (median 1110) | 962–996 ms (median 973) |
+| Pixiv Light | 1163–1615 ms (median 1331) | 1097–1146 ms (median 1116) |
+
+Native `hdw_import` in node: Jitendex 667 → 544 ms, Pixiv Light 652 → 618 ms.
+One behaviour change, for corrupt input only: a bank containing malformed UTF-8
+used to fail the whole import ("empty dictionary" when it was the only bank);
+it now imports with the bytes as they are, and renderers show U+FFFD for them,
+which is what Yomitan does.
+
+## Importer: trainer threads and the default FSE table
+
+Two engine changes (hoshidicts #8 and #9), both leaving every produced data file
+byte-identical for nine dictionaries (the fixture, Jitendex, Pixiv Light, JMdict,
+JMnedict, KANJIDIC, JPDB and BCCWJ frequency, Kanjium pitch):
+
+- The zstd dictionary trainer tries five values of k; each trial walks a 4 MiB
+  frequency table and is memory-bound, so five trials at once were slower than
+  three in two rounds. Jitendex training wall on 16 cores: 8 threads 133 ms,
+  3 threads 96 ms. The trainer is now capped at three threads.
+- zstd's `set_basic` path (blocks with one or two sequences, i.e. short
+  glossaries) rebuilt the format-defined default FSE table on every block. For
+  JMnedict that was 360 ms of CPU, the largest item in its import profile. The
+  table is now built once (`third_party/hoshidicts/src/zstd`, which replaces one
+  upstream translation unit).
+
+| Import (settings upload to "Finished", medians of 3) | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1104 ms | 971 ms |
+| Pixiv Light | 1216 ms | 1145 ms |
+| JMdict (English) | 802 ms | 707 ms |
+| JMnedict | 616 ms | 581 ms |
+| BCCWJ frequency | 948 ms | 894 ms |
+| JPDB frequency | 497 ms | 469 ms |
+| KANJIDIC, Kanjium pitch | unchanged | unchanged |
+
+Node, four cores (`taskset -c 0-3`): JMnedict 606 → 540 ms, JMdict 629 → 594 ms,
+Jitendex 974 → 821 ms.
+
+## Dictionary loads through sync access handles
+
+WasmFS's OPFS backend opens a read-only descriptor as a Blob: every read copies
+the range into a JavaScript `ArrayBuffer` and then into the heap, with an async
+round trip in between. A read-write descriptor uses a sync access handle whose
+`read` lands straight in the heap. Loading a dictionary is one mmap copy of each
+file, so the WasmFS runtime (hoshidicts `HOSHIDICTS_WASMFS`) now opens the files
+read-write for the copy and closes the descriptor immediately afterwards; the
+access handle and its lock exist only for the copy. The IDBFS and single-threaded
+runtimes are unchanged (their wasm is byte-identical).
+
+Everything that (re)loads dictionaries gets faster:
+
+| Chrome | Before | After |
+| --- | ---: | ---: |
+| Restart to ready, five dictionaries (one disabled) | 1446 ms | 1173 ms |
+| Reload after an import, seven installed | 446 ms | 237 ms |
+| Reload after an import, five installed | 246 ms | 133 ms |
+| Re-enable JMnedict | 153 ms | 74 ms |
+| Import Jitendex with six others installed | 1062 ms | 880 ms |
+| Import BCCWJ with six others installed | 980 ms | 797 ms |
+
+The post-import reload is the phase that grows with the number of installed
+dictionaries (the importer unloads everything to free the address space and
+reloads it afterwards); with seven installed it was almost half of an import.
+
+## Importer: SIMD glossary skip
+
+Term glossaries are captured raw and make up most of a term bank's bytes. glaze
+skipped them eight bytes at a time and dropped to a byte-and-switch loop at
+every quote or bracket, which structured content hits every few bytes; that
+skip was the largest item in the import profile (about 40% of a VNDB import
+under native `perf`). hoshidicts now classifies 64 bytes per step (wasm simd128)
+and only walks the structural bits of a block in which the matching bracket can
+fall. Output is byte-identical for eleven dictionaries, and a differential test
+against glaze's own skip runs in hoshidicts' ctest.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Chrome import Jitendex (medians of 3) | 878 ms | 798 ms |
+| Chrome import Pixiv Light | 965 ms | 913 ms |
+| Node, 16 cores: Jitendex / Pixiv Light / VNDB / full Pixiv | 571 / 627 / 3234 / 2310 ms | 436 / 553 / 2903 / 2156 ms |
+| Node, four cores: Jitendex / Pixiv Light | 881 / 1084 ms | 717 / 891 ms |
+
+Meta banks (frequency, pitch) go through the same skipper for their object
+values (hoshidicts #12): node import JPDB 149 → 132 ms, Kanjium 49 → 42 ms,
+BCCWJ 440 → 429 ms; output byte-identical.
+
+## Electron: classic-FS file growth during imports
+
+On the IDBFS runtime (Electron), the importer's output files live in the
+classic Emscripten FS, whose `MEMFS` grows a file's JavaScript array by 12.5%
+per write once it passes 1 MiB; streaming an 80 MB `blobs.bin` therefore copies
+about nine times its size (`expandFileStorage` was 340 ms of a Jitendex import).
+`engine-service.js` now doubles the capacity instead and trims the finished
+files back to their exact size before `syncfs` (IDBFS stores each file as a view
+of its array, and a structured clone of a view carries the whole backing buffer,
+so trimming first also keeps the IndexedDB write at the real size).
+
+Electron 42, `benchmark/electron.mjs`, imports with the previous dictionaries
+still installed:
+
+| Import | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 1408 ms | 1206 ms |
+| JMdict (English) | 1281 ms | 1130 ms |
+| JMnedict | 1598 ms | 1398 ms |
+
+Of the remainder, the IDBFS `syncfs` (IndexedDB write of the new files) was
+320–890 ms and grew with the database. IDBFS stores each file as a record whose
+`contents` is a Uint8Array, which Chromium serialises through the renderer on
+every put and deserialises on every get. `engine-service.js` now stores files of
+1 MiB and more as Blobs (handed to blob storage once) and reads them back with
+`FileReaderSync`; records of either shape load, and a profile written by an older
+version keeps working.
+
+| Electron 42 | Before | After |
+| --- | ---: | ---: |
+| Import Jitendex / JMdict / JMnedict (in sequence) | 1461 / 1279 / 1630 ms | 977 / 748 / 878 ms |
+| `syncfs` for the same three | 398 / 631 / 879 ms | 230 / 280 / 340 ms |
+| Restart to ready, three dictionaries | 4157–4207 ms | 3863–3961 ms |
+
+An empty Electron start is 3.5 s of that, almost all Electron itself (the
+extension goes from load to engine ready in about 260 ms). Chrome is unaffected
+(OPFS runtime). One caveat: an older hachidori cannot read Blob records, so a
+downgrade after an import would need that dictionary re-imported.
+
+## Importer: one worker pool, tail phases in parallel
+
+After the term-bank workers finished, the rest of an import ran on the calling
+thread on Emscripten: meta and kanji banks, the offset radix sort (its eight
+chunks executed serially), the hash table, the Bloom filter and the media
+extraction. For VNDB (6.6M terms) that tail was 1.5 s of a 2.7 s import.
+hoshidicts now runs the whole import on one worker pool created after training,
+so those phases use the same threads the bank workers used (hoshidicts #13).
+Output is byte-identical for ten dictionaries.
+
+| Node import, 16 cores | Before | After |
+| --- | ---: | ---: |
+| Jitendex | 456 ms | 326 ms |
+| Pixiv Light | 560 ms | 419 ms |
+| VNDB | 2510 ms | 1811 ms |
+| JMnedict | 329 ms | 224 ms |
+| JPDB frequency / Kanjium pitch | 143 / 43 ms | 123 / 19 ms |
+
+Chrome (settings upload to "Finished", single runs): JMnedict 650 → 583 ms, BCCWJ
+782 → 728, JPDB 475 → 432, Pixiv Light 783 → 749. Electron: JMnedict 1398 → 1164.
+
+The Bloom filter's parallel build partitions the filter by bit ranges rather than
+the hashes by chunks (hoshidicts #14): with atomic ORs from every thread the
+cache lines of a small filter bounced between cores and the build was slower than
+single-threaded. Node, medians of 3: JMnedict 319 → 213 ms, Jitendex 364 → 313,
+VNDB 2874 → 2424.
+
+Two smaller follow-ups (hoshidicts #15, #16): the zstd trainer uses five threads
+when the sample is small (short-glossary dictionaries; JMnedict 223 → 209 ms), and
+the bank processors reserve their record buffers up front instead of growing them
+a few bytes per field (BCCWJ 373–390 → 343–351 ms, JPDB 122–125 → 114–116).
+Output unchanged in both cases.
+
+A note on measuring: a single import in a fresh Node process runs on V8's
+baseline wasm tier and is about twice as slow as the same import after another
+one has warmed the JIT (JMnedict 430 ms cold, 220 ms warm). The numbers above are
+warm unless stated; Chrome caches optimised wasm code across sessions.
+
+## Base64 through the native codec
+
+Dictionary media travel to the popup as data URLs, and captured audio and
+screenshots travel to Anki and back as base64. Those encodings used
+`String.fromCodePoint`/`btoa` and `atob`/`Uint8Array.from` loops. Chrome 143+
+has `Uint8Array.prototype.toBase64` and `Uint8Array.fromBase64`; measured in
+Chrome 152 on 1 MB: encode 43 → 0.5 ms, decode 55 → 0.9 ms, identical output.
+`extension/base64.js` uses them when present and keeps the loops as the fallback
+(Chrome 128, Node). A 140 KB Jitendex AVIF now reaches the page in 3.2 ms
+instead of 3.5; the larger effect is on Anki captures, where a megabyte of audio
+or screenshot no longer costs about 100 ms of encode-plus-decode on the way.
+
 ## Clicked-kanji selected dictionary lookup
 
 On 2026-09-09, a focused Chrome probe measured the production

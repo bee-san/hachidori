@@ -4,6 +4,29 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
+import { AnkiTransportError } from "../extension/anki.js";
+
+const AUDIO_FILENAME = `hachidori_${"c".repeat(64)}.wav`;
+const SPEECH_FILENAME = `hachidori_${"a".repeat(64)}.wav`;
+const IMAGE_FILENAME = `hachidori_${"d".repeat(64)}.png`;
+const SVG_FILENAME = `hachidori_${"e".repeat(64)}.svg`;
+const PNG_DATA = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]).toString("base64");
+const SVG_DATA = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g"/></defs><rect fill="url(#g)"/></svg>')
+  .toString("base64");
+const wav = Buffer.alloc(46);
+wav.write("RIFF", 0, "ascii");
+wav.writeUInt32LE(38, 4);
+wav.write("WAVEfmt ", 8, "ascii");
+wav.writeUInt32LE(16, 16);
+wav.writeUInt16LE(1, 20);
+wav.writeUInt16LE(1, 22);
+wav.writeUInt32LE(8000, 24);
+wav.writeUInt32LE(16000, 28);
+wav.writeUInt16LE(2, 32);
+wav.writeUInt16LE(16, 34);
+wav.write("data", 36, "ascii");
+wav.writeUInt32LE(2, 40);
+const AUDIO_DATA = wav.toString("base64");
 
 function testIndex(resolve = async () => []) {
   const find = async (config, expression, invoke) => {
@@ -31,9 +54,13 @@ function testIndex(resolve = async () => []) {
   };
 }
 
-function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
+function fixture(firstAudio = false, overwrite = false, {
+  audioSources,
+  requireAudioBeforeMutation = false,
+} = {}) {
   const calls = [], audioRequests = [];
-  let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
+  const mediaFiles = new Set();
+  let fields = overwrite ? { Front: "猫", Audio: `pronunciation[sound:${AUDIO_FILENAME}]` } : undefined;
   let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
   const options = globalThis.HDReaderOptions.normaliseOptions({ ...(audioSources && { audioSources }), anki: { model: "Basic", deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
@@ -50,11 +77,13 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
     if (action === "findNotes") return [12];
     if (action === "addNote") { fields = params.note.fields; return 12; }
     if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic", fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
-    if (action === "storeMediaFile") return params.filename;
+    if (action === "getMediaFilesNames") return mediaFiles.has(params.pattern) ? [params.pattern] : [];
+    if (action === "storeMediaFile") { mediaFiles.add(params.filename); return params.filename; }
     if (action === "updateNoteFields") { fields = { ...fields, ...params.note.fields }; return null; }
     throw new Error(`Unexpected ${action}`);
   } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    requireAudioBeforeMutation,
     duplicateIndex: testIndex(() => overwrite ? [12] : []),
     readDictionaries: async () => [{ title: "A", path: "/dicts/generation/A", enabled: true }],
     engine: async message => { calls.push(message.type); return { generation, ready: true, loading: false }; },
@@ -74,14 +103,14 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
         if (source?.id === "remote-tts") {
           if (message.recordSpeech === false) return { recordingRequired: true };
           return {
-            filename: `hachidori_${"a".repeat(64)}.wav`,
-            data: "UklGRg==",
+            filename: SPEECH_FILENAME,
+            data: AUDIO_DATA,
             sourceId: source.id,
           };
         }
         if (audioUnavailable) throw new Error("The chosen pronunciation is unavailable");
         if (deferAllSpeech || (deferSpeech && message.recordSpeech === false)) return { recordingRequired: true };
-        return { filename: "checked.wav", data: "YXVkaW8=" };
+        return { filename: AUDIO_FILENAME, data: AUDIO_DATA };
       }
       assert.deepEqual(message.dictionaryPaths, { A: "/dicts/generation/A" });
       return { fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) =>
@@ -104,10 +133,35 @@ test("the worker defers ordinary audio until verified note success and rejects s
   assert.equal(f.calls.includes("hd_anki_audio"), false);
   assert.equal((await f.service.submit(f.request)).state, "added");
   assert.ok(f.calls.indexOf("hd_anki_audio") > f.calls.indexOf("notesInfo"));
-  assert.equal(f.fields.Audio, "[sound:checked.wav]");
+  assert.ok(f.calls.indexOf("storeMediaFile") > f.calls.indexOf("addNote"),
+    "non-first-field pronunciation remains deferred until the note is confirmed");
+  assert.ok(f.calls.indexOf("storeMediaFile") < f.calls.indexOf("updateNoteFields"),
+    "deferred pronunciation is stored before its field update");
+  assert.equal(f.fields.Audio, `[sound:${AUDIO_FILENAME}]`);
   f.changedGeneration();
   await assert.rejects(f.service.submit(f.request), /dictionary generation changed/u);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
+});
+
+test("an embedded host stores non-first-field pronunciation before the note mutation", async () => {
+  const source = { id: "embedded-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+  const f = fixture(false, false, { audioSources: [source], requireAudioBeforeMutation: true });
+  f.request.configKey = (await f.service.status()).configKey;
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "added");
+  assert.ok(f.calls.indexOf("hd_anki_audio") < f.calls.indexOf("storeMediaFile"));
+  assert.ok(f.calls.indexOf("storeMediaFile") < f.calls.indexOf("addNote"));
+  assert.equal(f.fields.Audio, `[sound:${AUDIO_FILENAME}]`);
+});
+
+test("an embedded pronunciation failure leaves no note or Anki media", async () => {
+  const source = { id: "embedded-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" };
+  const f = fixture(false, false, { audioSources: [source], requireAudioBeforeMutation: true });
+  f.failAudio();
+  f.request.configKey = (await f.service.status()).configKey;
+  await assert.rejects(f.service.submit(f.request), /chosen pronunciation is unavailable/u);
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+  assert.equal(f.calls.includes("addNote"), false);
 });
 
 test("first-field audio is resolved before duplicate checking and its exact prepared bytes are reused after add", async () => {
@@ -116,8 +170,12 @@ test("first-field audio is resolved before duplicate checking and its exact prep
   assert.equal((await f.service.submit(f.request)).state, "added");
   assert.equal(f.calls.filter(action => action === "hd_anki_audio").length, 1);
   assert.ok(f.calls.indexOf("hd_anki_audio") < f.calls.indexOf("canAddNotesWithErrorDetail"));
-  assert.equal(f.fields.Front, "猫[sound:checked.wav]");
-  assert.equal(f.fields.Audio, "[sound:checked.wav]");
+  assert.ok(f.calls.indexOf("getMediaFilesNames") < f.calls.indexOf("storeMediaFile"));
+  assert.ok(f.calls.indexOf("storeMediaFile") < f.calls.indexOf("addNote"),
+    "first-field pronunciation is confirmed before the note mutation");
+  assert.equal(f.calls.filter(action => action === "storeMediaFile").length, 1);
+  assert.equal(f.fields.Front, `猫[sound:${AUDIO_FILENAME}]`);
+  assert.equal(f.fields.Audio, `[sound:${AUDIO_FILENAME}]`);
 });
 
 test("first-field browser speech stays silent during preflight and records once on authoritative submit", async () => {
@@ -133,7 +191,7 @@ test("first-field browser speech stays silent during preflight and records once 
   assert.equal(result.state, "added");
   assert.deepEqual(f.audioRequests.map(request => request.recordSpeech), [false, true]);
   assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 1);
-  assert.equal(f.fields.Front, "猫[sound:checked.wav]");
+  assert.equal(f.fields.Front, `猫[sound:${AUDIO_FILENAME}]`);
 });
 
 test("authoritative first-field speech cannot write the silent preflight placeholder", async () => {
@@ -168,8 +226,8 @@ test("linked browser speech is planned by the host, recorded by the reading brow
     speech: {
       ...preflight.clientSpeech,
       filename: `hachidori_${"a".repeat(64)}.wav`,
-      byteLength: 4,
-      data: "UklGRg==",
+      byteLength: wav.length,
+      data: AUDIO_DATA,
     },
   });
   const result = await f.service.submitClient(f.request, media);
@@ -217,7 +275,7 @@ test("mixed text/audio overwrite restores pronunciation when its final value mat
   const result = await f.service.submit(f.request);
   assert.equal(result.state, "updated");
   assert.deepEqual(result.warnings, []);
-  assert.equal(f.fields.Audio, "pronunciation[sound:checked.wav]");
+  assert.equal(f.fields.Audio, `pronunciation[sound:${AUDIO_FILENAME}]`);
   assert.equal(f.calls.filter(action => action === "updateNoteFields").length, 2,
     "the text-only write is followed by restoring the selected pronunciation");
   assert.equal(f.calls.includes("addNote"), false);
@@ -251,6 +309,217 @@ test("with no enabled audio source first-field audio is left out instead of bloc
   assert.equal(f.calls.includes("hd_anki_audio"), false);
   assert.equal(f.fields.Front, "猫");
   assert.equal(f.fields.Audio, "");
+});
+
+function dictionaryMediaFixture({
+  items = [
+    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+    { dictionary: "Fixture", path: "media/nested/diagram.svg", filename: SVG_FILENAME },
+  ],
+  existing = [],
+  overwrite = false,
+} = {}) {
+  const calls = [];
+  const files = new Set(existing);
+  let fields = overwrite ? { Front: "媒体証明", Back: "existing definition" } : undefined;
+  let generation = 3;
+  let failStore = null;
+  let acknowledgeWithoutStore = false;
+  let rejectAfterStore = false;
+  let duplicateRace = false;
+  const options = globalThis.HDReaderOptions.normaliseOptions({ audioSources: [], anki: {
+    model: "Basic",
+    deck: "Default",
+    duplicateBehavior: overwrite ? "overwrite" : "prevent",
+    fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Back: { value: "{definition}", overwriteMode: "overwrite" },
+    },
+  } });
+  const gateway = {
+    discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+      models: ["Basic"], decks: ["Default"], errors: [] }),
+    async invoke(action, params) {
+      calls.push({ action, params });
+      if (action === "canAddNotesWithErrorDetail") return [{
+        canAdd: !overwrite,
+        error: overwrite ? "cannot create note because it is a duplicate" : null,
+      }];
+      if (action === "findNotes") return overwrite ? [42] : [];
+      if (action === "getMediaFilesNames") return files.has(params.pattern) ? [params.pattern] : [];
+      if (action === "storeMediaFile") {
+        if (params.filename === failStore) throw new Error("media folder is read-only");
+        if (!acknowledgeWithoutStore) files.add(params.filename);
+        if (rejectAfterStore) generation++;
+        return params.filename;
+      }
+      if (action === "addNote") {
+        if (duplicateRace) {
+          duplicateRace = false;
+          throw new Error("cannot create note because it is a duplicate");
+        }
+        fields = { ...params.note.fields };
+        return 42;
+      }
+      if (action === "updateNoteFields") {
+        fields = { ...fields, ...params.note.fields };
+        return null;
+      }
+      if (action === "notesInfo") return [{ noteId: 42, modelName: "Basic",
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action === "deleteMediaFile") {
+        assert.fail("deterministic dictionary media must be retained for reuse");
+      }
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiWorkerService({
+    gateway,
+    readOptions: async () => options,
+    duplicateIndex: testIndex(() => overwrite ? [42] : []),
+    readDictionaries: async () => [{ title: "Fixture", path: "/dicts/generation/Fixture", enabled: true }],
+    engine: async message => {
+      calls.push({ action: message.type, params: message });
+      if (message.type === "hd_status") return { generation, ready: true, loading: false };
+      if (message.type === "hd_media") {
+        const data = message.path.endsWith(".svg") ? SVG_DATA : PNG_DATA;
+        const mime = message.path.endsWith(".svg") ? "image/svg+xml" : "image/png";
+        return { dataUrl: `data:${mime};base64,${data}` };
+      }
+      throw new Error(`Unexpected ${message.type}`);
+    },
+    offscreen: async message => {
+      assert.equal(message.type, "hd_anki_fields");
+      return {
+        fields: {
+          Front: "媒体証明",
+          Back: items.map(item => `<img src="${item.filename}">`).join(""),
+        },
+        media: items.map(item => ({ ...item })),
+      };
+    },
+  });
+  const request = {
+    term: { expression: "媒体証明", reading: "ばいたいしょうめい", rules: "", glossaries: [], frequencies: [], pitches: [] },
+    generation: 3,
+    trace: [],
+    sentence: "媒体証明",
+    matched: "媒体証明",
+    matchOffset: 0,
+    popupSelectionText: "",
+    searchQuery: "媒体証明",
+    documentTitle: "Test",
+    dictionaryAliases: {},
+    frequencyDictionaries: [],
+  };
+  return {
+    service,
+    request,
+    calls,
+    files,
+    get fields() { return fields; },
+    fail(filename) { failStore = filename; },
+    clearFailure() { failStore = null; },
+    acknowledgeWithoutPersistence(value = true) { acknowledgeWithoutStore = value; },
+    rejectGenerationAfterStore(value = true) { rejectAfterStore = value; },
+    resetGeneration() { generation = request.generation; },
+    raceDuplicate() { duplicateRace = true; },
+  };
+}
+
+test("dictionary PNG and SVG bytes are confirmed before addNote and every written reference exists", async () => {
+  const f = dictionaryMediaFixture();
+  f.request.configKey = (await f.service.status()).configKey;
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "added");
+  assert.equal(f.fields.Back, `<img src="${IMAGE_FILENAME}"><img src="${SVG_FILENAME}">`);
+  assert.deepEqual([...f.files].sort(), [IMAGE_FILENAME, SVG_FILENAME].sort());
+  for (const name of [IMAGE_FILENAME, SVG_FILENAME]) {
+    const inventory = f.calls.findIndex(call => call.action === "getMediaFilesNames" && call.params.pattern === name);
+    const retrieval = f.calls.findIndex(call => call.action === "hd_media" && call.params.path.endsWith(name.endsWith(".svg") ? ".svg" : ".png"));
+    const store = f.calls.findIndex(call => call.action === "storeMediaFile" && call.params.filename === name);
+    const add = f.calls.findIndex(call => call.action === "addNote");
+    assert.ok(inventory >= 0 && retrieval > inventory && store > retrieval && add > store);
+  }
+});
+
+test("dictionary media store failure cannot create a note with a missing reference", async () => {
+  const f = dictionaryMediaFixture({ items: [
+    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+  ] });
+  f.fail(IMAGE_FILENAME);
+  f.request.configKey = (await f.service.status()).configKey;
+  await assert.rejects(f.service.submit(f.request), /media folder is read-only/u);
+  assert.equal(f.calls.some(call => call.action === "addNote" || call.action === "updateNoteFields"), false);
+  assert.equal(f.files.has(IMAGE_FILENAME), false);
+  assert.deepEqual(f.calls.filter(call => ["getMediaFilesNames", "hd_media", "storeMediaFile"].includes(call.action))
+    .map(call => call.action), ["getMediaFilesNames", "hd_media", "storeMediaFile", "getMediaFilesNames"]);
+});
+
+test("dictionary media store failure cannot update an existing note with a missing reference", async () => {
+  const f = dictionaryMediaFixture({
+    items: [{ dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME }],
+    overwrite: true,
+  });
+  f.fail(IMAGE_FILENAME);
+  f.request.configKey = (await f.service.status()).configKey;
+  await assert.rejects(f.service.submit(f.request), /media folder is read-only/u);
+  assert.equal(f.calls.some(call => call.action === "addNote" || call.action === "updateNoteFields"), false);
+  assert.deepEqual(f.fields, { Front: "媒体証明", Back: "existing definition" });
+  assert.equal(f.files.has(IMAGE_FILENAME), false);
+});
+
+test("an acknowledged but absent dictionary file blocks addNote", async () => {
+  const f = dictionaryMediaFixture({ items: [
+    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+  ] });
+  f.acknowledgeWithoutPersistence();
+  f.request.configKey = (await f.service.status()).configKey;
+  await assert.rejects(f.service.submit(f.request), /without confirming the requested media filename/u);
+  assert.equal(f.calls.some(call => call.action === "addNote" || call.action === "updateNoteFields"), false);
+  assert.equal(f.files.has(IMAGE_FILENAME), false);
+  assert.deepEqual(f.calls.filter(call => ["getMediaFilesNames", "storeMediaFile"].includes(call.action))
+    .map(call => call.action), ["getMediaFilesNames", "storeMediaFile", "getMediaFilesNames"]);
+});
+
+test("a later generation rejection retains deterministic media and retry reuses it without another upload", async () => {
+  const f = dictionaryMediaFixture({ items: [
+    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+  ] });
+  f.rejectGenerationAfterStore();
+  f.request.configKey = (await f.service.status()).configKey;
+  await assert.rejects(f.service.submit(f.request), /dictionary generation changed/u);
+  assert.equal(f.calls.some(call => call.action === "addNote"), false);
+  assert.equal(f.files.has(IMAGE_FILENAME), true);
+  assert.equal(f.calls.filter(call => call.action === "storeMediaFile").length, 1);
+  assert.equal(f.calls.filter(call => call.action === "hd_media").length, 1);
+
+  f.rejectGenerationAfterStore(false);
+  f.resetGeneration();
+  const retry = await f.service.submit(f.request);
+  assert.equal(retry.state, "added");
+  assert.equal(f.calls.filter(call => call.action === "storeMediaFile").length, 1);
+  assert.equal(f.calls.filter(call => call.action === "hd_media").length, 1);
+  assert.equal(f.calls.filter(call => call.action === "getMediaFilesNames").length, 3);
+  assert.equal(f.fields.Back, `<img src="${IMAGE_FILENAME}">`);
+  assert.equal(f.files.has(IMAGE_FILENAME), true);
+});
+
+test("a definitive duplicate race retains confirmed media for a later safe retry", async () => {
+  const f = dictionaryMediaFixture({ items: [
+    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+  ] });
+  f.raceDuplicate();
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.submit(f.request)).state, "duplicate");
+  assert.equal(f.fields, undefined);
+  assert.equal(f.files.has(IMAGE_FILENAME), true);
+  assert.equal(f.calls.filter(call => call.action === "storeMediaFile").length, 1);
+
+  assert.equal((await f.service.submit(f.request)).state, "added");
+  assert.equal(f.calls.filter(call => call.action === "storeMediaFile").length, 1);
+  assert.equal(f.calls.filter(call => call.action === "hd_media").length, 1);
+  assert.equal(f.fields.Back, `<img src="${IMAGE_FILENAME}">`);
 });
 
 function captureFixture({
@@ -796,7 +1065,7 @@ test("missing captured audio writes the mapped animation only and returns the so
 test("a mining screenshot is held until the note is written, then stored under its own name", async () => {
   const uploads = [];
   const deletions = [];
-  let refuse = false, duplicate = false, lostReply = false;
+  let refuse = false, duplicate = false, lostReply = false, unsentReply = false;
   let check = { canAdd: true };
   const notes = new Map();
   let fields = null;
@@ -812,7 +1081,8 @@ test("a mining screenshot is held until the note is written, then stored under i
       if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
       if (action === "addNote") {
         if (duplicate) throw new Error("cannot create note because it is a duplicate");
-        if (lostReply) throw new Error("Anki reply lost");
+        if (lostReply) throw new AnkiTransportError("Anki reply lost", { dispatched: true });
+        if (unsentReply) throw new AnkiTransportError("Anki request was never sent", { dispatched: false });
         fields = params.note.fields;
         notes.set(12, fields);
         return 12;
@@ -930,6 +1200,18 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.equal(uploads.at(-1).filename, uncertainPicture.filename);
   assert.deepEqual(deletions, [], "an uncertain write must retain its uploaded screenshot");
 
+  lostReply = false;
+  unsentReply = true;
+  const unsentPicture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  await assert.rejects(
+    service.submit({ ...request, term: { ...request.term, expression: "兎" },
+      configKey: status.configKey, screenshot: unsentPicture }),
+    error => error instanceof AnkiTransportError && error.dispatched === false,
+  );
+  assert.equal(uploads.at(-1).filename, unsentPicture.filename);
+  assert.deepEqual(deletions, [unsentPicture.filename],
+    "a queued mutation rejected before dispatch must release its uploaded screenshot");
+
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
   await assert.rejects(service.screenshot(async () => "data:image/png;base64,c2hvdA=="), /no screenshot/u);
@@ -944,6 +1226,7 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     const overwrite = outcome === "overwrite-refused";
     let fields = overwrite ? { Front: "猫", Back: "preserved" } : undefined;
     const updates = [];
+    const mediaFiles = new Set();
     const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic",
       duplicateBehavior: overwrite ? "overwrite" : "prevent", duplicateScope: "model",
       fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
@@ -954,14 +1237,16 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
         error: overwrite ? "cannot create note because it is a duplicate" : null }];
       if (action === "modelNamesAndIds") return { Basic: 1 };
       if (action === "findNotes") return [12];
+      if (action === "getMediaFilesNames") return mediaFiles.has(params.pattern) ? [params.pattern] : [];
       if (action === "storeMediaFile") {
         if ((outcome === "refused" || overwrite) && params.filename.startsWith("hachidori-screenshot-")) {
           if (overwrite) fields.Back = "external edit";
           throw new Error("Screenshot upload acknowledgement lost");
         }
+        mediaFiles.add(params.filename);
         return params.filename;
       }
-      if (action === "deleteMediaFile") return null;
+      if (action === "deleteMediaFile") { mediaFiles.delete(params.filename); return null; }
       if (action === "addNote") { fields = { ...params.note.fields }; return 12; }
       if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic",
         fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
@@ -971,7 +1256,7 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
       duplicateIndex: testIndex(() => overwrite ? [12] : []),
       readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
-      offscreen: async message => message.type === "hd_anki_audio" ? { filename: "checked.wav", data: "YXVkaW8=" }
+      offscreen: async message => message.type === "hd_anki_audio" ? { filename: AUDIO_FILENAME, data: AUDIO_DATA }
         : { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] },
     });
     const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
@@ -980,7 +1265,7 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
       configKey: (await service.status()).configKey, screenshot, captureUnavailable: ["animation"] });
     assert.equal(result.state, overwrite ? "updated" : "added");
     assert.equal(fields.Back, overwrite ? "external edit"
-      : `${outcome === "stored" ? `<img src="${screenshot.filename}">` : ""}[sound:checked.wav]`);
+      : `${outcome === "stored" ? `<img src="${screenshot.filename}">` : ""}[sound:${AUDIO_FILENAME}]`);
     if (overwrite) {
       assert.deepEqual(updates, [{}], "failed media must not write back a value preserved from the duplicate snapshot");
       assert.match(result.warnings.join(" "), /pronunciation update was skipped/u);
@@ -988,4 +1273,61 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     if (outcome === "stored") assert.deepEqual(result.warnings, []);
     else assert.match(result.warnings.join(" "), /Screenshot: /u);
   });
+});
+
+test("worker selects the requested Template for destination, fields and screenshot policy", async () => {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: {
+    url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Word", deck: "Words", captureScreenshot: true,
+        fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" } } },
+      { ...base, id: "sentence", name: "Sentence", model: "Sentence", deck: "Sentences", captureScreenshot: false,
+        fieldTemplates: { Front: { value: "{sentence}", overwriteMode: "overwrite" } } },
+    ],
+  } });
+  const notes = new Map();
+  const writes = [];
+  const gateway = {
+    async discover(config) { return { connected: true, model: config.model, models: [config.model],
+      decks: [config.deck], fields: ["Front"], errors: [] }; },
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "addNote") {
+        const noteId = writes.length + 101;
+        writes.push(params.note);
+        notes.set(noteId, params.note);
+        return noteId;
+      }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+        modelName: notes.get(noteId).modelName,
+        fields: Object.fromEntries(Object.entries(notes.get(noteId).fields)
+          .map(([field, value]) => [field, { value }])) }));
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(), readDictionaries: async () => [],
+    engine: async () => ({ generation: 9, ready: true, loading: false }),
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates,
+      { audio: message.audio }), media: [] }),
+  });
+  const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,/9j/", "default");
+  assert.match(screenshot.filename, /^hachidori-screenshot-/u);
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,/9j/", "sentence"),
+    /turned off/u);
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,/9j/", "deleted"),
+    /no longer available/u);
+
+  const status = await service.status("sentence");
+  const result = await service.submit({ templateId: "sentence", configKey: status.configKey,
+    term: { expression: "猫", reading: "ねこ" }, sentence: "猫がいる。", generation: 9,
+    trace: [], matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [] });
+  assert.equal(result.state, "added");
+  assert.deepEqual(writes, [{ deckName: "Sentences", modelName: "Sentence",
+    fields: { Front: "<b>猫</b>がいる。" }, options: {
+      allowDuplicate: false,
+      duplicateScope: "collection",
+      duplicateScopeOptions: { deckName: null, checkChildren: false, checkAllModels: false },
+    }, tags: ["hachidori"] }]);
 });

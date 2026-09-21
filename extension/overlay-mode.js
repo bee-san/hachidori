@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const OVERLAY_MODE = false;
+// An embedding host may create and grant the extension's dedicated speech page
+// as its own audible display-media source. GameSentenceMiner enables this in
+// its synced copy.
+export const EMBEDDED_SPEECH_CAPTURE = false;
 
 // Electron's extension host deliberately exposes less of Chrome than a normal
 // browser window. Keep every host-owned capability in one place so shared
@@ -9,12 +13,18 @@ export const OVERLAY_MODE = false;
 export const HOST_CAPABILITIES = Object.freeze({
 
   browserShortcuts: !OVERLAY_MODE,
-  customLinks: !OVERLAY_MODE,
+  // `customLinks` is the pre-Custom-buttons host contract. Keep the alias so
+  // an embedding host can update its reader before updating its capability
+  // projection.
+  customLinks: true,
+  linkButtons: true,
+  externalLinkHost: OVERLAY_MODE,
   localFileAccessPrompt: !OVERLAY_MODE,
   mediaCapture: !OVERLAY_MODE,
 });
 
 export const MINING_CAPABILITIES = Object.freeze({
   screenshot: !OVERLAY_MODE,
-  browserSpeech: !OVERLAY_MODE,
+  browserSpeech: !OVERLAY_MODE || EMBEDDED_SPEECH_CAPTURE,
+  embeddedSpeechCapture: OVERLAY_MODE && EMBEDDED_SPEECH_CAPTURE,
 });

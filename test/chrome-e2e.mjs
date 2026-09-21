@@ -23,6 +23,8 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 
 import {
+  ATOMIC_REPLACEMENT_QUERY,
+  ATOMIC_REPLACEMENT_TITLE,
   GENERIC_KANJI_GLOSSARY,
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
@@ -56,6 +58,17 @@ const EXTENSION = resolve(REPO, "extension");
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const GENERIC_KANJI_FIXTURE = resolve(HERE, "fixtures/hachidori-generic-kanji-fixture.zip");
 const INVALID_FIXTURE = resolve(HERE, "fixtures/malformed-index.zip");
+const ATOMIC_FIXTURES = Object.fromEntries([
+  "v1",
+  "v2",
+  "v3",
+  "same-v2",
+  "lower-v1",
+  "missing-version",
+  "malformed-version",
+  "nonnumeric-version",
+  "corrupt",
+].map(name => [name, resolve(HERE, `fixtures/atomic-replacement-${name}.zip`)]));
 const GENERIC_KANJI_SELECTION = { title: GENERIC_KANJI_TITLE, kind: "term" };
 const FIXTURE_KANJI_SELECTION = { title: "hachidori-fixture", kind: "kanji" };
 const FIXTURE_TERM_SELECTION = { title: "hachidori-fixture", kind: "term" };
@@ -225,7 +238,7 @@ const PLANNED = [
   "manifest and settings page are branded as Hachidori",
   "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
-  "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+  "a fresh install uses AUTO in startup and Settings before Start setup and waits for work",
   "Start setup begins automatic dictionary installation with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
@@ -253,7 +266,7 @@ const PLANNED = [
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
   "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
-  "Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
+  "Design exposes AUTO plus 42 grouped palettes and applies live browser preference changes",
   "Design previews opacity and dimensions immediately and resets only Design settings",
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
@@ -268,11 +281,14 @@ const PLANNED = [
   "Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
   "Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
   "Anki configuration persists through reload without reloading the dictionary engine",
+  "Anki field mappings expose accessible editable combobox behavior without replacing free-form text",
   "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+  "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+  "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
@@ -298,7 +314,9 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
-  "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+  "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
+  "ordinary selections follow hover and both activation modes for all four modifiers",
+  "matching activation preserves exact selections, cross-inline highlights and personal definitions",
   "source highlights reconcile selected text mutations without changing selection",
   "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
@@ -329,6 +347,13 @@ const PLANNED = [
   "importing a Yomitan .zip from the settings page succeeds",
   "the imported dictionary is persisted in OPFS",
   "the imported dictionary is recorded in chrome.storage.local",
+  "matching local imports show an accessible named revision decision before engine mutation",
+  "Escape and explicit Cancel leave the package untouched and continue a multi-file batch",
+  "keyboard Replace preserves package identity and excludes dialog dwell from import timing",
+  "metadata mismatch and corrupt replacement leave no OPFS generation roots",
+  "same, lower, missing, malformed, and nonnumeric revisions are described without automatic replacement",
+  "Add separately persists a collision-safe title that native lookup reports",
+  "separate copies survive a browser restart, stay retained by automatic backups, and retire after release",
   "the import batch continues after failure and retains every archive outcome",
   "batch re-import preserves presentation, source, and order while clearing stale check state",
   "the dictionary list renders its alias, metadata, and five capability badges",
@@ -419,7 +444,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
-  "deep structured content renders and the next healthy hover recovers",
+  "deep structured content renders while node-limit failures omit only their definition",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -686,6 +711,7 @@ async function popupReader(page, depth = 0) {
   const cdp = await page.createCDPSession();
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
+  await cdp.send("Accessibility.enable");
 
   async function resolvePopupObject() {
     // nodeIds live only until the next getDocument, so each operation re-walks.
@@ -794,6 +820,15 @@ async function popupReader(page, depth = 0) {
           noteReading: noteForm?.querySelector('[name="reading"]')?.value ?? null,
           noteDefinition: noteForm?.querySelector('[name="definition"]')?.value ?? null,
           noteError: noteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent ?? "",
+          failure: (() => {
+            const alert = this.querySelector(".gsm-hoshidicts-lookup-failure");
+            return alert ? {
+              detail: alert.querySelector(".gsm-hoshidicts-lookup-failure-detail")?.textContent ?? "",
+              kind: alert.dataset.kind ?? "",
+              role: alert.getAttribute("role"),
+              title: alert.querySelector(".gsm-hoshidicts-lookup-failure-title")?.textContent ?? "",
+            } : null;
+          })(),
           noteFits: noteForm === null || noteForm.hidden
             || (noteForm.scrollHeight <= noteForm.clientHeight + 1
               && noteActionsRect.top >= noteFormRect.top - 1
@@ -813,11 +848,11 @@ async function popupReader(page, depth = 0) {
 
   const visible = s => !!s && !s.hidden && s.height > 0 && s.text !== "";
 
-  async function waitForVisible(timeoutMs = 15_000) {
+  async function waitForVisible(timeoutMs = 15_000, accept = null) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const current = await state();
-      if (visible(current)) return current;
+      if (visible(current) && (typeof accept !== "function" || accept(current))) return current;
       if (Date.now() >= deadline) return null;
       await new Promise(r => setTimeout(r, 250));
     }
@@ -1487,6 +1522,11 @@ async function popupReader(page, depth = 0) {
         const feedback = this.querySelector(".gsm-hoshidicts-mining-feedback");
         const controls = [...this.querySelectorAll(".gsm-hoshidicts-anki-control")];
         const adds = [...this.querySelectorAll(".gsm-hoshidicts-mine-button")];
+        const successProbe = this.ownerDocument.createElement("span");
+        successProbe.style.color = "var(--hoshidicts-success)";
+        this.append(successProbe);
+        const successColor = getComputedStyle(successProbe).color;
+        successProbe.remove();
         const primaryActions = this.querySelector(".gsm-hoshidicts-primary-header .gsm-hoshidicts-entry-actions");
         const actionKind = node => {
           if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
@@ -1501,9 +1541,15 @@ async function popupReader(page, depth = 0) {
           controls: adds.map((add, index) => {
             const control = controls[index];
             const icon = add.querySelector(".gsm-hoshidicts-mine-icon");
+            const style = getComputedStyle(add);
             return { hidden: add.hidden, text: add.textContent,
               title: add.title, icon: icon?.dataset.icon ?? icon?.textContent ?? "",
               state: add.dataset.state, disabled: add.disabled,
+              ariaBusy: add.getAttribute("aria-busy"),
+              ariaLabel: add.getAttribute("aria-label"),
+              focused: add.getRootNode().activeElement === add,
+              color: style.color, borderColor: style.borderColor,
+              successColored: style.color === successColor && style.borderColor === successColor,
               output: control?.querySelector("output")?.textContent ?? "",
               action: add.dataset.action,
               rect: add.getBoundingClientRect().toJSON() };
@@ -1511,6 +1557,52 @@ async function popupReader(page, depth = 0) {
       }.toString(),
     });
     return reply.result.value;
+  }
+  async function focusAnki(index = 0) {
+    const object = await resolvePopupObject();
+    if (!object) return false;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: index }],
+      functionDeclaration: function (buttonIndex) {
+        const button = this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex];
+        button?.focus();
+        return button?.getRootNode().activeElement === button;
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+  async function ankiAccessibility(index = 0) {
+    const popup = await resolvePopupObject();
+    if (!popup) return null;
+    const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: popup.objectId, arguments: [{ value: index }],
+      functionDeclaration: function (buttonIndex) {
+        return this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex] ?? null;
+      }.toString(),
+    });
+    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text);
+    if (!result.objectId) return null;
+    try {
+      const { node } = await cdp.send("DOM.describeNode", { objectId: result.objectId });
+      const { nodes } = await cdp.send("Accessibility.getPartialAXTree", {
+        backendNodeId: node.backendNodeId, fetchRelatives: false,
+      });
+      const ax = nodes.find(candidate => !candidate.ignored) ?? nodes[0];
+      const property = name => {
+        const value = ax?.properties?.find(candidate => candidate.name === name)?.value;
+        if (value?.type === "boolean") return Boolean(value.value);
+        return value?.value ?? null;
+      };
+      return {
+        role: ax?.role?.value ?? null,
+        name: ax?.name?.value ?? null,
+        disabled: property("disabled"),
+        busy: property("busy"),
+        focusable: property("focusable"),
+      };
+    } finally {
+      await cdp.send("Runtime.releaseObject", { objectId: result.objectId });
+    }
   }
   async function lookupStatistics(action = "read") {
     const object = await resolvePopupObject();
@@ -1579,7 +1671,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
+    anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -1630,7 +1722,11 @@ async function forceSourceFallback(tab, settings) {
 // move that lands before its listeners attach is simply lost. So re-fire
 // mousemove until the popup answers, instead of sleeping long enough to hope the
 // script was ready -- the popup appearing is the only real synchronisation here.
-async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attempts = 12 } = {}) {
+async function hoverForPopup(page, popup, selector, {
+  accept = null,
+  charFraction = 0.15,
+  attempts = 12,
+} = {}) {
   const box = await (await page.$(selector)).boundingBox();
   // Aim at the first glyph rather than the centre, so the scan starts at the
   // beginning of the word and `matched` covers the whole inflection.
@@ -1641,7 +1737,7 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
     // before stepping back onto it.
     await page.mouse.move(2, 2);
     await page.mouse.move(x, y);
-    const state = await popup.waitForVisible(1500);
+    const state = await popup.waitForVisible(1500, accept);
     if (state !== null) return state;
   }
   return null;
@@ -2147,6 +2243,17 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const sourceSpan = await highlights();
     const pageTheme = await tab.evaluate(() => ({ theme: document.documentElement.getAttribute("data-hoshidicts-theme"),
       style: document.documentElement.getAttribute("style") }));
+    await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await optionsWrite({ popupTheme: "auto" });
+    const automaticThemes = [];
+    for (const scheme of ["light", "dark"]) {
+      await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await tab.waitForFunction(expected =>
+        document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === expected, {}, scheme);
+      automaticThemes.push(await tab.$eval("hachidori-host", host => host.dataset.hoshidictsTheme));
+    }
+    const automaticDraft = await popup.retainedControls();
+    await tab.emulateMediaFeatures([]);
     await optionsWrite({ popupTheme: "high-contrast", popupOpacityPercent: 0, sourceHighlightEnabled: false });
     await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === "high-contrast"
       && !CSS.highlights.has("gsm-hoshidicts-match"));
@@ -2161,7 +2268,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
         style: document.documentElement.getAttribute("style") };
     });
     const appearanceDraft = await popup.retainedControls();
-    evidence.appearance = evidence.appearanceChild && appearance.primary === "#ffe000" && appearance.opacity === "0%"
+    evidence.appearance = evidence.appearanceChild && JSON.stringify(automaticThemes) === '["light","dark"]'
+      && automaticDraft.sameForm && automaticDraft.inputFocused && automaticDraft.draft === columnDraft.draft
+      && appearance.primary === "#ffe000" && appearance.opacity === "0%"
       && appearance.highlight.endsWith(" / 0.56)") && appearance.theme === pageTheme.theme && appearance.style === pageTheme.style
       && appearanceDraft.sameForm && appearanceDraft.inputFocused && appearanceDraft.draft === columnDraft.draft
       && (await rootState()).sameCards && (await requests()).length === columnsStart;
@@ -3922,7 +4031,8 @@ async function checkManagementAutosave(page, browser, settingsUrl) {
         && schedule.stored.schedule === "weekly"
         && schedule.calls[1].baseRevision === schedule.calls[0].baseRevision + 1
         && retried.stored.revision === lostRevision && retried.stored.schedule === "off"
-        && retried.calls === 4 && retried.alarms.length === 0,
+        && retried.calls === 4
+        && retried.alarms.every(alarm => alarm.name !== MANAGED_UPDATE_ALARM),
       JSON.stringify({ whileHeld, schedule, lostRevision, retried }));
 
     await mutateGroup(page, {});
@@ -4272,8 +4382,14 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   const screenshotDictionary = "screenshot-mining-layout";
   let screenshotDictionaryInstalled = false;
   const notes = new Map(), calls = [], files = new Map();
+  const queryExpression = query => {
+    const duplicate = /^"dupe:1,(.*)"$/u.exec(query);
+    const indexed = /\("note:Basic" "front:((?:\\.|[^"])*)"\)/iu.exec(query);
+    const value = duplicate?.[1] ?? indexed?.[1];
+    return value === undefined ? null : value.replace(/\\(.)/gu, "$1");
+  };
   // Flags the checks below flip to make the mock refuse specific work.
-  const control = { failScreenshotUpload: false };
+  const control = { failScreenshotUpload: false, preflightGate: null };
   const apiRoute = { requests: 0, async respond(request) {
     const { action, params } = JSON.parse(request.postData);
     calls.push({ action, params });
@@ -4282,19 +4398,26 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     else if (action === "modelNames") result = ["Basic"];
     else if (action === "modelNamesAndIds") result = { Basic: 1 };
     else if (action === "modelFieldNames") result = ["Front", "Back", "Audio"];
-    else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(note => {
-      const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
-      return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
-    });
+    else if (action === "canAddNotesWithErrorDetail") {
+      const gate = control.preflightGate;
+      if (gate) await gate.promise;
+      result = params.notes.map(note => {
+        const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
+        return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
+      });
+    }
     else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
     else if (action === "findNotes") {
-      const match = /^"dupe:1,(.*)"$/u.exec(params.query);
-      const text = match?.[1]?.replace(/\\(["\\])/gu, "$1") ?? "";
-      result = [...notes].filter(([, fields]) => fields.Front === text).map(([noteId]) => noteId);
+      const expression = queryExpression(params.query);
+      result = params.query === '"note:Basic"'
+        ? [...notes.keys()]
+        : expression === null ? [] : [...notes]
+          .filter(([, fields]) => fields.Front === expression).map(([noteId]) => noteId);
     }
     else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
     else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
+    else if (action === "getMediaFilesNames") result = files.has(params.pattern) ? [params.pattern] : [];
     else if (action === "storeMediaFile") {
       if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
         return { body: JSON.stringify({ result: null, error: "media folder is read-only" }), status: 200, contentType: "application/json" };
@@ -4358,11 +4481,53 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     const duplicate = await operation("hd_anki_preflight", request);
     const note = notes.get(added.noteId);
     const images = [...note.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]);
+    const addIndex = calls.findIndex(call => call.action === "addNote");
+    const imageStoreIndexes = images.map(filename =>
+      calls.findIndex(call => call.action === "storeMediaFile" && call.params.filename === filename));
     check("Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
       before.canAdd && readOnly && added.state === "added" && added.warnings.length === 0 && duplicate.state === "duplicate" && !duplicate.canAdd
         && images.length > 0 && images.every(filename => files.has(filename)) && note.Back.includes("@scope")
+        && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
-      JSON.stringify({ before, readOnly, added, duplicate, images, actions: calls.map(call => call.action) }));
+      JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
+
+    const markerDictionary = request.term.glossaries[0].dictionary;
+    const markerPackage = await settings.evaluate(async title => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      return dictionaryState.dictionaries.find(dictionary => dictionary.title === title);
+    }, markerDictionary);
+    const markerAlias = "Stable Browser Alias";
+    const markerTemplate = {
+      Front: { value: "{expression} stable-marker", overwriteMode: "overwrite" },
+      Back: { value: "{single-glossary-stable-browser-alias-plain-no-dictionary}", overwriteMode: "overwrite" },
+      Audio: { value: `{single-glossary-id--${markerPackage.id}-brief}`, overwriteMode: "overwrite" },
+    };
+    await configure(false, { fieldTemplates: markerTemplate });
+    const markerRequest = {
+      ...request,
+      term: { ...request.term,
+        glossaries: request.term.glossaries.filter(glossary => glossary.dictionary === markerDictionary) },
+      dictionaryAliases: { [markerDictionary]: markerAlias },
+      dictionaryIds: { [markerDictionary]: markerPackage.id },
+    };
+    markerRequest.configKey = (await operation("hd_anki_status")).configKey;
+    const savedMarkerTemplate = await settings.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates);
+    const markerAdded = await operation("hd_anki_submit", markerRequest);
+    const markerNote = notes.get(markerAdded.noteId);
+    const markerTemplateAfter = await settings.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates);
+    const expectedMarkerTemplates = Object.entries(markerTemplate).every(([field, template]) =>
+      savedMarkerTemplate[field]?.value === template.value
+      && savedMarkerTemplate[field]?.overwriteMode === template.overwriteMode);
+    check("Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
+      /^[0-9a-f]{32}$/u.test(markerPackage.id)
+        && markerAdded.state === "added" && markerAdded.warnings.length === 0
+        && markerNote.Back.trim() !== "" && markerNote.Audio.trim() !== ""
+        && expectedMarkerTemplates
+        && JSON.stringify(markerTemplateAfter) === JSON.stringify(savedMarkerTemplate),
+      JSON.stringify({ markerDictionary, markerPackageId: markerPackage.id, markerAdded,
+        fields: markerNote, savedMarkerTemplate, markerTemplateAfter }));
 
     await configure(true);
     request.configKey = (await operation("hd_anki_status")).configKey;
@@ -4383,7 +4548,8 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     check("Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
       noUpload && withAudio.state === "added" && withAudio.warnings.length === 0 && notes.get(withAudio.noteId).Front === checked
         && files.get(filename) === wav.toString("base64") && routes.get(chosen.url).requests === 1
-        && routes.get(other.url).requests === 0 && playCount === 0,
+        && routes.get(other.url).requests === 0 && playCount === 0
+        && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
   } finally {
@@ -4422,20 +4588,40 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await hoverForPopup(tab, popup, "#verb");
     const quiet = (await popup.anki()).controls.length === 0 && calls.length === before;
     const template = value => ({ value, overwriteMode: "overwrite" });
+    const preflightCount = calls.filter(call => call.action === "canAddNotesWithErrorDetail").length;
+    control.preflightGate = Promise.withResolvers();
     await configure(false, { fieldTemplates: { Front: template("{expression}"),
       Back: template("{cloze-body}|{cloze-suffix}|{sentence}"), Audio: template("") } });
+    const loading = await settled(state => state?.controls[0]?.state === "checking"
+      && calls.filter(call => call.action === "canAddNotesWithErrorDetail").length > preflightCount);
+    const loadingAccessibility = await popup.ankiAccessibility();
+    const mutationCount = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length;
+    const loadingFocused = await popup.focusAnki();
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const loadingInert = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length === mutationCount;
+    if (process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT) {
+      const { x, y, width, height } = loading.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    control.preflightGate.resolve();
+    control.preflightGate = null;
     const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const readyAccessibility = await popup.ankiAccessibility();
     if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
       const { x, y, width, height } = ready.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
     }
     const addCount = calls.filter(call => call.action === "addNote").length;
-    const rect = ready.controls[0].rect;
-    await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
+    const addFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
     const browseCount = calls.filter(call => call.action === "guiBrowse").length;
-    await popup.click(".gsm-hoshidicts-mine-button");
+    const repairStart = calls.length;
+    const savedFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
+    const repairCalls = calls.slice(repairStart);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
     await tab.keyboard.press("Escape");
@@ -4448,9 +4634,39 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         clip: { x, y, width, height } });
     }
     const exactBrowseCount = calls.filter(call => call.action === "guiBrowse").length;
-    await popup.click(".gsm-hoshidicts-mine-button");
+    const viewFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
     await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
+    console.log(`     Anki readiness evidence: ${JSON.stringify({
+      loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+      ready: ready.controls[0], readyAccessibility, addFocused,
+      saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused,
+    })}`);
+    check("Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
+      loading.controls[0].icon === "arrow-clockwise"
+        && loading.controls[0].state === "checking"
+        && loading.controls[0].disabled
+        && loading.controls[0].ariaBusy === "true"
+        && loading.controls[0].ariaLabel === "Checking Anki card status"
+        && loadingAccessibility?.role === "button"
+        && loadingAccessibility.name === "Checking Anki card status"
+        && loadingAccessibility.disabled === true
+        && loadingAccessibility.busy === true
+        && loadingFocused === false && loadingInert
+        && ready.controls[0].icon === "add"
+        && ready.controls[0].ariaBusy === "false"
+        && readyAccessibility?.role === "button"
+        && readyAccessibility.name === "Mine to Anki"
+        && addFocused
+        && saved.controls[0].icon === "book-search"
+        && saved.controls[0].successColored
+        && duplicate.controls[0].icon === "book-search"
+        && duplicate.controls[0].successColored
+        && savedFocused && viewFocused,
+      JSON.stringify({ loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+        ready: ready.controls[0], readyAccessibility, addFocused,
+        saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused }));
     check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
       quiet
         && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
@@ -4464,13 +4680,23 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && note.Front === "食べる"
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
+        && repairCalls.some(call => call.action === "findNotes"
+          && call.params.query.includes('"note:Basic"') && call.params.query.includes('"front:食べる"'))
+        && repairCalls.some(call => call.action === "notesInfo"
+          && JSON.stringify(call.params.notes) === JSON.stringify([...notes.keys()].slice(-1)))
+        && repairCalls.some(call => call.action === "findNotes"
+          && call.params.query === `nid:${[...notes.keys()].at(-1)} is:review -is:learn prop:ivl>=21`)
         && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].title === "View existing notes in Anki"
+        && duplicate.controls[0].successColored
+        && addFocused && savedFocused && viewFocused
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
-      JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
+      JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse, repairCalls }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
+    control.preflightGate?.resolve();
+    control.preflightGate = null;
     await tab.keyboard.press("Escape");
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
   }
@@ -5105,6 +5331,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && recovery.finish && recovery.settings,
       JSON.stringify(recovery));
     const headingSequence = [...new Set(headingLog.map(entry => entry.text))];
+    // Older Chrome can still be painting the static placeholder when the observer attaches.
+    if (headingSequence[0] === "Loading setup…") headingSequence.shift();
     const pendingSteps = headingLog.filter(entry => entry.text === "Finding your Anki setup…")
       .flatMap(entry => entry.progress.filter(step => step.current).map(step => step.step));
     const progressStarted = new Map();
@@ -5253,6 +5481,24 @@ async function checkAnkiSettings(page, browser) {
   const settled = () => page.waitForFunction(() => !document.getElementById("anki-refresh").disabled);
   const saved = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
   const choose = async (id, value) => { await page.select(`#opt-anki-${id}`, value); await saved(); };
+  const fieldSelector = field => `#anki-templates [data-anki-field="${field}"] [role="combobox"]`;
+  const editField = async (field, value, inputType = "insertText") => {
+    await page.$eval(fieldSelector(field), (node, [text, type]) => {
+      node.focus();
+      node.value = text;
+      node.setSelectionRange(text.length, text.length);
+      node.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: type, data: text }));
+    }, [value, inputType]);
+    await saved();
+  };
+  const insertText = async value => {
+    const session = await page.createCDPSession();
+    try {
+      await session.send("Input.insertText", { text: value });
+    } finally {
+      await session.detach();
+    }
+  };
   try {
     const lazy = route.requests === 0;
     await showSettingsSection(page, "anki");
@@ -5275,27 +5521,32 @@ async function checkAnkiSettings(page, browser) {
     await settled();
     releaseA();
     await saved();
-    const newest = await page.$eval("#opt-anki-field-expression", node => [...node.options].map(option => option.value));
-    await choose("field-expression", "Front");
+    const newest = await page.$$eval("#anki-templates [data-anki-field]",
+      nodes => nodes.map(node => node.dataset.ankiField));
+    await editField("Front", "{expression}");
     await choose("model", "Japanese");
     await settled();
-    await choose("field-expression", "Expression");
+    await editField("Expression", "{expression}");
     const revision = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
     missingField = true;
     await page.click("#anki-refresh");
     await settled();
-    const unavailable = await page.$eval("#opt-anki-field-expression", node => ({ value: node.value, text: node.textContent }));
+    const unavailable = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => ({
+      value: node.querySelector('[role="combobox"]').value,
+      removable: !node.querySelector("button.ghost").hidden,
+      label: node.querySelector(".field-label").textContent,
+    }));
     const afterRefresh = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
     check("Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
-      newest.includes("Front") && !newest.includes("Expression") && unavailable.value === "Expression"
-        && unavailable.text.includes("unavailable") && (await status()).includes("unavailable")
+      newest.includes("Front") && !newest.includes("Expression") && unavailable.value === "{expression}"
+        && unavailable.removable && unavailable.label === "Expression" && (await status()).includes("unavailable")
         && revision === afterRefresh, JSON.stringify({ newest, unavailable, revision, afterRefresh }));
 
     missingField = false;
     await page.click("#anki-refresh");
     await settled();
-    for (const [key, field] of [["reading", "Reading"], ["definition", "Meaning"], ["sentence", "Sentence"],
-      ["frequency", "Frequency"], ["pitch", "Pitch"], ["audio", "Audio"]]) await choose(`field-${key}`, field);
+    for (const [field, value] of [["Reading", "{reading}"], ["Meaning", "{definition}"], ["Sentence", "{sentence}"],
+      ["Frequency", "{frequency}"], ["Pitch", "{pitch}"], ["Audio", "{audio}"]]) await editField(field, value);
     await choose("deck", "Japanese");
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("configuration ready"));
@@ -5317,11 +5568,254 @@ async function checkAnkiSettings(page, browser) {
     }));
     check("Anki configuration persists through reload without reloading the dictionary engine",
       persisted.anki.deck === "Japanese" && persisted.anki.model === "Japanese"
-        && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
+        && persisted.anki.fieldTemplates.Expression.value === "{expression}"
+        && persisted.anki.fieldTemplates.Audio.value === "{audio}"
         && persisted.status.generation === original.status.generation
         && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
         && persisted.statusCard.marker.includes("data:image/svg+xml,") && persisted.statusCard.ready
         && persisted.statusCard.height >= 56, JSON.stringify(persisted));
+
+    const comboboxContract = await page.evaluate(async () => {
+      const { ANKI_TEMPLATE_MARKER_OPTIONS, ANKI_TEMPLATE_MARKERS } = await import("./anki-templates.js");
+      const rows = [...document.querySelectorAll("#anki-templates [data-anki-field]")];
+      const control = rows[0].querySelector('[role="combobox"]');
+      const listbox = document.getElementById(control.getAttribute("aria-controls"));
+      const options = [...listbox.querySelectorAll('[role="option"]')];
+      return {
+        fields: rows.map(row => row.dataset.ankiField),
+        everyCombobox: rows.every(row => row.querySelector('[role="combobox"]')),
+        optionValues: options.map(option => option.dataset.marker),
+        expectedOptions: ANKI_TEMPLATE_MARKER_OPTIONS.map(option => option.value),
+        coreMarkers: ANKI_TEMPLATE_MARKERS.map(marker => `{${marker}}`),
+        described: options.every(option => option.getAttribute("aria-label")?.includes(": ")),
+        label: document.querySelector(`label[for="${control.id}"]`)?.textContent,
+        attributes: Object.fromEntries(["aria-expanded", "aria-controls", "aria-autocomplete", "aria-haspopup"]
+          .map(name => [name, control.getAttribute(name)])),
+        listboxRole: listbox.getAttribute("role"),
+        statusRole: document.getElementById(control.getAttribute("aria-describedby").split(" ")[0])
+          ?.getAttribute("role"),
+      };
+    });
+
+    const expressionSelector = fieldSelector("Expression");
+    await page.focus(expressionSelector);
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await page.keyboard.type("{expr");
+    await page.waitForFunction(selector => document.querySelector(selector).getAttribute("aria-expanded") === "true",
+      {}, expressionSelector);
+    const filtered = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => {
+      const control = node.querySelector('[role="combobox"]');
+      const listbox = document.getElementById(control.getAttribute("aria-controls"));
+      const visible = [...listbox.querySelectorAll('[role="option"]')].filter(option => !option.hidden);
+      return {
+        value: control.value,
+        markers: visible.map(option => option.dataset.marker),
+        active: control.getAttribute("aria-activedescendant"),
+        selected: visible.filter(option => option.getAttribute("aria-selected") === "true").map(option => option.id),
+        status: node.querySelector('[role="status"]').textContent,
+      };
+    });
+    await page.keyboard.press("Escape");
+    await saved();
+    const escaped = await page.$eval(expressionSelector, node => ({
+      value: node.value,
+      expanded: node.getAttribute("aria-expanded"),
+    }));
+
+    const freeForm = "literal {expression} + suffix  ";
+    await page.focus(expressionSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await insertText(freeForm);
+    await saved();
+    const highlightedBeforeTab = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("Tab");
+    await saved();
+    const tabExit = await page.evaluate(async selector => {
+      const control = document.querySelector(selector);
+      const options = (await chrome.storage.local.get("options")).options.anki.fieldTemplates;
+      return {
+        value: control.value,
+        stored: options.Expression.value,
+        expanded: control.getAttribute("aria-expanded"),
+        focusedId: document.activeElement?.id ?? "",
+        leftControl: document.activeElement !== control,
+      };
+    }, expressionSelector);
+
+    await editField("Expression", "before  after");
+    await page.$eval(expressionSelector, node => node.setSelectionRange(7, 7));
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{glossary}"]');
+    await saved();
+    const pointerValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{expression}{expression}");
+    await page.$eval(expressionSelector, node => {
+      const boundary = "{expression}".length;
+      node.setSelectionRange(boundary, boundary);
+    });
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{reading}"]');
+    await saved();
+    const adjacentMarkerValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{expression}");
+    await page.$eval(expressionSelector, node => {
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+    await page.click('#anki-templates [data-anki-field="Expression"] [role="option"][data-marker="{reading}"]');
+    await saved();
+    const closingBoundaryValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "");
+    await page.keyboard.press("Escape");
+    await page.focus(expressionSelector);
+    await page.keyboard.press("ArrowDown");
+    const keyboardFirst = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("ArrowDown");
+    const keyboardSecond = await page.$eval(expressionSelector, node => node.getAttribute("aria-activedescendant"));
+    await page.keyboard.press("Enter");
+    await saved();
+    const keyboardValue = await page.$eval(expressionSelector, node => node.value);
+
+    await editField("Expression", "{definitely-no-marker");
+    const emptyState = await page.$eval('#anki-templates [data-anki-field="Expression"]', node => ({
+      emptyVisible: !node.querySelector(".anki-marker-empty").hidden,
+      active: node.querySelector('[role="combobox"]').getAttribute("aria-activedescendant"),
+      status: node.querySelector('[role="status"]').textContent,
+    }));
+    await page.keyboard.press("Escape");
+
+    const copiedValue = " \tcopy {unknown}{unknown}\n literal  ";
+    const readingSelector = fieldSelector("Reading");
+    await page.focus(readingSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.up(modifier);
+    await insertText(copiedValue);
+    await saved();
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.press("KeyC");
+    await page.keyboard.up(modifier);
+    await page.focus(expressionSelector);
+    await page.keyboard.down(modifier);
+    await page.keyboard.press("KeyA");
+    await page.keyboard.press("KeyV");
+    await page.keyboard.up(modifier);
+    await saved();
+    const clipboard = await page.evaluate(async selector => {
+      const control = document.querySelector(selector);
+      const mappings = (await chrome.storage.local.get("options")).options.anki.fieldTemplates;
+      return {
+        control: control.value,
+        expression: mappings.Expression.value,
+        reading: mappings.Reading.value,
+        invalid: control.getAttribute("aria-invalid"),
+        error: control.closest(".anki-template-row").querySelector(".anki-template-error").textContent,
+      };
+    }, expressionSelector);
+
+    await editField("Frequency", "composition: ");
+    const frequencySelector = fieldSelector("Frequency");
+    await page.$eval(frequencySelector, node => {
+      node.focus();
+      node.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      node.value = "composition: 日本";
+      node.setSelectionRange(node.value.length, node.value.length);
+      node.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertCompositionText",
+        data: "日本",
+        isComposing: true,
+      }));
+    });
+    const compositionDuring = await page.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates.Frequency.value);
+    await page.$eval(frequencySelector, node => {
+      node.value = "composition: 日本語\t";
+      node.setSelectionRange(node.value.length, node.value.length);
+      node.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本語" }));
+    });
+    await saved();
+    const compositionAfter = await page.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.anki.fieldTemplates.Frequency.value);
+
+    await page.click('#anki-templates [data-anki-field="Expression"] .anki-marker-combobox-toggle');
+    const cdp = await page.createCDPSession();
+    await cdp.send("DOM.enable");
+    await cdp.send("Accessibility.enable");
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: expressionSelector });
+    const { node } = await cdp.send("DOM.describeNode", { nodeId });
+    const { nodes: axNodes } = await cdp.send("Accessibility.getPartialAXTree", {
+      backendNodeId: node.backendNodeId,
+      fetchRelatives: false,
+    });
+    await cdp.detach();
+    const ax = axNodes.find(candidate => !candidate.ignored) ?? axNodes[0];
+    const axProperty = name => ax?.properties?.find(property => property.name === name)?.value?.value ?? null;
+    const accessibility = {
+      role: ax?.role?.value ?? null,
+      name: ax?.name?.value ?? null,
+      expanded: axProperty("expanded"),
+      focusable: axProperty("focusable"),
+    };
+    const opened = await page.$eval(expressionSelector, node => ({
+      expanded: node.getAttribute("aria-expanded"),
+      listboxHidden: document.getElementById(node.getAttribute("aria-controls")).hidden,
+    }));
+    await page.keyboard.press("Escape");
+
+    check("Anki field mappings expose accessible editable combobox behavior without replacing free-form text",
+      comboboxContract.everyCombobox
+        && JSON.stringify(comboboxContract.optionValues) === JSON.stringify(comboboxContract.expectedOptions)
+        && comboboxContract.coreMarkers.every(marker => comboboxContract.optionValues.includes(marker))
+        && comboboxContract.described && comboboxContract.label === "Expression"
+        && comboboxContract.attributes["aria-expanded"] === "false"
+        && comboboxContract.attributes["aria-autocomplete"] === "list"
+        && comboboxContract.attributes["aria-haspopup"] === "listbox"
+        && comboboxContract.listboxRole === "listbox" && comboboxContract.statusRole === "status"
+        && JSON.stringify(filtered.markers) === JSON.stringify(["{expression}"])
+        && filtered.active === filtered.selected[0] && filtered.status.includes("1 marker suggestion")
+        && escaped.value === "{expr" && escaped.expanded === "false"
+        && highlightedBeforeTab !== null && tabExit.value === freeForm && tabExit.stored === freeForm
+        && tabExit.expanded === "false" && tabExit.leftControl
+        && pointerValue === "before {glossary} after"
+        && adjacentMarkerValue === "{expression}{reading}{expression}"
+        && closingBoundaryValue === "{expression}{reading}"
+        && keyboardFirst !== null && keyboardSecond !== keyboardFirst && keyboardValue !== ""
+        && emptyState.emptyVisible && emptyState.active === null && emptyState.status.includes("No marker suggestions")
+        && clipboard.control === copiedValue && clipboard.expression === copiedValue
+        && clipboard.reading === copiedValue && clipboard.invalid === "true"
+        && clipboard.error.includes("Unknown marker: {unknown}")
+        && compositionDuring === "composition: " && compositionAfter === "composition: 日本語\t"
+        && opened.expanded === "true" && opened.listboxHidden === false
+        && accessibility.role === "combobox" && accessibility.name === "Expression"
+        && accessibility.expanded === true && accessibility.focusable === true,
+      JSON.stringify({
+        comboboxContract,
+        filtered,
+        escaped,
+        highlightedBeforeTab,
+        tabExit,
+        pointerValue,
+        adjacentMarkerValue,
+        closingBoundaryValue,
+        keyboardFirst,
+        keyboardSecond,
+        keyboardValue,
+        emptyState,
+        clipboard,
+        compositionDuring,
+        compositionAfter,
+        opened,
+        accessibility,
+      }));
+
     await page.select("#anki-preset", "kiku");
     await page.click("#anki-apply-preset");
     await saved();
@@ -6072,6 +6566,24 @@ async function checkDesignAppearance(page, frame) {
       window.appearanceProof = { card: host.shadowRoot.querySelector(".gsm-hoshidicts-glossary-card"),
         stylesheet: host.shadowRoot.querySelector("link").sheet, highlightSheet: document.adoptedStyleSheets[0] };
     });
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await editSettingsControls(page, { "opt-popup-theme": "auto" });
+    const automatic = [];
+    for (const scheme of ["light", "dark"]) {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await frame.waitForFunction(expected =>
+        document.getElementById("preview-host").dataset.hoshidictsTheme === expected, {}, scheme);
+      automatic.push(await frame.evaluate(() => {
+        const host = document.getElementById("preview-host");
+        const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        return { theme: host.dataset.hoshidictsTheme,
+          retained: window.appearanceProof.card === popup.querySelector(".gsm-hoshidicts-glossary-card")
+            && window.appearanceProof.stylesheet === host.shadowRoot.querySelector("link").sheet
+            && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
+          pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
+      }));
+    }
+    await page.emulateMediaFeatures([]);
     const palettes = [];
     for (const theme of ["miku", "girlypop", "light", "high-contrast"]) {
       await editSettingsControls(page, { "opt-popup-theme": theme });
@@ -6098,14 +6610,17 @@ async function checkDesignAppearance(page, frame) {
         palettes.at(-1).fullStops = await stops(100);
       }
     }
-    check("Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
-      catalogue.count === 42 && JSON.stringify(catalogue.groups) === "[18,23,1]"
+    check("Design exposes AUTO plus 42 grouped palettes and applies live browser preference changes",
+      catalogue.count === 43 && JSON.stringify(catalogue.groups) === "[1,18,23,1]"
+        && JSON.stringify(automatic.map(value => value.theme)) === '["light","dark"]'
+        && automatic.every(value => value.retained && value.pageUntouched)
         && palettes.every(value => value.retained && value.pageUntouched)
         && palettes[0].primary === "#39c5bb" && palettes[2].primary === "oklch(45% 0.24 277.023)"
         && palettes[3].primary === "#ffe000" && palettes[3].backdrop === "none"
         && palettes.slice(0, 2).every(value => JSON.stringify(value.zeroStops) === "[0,0]")
         && JSON.stringify(palettes[0].fullStops) === "[0.18,0.12]"
-        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]", JSON.stringify({ catalogue, palettes }));
+        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]",
+      JSON.stringify({ catalogue, automatic, palettes }));
     await editSettingsControls(page, { "opt-popup-theme": "default" });
     const immediate = await page.evaluate(async () => {
       const revision = (await chrome.storage.local.get("options")).options.revision;
@@ -6160,6 +6675,7 @@ async function checkDesignAppearance(page, frame) {
       && geometry.background.endsWith(" / 0)") && !opaque.includes(" / ") && disabled && restored === "食べる",
     JSON.stringify({ immediate, geometry, opaque, disabled, restored, reset }));
   } finally {
+    await page.emulateMediaFeatures([]);
     await page.evaluate(async saved => {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
@@ -6723,14 +7239,21 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await tab.mouse.move(2, 2);
     await pause();
   };
-  const selectVerb = async (html) => {
+  const selectVerb = async (html, heldKeys = []) => {
     await dismiss();
-    return tab.$eval("#verb", (element, contents) => {
-      element.innerHTML = contents;
-      const selection = window.getSelection();
-      selection.selectAllChildren(element);
-      return { visible: selection.toString(), raw: selection.getRangeAt(0).toString() };
-    }, html);
+    for (const key of heldKeys) await tab.keyboard.down(key);
+    try {
+      const selection = await tab.$eval("#verb", (element, contents) => {
+        element.innerHTML = contents;
+        const selection = window.getSelection();
+        selection.selectAllChildren(element);
+        return { visible: selection.toString(), raw: selection.getRangeAt(0).toString() };
+      }, html);
+      if (heldKeys.length > 0) await popup.waitForVisible();
+      return selection;
+    } finally {
+      for (const key of heldKeys.toReversed()) await tab.keyboard.up(key);
+    }
   };
   const moveTo = async (selector) => {
     const box = await (await tab.$(selector)).boundingBox();
@@ -6740,21 +7263,134 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   };
   try {
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-scan-length": "1", "opt-japanese-only": true,
+      "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
+      "opt-scan-length": "1", "opt-japanese-only": true,
     });
     await tab.bringToFront();
     await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
     const box = await (await tab.$("#verb")).boundingBox();
-    const startCount = (await lookups()).length;
+    const plainStart = (await lookups()).length;
     await tab.mouse.move(box.x + 1, box.y + box.height / 2);
     await tab.mouse.down();
-    let duringDrag;
     try {
       await tab.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
-      duringDrag = (await lookups()).length === startCount;
     } finally {
       await tab.mouse.up();
+    }
+    await pause();
+    const plainSelected = await tab.evaluate(() => window.getSelection().toString());
+    const plainRequests = (await lookups()).slice(plainStart);
+    const plainHighlight = await tab.evaluate((name) =>
+      Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
+    const plainPopup = await popup.state();
+    const plainPencil = await popup.click(".gsm-hoshidicts-note-button");
+    if (process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_SELECTION_BLOCKED_SCREENSHOT });
+    }
+    check("plain selections cannot lookup, highlight or open personal definitions when Shift is required",
+      plainSelected === "食べたかった" && plainRequests.length === 0
+        && plainHighlight.length === 0 && !popup.visible(plainPopup) && !plainPencil,
+      JSON.stringify({ plainSelected, plainRequests, plainHighlight,
+        popupVisible: popup.visible(plainPopup), plainPencil }));
+
+    const probeSelection = async (heldKeys, expectedAllowed, allowPointerPrefix = false) => {
+      await dismiss();
+      await tab.$eval("#verb", (element) => { element.textContent = "食べたかった"; });
+      const probeBox = await (await tab.$("#verb")).boundingBox();
+      const before = (await lookups()).length;
+      await tab.mouse.move(probeBox.x + 1, probeBox.y + probeBox.height / 2);
+      await tab.mouse.down();
+      let mouseDown = true;
+      let selection;
+      try {
+        for (const key of heldKeys) await tab.keyboard.down(key);
+        await tab.mouse.move(probeBox.x + probeBox.width - 1, probeBox.y + probeBox.height / 2, { steps: 8 });
+        await tab.mouse.up();
+        mouseDown = false;
+        selection = await tab.evaluate(() => {
+          const selection = window.getSelection();
+          return {
+            visible: selection.toString(),
+            raw: selection.rangeCount > 0 ? selection.getRangeAt(0).toString() : "",
+          };
+        });
+      } finally {
+        if (mouseDown) await tab.mouse.up().catch(() => {});
+        for (const key of heldKeys.toReversed()) await tab.keyboard.up(key);
+      }
+      const view = expectedAllowed ? await popup.waitForVisible() : (await pause(), await popup.state());
+      const requests = (await lookups()).slice(before);
+      const highlights = await tab.evaluate((name) =>
+        Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
+      const intended = requests.filter(({ text }) => text === selection.visible);
+      return {
+        allowed: selection.visible === "食べたかった" && intended.length === 1
+          && requests.at(-1) === intended[0] && (allowPointerPrefix || requests.length === 1)
+          && popup.visible(view)
+          && highlights.includes(selection.raw),
+        blocked: selection.visible === "食べたかった" && requests.length === 0
+          && !popup.visible(view) && highlights.length === 0,
+        highlights,
+        popupVisible: popup.visible(view),
+        requests: requests.map(({ text }) => text),
+      };
+    };
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    const hoverSelection = await probeSelection([], true, true);
+    const modifiers = ["Shift", "Control", "Alt", "Meta"];
+    const modifierResults = [];
+    for (const lookupMode of ["activation", "activationSticky"]) {
+      for (let index = 0; index < modifiers.length; index += 1) {
+        const activationKey = modifiers[index];
+        const mismatch = modifiers[(index + 1) % modifiers.length];
+        const extra = modifiers[(index + 2) % modifiers.length];
+        await editSettingsControls(settings, {
+          "opt-lookup-mode": lookupMode,
+          "opt-activation-key": activationKey,
+        });
+        const plain = await probeSelection([], false);
+        const mismatched = await probeSelection([mismatch], false);
+        const matching = await probeSelection([activationKey], true);
+        const combined = await probeSelection([activationKey, extra], true);
+        modifierResults.push({
+          activationKey,
+          combined: combined.allowed,
+          lookupMode,
+          matching: matching.allowed,
+          mismatch: mismatched.blocked,
+          plain: plain.blocked,
+        });
+      }
+    }
+    check("ordinary selections follow hover and both activation modes for all four modifiers",
+      hoverSelection.allowed && modifierResults.every(({ combined, matching, mismatch, plain }) =>
+        combined && matching && mismatch && plain),
+      JSON.stringify({ hover: hoverSelection, modifiers: modifierResults }));
+
+    await editSettingsControls(settings, {
+      "opt-lookup-mode": "activation", "opt-activation-key": "Shift", "opt-scan-length": "1",
+    });
+    await dismiss();
+    await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
+    const startCount = (await lookups()).length;
+    let duringDrag;
+    await tab.mouse.move(box.x + 1, box.y + box.height / 2);
+    await tab.mouse.down();
+    try {
+      await tab.keyboard.down("Shift");
+      try {
+        await tab.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
+        duringDrag = (await lookups()).length === startCount;
+      } finally {
+        await tab.mouse.up();
+        await tab.keyboard.up("Shift");
+      }
+    } catch (error) {
+      await tab.mouse.up().catch(() => {});
+      await tab.keyboard.up("Shift").catch(() => {});
+      throw error;
     }
     const selected = await tab.evaluate(() => window.getSelection().toString());
     const exactPopup = await popup.waitForVisible();
@@ -6763,6 +7399,10 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       text: range.toString(), startTag: range.startContainer.parentElement.localName,
       endTag: range.endContainer.parentElement.localName,
     })), HIGHLIGHT_NAME);
+    if (process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_SELECTION_ALLOWED_SCREENSHOT });
+    }
     const glossarySelection = await popup.selectGlossaryText();
     await pause();
     const glossaryRetained = glossarySelection.includes("to eat") && popup.visible(await popup.state())
@@ -6786,23 +7426,26 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     }, HIGHLIGHT_NAME);
     check("source highlights reconcile selected text mutations without changing selection",
       Object.values(mutationHighlight).every(Boolean), JSON.stringify(mutationHighlight));
-    const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった');
+    const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった', ["Shift"]);
     const hiddenPopup = await popup.waitForVisible();
     const hiddenHighlight = await tab.evaluate((name) =>
       Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
     const hiddenQuery = (await lookups()).at(-1)?.text;
-    const blockText = await selectVerb("<div>hello</div><div>world</div>");
+    const blockText = await selectVerb("<div>hello</div><div>world</div>", ["Shift"]);
     await pause();
     const blockQuery = (await lookups()).at(-1)?.text;
-    await selectVerb("食べたかったXYZ");
+    const customText = await selectVerb("未登録語", ["Shift"]);
+    const customPopup = await popup.state();
+    const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const selectedEditor = await popup.state();
+    await popup.click(".gsm-hoshidicts-note-cancel");
+    await selectVerb("食べたかったXYZ", ["Shift"]);
     await pause();
     const missingWord = await popup.state();
     const prefixRejected = popup.visible(missingWord)
       && missingWord.plain.includes("No definition found.") && !missingWord.plain.includes("to eat");
     const prefixQuery = (await lookups()).at(-1)?.text;
-    const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
-    const selectedEditor = await popup.state();
-    check("exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+    check("matching activation preserves exact selections, cross-inline highlights and personal definitions",
       duringDrag && selected === "食べたかった" && exactPopup?.plain.includes("食べる")
         && exactRequests.length === 1 && exactRequests[0].text === selected && exactRequests[0].scanLength === 6
         && highlighted.some((range) => range.text === selected && range.startTag === "b" && range.endTag === "i")
@@ -6810,11 +7453,32 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         && hiddenPopup?.plain.includes("食べる") && hiddenHighlight.includes(hiddenText.raw)
         && blockText.visible === "hello\nworld" && blockQuery === blockText.visible
         && prefixRejected && prefixQuery === "食べたかったXYZ"
+        && customText.visible === "未登録語" && customPopup.plain.includes("No definition found.")
         && selectedEditorOpened && selectedEditor.noteOpen
-        && selectedEditor.noteTerm === prefixQuery && selectedEditor.noteReading === "",
+        && selectedEditor.noteTerm === customText.visible && selectedEditor.noteReading === "",
       JSON.stringify({ duringDrag, selected, exactRequests, highlighted, glossaryRetained,
-        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, prefixRejected, prefixQuery,
-        selectedEditorOpened, selectedEditor }));
+        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, customText,
+        prefixRejected, prefixQuery, selectedEditorOpened, selectedEditor }));
+    if (process.env.HACHIDORI_SELECTION_EVIDENCE) {
+      mkdirSync(dirname(process.env.HACHIDORI_SELECTION_EVIDENCE), { recursive: true });
+      writeFileSync(process.env.HACHIDORI_SELECTION_EVIDENCE, `${JSON.stringify({
+        matching: {
+          duringDrag,
+          highlighted,
+          pencilOpened: selectedEditorOpened && selectedEditor.noteOpen,
+          requestCount: exactRequests.length,
+          selected,
+        },
+        modifiers: modifierResults,
+        noModifier: {
+          highlighted: plainHighlight,
+          pencilOpened: plainPencil,
+          popupVisible: popup.visible(plainPopup),
+          requestCount: plainRequests.length,
+          selected: plainSelected,
+        },
+      }, null, 2)}\n`);
+    }
 
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
@@ -7368,6 +8032,574 @@ async function checkSourceFallback(settings, tab, popup) {
   }
 }
 
+async function atomicReplacementBrowserScenarios(page) {
+  await page.bringToFront();
+  await showSettingsSection(page, "add-dictionaries");
+  const input = () => page.$("#import-file");
+  const waitFinished = async (count, lastName) => page.waitForFunction(({ total, expectedName }) => {
+    const text = document.getElementById("import-state")?.textContent?.trim() ?? "";
+    const names = [...document.querySelectorAll("#import-progress .setup-dictionary-name")]
+      .map(element => element.textContent.trim());
+    const statuses = [...document.querySelectorAll("#import-progress .setup-dictionary-status")]
+      .map(element => element.textContent.trim());
+    return text.startsWith(`Finished ${total} of ${total} `)
+      && names.length === total
+      && names.at(-1) === expectedName
+      && statuses.length === total
+      && statuses.every(status => /^(?:Imported|Failed|Cancelled)/u.test(status))
+      ? text
+      : false;
+  }, { timeout: 180_000, polling: 100 }, {
+    total: count,
+    expectedName: lastName,
+  }).then(handle => handle.jsonValue());
+  const waitDecision = async () => page.waitForFunction(() => {
+    const dialog = document.getElementById("import-decision-dialog");
+    return dialog?.open ? {
+      labelledby: dialog.getAttribute("aria-labelledby"),
+      describedby: dialog.getAttribute("aria-describedby"),
+      heading: document.getElementById("import-decision-heading")?.textContent?.trim(),
+      description: document.getElementById("import-decision-description")?.textContent?.trim(),
+      imported: document.getElementById("import-decision-imported")?.textContent?.trim(),
+      installed: document.getElementById("import-decision-installed")?.textContent?.trim(),
+      active: document.activeElement?.textContent?.trim() ?? "",
+      buttons: [...dialog.querySelectorAll("button")].map(button => button.textContent.trim()),
+      options: [...document.getElementById("import-decision-target").options].map(option => option.textContent),
+      targetHidden: document.getElementById("import-decision-target-row").hidden,
+    } : false;
+  }, { timeout: 90_000, polling: 50 }).then(handle => handle.jsonValue());
+  const dropArchives = archives => page.evaluate((items) => {
+    const transfer = new DataTransfer();
+    for (const item of items) {
+      const bytes = Uint8Array.from(atob(item.base64), character => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], item.name, { type: "application/zip" }));
+    }
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    document.getElementById("import-drop-zone").dispatchEvent(event);
+  }, archives);
+  const archive = (path, name = path.split("/").at(-1)) => ({
+    name,
+    base64: readFileSync(path).toString("base64"),
+  });
+  const remove = ({ id = null, title }) => page.evaluate((dictionary) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_remove",
+    requestId: `i04-remove-${dictionary.id ?? dictionary.title}`,
+    id: dictionary.id,
+    title: dictionary.title,
+  }), { id, title });
+  const state = () => page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState);
+
+  await (await input()).uploadFile(ATOMIC_FIXTURES.v1);
+  const installedSummary = await waitFinished(1, "atomic-replacement-v1.zip");
+  const installedState = await state();
+  const originalGroups = installedState.groups;
+  const installed = installedState.dictionaries.find(dictionary =>
+    dictionary.title === ATOMIC_REPLACEMENT_TITLE);
+  if (!installed) {
+    const installedOutcome = await page.$eval(
+      "#import-progress .setup-dictionary-status",
+      output => output.textContent.trim(),
+    );
+    throw new Error(`atomic v1 was not installed: ${installedSummary}; ${installedOutcome}; `
+      + JSON.stringify(installedState));
+  }
+  const installedIndex = installedState.dictionaries.indexOf(installed);
+  const presentedReply = await page.evaluate(async ({ id, index }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      requestId: "i04-present-target",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries.map((dictionary, at) => at === index ? {
+        ...dictionary,
+        displayName: "Atomic favourite",
+        enabled: false,
+        favorite: true,
+        isUpdatable: true,
+        sourceId: "i04-managed-source",
+        indexUrl: "https://example.invalid/i04/index.json",
+        downloadUrl: "https://example.invalid/i04/archive.zip",
+        updateScheduleOverride: "monthly",
+        futureUserSetting: { retained: true },
+      } : dictionary),
+      groups: [{ id: "i04-group", name: "I04", dictionaryIds: [id] }],
+    });
+  }, { id: installed.id, index: installedIndex });
+  await page.waitForFunction((revision) =>
+    chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+      dictionaryState?.revision === revision), {}, presentedReply.state.revision);
+  const presented = presentedReply.state.dictionaries[installedIndex];
+
+  await page.evaluate(() => {
+    const originalSend = chrome.runtime.sendMessage.bind(chrome.runtime);
+    const originalCreate = URL.createObjectURL.bind(URL);
+    window.__i04ImportProbe = {
+      imports: 0,
+      urls: 0,
+      restore() {
+        chrome.runtime.sendMessage = originalSend;
+        URL.createObjectURL = originalCreate;
+      },
+    };
+    chrome.runtime.sendMessage = (message) => {
+      if (message?.type === "hd_import") window.__i04ImportProbe.imports += 1;
+      return originalSend(message);
+    };
+    URL.createObjectURL = (value) => {
+      window.__i04ImportProbe.urls += 1;
+      return originalCreate(value);
+    };
+  });
+  const followupA = "i04-after-escape";
+  const followupB = "i04-after-cancel";
+  await dropArchives([
+    archive(ATOMIC_FIXTURES.v2, "atomic-v2-escape.zip"),
+    { name: `${followupA}.zip`, base64: buildTitledZip(followupA).toString("base64") },
+    archive(ATOMIC_FIXTURES.v2, "atomic-v2-cancel.zip"),
+    { name: `${followupB}.zip`, base64: buildTitledZip(followupB).toString("base64") },
+  ]);
+  const escapeDecision = await waitDecision();
+  await page.bringToFront();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll("#import-progress .setup-dictionary-status")];
+    return rows[0]?.textContent.includes("Cancelled before import")
+      && rows[1]?.textContent.includes("Imported")
+      && document.getElementById("import-decision-dialog")?.open;
+  }, { timeout: 120_000, polling: 100 });
+  const cancelDecision = await waitDecision();
+  await page.click('#import-decision-dialog button[value="cancel"]');
+  const cancelSummary = await waitFinished(4, `${followupB}.zip`);
+  const cancellationUi = await page.evaluate(() => ({
+    probe: { imports: window.__i04ImportProbe.imports, urls: window.__i04ImportProbe.urls },
+    outcomes: [...document.querySelectorAll("#import-progress .setup-dictionary-status")]
+      .map(output => output.textContent.trim()),
+  }));
+  await page.evaluate(() => {
+    window.__i04ImportProbe.restore();
+    delete window.__i04ImportProbe;
+  });
+  const afterCancellation = await state();
+  const unchangedAfterCancel = afterCancellation.dictionaries.find(dictionary => dictionary.id === installed.id);
+
+  const sharedIndexUrl = "https://example.invalid/i04/shared-source.json";
+  const sourceTargets = await page.evaluate(async ({ atomicId, followupTitle, indexUrl }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      requestId: "i04-source-targets",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries.map(dictionary =>
+        dictionary.id === atomicId || dictionary.title === followupTitle
+          ? { ...dictionary, isUpdatable: true, indexUrl }
+          : dictionary),
+      groups: dictionaryState.groups,
+    });
+    return reply.state;
+  }, { atomicId: installed.id, followupTitle: followupA, indexUrl: sharedIndexUrl });
+  await page.waitForFunction((revision) =>
+    chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+      dictionaryState?.revision === revision), {}, sourceTargets.revision);
+  await dropArchives([{
+    name: "renamed-shared-source.zip",
+    base64: buildTitledZip("renamed-shared-source", {
+      revision: "9",
+      indexUrl: sharedIndexUrl,
+    }).toString("base64"),
+  }]);
+  const sourceDecision = await waitDecision();
+  await page.click('#import-decision-dialog button[value="cancel"]');
+  await waitFinished(1, "renamed-shared-source.zip");
+
+  check(
+    "matching local imports show an accessible named revision decision before engine mutation",
+    installedSummary === "Finished 1 of 1 archive — 1 imported, 0 failed."
+      && presentedReply.ok === true
+      && escapeDecision.labelledby === "import-decision-heading"
+      && escapeDecision.describedby === "import-decision-description"
+      && escapeDecision.heading === "Dictionary already installed"
+      && escapeDecision.description.includes("newer")
+      && escapeDecision.imported.includes("revision 2")
+      && escapeDecision.installed.includes("revision 1")
+      && JSON.stringify(escapeDecision.buttons)
+        === JSON.stringify(["Replace existing", "Add separately", "Cancel"])
+      && sourceDecision.targetHidden === false
+      && sourceDecision.options.length === 2
+      && new Set(sourceDecision.options).size === 2
+      && sourceDecision.options.every(option => /revision .+ · ID [0-9a-f]{8}$/u.test(option)),
+    JSON.stringify({ installedSummary, escapeDecision, sourceDecision }),
+  );
+  check(
+    "Escape and explicit Cancel leave the package untouched and continue a multi-file batch",
+    cancelSummary === "Finished 4 of 4 archives — 2 imported, 2 cancelled, 0 failed."
+      && cancelDecision.description.includes("newer")
+      && cancellationUi.probe.imports === 2
+      && cancellationUi.probe.urls === 2
+      && cancellationUi.outcomes[0].includes("Cancelled before import")
+      && cancellationUi.outcomes[1].includes(`Imported ${followupA}`)
+      && cancellationUi.outcomes[2].includes("Cancelled before import")
+      && cancellationUi.outcomes[3].includes(`Imported ${followupB}`)
+      && unchangedAfterCancel.path === presented.path
+      && unchangedAfterCancel.revision === "1",
+    JSON.stringify({ cancelSummary, cancelDecision, cancellationUi, unchangedAfterCancel }),
+  );
+
+  for (const title of [followupA, followupB]) {
+    const removed = await remove({ title });
+    if (removed?.ok !== true) {
+      throw new Error(`could not remove ${title}: ${JSON.stringify(removed)}`);
+    }
+  }
+  const restoredSourceState = await page.evaluate(async ({ id, indexUrl, downloadUrl }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      requestId: "i04-restore-source",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries.map(dictionary => dictionary.id === id ? {
+        ...dictionary,
+        isUpdatable: true,
+        sourceId: "i04-managed-source",
+        indexUrl,
+        downloadUrl,
+      } : dictionary),
+      groups: dictionaryState.groups,
+    });
+    return reply.state;
+  }, {
+    id: installed.id,
+    indexUrl: "https://example.invalid/i04/index.json",
+    downloadUrl: "https://example.invalid/i04/archive.zip",
+  });
+  await page.waitForFunction((revision) =>
+    chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+      dictionaryState?.revision === revision), {}, restoredSourceState.revision);
+  const beforeReplaceState = await state();
+  const beforeReplace = beforeReplaceState.dictionaries.find(dictionary => dictionary.id === installed.id);
+  await (await input()).uploadFile(ATOMIC_FIXTURES.v2);
+  const replaceDecision = await waitDecision();
+  if (process.env.HACHIDORI_I04_DECISION_SCREENSHOT) {
+    mkdirSync(dirname(process.env.HACHIDORI_I04_DECISION_SCREENSHOT), { recursive: true });
+    await (await page.$("#import-decision-dialog")).screenshot({
+      path: process.env.HACHIDORI_I04_DECISION_SCREENSHOT,
+    });
+  }
+  const shownAt = Date.now();
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 1600));
+  await page.focus('#import-decision-dialog button[value="replace"]');
+  const replaceFocused = await page.evaluate(() =>
+    document.activeElement?.textContent?.trim() === "Replace existing");
+  await page.keyboard.press("Enter");
+  const replaceSummary = await waitFinished(1, "atomic-replacement-v2.zip");
+  const replacementFinishedAt = Date.now();
+  const replacementStatus = await page.$eval(
+    "#import-progress .setup-dictionary-status",
+    output => output.textContent.trim(),
+  );
+  const reportedSeconds = Number(/\bin ([0-9.]+) seconds:/u.exec(replacementStatus)?.[1]);
+  const replacedState = await state();
+  const replaced = replacedState.dictionaries.find(dictionary => dictionary.id === installed.id);
+  check(
+    "keyboard Replace preserves package identity and excludes dialog dwell from import timing",
+    replaceFocused
+      && replaceSummary === "Finished 1 of 1 archive — 1 imported, 0 failed."
+      && replacementStatus.includes(`Imported ${ATOMIC_REPLACEMENT_TITLE}`)
+      && Number.isFinite(reportedSeconds)
+      && replacementFinishedAt - shownAt - reportedSeconds * 1000 >= 1200
+      && replaced.id === beforeReplace.id
+      && replaced.path !== beforeReplace.path
+      && replaced.revision === "2"
+      && replaced.displayName === "Atomic favourite"
+      && replaced.enabled === false
+      && replaced.favorite === true
+      && replaced.sourceId === "i04-managed-source"
+      && replaced.indexUrl === "https://example.invalid/i04/index.json"
+      && replaced.downloadUrl === "https://example.invalid/i04/archive.zip"
+      && replaced.updateScheduleOverride === "monthly"
+      && replaced.futureUserSetting?.retained === true
+      && replacedState.dictionaries.indexOf(replaced) === installedIndex
+      && replacedState.groups.some(group =>
+        group.id === "i04-group" && group.dictionaryIds.includes(installed.id)),
+    JSON.stringify({ replaceDecision, replaceSummary, replacementStatus, reportedSeconds,
+      elapsed: replacementFinishedAt - shownAt, beforeReplace, replaced, replacedState }),
+  );
+
+  const failureStateBefore = await state();
+  const failureOpfsBefore = await listOpfsPaths(page);
+  const metadataMismatch = await page.evaluate(async ({ base64, target, title }) => {
+    const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+    try {
+      return await chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen",
+        type: "hd_import",
+        requestId: "i04-metadata-mismatch",
+        blobUrl,
+        fileName: "atomic-metadata-mismatch.zip",
+        importDecision: {
+          action: "replace",
+          identity: {
+            title,
+            revision: "999",
+            indexUrl: null,
+            downloadUrl: null,
+          },
+          matchKind: "title",
+          target,
+        },
+      });
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  }, {
+    base64: archive(ATOMIC_FIXTURES.v3).base64,
+    target: {
+      id: replaced.id,
+      title: replaced.title,
+      path: replaced.path,
+      revision: replaced.revision,
+      sourceId: replaced.sourceId ?? null,
+      indexUrl: replaced.indexUrl ?? null,
+      downloadUrl: replaced.downloadUrl ?? null,
+      isUpdatable: replaced.isUpdatable === true,
+    },
+    title: ATOMIC_REPLACEMENT_TITLE,
+  });
+  const stateAfterMismatch = await state();
+  const opfsAfterMismatch = await listOpfsPaths(page);
+  await (await input()).uploadFile(ATOMIC_FIXTURES.corrupt);
+  const corruptDecision = await waitDecision();
+  await page.click('#import-decision-dialog button[value="replace"]');
+  const corruptSummary = await waitFinished(1, "atomic-replacement-corrupt.zip");
+  const corruptStatus = await page.$eval(
+    "#import-progress .setup-dictionary-status",
+    output => output.textContent.trim(),
+  );
+  const stateAfterCorrupt = await state();
+  const opfsAfterCorrupt = await listOpfsPaths(page);
+  check(
+    "metadata mismatch and corrupt replacement leave no OPFS generation roots",
+    metadataMismatch.ok === false
+      && metadataMismatch.error?.includes("did not match the reviewed archive")
+      && JSON.stringify(stateAfterMismatch) === JSON.stringify(failureStateBefore)
+      && JSON.stringify(opfsAfterMismatch) === JSON.stringify(failureOpfsBefore)
+      && corruptDecision.description.includes("newer")
+      && corruptSummary === "Finished 1 of 1 archive — 0 imported, 1 failed."
+      && corruptStatus.startsWith("Failed after ")
+      && JSON.stringify(stateAfterCorrupt) === JSON.stringify(failureStateBefore)
+      && JSON.stringify(opfsAfterCorrupt) === JSON.stringify(failureOpfsBefore),
+    JSON.stringify({
+      metadataMismatch,
+      stateAfterMismatch,
+      opfsAfterMismatch,
+      corruptDecision,
+      corruptSummary,
+      corruptStatus,
+      stateAfterCorrupt,
+      opfsAfterCorrupt,
+      failureStateBefore,
+      failureOpfsBefore,
+    }),
+  );
+
+  await (await input()).uploadFile(
+    ATOMIC_FIXTURES["same-v2"],
+    ATOMIC_FIXTURES["lower-v1"],
+    ATOMIC_FIXTURES["missing-version"],
+    ATOMIC_FIXTURES["malformed-version"],
+    ATOMIC_FIXTURES["nonnumeric-version"],
+  );
+  const matrix = [];
+  for (const expected of [
+    "are the same",
+    "older than",
+    "cannot compare",
+    "cannot compare",
+    "cannot compare",
+  ]) {
+    const decision = await waitDecision();
+    matrix.push(decision);
+    await page.click('#import-decision-dialog button[value="cancel"]');
+    if (matrix.length < 5) {
+      await page.waitForFunction((description) => {
+        const dialog = document.getElementById("import-decision-dialog");
+        return dialog?.open
+          && document.getElementById("import-decision-description")?.textContent.includes(description);
+      }, { timeout: 90_000, polling: 50 }, [
+        "older than", "cannot compare", "cannot compare", "cannot compare",
+      ][matrix.length - 1]);
+    }
+    if (!decision.description.includes(expected)) break;
+  }
+  const matrixSummary = await waitFinished(5, "atomic-replacement-nonnumeric-version.zip");
+  const afterMatrix = await state();
+  check(
+    "same, lower, missing, malformed, and nonnumeric revisions are described without automatic replacement",
+    matrix.length === 5
+      && matrix[0].description.includes("are the same")
+      && matrix[1].description.includes("older than")
+      && matrix.slice(2).every(decision => decision.description.includes("cannot compare"))
+      && matrixSummary === "Finished 5 of 5 archives — 0 imported, 5 cancelled, 0 failed."
+      && afterMatrix.dictionaries.find(dictionary => dictionary.id === installed.id)?.path === replaced.path,
+    JSON.stringify({ matrix, matrixSummary, afterMatrix }),
+  );
+
+  await (await input()).uploadFile(ATOMIC_FIXTURES.v3);
+  const separateDecision = await waitDecision();
+  await page.bringToFront();
+  await page.focus('#import-decision-dialog button[value="separate"]');
+  const separateFocused = await page.evaluate(() =>
+    document.activeElement?.textContent?.trim() === "Add separately");
+  await page.keyboard.press("Enter");
+  const separateSummary = await waitFinished(1, "atomic-replacement-v3.zip");
+  const separateTitle = `${ATOMIC_REPLACEMENT_TITLE} (2)`;
+  const separateState = await state();
+  const separate = separateState.dictionaries.find(dictionary => dictionary.title === separateTitle);
+  await (await input()).uploadFile(ATOMIC_FIXTURES.v3);
+  const separateThreeDecision = await waitDecision();
+  await page.bringToFront();
+  await page.focus('#import-decision-dialog button[value="separate"]');
+  await page.keyboard.press("Enter");
+  const separateThreeSummary = await waitFinished(1, "atomic-replacement-v3.zip");
+  const separateThreeTitle = `${ATOMIC_REPLACEMENT_TITLE} (3)`;
+  const separateThreeState = await state();
+  const separateThree = separateThreeState.dictionaries.find(
+    dictionary => dictionary.title === separateThreeTitle,
+  );
+  const lookup = await page.evaluate((query) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_lookup",
+    requestId: "i04-separate-lookup",
+    text: query,
+    maxResults: 32,
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  }), ATOMIC_REPLACEMENT_QUERY);
+  const nativeLabels = lookup.results?.flatMap(result =>
+    result.term?.glossaries?.map(glossary => glossary.dictionary) ?? []) ?? [];
+  const localSourceReply = await page.evaluate(async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      const dictionaries = dictionaryState.dictionaries.map(dictionary => {
+        const local = {
+          ...dictionary,
+          isUpdatable: false,
+          indexUrl: null,
+          downloadUrl: null,
+          lastUpdateCheck: null,
+        };
+        delete local.sourceId;
+        return local;
+      });
+      const reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-worker",
+        type: "hd_state_cas",
+        requestId: `i04-local-screenshot-source-${attempt}`,
+        baseRevision: dictionaryState.revision,
+        dictionaries,
+        groups: dictionaryState.groups,
+      });
+      if (reply?.ok === true || reply?.conflict !== true) return reply;
+    }
+    return { ok: false, error: "could not settle local screenshot sources after five conflicts" };
+  });
+  if (localSourceReply?.ok !== true) {
+    throw new Error(`could not clear the temporary I04 managed source: ${JSON.stringify(localSourceReply)}`);
+  }
+  await page.waitForFunction((revision) =>
+    chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+      dictionaryState?.revision >= revision), {}, localSourceReply.state.revision);
+  if (process.env.HACHIDORI_I04_RESULT_SCREENSHOT) {
+    // Render the evidence from a fresh Settings document. Earlier update tests
+    // deliberately exercise deferred row refreshes; a new document reads the
+    // authoritative state directly and cannot retain their transient status.
+    const evidencePage = await page.browser().newPage();
+    try {
+      await evidencePage.setViewport({ width: 1280, height: 1000 });
+      const evidenceUrl = new URL("settings.html#dictionaries", page.url()).href;
+      await evidencePage.goto(evidenceUrl, { waitUntil: "domcontentloaded" });
+      await showSettingsSection(evidencePage, "dictionaries");
+      await evidencePage.waitForFunction((titles) => {
+        const shown = [...document.querySelectorAll("#dict-list .dict-title")]
+          .map(element => element.textContent.trim());
+        return titles.every(title => shown.includes(title))
+          && !document.getElementById("dict-list")?.textContent.includes("Check failed");
+      }, { timeout: 90_000, polling: 100 }, [
+        "Atomic favourite",
+        separateTitle,
+        separateThreeTitle,
+      ]);
+      mkdirSync(dirname(process.env.HACHIDORI_I04_RESULT_SCREENSHOT), { recursive: true });
+      await (await evidencePage.$("#dictionaries")).screenshot({
+        path: process.env.HACHIDORI_I04_RESULT_SCREENSHOT,
+      });
+    } finally {
+      await evidencePage.close();
+    }
+  }
+  check(
+    "Add separately persists a collision-safe title that native lookup reports",
+    separateFocused
+      && separateDecision.description.includes("newer")
+      && separateSummary === "Finished 1 of 1 archive — 1 imported, 0 failed."
+      && separate?.id !== replaced.id
+      && separate?.path.endsWith(`/${separateTitle}`)
+      && separate?.revision === "3"
+      && separateThreeDecision.description.includes("newer")
+      && separateThreeSummary === "Finished 1 of 1 archive — 1 imported, 0 failed."
+      && separateThree?.id !== replaced.id
+      && separateThree?.id !== separate.id
+      && separateThree?.path.endsWith(`/${separateThreeTitle}`)
+      && separateThree?.revision === "3"
+      && nativeLabels.includes(separateTitle)
+      && nativeLabels.includes(separateThreeTitle)
+      && !nativeLabels.includes(ATOMIC_REPLACEMENT_TITLE),
+    JSON.stringify({
+      separateDecision,
+      separateSummary,
+      separate,
+      separateThreeDecision,
+      separateThreeSummary,
+      separateThree,
+      nativeLabels,
+      lookup,
+    }),
+  );
+
+  const restoredGroups = await page.evaluate(async (groups) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      requestId: "i04-restore-groups",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries,
+      groups,
+    });
+  }, originalGroups);
+  if (restoredGroups.ok !== true) {
+    throw new Error(`could not restore pre-I04 groups: ${JSON.stringify(restoredGroups)}`);
+  }
+  await showSettingsSection(page, "add-dictionaries");
+  return {
+    packages: [installed.id, separate.id, separateThree.id].map(id => {
+      const dictionary = localSourceReply.state.dictionaries.find(candidate => candidate.id === id);
+      return {
+        id: dictionary.id,
+        title: dictionary.title,
+        path: dictionary.path,
+        generationRoot: ownedGenerationRoot(dictionary.path, dictionary.title),
+      };
+    }),
+  };
+}
+
 async function main() {
   if (!CHROME || !existsSync(CHROME)) {
     fatal("no Chrome found (set HACHIDORI_CHROME or install it as described in test/README.md)");
@@ -7742,6 +8974,7 @@ async function main() {
       visible: document.querySelector(".startup-star-link")?.checkVisibility() === true,
     },
     privacy: document.querySelector('a[href*="privacy"]') !== null,
+    theme: document.documentElement.dataset.hoshidictsTheme,
     background: getComputedStyle(document.body).backgroundColor,
     cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
   });
@@ -7767,6 +9000,43 @@ async function main() {
   };
   const welcome = startup === null ? null
     : await waitStartup((state) => state.actions.some(([id]) => id === "setup-start"), 30_000);
+  const automaticBeforeStart = {};
+  if (startup !== null) {
+    for (const scheme of ["light", "dark"]) {
+      await page.bringToFront();
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      let settingsState;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        settingsState = await page.evaluate(async () => {
+          const stored = await chrome.storage.local.get(["options", "setupState"]);
+          return { page: location.pathname, theme: document.documentElement.dataset.hoshidictsTheme,
+            storedTheme: stored.options?.popupTheme, optionsRevision: stored.options?.revision,
+            setupStage: stored.setupState?.stage, setupRevision: stored.setupState?.revision };
+        });
+        if (settingsState.theme === scheme && settingsState.storedTheme === "auto") break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      await startup.bringToFront();
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      let startupState;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        startupState = await startup.evaluate(async () => {
+          const stored = await chrome.storage.local.get("options");
+          return { page: location.pathname, theme: document.documentElement.dataset.hoshidictsTheme,
+            storedTheme: stored.options?.popupTheme, optionsRevision: stored.options?.revision,
+            startVisible: document.getElementById("setup-start")?.checkVisibility() === true };
+        });
+        if (startupState.theme === scheme && startupState.storedTheme === "auto") break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      automaticBeforeStart[scheme] = { settings: settingsState, startup: startupState };
+    }
+    await page.bringToFront();
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await page.waitForFunction(() => document.documentElement.dataset.hoshidictsTheme === "light");
+    await startup.bringToFront();
+    await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  }
   const refusedBeforeStart = startup === null ? null : await startup.evaluate(async () => ({
     anki: await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_setup_anki", requestId: "before-start-anki" }),
     dictionaries: await chrome.runtime.sendMessage({ target: "hachidori-setup", type: "hd_setup_install",
@@ -7774,9 +9044,18 @@ async function main() {
     setup: (await chrome.storage.local.get("setupState")).setupState,
     privacy: document.querySelector('a[href*="privacy"]') !== null,
   }));
-  check("a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+  check("a fresh install uses AUTO in startup and Settings before Start setup and waits for work",
     startupTabs() === 1 && welcome?.rows.length === 0 && refusedBeforeStart?.setup.stage === "welcome"
       && refusedBeforeStart.setup.revision === 1 && !refusedBeforeStart.privacy && !welcome.privacy
+      && ["light", "dark"].every(scheme => {
+        const proof = automaticBeforeStart[scheme];
+        return proof?.settings.page === "/settings.html" && proof.settings.theme === scheme
+          && proof.settings.storedTheme === "auto" && proof.settings.optionsRevision === 1
+          && proof.settings.setupStage === "welcome" && proof.settings.setupRevision === 1
+          && proof.startup.page === "/startup.html" && proof.startup.theme === scheme
+          && proof.startup.storedTheme === "auto" && proof.startup.optionsRevision === 1
+          && proof.startup.startVisible;
+      })
       && welcome.tagline === "Blazing fast, feature rich Japanese dictionary by Bee"
       && welcome.credit === "Made by Bee · bee-san on GitHub · skerritt.blog"
       && JSON.stringify(welcome.creditLinks) === JSON.stringify([
@@ -7788,7 +9067,16 @@ async function main() {
       && refusedBeforeStart.anki.error === "Start setup before checking Anki."
       && refusedBeforeStart.dictionaries.error === "Start setup before downloading dictionaries."
       && setupArchives.requests.length === 0,
-    JSON.stringify({ welcome, refusedBeforeStart, requests: setupArchives.requests }));
+    JSON.stringify({ welcome, automaticBeforeStart, refusedBeforeStart, requests: setupArchives.requests }));
+  if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 820 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  }
   if (startup !== null) await clickStartupControl("setup-start");
   // After the click, the held request means Jitendex sits in Downloading.
   const startupShell = startup === null ? null
@@ -7850,14 +9138,11 @@ async function main() {
       && startupShell.status === "Installing default dictionaries…"
       && startupShell.background !== "rgba(0, 0, 0, 0)"
       && startupShell.cardBackground !== "rgba(0, 0, 0, 0)"
-      && settingsPalette.theme === "default"
-      && settingsPalette.base100 === "#272630"
-      && settingsPalette.base200 === "#302f3b"
-      && settingsPalette.accent === "#b1a5ee"
-      && settingsPalette.borderStrong === "#747586"
-      && settingsPalette.textDim === "#aaa8b2"
+      && settingsPalette.theme === "light"
+      && [settingsPalette.base100, settingsPalette.base200, settingsPalette.accent,
+        settingsPalette.borderStrong, settingsPalette.textDim].every(Boolean)
       && settingsPalette.background !== "rgba(0, 0, 0, 0)"
-      && settingsPalette.surface === "rgb(43, 43, 54)"
+      && settingsPalette.surface !== "rgba(0, 0, 0, 0)"
       && firstInstallStorage.setupState?.stage === "dictionaries"
       && firstInstallStorage.setupState.revision === 2
       && firstInstallStorage.setupState.completedAt === null
@@ -7867,27 +9152,18 @@ async function main() {
       && JSON.stringify(firstInstallStorage.setupState.dictionaries.selectionsApplied) === "[]"
       && (firstInstallStorage.dictionaryState?.dictionaries?.length ?? 0) === 0
       && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
-        ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
+        ["compactDefinitionSummaryCount", "popupTheme", "revision", "showCompactDefinitionSummary"],
       )
+      && seededOptions.popupTheme === "auto"
       && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 2
       && seededOptions.revision === 1
-      && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
+      && effective.popupTheme === "auto" && effective.popupOpacityPercent === 85
       && effective.audioAutoplay === false
       && JSON.stringify(effective.audioSources?.map((source) => [source.type, source.enabled]))
         === JSON.stringify([["text-to-speech-reading", true]])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"]),
     JSON.stringify({ startupTabs: startupTabs(), skippedToSetup, seededInSettings, startupShell, settingsPalette, firstInstallStorage, requests: setupArchives.requests }),
   );
-  if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
-    await startup.setViewport({ width: 900, height: 820 });
-    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
-      if (!path) continue;
-      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-      await startup.screenshot({ path });
-    }
-    await startup.emulateMediaFeatures([]);
-  }
-
   const resumeVisible = await page.evaluate(() => {
     const link = document.getElementById("setup-resume");
     return {
@@ -8779,6 +10055,14 @@ async function main() {
     { name: "malformed-index.zip", base64: readFileSync(INVALID_FIXTURE).toString("base64") },
     { name: "hachidori-fixture.zip", base64: readFileSync(FIXTURE).toString("base64") },
   ]);
+  await page.waitForFunction(() => {
+    const outcomes = [...document.querySelectorAll("#import-progress .setup-dictionary-status")];
+    return outcomes[0]?.textContent.includes("Imported")
+      && outcomes[1]?.textContent.includes("Failed before import")
+      && document.getElementById("import-decision-dialog")?.open;
+  }, { timeout: 180_000, polling: 100 });
+  await page.focus('#import-decision-dialog button[value="replace"]');
+  await page.keyboard.press("Enter");
   const batchState = await page.waitForFunction(() => {
     const text = (document.getElementById("import-state")?.textContent || "").trim();
     return text.startsWith("Finished 3 of 3 archives") ? text : false;
@@ -8821,13 +10105,15 @@ async function main() {
       && batchUi.outcomes[0].text.includes(`Imported ${GENERIC_KANJI_TITLE}`)
       && /\d+(?:\.\d)? seconds/u.test(batchUi.outcomes[0].text)
       && batchUi.outcomes[1].error === true
-      && batchUi.outcomes[1].text.includes("Failed after")
+      && batchUi.outcomes[1].text.includes("Failed before import")
       && batchUi.outcomes[2].error === false
       && batchUi.outcomes[2].text.includes("Imported hachidori-fixture")
       && JSON.stringify(batchUi.outcomes.map(({ name }) => name)) === JSON.stringify([
         "hachidori-generic-kanji-fixture.zip", "malformed-index.zip", "hachidori-fixture.zip",
       ])
-      && batchUi.outcomes.every(({ text, trackHidden }) => /\d+(?:\.\d)? seconds/u.test(text) && trackHidden),
+      && batchUi.outcomes.every(({ trackHidden }) => trackHidden)
+      && [batchUi.outcomes[0], batchUi.outcomes[2]]
+        .every(({ text }) => /\d+(?:\.\d)? seconds/u.test(text)),
     `#import-state: ${batchState}; drop: ${JSON.stringify(dropProof)}; batch UI: ${JSON.stringify(batchUi)}`);
   check("batch re-import preserves presentation, source, and order while clearing stale check state",
     aliasChanged?.settled?.id === FIXTURE_ID
@@ -8896,6 +10182,7 @@ async function main() {
       && renderedDictionary.metadata.includes("Revision test-1")
       && renderedDictionary.metadata.includes("ja")
       && renderedDictionary.metadata.includes("Imported ")
+      && renderedDictionary.metadata.includes(`Package ID ${FIXTURE_ID}`)
       && renderedDictionary.metadata.includes("Update source available"),
     `#dict-list: ${JSON.stringify(renderedDictionary)}`);
 
@@ -8941,7 +10228,7 @@ async function main() {
   const pickerKeepsFocus = await page.evaluate(() => document.activeElement.id === "settings-section");
   const originalSettingsTheme = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options.popupTheme ?? "default");
-  const setSettingsTheme = async (theme) => {
+  const setSettingsTheme = async (theme, effectiveTheme = theme) => {
     await page.evaluate(async nextTheme => {
       const { options } = await chrome.storage.local.get("options");
       if ((options.popupTheme ?? "default") === nextTheme) return;
@@ -8956,8 +10243,21 @@ async function main() {
     }, theme);
     await page.waitForFunction(nextTheme =>
       document.documentElement.dataset.hoshidictsTheme === nextTheme,
-    { polling: 50, timeout: 10_000 }, theme);
+    { polling: 50, timeout: 10_000 }, effectiveTheme);
   };
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  await setSettingsTheme("auto", "light");
+  const automaticSettingsThemes = [];
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await page.waitForFunction(expected =>
+      document.documentElement.dataset.hoshidictsTheme === expected, {}, scheme);
+    automaticSettingsThemes.push(await page.evaluate(async () => ({
+      effective: document.documentElement.dataset.hoshidictsTheme,
+      stored: (await chrome.storage.local.get("options")).options.popupTheme,
+    })));
+  }
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   const narrowThemes = [];
   for (const theme of ["light", "default"]) {
     await setSettingsTheme(theme);
@@ -9042,7 +10342,7 @@ async function main() {
   const themePalettes = [];
   await page.setViewport({ width: 1280, height: 900 });
   await showSettingsSection(page, "design");
-  for (const theme of themes) {
+  for (const theme of themes.filter(theme => theme !== "auto")) {
     await setSettingsTheme(theme);
     themePalettes.push(await page.evaluate(expectedTheme => {
       const probe = document.createElement("span");
@@ -9100,10 +10400,14 @@ async function main() {
     await page.mouse.move(1275, 5);
     await page.screenshot({ path: process.env.HACHIDORI_SETTINGS_THEME_SCREENSHOT, fullPage: true });
   }
-  await setSettingsTheme(originalSettingsTheme);
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  await setSettingsTheme(originalSettingsTheme, originalSettingsTheme === "auto" ? "light" : originalSettingsTheme);
   await page.emulateMediaFeatures([]);
   check("Settings follows every popup theme and keeps each task view readable without horizontal overflow",
-    themes.length === 42
+    themes.length === 43 && themePalettes.length === 42
+      && JSON.stringify(automaticSettingsThemes) === JSON.stringify([
+        { effective: "light", stored: "auto" }, { effective: "dark", stored: "auto" },
+      ])
       && narrowThemes.every(({ theme, noOverflow, fieldsFit, statusExposed }) =>
         ["light", "default"].includes(theme) && noOverflow && fieldsFit && statusExposed)
       && themeLayouts.every((layout) => layout.selectedTheme === layout.theme
@@ -9111,7 +10415,7 @@ async function main() {
       && themePalettes.every((theme) => theme.selectedTheme === theme.expectedTheme && theme.palette
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
-    JSON.stringify({ narrowThemes, themeLayouts, themePalettes }));
+    JSON.stringify({ automaticSettingsThemes, narrowThemes, themeLayouts, themePalettes }));
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
@@ -10809,7 +12113,7 @@ async function main() {
     .catch(() => null);
   check(
     "one aggregate browser alarm follows the next dictionary due time",
-    scheduledAlarm?.alarms?.length === 1
+    scheduledAlarm?.alarms?.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
       && scheduledAlarm.alarm.name === MANAGED_UPDATE_ALARM
       && scheduledAlarm.alarm.periodInMinutes === undefined
       && scheduledAlarm.alarm.scheduledTime === expectedNextCheck,
@@ -10843,7 +12147,8 @@ async function main() {
   check("per-dictionary schedules persist without engine reload and override global Off",
     policyState.override === "hourly" && policyState.fixture === "off" && policyState.global === "off"
       && policyState.hint.includes("Next check") && policyState.generation === generationBeforePolicy
-      && policyState.alarms.length === 1 && policyState.alarms[0].scheduledTime === expectedNextCheck,
+      && policyState.alarms.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
+      && policyState.alarms.find(alarm => alarm.name === MANAGED_UPDATE_ALARM)?.scheduledTime === expectedNextCheck,
     JSON.stringify(policyState));
   if (process.env.HACHIDORI_SCHEDULE_SCREENSHOT) {
     await page.bringToFront();
@@ -11041,7 +12346,7 @@ async function main() {
       && restartedPage === true
       && restartWakeReply?.ok === true
       && restartedWorker?.url === `chrome-extension://${extensionId}/background.js`
-      && recreatedAlarm?.alarms?.length === 1
+      && recreatedAlarm?.alarms?.filter(alarm => alarm.name === MANAGED_UPDATE_ALARM).length === 1
       && recreatedAlarm.alarm.name === MANAGED_UPDATE_ALARM
       && recreatedAlarm.alarm.periodInMinutes === undefined
       && recreatedAlarm.alarm.scheduledTime === expectedRecreatedCheck,
@@ -11066,6 +12371,7 @@ async function main() {
   const lookupStatsBeforeRestart = await readLookupStatistics(page);
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
+  const atomicBeforeRestart = await atomicReplacementBrowserScenarios(page);
   const chromeProcess = browser.process();
   const chromeKilled = new Promise((resolveKilled) => chromeProcess.once("close", resolveKilled));
   chromeProcess.kill("SIGKILL");
@@ -11130,6 +12436,126 @@ async function main() {
       && setupArchives.requests.length === setupRequestsAfterSetup,
     JSON.stringify({ startupTabsAfterWorkerRestart, startupTabs: startupTabs(), setupAfterRestart, completedSetup,
       setupRequests: setupArchives.requests.length, setupRequestsAfterSetup }),
+  );
+
+  const atomicReloadCount = await page.evaluate(async () => {
+    const deadline = Date.now() + 90_000;
+    let reply;
+    for (;;) {
+      reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen",
+        type: "hd_status",
+        requestId: "i04-restart-status",
+      });
+      if (reply && reply.ok && reply.ready && !reply.loading) return reply;
+      if (Date.now() >= deadline) return reply;
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 500));
+    }
+  }).catch(error => ({ error: String(error) }));
+  const atomicRestartState = await page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState);
+  const atomicRestartLookup = await page.evaluate((query) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_lookup",
+    requestId: "i04-restart-lookup",
+    text: query,
+    maxResults: 32,
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  }), ATOMIC_REPLACEMENT_QUERY);
+  const atomicRestartLabels = atomicRestartLookup.results?.flatMap(result =>
+    result.term?.glossaries?.map(glossary => glossary.dictionary) ?? []) ?? [];
+  const atomicRestartPaths = await listOpfsPaths(page);
+  const atomicRestartPackages = atomicBeforeRestart.packages.map(expected =>
+    atomicRestartState.dictionaries.find(dictionary => dictionary.id === expected.id));
+  const atomicRemoveReplies = [];
+  for (const dictionary of atomicBeforeRestart.packages.toReversed()) {
+    atomicRemoveReplies.push(await page.evaluate((entry) => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_remove",
+      requestId: `i04-restart-remove-${entry.id}`,
+      id: entry.id,
+      title: entry.title,
+    }), dictionary));
+  }
+  const atomicRemoved = await page.waitForFunction(async (ids) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_status",
+      requestId: "i04-restart-clean-status",
+    });
+    return ids.every(id => !dictionaryState.dictionaries.some(dictionary => dictionary.id === id))
+      && status?.ok === true
+      && status.dictionaryCount === 4;
+  }, { timeout: 90_000, polling: 250 }, atomicBeforeRestart.packages.map(dictionary => dictionary.id))
+    .then(() => true)
+    .catch(() => false);
+  const atomicPathsAfterRemoval = await listOpfsPaths(page);
+  const automaticAtomicRetention = await page.evaluate(async roots => {
+    const { automaticBackups } = await chrome.storage.local.get("automaticBackups");
+    const referenced = new Set((automaticBackups?.backups ?? []).flatMap(backup =>
+      backup.snapshot?.state?.dictionaries?.map(dictionary => dictionary.path.split("/").slice(0, 3).join("/")) ?? []));
+    return {
+      schemaVersion: automaticBackups?.schemaVersion,
+      backupCount: automaticBackups?.backups?.length ?? 0,
+      retainedRoots: roots.filter(root => referenced.has(root)),
+    };
+  }, atomicBeforeRestart.packages.map(dictionary => dictionary.generationRoot));
+  await page.evaluate(() => chrome.storage.local.set({
+    automaticBackups: { schemaVersion: 1, backups: [] },
+  }));
+  const automaticRetentionCleanup = await page.evaluate(async () => {
+    const deadline = Date.now() + 30_000;
+    let reply;
+    for (;;) {
+      reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen",
+        type: "hd_backup_auto_cleanup",
+        requestId: `i04-restart-auto-cleanup-${crypto.randomUUID()}`,
+      });
+      if (reply?.ok || Date.now() >= deadline) return reply;
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+    }
+  });
+  const atomicRetiredAfterRelease = (await Promise.all(atomicBeforeRestart.packages.map(dictionary =>
+    waitForGenerationAbsent(page, dictionary.generationRoot)))).every(Boolean);
+  const atomicPathsAfterRetentionRelease = await listOpfsPaths(page);
+  check(
+    "separate copies survive a browser restart, stay retained by automatic backups, and retire after release",
+    atomicReloadCount?.dictionaryCount === 6
+      && atomicRestartPackages.every((dictionary, index) =>
+        dictionary?.title === atomicBeforeRestart.packages[index].title
+          && dictionary.path === atomicBeforeRestart.packages[index].path)
+      && atomicBeforeRestart.packages.every(dictionary =>
+        generationExists(atomicRestartPaths, dictionary.path))
+      && atomicRestartLabels.includes(`${ATOMIC_REPLACEMENT_TITLE} (2)`)
+      && atomicRestartLabels.includes(`${ATOMIC_REPLACEMENT_TITLE} (3)`)
+      && atomicRemoveReplies.every(reply => reply?.ok === true)
+      && atomicRemoved
+      && atomicBeforeRestart.packages.every(dictionary =>
+        generationExists(atomicPathsAfterRemoval, dictionary.path))
+      && automaticAtomicRetention.schemaVersion === 1
+      && automaticAtomicRetention.backupCount > 0
+      && automaticAtomicRetention.retainedRoots.length === atomicBeforeRestart.packages.length
+      && automaticRetentionCleanup?.ok === true
+      && atomicRetiredAfterRelease
+      && atomicBeforeRestart.packages.every(dictionary =>
+        generationIsAbsent(atomicPathsAfterRetentionRelease, dictionary.generationRoot)),
+    JSON.stringify({
+      atomicBeforeRestart,
+      atomicReloadCount,
+      atomicRestartPackages,
+      atomicRestartLabels,
+      atomicRestartPaths,
+      atomicRemoveReplies,
+      atomicRemoved,
+      atomicPathsAfterRemoval,
+      automaticAtomicRetention,
+      automaticRetentionCleanup,
+      atomicRetiredAfterRelease,
+      atomicPathsAfterRetentionRelease,
+    }),
   );
 
   await showSettingsSection(page, "dictionaries");
@@ -11236,18 +12662,25 @@ async function main() {
     `lookup reply: ${JSON.stringify(removedLookup)}`);
 
   const boundedTitle = "bounded-response-fixture";
-  let deepGlossary = "over-depth leaf";
-  for (let depth = 0; depth < 25; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
+  let deepGlossary = "private-depth-leaf-must-not-be-logged";
+  for (let depth = 0; depth < 1000; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
+  let nodeGlossaryContent = Array.from({ length: 1_048_575 }, () => null);
+  nodeGlossaryContent.push("private-node-leaf-must-not-be-logged");
   const exactMediaBytes = Buffer.alloc(4 * 1024 * 1024);
   makePng().copy(exactMediaBytes);
   const boundedArchive = buildTitledZip(boundedTitle, { terms: [
     ["限界", "げんかい", "", "", 0, ["x".repeat(8 * 1024 * 1024 - 3)], 1, ""],
     ["速度", "そくど", "", "", 0, ["healthy bounded lookup"], 2, ""],
     ["深度", "しんど", "", "", 0, [deepGlossary], 3, ""],
+    ["節点", "せってん", "", "", 0, [{
+      type: "structured-content",
+      content: nodeGlossaryContent,
+    }], 4, ""],
   ], mediaEntries: [
     ["media/exact.png", exactMediaBytes],
     ["media/over.png", Buffer.concat([exactMediaBytes, Buffer.from([0])])],
   ] });
+  nodeGlossaryContent = null;
   await showSettingsSection(page, "add-dictionaries");
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
@@ -11257,12 +12690,12 @@ async function main() {
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }, boundedArchive.toString("base64"));
-  await page.waitForFunction(async (title) => {
+  const boundedPackage = await page.waitForFunction(async (title) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-    return dictionaryState?.dictionaries?.some((entry) => entry.title === title)
-      && status.ok && status.ready && !status.loading;
-  }, { timeout: 90_000, polling: 100 }, boundedTitle);
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === title);
+    return dictionary && status.ok && status.ready && !status.loading ? dictionary : false;
+  }, { timeout: 90_000, polling: 100 }, boundedTitle).then(handle => handle.jsonValue());
   const boundedReplies = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen", type, requestId: `bounded-${type}`, ...fields,
@@ -11308,20 +12741,90 @@ async function main() {
     JSON.stringify({ before: boundedPopupBefore?.plain, hidden: boundedPopupHidden, after: boundedPopupAfter?.plain }),
   );
 
-  const renderFailures = [];
+  const renderFailureLogs = [];
   const onRenderConsole = (message) => {
-    if (message.text().includes("could not render results")) renderFailures.push(message.text());
+    if (!message.text().includes("omitted dictionary definition after render failure")) return;
+    renderFailureLogs.push((async () => {
+      const args = await Promise.all(message.args().map(async (handle) => {
+        try {
+          return await handle.evaluate((value) => {
+            if (value && typeof value === "object"
+                && typeof value.message === "string" && typeof value.stack === "string") {
+              return {
+                code: value.code,
+                definitionIndex: value.definitionIndex,
+                dictionaryId: value.dictionaryId,
+                dictionaryTitle: value.dictionaryTitle,
+                entryIndex: value.entryIndex,
+                message: value.message,
+                name: value.name,
+                originalStack: value.originalStack,
+                stack: value.stack,
+                termExpression: value.termExpression,
+                termReading: value.termReading,
+                cause: value.cause ? {
+                  actual: value.cause.structuredContentActual,
+                  kind: value.cause.structuredContentLimitKind,
+                  limit: value.cause.structuredContentLimit,
+                  location: value.cause.structuredContentLocation,
+                  message: value.cause.message,
+                  name: value.cause.name,
+                  stack: value.cause.stack,
+                } : null,
+              };
+            }
+            return { value: String(value) };
+          });
+        } catch (error) {
+          return { evaluationError: String(error) };
+        }
+      }));
+      return { args, text: message.text(), type: message.type() };
+    })());
   };
   tab2.on("console", onRenderConsole);
-  await tab2.evaluate(() => { document.getElementById("kanjiword").textContent = "深度"; });
-  const deepPopup = await hoverForPopup(tab2, popup2, "#kanjiword");
-  const deepPopupAfter = await hoverForPopup(tab2, popup2, "#verb");
+  const rendered = async (term, accept) => {
+    await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, term);
+    const value = await hoverForPopup(tab2, popup2, "#kanjiword", { accept });
+    const recovered = await hoverForPopup(tab2, popup2, "#verb", {
+      accept: state => !state.failure && state.plain.includes("healthy bounded lookup"),
+    });
+    return { value, recovered };
+  };
+  const deepRender = await rendered("深度",
+    state => !state.failure && state.plain.includes("private-depth-leaf-must-not-be-logged"));
+  const nodeRender = await rendered("節点",
+    state => !state.failure && state.plain.startsWith("節点"));
   tab2.off("console", onRenderConsole);
+  const renderFailures = await Promise.all(renderFailureLogs);
+  const logged = renderFailures.length === 1 && renderFailures.every((failure) => {
+    const contextual = failure.args[1];
+    return failure.type === "warn"
+      && failure.text.length < 4096
+      && contextual?.code === "dictionary-structured-content-limit"
+      && contextual.dictionaryTitle === boundedTitle
+      && contextual.dictionaryId === boundedPackage.id
+      && contextual.entryIndex === 0 && contextual.definitionIndex === 0
+      && contextual.stack.includes("structuredContentRenderError")
+      && contextual.originalStack === contextual.cause?.stack
+      && contextual.cause?.stack.includes("appendStructuredValue")
+      && contextual.cause?.kind === "node count"
+      && contextual.cause?.actual === 1_048_577
+      && contextual.cause?.limit === 1_048_576
+      && contextual.cause?.location === "glossary[0].content[1048574]"
+      && !JSON.stringify(failure).includes("private-node-leaf");
+  });
   check(
-    "deep structured content renders and the next healthy hover recovers",
-    renderFailures.length === 0 && deepPopup?.plain?.includes("over-depth leaf")
-      && deepPopupAfter?.plain?.includes("healthy bounded lookup"),
-    JSON.stringify({ renderFailures, deep: deepPopup?.plain, after: deepPopupAfter?.plain }),
+    "deep structured content renders while node-limit failures omit only their definition",
+    deepRender.value?.plain?.includes("private-depth-leaf-must-not-be-logged")
+      && !deepRender.value?.failure
+      && nodeRender.value && !nodeRender.value.failure
+      && nodeRender.value.plain.includes(boundedTitle)
+      && !nodeRender.value.plain.includes("private-node-leaf")
+      && logged
+      && deepRender.recovered?.plain?.includes("healthy bounded lookup")
+      && nodeRender.recovered?.plain?.includes("healthy bounded lookup"),
+    JSON.stringify({ boundedPackage, renderFailures, deepRender, nodeRender }),
   );
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {

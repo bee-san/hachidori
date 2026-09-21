@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
+  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
+  MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
   assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
@@ -43,7 +44,7 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
-  for (const type of ["hd_anki_status", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
+  for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
     assert.equal(forwardableRequest({ target: "hachidori-anki", type }), true, type);
   }
   assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_screenshot" }), false);
@@ -81,8 +82,9 @@ test("forwarded mutations are classified at the protocol boundary", () => {
 
 test("frames are validated on both sides", () => {
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
-    capabilities: [LINKED_ANKI_CAPABILITY] })),
-  { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [LINKED_ANKI_CAPABILITY] });
+    capabilities: SHARING_CAPABILITIES })),
+  { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [...SHARING_CAPABILITIES] });
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
     { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),
@@ -94,9 +96,9 @@ test("frames are validated on both sides", () => {
   assert.throws(() => parseClientFrame("{"), /malformed sharing frame/u);
   const snapshot = { options: { revision: 1 } };
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "Chrome",
-    dictionaryCount: "5", capabilities: [LINKED_ANKI_CAPABILITY], snapshot })),
+    dictionaryCount: "5", capabilities: SHARING_CAPABILITIES, snapshot })),
   { kind: "hello", version: "0.1.0", name: "Chrome", dictionaryCount: 5,
-    capabilities: [LINKED_ANKI_CAPABILITY], snapshot });
+    capabilities: [...SHARING_CAPABILITIES], snapshot });
   assert.equal(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, snapshot })).name, "");
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, snapshot })).capabilities, []);
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "reply", id: "a", response: { ok: true } })), { kind: "reply", id: "a", response: { ok: true } });
@@ -113,11 +115,20 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     generation: 3,
     trace: [],
     configKey: "host-config",
+    templateId: "sentence",
+    dictionaryIds: { A: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     url: "https://client.invalid/anki",
     apiKey: "client-secret",
     anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },
   };
   const media = {};
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_view", requestId: 3,
+    request: { term: request.term, templateId: "sentence", configKey: "client-key", apiKey: "nope" },
+  }), {
+    target: "hachidori-anki", type: "hd_anki_view", requestId: 3,
+    request: { term: { expression: "猫", reading: "ねこ" }, templateId: "sentence" },
+  });
   assert.deepEqual(allowLinkedAnkiRequest({
     target: "hachidori-anki",
     type: "hd_anki_submit",
@@ -135,16 +146,30 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
       trace: [],
       generation: 3,
       configKey: "host-config",
+      dictionaryIds: request.dictionaryIds,
+      templateId: "sentence",
     },
     clientMedia: media,
   });
   assert.deepEqual(allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
-    request: { expression: "猫", noteIds: [1, 2], configKey: "linked:host:key", apiKey: "nope" },
+    request: { expression: "猫", noteIds: [1, 2], configKey: "linked:host:key",
+      templateId: "sentence", apiKey: "nope" },
   }), {
     target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
-    request: { noteIds: [1, 2], expression: "猫", configKey: "linked:host:key" },
+    request: { noteIds: [1, 2], expression: "猫", configKey: "linked:host:key", templateId: "sentence" },
   });
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_status", requestId: 5, templateId: "sentence",
+  }), {
+    target: "hachidori-anki", type: "hd_anki_status", requestId: 5, templateId: "sentence",
+  });
+  assert.throws(() => allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_status", templateId: "\n",
+  }), /Template/u);
+  assert.throws(() => allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_status", templateId: "x".repeat(257),
+  }), /Template/u);
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_screenshot", requestId: "capture",
   }), /unsupported linked Anki request/u);
@@ -171,6 +196,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "setup-1",
+    templateId: "sentence",
     anki: {
       model: "Client model",
       deck: "Client deck",
@@ -181,7 +207,11 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     target: "hoshidicts-worker",
     type: "hd_anki_setup",
     requestId: "setup-1",
+    templateId: "sentence",
   });
+  assert.throws(() => allowLinkedAnkiSetupRequest({
+    target: "hoshidicts-worker", type: "hd_anki_setup", templateId: "\n",
+  }), /Template/u);
   assert.throws(() => allowLinkedAnkiSetupRequest({
     target: "hoshidicts-worker", type: "hd_setup_anki",
   }), /unsupported linked Anki setup request/u);

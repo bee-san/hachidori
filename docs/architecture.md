@@ -17,12 +17,15 @@ settings.html / content.js
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one next-due alarm
+            ├─ owns two retained daily snapshots and their next-due alarm
             ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
                  └─ offscreen.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
                       ├─ primary: engine-worker.js
                       │    └─ pthread Wasm + WasmFS direct OPFS
+                      ├─ no OPFS access handles: engine-worker-idbfs.js
+                      │    └─ pthread Wasm + classic FS + IDBFS
                       └─ fallback: engine-service.js
                            └─ single-thread Wasm + IDBFS
 ```
@@ -59,9 +62,11 @@ archive, source-document, or background-storage-queue limit.
 
 ## Compatibility path
 
-If shared Wasm memory, workers, or direct OPFS are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+If shared Wasm memory and workers are available but direct OPFS is not, `offscreen.js` starts `engine-worker-idbfs.js`: the same pthread engine on the classic Emscripten FS with IDBFS mounted at `/dicts`. Electron (the GameSentenceMiner host) is the known case: it exposes cross-origin isolation and shared memory but refuses OPFS sync access handles to `chrome-extension://` origins. Imports keep the bounded eight-thread worker group (Jitendex imports in about 1.6 s instead of 3.9 s single-threaded), and the offscreen document's own thread stays free for audio and Anki work during an import. `hd_status` reports `threaded: true` and `storageBackend: "idbfs"`.
 
-The fallback is intentionally explicit: `hd_status` reports `threaded: false` and `storageBackend: "idbfs"`. The production benchmark rejects fallback execution when it is measuring the primary Hachidori path.
+If shared Wasm memory or workers are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+
+Both IDBFS paths are intentionally explicit: `hd_status` reports `storageBackend: "idbfs"`, with `threaded: false` only for the single-thread runtime. The production benchmark rejects either when it is measuring the primary Hachidori path.
 
 ## Import transaction
 
@@ -93,6 +98,35 @@ new state, and finally garbage-collects the removed generation. The
 `/dicts/.hdw-remove` handling remains only for recovery of dictionaries stranded
 by the older removal protocol, including a legacy dictionary whose real title
 was `.hdw-remove`.
+
+## Automatic backup cycle
+
+`automaticBackups` is a schema-versioned service-worker-owned index containing
+at most two records. Each record carries the same five-key snapshot and
+lookup-statistics rows used by manual backup, but references committed immutable
+dictionary generation paths instead of copying their files. Snapshot creation
+runs inside the background storage queue, captures its timestamp after reaching
+that queue, writes the replacement index once, and schedules
+`hachidori-automatic-backup` for 24 hours after the committed record. Concurrent
+triggers share that serialized result. An absent key becomes schema version 1;
+an unsupported future schema is left untouched.
+
+The index is authoritative before cleanup. A refused metadata write performs no
+generation deletion. A lost reply is successful only when exact readback matches
+the replacement; an uncertain result retains all roots. After confirmed
+replacement, cleanup is best effort. Every normal cleanup and restart asks the
+service worker for roots referenced by both retained records and skips deletion
+when the index or any record is invalid. Shared roots occur once on disk.
+
+Settings lists valid records independently, so a corrupt newest record cannot
+hide an older fallback. Automatic restore validates generation paths before any
+filesystem read, validates the referenced files in place, and then uses the
+manual restore transaction and explicit replacement confirmation. Open Settings
+refreshes when the index changes and after a persisted page is restored.
+
+Linking clears the local automatic-backup alarm and suppresses snapshots of the
+host mirror while retaining the local index. Unlink restores the kept local
+state before reconciling local snapshots and scheduling again.
 
 ## Managed update cycle
 
@@ -168,7 +202,15 @@ options on worker start.
   `compactDefinitionSummaryCount: 2`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
   user's popup, and a later edit through the ordinary revisioned options write
-  is the value that persists.
+  is the value that persists. Anki settings contain an ordered
+  `anki.templates` list; the first Template is also projected through the
+  legacy flat Anki fields. `customButtons` contains ordered link or Anki
+  actions, while `customLinks` is its link-only compatibility projection.
+  Each field-template value is opaque user text: Settings offers marker
+  suggestions through an editable combobox, but storage, Template switching,
+  backup/restore, linked projection and note generation retain the exact
+  string without trimming, canonicalizing or deduplicating it. See
+  [Custom buttons and Anki Templates](custom-buttons-and-templates.md).
 
 New installations begin at `welcome`, which discloses local page processing,
 lookup statistics, publisher downloads, configured Anki metadata discovery, optional
@@ -403,11 +445,12 @@ during the dictionary or Anki stages. Script loading also waits for the reader's
 before the automatic selection, or that late snapshot could invalidate the
 example lookup immediately after it starts. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
-sentence and selects that word through the reader’s existing exact-selection
-route, so it also works from the keyboard. When the final step first becomes
-answerable and the reader is ready, the page makes that same selection once to
-demonstrate the lookup immediately. The button appears only when that exact
-selection can be answered. All exercise lookups use ordinary
+sentence, selects that word and invokes the reader's explicit selected-text
+command through the reader readiness API, so it also works from the keyboard
+without pretending the user held an activation key. When the final step first
+becomes answerable and the reader is ready, the page invokes that same command
+once to demonstrate the lookup immediately. The button appears only when that
+exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
@@ -638,18 +681,28 @@ only their host through browser focus/event APIs; their private editors cannot
 be inspected. The reader does not intercept shadow creation or block every
 focused component to guess at those internals.
 
-An explicit page selection takes priority over pointer scanning and bypasses
-the language and activation-key gates, but not reader disablement or editing
-exclusions. Lookup waits until the mouse drag ends. It sends the complete visible
-selected string without trimming or truncation and accepts only results whose
-`matched` text equals that string. Selection length overrides the configured
-scan length within the existing engine scan window; a prefix-only result is not
-an exact match. A miss retains selection ownership until the selection changes
-or is dismissed, so pointer movement cannot silently replace it with a prefix.
-Its notice exposes the same personal-dictionary pencil as term and kanji results,
-prefilled with the selected word even when no dictionaries are installed. Saving
-uses the managed Note append transaction and replays that exact request to show
-the new definition; publisher dictionaries remain unchanged.
+An automatic page selection takes priority over pointer scanning and bypasses
+the language gate, but follows the same lookup mode and activation key as a
+pointer lookup. Hover mode accepts an ordinary selection. Activation and sticky
+activation accept it only while the configured activation key is held. Plain
+selection or other modifiers alone do not look up, paint a source highlight or
+expose the personal-definition pencil. As with pointer lookup, another modifier
+held alongside the configured one does not disable it. Lookup waits until the
+mouse drag ends. Once an activation-qualified selection is accepted, key release
+does not discard it, so the popup and pencil workflow remain usable. Explicit
+selected-text commands from keybinds and startup practice bypass this automatic
+gate, while reader disablement and editing exclusions still apply.
+
+The lookup sends the complete visible selected string without trimming or
+truncation and accepts only results whose `matched` text equals that string.
+Selection length overrides the configured scan length within the existing
+engine scan window; a prefix-only result is not an exact match. A miss retains
+selection ownership until the selection changes or is dismissed, so pointer
+movement cannot silently replace it with a prefix. Its notice exposes the same
+personal-dictionary pencil as term and kanji results, prefilled with the
+selected word even when no dictionaries are installed. Saving uses the managed
+Note append transaction and replays that exact request to show the new
+definition; publisher dictionaries remain unchanged.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
@@ -803,15 +856,24 @@ races a pull causes an immediate replacement refresh instead of losing the
 new row. Failures retain the previous successful snapshot; a successful empty
 result clears it.
 
-Every mining flow uses the same lookup. A warm hit returns cached note IDs. A
-miss performs the normal scoped Anki lookup, verifies the direct fields against
-Hachidori's exact word key, calculates aggregate maturity and inserts a found
-row; a true miss creates no negative row. Submission repeats that lookup inside
-the mutation queue. Confirmed adds and overwrites update the row immediately.
-View in Anki browses cached IDs directly. Overwrite alone reads `notesInfo` to
-select an exact configured-note-type target; stale IDs trigger the normal live
-repair. Cross-type matches may be viewed or prevented but are never overwrite
-targets.
+Every mining flow uses the same lookup. In Prevent mode, popup readiness first
+peeks at that canonical index using only the term and current configuration
+digest. A warm positive exposes **View in Anki** with its exact note IDs without
+Anki discovery, field rendering or any Anki request. A miss remains unknown and
+falls through to the normal status and preflight path; its scoped live lookup
+verifies the direct fields against Hachidori's exact word key, calculates
+aggregate maturity and inserts a found row. A true miss creates no negative row.
+Other duplicate policies retain their full preflight because Add duplicate and
+Overwrite require live validation beyond membership.
+
+Clicking **View in Anki** forces that same scoped live lookup before opening the
+Browser. It replaces stale IDs in the canonical row, or removes an empty row and
+returns the popup to normal addability checks; unrelated expression searches are
+not opened for a known stale positive. Submission independently repeats the
+lookup inside the mutation queue, so cache readiness never authorizes a write.
+Confirmed adds and overwrites update the row immediately. Overwrite alone reads
+`notesInfo` to select an exact configured-note-type target. Cross-type matches
+may be viewed or prevented but are never overwrite targets.
 
 Stored HTML stays literal, ASCII case is folded as in Anki's ordinary field
 search, and lookup expressions use Anki's default NFC query normalization.
@@ -877,11 +939,21 @@ rendered text and elements; ordinary unknown-wrapper child text and literal
 glossary fallback remain supported. A glossary that exceeds that work budget is
 omitted without clearing the surrounding entry or other dictionary cards.
 
+Each node-limit rejection reports its exact attempted value and configured
+limit. Structural paths remain exact for ordinary content and elide the middle
+of unusually deep paths, keeping diagnostics bounded without copying glossary
+payload text. The popup adds the canonical dictionary title, stable package ID,
+entry/definition position, and bounded term/reading before logging the omitted
+definition. Unexpected renderer errors still reach the existing accessible
+error and Retry boundary.
+
 Deferred glossary fills and their layout callbacks belong to both the current
 lookup request and the current result panel. A newer pending request, a tab
 projection, clear, or destroy invalidates obsolete work before it can render or
-request media. Initial synchronous render errors reach the content-script catch;
-later tab, expansion, and deferred errors clear only their owning current view.
+request media. Initial synchronous renderer errors reach the content-script
+catch; later tab, expansion, and deferred renderer errors clear only their
+owning current view. Structured node-limit failures instead clear only their
+partially rendered definition body.
 
 ### External dictionary links
 
@@ -1535,9 +1607,11 @@ only rebuilds a clicked-kanji view when its effective source/kind changes.
 Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
-`reader-options.js` owns the audited 42-theme grouped catalogue (18 dark, 23
-light, one high-contrast), strict option validation, and the 19 Design reset
-keys. Defaults are the Hachidori palette, 560 × 420 px, 85% background opacity,
+`reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
+dark, 23 light, one high-contrast), strict option validation, and the 19 Design
+reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
+sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
+palette. Other defaults are 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
 names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
 averages off. Reset writes those keys through the existing sparse revision CAS;
@@ -1695,14 +1769,28 @@ interaction and draft selection. Only existing popup actions are shown.
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)
 
-The Anki button appears only with a valid configured Anki note type. It is
-one button: it adds, and once there is a note to show it opens Anki instead,
-at the duplicates that block adding, the note it just wrote, or a search for
-the expression after a write it could not confirm. The content
-controller preflights rendered candidates sequentially, retires detached actions
-after live tab/group projection, and creates no Anki controls or requests while
-unconfigured. Mining uses the selected projected result, current frequency
-units and audio choice, and the raw source span for sentence/cloze boundaries.
+The built-in Anki button uses the first configured Template. Custom Anki
+buttons use the same controller with their selected stable Template ID. Each
+action adds, and once there is a note to show it opens Anki instead, at the
+duplicates that block adding, the note it just wrote, or a search for the
+expression after a write it could not confirm. While cache and live readiness
+are unresolved, the disabled button exposes its busy state and an Arrow
+Clockwise icon. It resolves to Add or the green View in Anki book action.
+Missing Template IDs remain visible as disabled errors and send no Anki
+request.
+The content controller preflights rendered candidates sequentially, retires
+detached actions after live tab/group projection, and creates no Anki controls
+or requests while unconfigured. Mining uses the selected projected result,
+current frequency units and audio choice, and the raw source span for
+sentence/cloze boundaries.
+
+Status, cached View, preflight, submit, screenshot and browse carry the selected
+Template identity. Per-Template configuration digests and status caches prevent
+a readiness result from one destination being submitted through another. The
+scheduled compact duplicate/maturity snapshot stays scoped to the first
+Template; another Template falls through to the ordinary live duplicate lookup
+and every submission still performs its final live check. All Templates share
+the existing fixed background mutation queue and request-owned media rules.
 
 Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
 The worker validates the configured HTTP(S) endpoint and uses it consistently
@@ -1710,6 +1798,18 @@ for discovery, setup, duplicate checks, media, mining and maturity queries.
 Endpoint changes invalidate connection and maturity identities. Selecting a
 recognised note-type family applies its preset after that model's fields load;
 stale replies and subsequent manual mapping edits cannot apply the old preset.
+
+The Anki gateway keeps four FIFO transport lanes per normalized endpoint.
+Requests wait outside `fetch`, and their timeout starts only when a lane
+dispatches them. The first transport failure retires that endpoint generation:
+queued entries are rejected as never dispatched, active siblings are aborted as
+already dispatched, and the queue is removed so a later call can reconnect with
+a fresh generation. For note mutations this dispatch boundary is authoritative.
+A queued `addNote` or `updateNoteFields` rejection is a definitive no-write, so
+request-owned screenshot and capture media are released and the reader remains
+retryable. Any active or otherwise dispatched mutation failure remains
+outcome-uncertain, retains its media for inspection or an explicit retry, and is
+never retried automatically.
 
 Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
@@ -1727,18 +1827,59 @@ across a settings change.
 Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. Dictionary CSS remains scoped, and image filenames
 bind to committed generation paths. First-field audio is resolved before the
-duplicate check without playback or uploads. Confirmed text is followed by
-best-effort media uploads and a field readback before pronunciation updates;
-external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS can be attached while an active
-media-capture share supplies audio: the selected voice is spoken only after the
-mining action, read back from the transient PCM ring with short leading/trailing
-padding, encoded as WAV, and uploaded through the same pronunciation path.
+duplicate check without playback or uploads. Inside the authoritative write
+queue, every dictionary image referenced by an applied field and any prepared
+first-field pronunciation is checked against Anki's live media inventory.
+Missing files require a deterministic generated name and non-empty valid
+base64, then are stored and checked again under the exact filename before the
+note mutation. Existing files skip retrieval and upload. A failed or later
+rejected write retains confirmed deterministic media because another note may
+share it; an explicit retry reuses it through the same live inventory check.
+Deferred non-first-field pronunciation remains post-write, but its media is
+confirmed before its field update. External edits are preserved. AnkiConnect
+has no cross-client CAS, so its final read/write interval is not atomic. Browser
+TTS can be attached while an active media-capture share supplies audio: the
+selected voice is spoken only after the mining action, read back from the
+transient PCM ring with short leading/trailing padding, encoded as WAV, and
+uploaded through the same pronunciation path. An embedded host may instead
+advertise byte-backed speech capture. GameSentenceMiner binds the display-media
+request to Hachidori's dedicated normal extension page. The dictionary
+offscreen document requests the selected utterance from that host-owned page,
+which first uses a byte-exporting system synthesizer when one matches the
+selected browser voice. The page plays that WAV and returns the same bytes. A
+voice without an exporter falls back to capturing the page's own frame audio
+while local echo keeps playback audible. The bounded mono WAV follows the
+existing pronunciation media transaction. Embedded hosts
+resolve and confirm every applied pronunciation before the Anki mutation, so a
+capture failure leaves no audio-less note or orphan media. Playback without
+captured bytes never satisfies mining. The capture processor's scheduling
+output passes through a zero-gain node, preventing the frame stream from being
+echoed back into itself; Electron's separately requested local echo remains the
+only audible path.
 Silent preflight checks only recording availability and defers first-field
 duplicate identity until the authoritative submission. Missing, incomplete or
 effectively silent capture falls through to later URL sources; an explicit TTS
 choice reports the capture failure instead. Sentence-furigana markers use the
 GSM fallback when its optional native tokenizer is unavailable.
+
+Single-glossary markers keep the historical current-title sanitizer for
+existing templates. They also accept a Display name as a readable identity
+that survives dated title updates. Display names use Unicode NFKC, change
+whitespace and underscores to hyphens, remove other punctuation, collapse
+hyphens and lowercase. A display marker is installed only when it identifies
+one dictionary; duplicate glossaries do not create duplicate claims. The
+complete legacy title namespace, including suffix variants, retains precedence
+over display names, which retain precedence over package IDs. Frequency markers
+keep their existing sanitizer. Every mining request also carries the package's
+persisted 32-character lowercase hexadecimal ID, exposed as the reserved
+`{single-glossary-id--PACKAGE-ID}` marker for empty, colliding or shadowed
+display names. Settings shows the complete package ID in the dictionary's
+Details metadata so the fallback marker can be copied without inspecting
+storage.
+
+The double hyphen cannot be produced by title/display sanitization. Alias
+changes affect the readable marker, while the package-ID marker stays stable.
+Neither path edits a saved Anki field template.
 
 Capture markers are prepared through the same Anki queue rather than a second
 gateway. Before rendering either preflight or the authoritative submission,
@@ -2058,8 +2199,16 @@ network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,
 browser name, dictionary count, capabilities and a snapshot of the five shared
 keys), `request` carrying an ordinary runtime message, and `pong` to the
-relay's `ping`. `linked-anki-v1` advertises the host-owned Anki transaction
-described below; omitting capabilities remains valid for older hosts.
+relay's `ping`. `linked-anki-v1` advertises the legacy singleton host-owned
+Anki transaction. `linked-anki-v2` adds stable Template identity to readiness,
+mining, browsing and Template/custom-button settings writes. Current hosts
+advertise both so older readers can keep using the first Template; omitting
+capabilities remains valid for older dictionary-only hosts. The host passes the
+client's validated capability list into request dispatch. For a client without
+v2, a legacy flat Anki write updates only the first Template while preserving
+its identity and the remaining Templates, and a legacy `customLinks` write
+replaces only link buttons while retaining custom Anki buttons. Rich Template
+or custom-button writes from that client fail closed.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
@@ -2077,12 +2226,14 @@ forwarding table. A reply goes back verbatim, including its `requestId`, only
 while the exact relay socket and client incarnation that sent it remain
 current; a reused client ID after reconnect cannot receive an older operation's
 reply.
-The Anki dispatcher accepts only status, preflight, submit, browse and maturity
-operations, rebuilds the operation-specific request shape, and never admits an
-endpoint URL, API key or screenshot-capture operation from the client. Settings
-checks have separate allowlists: discovery may name the prospective note type,
-while full setup detection carries no client configuration at all. The host
-reads its own saved mapping, URL and API key for both. Every
+The Anki dispatcher accepts only status, cached View, preflight, submit, browse
+and maturity operations, rebuilds the operation-specific request shape, and
+never admits an endpoint URL, API key or screenshot-capture operation from the
+client. Template-aware operations carry a bounded stable Template ID, which the
+host resolves against its own saved configuration. Settings checks have
+separate allowlists: discovery may name the prospective note type, while full
+setup detection carries only the selected Template ID. The host reads its own
+saved mapping, URL and API key for both. Every
 `chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
@@ -2140,7 +2291,10 @@ offers to use it; that link then advances setup to `complete`. See
 Linked Anki mining is split at the browser boundary. The reading browser keeps
 `hd_anki_screenshot`/discard and its capture session local, while
 Settings discovery and existing-setup detection, `hd_anki_status`, preflight,
-submit, browse and maturity go to the host. A browser-speech source is planned
+submit, browse and maturity go to the host. Status, View, preflight, submit and
+browse carry the selected Template ID through the allowlist; screenshots use
+the same ID in the reading browser before their bytes cross the link. A
+browser-speech source is planned
 against the host's mirrored configuration but verified and recorded with the
 reading browser's selected voice and capture session. Just before submit, the
 reading browser's singleton Anki worker exports that final speech WAV, the
@@ -2168,9 +2322,9 @@ complete its capture job; a definitive duplicate, invalid or failed host reply
 discards/cancels them. A frame rejected before `WebSocket.send()` remains
 retryable. Once send succeeds, a closed connection or malformed reply is
 `uncertain`: neither side automatically retries it and client media stays
-available for the person to reconcile. Hosts without `linked-anki-v1` keep
-ordinary dictionary sharing but return Anki unavailable before a mining request
-is sent.
+available for the person to reconcile. Hosts without `linked-anki-v2` keep
+ordinary dictionary sharing but return Template-aware Anki operations and
+Template/custom-button settings writes unavailable before a request is sent.
 
 ## Storage ownership
 
@@ -2180,9 +2334,10 @@ is sent.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
+| Newest two automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
@@ -2192,7 +2347,11 @@ The offscreen document deliberately has no direct `chrome.storage` access. It as
 `reader-options.js` supplies one synchronous stored-value view to Settings, the
 content reader, and the service worker. New patches reject malformed supported
 fields and discard unknown fields; the revision remains worker-owned. Legacy
-reads retain numeric coercion and title-only kanji selectors. Sparse stored
+reads retain numeric coercion and title-only kanji selectors. A legacy flat
+Anki configuration is normalized into the first Template, and legacy custom
+links become link-type custom buttons. The former flat Anki fields and
+`customLinks` remain compatibility projections, including callers that spread a
+normalized value and edit its first-Template fields. Sparse stored
 options remain sparse: missing defaults or a missing revision do not force a
 write. A successful patch that repairs malformed values or removes stored junk
 increments the options revision once, as does a repair in a dictionary-state
@@ -2235,7 +2394,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | Message | Purpose |
 | --- | --- |
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
-| `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
+| `hd_apply_state` | Load an engine-affecting package change (in place when every package already loaded this session, otherwise a full rebuild), then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
@@ -2249,6 +2408,8 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_custom_cas` | Atomically compare-and-set the source document and bound package state |
 | `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |
 | `hd_custom_append` | Append one validated popup Note entry to the latest queued source and compile it |
+| `hd_backup_read`, `hd_backup_export`, `hd_backup_prepare`, `hd_backup_restore`, `hd_backup_cancel` | Read the complete manual payload, export it, stage and confirm a complete replacement, or discard staged roots |
+| `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect both records' immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
@@ -2262,12 +2423,13 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 
 ## Build outputs
 
-`wasm/build.sh` produces two runtime variants from the same bindings:
+`wasm/build.sh` produces three runtime variants from the same bindings:
 
 - `extension/vendor/hoshidicts-threaded.mjs` and `hoshidicts-threaded.wasm` for pthread WasmFS/direct OPFS;
+- `extension/vendor/hoshidicts-threaded-idbfs.mjs` and `hoshidicts-threaded-idbfs.wasm` for pthread classic FS/IDBFS;
 - `extension/vendor/hoshidicts.mjs` and `hoshidicts.wasm` for single-thread IDBFS.
 
-`HACHIDORI_PTHREADS` selects the CMake variant. `HACHIDORI_WASM_VARIANT=fallback` selects the fallback artifact in the Node smoke test.
+`HACHIDORI_PTHREADS` and `HACHIDORI_WASMFS` select the CMake variant. `HACHIDORI_WASM_VARIANT=threaded-idbfs` or `fallback` selects the corresponding artifact in the Node smoke test.
 
 ## Test boundaries
 

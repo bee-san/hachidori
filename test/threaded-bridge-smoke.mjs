@@ -9,19 +9,21 @@ const engineWorkers = [];
 const capabilityWorkers = [];
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+const ENGINE_WORKER_SCRIPT = /\/engine-worker(?:-idbfs)?\.js$/u;
+
 class FakeWorker {
   static creationError = null;
 
   constructor(url) {
     this.url = String(url);
-    if (this.url.endsWith("/engine-worker.js") && FakeWorker.creationError !== null) {
+    if (ENGINE_WORKER_SCRIPT.test(this.url) && FakeWorker.creationError !== null) {
       throw FakeWorker.creationError;
     }
     this.listeners = new Map();
     this.onmessage = null;
     this.messages = [];
     this.dispatchError = null;
-    if (this.url.endsWith("/engine-worker.js")) engineWorkers.push(this);
+    if (ENGINE_WORKER_SCRIPT.test(this.url)) engineWorkers.push(this);
     else capabilityWorkers.push(this);
   }
 
@@ -116,6 +118,7 @@ assert.equal((await startupStatus.promise).storageBackend, undefined);
 capabilityWorkers[0].emit("message", { channel: "opfs-capability-result", ok: true });
 await tick();
 assert.equal(engineWorkers.length, 1);
+assert.match(engineWorkers[0].url, /\/engine-worker\.js$/u, "a passing OPFS probe selects the direct-OPFS worker");
 const engine = engineWorkers[0];
 const queued = startup.map((entry) => entry.promise);
 assert.equal(engine.messages.filter((message) => message.channel === "engine-request").length, 128);
@@ -151,7 +154,7 @@ for (const message of engine.messages.splice(0)) {
 }
 await Promise.all(queued.slice(0, 128));
 
-for (const type of ["hd_backup_prepare", "hd_custom_save"]) {
+for (const type of ["hd_backup_prepare", "hd_backup_auto_prepare", "hd_custom_save"]) {
   const saturated = Array.from({ length: 127 }, (_, index) => request("hd_lookup", `before-cancel-${index}`));
   const preparing = request(type, "leaving-prepare", { token: "leaving-page" });
   await tick();
@@ -251,6 +254,8 @@ const mutationTypes = [
   "hd_custom_save",
   "hd_backup_export",
   "hd_backup_prepare",
+  "hd_backup_auto_prepare",
+  "hd_backup_auto_cleanup",
   "hd_backup_restore",
   "hd_backup_cancel",
 ];
@@ -355,6 +360,36 @@ for (const entry of [failedSelection, failedSelectionMutation]) {
 }
 assert.match((await send("hd_status", "failed-selection-status")).error, /test engine selection failure/);
 FakeWorker.creationError = null;
+
+// Shared memory and workers without OPFS access handles (Electron refuses them
+// to chrome-extension:// origins) select the pthread worker on IDBFS, not the
+// single-thread runtime.
+await import(`../extension/offscreen.js?threaded-idbfs=${Date.now()}`);
+relay = importedRuntime();
+const idbfsLookup = request("hd_lookup", "threaded-idbfs-lookup");
+const idbfsStatus = request("hd_status", "threaded-idbfs-status");
+await tick();
+const engineWorkersBefore = engineWorkers.length;
+capabilityWorkers.at(-1).emit("message", {
+  channel: "opfs-capability-result", ok: false, error: "createSyncAccessHandle refused",
+});
+await tick();
+assert.equal(engineWorkers.length, engineWorkersBefore + 1);
+const idbfsEngine = engineWorkers.at(-1);
+assert.match(idbfsEngine.url, /\/engine-worker-idbfs\.js$/u, "a failed OPFS probe selects the IDBFS pthread worker");
+const idbfsRequests = idbfsEngine.messages.filter((message) => message.channel === "engine-request");
+assert.deepEqual(idbfsRequests.map((entry) => entry.message.type), ["hd_lookup", "hd_status"]);
+idbfsEngine.emit("message", {
+  channel: "engine-response", id: idbfsRequests[0].id,
+  response: { type: "hd_lookup_result", requestId: "threaded-idbfs-lookup", ok: true, results: [], dictionaryCount: 0 },
+});
+idbfsEngine.emit("message", {
+  channel: "engine-response", id: idbfsRequests[1].id,
+  response: { type: "hd_status_result", requestId: "threaded-idbfs-status", ok: true, ready: true, loading: false,
+    dictionaryCount: 0, generation: 1, storageBackend: "idbfs", threaded: true },
+});
+assert.equal((await idbfsLookup.promise).ok, true);
+assert.deepEqual([(await idbfsStatus.promise).storageBackend, (await idbfsStatus.promise).threaded], ["idbfs", true]);
 
 // Hold only the fallback service module. The production bridge is really imported;
 // real IDBFS/WASM behavior is covered by extension-smoke and chrome-fallback.

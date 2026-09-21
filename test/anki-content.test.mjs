@@ -16,12 +16,40 @@ async function until(predicate) {
   for (let n = 0; n < 100 && !predicate(); n++) await tick();
   assert.ok(predicate(), "mining controller did not reach the expected state");
 }
+function handlesAnkiView(send) {
+  send.handlesAnkiView = true;
+  return send;
+}
+function buttonState(item) {
+  const button = item.add;
+  return {
+    state: button?.dataset.state ?? null,
+    icon: button?.querySelector(".gsm-hoshidicts-mine-icon")?.dataset.icon ?? null,
+    disabled: button?.disabled ?? null,
+    ariaBusy: button?.getAttribute("aria-busy") ?? null,
+    ariaLabel: button?.getAttribute("aria-label") ?? null,
+    action: button?.dataset.action ?? null,
+  };
+}
+function assertChecking(item) {
+  assert.deepEqual(buttonState(item), {
+    state: "checking",
+    icon: "arrow-clockwise",
+    disabled: true,
+    ariaBusy: "true",
+    ariaLabel: "Checking Anki card status",
+    action: "add",
+  });
+}
 function fixture(t, send, capture = send, wait, conceal) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
   const owner = {}, request = {};
-  const controller = globalThis.HDAnki.createAnkiController({ send, capture, onChange() {},
+  const controllerSend = (type, fields) => type === "hd_anki_view" && send.handlesAnkiView !== true
+    ? Promise.resolve({ state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false })
+    : send(type, fields);
+  const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
     ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
@@ -75,6 +103,163 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
   assert.equal(calls.length, before, "unchanged bindings do not repeat discovery or preflight");
 });
 
+test("unresolved Anki readiness stays visibly busy through cache, status, and live preflight", async t => {
+  const cached = Promise.withResolvers();
+  const status = Promise.withResolvers();
+  const preflight = Promise.withResolvers();
+  t.after(() => {
+    cached.resolve({ state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false });
+    status.resolve({ available: true, configKey: "current" });
+    preflight.resolve({ state: "addable", canAdd: true });
+  });
+  const calls = [];
+  const f = fixture(t, handlesAnkiView(async type => {
+    calls.push(type);
+    if (type === "hd_anki_view") return cached.promise;
+    if (type === "hd_anki_status") return status.promise;
+    if (type === "hd_anki_preflight") return preflight.promise;
+    throw new Error(`Unexpected ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => calls.includes("hd_anki_view"));
+  assertChecking(f.items[0]);
+
+  cached.resolve({ state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false });
+  await until(() => calls.includes("hd_anki_status"));
+  assertChecking(f.items[0]);
+
+  status.resolve({ available: true, configKey: "current" });
+  await until(() => calls.includes("hd_anki_preflight"));
+  assertChecking(f.items[0]);
+
+  preflight.resolve({ state: "addable", canAdd: true });
+  await until(() => f.items[0].add?.dataset.state === "ready");
+  assert.deepEqual(buttonState(f.items[0]), {
+    state: "ready",
+    icon: "add",
+    disabled: false,
+    ariaBusy: "false",
+    ariaLabel: "Mine to Anki",
+    action: "add",
+  });
+});
+
+test("an unknown cache miss falls through to live preflight and keeps its repaired exact IDs", async t => {
+  const calls = [];
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_view") {
+      return { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false };
+    }
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") {
+      assert.equal(request.term.expression, "猫");
+      return { state: "duplicate", canAdd: false, noteIds: [31, 42] };
+    }
+    throw new Error(`Unexpected ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "view-existing");
+  assert.deepEqual(calls, ["hd_anki_view", "hd_anki_status", "hd_anki_preflight"]);
+  assert.deepEqual(f.items[0].add.disabled, false);
+  assert.equal(f.items[0].add.getAttribute("aria-busy"), "false");
+  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "book-search");
+});
+
+test("a stale View repair updates exact IDs or returns the control to normal addability", async t => {
+  const browsed = [];
+  let removed = false;
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    if (type === "hd_anki_view") {
+      return removed
+        ? { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false }
+        : { state: "duplicate", canAdd: false, noteIds: [7, 8], configKey: "current", cached: true };
+    }
+    if (type === "hd_anki_browse") {
+      browsed.push(request.noteIds);
+      if (browsed.length === 1) return { opened: true, noteIds: [8, 9], repaired: true };
+      removed = true;
+      return { opened: false, noteIds: [], repaired: true };
+    }
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+    throw new Error(`Unexpected ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "view-existing");
+  f.items[0].add.click();
+  await until(() => browsed.length === 1);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "ready");
+  assert.deepEqual(browsed, [[7, 8], [8, 9]]);
+  assert.equal(f.items[0].add.dataset.action, "add");
+  assert.equal(f.items[0].add.disabled, false);
+  assert.equal(f.items[0].add.getAttribute("aria-busy"), "false");
+});
+
+test("a ready Anki action works while later results are still checking", async t => {
+  const held = Promise.withResolvers();
+  t.after(() => held.resolve());
+  let writes = 0, laterChecks = 0;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 12 }; }
+    if (request.term.expression !== "猫") { laterChecks++; await held.promise; }
+    return { state: "addable", canAdd: true };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => laterChecks === 1);
+  assert.equal(f.items[0].add.dataset.state, "ready");
+  assert.equal(f.items[0].add.disabled, false, "later results must not block this ready action");
+  assert.equal(f.items[1].add.disabled, true);
+  assert.equal(f.items[2].add.disabled, true);
+  f.items[0].add.click();
+  await until(() => writes === 1);
+  await until(() => f.items[0].add.dataset.state === "success");
+});
+
+test("a warm cached View action skips Anki status and preflight", async t => {
+  const calls = [];
+  const browse = [];
+  const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_view") {
+      return {
+        state: "duplicate",
+        canAdd: false,
+        noteIds: [22, 23],
+        configKey: "current",
+        cached: true,
+      };
+    }
+    if (type === "hd_anki_browse") {
+      browse.push(request);
+      return { opened: true, noteIds: [22, 23] };
+    }
+    throw new Error(`warm View readiness unexpectedly called ${type}`);
+  }));
+  f.controller.update(configured);
+  f.controller.bind([f.items[1]], f.context);
+  await until(() => f.items[1].add?.dataset.state === "view-existing");
+  assert.deepEqual(calls, ["hd_anki_view"]);
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[1].add.dataset.action, "view");
+  assert.equal(f.items[1].add.getAttribute("aria-busy"), "false");
+  assert.equal(f.items[1].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "book-search");
+  f.items[1].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{
+    noteIds: [22, 23],
+    expression: "犬",
+    configKey: "current",
+    templateId: "default",
+  }]);
+});
+
 test("Anki actions match the GSM toolbar order and use its add, duplicate, overwrite, and view icons", async t => {
   const browse = [];
   let writes = 0;
@@ -109,10 +294,93 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.equal(f.items[0].actions.querySelectorAll("button").length, 4);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬", configKey: "current", templateId: "default" }]);
   assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "document-edit");
+});
+
+test("failed readiness clears busy state and an explicit retry returns through Arrow Clockwise", async t => {
+  const retry = Promise.withResolvers();
+  t.after(() => retry.resolve({ state: "addable", canAdd: true }));
+  let preflights = 0;
+  const f = fixture(t, async type => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") {
+      preflights += 1;
+      if (preflights === 1) return { state: "error", canAdd: false, error: "Anki check failed." };
+      return retry.promise;
+    }
+    throw new Error(`Unexpected ${type}`);
+  });
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "error");
+  assert.equal(f.items[0].add.disabled, true);
+  assert.equal(f.items[0].add.getAttribute("aria-busy"), "false");
+  assert.equal(f.items[0].add.getAttribute("aria-label"), "Anki check failed.");
+
+  f.controller.refresh(f.context.owner);
+  await until(() => preflights === 2);
+  assertChecking(f.items[0]);
+  retry.resolve({ state: "addable", canAdd: true });
+  await until(() => f.items[0].add.dataset.state === "ready");
+  assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "add");
+  assert.equal(f.items[0].add.getAttribute("aria-busy"), "false");
+});
+
+test("parent and nested popup owners keep independent loading and resolved actions", async t => {
+  const dom = new JSDOM("<!doctype html><body><section id=\"parent\"></section><section id=\"nested\"></section></body>");
+  t.after(() => dom.window.close());
+  const childPreflight = Promise.withResolvers();
+  t.after(() => childPreflight.resolve({ state: "addable", canAdd: true }));
+  const send = handlesAnkiView(async (type, { request } = {}) => {
+    if (type === "hd_anki_view") {
+      return request.term.expression === "猫"
+        ? { state: "duplicate", canAdd: false, noteIds: [7], configKey: "current", cached: true }
+        : { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false };
+    }
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return childPreflight.promise;
+    throw new Error(`Unexpected ${type}`);
+  });
+  const controller = globalThis.HDAnki.createAnkiController({ send, onChange() {} });
+  const make = (popup, expression, depth) => {
+    const actions = dom.window.document.createElement("div");
+    actions.className = "gsm-hoshidicts-entry-actions";
+    const feedback = dom.window.document.createElement("div");
+    feedback.className = "gsm-hoshidicts-mining-feedback";
+    popup.append(actions, feedback);
+    const item = {
+      actions,
+      feedback,
+      result: { term: { expression, reading: "" } },
+      get add() { return actions.querySelector(".gsm-hoshidicts-mine-button"); },
+    };
+    const context = {
+      owner: { depth },
+      popup,
+      request: { depth },
+      isCurrent: () => true,
+      getRequest: result => ({ term: result.term }),
+    };
+    return { item, context };
+  };
+  const parent = make(dom.window.document.getElementById("parent"), "猫", 0);
+  const nested = make(dom.window.document.getElementById("nested"), "犬", 1);
+  controller.update(configured);
+  controller.bind([parent.item], parent.context);
+  controller.bind([nested.item], nested.context);
+  await until(() => parent.item.add?.dataset.state === "view-existing"
+    && nested.item.add?.dataset.state === "checking");
+  assert.equal(parent.item.add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "book-search");
+  assert.equal(parent.item.add.disabled, false);
+  assertChecking(nested.item);
+
+  childPreflight.resolve({ state: "addable", canAdd: true });
+  await until(() => nested.item.add.dataset.state === "ready");
+  assert.equal(nested.item.add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "add");
+  assert.equal(parent.item.add.dataset.state, "view-existing");
 });
 
 test("successful Add remains successful after a refresh failure and a second click opens the new note", async t => {
@@ -138,7 +406,7 @@ test("successful Add remains successful after a refresh failure and a second cli
   assert.equal(f.items[0].add.dataset.action, "view");
   f.items[0].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [12], expression: "猫", configKey: "current", templateId: "default" }]);
   assert.equal(submitted, 1);
 });
 
@@ -186,14 +454,16 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   f.controller.bind([f.items[1]], f.context);
   held.resolve();
   await until(() => f.items[1].add && !f.items[1].add.disabled);
-  assert.equal(f.items[0].control, null);
+  assert.equal(f.items[0].control.hidden, true);
+  assert.equal(f.items[0].add.hidden, true);
+  assertChecking(f.items[0]);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "error");
   assert.equal(f.items[1].add.dataset.action, "view");
   assert.match(f.items[1].output.textContent, /Check Anki before trying again/u);
   f.items[1].add.click();
   await until(() => browse.length === 1);
-  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current" }]);
+  assert.deepEqual(browse, [{ noteIds: [], expression: "犬", configKey: "current", templateId: "default" }]);
   assert.equal(writes, 1);
 });
 
@@ -449,18 +719,50 @@ test("definitive duplicate and invalid submissions release ready capture jobs fo
   }
 });
 
-test("a definitive rejection releases its admitted job after the popup retires and the reader relinks", async t => {
-  const held = Promise.withResolvers();
-  let sent = false;
-  const f = preparedCaptureFixture(t, async () => { sent = true; return held.promise; });
+test("a definitive worker rejection releases request-owned capture media and remains retryable", async t => {
+  let submissions = 0;
+  const f = preparedCaptureFixture(t, async () => {
+    submissions++;
+    const error = new Error("AnkiConnect timed out before this mutation was sent.");
+    error.responseReceived = true;
+    throw error;
+  });
   await until(() => f.items[0].add && !f.items[0].add.disabled);
   f.items[0].add.click();
-  await until(() => sent);
-  f.controller.retire(f.context.owner);
-  f.session.setLinkedPage({ tabId: 8, documentId: "new-reader" });
-  held.resolve({ state: "duplicate" });
-  await until(() => f.captureCalls.includes("hd_capture_cancel"));
+  await until(() => submissions === 1 && f.captureCalls.includes("hd_capture_cancel")
+    && !f.items[0].add.disabled);
+  assert.equal(f.items[0].add.dataset.state, "ready");
+  assert.equal(f.items[0].add.dataset.action, "add");
+  assert.match(f.items[0].output.textContent, /Could not add.*before this mutation was sent/u);
+  assert.throws(() => f.session.jobStatus(f.jobs[0]), /expired/u);
   assert.doesNotThrow(() => f.nextPin());
+
+  f.items[0].add.click();
+  await until(() => submissions === 2 && !f.items[0].add.disabled);
+  assert.equal(f.jobs.length, 2, "retrying prepares fresh request-owned media");
+  assert.equal(f.captureCalls.filter(type => type === "hd_capture_cancel").length, 2);
+});
+
+test("a definitive result or worker rejection releases its admitted job after its popup retires", async t => {
+  for (const outcome of ["duplicate result", "worker rejection"]) await t.test(outcome, async t => {
+    const held = Promise.withResolvers();
+    let sent = false;
+    const f = preparedCaptureFixture(t, async () => { sent = true; return held.promise; });
+    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    f.items[0].add.click();
+    await until(() => sent);
+    f.controller.retire(f.context.owner);
+    f.session.setLinkedPage({ tabId: 8, documentId: "new-reader" });
+    if (outcome === "duplicate result") {
+      held.resolve({ state: "duplicate" });
+    } else {
+      const error = new Error("AnkiConnect rejected the queued mutation.");
+      error.responseReceived = true;
+      held.reject(error);
+    }
+    await until(() => f.captureCalls.includes("hd_capture_cancel"));
+    assert.doesNotThrow(() => f.nextPin());
+  });
 });
 
 test("uncertain replies and lost submission responses retain the prepared job and terminal write state", async t => {
@@ -539,4 +841,84 @@ test("a note that maps a screenshot captures one with the reader concealed and n
   assert.deepEqual(submittedRequest.captureUnavailable, ["screenshot"]);
   assert.equal(submittedRequest.screenshot, undefined);
   assert.match(f.items[1].output.textContent, /Added.*12.*Screenshot: The reading tab is no longer the active tab\./u);
+});
+
+test("built-in and custom Anki buttons keep independent Template status, preflight and submission identities", async t => {
+  const calls = [];
+  const f = fixture(t, handlesAnkiView(async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    const templateId = fields.templateId ?? fields.request?.templateId;
+    if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [],
+      configKey: `key-${templateId}`, cached: false };
+    if (type === "hd_anki_status") return { available: true, configKey: `key-${templateId}` };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+    if (type === "hd_anki_submit") return { state: "added", noteId: templateId === "sentence" ? 22 : 11, warnings: [] };
+    throw new Error(`Unexpected ${type}`);
+  }));
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "mine-sentence";
+  custom.dataset.ankiTemplateId = "sentence";
+  custom.dataset.customButtonLabel = "Mine sentence";
+  custom.appendChild(f.items[0].actions.ownerDocument.createElement("span")).className = "gsm-hoshidicts-text-action-label";
+  custom.firstElementChild.textContent = "Mine sentence";
+  f.items[0].actions.append(custom);
+
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    anki: { url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Basic", fields: { ...base.fields, expression: "Front" } },
+      { ...base, id: "sentence", name: "Sentence", model: "Sentence", deck: "Sentences",
+        fields: { ...base.fields, sentence: "Front" } },
+    ] },
+    customButtons: [{ id: "mine-sentence", type: "anki", label: "Mine sentence", templateId: "sentence" }],
+  });
+  f.controller.update(options);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "ready" && custom.dataset.state === "ready");
+  assert.equal(custom.textContent, "Mine sentence");
+  assert.equal(custom.disabled, false);
+  assert.equal(custom.getAttribute("aria-label"), "Mine sentence: Mine to Anki");
+  const preflights = calls.filter(call => call.type === "hd_anki_preflight").map(call => call.fields.request);
+  assert.deepEqual(preflights.map(request => [request.templateId, request.configKey]), [
+    ["default", "key-default"], ["sentence", "key-sentence"],
+  ]);
+
+  custom.click();
+  await until(() => custom.dataset.state === "success");
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.deepEqual(calls.filter(call => call.type === "hd_anki_submit")
+    .map(call => call.fields.request.templateId), ["sentence", "default"]);
+});
+
+test("a custom Anki button whose Template was removed stays visible and reports the missing identity", async t => {
+  const calls = [];
+  const f = fixture(t, async (type, fields = {}) => {
+    calls.push({ type, fields });
+    if (type === "hd_anki_status") return { available: false, configKey: "", error: "Choose an Anki note type in Settings." };
+    throw new Error(`Unexpected ${type}`);
+  });
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "missing";
+  custom.dataset.ankiTemplateId = "deleted-template";
+  custom.dataset.customButtonLabel = "Mine old card";
+  custom.appendChild(f.items[0].actions.ownerDocument.createElement("span")).className = "gsm-hoshidicts-text-action-label";
+  custom.firstElementChild.textContent = "Mine old card";
+  f.items[0].actions.append(custom);
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    customButtons: [{ id: "missing", type: "anki", label: "Mine old card", templateId: "deleted-template" }],
+  });
+  f.controller.update(options);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => custom.dataset.state === "unavailable");
+  assert.equal(custom.hidden, false);
+  assert.equal(custom.disabled, true);
+  assert.match(custom.title, /no longer available/u);
+  assert.match(f.items[0].feedback.textContent, /no longer available/u);
+  assert.equal(calls.some(call => call.fields.templateId === "deleted-template"
+    || call.fields.request?.templateId === "deleted-template"), false);
 });

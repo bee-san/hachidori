@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import { createAudioSettingsController } from "../extension/audio-settings.js";
-import { createCustomLinkSettings } from "../extension/custom-link-settings.js";
+import { createCustomButtonSettings } from "../extension/custom-button-settings.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -35,10 +35,17 @@ test("dynamic Settings reorder icons preserve accessible names, disabled boundar
   const audio = createAudioSettingsController({ document, readSources: () => sources,
     editSources: value => { sources = value; }, send: async () => ({ ok: false }) });
   audio.render();
-  let links = ["First", "Second"].map(label => ({ label, url: "https://example.test/%w" }));
-  createCustomLinkSettings({ document, readLinks: () => links, saveLinks: value => { links = value; } });
+  let buttons = ["First", "Second"].map((label, index) => ({
+    id: `button-${index}`, type: "link", label, url: "https://example.test/%w",
+  }));
+  createCustomButtonSettings({
+    document,
+    readButtons: () => buttons,
+    saveButtons: value => { buttons = value; },
+    readTemplates: () => [{ id: "default", name: "Default" }],
+  });
   for (const [listId, selector] of [["audio-source-list", direction => `.audio-${direction}`],
-    ["custom-link-list", direction => `[data-action="${direction}"]`]]) {
+    ["custom-button-list", direction => `[data-action="${direction}"]`]]) {
     const list = document.getElementById(listId);
     for (const direction of ["up", "down"]) {
       const button = list.children[0].querySelector(selector(direction));
@@ -50,7 +57,7 @@ test("dynamic Settings reorder icons preserve accessible names, disabled boundar
     list.children[1].querySelector(`${selector("up")} .hd-icon`).click();
   }
   assert.deepEqual(sources.map(item => item.id), ["second", "first"]);
-  assert.deepEqual(links.map(item => item.label), ["Second", "First"]);
+  assert.deepEqual(buttons.map(item => item.label), ["Second", "First"]);
 });
 
 test("startup completed markers contain a Fluent child while pending steps retain their numbers", t => {
@@ -114,7 +121,7 @@ test("Settings, startup and toolbar static icons share the local stylesheet with
       icon(document.getElementById("open-settings"), "settings");
       assert.equal(document.querySelectorAll("svg").length, 0);
       assert.equal(document.getElementById("record-screen").disabled, true);
-      assert.equal(document.getElementById("record-label").textContent, "Record screen");
+      assert.equal(document.getElementById("record-label").textContent, "Record context for Anki");
       assert.equal(document.querySelector("header img").getAttribute("src"), "icons/hachidori-32.png");
     }
   }
