@@ -2042,7 +2042,7 @@ async function screenshotOwnedTab(sender, startup) {
     // Address the exact content-script document, so a same-URL reload cannot
     // answer on its predecessor's behalf.
     const document = await chrome.tabs.sendMessage(tabId, {
-      target: CAPTURE_CONTENT_TARGET, type: "hd_capture_document",
+      target: "hachidori-anki-content", type: "hd_anki_document",
     }, { documentId: sender.documentId }).catch(() => null);
     if (document?.present !== true) throw new Error("The reading document changed before the screenshot.");
   }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import net from "node:net";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -32,7 +33,77 @@ async function freePort() {
   });
 }
 
+// One loopback server stands in for AnkiConnect and for a downloadable
+// pronunciation source, so the Firefox background page and hidden engine iframe
+// prove their outbound network paths without a real Anki or the internet.
+function wavBytes(seconds = 0.05, rate = 8000) {
+  const frames = Math.round(seconds * rate);
+  const buffer = Buffer.alloc(44 + frames * 2);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + frames * 2, 4);
+  buffer.write("WAVEfmt ", 8);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(rate, 24);
+  buffer.writeUInt32LE(rate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(frames * 2, 40);
+  for (let index = 0; index < frames; index += 1) {
+    buffer.writeInt16LE(Math.round(Math.sin(index / 4) * 8000), 44 + index * 2);
+  }
+  return buffer;
+}
+
+async function startFixtureServer() {
+  const requests = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", chunk => { body += chunk; });
+    request.on("end", () => {
+      const record = { method: request.method, url: request.url, origin: request.headers.origin ?? null, body };
+      requests.push(record);
+      if (request.method === "POST" && request.url === "/") {
+        const { action, params } = JSON.parse(body);
+        const results = {
+          deckNames: ["Default", "Mining"],
+          modelNames: ["Basic"],
+          modelFieldNames: params?.modelName === "Basic" ? ["Front", "Back"] : null,
+        };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(Object.hasOwn(results, action) && results[action] !== null
+          ? { result: results[action], error: null }
+          : { result: null, error: `unexpected ${action}` }));
+        return;
+      }
+      if (request.method === "GET" && request.url === "/page") {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end("<!doctype html><meta charset=utf-8><title>Firefox smoke page</title><p lang=ja>食べました。</p>");
+        return;
+      }
+      if (request.method === "GET" && request.url.startsWith("/audio/")) {
+        const audio = wavBytes();
+        response.writeHead(200, { "content-type": "audio/wav", "content-length": audio.length });
+        response.end(audio);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+  });
+  await new Promise(resolveListen => server.listen(0, "127.0.0.1", resolveListen));
+  const { port } = server.address();
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise(resolveClose => server.close(resolveClose)),
+  };
+}
+
 async function main() {
+  const fixtureServer = await startFixtureServer();
   const extension = process.env.HACHIDORI_FIREFOX_EXTENSION
     ? resolve(process.env.HACHIDORI_FIREFOX_EXTENSION)
     : await prepareFirefoxExtension();
@@ -240,6 +311,30 @@ async function main() {
     assert.equal(capture.ok, false);
     assert.match(capture.error, /unavailable in Firefox/u);
 
+    // Chrome-only surfaces are hidden, not merely disabled, and Chrome-only
+    // APIs are absent from the package rather than failing at call time.
+    const parity = await execute(`
+      const customJavascript = document.getElementById("custom-javascript");
+      return {
+        customJavascriptHidden: customJavascript.hidden,
+        customJavascriptUnavailable: customJavascript.dataset.settingsUnavailable,
+        customCssPresent: document.getElementById("opt-custom-popup-css") !== null,
+        shortcutsButton: document.getElementById("browser-shortcuts-open").textContent.trim(),
+        downloadsApi: typeof browser.downloads?.download,
+        userScriptsApi: typeof browser.userScripts,
+        extensionProtocol: new URL(browser.runtime.getURL("")).protocol,
+      };
+    `);
+    assert.deepEqual(parity, {
+      customJavascriptHidden: true,
+      customJavascriptUnavailable: "true",
+      customCssPresent: true,
+      shortcutsButton: "Change in Firefox",
+      downloadsApi: "function",
+      userScriptsApi: "undefined",
+      extensionProtocol: "moz-extension:",
+    });
+
     const imported = await execute(`
       const done = arguments[arguments.length - 1];
       const binary = atob(arguments[0]);
@@ -271,6 +366,115 @@ async function main() {
     assert.equal(lookup.ok, true, lookup.error);
     assert.ok(lookup.results.some(result => result.term?.expression === "食べる"));
 
+    // Anki: point the saved configuration at the loopback AnkiConnect and ask
+    // the background page for mining readiness. The request must leave the
+    // extension with its own moz-extension:// Origin.
+    const written = await execute(`
+      const done = arguments[arguments.length - 1];
+      const [ankiUrl, audioUrl] = arguments;
+      browser.storage.local.get("options").then(({ options }) => {
+        const template = value => ({ value, overwriteMode: "overwrite" });
+        return browser.runtime.sendMessage({
+          target: "hoshidicts-worker", type: "hd_options_write", requestId: "firefox-options",
+          baseRevision: options?.revision ?? 0,
+          options: {
+            audioSources: [{ id: "firefox-smoke-audio", type: "custom", enabled: true, url: audioUrl, voice: "" }],
+            anki: { ...HDReaderOptions.normaliseOptions({}).anki, url: ankiUrl, model: "Basic", deck: "Default",
+              fieldTemplates: { Front: template("{expression}"), Back: template("{glossary}") } },
+          },
+        });
+      }).then(done, error => done({ ok: false, error: String(error) }));
+    `, [fixtureServer.origin, `${fixtureServer.origin}/audio/{term}`], true);
+    assert.equal(written.ok, true, written.error);
+    const ankiStatus = await sendRuntime({ target: "hachidori-anki", type: "hd_anki_status", requestId: "firefox-anki-status" });
+    assert.equal(ankiStatus.ok, true, ankiStatus.error);
+    assert.equal(ankiStatus.available, true, ankiStatus.error);
+    assert.match(ankiStatus.configKey, /^[0-9a-f-]+$/u);
+    const ankiRequests = fixtureServer.requests.filter(record => record.url === "/");
+    assert.deepEqual(
+      [...new Set(ankiRequests.map(record => JSON.parse(record.body).action))].sort(),
+      ["deckNames", "modelFieldNames", "modelNames"],
+    );
+    assert.ok(ankiRequests.every(record => record.origin?.startsWith("moz-extension://")),
+      `AnkiConnect requests carry the extension origin: ${JSON.stringify(ankiRequests.map(record => record.origin))}`);
+
+    // Pronunciation: the hidden iframe fetches and plays a downloadable source.
+    const audio = await sendRuntime({
+      target: "hachidori-audio",
+      type: "hd_audio_test",
+      requestId: "firefox-audio-test",
+      source: { id: "firefox-smoke-audio", type: "custom", enabled: true, url: `${fixtureServer.origin}/audio/{term}`, voice: "" },
+    });
+    assert.equal(audio.ok, true, audio.error);
+    assert.equal(audio.status, "success");
+    assert.ok(fixtureServer.requests.some(record => record.url.startsWith("/audio/")), "the audio file was fetched");
+
+    // Backup: export from the engine, then prepare and restore that archive.
+    const exported = await sendRuntime({ target: "hoshidicts-offscreen", type: "hd_backup_export", requestId: "firefox-backup-export" });
+    assert.equal(exported.ok, true, exported.error);
+    assert.match(exported.blobUrl, /^blob:moz-extension:\/\//u);
+    const prepared = await sendRuntime({
+      target: "hoshidicts-offscreen", type: "hd_backup_prepare", requestId: "firefox-backup-prepare",
+      blobUrl: exported.blobUrl, token: crypto.randomUUID(),
+    });
+    assert.equal(prepared.ok, true, prepared.error);
+    const restored = await sendRuntime({
+      target: "hoshidicts-offscreen", type: "hd_backup_restore", requestId: "firefox-backup-restore", token: prepared.token,
+    });
+    assert.equal(restored.ok, true, restored.error);
+    const released = await sendRuntime({
+      target: "hoshidicts-offscreen", type: "hd_backup_release", requestId: "firefox-backup-release", blobUrl: exported.blobUrl,
+    });
+    assert.equal(released.ok, true, released.error);
+    const afterRestore = await sendRuntime({
+      target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "firefox-after-restore",
+      text: "食べました", maxResults: 32, scanLength: 16,
+    });
+    assert.equal(afterRestore.ok, true, afterRestore.error);
+    assert.ok(afterRestore.results.some(result => result.term?.expression === "食べる"), "the restored dictionary answers");
+
+    // Sharing: the host/client state machine answers from the background page.
+    const sharing = await sendRuntime({ target: "hachidori-sharing", type: "hd_sharing_status", requestId: "firefox-sharing" });
+    assert.equal(sharing.ok, true, sharing.error);
+    assert.equal(typeof sharing.sharing?.enabled, "boolean", JSON.stringify(sharing));
+    assert.equal(sharing.sharing.client.address, null, "a fresh install is not linked");
+
+    // Content scripts on an ordinary page: the shared Anki script answers the
+    // screenshot document probe, and the Chrome-only capture script is absent.
+    const contentScripts = await execute(`
+      const done = arguments[arguments.length - 1];
+      (async () => {
+        const tab = await browser.tabs.create({ url: arguments[0], active: false });
+        const ask = target => browser.tabs.sendMessage(tab.id, { target, type: target === "hachidori-anki-content" ? "hd_anki_document" : "hd_capture_recover" });
+        let anki = null;
+        for (let attempt = 0; attempt < 100 && anki?.present !== true; attempt += 1) {
+          anki = await ask("hachidori-anki-content").catch(() => null);
+          if (anki?.present !== true) await new Promise(resolveWait => setTimeout(resolveWait, 100));
+        }
+        const capture = await ask("hachidori-capture-content").then(reply => ({ reply }), error => ({ error: String(error) }));
+        await browser.tabs.remove(tab.id);
+        return { anki, capture };
+      })().then(done, error => done({ error: String(error) }));
+    `, [`${fixtureServer.origin}/page`], true);
+    assert.deepEqual(contentScripts.anki, { present: true }, JSON.stringify(contentScripts));
+    assert.equal(contentScripts.capture.reply, undefined, `the capture content script must not be injected in Firefox: ${JSON.stringify(contentScripts.capture)}`);
+
+    // Screenshots: the packaged startup reader is the one extension page that
+    // may capture itself; Firefox resolves its tab from the sender instead of
+    // Chrome's getContexts().
+    await navigate("startup.html");
+    const screenshot = await sendRuntime({
+      target: "hachidori-anki", type: "hd_anki_screenshot", requestId: "firefox-screenshot", request: {},
+    });
+    assert.equal(screenshot.ok, true, screenshot.error);
+    assert.match(screenshot.filename ?? "", /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
+    const discarded = await sendRuntime({
+      target: "hachidori-anki", type: "hd_anki_screenshot_discard", requestId: "firefox-screenshot-discard",
+      request: { token: screenshot.token },
+    });
+    assert.equal(discarded.ok, true, discarded.error);
+    await navigate("settings.html");
+
     const beforeIdle = await engineStatus("firefox-before-idle");
     await sleep(IDLE_MS);
     const hostAfterIdle = await sendRuntime({
@@ -294,11 +498,13 @@ async function main() {
     console.log(
       `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension},`
         + ` ${engine.storageBackend} import/lookup,`
-        + ` ${IDLE_MS} ms idle continuity, capture fail-closed, and hidden media UI passed.`
+        + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI,`
+        + ` Anki status, pronunciation, backup round-trip, sharing status and screenshot passed.`
         + ` Settings: ${settingsUrl}; toolbar: ${toolbarUrl}`,
     );
     passed = true;
   } finally {
+    await fixtureServer.close();
     if (sessionId) await request(`/session/${sessionId}`, "DELETE").catch(() => {});
     driver.kill("SIGTERM");
     if (driver.exitCode === null) await new Promise(resolveExit => driver.once("exit", resolveExit));

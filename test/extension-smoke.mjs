@@ -3512,7 +3512,7 @@ async function ankiScreenshotStage() {
       && capturesBeforeReload === capturesAfterReload
       && documentChecks.length > 0 && documentChecks.every(value => value.id === tab.id
         && value.options.documentId === reader.documentId
-        && value.message.target === "hachidori-capture-content" && value.message.type === "hd_capture_document")
+        && value.message.target === "hachidori-anki-content" && value.message.type === "hd_anki_document")
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")

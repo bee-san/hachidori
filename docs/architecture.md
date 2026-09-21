@@ -1952,7 +1952,8 @@ still show the document that asked. The post-capture check also requires the
 same window ID: dragging the reading tab to another window can otherwise leave
 it active while the original window captures a different tab.
 Before and after each attempt, a read-only message addressed to the original
-sender's Chrome document ID must also receive a presence reply. The packaged
+sender's document ID (`hd_anki_document`, answered by `anki-content.js`, which
+both browsers inject) must also receive a presence reply. The packaged
 startup reader instead resolves that document ID through Chrome's live TAB
 extension contexts, which supplies its tab ID and confirms the same document
 without content-script messaging. Reloading the
