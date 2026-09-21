@@ -92,6 +92,19 @@ from **Settings → Sharing → Download the Anki add-on**, then follow the
 <img width="775" height="471" alt="Screenshot 2026-09-14 at 14 19 41" src="https://github.com/user-attachments/assets/991d570a-599e-4277-8736-c72b2f371ed0" />
 
 
+# Experimental features
+
+**Settings → Advanced → Experimental features** switches on work that is still
+changing and may be removed:
+
+- **Media mining** — the screen and audio capture above.
+- **Long dictionary entries** — find entries longer than the scan length
+  (proverbs, titles) without scanning further on every hover.
+- **MDX dictionaries** — import MDict `.mdx` dictionaries with their `.mdd`
+  resource files from **Add dictionaries**, next to Yomitan ZIPs. Choose the
+  `.mdx` and its `.mdd` files together.
+
+
 # Opinionated
 
 Hachidori is an opinionated program. If it does not benefit me, the creator, personally than I will not add that feature.
