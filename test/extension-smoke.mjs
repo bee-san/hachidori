@@ -5746,6 +5746,28 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  // hd_memory: the heap, and each loaded package's mapped file bytes once per
+  // native kind it was added as (the fixture package loads under four).
+  const memory = await request("hd_memory");
+  const mappedFileBytes = ["hash.table", "bloom.filter", "blobs.bin", "media.bin", "media.idx", "scan.idx", "dict.zstd"]
+    .reduce((sum, name) => {
+      try { return sum + observedEngine.FS.stat(`${importedPackage.path}/${name}`).size; } catch { return sum; }
+    }, 0);
+  check(
+    "hd_memory reports the heap and each loaded package's mapped bytes",
+    memory.ok === true
+      && Number.isInteger(memory.heapBytes)
+      && memory.heapBytes === observedEngine.HEAPU8.byteLength
+      && memory.dictionaries.length === 1
+      && memory.dictionaries[0].id === importedPackage.id
+      && memory.dictionaries[0].title === importedPackage.title
+      && memory.dictionaries[0].path === importedPackage.path
+      && mappedFileBytes > 0
+      && memory.dictionaries[0].bytes === mappedFileBytes * 4
+      && memory.heapBytes >= memory.dictionaries[0].bytes,
+    JSON.stringify({ memory, mappedFileBytes }),
+  );
+
   // A dictionary with keys longer than the scan length: the import records the
   // longest such key on the package row (from scan.idx), and the same
   // scanLength 16 lookup that could never reach a 27-code-point key now returns
