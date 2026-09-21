@@ -24,7 +24,7 @@ dictionaries. **Settings → Sharing** says *Waiting for Anki* and offers
 `hachidori-relay.ankiaddon` (or use **Tools → Add-ons → Install from file…**
 in Anki), restart Anki, and the line becomes *Sharing through Anki.* The
 button downloads the compatible
-[v0.0.3 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.3)
+[v0.0.4 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.4)
 from GitHub, so downloading needs an internet connection. It shows progress
 while fetching and an error with a retryable button if the download fails.
 The add-on has its own version; this extension pins the version it was tested
@@ -220,6 +220,31 @@ up. Turning network sharing off or losing the host interrupts stalled sends;
 a partly sent frame ends with transport shutdown rather than a malformed close
 frame inserted into its payload.
 
+## Other apps: the relay's Yomitan API
+
+Relay v0.0.4 also serves the HTTP API that
+[yomitan-api](https://github.com/Kuuuube/yomitan-api) gives Yomitan, on
+Yomitan's port 19633, answered by the sharing Hachidori: `/termEntries`,
+`/kanjiEntries`, `/ankiFields`, `/tokenize`, `/yomitanVersion`. Tools written
+for that API, such as
+[backfill-anki-yomitan](https://github.com/Manhhao/backfill-anki-yomitan),
+work with Hachidori's dictionaries without changes. `GET /dictionaries` lists
+the installed dictionaries and `GET /dictionaries/<id>` downloads one as the
+archive **Backup & restore** accepts, so another app on the network can copy a
+library instead of only sending lookups.
+
+The relay forwards each request to this browser as an `hd_api_*` runtime
+message (the contract is
+[docs/host-contract.md](https://github.com/bee-san/hachidori-anki/blob/main/docs/host-contract.md)
+in the relay's repository), and this browser advertises `hoshidicts-api-v1` in
+its hello so the relay knows it can. The relay's own connection uses the origin
+`relay://yomitan-api`; Settings → Sharing does not count it as a linked
+browser. Anki fields are rendered by the same code as mining, so `{audio}`
+brings the selected pronunciation source's file and dictionary images arrive
+as media the caller writes into Anki. There is no MeCab: `/tokenize` scans with
+the dictionaries. Like the relay, the API has no authentication; it listens
+on this computer only unless **Also with my other computers** is on.
+
 ## Tests
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
@@ -230,15 +255,18 @@ jsdom, and verifies pinned binary downloads, HTTP/network failures, progress
 across polls and retry. The relay's raw-socket, packaging, slow-peer and
 optional installed-Anki checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test);
-release v0.0.3 includes the ordered large-frame, shutdown and Python 3.9
-idle-timeout regressions.
+release v0.0.4 adds the Yomitan-compatible API and dictionary downloads on
+top of v0.0.3's ordered large-frame, shutdown and Python 3.9 idle-timeout
+regressions. `node --test test/api-host.test.mjs` covers this extension's
+answers to the relay's `hd_api_*` requests against a fake engine.
 
 The extension smoke suite's sharing-host and sharing-client stages cover the
 service worker's side against fake sockets. `node test/chrome-sharing.mjs`
 runs two real Chromes: the host imports a fixture, handles a simulated failed
 add-on download, then retries the actual pinned GitHub release from Settings
-and runs its relay. The second browser links, looks a word up, edits shared
-state, runs Settings discovery/setup checks, captures a page-local JPEG and
+and runs its relay with its API, which is asked for lookups, Anki fields,
+tokenizing and a dictionary download over HTTP. The second browser links,
+looks a word up, edits shared state, runs Settings discovery/setup checks, captures a page-local JPEG and
 mines it through a mocked host AnkiConnect while a healthy client endpoint
 remains unused. The suite also
 rejects a stale generation and host Anki failure, survives the host closing

@@ -84,6 +84,7 @@ const puppeteer = await import(`file://${PUPPETEER}`);
 const CHECKS = [
   "the host's Sharing page saves the pinned Anki release as a valid archive while Anki is not yet connected",
   "the host imports the fixture and shares through Anki's relay on the chosen port",
+  "the relay's Yomitan-compatible API answers lookups, Anki fields, tokenizing and a dictionary download from the host, which does not list the relay as a linked browser",
   "the second browser's startup page offers the shared Hachidori, and one click links it and completes setup",
   "an options edit made on the linked browser is committed by the host and pushed back",
   "a personal dictionary save made on the linked browser lands in the host's source and answers lookups",
@@ -421,7 +422,7 @@ async function failAddonDownload(page, session, file) {
     message: document.getElementById("sharing-status").textContent,
     disabled: document.getElementById("sharing-addon-download").disabled,
   }));
-  check(CHECKS[9], !existsSync(file) && !failed.disabled
+  check(CHECKS[10], !existsSync(file) && !failed.disabled
     && failed.message === "Could not download the add-on: GitHub returned HTTP 503. Try again.", JSON.stringify(failed));
   await screenshot(page, "sharing-addon-error.png");
 }
@@ -678,8 +679,8 @@ try {
       && addon.status === "Saved hachidori-relay.ankiaddon to your downloads. Double-click it to install it in Anki, then restart Anki.",
     JSON.stringify(addon));
 
-  relay = await startAnkiRelayServer({ archive: addon.file, port: PORT, serverPath: process.env.HACHIDORI_RELAY_SERVER });
-  console.log(`     downloaded relay v${addon.manifest.human_version} listening on 127.0.0.1:${relay.port}`);
+  relay = await startAnkiRelayServer({ archive: addon.file, port: PORT, serverPath: process.env.HACHIDORI_RELAY_SERVER, apiPort: 0 });
+  console.log(`     downloaded relay v${addon.manifest.human_version} listening on 127.0.0.1:${relay.port}, API on ${relay.apiPort}`);
 
   const hostSharing = await enableSharing(hostPage);
   const hostState = await stored(hostPage, ["dictionaryState", "options"]);
@@ -688,6 +689,49 @@ try {
       && hostSharing.dictionaries === 1 && hostSharing.network?.enabled === false && hostSharing.network.active === false
       && hostState.dictionaryState?.dictionaries?.some((dictionary) => dictionary.title === "hachidori-fixture") === true,
     JSON.stringify({ hostSharing, dictionaries: hostState.dictionaryState?.dictionaries?.map((entry) => entry.title) }));
+
+  // Other apps reach the sharing Hachidori through the relay's HTTP API, the
+  // way they would reach Yomitan.
+  const api = async (path, body) => {
+    const response = await fetch(`http://127.0.0.1:${relay.apiPort}${path}`, body === undefined ? {} : { method: "POST", body: JSON.stringify(body) });
+    return { status: response.status, body: response.headers.get("content-type")?.includes("json") ? await response.json() : await response.arrayBuffer() };
+  };
+  const apiVersion = await api("/yomitanVersion", {});
+  const apiTerms = await api("/termEntries", { term: "食べたかった" });
+  const apiKanji = await api("/kanjiEntries", { character: "食" });
+  const apiFields = await api("/ankiFields", { text: "食べる", type: "term", markers: ["expression", "reading", "glossary-first", "furigana"], maxEntries: 1, includeMedia: true });
+  const apiTokens = await api("/tokenize", { text: "猫が食べたかった", scanLength: 10 });
+  const apiDictionaries = await api("/dictionaries");
+  const fixtureEntry = apiDictionaries.body?.dictionaries?.find(entry => entry.title === "hachidori-fixture");
+  const apiDownload = fixtureEntry ? await api(`/dictionaries/${encodeURIComponent(fixtureEntry.id)}`) : { status: 0, body: new ArrayBuffer(0) };
+  const downloadFiles = [];
+  if (apiDownload.status === 200) {
+    const reader = new ZipReader(new BlobReader(new Blob([apiDownload.body])), { useWebWorkers: false });
+    for (const entry of await reader.getEntries()) downloadFiles.push(entry.filename);
+    await reader.close();
+  }
+  const apiMissing = await api("/dictionaries/no-such-dictionary");
+  const hostWithApiClient = await sharingStatus(hostPage);
+  const hostClientsText = await hostPage.evaluate(() => document.getElementById("sharing-host-clients")?.textContent ?? "");
+  check(CHECKS[2],
+    apiVersion.status === 200 && typeof apiVersion.body?.version === "string"
+      && apiTerms.status === 200 && apiTerms.body?.originalTextLength === 6
+      && apiTerms.body.dictionaryEntries?.[0]?.headwords?.[0]?.term === "食べる" && apiTerms.body.dictionaryEntries[0].headwords[0].reading === "たべる"
+      && apiTerms.body.dictionaryEntries[0].definitions?.[0]?.dictionary === "hachidori-fixture"
+      && apiKanji.status === 200 && Array.isArray(apiKanji.body) && apiKanji.body[0]?.character === "食" && apiKanji.body[0].onyomi?.length > 0
+      && apiFields.status === 200 && apiFields.body?.fields?.[0]?.expression === "食べる" && apiFields.body.fields[0].reading === "たべる"
+      && typeof apiFields.body.fields[0]["glossary-first"] === "string" && apiFields.body.fields[0]["glossary-first"].includes("to eat")
+      && apiFields.body.fields[0].furigana === "<ruby>食<rt>た</rt></ruby>べる"
+      && Array.isArray(apiFields.body.dictionaryMedia) && Array.isArray(apiFields.body.audioMedia)
+      && apiTokens.status === 200 && JSON.stringify(apiTokens.body?.[0]?.content) === JSON.stringify([[{ text: "猫が", reading: "" }, { text: "食", reading: "た" }, { text: "べたかった", reading: "" }]])
+      && apiDictionaries.status === 200 && fixtureEntry?.fileName === "hachidori-fixture.hachidori.zip"
+      && apiDownload.status === 200 && downloadFiles.includes("hachidori-backup.json") && downloadFiles.some(name => name.startsWith("dictionaries/0/"))
+      && apiMissing.status === 404
+      && hostWithApiClient.sharing.clients.some(client => client.origin === "relay://yomitan-api")
+      && hostClientsText === "No other browser is linked yet.",
+    JSON.stringify({ apiVersion, apiTerms: apiTerms.body?.dictionaryEntries?.[0]?.headwords, apiKanji: apiKanji.body?.[0]?.character, apiFields: apiFields.body?.fields,
+      apiTokens: apiTokens.body, apiDictionaries: apiDictionaries.body, download: [apiDownload.status, downloadFiles], apiMissing: apiMissing.status,
+      clients: hostWithApiClient.sharing?.clients, hostClientsText }));
 
   clientBrowser = await launch(CLIENT_PROFILE);
   const clientId = await extensionId(clientBrowser);
@@ -718,7 +762,8 @@ try {
   const mirror = await stored(clientPage, ["dictionaryState", "options", "sharingLocalState", "sharing"]);
   const hostAfterLink = await stored(hostPage, ["dictionaryState", "options"]);
   const linkedLookup = await lookup(clientPage);
-  const hostClients = (await sharingStatus(hostPage)).sharing.clients;
+  // The relay's API session stays open between HTTP requests; only browsers count as linked.
+  const hostClients = (await sharingStatus(hostPage)).sharing.clients.filter(client => client.origin !== "relay://yomitan-api");
   await screenshot(hostPage, "sharing-settings.png");
   await screenshot(clientPage, "sharing-linked.png");
   const statusCards = await Promise.all([hostPage, clientPage].map(page => page.$eval("#sharing-status", (node) => {
@@ -736,7 +781,7 @@ try {
     };
   })));
   const hostName = probe?.host?.name;
-  check(CHECKS[2],
+  check(CHECKS[3],
     probe?.ok === true && probe.display === "this computer" && typeof hostName === "string" && hostName !== ""
       && probe.host.dictionaryCount === hostState.dictionaryState.dictionaries.length
       && offer.body.includes(`${hostName} on this computer already has Hachidori set up, with 1 dictionary.`)
@@ -776,7 +821,7 @@ try {
     const value = (await stored(clientPage, ["options"])).options;
     return value?.scanLength === 7 ? value : null;
   }, "the host's options batch to reach the linked browser", 15_000);
-  check(CHECKS[3],
+  check(CHECKS[4],
     written?.ok === true && written.options?.scanLength === 7 && written.options.revision === baseRevision + 1
       && hostOptions.revision === written.options.revision && mirroredOptions.revision === written.options.revision,
     JSON.stringify({ written, hostOptions, mirroredOptions }));
@@ -791,7 +836,7 @@ try {
     const value = (await stored(clientPage, [CUSTOM_DICTIONARY_SOURCE_KEY])) [CUSTOM_DICTIONARY_SOURCE_KEY];
     return value?.text === CUSTOM_SOURCE ? value : null;
   }, "the personal source to reach the linked browser", 15_000);
-  check(CHECKS[4],
+  check(CHECKS[5],
     saved?.ok === true && hostSource.dictionaryState?.dictionaries?.[0]?.id === CUSTOM_DICTIONARY_ID
       && customLookup?.ok === true && (customLookup.results?.length ?? 0) > 0
       && mirroredSource.revision === hostSource[CUSTOM_DICTIONARY_SOURCE_KEY].revision,
@@ -892,7 +937,7 @@ try {
   hostAnki.state.online = true;
   const hostActions = hostAnki.state.calls.map(call => call.action);
   const centre = screenshotProof?.centre ?? [];
-  check(CHECKS[5],
+  check(CHECKS[6],
     mirroredAnki.url === hostAnki.url && clientEndpoint.url === clientAnki.url
       && ankiSetup?.ok === true && ankiSetup.outcome?.status === "already-configured"
       && ankiSetup.outcome.model === "Basic" && ankiSetup.outcome.deck === "Default"
@@ -960,7 +1005,7 @@ try {
     return reply?.sharing?.client?.connected ? reply.sharing.client : null;
   }, "the linked browser to reconnect after the host relaunched", 60_000, 500);
   const recovered = await lookup(clientPage);
-  check(CHECKS[6],
+  check(CHECKS[7],
     unreachable.error === "The linked Hachidori is not reachable." && relaunchedId === hostId
       && reconnected.address === ADDRESS && recovered?.ok === true && recovered.results?.[0]?.deinflected === "食べる",
     JSON.stringify({ unreachable: { ok: unreachable?.ok, error: unreachable?.error }, reconnected, recovered: { ok: recovered?.ok, error: recovered?.error } }));
@@ -978,7 +1023,7 @@ try {
   }, "the linked browser to unlink", 15_000);
   const ownState = await stored(clientPage, ["dictionaryState", "options", "sharingLocalState", "sharing", CUSTOM_DICTIONARY_SOURCE_KEY]);
   const ownLookup = await lookup(clientPage);
-  check(CHECKS[7],
+  check(CHECKS[8],
     afterUnlink.linked === false
       && (ownState.dictionaryState?.dictionaries ?? []).length === 0
       && ownState.sharingLocalState === undefined
@@ -1031,7 +1076,7 @@ try {
   const cleanup = await message(clientPage, "hachidori-sharing", "hd_sharing_client_unlink");
   // The relay must have survived the swap back: this computer still finds the host through it.
   const stillThere = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: "" });
-  check(CHECKS[8],
+  check(CHECKS[9],
     networkOn?.ok === true && hostNetwork.enabled === true
       && shown.status === "Sharing through Anki, on this computer and the network."
       && shown.addresses.join(",") === hostNetwork.addresses.map((entry) => entry.address).join(",")
@@ -1082,7 +1127,7 @@ try {
   await message(secondPage, "hachidori-sharing", "hd_sharing_client_unlink");
   const localAfter = await stored(clientPage, ["dictionaryState", "options", CUSTOM_DICTIONARY_SOURCE_KEY, "sharingLocalState"]);
   const personalLookup = await lookup(clientPage, "私語");
-  check(CHECKS[10],
+  check(CHECKS[11],
     localEdit?.ok && concurrentLinks.every(reply => reply?.ok) && concurrentUnlinks.every(reply => reply?.ok && !reply.sharing.client.linked)
       && keptLocal?.customDictionarySource?.text === localText && keptLocal.options?.scanLength === 11
       && localAfter.customDictionarySource?.text === localText && localAfter.options?.scanLength === 11
