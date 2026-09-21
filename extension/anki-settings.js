@@ -458,14 +458,7 @@ export function createAnkiSettingsController({
     for (const [index, [field, template]] of templates.entries()) {
       if (!templateRows.has(field)) {
         const previous = renamedRows.get(field.toLowerCase());
-        if (previous) {
-          templateRows.delete(previous.field);
-          renamedRows.delete(field.toLowerCase());
-          previous.field = field;
-          previous.label.textContent = field;
-          previous.mode.setAttribute("aria-label", `On overwrite: ${field}`);
-          previous.remove.setAttribute("aria-label", `Remove unavailable field: ${field}`);
-        }
+        if (previous) adoptRenamedRow(previous, field, renamedRows);
         templateRows.set(field, previous || createTemplateRow(field));
       }
       updateTemplateRow(templateRows.get(field), template, showMode, presentation.unavailable.has(field), index);
@@ -474,47 +467,57 @@ export function createAnkiSettingsController({
       if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
     }
     reorderSettingsRows(container, templates.map(([field]) => templateRows.get(field).row));
+    filterTemplateRows(templates.map(([field]) => field));
+    const canApply = !loading && currentFields().length > 0;
+    if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
+  }
+
+  function adoptRenamedRow(previous, field, renamedRows) {
+    templateRows.delete(previous.field);
+    renamedRows.delete(field.toLowerCase());
+    previous.field = field;
+    previous.label.textContent = field;
+    previous.mode.setAttribute("aria-label", `On overwrite: ${field}`);
+    previous.remove.setAttribute("aria-label", `Remove unavailable field: ${field}`);
+  }
+
+  // Rows are hidden, never dropped, so the mapping keeps Anki's field order.
+  function filterTemplateRows(fields) {
     const query = element("anki-field-filter").value.trim().toLocaleLowerCase();
     let visible = 0;
-    for (const [field] of templates) {
+    for (const field of fields) {
       const row = templateRows.get(field).row;
       const hidden = query !== "" && !field.toLocaleLowerCase().includes(query);
       if (row.hidden !== hidden) row.hidden = hidden;
       if (!hidden) visible += 1;
     }
-    const count = query === "" ? `Showing ${templates.length} fields` : `Showing ${visible} of ${templates.length} fields`;
+    const count = query === "" ? `Showing ${fields.length} fields` : `Showing ${visible} of ${fields.length} fields`;
     if (element("anki-field-count").textContent !== count) element("anki-field-count").textContent = count;
-    const canApply = !loading && currentFields().length > 0;
-    if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
   }
 
-  function selectChoices(id, names, value, placeholder, {
-    canonical = "", suggested = "", allLabel, labels = {},
-  }) {
+  function optionGroup(label, choices, optionLabel) {
+    const group = document.createElement("optgroup");
+    group.label = label;
+    group.append(...choices.map(name => new document.defaultView.Option(optionLabel(name), name)));
+    return group;
+  }
+
+  // A saved value that discovery no longer lists stays selectable as "(unavailable)".
+  function selectChoices(id, names, value, placeholder, { suggested = "", allLabel, labels = {} }) {
     const select = element(id);
     if (select === document.activeElement) return;
-    const key = JSON.stringify([names, value, canonical, suggested, allLabel, labels]);
+    const key = JSON.stringify([names, value, suggested, allLabel, labels]);
     if (selects.get(select) === key) return;
     const optionLabel = name => {
       if (Object.hasOwn(labels, name)) return labels[name];
-      if (name === value && !names.includes(name)) return canonical || `${name} (unavailable)`;
-      return name;
+      return names.includes(name) ? name : `${name} (unavailable)`;
     };
-    const placeholderOption = new document.defaultView.Option(placeholder, "");
     const groups = [];
-    if (suggested) {
-      const group = document.createElement("optgroup");
-      group.label = "Suggested";
-      group.append(new document.defaultView.Option(`Suggested: ${optionLabel(suggested)}`, suggested));
-      groups.push(group);
-    }
-    const all = document.createElement("optgroup");
-    all.label = allLabel;
-    const choices = names.filter(name => name !== suggested && (name !== canonical || name === value));
-    if (value && !names.includes(value) && value !== suggested) choices.push(value);
-    all.append(...choices.map(name => new document.defaultView.Option(optionLabel(name), name)));
-    groups.push(all);
-    select.replaceChildren(placeholderOption, ...groups);
+    if (suggested) groups.push(optionGroup("Suggested", [suggested], name => `Suggested: ${optionLabel(name)}`));
+    const rest = names.filter(name => name !== suggested);
+    if (value && !names.includes(value) && value !== suggested) rest.push(value);
+    groups.push(optionGroup(allLabel, rest, optionLabel));
+    select.replaceChildren(new document.defaultView.Option(placeholder, ""), ...groups);
     select.value = value;
     selects.set(select, key);
   }
