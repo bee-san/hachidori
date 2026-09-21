@@ -590,7 +590,13 @@ async function checkOverlaySharing(hostPage) {
       help: document.getElementById("audio-mining-help").textContent,
       captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
     await showSection(page, "advanced");
-    await page.click("#opt-experimental-mediaMining");
+    // This profile enabled capture before the flag existed, so the stored
+    // record inherits media mining; only turn the switch on if it is off.
+    const mediaMiningInherited = await page.$eval("#opt-experimental-mediaMining", input => {
+      const inherited = input.checked;
+      if (!inherited) input.click();
+      return inherited;
+    });
     await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden,
       { timeout: 10_000, polling: 100 });
     await showSection(page, "media");
@@ -645,13 +651,13 @@ async function checkOverlaySharing(hostPage) {
         && afterUnlink.options.customLinks[0]?.label === "Local link"
         && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
         && speech.help.includes("cannot be recorded into Anki")
-        && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
+        && mediaMiningInherited && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
         && shortcuts.browserDisabled && shortcuts.pageEnabled && !buttons.disabled && buttons.helpVisible
         && !backup.exportDisabled && backup.restoreEnabled
         && guarded[0]?.ok === false && guarded[0].error.includes("unavailable in this overlay")
         && guarded[1]?.ok === false && guarded[1].error.includes("only from lookup popups"),
       JSON.stringify({ afterLink, afterLocal, hostAfterLocal, afterHost, mixed, hostAfterMixed, stale, offline, afterRestart,
-        afterUnlink, screenshot, speech, media, shortcuts, buttons, backup, guarded, notice }));
+        afterUnlink, screenshot, speech, mediaMiningInherited, media, shortcuts, buttons, backup, guarded, notice }));
   } finally { await overlayBrowser?.close().catch(() => {}); }
 }
 
