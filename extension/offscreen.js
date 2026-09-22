@@ -348,7 +348,10 @@ async function readEngineConfig() {
   }
 }
 
-const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, lowMemory]) => {
+// A pushed change can arrive while either startup read is still pending.
+let pushedLowMemoryMode = null;
+const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedLowMemory]) => {
+  const lowMemory = pushedLowMemoryMode ?? storedLowMemory;
   lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
   lastEngineStatus.threaded = mode !== "local";
   if (mode === "local") return startLocalEngine();
@@ -362,7 +365,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       || sender.tab !== undefined) return false;
   // With the local engine there is no worker to replace, and the recycler never
   // learns of a running one; Settings hides the switch when threaded is false.
-  recycler.setDesired(message.lowMemoryMode === true);
+  pushedLowMemoryMode = message.lowMemoryMode === true;
+  recycler.setDesired(pushedLowMemoryMode);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
   return true;
 });
