@@ -2265,6 +2265,23 @@ function renderDictionaryOrder() {
   });
 }
 
+function collectReusableDictionaryRows(list, reuseRows) {
+  const reusableRows = new Map();
+  // Retain disclosure state by package identity, including temporarily filtered rows.
+  for (const row of list.children) {
+    if (row.querySelector(".dict-details").open) expandedDictionaryIds.add(row.dataset.dictionaryId);
+    else expandedDictionaryIds.delete(row.dataset.dictionaryId);
+    // Filtering can retain unchanged controls, but an adopted state awaiting
+    // blur has newer metadata and listener inputs than the displayed rows.
+    if (reuseRows && !dictionaryRenderDeferred) reusableRows.set(row.dataset.dictionaryId, row);
+  }
+  const installedIds = new Set(dictionaries.map((entry) => entry.id));
+  for (const id of expandedDictionaryIds) {
+    if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
+  }
+  return reusableRows;
+}
+
 function renderDictionaries(reuseRows = false) {
   // A queued reorder changes only the order and the index-dependent controls,
   // so its rows can be reappended in the new order and refreshed instead of
@@ -2282,19 +2299,7 @@ function renderDictionaries(reuseRows = false) {
     return;
   }
   reuseRows = reuseRows || reorderReuseSafe;
-  const reusableRows = new Map();
-  // Retain disclosure state by package identity, including temporarily filtered rows.
-  for (const row of list.children) {
-    if (row.querySelector(".dict-details").open) expandedDictionaryIds.add(row.dataset.dictionaryId);
-    else expandedDictionaryIds.delete(row.dataset.dictionaryId);
-    // Filtering can retain unchanged controls, but an adopted state awaiting
-    // blur has newer metadata and listener inputs than the displayed rows.
-    if (reuseRows && !dictionaryRenderDeferred) reusableRows.set(row.dataset.dictionaryId, row);
-  }
-  const installedIds = new Set(dictionaries.map((entry) => entry.id));
-  for (const id of expandedDictionaryIds) {
-    if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
-  }
+  const reusableRows = collectReusableDictionaryRows(list, reuseRows);
   const template = element("dict-row-template");
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
   draggedDictionaryId = null;

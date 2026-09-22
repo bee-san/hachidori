@@ -7,7 +7,22 @@ changes native order without reloading an unchanged manifest or warming lookup.
 The final comparison uses baseline
 `f8c57115f7f3b8ef57101225cc4fd8a4e165b559` (including merged Low memory mode,
 PR #281) and implementation `5cc4f73300cc8bff06da726cced3d011a72c77e4`.
-Later evidence/documentation commits do not change the measured extension.
+Evidence commit `82cecd98028b1cdcc7346721e9f423adb6de35c3` preserved the
+measured extension. The branch subsequently integrated current main
+`f0d95e9cb704e550fe1b4fabdcfd5c427ffb5e7b` to resolve a Chrome-test import
+conflict, retaining both scenarios. That integration's runtime differences
+from the measured implementation are `extension/content.js` (merged hover hit-testing
+fix, #301) and `extension/settings.css` (merged scrollbar fix, #302).
+A subsequent Sonar simplification extracted existing disclosure/reusable-row
+collection into `collectReusableDictionaryRows`, called only after the
+order-only early return. The extracted loops are unchanged. Source comparison
+against the measured implementation confirms identical `renderDictionaryOrder`,
+`moveDictionary`, `flushDictionaryOrder`, `queueDictionaryStateChange` and the
+`renderDictionaries` prefix through that early return. Engine/offscreen code,
+the benchmark driver and focused reorder tests are unchanged. The paired
+benchmark was not repeated for this extraction outside its order-only path.
+The paired measurements retain the agreed settled engine baseline and measured
+implementation; they were not rerun for these unrelated main changes.
 The host was Linux 7.2.6-1-cachyos, Intel Core Ultra 7 165U, 14 logical CPUs,
 with 66,833,809,408 bytes of RAM.
 
@@ -170,13 +185,17 @@ row/focus helpers and existing unsaved-work guard. Rapid moves share one batch;
 new moves during an in-flight commit follow that page's acknowledgement.
 Competing Settings writes fail explicitly and discard stale queued drafts.
 The diff's simplification pass removed the redundant reorder option and avoided
-another persistence or lifecycle mechanism. There are no new settings,
-dependencies, submodule changes or generated WASM changes relative to the base.
+another persistence or lifecycle mechanism. A follow-up for Sonar S3776 moved
+the existing disclosure/reusable-row collection and removed-ID pruning into a
+small helper after the order-only early return, without suppression. There are
+no new settings, dependencies, submodule changes or generated WASM changes relative to the base.
 
 ## Validation commands and outcomes
 
-All final commands use the pinned runtime above. External locked tooling was
-read only; no dependency installation or global tooling change was made.
+The full local suites below ran on measured implementation `5cc4f73`, using the
+pinned runtime above. External locked tooling was read only; no dependency
+installation or global tooling change was made. Full hosted CI must validate
+the final merged head.
 
 | Command | Outcome |
 | --- | --- |
@@ -186,6 +205,12 @@ read only; no dependency installation or global tooling change was made.
 | `node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs test/low-memory-option.test.mjs test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` | 34 tests passed, 0 failed. |
 | `HACHIDORI_SHARING_PORT=18885 node test/chrome-sharing.mjs` | 13/13 checks passed, exit 0. |
 | `unshare --user --map-root-user --net sh -c 'ip link set lo up && node test/chrome-e2e.mjs'` | 241/241 checks passed, exit 0, including every new reorder/unload check. |
+
+After integrating main, `node --check test/chrome-e2e.mjs` exited 0 and
+`unshare --user --map-root-user --net sh -c 'ip link set lo up && node test/tmp/reorder-check.mjs'`
+passed all three planned reorder/unload checks and the existing pointer,
+boundary, focus, selection, reload and bulk-removal scenario. Both the reorder
+and Library-navigation imports, planned checks and calls remain present.
 
 The focused real-Chrome dictionary scenario also passed separately in a fresh
 profile, through the exported `dictionaryManagementScenarios` used by full E2E.
@@ -209,3 +234,13 @@ runs predate #281 and are not the final comparison. An earlier diagnostic run
 with system Node 26/Chromium 153 timed out importing 150 dictionaries; its
 partial data is excluded. The final pairs use the same pinned Node/Chrome for
 both revisions.
+
+After the Sonar helper extraction, the same pinned commands passed again:
+`node test/make-fixture.mjs` (exit 0), `node test/extension-smoke.mjs`
+(**603 passed, 0 failed**), the focused real-Chrome reorder/unload runner
+(all three planned checks plus pointer/focus/selection/reload/bulk removal),
+`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs`
+(**17 passed, 0 failed**) and
+`HACHIDORI_SHARING_PORT=18885 node test/chrome-sharing.mjs` (**13/13 passed**).
+`git diff --check` is clean. These results supplement the measured revision's
+full E2E result above; exact-head hosted gates must run again after the push.
