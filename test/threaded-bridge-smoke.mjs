@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
+import { mock } from "node:test";
 
 const runtimeListeners = [];
 const engineWorkers = [];
@@ -403,6 +404,48 @@ idbfsEngine.emit("message", {
 });
 assert.equal((await idbfsLookup.promise).ok, true);
 assert.deepEqual([(await idbfsStatus.promise).storageBackend, (await idbfsStatus.promise).threaded], ["idbfs", true]);
+
+// Exercise the actual offscreen settlement boundary, not just the scheduler:
+// an order-only reply must neither request a recycle nor cancel a pending one.
+mock.timers.enable({ apis: ["setTimeout"] });
+try {
+  configuredLowMemory = true;
+  await import(`../extension/offscreen.js?order-only-recycle=${Date.now()}`);
+  relay = importedRuntime();
+  capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
+  await tick();
+  const originalWorkerCount = engineWorkers.length;
+  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine:low-memory");
+  const settle = async (type, fields = {}) => {
+    const pending = request(type, `recycle-${type}`);
+    await tick();
+    const worker = engineWorkers.at(-1);
+    worker.emit("message", { channel: "engine-response", id: worker.messages.at(-1).id,
+      response: { type: `${type}_result`, ok: true, ...fields } });
+    assert.equal((await pending.promise).ok, true);
+  };
+  await settle("hd_apply_state", { loadPath: "order-only" });
+  mock.timers.tick(2500);
+  assert.equal(engineWorkers.length, originalWorkerCount, "pure order does not schedule a deferred rebuild");
+
+  await settle("hd_import");
+  mock.timers.tick(1900);
+  await settle("hd_apply_state", { loadPath: "order-only" });
+  mock.timers.tick(1900);
+  assert.equal(engineWorkers.length, originalWorkerCount, "order activity renews the pending import's idle window");
+  mock.timers.tick(100);
+  assert.equal(engineWorkers.length, originalWorkerCount + 1, "the pending import recycle still runs");
+
+  relay({ target: "hoshidicts-offscreen", type: "hd_engine_config", relayed: true, lowMemoryMode: false },
+    { url: "background.js" }, () => {});
+  await settle("hd_apply_state", { loadPath: "order-only" });
+  mock.timers.tick(2000);
+  assert.equal(engineWorkers.length, originalWorkerCount + 2, "order activity preserves a pending mode change");
+  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine");
+} finally {
+  configuredLowMemory = false;
+  mock.timers.reset();
+}
 
 // Hold only the fallback service module. The production bridge is really imported;
 // real IDBFS/WASM behavior is covered by extension-smoke and chrome-fallback.

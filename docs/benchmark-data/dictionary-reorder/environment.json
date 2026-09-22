@@ -1,0 +1,1061 @@
+{
+  "note": "Shared six-term fixture clones (identical across all runs) are listed once under 'archives'. Each run entry drops its duplicate archive list.",
+  "archives": [
+    {
+      "title": "reorder-001",
+      "bytes": 966,
+      "sha256": "9de16af65924eea8bb244e218514356b721d2917a71e3dcc63f49b780d8ee6d6"
+    },
+    {
+      "title": "reorder-002",
+      "bytes": 967,
+      "sha256": "a03dd48f955c48cb4bdefa03e20651b07e1f080c496514d8f6c418e4eb691c07"
+    },
+    {
+      "title": "reorder-003",
+      "bytes": 967,
+      "sha256": "431dea382f297e7aebf2ab8edc1a665bacf21e08174d0ecfaf17af5c918af09d"
+    },
+    {
+      "title": "reorder-004",
+      "bytes": 968,
+      "sha256": "35adc7db4bd0ccc643fd6157b5e64ff18e64c7b0619d24bfaadf6e9824acdaef"
+    },
+    {
+      "title": "reorder-005",
+      "bytes": 968,
+      "sha256": "2a43134e932190af495b9330e0aa511ca0c9d11b219f3f0edbb6e1954a6e0bf5"
+    },
+    {
+      "title": "reorder-006",
+      "bytes": 968,
+      "sha256": "867a69aec31c48d5b2a5ddc20a36cf02f26eaccc1942cc89d8809bb8f714dc86"
+    },
+    {
+      "title": "reorder-007",
+      "bytes": 968,
+      "sha256": "8e7ce4cb55e97a57369eee6b1394eab2fc498435ecae160c9c3f04ef8441f3ec"
+    },
+    {
+      "title": "reorder-008",
+      "bytes": 968,
+      "sha256": "b962ae1aa8c2fd5a153399141435e8829394922eb4b14342cd67a939b86eea7f"
+    },
+    {
+      "title": "reorder-009",
+      "bytes": 968,
+      "sha256": "92f7c7396face325b25fb2985f7e99125dc66daba2ea81232af19fd53d9bd068"
+    },
+    {
+      "title": "reorder-010",
+      "bytes": 967,
+      "sha256": "bf0563ddaa9459518b3a61671df9a2826177373440bf81cbd7e12447a91c6f49"
+    },
+    {
+      "title": "reorder-011",
+      "bytes": 966,
+      "sha256": "f22fcb295dfd053ed4559b82dda9e8400639f41f305e2c1379de538b4161f670"
+    },
+    {
+      "title": "reorder-012",
+      "bytes": 967,
+      "sha256": "c5dd0f6da9436c540ed210b9c0d75779764b21e65d6bb359386a1eb9413a397c"
+    },
+    {
+      "title": "reorder-013",
+      "bytes": 967,
+      "sha256": "72dfa4fb2a92a29a49d2223f2adc2686e66997b556774233496adfdf187c5296"
+    },
+    {
+      "title": "reorder-014",
+      "bytes": 968,
+      "sha256": "45f65b6126f1803ede6ee5c68c7481b424cd315f868ea3855fc52ad8d29b468b"
+    },
+    {
+      "title": "reorder-015",
+      "bytes": 968,
+      "sha256": "5b44ae61a0ec9c171281d4b6829e77315eda3db1fd280d2a92d2964f99089d21"
+    },
+    {
+      "title": "reorder-016",
+      "bytes": 968,
+      "sha256": "ba9beb1f4697b34f4dfd1356524ac5adc04125aa02c0f6a55b22a0e1045b5243"
+    },
+    {
+      "title": "reorder-017",
+      "bytes": 968,
+      "sha256": "499242c819ce4c3c781f3d2eafcac36a7a4cbf13997400b127a73513dcd3a95f"
+    },
+    {
+      "title": "reorder-018",
+      "bytes": 968,
+      "sha256": "faba5787bdf6502b1e8ff9ebbe229a210b7ca20fdf3141ef3aef0124ac2c1c83"
+    },
+    {
+      "title": "reorder-019",
+      "bytes": 968,
+      "sha256": "c7a342ef59906182889972c9dea61bf28303d4b2efb9f1525f9727e5854fb823"
+    },
+    {
+      "title": "reorder-020",
+      "bytes": 967,
+      "sha256": "a6b9f00b559f605770b5b1705b43c57f9649fde8dfb87801972add7adb236c07"
+    },
+    {
+      "title": "reorder-021",
+      "bytes": 966,
+      "sha256": "c93f1fc06e477fad01f099852e6edc962241a9693181979b156d2a0c9f6acfb0"
+    },
+    {
+      "title": "reorder-022",
+      "bytes": 967,
+      "sha256": "0f27c19c8b4c0a5325ea029587489fc711749ffff1fbe773453965beb54b31dd"
+    },
+    {
+      "title": "reorder-023",
+      "bytes": 967,
+      "sha256": "7a8074f22dd76d48d6417a0b0f3d5dcd36563b0bfa8e94788de10f0ac761428c"
+    },
+    {
+      "title": "reorder-024",
+      "bytes": 968,
+      "sha256": "0c723a750ac46bd3d46130dc17b82f2e970f8a88e0318dbc6d1f06d9b225e28c"
+    },
+    {
+      "title": "reorder-025",
+      "bytes": 968,
+      "sha256": "9da404d82f4944b5dd683402ab15ae7dfe04e9224ed1a90f9660d26e79fdaddd"
+    },
+    {
+      "title": "reorder-026",
+      "bytes": 969,
+      "sha256": "bb05478848e85f58e0ba4c0a9345a7b793f500755fad904d93b1425024fd5fc4"
+    },
+    {
+      "title": "reorder-027",
+      "bytes": 969,
+      "sha256": "d27a040f3f494aa2dfb29740563e8e19d60382f97756034b3427a1b952fe2609"
+    },
+    {
+      "title": "reorder-028",
+      "bytes": 968,
+      "sha256": "6a5b63811693f38b80429c84f30d3eab5555338ca515c73f1f45029be2cb0c9f"
+    },
+    {
+      "title": "reorder-029",
+      "bytes": 968,
+      "sha256": "a63e7629e45dcae0fed686224f5740898ccde01aeb9e502e4d68f577addfc63f"
+    },
+    {
+      "title": "reorder-030",
+      "bytes": 967,
+      "sha256": "06afe11f4bb88fb7b1b4ffa11ff590c47080cefeff42abf9b43e9310b70f9203"
+    },
+    {
+      "title": "reorder-031",
+      "bytes": 966,
+      "sha256": "def8c001ac0da351fd8003c6e55b0658a2152d01b01651e5755b9fd306ee9097"
+    },
+    {
+      "title": "reorder-032",
+      "bytes": 967,
+      "sha256": "5c9e1efb4eb34acf3b2bfec4513f134963b5ab93a91d955ce4ceed22287e70d2"
+    },
+    {
+      "title": "reorder-033",
+      "bytes": 967,
+      "sha256": "3090fe236081471f8d1dad96646fe7252802d34437086a988f7d3a2fdece9b85"
+    },
+    {
+      "title": "reorder-034",
+      "bytes": 968,
+      "sha256": "1becb0a08b065aa7d6a693a697c03c740b699ebc10a71a20cc48f747a6b2f80f"
+    },
+    {
+      "title": "reorder-035",
+      "bytes": 968,
+      "sha256": "0a5774e4aa874e53b052745e8a71230c2baf4ac3a6aa6c94515cf9e2c2fcb4d7"
+    },
+    {
+      "title": "reorder-036",
+      "bytes": 968,
+      "sha256": "bb80419880e1b310ee4edef1088740f10182e48afa59451f4c8834879ffe77d0"
+    },
+    {
+      "title": "reorder-037",
+      "bytes": 968,
+      "sha256": "f0af832287d7a09fae7a11aeece5c76f9029bbe280a046e1804a4ab20ab77613"
+    },
+    {
+      "title": "reorder-038",
+      "bytes": 968,
+      "sha256": "cb1db5a34b9b7ff4a7b7ec2a7a5b73184bc9685a9606af78c102a3c925ddeb4f"
+    },
+    {
+      "title": "reorder-039",
+      "bytes": 968,
+      "sha256": "d3bdd12acdad1f31c688e19214af37445ccdcdcacb197ced1d2aa32e15336fb5"
+    },
+    {
+      "title": "reorder-040",
+      "bytes": 968,
+      "sha256": "7c9a13701dd275e369731814bb7e007e2b15ed77dc426f1ecd5070ab6e6c82c7"
+    },
+    {
+      "title": "reorder-041",
+      "bytes": 967,
+      "sha256": "b889b17262c15bf5955d4d729eb1a06968d9cd32aa8971884433f37d8d96fa91"
+    },
+    {
+      "title": "reorder-042",
+      "bytes": 968,
+      "sha256": "c21c7705e31fc8f6cd7a73ad181e5b8b5315b15f2141b39d7dcd32b17bfd469a"
+    },
+    {
+      "title": "reorder-043",
+      "bytes": 968,
+      "sha256": "1519647956de28b26871dc4f27ae2e7cf8b2d614f31f7c4a8363d71c4db528c5"
+    },
+    {
+      "title": "reorder-044",
+      "bytes": 968,
+      "sha256": "15ecf7d9d8a03cf345602b66ac38cab28c3bb425be9e480fda7478e10f32d00c"
+    },
+    {
+      "title": "reorder-045",
+      "bytes": 968,
+      "sha256": "284589758ac4577dc2e407524a7c5d236bd6b6028a05b987bdebde711952e0f0"
+    },
+    {
+      "title": "reorder-046",
+      "bytes": 969,
+      "sha256": "dfadd47e6fdaf42ef8af1f70c92ee463236066ac0c5b8538763daa6d9791bdb4"
+    },
+    {
+      "title": "reorder-047",
+      "bytes": 969,
+      "sha256": "7b75d7076fcfad8f640a29a842945707c1b83aad809e1ae7c40d4fc303e39959"
+    },
+    {
+      "title": "reorder-048",
+      "bytes": 969,
+      "sha256": "8a13c0f45af1c9e2892cb3c974a869504084a08b60f2487e21f915f61f7efecb"
+    },
+    {
+      "title": "reorder-049",
+      "bytes": 968,
+      "sha256": "78c975cb76a7771f59ec693ccf706f4682d3c149b524d6c49f8a5a12c48f43fc"
+    },
+    {
+      "title": "reorder-050",
+      "bytes": 968,
+      "sha256": "6ffa6f21bd6e64c5ba8ba45ac3a967028adb48e8ae451df8945746fdb6007ad9"
+    },
+    {
+      "title": "reorder-051",
+      "bytes": 967,
+      "sha256": "9d48200166186a8829177fc3bf875efbdca560ea1073a43404faecc908da7e53"
+    },
+    {
+      "title": "reorder-052",
+      "bytes": 968,
+      "sha256": "44eaade52f742d4e77b504865ab6c8b2adceead06a6e60a2f291651ce14943ba"
+    },
+    {
+      "title": "reorder-053",
+      "bytes": 968,
+      "sha256": "898b5556a56d014997a7c2055fd247c9ddcfc4444a51e911b4f235c4eed16f5c"
+    },
+    {
+      "title": "reorder-054",
+      "bytes": 968,
+      "sha256": "bc1af362cedb2d0b139623f4cfa33ed6236b730d1f3c24295b6c9a5b7703f967"
+    },
+    {
+      "title": "reorder-055",
+      "bytes": 968,
+      "sha256": "92b0b4c9dc90a93e8400a8433eae2aa2b482fbaeb0cb7ae809c6c9b02fe41ebb"
+    },
+    {
+      "title": "reorder-056",
+      "bytes": 969,
+      "sha256": "896589cab518430796d5da0d1ad194812d8d27fcd24f204680bc1d495d263783"
+    },
+    {
+      "title": "reorder-057",
+      "bytes": 969,
+      "sha256": "17e6006f518ec7d0baf21c46a3f5d112d696e88f640ef9787a1a5035aa638b81"
+    },
+    {
+      "title": "reorder-058",
+      "bytes": 969,
+      "sha256": "5d1a75a59f293097131dfb60abe669e52994bce905c9ea326367289b04bf9bb2"
+    },
+    {
+      "title": "reorder-059",
+      "bytes": 969,
+      "sha256": "1e862cc07c5841e083a78f32c03a7fa7d01f6cc81ac040fa512c372d889eccec"
+    },
+    {
+      "title": "reorder-060",
+      "bytes": 968,
+      "sha256": "6dacd3f6e11c90c3244ab68e9807713e25aa8d8988dada17042914bf6673b091"
+    },
+    {
+      "title": "reorder-061",
+      "bytes": 968,
+      "sha256": "ff45c07afe9523d9ed4aa414ef6fa7b20721fbb1526429170468e6542a30fc1e"
+    },
+    {
+      "title": "reorder-062",
+      "bytes": 969,
+      "sha256": "8006b997c566ec1b149424a3f80d21098243e4f0265dee5f55574c31e5352f4a"
+    },
+    {
+      "title": "reorder-063",
+      "bytes": 968,
+      "sha256": "b971a0c998fe99fc19172373f404e6d5f9eabc852f802f8f2cfc00696113d854"
+    },
+    {
+      "title": "reorder-064",
+      "bytes": 969,
+      "sha256": "7b45b87497dab5214488354d473906a306fa6bd0407f733f112262ae04a6ae8c"
+    },
+    {
+      "title": "reorder-065",
+      "bytes": 969,
+      "sha256": "4d9cb1178146882cf5dbac4f75ff3fb8fccb193dcd95d13033e3f453bf6b7da0"
+    },
+    {
+      "title": "reorder-066",
+      "bytes": 968,
+      "sha256": "43fddcede9c46ba459011a5e064cd61237d2c70aefc09368ef027893b9604854"
+    },
+    {
+      "title": "reorder-067",
+      "bytes": 969,
+      "sha256": "20b4c2632e1075f172c66531009871e444f6865445126cb6f138433f3a029451"
+    },
+    {
+      "title": "reorder-068",
+      "bytes": 969,
+      "sha256": "ca06ee031e32765ce450d29802f3e94e7060f0f090cf512520c2462185e245b8"
+    },
+    {
+      "title": "reorder-069",
+      "bytes": 969,
+      "sha256": "7cd4060f8614438023569035164581346b11746bd3179d528dd03381d33c7f5d"
+    },
+    {
+      "title": "reorder-070",
+      "bytes": 968,
+      "sha256": "f1513e78d7e7861db40f2256247bb49f4535c272fa7f43226781c69e47569fa9"
+    },
+    {
+      "title": "reorder-071",
+      "bytes": 968,
+      "sha256": "6bf4742c1a6200c02e61bbbde4264b8e0a5bca8a954434b7f4953bd4e866ad73"
+    },
+    {
+      "title": "reorder-072",
+      "bytes": 969,
+      "sha256": "0256372f2ba42114bc1333796628319769b32c34d659722fb99592506f5b00e5"
+    },
+    {
+      "title": "reorder-073",
+      "bytes": 968,
+      "sha256": "33f2aae3f5dcbf40a43206096bc6f9a1fa1f5d2c89ab7da6fe7146f66feffce2"
+    },
+    {
+      "title": "reorder-074",
+      "bytes": 969,
+      "sha256": "55e6d07388a45cfabf3da08be2d81b2e3866bbc3e6113c0f09a5435ded2bc961"
+    },
+    {
+      "title": "reorder-075",
+      "bytes": 969,
+      "sha256": "188bbda8905214a82ef23165e701a330f39c03608d84b1d2764a18097a44cc85"
+    },
+    {
+      "title": "reorder-076",
+      "bytes": 969,
+      "sha256": "144d34fe4a4cbe8a80979cafac6ceeaa93b39592caf70f77251197d99b577355"
+    },
+    {
+      "title": "reorder-077",
+      "bytes": 968,
+      "sha256": "163bbf5bfd4e768b8124cd53507c966a7958edf229b5510645a7a1e7b76bc398"
+    },
+    {
+      "title": "reorder-078",
+      "bytes": 969,
+      "sha256": "0baed32e284398bf6a27a3a2299ecd1ae6dbbd187d006f97a09242428ff7dbba"
+    },
+    {
+      "title": "reorder-079",
+      "bytes": 969,
+      "sha256": "22aa389b8d7ff770c771edea8985975aeadc8b0f6bc46871da0cf92ac19d06c2"
+    },
+    {
+      "title": "reorder-080",
+      "bytes": 968,
+      "sha256": "720af618bc5956a730860ee6a5c88fa427c35bcf11ef54c5adbdb597edcd7ec5"
+    },
+    {
+      "title": "reorder-081",
+      "bytes": 967,
+      "sha256": "728b094d4dfc0367efa2a0a79e778028c389e7d77da57a09643985c2fa2f3018"
+    },
+    {
+      "title": "reorder-082",
+      "bytes": 968,
+      "sha256": "c0cc594dfaeca17ab431a2250a87ab1b3ed6d16a657c84a88d3020ca0f5ae7fb"
+    },
+    {
+      "title": "reorder-083",
+      "bytes": 968,
+      "sha256": "259dfd61d8a49f5d4f0cc3731df0692a7a1b449f365ca3a44ebb39c85b9471e8"
+    },
+    {
+      "title": "reorder-084",
+      "bytes": 969,
+      "sha256": "8b84f82430753ca93cba20d7452857ca95c639abdf4081a249d6d94ebd117f6c"
+    },
+    {
+      "title": "reorder-085",
+      "bytes": 969,
+      "sha256": "ce04d7a74e3abc0e74369ab04c4c3a2e52cb866e646f1869c4e6df1b9105517f"
+    },
+    {
+      "title": "reorder-086",
+      "bytes": 969,
+      "sha256": "a523c54aa4d6b8ee7b580b74b326bc829ac97ff6d3036c3f30d44e1cb463113e"
+    },
+    {
+      "title": "reorder-087",
+      "bytes": 969,
+      "sha256": "0db979283a9210873392358e73cd7f1893e85b6333a822b6131c49ce516c2c1a"
+    },
+    {
+      "title": "reorder-088",
+      "bytes": 968,
+      "sha256": "82183c365276d5937abf130d4f29de084ca8e5ed49b3c3f5e3f95ca8ee890579"
+    },
+    {
+      "title": "reorder-089",
+      "bytes": 968,
+      "sha256": "84f8a039dd8d76b41f0ce3c86dec4ed17135f1949119ef74e4b5bc666c83066c"
+    },
+    {
+      "title": "reorder-090",
+      "bytes": 968,
+      "sha256": "6fe734c8598b53aa92bc8069f2923e76d6082b16c5e259a615c269e7ed76329a"
+    },
+    {
+      "title": "reorder-091",
+      "bytes": 967,
+      "sha256": "9898d8420c8c45b4cd11a8e585a698d7403bf9070882d554223649339328fa66"
+    },
+    {
+      "title": "reorder-092",
+      "bytes": 968,
+      "sha256": "f346a73332ebed5796b99b0d0028590a25da942b03eb8f668766db56d28e8539"
+    },
+    {
+      "title": "reorder-093",
+      "bytes": 968,
+      "sha256": "d133c6d974e290a429c1977f125f3540fa445a34000ff657cb3071a468b20e5e"
+    },
+    {
+      "title": "reorder-094",
+      "bytes": 968,
+      "sha256": "4762bd4fb60f50d77c65e184b5829823bd43f553b9442f8136318a138be840b6"
+    },
+    {
+      "title": "reorder-095",
+      "bytes": 969,
+      "sha256": "d1e025329b01c1b32125903471976a08d41e6376fec86970e90b3859ba472fe0"
+    },
+    {
+      "title": "reorder-096",
+      "bytes": 969,
+      "sha256": "e727189f131e3e98170eb235b3315817f0216f429fa7eeb5d6b42da5141109fc"
+    },
+    {
+      "title": "reorder-097",
+      "bytes": 969,
+      "sha256": "0835300affeb03cf6eb25cfb05fa5d5512218013be5c0f53bd139a4dab027d33"
+    },
+    {
+      "title": "reorder-098",
+      "bytes": 968,
+      "sha256": "614ad0a7855326f96ee2d415571fcb083a8d3fc36c2bb2f437d0fc6532fc31cc"
+    },
+    {
+      "title": "reorder-099",
+      "bytes": 968,
+      "sha256": "3461e4d80b1393afb3b004c0deb835224073de94d3d8e1a53ed23cda7bdb800f"
+    },
+    {
+      "title": "reorder-100",
+      "bytes": 967,
+      "sha256": "d67cbc1ad9ae85b0b8944552314f62de0729db92b4134946e2e50e4c0b1f9956"
+    },
+    {
+      "title": "reorder-101",
+      "bytes": 966,
+      "sha256": "388f277b0295078cda57d966c0b43f808d9a4125bf359911a01cd0ec3f415afb"
+    },
+    {
+      "title": "reorder-102",
+      "bytes": 967,
+      "sha256": "6d96693672dd6a02b83f0d47819f75145a0af68b4142d5873eb61e9c794b65cf"
+    },
+    {
+      "title": "reorder-103",
+      "bytes": 967,
+      "sha256": "e35a235e7ada7736f24ad11a66f69dc892a2469383eb16185fd8863e24440659"
+    },
+    {
+      "title": "reorder-104",
+      "bytes": 968,
+      "sha256": "f698529f7f12dbb99bed770c65f643f854e43784373aeb807615d91fba462434"
+    },
+    {
+      "title": "reorder-105",
+      "bytes": 968,
+      "sha256": "1c25f9b3a3739a3193649b90759d24b2fea353476178bbc6cf5daddbd35f1226"
+    },
+    {
+      "title": "reorder-106",
+      "bytes": 968,
+      "sha256": "bcc2d4b536c3b98aa884d4b91225312ca7390fada5c4dab54082ff4501e1ebc1"
+    },
+    {
+      "title": "reorder-107",
+      "bytes": 968,
+      "sha256": "2ce7f0c8dfa91cb34ee471766e60f7e1c396c6e3baa06f6a665167b56d39b182"
+    },
+    {
+      "title": "reorder-108",
+      "bytes": 968,
+      "sha256": "c5b03bd0c8e4fb4920180b0aad0ab0b6d4affba11a69e44b96692c4ec4a03330"
+    },
+    {
+      "title": "reorder-109",
+      "bytes": 968,
+      "sha256": "08ee30244c4af8619fd571a244483c311174984415851c4374a4412e03263c8d"
+    },
+    {
+      "title": "reorder-110",
+      "bytes": 967,
+      "sha256": "774f1cc3371d4937823eeafa369d70070913848546a88b63923526ae030ba097"
+    },
+    {
+      "title": "reorder-111",
+      "bytes": 966,
+      "sha256": "cec5e554598c4322e01fbd4ee48538e1b396b1898ef51ed210546cb8aa5b5ecb"
+    },
+    {
+      "title": "reorder-112",
+      "bytes": 967,
+      "sha256": "f7df2e8d5de329d3d7cf23990eb34b18369d5173f6fe49b739ec579196c8565e"
+    },
+    {
+      "title": "reorder-113",
+      "bytes": 967,
+      "sha256": "9aad9dbfb9ebe23a4cc8849cc97750a2e8fe9debffeff68f4fb4f7ebfa2928cb"
+    },
+    {
+      "title": "reorder-114",
+      "bytes": 968,
+      "sha256": "93c8d614534edd71fc43740231510828a2d460dc2dd8712bad9ee073f3f60ad4"
+    },
+    {
+      "title": "reorder-115",
+      "bytes": 968,
+      "sha256": "a6c3e985e5ce8d1fe2128d076a5ee98ce01a8c8294908a67779236ee55a24aa2"
+    },
+    {
+      "title": "reorder-116",
+      "bytes": 968,
+      "sha256": "4a59ccf9c274895fb9653804ac624fdb82b35af1922e9cc71c8b7facfcd59478"
+    },
+    {
+      "title": "reorder-117",
+      "bytes": 968,
+      "sha256": "7c82869f4eb177829ed4484e8fc0c944b4e71c785875bd3b0e331c54173e86ba"
+    },
+    {
+      "title": "reorder-118",
+      "bytes": 968,
+      "sha256": "ddd680c3c274c048bf836b282325021dd2e9eabb90a64e83c0b7289e38163c52"
+    },
+    {
+      "title": "reorder-119",
+      "bytes": 968,
+      "sha256": "e3842ac545d7f83a698f9d22209a963600ba398e9c8389b4983656f774386113"
+    },
+    {
+      "title": "reorder-120",
+      "bytes": 967,
+      "sha256": "17c2f0b3708df8a5ae7b5705437cbcb46d07c3cbd69bff61ce2950b587b2a5f3"
+    },
+    {
+      "title": "reorder-121",
+      "bytes": 966,
+      "sha256": "e4d728d52c2d53008fae944bfe409c50228444eccddd21c413337ab044182de3"
+    },
+    {
+      "title": "reorder-122",
+      "bytes": 967,
+      "sha256": "3f895874c1bd0f7c2da069d0e69237edfd19ea855745c23ce4304490c8a4273f"
+    },
+    {
+      "title": "reorder-123",
+      "bytes": 967,
+      "sha256": "1aa554160f3486b6ea97902d1f0d64d90b0d413f85f428fe470153c77fa191ae"
+    },
+    {
+      "title": "reorder-124",
+      "bytes": 968,
+      "sha256": "e9771f9765a759cd488e780e7afa3b07a9016622df25c831bb74364560bc043a"
+    },
+    {
+      "title": "reorder-125",
+      "bytes": 968,
+      "sha256": "3f535dbbd28c36675c5e13158d32ffcb6eef072e3763802ddf99961668f76498"
+    },
+    {
+      "title": "reorder-126",
+      "bytes": 969,
+      "sha256": "df096d5eed26f3854f33c7f6a3d66e09e3c47212a7b6b4341fee90c35ac5b14d"
+    },
+    {
+      "title": "reorder-127",
+      "bytes": 969,
+      "sha256": "60faf6c3466cbb7ccd06a4ece28b8573e7e930d24bef08402358aae57e7180fb"
+    },
+    {
+      "title": "reorder-128",
+      "bytes": 968,
+      "sha256": "7bfea09a79337fafd945e7bb41c20119089524af8565989e90654a7a8a4bc6b6"
+    },
+    {
+      "title": "reorder-129",
+      "bytes": 968,
+      "sha256": "dfbe875a26201c994bf257ca6bdf095806e0704362a03ab4ba3a1aa1d3f42568"
+    },
+    {
+      "title": "reorder-130",
+      "bytes": 967,
+      "sha256": "25abcce0bb994653fdbe2a40c17c28d5ebff5cb4441477e1932b11bb89d42e7e"
+    },
+    {
+      "title": "reorder-131",
+      "bytes": 966,
+      "sha256": "f440e3e96e06a4c3c044f8c232776c504e4bcac614a621df6b7bd7d8f60740c6"
+    },
+    {
+      "title": "reorder-132",
+      "bytes": 967,
+      "sha256": "c86ebe617b9b2eb96584e04112c27ecf3cae9dc7da3b3a66f68e1a1a3a899dc4"
+    },
+    {
+      "title": "reorder-133",
+      "bytes": 967,
+      "sha256": "c96ba9d1db37fb003d6cb2fb83361e1ac7ba57add7980228fd3dc1fbfc940158"
+    },
+    {
+      "title": "reorder-134",
+      "bytes": 968,
+      "sha256": "de5973d63277f420e7af2b0a4f36f9f8397d8b65a2269c3942a87a341c6355fc"
+    },
+    {
+      "title": "reorder-135",
+      "bytes": 968,
+      "sha256": "5bb780e710cf6013523e8c61f6b8d092f4751dea16d005ecd3aa8e3150592a91"
+    },
+    {
+      "title": "reorder-136",
+      "bytes": 968,
+      "sha256": "9d44b73cf29654fcbd6ac07bf67cefac2d66a4124f6314a08410a58059ddc7e5"
+    },
+    {
+      "title": "reorder-137",
+      "bytes": 968,
+      "sha256": "9afbcbd17f9436cedc1b219b37018cb393707d1d889f3be0362a11f9b0241f56"
+    },
+    {
+      "title": "reorder-138",
+      "bytes": 968,
+      "sha256": "650462539ba4708a022ad7810dc52bfed34abd30d1b776de7a186e0604c24db2"
+    },
+    {
+      "title": "reorder-139",
+      "bytes": 968,
+      "sha256": "0ffeadb5214f083e596680987bc4fd485c625f645b001474ac81097fc7fb9097"
+    },
+    {
+      "title": "reorder-140",
+      "bytes": 968,
+      "sha256": "d187b88d789458f099f165e64d6b96e1a752da73b0b7536992e4e85781274197"
+    },
+    {
+      "title": "reorder-141",
+      "bytes": 967,
+      "sha256": "fb633ef6ce448fe8f88f5f27ef356b98bddaebc63c459b166af407d58641ef81"
+    },
+    {
+      "title": "reorder-142",
+      "bytes": 968,
+      "sha256": "957c7f0d67c4f8e8729e3ad76416c7e79f4b0c5047fb3de512fe6b0435848f09"
+    },
+    {
+      "title": "reorder-143",
+      "bytes": 968,
+      "sha256": "1b5b85f68198eed4a675812a91ccfe55f6bfb8e14889994da8ca5afe4b98e30b"
+    },
+    {
+      "title": "reorder-144",
+      "bytes": 968,
+      "sha256": "4ac8cf7e98ea03b04d7059024c5c20926ae114e7e717e73fc40b07a06ad91561"
+    },
+    {
+      "title": "reorder-145",
+      "bytes": 968,
+      "sha256": "d82411b2324877546120cb3462cbd9b0039382c3004f993d47e5f38c8f5c7121"
+    },
+    {
+      "title": "reorder-146",
+      "bytes": 969,
+      "sha256": "6ab705192a996e043bddbc9c42914e339214c3b7c4875b597ac78e97eeb0fb95"
+    },
+    {
+      "title": "reorder-147",
+      "bytes": 969,
+      "sha256": "531400faf2629f5b29d3f0166bbb095bf5bcd5b1590b514c37a9522739800b34"
+    },
+    {
+      "title": "reorder-148",
+      "bytes": 969,
+      "sha256": "c4e89d44245862c549edc6395acd4d094b18bb57925c5e535087495a64c41939"
+    },
+    {
+      "title": "reorder-149",
+      "bytes": 968,
+      "sha256": "a79e48ae1f74758927c163f5f01590cd2cab6bc3a1115e25eb38cd74a5ea6869"
+    },
+    {
+      "title": "reorder-150",
+      "bytes": 968,
+      "sha256": "02b8482f9d07a9e6329547daf9f131347fcaa70fd6a10753b9ec8753657e3557"
+    }
+  ],
+  "runs": {
+    "base-1": {
+      "revision": "c42cb4190fc3138fa0927ce37fe9d01dfb5e6dfd",
+      "worktreeStatus": "",
+      "extensionSha256": "2aae5fb8cc801be7788594c409af913e4a22d8306a89201165d33d4c49cd87a6",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:01:55.667Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          2.44,
+          3.01,
+          2.89
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 44081324032,
+        "pressure": {
+          "cpu": "some avg10=0.00 avg60=0.21 avg300=0.39 total=5207734343\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398089185\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130339224",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.01 total=6402451955\nfull avg10=0.00 avg60=0.00 avg300=0.01 total=5926080980"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "head-1": {
+      "revision": "7c7625a2201290b2933a6f50ba2a671125039d52",
+      "worktreeStatus": "",
+      "extensionSha256": "647e165c3f1c8b7538683d3c928154797970359427bbdada8bb682786c76527b",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:03:32.124Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          4.86,
+          3.77,
+          3.18
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 43905843200,
+        "pressure": {
+          "cpu": "some avg10=0.05 avg60=0.17 avg300=0.34 total=5208402982\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398103415\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130352554",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402506341\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926129263"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "base-2": {
+      "revision": "c42cb4190fc3138fa0927ce37fe9d01dfb5e6dfd",
+      "worktreeStatus": "",
+      "extensionSha256": "2aae5fb8cc801be7788594c409af913e4a22d8306a89201165d33d4c49cd87a6",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:05:16.010Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          4.56,
+          4.02,
+          3.34
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 43677179904,
+        "pressure": {
+          "cpu": "some avg10=0.07 avg60=0.33 avg300=0.36 total=5209400760\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398103875\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130352992",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402545863\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926162795"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "head-2": {
+      "revision": "7c7625a2201290b2933a6f50ba2a671125039d52",
+      "worktreeStatus": "",
+      "extensionSha256": "647e165c3f1c8b7538683d3c928154797970359427bbdada8bb682786c76527b",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:06:51.801Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          4.05,
+          4.04,
+          3.41
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 42996064256,
+        "pressure": {
+          "cpu": "some avg10=0.35 avg60=0.21 avg300=0.29 total=5210044253\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398103875\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130352992",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402578682\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926190972"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "base-3": {
+      "revision": "c42cb4190fc3138fa0927ce37fe9d01dfb5e6dfd",
+      "worktreeStatus": "",
+      "extensionSha256": "2aae5fb8cc801be7788594c409af913e4a22d8306a89201165d33d4c49cd87a6",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:08:33.602Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          4.64,
+          4.41,
+          3.63
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 43846684672,
+        "pressure": {
+          "cpu": "some avg10=0.12 avg60=0.18 avg300=0.28 total=5210899564\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398110729\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130359567",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402621228\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926227307"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "head-3": {
+      "revision": "7c7625a2201290b2933a6f50ba2a671125039d52",
+      "worktreeStatus": "",
+      "extensionSha256": "647e165c3f1c8b7538683d3c928154797970359427bbdada8bb682786c76527b",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:10:15.529Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          4.68,
+          4.6,
+          3.78
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 44204560384,
+        "pressure": {
+          "cpu": "some avg10=0.15 avg60=0.50 avg300=0.40 total=5212175547\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398113078\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130361750",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402667457\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926266856"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": false,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "base-low-memory": {
+      "revision": "c42cb4190fc3138fa0927ce37fe9d01dfb5e6dfd",
+      "worktreeStatus": "",
+      "extensionSha256": "2aae5fb8cc801be7788594c409af913e4a22d8306a89201165d33d4c49cd87a6",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:11:52.620Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          3.78,
+          4.27,
+          3.74
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 44234878976,
+        "pressure": {
+          "cpu": "some avg10=0.05 avg60=0.21 avg300=0.34 total=5212905383\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398113078\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130361750",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402696408\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926292930"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": true,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    },
+    "head-low-memory": {
+      "revision": "7c7625a2201290b2933a6f50ba2a671125039d52",
+      "worktreeStatus": "",
+      "extensionSha256": "647e165c3f1c8b7538683d3c928154797970359427bbdada8bb682786c76527b",
+      "node": "v22.23.1",
+      "chrome": "Google Chrome for Testing 152.0.7977.75",
+      "host": {
+        "utc": "2026-09-22T20:13:56.266Z",
+        "hostname": "dev-dsk-skerraut-1a-df0a97df.eu-west-1.amazon.com",
+        "platform": "linux",
+        "release": "6.12.103-127.188.amzn2023.x86_64",
+        "cpuCount": 16,
+        "cpuModels": [
+          "Intel(R) Xeon(R) Platinum 8488C"
+        ],
+        "loadAverage": [
+          7.62,
+          5.67,
+          4.33
+        ],
+        "totalMemoryBytes": 132918304768,
+        "freeMemoryBytes": 44239020032,
+        "pressure": {
+          "cpu": "some avg10=0.31 avg60=0.90 avg300=0.54 total=5214710603\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+          "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=2398150177\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2130398605",
+          "io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=6402754020\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5926338069"
+        }
+      },
+      "counts": [
+        10,
+        50,
+        150
+      ],
+      "samples": 1,
+      "moves": 10,
+      "lowMemory": true,
+      "limitations": "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement."
+    }
+  }
+}

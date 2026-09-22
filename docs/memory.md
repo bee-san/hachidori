@@ -65,12 +65,14 @@ Settings → Advanced → Memory → **Low memory mode** (off by default) does t
 things:
 
 1. **Recycles the engine worker after changes.** Once an import, reimport,
-   update, removal, enable/disable/reorder, custom-dictionary save or backup
+   update, removal, enable/disable, custom-dictionary save or backup
    restore has settled and the engine has been idle for two seconds, the
    offscreen document terminates the engine worker and starts a new one, which
    reloads the installed dictionaries from OPFS (or IDBFS). The new worker's
    heap holds only the mapped files, so the import high-water mark is given
-   back to the browser.
+   back to the browser. A pure reorder uses the already loaded native set and
+   allocates no import high-water mark, so it does not request a recycle. It
+   still restarts the idle window of a pending import or mode-change recycle.
 2. **Imports on one thread with a minimal thread pool.** The recycled worker
    starts with a two-thread pool (one importer thread plus the WasmFS OPFS
    proxy) instead of up to nine, and `hdw_import` runs in its low-RAM mode.

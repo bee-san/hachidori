@@ -156,6 +156,9 @@ let updating = false;
 let removing = false;
 let committing = false;
 let pendingDictionaryCommits = 0;
+let pendingDictionaryReorders = 0;
+let pendingDictionaryOrder = null;
+let dictionaryReorderEpoch = 0;
 let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
@@ -873,13 +876,30 @@ function normaliseDictionaryState(value) {
   };
 }
 
+// A key-order-independent serialization for comparing two normalised package
+// records: the stored state and the page produce the same values in a
+// different key sequence, so JSON.stringify order cannot decide equality.
+function canonicalDictionary(entry) {
+  return JSON.stringify(entry, Object.keys(entry).sort((a, b) => a.localeCompare(b)));
+}
+
 function adoptDictionaryState(value) {
   const next = normaliseDictionaryState(value);
   if (next.revision <= dictionaryState.revision) {
     return false;
   }
+  if (reorderReuseHint) {
+    // Only the order may differ for a reuse: compare each package's fields
+    // independent of key order, since the stored state and the page normalise
+    // the same values in a different key sequence.
+    const previous = new Map(dictionaries.map(entry => [entry.id, canonicalDictionary(entry)]));
+    reorderReuseHint = next.dictionaries.length === previous.size
+      && next.dictionaries.every(entry => previous.get(entry.id) === canonicalDictionary(entry));
+  }
   dictionaryState = next;
-  dictionaries = dictionaryState.dictionaries;
+  // Keep the newest local order visible across storage events and older
+  // acknowledgements. The final settlement adopts the authoritative snapshot.
+  if (pendingDictionaryReorders === 0) dictionaries = dictionaryState.dictionaries;
   pruneDictionarySelection();
   return true;
 }
@@ -894,7 +914,7 @@ function adoptUpdateSettings(value) {
 }
 
 function pruneDictionarySelection() {
-  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
+  const installedIds = new Set(dictionaryState.dictionaries.map((dictionary) => dictionary.id));
   for (const id of selectedDictionaryIds) {
     if (!installedIds.has(id)) {
       selectedDictionaryIds.delete(id);
@@ -2118,6 +2138,8 @@ function refreshDictionaryOrder(row, entry, index) {
   down.title = `Move ${entry.title} down`;
   up.dataset.pinnedDisabled = String(fixed || index <= minimumIndex);
   down.dataset.pinnedDisabled = String(fixed || index === dictionaries.length - 1);
+  up.disabled = up.dataset.pinnedDisabled === "true";
+  down.disabled = down.dataset.pinnedDisabled === "true";
 
   const position = row.querySelector(".dict-position-input");
   const move = row.querySelector(".dict-move");
@@ -2240,19 +2262,20 @@ function dictionaryRowsMatch(list, visible) {
   return domIds.size === visible.length && visible.every((entry) => domIds.has(entry.id));
 }
 
-function renderDictionaries(reuseRows = false) {
-  // A queued reorder changes only the order and the index-dependent controls,
-  // so its rows can be reappended in the new order and refreshed instead of
-  // rebuilt from the template. The hint is single-use per render.
-  const reorderReuse = reorderReuseHint;
-  reorderReuseHint = false;
+function renderDictionaryOrder() {
   const list = element("dict-list");
-  const visible = visibleDictionaries();
-  // A failed or conflicting commit can restore a different set than the one
-  // being reordered, so only reuse when the rows on screen still match the
-  // packages about to be shown (the same visible set, only reordered).
-  const reorderReuseSafe = reorderReuse && dictionaryRowsMatch(list, visible);
-  reuseRows = reuseRows || reorderReuseSafe;
+  const rows = new Map([...list.children].map(row => [row.dataset.dictionaryId, row]));
+  let visibleIndex = 0;
+  dictionaries.forEach((entry, index) => {
+    const row = rows.get(entry.id);
+    if (!row) return;
+    if (list.children[visibleIndex] !== row) list.insertBefore(row, list.children[visibleIndex]);
+    visibleIndex += 1;
+    if (row.querySelector(".dict-rank").textContent !== String(index + 1)) refreshDictionaryOrder(row, entry, index);
+  });
+}
+
+function collectReusableDictionaryRows(list, reuseRows) {
   const reusableRows = new Map();
   // Retain disclosure state by package identity, including temporarily filtered rows.
   for (const row of list.children) {
@@ -2266,6 +2289,27 @@ function renderDictionaries(reuseRows = false) {
   for (const id of expandedDictionaryIds) {
     if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
   }
+  return reusableRows;
+}
+
+function renderDictionaries(reuseRows = false) {
+  // A queued reorder changes only the order and the index-dependent controls,
+  // so its rows can be reappended in the new order and refreshed instead of
+  // rebuilt from the template. The hint is single-use per render.
+  const reorderReuse = reorderReuseHint;
+  reorderReuseHint = false;
+  const list = element("dict-list");
+  const visible = visibleDictionaries();
+  // A failed or conflicting commit can restore a different set than the one
+  // being reordered, so only reuse when the rows on screen still match the
+  // packages about to be shown (the same visible set, only reordered).
+  const reorderReuseSafe = reorderReuse && dictionaryRowsMatch(list, visible);
+  if (reorderReuseSafe && !dictionaryRenderDeferred) {
+    renderDictionaryOrder();
+    return;
+  }
+  reuseRows = reuseRows || reorderReuseSafe;
+  const reusableRows = collectReusableDictionaryRows(list, reuseRows);
   const template = element("dict-row-template");
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
   draggedDictionaryId = null;
@@ -2314,13 +2358,36 @@ function dictionaryMoveTarget(current, index, move) {
 }
 
 function moveDictionary(id, move) {
-  void commitDictionaries((current) => {
-    const index = current.findIndex((entry) => entry.id === id);
-    if (index < 0 || isManagedCustomDictionary(current[index])) return null;
-    const minimumIndex = isManagedCustomDictionary(current[0]) ? 1 : 0;
-    const target = Math.max(minimumIndex, dictionaryMoveTarget(current, index, move));
-    return moveListItem(current, index, target);
-  }, true, { reorder: true });
+  const index = dictionaries.findIndex(entry => entry.id === id);
+  if (index < 0 || isManagedCustomDictionary(dictionaries[index])) return;
+  const minimumIndex = isManagedCustomDictionary(dictionaries[0]) ? 1 : 0;
+  const target = Math.max(minimumIndex, dictionaryMoveTarget(dictionaries, index, move));
+  const next = moveListItem(dictionaries, index, target);
+  if (next === null) return;
+  const focus = focusedManagementControl();
+  dictionaries = next;
+  renderDictionaryOrder();
+  if (focus) restoreManagementFocus(focus);
+
+  if (pendingDictionaryOrder === null) {
+    const batch = { ids: [], epoch: dictionaryReorderEpoch, timer: null };
+    batch.ready = new Promise(resolve => { batch.release = resolve; });
+    pendingDictionaryOrder = batch;
+    void queueDictionaryStateChange(current => {
+      const byId = new Map(current.dictionaries.map(entry => [entry.id, entry]));
+      return { ...current, dictionaries: batch.ids.map(id => byId.get(id)) };
+    }, true, { orderBatch: batch });
+  }
+  pendingDictionaryOrder.ids = next.map(entry => entry.id);
+  clearTimeout(pendingDictionaryOrder.timer);
+  pendingDictionaryOrder.timer = setTimeout(flushDictionaryOrder, 150);
+}
+
+function flushDictionaryOrder() {
+  if (pendingDictionaryOrder === null) return;
+  clearTimeout(pendingDictionaryOrder.timer);
+  pendingDictionaryOrder.release();
+  pendingDictionaryOrder = null;
 }
 
 async function restoreAuthoritativeState(reply) {
@@ -2403,12 +2470,12 @@ function renderDictionaryState() {
   if (focus) restoreManagementFocus(focus);
 }
 
-async function commitDictionaryStateChange(update, reloadEngine) {
-  const next = update(dictionaryState);
+async function commitDictionaryStateChange(update, reloadEngine, baseState = dictionaryState) {
+  const next = update(baseState);
   if (next === null) {
-    return { ok: true, state: dictionaryState };
+    return { ok: true, state: baseState };
   }
-  const baseRevision = dictionaryState.revision;
+  const baseRevision = baseState.revision;
   try {
     const target = reloadEngine ? TARGET : WORKER_TARGET;
     const type = reloadEngine ? "hd_apply_state" : "hd_state_cas";
@@ -2424,6 +2491,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
       await restoreAuthoritativeState(reply);
       reorderReuseHint = false;
       dictionaryCommitFailed = true;
+      dictionaryReorderEpoch += 1;
       setStatus(`Dictionary change was not saved: ${reply.error ?? "the state changed elsewhere"}`, "error");
       return reply;
     }
@@ -2438,12 +2506,19 @@ async function commitDictionaryStateChange(update, reloadEngine) {
     }
     reorderReuseHint = false;
     dictionaryCommitFailed = true;
+    dictionaryReorderEpoch += 1;
     setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
     return { ok: false, error: describe(error) };
   }
 }
 
-function queueDictionaryStateChange(update, reloadEngine, { reorder = false } = {}) {
+function queueDictionaryStateChange(update, reloadEngine, { orderBatch = null } = {}) {
+  const reorder = orderBatch !== null;
+  // A different edit ends the current burst, so later moves cannot jump ahead
+  // of an enable, alias, favourite, or group edit in the existing CAS queue.
+  if (!reorder) flushDictionaryOrder();
+  const queuedBehindChange = pendingDictionaryCommits > 0;
+  const baseState = dictionaryState;
   if (pendingDictionaryCommits === 0) {
     dictionaryCommitFailed = false;
   }
@@ -2452,37 +2527,45 @@ function queueDictionaryStateChange(update, reloadEngine, { reorder = false } = 
   // controls, while any other change can alter per-package metadata.
   reorderReuseHint = reorder && (pendingDictionaryCommits === 0 || reorderReuseHint);
   pendingDictionaryCommits += 1;
+  if (reorder) pendingDictionaryReorders += 1;
   committing = true;
   pendingManagementFocus = focusedManagementControl() ?? pendingManagementFocus;
   setControlsDisabled(importing);
 
-  const run = dictionaryCommitTail.then(
-    () => commitDictionaryStateChange(update, reloadEngine),
-    () => commitDictionaryStateChange(update, reloadEngine),
-  );
+  const run = dictionaryCommitTail.then(async previous => {
+    if (orderBatch === null) return commitDictionaryStateChange(update, reloadEngine);
+    await orderBatch.ready;
+    // Every failed commit bumps the epoch after restoring the authoritative
+    // state, so a batch drafted before that rollback is stale and dropped.
+    if (orderBatch.epoch !== dictionaryReorderEpoch) return { ok: false, state: dictionaryState };
+    // Advance only through this page's preceding successful commit. Adopting
+    // another page's revision here would silently overwrite its winning order.
+    return commitDictionaryStateChange(update, reloadEngine, queuedBehindChange ? previous.state : baseState);
+  });
   const settled = run.finally(async () => {
     pendingDictionaryCommits -= 1;
+    if (reorder) pendingDictionaryReorders -= 1;
     if (pendingDictionaryCommits > 0) {
       return;
     }
     committing = false;
     renderChangedDictionaryState();
-    if (!dictionaryCommitFailed) {
+    if (!dictionaryCommitFailed && !reorder) {
       await refreshStatus();
     }
   });
   dictionaryCommitTail = settled.then(
-    () => undefined,
-    () => undefined,
+    reply => reply,
+    error => ({ ok: false, error: describe(error) }),
   );
   return settled;
 }
 
-function commitDictionaries(update, reloadEngine, options) {
+function commitDictionaries(update, reloadEngine) {
   return queueDictionaryStateChange((current) => {
     const dictionaries = update(current.dictionaries);
     return dictionaries === null ? null : { ...current, dictionaries };
-  }, reloadEngine, options);
+  }, reloadEngine);
 }
 
 function commitGroups(update) {
@@ -3448,7 +3531,7 @@ function attachHandlers() {
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
+    if (!importing && !backingUp && pendingDictionaryCommits === 0 && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
         && !nameDrafts.hasPendingChanges() && !customButtonController?.dirty() && !ankiController?.dirty()) {
       return;

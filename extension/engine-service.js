@@ -1073,6 +1073,10 @@ function addDictionaries(dictionaries, includeDisabled) {
 // loads again; anything else falls back to the full rebuild below, which also
 // discards whatever an interrupted incremental step left behind.
 let loadedPackages = null;
+// Includes disabled and tolerated failed packages. A reorder of this exact
+// manifest must not retry a failed package or rebuild its healthy neighbours.
+let loadedManifest = null;
+let lastLoadPath = null;
 const verifiedPackages = new Map();
 
 function packageKinds(dictionary) {
@@ -1082,9 +1086,10 @@ function packageKinds(dictionary) {
 function resetEngine() {
   engine.ccall("hdw_reset", null, [], []);
   loadedPackages = null;
+  loadedManifest = null;
 }
 
-function trackLoaded(dictionaries) {
+function trackLoaded(dictionaries, manifest = dictionaries) {
   loadedPackages = dictionaries.map((dictionary) => ({
     id: optionalText(dictionary.id),
     title: text(dictionary.title),
@@ -1092,6 +1097,9 @@ function trackLoaded(dictionaries) {
     kinds: packageKinds(dictionary),
   }));
   for (const entry of loadedPackages) verifiedPackages.set(entry.path, entry.kinds);
+  loadedManifest = new Map(manifest.map(dictionary => [dictionary.path, {
+    id: dictionary.id, title: dictionary.title, kinds: packageKinds(dictionary), enabled: dictionary.enabled !== false,
+  }]));
 }
 
 function retainVerified(dictionaries) {
@@ -1103,6 +1111,29 @@ function retainVerified(dictionaries) {
 
 function isVerified(dictionary) {
   return verifiedPackages.get(dictionary.path) === packageKinds(dictionary);
+}
+
+// Only hd_apply_state (and its rollback) uses this path; an explicit reload
+// still retries failed packages. The native set comes from the last successful
+// load, not from verification of packages which are intentionally unloaded.
+// Returns the loaded count, or null when the change needs loadDictionaries().
+function reorderLoadedDictionaries(dictionaries) {
+  if (loadedPackages === null || loadedManifest?.size !== dictionaries.length
+    || !dictionaries.every(dictionary => {
+      const loaded = loadedManifest.get(dictionary.path);
+      return loaded?.id === dictionary.id && loaded?.title === dictionary.title
+        && loaded?.kinds === packageKinds(dictionary) && loaded.enabled === (dictionary.enabled !== false);
+    })) return null;
+  const present = new Set(loadedPackages.map(entry => entry.path));
+  const ordered = dictionaries.filter(dictionary => present.has(dictionary.path));
+  // A refused order changes nothing natively; the loaded set has drifted and
+  // the ordinary load path rebuilds it.
+  if (!engine.ccall("hdw_set_dict_order", "number", ["string"], [JSON.stringify(ordered.map(entry => entry.path))])) {
+    return null;
+  }
+  trackLoaded(ordered, dictionaries);
+  lastLoadPath = "order-only";
+  return ordered.reduce((count, dictionary) => count + kindsForPackage(dictionary).length, 0);
 }
 
 // Returns the loaded count, or null when the change needs the full rebuild.
@@ -1134,7 +1165,7 @@ function loadDictionariesIncrementally(dictionaries) {
     // unknown; the fast path must not trust an interrupted step.
     loadedPackages = null;
   }
-  trackLoaded(enabled);
+  trackLoaded(enabled, dictionaries);
   retainVerified(dictionaries);
   loadFailures = [];
   return enabled.reduce((count, dictionary) => count + kindsForPackage(dictionary).length, 0);
@@ -1148,8 +1179,10 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
   }
   const incremental = loadDictionariesIncrementally(dictionaries);
   if (incremental !== null) {
+    lastLoadPath = "incremental";
     return incremental;
   }
+  lastLoadPath = "full";
   const tolerated = new Set(committed.map((dictionary) => text(dictionary?.path)));
   const failed = [];
   const skipped = new Set();
@@ -1158,6 +1191,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
       throw error;
     }
     skipped.add(error.dictionary.path);
+    verifiedPackages.delete(error.dictionary.path);
     failed.push({
       id: optionalText(error.dictionary.id),
       title: text(error.dictionary.title),
@@ -1184,7 +1218,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
     try {
       const loadedCount = addDictionaries(candidates, false);
       loadFailures = failed;
-      trackLoaded(candidates.filter((dictionary) => dictionary.enabled !== false));
+      trackLoaded(candidates.filter((dictionary) => dictionary.enabled !== false), dictionaries);
       retainVerified(dictionaries);
       return loadedCount;
     } catch (error) {
@@ -1213,10 +1247,10 @@ function warmLookup() {
   }
 }
 
-function publishLoadedDictionaries(loadedCount) {
+function publishLoadedDictionaries(loadedCount, { warm = true } = {}) {
   dictionaryCount = loadedCount;
   generation += 1;
-  if (loadedCount > 0) {
+  if (warm && loadedCount > 0) {
     warmLookup();
   }
 }
@@ -1226,8 +1260,9 @@ async function restoreCommittedDictionaries(state = null, { publish = true } = {
   if (committed === null) {
     throw new Error("the committed dictionary state is unavailable");
   }
-  const loadedCount = loadDictionaries(committed.dictionaries, { committed: committed.dictionaries });
-  if (publish) publishLoadedDictionaries(loadedCount);
+  const loadedCount = reorderLoadedDictionaries(committed.dictionaries)
+    ?? loadDictionaries(committed.dictionaries, { committed: committed.dictionaries });
+  if (publish) publishLoadedDictionaries(loadedCount, { warm: lastLoadPath !== "order-only" });
   else dictionaryCount = loadedCount;
   reloadError = null;
   return committed;
@@ -3011,14 +3046,15 @@ const HANDLERS = {
 
     let restorationAttempted = false;
     try {
-      const loadedCount = loadDictionaries(message.dictionaries, {
+      const loadedCount = reorderLoadedDictionaries(message.dictionaries) ?? loadDictionaries(message.dictionaries, {
         committed: await readStoredDictionaries(),
       });
+      const loadPath = lastLoadPath;
       const reply = await commitDictionaryState(message.baseRevision, message.dictionaries);
       if (reply.ok === true) {
-        publishLoadedDictionaries(loadedCount);
+        publishLoadedDictionaries(loadedCount, { warm: loadPath !== "order-only" });
         reloadError = null;
-        return { state: reply.state };
+        return { state: reply.state, loadPath };
       }
       if (reply.conflict !== true || reply.state === null) {
         throw new Error(reply.error || "the dictionary state could not be saved");
@@ -3147,6 +3183,7 @@ const HANDLERS = {
       loading: busy > 0 || stagingImports > 0,
       dictionaryCount,
       failedDictionaries: loadFailures,
+      lastLoadPath,
       generation,
       storageBackend,
       threaded,

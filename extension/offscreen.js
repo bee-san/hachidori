@@ -182,7 +182,12 @@ function finishRequest(id, response) {
   if (id === activeStagedMutationRequestId) activeStagedMutationRequestId = null;
   if (id === activeImportRequestId) activeImportRequestId = null;
   trackHeldState(request.message, response);
-  if (mutated) recycler.noteMutationSettled();
+  // A successful native reorder allocates no dictionary/import high-water
+  // mark. Keep an already pending import or mode-change recycle's idle window,
+  // but do not schedule a fresh worker rebuild for ordering alone.
+  const orderOnly = request.message.type === "hd_apply_state" && response?.ok === true
+    && response.loadPath === "order-only";
+  if (mutated && !orderOnly) recycler.noteMutationSettled();
   // A status or memory poll is not activity; only requests that touch the
   // dictionaries keep the idle window open.
   if (!POLL_TYPES.has(request.message.type)) recycler.noteIdle();

@@ -2482,12 +2482,23 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 
 ![A retained group-name draft after another Settings page renames the group](assets/settings-autosave-conflict.png)
 
+Dictionary arrow, drag and position moves update existing Library rows
+immediately. A 150 ms trailing debounce sends the burst's final order through
+the same serialized dictionary CAS queue. An in-flight move remains visible
+when an earlier storage event or acknowledgement arrives. Each batch advances
+its revision only through this page's preceding successful commit; another
+Settings page's winning write causes a visible failure and restores its saved
+state, including metadata and membership changes. Pending order drafts are
+discarded on failure, while deliberate focus, selection and open Details survive
+successful moves. The existing unsaved-work warning also covers the debounce
+and in-flight dictionary commits when leaving Settings.
+
 ## Runtime messages
 
 | Message | Purpose |
 | --- | --- |
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
-| `hd_apply_state` | Load an engine-affecting package change (in place when every package already loaded this session, otherwise a full rebuild), then compare-and-set it atomically |
+| `hd_apply_state` | Apply a package change, then compare-and-set it atomically. An unchanged manifest set uses native order only, retaining failed-package diagnostics and skipping load/warmup; other changes load incrementally when verified, otherwise rebuild. The reply's `loadPath` and `hd_status.lastLoadPath` report `order-only`, `incremental`, or `full`. |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |

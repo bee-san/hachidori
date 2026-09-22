@@ -578,7 +578,7 @@ What it proves, in order:
    pinned controls, lazily constructed shared term/kanji Note behavior,
    exact-view refresh and Back context, Escape/hover guards, and successful
    append followed by failed refresh.
-2. **Boot and relay.** `hd_status` has exactly the eleven documented envelope
+2. **Boot and relay.** `hd_status` has the documented envelope and load-path diagnostic
    keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
    and never concurrently. `background.js` stamps `relayed` on its forwarded copy
    and senders never do.
@@ -600,6 +600,14 @@ What it proves, in order:
    names, disabled installed members, ordered deduplication, and worker metadata
    without mutating its input. A three-archive batch verifies that a failed
    middle import does not stop the last one.
+   Native spies verify that reordering skips reset, add and warm lookup even
+   beside an unchanged enabled or disabled failed package, retaining its error.
+   The real-Chrome dictionary-management scenario checks immediate rank and DOM
+   movement before acknowledgement, five rapid moves becoming one commit, a
+   later in-flight move surviving an older reply, and two Settings pages
+   producing one winning CAS and an explicit rollback in the losing page. It also
+   checks that the unsaved-work guard covers both the debounce and held replies
+   and clears after the reorder settles.
    Frequency controls cover paired source/direction patches, explicit Auto,
    preserved manual choices, unavailable selections, and focused native drafts
    across newer options and capability changes. Alias writes retain frequency
