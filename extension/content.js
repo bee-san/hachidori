@@ -350,7 +350,7 @@
   }
 
   function selectedKanjiDictionaryCapability() {
-    return globalThis.HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, dictionaries);
+    return globalThis.HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, dictionaries, dictionaryGroups);
   }
 
   function projectResultsToDictionary(results, title) {
@@ -367,6 +367,41 @@
       }
     }
     return projected;
+  }
+
+  function nativeKanjiEntries(reply) {
+    const entries = Array.isArray(reply?.kanji?.entries) ? reply.kanji.entries : [];
+    return entries.filter((entry) => entry && typeof entry === "object"
+      && typeof entry.dictionary === "string" && entry.dictionary !== "");
+  }
+
+  // A group's members answer in group order. Entries sharing an expression and
+  // reading merge their cards, as the engine does for an ordinary lookup, and a
+  // native kanji entry becomes one structured card of its member.
+  function mergeKanjiGroupResults(members, character, kanjiReply, termReplies) {
+    const merged = [];
+    const append = (result) => {
+      const existing = merged.find((entry) => entry.term.expression === result.term.expression
+        && entry.term.reading === result.term.reading);
+      if (existing) existing.term.glossaries.push(...result.term.glossaries);
+      else merged.push({ ...result, term: { ...result.term, glossaries: [...result.term.glossaries] } });
+    };
+    const nativeEntries = nativeKanjiEntries(kanjiReply);
+    let termIndex = 0;
+    for (const member of members) {
+      if (member.kind === "term") {
+        const reply = termReplies[termIndex++];
+        for (const result of projectResultsToDictionary(Array.isArray(reply.results) ? reply.results : [], member.title)) {
+          append(result);
+        }
+        continue;
+      }
+      for (const entry of nativeEntries.filter((candidate) => candidate.dictionary === member.title)) {
+        append({ matched: character, term: { expression: character, reading: "", frequencies: [], pitches: [],
+          glossaries: [{ dictionary: entry.dictionary, glossary: window.HDPopup.kanjiEntryGlossary(entry) }] } });
+      }
+    }
+    return merged;
   }
 
   function isJapaneseToken(text) {
@@ -2087,7 +2122,7 @@
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
       return { ...result, term, generation: level.activeTermRender.generation, sentence: candidate.sentence,
         matchOffset: candidate.matchOffset, matched: rawMatchedText(candidate, result.matched || result.term.expression),
-        searchQuery: request?.payload?.text ?? request?.termPayload?.text ?? candidate.query,
+        searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
         capturePin: rootLevel.capturePin ?? undefined,
@@ -2965,7 +3000,7 @@
     audio?.retire(level);
     mining?.retire(level);
     const { candidate, capability, character } = request;
-    const useTermDictionary = capability?.kind === "term";
+    const group = capability?.kind === "group";
     const token = (level.lookupToken += 1);
     level.pendingPopupInteraction = token;
     const finishInteraction = () => {
@@ -2973,11 +3008,15 @@
     };
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
-    let reply;
+    // Every selected source is asked at once. A term-only selection defers the
+    // native fallback until its members miss.
+    const wantsNative = group ? capability.members.some((member) => member.kind === "kanji") : capability?.kind !== "term";
+    let reply, termReplies;
     try {
-      reply = useTermDictionary
-        ? await sendRequest("hd_lookup_dictionary", request.termPayload)
-        : await sendRequest("hd_kanji", request.kanjiPayload);
+      [reply, ...termReplies] = await Promise.all([
+        wantsNative ? sendRequest("hd_kanji", request.kanjiPayload) : null,
+        ...request.termPayloads.map((payload) => sendRequest("hd_lookup_dictionary", payload)),
+      ]);
     } catch (error) {
       finishInteraction();
       return handleLookupFailure(token, error, level, request, true);
@@ -2986,24 +3025,29 @@
       finishInteraction();
       return false;
     }
-    noteGeneration(reply.generation, level);
-    if (useTermDictionary) {
-      const results = projectResultsToDictionary(
-        Array.isArray(reply.results) ? reply.results : [],
-        capability.title
+    for (const each of [reply, ...termReplies]) if (each) noteGeneration(each.generation, level);
+    let results = [];
+    if (group) {
+      results = mergeKanjiGroupResults(capability.members, character, reply, termReplies);
+    } else if (capability?.kind === "term") {
+      results = projectResultsToDictionary(Array.isArray(termReplies[0].results) ? termReplies[0].results : [], capability.title);
+    }
+    if (results.length > 0) {
+      finishInteraction();
+      return renderTerms(
+        results,
+        candidate,
+        request.highlightText,
+        {
+          ...backRenderOptions(request, level),
+          ...(group ? { dictionaryTabScope: capability.members.map((member) => member.title) } : {}),
+        },
+        request,
+        level,
+        replayOptions,
       );
-      if (results.length > 0) {
-        finishInteraction();
-        return renderTerms(
-          results,
-          candidate,
-          request.highlightText,
-          backRenderOptions(request, level),
-          request,
-          level,
-          replayOptions,
-        );
-      }
+    }
+    if (reply === null) {
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
@@ -3017,13 +3061,8 @@
       noteGeneration(reply.generation, level);
     }
     const kanji = reply.kanji;
-    if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
-      finishInteraction();
-      return handleLookupFailure(token, new Error("kanji lookup returned no usable result"), level, request, true);
-    }
-    const validEntries = kanji.entries.filter((entry) => entry && typeof entry === "object"
-      && typeof entry.dictionary === "string" && entry.dictionary !== "");
-    if (validEntries.length === 0) {
+    const validEntries = nativeKanjiEntries(reply);
+    if (!kanji || validEntries.length === 0) {
       finishInteraction();
       return handleLookupFailure(token, new Error("kanji lookup returned no usable result"), level, request, true);
     }
@@ -3066,6 +3105,9 @@
       return;
     }
     const capability = selectedKanjiDictionaryCapability();
+    const termSources = capability?.kind === "group"
+      ? capability.members.filter((member) => member.kind === "term")
+      : capability?.kind === "term" ? [capability] : [];
     return executeKanjiRequest({
       candidate: level.activeCandidate,
       capability,
@@ -3079,19 +3121,17 @@
       },
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
       selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
-      termPayload: capability?.kind === "term"
-        ? {
-            dictionary: capability.title,
-            maxResults: options.maxResults,
-            options: {
-              frequencyDictionary: options.frequencyDictionary,
-              frequencyOrder: options.frequencyOrder,
-              primaryReading: "",
-            },
-            scanLength: 1,
-            text: character,
-          }
-        : null,
+      termPayloads: termSources.map((source) => ({
+        dictionary: source.title,
+        maxResults: options.maxResults,
+        options: {
+          frequencyDictionary: options.frequencyDictionary,
+          frequencyOrder: options.frequencyOrder,
+          primaryReading: "",
+        },
+        scanLength: 1,
+        text: character,
+      })),
     }, level);
   }
 

@@ -15562,6 +15562,85 @@ async function contentNoteStage() {
     return outcomes;
   }
 
+  async function kanjiGroupCase() {
+    const outcomes = {};
+    const packages = [
+      genericPackage({ id: "terms-a", title: "Terms A", path: "/dicts/Terms A" }),
+      genericPackage({ id: "native-b", title: "Native B", path: "/dicts/Native B", termCount: 0, kanjiCount: 1 }),
+      genericPackage({ id: "terms-c", title: "Terms C", path: "/dicts/Terms C" }),
+      genericPackage({ id: "native-d", title: "Native D", path: "/dicts/Native D", termCount: 0, kanjiCount: 1 }),
+    ];
+    const groupState = (revision, dictionaryIds) => ({ schemaVersion: 1, revision, dictionaries: packages,
+      groups: [{ id: "kanji-group", name: "Kanji", dictionaryIds }] });
+    const nativeEntry = (dictionary) => ({ dictionary, onyomi: "ショク", kunyomi: "", tags: "", definitions: ["eat"], stats: [] });
+    const harness = await createHarness({ kind: "tabGroup", id: "kanji-group" });
+    const pendingLookup = (dictionary) => {
+      const index = harness.pending.findIndex(({ request }) =>
+        request.type === "hd_lookup_dictionary" && request.dictionary === dictionary);
+      return index < 0 ? null : harness.pending.splice(index, 1)[0];
+    };
+    const issued = (start) => harness.sent.slice(start)
+      .filter((request) => ["hd_kanji", "hd_lookup_dictionary"].includes(request.type))
+      .map((request) => request.dictionary ?? request.type);
+    try {
+      harness.emitState(groupState(2, ["terms-a", "native-b", "terms-c"]));
+      await harness.initialLookup();
+      const start = harness.sent.length;
+      const clicked = harness.driver.showKanji("食");
+      const fanOut = issued(start);
+      // Replies land out of group order; the merged view still follows the group,
+      // and a native entry outside the group stays out of it.
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [harness.term("食", "Terms C")] });
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native D"), nativeEntry("Native B")] } });
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [harness.term("食", "Terms A")] });
+      await clicked;
+      const render = harness.render();
+      const nativeGlossary = render.kind === "terms" ? JSON.parse(render.results[1]?.term.glossaries[0]?.glossary ?? "null") : null;
+      outcomes["a clicked-kanji group asks every member at once and renders merged results as ordered member tabs"] =
+        JSON.stringify(fanOut) === JSON.stringify(["hd_kanji", "Terms A", "Terms C"])
+        && render.kind === "terms"
+        && JSON.stringify(render.results.map((result) => [result.term.expression, result.term.reading,
+          result.term.glossaries.map((glossary) => glossary.dictionary)]))
+          === JSON.stringify([["食", "よみ", ["Terms A", "Terms C"]], ["食", "", ["Native B"]]])
+        && nativeGlossary?.[0]?.type === "structured-content"
+        && JSON.stringify(nativeGlossary).includes("ショク") && JSON.stringify(nativeGlossary).includes("eat")
+        && JSON.stringify(render.context.dictionaryTabScope) === JSON.stringify(["Terms A", "Native B", "Terms C"])
+        && typeof render.context.onBack === "function";
+      await render.context.onBack();
+
+      // A group that misses everywhere falls back to the automatic native
+      // entries the fan-out already returned.
+      const missStart = harness.sent.length;
+      const missed = harness.driver.showKanji("食");
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [] });
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [] });
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native D")] } });
+      await missed;
+      outcomes["a clicked-kanji group that misses everywhere falls back to automatic native kanji without another request"] =
+        harness.render().kind === "kanji"
+        && JSON.stringify(harness.render().value.entries.map((entry) => entry.dictionary)) === JSON.stringify(["Native D"])
+        && JSON.stringify(issued(missStart)) === JSON.stringify(["hd_kanji", "Terms A", "Terms C"]);
+      await harness.render().context.onBack();
+
+      // A term-only group defers the native fallback until every member misses.
+      harness.emitState(groupState(3, ["terms-c", "terms-a"]));
+      const termsStart = harness.sent.length;
+      const termsOnly = harness.driver.showKanji("食");
+      const eager = issued(termsStart);
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [] });
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [] });
+      await harness.settle();
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native B")] } });
+      await termsOnly;
+      outcomes["a term-only clicked-kanji group asks for native kanji only after every member misses"] =
+        JSON.stringify(eager) === JSON.stringify(["Terms C", "Terms A"])
+        && JSON.stringify(issued(termsStart)) === JSON.stringify(["Terms C", "Terms A", "hd_kanji"])
+        && harness.render().kind === "kanji"
+        && harness.render().value.entries[0].dictionary === "Native B";
+    } finally { harness.close(); }
+    return outcomes;
+  }
+
   async function eventFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -19505,7 +19584,7 @@ async function contentNoteStage() {
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
       ...await frequencyDefinitionBlurCase() },
-    kanjiNavigation: await kanjiNavigationCase(),
+    kanjiNavigation: { ...await kanjiNavigationCase(), ...await kanjiGroupCase() },
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
