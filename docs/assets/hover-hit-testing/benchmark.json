@@ -1,0 +1,1048 @@
+{
+  "boundary": "Input-to-popup includes scheduling, lookup and rendering. hitTestingMs times only synchronous production resolveCandidate; 100 excluded warmups then 1000 calls per point/profile.",
+  "limitations": "Two-entry 525-byte deterministic dictionary; headless Chrome on a shared host with concurrent load. No claim of production-library speedup or sub-frame end-to-end precision. Baseline extension is a frozen copy with hash verified against the original baseline run; its manifest revision refers to the enclosing worktree, so extensionSourceRevision is supplied separately.",
+  "before": {
+    "extensionSourceRevision": "4be36f5e87ab946574d6c0279c6e7dd6fee36c45",
+    "chrome": "Chrome/152.0.7977.75",
+    "manifest": {
+      "revision": "d6676d6af390ebcd494b2e57b851c401ad69f7ee",
+      "node": "v22.23.1",
+      "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+      "logicalCpus": 14,
+      "load": [
+        5.92,
+        7.09,
+        5.31
+      ],
+      "settings": {
+        "hoverEnabled": true,
+        "lookupMode": "hover",
+        "hoverDelayMs": 0,
+        "popupNestingMaxDepth": 2,
+        "popupWidthPx": 520,
+        "popupHeightPx": 500,
+        "popupColumns": 1,
+        "maxResults": 32,
+        "definitionBlurEnabled": false
+      },
+      "words": [
+        "\u98df\u3079\u308b",
+        "\u6f22\u5b57"
+      ],
+      "extensionSha256": "9b9e7dc87e3a6c28665ea1b9603794a5dccd9e79c84782436ab54655de3c8b19",
+      "samples": 3,
+      "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+      "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+      "probeSha256": "2e421159828adacd83975f9578b296d2ac41b75129e9969fc1d0f9ef15d9aa69",
+      "harnessSha256": "1ced255302d30eacce111fba06e7dc32c69b9aed1f60541a1adfb25e3488e568",
+      "archives": [
+        {
+          "path": "hover.zip",
+          "bytes": 525,
+          "sha256": "bb933e68f56327287014416d4bd9ee45bccbe48ccfb4cb9504e298400579c697"
+        }
+      ]
+    },
+    "popupSamples": [
+      {
+        "session": 0,
+        "label": "cold",
+        "firstMs": 78.69999999995343,
+        "completeMs": 81.39999999990687,
+        "blankMs": 77.5999999998603,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "warmup-0",
+        "firstMs": 17.5,
+        "completeMs": 28.5,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "warmup-1",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-0",
+        "firstMs": 15.399999999906868,
+        "completeMs": 31.800000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-1",
+        "firstMs": 20.100000000093132,
+        "completeMs": 37.60000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-2",
+        "firstMs": 21.5,
+        "completeMs": 39.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-3",
+        "firstMs": 14.099999999860302,
+        "completeMs": 30.800000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-4",
+        "firstMs": 16.399999999906868,
+        "completeMs": 32.800000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-5",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.0999999998603,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-6",
+        "firstMs": 16.9000000001397,
+        "completeMs": 32.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-7",
+        "firstMs": 17.199999999953434,
+        "completeMs": 33.89999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "trace-0",
+        "firstMs": 101.69999999995343,
+        "completeMs": 117.80000000004657,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "trace-1",
+        "firstMs": 17.0999999998603,
+        "completeMs": 31.800000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "rapid-final",
+        "firstMs": 17.600000000093132,
+        "completeMs": 31.4000000001397,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "child-first",
+        "firstMs": 16.600000000093132,
+        "completeMs": 40.699999999953434,
+        "blankMs": 11.099999999860302,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "child-replace",
+        "firstMs": 25.4000000001397,
+        "completeMs": 48.5,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "cold",
+        "firstMs": 41.39999999990687,
+        "completeMs": 61.5999999998603,
+        "blankMs": 40.299999999813735,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "warmup-0",
+        "firstMs": 17,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "warmup-1",
+        "firstMs": 16.800000000046566,
+        "completeMs": 32.9000000001397,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-0",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-1",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-2",
+        "firstMs": 17.100000000093132,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-3",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-4",
+        "firstMs": 17.0999999998603,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-5",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-6",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-7",
+        "firstMs": 17,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "trace-0",
+        "firstMs": 33.5,
+        "completeMs": 66.5,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "trace-1",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "rapid-final",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "child-first",
+        "firstMs": 16.5,
+        "completeMs": 33,
+        "blankMs": 6,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "child-replace",
+        "firstMs": 17.0999999998603,
+        "completeMs": 33.39999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "cold",
+        "firstMs": 41.800000000046566,
+        "completeMs": 61.699999999953434,
+        "blankMs": 41,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "warmup-0",
+        "firstMs": 16.799999999813735,
+        "completeMs": 33.0999999998603,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "warmup-1",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-0",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-1",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.200000000186265,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-2",
+        "firstMs": 17,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-3",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-4",
+        "firstMs": 17.100000000093132,
+        "completeMs": 33.4000000001397,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-5",
+        "firstMs": 16.699999999953434,
+        "completeMs": 32.89999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-6",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-7",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.0999999998603,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "trace-0",
+        "firstMs": 50.10000000009313,
+        "completeMs": 66.5,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "trace-1",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "rapid-final",
+        "firstMs": 17,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "child-first",
+        "firstMs": 16.600000000093132,
+        "completeMs": 33.10000000009313,
+        "blankMs": 7.099999999860302,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "child-replace",
+        "firstMs": 17.199999999953434,
+        "completeMs": 33.39999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      }
+    ],
+    "hitTesting": [
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 38.60000000009313
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 31.199999999953434
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      },
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 15.399999999906868
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 12.5
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      },
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 25.0999999998603
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 12.400000000139698
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      }
+    ],
+    "warmSummary": {
+      "firstMs": {
+        "median": 16.899999999906868,
+        "p95": 20.100000000093132
+      },
+      "completeMs": {
+        "median": 33.199999999953434,
+        "p95": 37.60000000009313
+      }
+    }
+  },
+  "after": {
+    "extensionSourceRevision": "d6676d6af390ebcd494b2e57b851c401ad69f7ee",
+    "chrome": "Chrome/152.0.7977.75",
+    "manifest": {
+      "revision": "d6676d6af390ebcd494b2e57b851c401ad69f7ee",
+      "node": "v22.23.1",
+      "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+      "logicalCpus": 14,
+      "load": [
+        5.7,
+        7,
+        5.3
+      ],
+      "settings": {
+        "hoverEnabled": true,
+        "lookupMode": "hover",
+        "hoverDelayMs": 0,
+        "popupNestingMaxDepth": 2,
+        "popupWidthPx": 520,
+        "popupHeightPx": 500,
+        "popupColumns": 1,
+        "maxResults": 32,
+        "definitionBlurEnabled": false
+      },
+      "words": [
+        "\u98df\u3079\u308b",
+        "\u6f22\u5b57"
+      ],
+      "extensionSha256": "3130c4081880d4db1a04f638503a99c635767828eef5b2a50c1d9dfba71a620d",
+      "samples": 3,
+      "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+      "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+      "probeSha256": "2e421159828adacd83975f9578b296d2ac41b75129e9969fc1d0f9ef15d9aa69",
+      "harnessSha256": "1ced255302d30eacce111fba06e7dc32c69b9aed1f60541a1adfb25e3488e568",
+      "archives": [
+        {
+          "path": "hover.zip",
+          "bytes": 525,
+          "sha256": "bb933e68f56327287014416d4bd9ee45bccbe48ccfb4cb9504e298400579c697"
+        }
+      ]
+    },
+    "popupSamples": [
+      {
+        "session": 0,
+        "label": "cold",
+        "firstMs": 41.699999999953434,
+        "completeMs": 59.5,
+        "blankMs": 40.89999999990687,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "warmup-0",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "warmup-1",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-0",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-1",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-2",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-3",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-4",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-5",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "root-6",
+        "firstMs": 17,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "root-7",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "trace-0",
+        "firstMs": 67.5,
+        "completeMs": 100.19999999995343,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "trace-1",
+        "firstMs": 17,
+        "completeMs": 33.699999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "rapid-final",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 0,
+        "label": "child-first",
+        "firstMs": 17.5999999998603,
+        "completeMs": 33,
+        "blankMs": 12.699999999953434,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 0,
+        "label": "child-replace",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.39999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "cold",
+        "firstMs": 41.89999999990687,
+        "completeMs": 43.0999999998603,
+        "blankMs": 41.10000000009313,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "warmup-0",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "warmup-1",
+        "firstMs": 17.100000000093132,
+        "completeMs": 33.39999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-0",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-1",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-2",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-3",
+        "firstMs": 17,
+        "completeMs": 33.39999999990687,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-4",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-5",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "root-6",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "root-7",
+        "firstMs": 17.199999999953434,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "trace-0",
+        "firstMs": 66.89999999990687,
+        "completeMs": 83.0999999998603,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "trace-1",
+        "firstMs": 17.899999999906868,
+        "completeMs": 33.0999999998603,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "rapid-final",
+        "firstMs": 17,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 1,
+        "label": "child-first",
+        "firstMs": 16.5999999998603,
+        "completeMs": 33.0999999998603,
+        "blankMs": 7.400000000139698,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 1,
+        "label": "child-replace",
+        "firstMs": 16.899999999906868,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "cold",
+        "firstMs": 41.300000000046566,
+        "completeMs": 42.4000000001397,
+        "blankMs": 40.5,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "warmup-0",
+        "firstMs": 16.9000000001397,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "warmup-1",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.4000000001397,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-0",
+        "firstMs": 16.600000000093132,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-1",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-2",
+        "firstMs": 16.799999999813735,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-3",
+        "firstMs": 16.699999999953434,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-4",
+        "firstMs": 17,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-5",
+        "firstMs": 17,
+        "completeMs": 33.299999999813735,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "root-6",
+        "firstMs": 17.699999999953434,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "root-7",
+        "firstMs": 17,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "trace-0",
+        "firstMs": 50.299999999813735,
+        "completeMs": 68.79999999981374,
+        "blankMs": 0,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "trace-1",
+        "firstMs": 17.0999999998603,
+        "completeMs": 33.300000000046566,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "rapid-final",
+        "firstMs": 16.800000000046566,
+        "completeMs": 33.10000000009313,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      },
+      {
+        "session": 2,
+        "label": "child-first",
+        "firstMs": 16.600000000093132,
+        "completeMs": 33.10000000009313,
+        "blankMs": 6.899999999906868,
+        "resultSignature": "18751d7b0d4b1caa51a7a448f612a655fd8d1838f3e0f9e0f7cf627b659f2c42"
+      },
+      {
+        "session": 2,
+        "label": "child-replace",
+        "firstMs": 17,
+        "completeMs": 33.199999999953434,
+        "blankMs": 0,
+        "resultSignature": "0bcdf68e252e54fbb6279642d37fb31b69b5453c45ffcd097d087fd9b099d745"
+      }
+    ],
+    "hitTesting": [
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 31.800000000046566
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 0,
+            "totalMs": 6.900000000139698
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      },
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 24.699999999953434
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 0,
+            "totalMs": 7.199999999953434
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      },
+      {
+        "points": {
+          "glyph": {
+            "x": 90.403125,
+            "y": 688
+          },
+          "padding": {
+            "x": 64,
+            "y": 688
+          }
+        },
+        "samples": [
+          {
+            "name": "glyph",
+            "iterations": 1000,
+            "hits": 1000,
+            "totalMs": 39.800000000046566
+          },
+          {
+            "name": "padding",
+            "iterations": 1000,
+            "hits": 0,
+            "totalMs": 7
+          }
+        ],
+        "boundary": "synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering"
+      }
+    ],
+    "warmSummary": {
+      "firstMs": {
+        "median": 16.899999999906868,
+        "p95": 17.199999999953434
+      },
+      "completeMs": {
+        "median": 33.199999999953434,
+        "p95": 33.300000000046566
+      }
+    }
+  }
+}
