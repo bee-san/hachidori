@@ -31,6 +31,7 @@ import {
   buildTitledZip,
   compactSummaryFixture,
   dictionaryTabsFixture,
+  kanjiGroupFixture,
   externalLinksFixture,
   frequencyRankingFixture,
   gaijiSizingFixture,
@@ -417,6 +418,8 @@ const PLANNED = [
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
+  "a clicked-kanji group shows each member with an entry as its own tab in group order",
+  "the clicked-kanji chooser saves a group by its stable ID and resets when the group is removed",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Compact summaries wrap without clipping and retain narrow toolbar access",
   ACTION_ROW_CHECK,
@@ -2444,6 +2447,134 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
   check("live custom CSS updates root and child without losing Notes, Back or making engine requests",
     evidence.passed && evidence.css && evidence.back && evidence.live.liveRequests.length === 1,
     JSON.stringify({ css: evidence.css, child: evidence.cssChild }));
+}
+
+async function checkKanjiGroup(settings, tab, popup) {
+  const fixture = kanjiGroupFixture();
+  const [first, terms, second] = fixture.dictionaries.map(dictionary => dictionary.title);
+  const groupId = "e2e-kanji-group";
+  const groupValue = JSON.stringify({ kind: "tabGroup", id: groupId });
+  const original = await settings.evaluate(() => chrome.storage.local.get(["options", "dictionaryState"]));
+  const installed = [], evidence = {};
+  let failure;
+  const require = (condition, message) => { if (!condition) throw new Error(message); };
+  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  async function until(read, predicate, description) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await read();
+      if (predicate(value)) return value;
+      if (Date.now() >= deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+  }
+  const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+  const storedOptions = () => settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const optionsWrite = options => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options?.revision ?? 0, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, options);
+  const groups = groups => settings.evaluate(async groups => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: dictionaryState.revision, dictionaries: dictionaryState.dictionaries, groups });
+    if (!reply.ok) throw new Error(reply.error);
+    return reply.state;
+  }, groups);
+  const chooser = () => settings.evaluate(() => {
+    const select = document.getElementById("opt-kanji-dictionary");
+    return { value: select.value, groups: [...select.querySelectorAll("optgroup[label=Groups] option")]
+      .map(option => [option.textContent, option.value]) };
+  });
+  const view = () => popup.dictionaryTabs();
+  const visible = value => value && !value.hidden && value.entries.length > 0;
+  try {
+    for (const dictionary of fixture.dictionaries) {
+      await installMediaArchive(settings, dictionary.archive);
+      installed.push(dictionary.title);
+    }
+    await until(status, value => value.ok && value.ready && !value.loading, "kanji group: native readiness");
+    const packages = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState.dictionaries);
+    const id = title => packages.find(dictionary => dictionary.title === title)?.id;
+    require(fixture.dictionaries.every(dictionary => id(dictionary.title)), "kanji group: exact package identities");
+    await groups([...original.dictionaryState.groups ?? [],
+      { id: groupId, name: "Kanji group", dictionaryIds: [id(first), id(terms), id(second)] }]);
+
+    // The Design section's chooser offers the group and saves its stable ID.
+    await showSettingsSection(settings, "design");
+    evidence.chooser = await until(chooser, value => value.groups.some(([, value]) => value === groupValue), "kanji group: chooser lists the group");
+    await settings.select("#opt-kanji-dictionary", groupValue);
+    await until(storedOptions, value => value.kanjiClickDictionary?.kind === "tabGroup" && value.kanjiClickDictionary.id === groupId, "kanji group: saved selection");
+    // Inventory updates reach a focused chooser on focusout; the group is
+    // deleted from another view, so leave the control as a user would.
+    await settings.evaluate(() => document.activeElement?.blur());
+    if (process.env.HACHIDORI_KANJI_GROUP_SETTINGS_SCREENSHOT) {
+      await settings.bringToFront();
+      const field = await settings.evaluateHandle(() => document.getElementById("opt-kanji-dictionary").closest(".field"));
+      await field.screenshot({ path: process.env.HACHIDORI_KANJI_GROUP_SETTINGS_SCREENSHOT });
+    }
+
+    // Clicking 食 in 食べたかった asks every member at once: the two native
+    // entries merge into one entry, the term entry keeps its reading, and every
+    // member is a tab in group order. The ordinary fixture's own native entry
+    // for 食 stays out of the group's view.
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    require(await popup.click(".gsm-hoshidicts-kanji-link"), "kanji group: clicked-kanji control");
+    const all = await until(view, value => visible(value) && value.tabs.length === 4 && value.selected === "all"
+      && value.entries.length === 2 && !value.showMore, "kanji group: member tabs and both entries");
+    evidence.all = { tabs: all.tabs.map(tab => [tab.key, tab.label]), entries: all.entries.map(entry => [entry.expression,
+      entry.cards.map(card => card.dictionary)]), showMore: all.showMore, text: all.entries[0].cards.map(card => card.text.join("")) };
+    if (process.env.HACHIDORI_KANJI_GROUP_SCREENSHOT) {
+      const { x, y, width, height } = all.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_KANJI_GROUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    await popup.dictionaryTabs("select", `dictionary:${terms}`);
+    const projected = await until(view, value => visible(value) && value.selected === `dictionary:${terms}`, "kanji group: term member tab");
+    evidence.terms = { entries: projected.entries.map(entry => [entry.expression, entry.cards.map(card => card.dictionary)]),
+      text: projected.entries[0].cards.map(card => card.text).join(), showMore: projected.showMore };
+    require(await popup.click(".gsm-hoshidicts-kanji-back"), "kanji group: Back");
+    await until(() => popup.state(), value => value && !value.hidden && value.text.includes("to eat"), "kanji group: Back restores the verb");
+    evidence.passed = true;
+
+    // Removing the group resets the option, in the worker and in the open Settings page.
+    await groups(original.dictionaryState.groups ?? []);
+    evidence.reset = await until(async () => ({ stored: (await storedOptions()).kanjiClickDictionary, chooser: await chooser() }),
+      value => value.stored === "" && value.chooser.value === "", "kanji group: removed group resets the option");
+  } catch (error) {
+    failure = error;
+  } finally {
+    const errors = [];
+    const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
+    await clean(() => optionsWrite({ kanjiClickDictionary: original.options.kanjiClickDictionary }));
+    for (const title of installed) await clean(async () => {
+      const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await clean(() => groups(original.dictionaryState.groups ?? []));
+    await clean(async () => {
+      await tab.bringToFront();
+      await tab.keyboard.press("Escape");
+      require(await popup.waitForHidden(), "kanji group: cleanup retained its popup");
+    });
+    if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "kanji group scenario/cleanup failure");
+  }
+  if (failure) throw failure;
+  check("a clicked-kanji group shows each member with an entry as its own tab in group order",
+    evidence.passed
+      && equal(evidence.all.tabs, [["all", "All"], [`dictionary:${first}`, first], [`dictionary:${terms}`, terms], [`dictionary:${second}`, second]])
+      && equal(evidence.all.entries, [[fixture.character, [first, second]], [fixture.character, [terms]]])
+      && evidence.all.text[0].includes("kanji-group first meaning") && evidence.all.text[0].includes("ショク · ジキ")
+      && evidence.all.text[1].includes("kanji-group second meaning")
+      && equal(evidence.terms.entries, [[fixture.character, [terms]]]) && evidence.terms.text.includes(fixture.termGlossary),
+    JSON.stringify(evidence));
+  check("the clicked-kanji chooser saves a group by its stable ID and resets when the group is removed",
+    evidence.passed && evidence.chooser.groups.some(([label, value]) => label === "Kanji group" && value === groupValue)
+      && evidence.reset?.stored === "" && evidence.reset.chooser.value === "",
+    JSON.stringify({ chooser: evidence.chooser, reset: evidence.reset }));
 }
 
 async function checkCompactSummaries(settings, tab, popup, browser) {
@@ -11927,6 +12058,7 @@ async function main() {
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
+  await checkKanjiGroup(page, tab, popup);
   await checkCompactSummaryLayout(browser);
   check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
   await checkActionRow(browser);

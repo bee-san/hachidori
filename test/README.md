@@ -1377,6 +1377,20 @@ browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
 `HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
 the Reading controls in light and dark themes.
 
+`kanjiGroupFixture()` builds two kanji-bank-only dictionaries and one term
+dictionary answering the same character in memory. Two predeclared Chrome checks
+select that group as the clicked-kanji dictionary through the real Design
+chooser, click 食 in the verb popup and require All plus one tab per member in
+group order, the two native entries merged into one entry and the term member's
+own entry with its glossary, then remove the group and require the option to
+reset to Automatic in storage and in the open chooser.
+`HACHIDORI_KANJI_GROUP_SCREENSHOT` and `HACHIDORI_KANJI_GROUP_SETTINGS_SCREENSHOT`
+capture the group popup and the chooser. The extension smoke suite pins strict
+group-reference CAS and its reset, the parallel fan-out with out-of-order
+replies, the scoped tabs and structured native cards in the real renderer, the
+Design preview's group sample, and `node --test test/reader-options.test.mjs
+test/kanji-click-settings.test.mjs` covers the resolver and the chooser.
+
 `compactSummaryFixture()` adds two temporary suppliers through the real WASM
 importer without changing generated fixture counts. Its single predeclared
 Chrome check proves persisted summary controls, one shared cold image request,
