@@ -1011,11 +1011,39 @@ function normaliseDictionarySelections() {
   return changed;
 }
 
-function setStatus(message, tone) {
+function setStatus(message, tone, failures = []) {
   const status = element("engine-status");
   status.textContent = message;
   status.classList.toggle("is-error", tone === "error");
   status.classList.toggle("is-ready", tone === "ready");
+  renderStatusFailures(failures);
+}
+
+// One entry per package the engine could not load, its title and raw load error
+// as literal text. Unchanged records keep their nodes across status polls.
+function renderStatusFailures(failures) {
+  const list = element("engine-status-failures");
+  list.hidden = failures.length === 0;
+  if (list.childElementCount === failures.length
+      && failures.every(({ title, error }, index) => {
+        const [renderedTitle, renderedError] = list.children[index].children;
+        return renderedTitle.textContent === title && renderedError.textContent === error;
+      })) {
+    return;
+  }
+  const items = document.createDocumentFragment();
+  for (const { title, error } of failures) {
+    const item = document.createElement("li");
+    const titleText = document.createElement("span");
+    titleText.className = "engine-status-failure-title";
+    titleText.textContent = title;
+    const errorText = document.createElement("span");
+    errorText.className = "engine-status-failure-error";
+    errorText.textContent = error;
+    item.append(titleText, errorText);
+    items.appendChild(item);
+  }
+  list.replaceChildren(items);
 }
 
 function setImportState(message, tone) {
@@ -1434,8 +1462,8 @@ function renderEngineStatus() {
   const failed = Array.isArray(lastEngineStatus.failedDictionaries) ? lastEngineStatus.failedDictionaries : [];
   if (lastEngineStatus.ready && failed.length > 0) {
     const subject = failed.length === 1 ? "1 dictionary" : `${numberFormat.format(failed.length)} dictionaries`;
-    const detail = failed.map(({ title, error }) => `${title} (${error})`).join("; ");
-    setStatus(`Could not load ${subject}: ${detail}. Re-import or remove it; the other dictionaries still work.`, "error");
+    const pronoun = failed.length === 1 ? "it" : "them";
+    setStatus(`Could not load ${subject}. Re-import or remove ${pronoun}; the other dictionaries still work.`, "error", failed);
     return;
   }
   if (lastEngineStatus.ready) {

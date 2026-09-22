@@ -304,6 +304,25 @@ button,
   font-size: var(--font-caption);
   overflow-wrap: anywhere;
 }
+.engine-status-failures {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid var(--error);
+  list-style: none;
+  color: var(--text-dim);
+  font-size: var(--font-caption);
+  overflow-wrap: anywhere;
+}
+.engine-status-failure-title,
+.engine-status-failure-error {
+  display: block;
+}
+.engine-status-failure-title {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
 
 .engine-status.is-ready,
 .nav-status.is-ready,
@@ -2048,6 +2067,10 @@ textarea {
   .engine-status {
     grid-column: 1 / -1;
     padding-top: 10px;
+  }
+  .engine-status-failures {
+    grid-column: 1 / -1;
+    margin-top: 0;
   }
   .page {
     min-height: calc(100vh - 148px);
