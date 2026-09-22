@@ -1065,8 +1065,8 @@ No dictionary frame, fetch, new permission or configurable action is introduced.
 
 ### Definition popup chains
 
-Hovering ordinary text inside a rendered glossary opens a child beside its
-parent. The closed shadow root is resolved with the native shadow-aware caret
+Hovering ordinary text inside a rendered glossary opens a child beside that
+word. The closed shadow root is resolved with the native shadow-aware caret
 API, then the ordinary page scanner's inline, ruby, whitespace, Japanese-only
 and scan-length rules build the child query. The complete glossary remains the
 sentence and offset coordinate space for mining. Headwords, metadata, compact
@@ -1096,12 +1096,20 @@ connected source link when one initiated the lookup.
 Keyboard link activation focuses the child's Back control; mouse activation
 does not invent keyboard focus that would block pointer-return pruning. Returning
 to an ancestor prunes descendants after the normal hide delay, unless a draft,
-pending Note append, or deliberate keyboard focus still protects them. Pointer
+pending Note append, or deliberate keyboard focus still protects them. A primary
+press in an ancestor pane retires its descendants at once, focused or not, and
+drops a pending definition scan; only an open draft or pending append keeps
+them, and Escape still closes that form first. A press on an internal link keeps
+the link's own child for its click to reuse or replace and retires only the
+branch below it. Pointer
 transfer uses actual pane rectangles and narrow connecting gaps, with 80 ms grace
 before resuming the current page scan. No layout is read in raw mousemove before
-the existing throttle. Children prefer available space beside their parent and
-clamp to the viewport; narrow screens may overlap panes. Layout callbacks start
-at their owning level and reposition descendants without redoing ancestor layout.
+the existing throttle. Like Yomitan, each child is placed from its own source
+rectangle: below the word when that fits, otherwise above, aligned with the
+word's left edge and clamped to the viewport, so it overlaps its parent rather
+than sitting beside it. Layout callbacks start
+at their owning level and reposition descendants without redoing ancestor
+layout; no ancestor pane is measured for any descendant.
 Dirty panes share one animation-frame batch: each runs its own masonry before
 one linear placement pass from the shallowest live owner in that same frame.
 Width changes can queue a following ResizeObserver batch without losing work
@@ -1856,10 +1864,11 @@ content and the Note form scroll within their own bounds. Nested popup anchors
 and Back restoration follow the content scrollport.
 
 The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
-Automatic places a horizontal root toolbar at the bottom of an above-word popup,
-or the top of a below-word popup. Vertical roots and side-by-side child panes
-retain their edge; new Automatic panes and a change back to Automatic start at
-Top. An explicit edge overrides placement, including after resize or media load.
+Automatic places a horizontal toolbar at the bottom of an above-word popup, or
+the top of a below-word popup, for roots and nested panes alike. Vertical roots
+and a pane being resized retain their edge; new Automatic panes and a change
+back to Automatic start at Top. An explicit edge overrides placement, including
+after resize or media load.
 The final edge is resolved once, avoiding an intermediate Top move before an
 Automatic root's actual placement is known.
 
