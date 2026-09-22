@@ -8,7 +8,7 @@ Thanks for helping make private Japanese lookup easier.
 - Open an issue before a large behavior or architecture change.
 - Keep pull requests focused enough to review and test independently.
 
-Use the [issue template](https://github.com/bee-san/hachidori/issues/new?template=feature_request.md), fill in all three sections, and check the acknowledgement. GitHub Actions checks issues when they are opened, edited, or reopened, and closes incomplete submissions with a comment listing what is missing. Template instructions and the acknowledgement do not count as answers. Explain the practical benefit for the creator's Japanese-learning workflow; the [README](README.md#optionated) describes the project's priorities.
+Use the [issue template](https://github.com/bee-san/hachidori/issues/new?template=feature_request.md), fill in all three sections, and check the acknowledgement. GitHub Actions checks issues when they are opened, edited, or reopened, and closes incomplete submissions with a comment listing what is missing. Template instructions and the acknowledgement do not count as answers. Explain the practical benefit for the creator's Japanese-learning workflow; the [README](README.md#opinionated) describes the project's priorities.
 
 ## Set up a development checkout
 
