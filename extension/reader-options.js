@@ -581,12 +581,17 @@
 
   /**
    * Preserve legacy title-only selections until dictionary state can infer kind.
-   * @returns {string | {title: string, kind: "term" | "kanji"}}
+   * A group is referenced by its stable ID, as the Image source option does.
+   * @returns {string | {title: string, kind: "term" | "kanji"} | {kind: "tabGroup", id: string}}
    */
   function normaliseKanjiSelection(value) {
-    if (value && typeof value === "object" && typeof value.title === "string"
-        && value.title !== "" && (value.kind === "term" || value.kind === "kanji")) {
-      return { title: value.title, kind: value.kind };
+    if (value && typeof value === "object") {
+      if (value.kind === "tabGroup" && typeof value.id === "string" && value.id !== "") {
+        return { kind: "tabGroup", id: value.id };
+      }
+      if (typeof value.title === "string" && value.title !== "" && (value.kind === "term" || value.kind === "kanji")) {
+        return { title: value.title, kind: value.kind };
+      }
     }
     return typeof value === "string" ? value : "";
   }
@@ -663,17 +668,31 @@
     }
   }
 
-  function resolveKanjiDictionary(selection, dictionaries) {
+  // A dictionary's clicked-kanji capability: native kanji entries when it has
+  // them, otherwise its term entries. Metadata-only packages have neither.
+  function kanjiCapability(dictionary, requestedKind = "") {
+    if (!dictionary || dictionary.enabled === false) return null;
+    const defaultKind = dictionary.kanjiCount > 0 ? "kanji" : "term";
+    const kind = requestedKind === "" ? defaultKind : requestedKind;
+    const available = kind === "kanji" ? dictionary.kanjiCount > 0 : dictionary.termCount > 0
+      || (dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0);
+    return available ? { kind, title: dictionary.title } : null;
+  }
+
+  // Null means Automatic native kanji. A group yields its eligible members in
+  // group order so a click can ask every one of them at once.
+  function resolveKanjiDictionary(selection, dictionaries, groups = []) {
+    if (selection?.kind === "tabGroup") {
+      const group = groups.find(entry => entry.id === selection.id);
+      const members = (group?.dictionaryIds || [])
+        .map(id => kanjiCapability(dictionaries.find(entry => entry.id === id)))
+        .filter(member => member !== null);
+      return members.length > 0 ? { kind: "group", members } : null;
+    }
     const title = typeof selection === "string" ? selection : selection?.title;
     if (typeof title !== "string" || title === "") return null;
-    const selected = dictionaries.find(entry => entry.title === title && entry.enabled !== false);
-    if (!selected) return null;
     const requestedKind = typeof selection === "object" ? selection.kind : "";
-    const defaultKind = selected.kanjiCount > 0 ? "kanji" : "term";
-    const kind = requestedKind === "" ? defaultKind : requestedKind;
-    const available = kind === "kanji" ? selected.kanjiCount > 0 : selected.termCount > 0
-      || (selected.frequencyCount === 0 && selected.pitchCount === 0 && selected.kanjiCount === 0);
-    return available ? { kind, title } : null;
+    return kanjiCapability(dictionaries.find(entry => entry.title === title), requestedKind);
   }
 
   function normalisePopupImageSource(value) {

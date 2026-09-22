@@ -2863,10 +2863,12 @@ const HANDLERS = {
     await ensureLoaded();
     const args = lookupArguments(message);
     const title = text(message.dictionary);
-    const entry = (await readStoredDictionaries()).find((candidate) =>
-      candidate?.enabled !== false
-      && kindsForPackage(candidate).includes("term")
-      && candidate?.title === title);
+    // The loaded set is the authority on what the selected route can query: a
+    // disabled, missing or unloaded package answers nothing, without a storage
+    // round trip per request. A clicked-kanji group sends one request per term
+    // member, so that trip would repeat for every member.
+    const entry = (loadedPackages ?? []).find((candidate) =>
+      candidate.title === title && candidate.kinds.split(",").includes("term"));
     if (!entry) {
       return { results: [], dictionaryCount };
     }

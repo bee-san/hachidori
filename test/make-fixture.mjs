@@ -661,6 +661,31 @@ export function dictionaryTabsFixture() {
   return { ...nested, rootReading, dictionaries: [{ title: nested.title, archive: nested.archive }, ...companions] };
 }
 
+// A clicked-kanji group: two kanji-bank-only dictionaries and one term
+// dictionary whose single-kanji entries answer the same characters (by default
+// 食, the kanji the ordinary fixture's verb 食べる links to). In memory, so the
+// generated fixture files and their documented counts are unchanged.
+export function kanjiGroupFixture(entries = [['食', 'しょく']]) {
+  const kanji = (title, meaning, strokes) => ({ title, kind: 'kanji', archive: buildZip([
+    zipEntry('index.json', JSON.stringify({ ...index, title })),
+    zipEntry('kanji_bank_1.json', JSON.stringify(entries.map(([character]) =>
+      [character, 'ショク ジキ', 'く.う た.べる', 'jouyou', [meaning], { strokes }]))),
+  ]) });
+  const termTitle = 'kanji-group-terms';
+  const termGlossary = 'kanji-group term single-kanji entry';
+  return {
+    character: entries[0][0],
+    termGlossary,
+    dictionaries: [
+      kanji('kanji-group-first', 'kanji-group first meaning', '9'),
+      { title: termTitle, kind: 'term', archive: buildTitledZip(termTitle, {
+        terms: entries.map(([character, reading]) => [character, reading, '', '', 100, [termGlossary], 1, '']),
+      }) },
+      kanji('kanji-group-second', 'kanji-group second meaning', '9'),
+    ],
+  };
+}
+
 export function frequencyRankingFixture() {
   const query = '頻度語';
   const readings = ['あ', 'い', 'う'];

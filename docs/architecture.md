@@ -1493,16 +1493,37 @@ verify exact bytes, MIME types, decoded dimensions and preview source reuse.
 
 ## Clicked-kanji navigation and Back
 
-Design's clicked-kanji selector chooses a source and capability. An explicit
+Design's clicked-kanji selector chooses a source and capability: one dictionary,
+or a dictionary group by its stable ID like the Image source chooser. An explicit
 term source is restricted before native ranking and result limits.
 A selected term lookup filters the engine's already-loaded query by its exact
 dictionary path instead of reopening term and metadata dictionaries per click.
+The engine resolves that path from its own loaded set, so a disabled, missing or
+unloaded package answers nothing without a storage round trip per request.
 Frequency and pitch metadata still come from every loaded metadata dictionary.
 A missing, disabled or empty selected source falls back to native kanji. For an
 enabled native source with no matching entry, the already returned automatic
 entries supply that fallback without another request. A terminal native miss
 retires that popup level; a protected same-view Note refresh retains its draft.
 Obsolete replies cannot dismiss or replace a newer view.
+
+A group resolves to its enabled, installed members in group order, each with its
+own capability (native kanji entries when the package has them, otherwise its
+term entries); members with neither are skipped. A click asks every member at
+once: one `hd_kanji` when any member is native and one `hd_lookup_dictionary`
+per term member. The replies merge in group order, entries sharing an expression
+and reading combining their cards as an ordinary lookup does, and each native
+entry becomes one structured card (tags, On/Kun readings, ordered meanings and a
+Details table) through the renderer's `kanjiEntryGlossary`. The term view then
+shows the members as tabs: All first, then every member with an entry, in group
+order, in place of the reader's group and favourite tabs; live presentation
+updates keep that scope. A group whose members all miss falls back to the
+automatic native entries already returned, and a term-only group asks for them
+only after every member misses. Removing the group resets the option to
+Automatic in the same dictionary-state commit, as a removed dictionary does;
+renames and membership edits keep the reference.
+
+![A clicked-kanji group with one tab per member](assets/kanji-group-popup.png)
 
 Back stores the exact term request and its current tab, expanded-results flag,
 scroll position and disclosure states as data, not detached DOM or renderer

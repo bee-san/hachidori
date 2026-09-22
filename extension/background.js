@@ -757,7 +757,25 @@ function hasCapability(dictionary, kind) {
   return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
 }
 
-function normaliseDictionarySelections(value, dictionaries) {
+// The stored clicked-kanji selection after a dictionary or group change: a
+// group keeps its stable ID through renames and membership edits and resets
+// only when the group is removed, like a removed or disabled dictionary does.
+function normaliseKanjiClickSelection(value, dictionaries, groups) {
+  const selection = typeof value === "string" ? { title: value, kind: "" } : value;
+  if (selection?.kind === "tabGroup") {
+    return groups.some((group) => group.id === selection.id) ? value : "";
+  }
+  if (!selection?.title) return value;
+  const selected = dictionaries.find((entry) => entry.title === selection.title);
+  let kind = selection.kind;
+  if (!KANJI_SELECTION_KINDS.has(kind)) {
+    kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
+  }
+  if (!selected || selected.enabled === false || !hasCapability(selected, kind)) return "";
+  return KANJI_SELECTION_KINDS.has(selection.kind) ? value : { title: selection.title, kind };
+}
+
+function normaliseDictionarySelections(value, dictionaries, groups = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return value;
   }
@@ -770,21 +788,8 @@ function normaliseDictionarySelections(value, dictionaries) {
   ) {
     options.frequencyDictionary = "";
   }
-
-  const selection = typeof options.kanjiClickDictionary === "string"
-    ? { title: options.kanjiClickDictionary, kind: "" }
-    : options.kanjiClickDictionary;
-  if (selection?.title) {
-    const selected = dictionaries.find((entry) => entry.title === selection.title);
-    let kind = selection.kind;
-    if (!KANJI_SELECTION_KINDS.has(kind)) {
-      kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
-    }
-    if (!selected || selected.enabled === false || !hasCapability(selected, kind)) {
-      options.kanjiClickDictionary = "";
-    } else if (!KANJI_SELECTION_KINDS.has(selection.kind)) {
-      options.kanjiClickDictionary = { title: selection.title, kind };
-    }
+  if (Object.hasOwn(options, "kanjiClickDictionary")) {
+    options.kanjiClickDictionary = normaliseKanjiClickSelection(options.kanjiClickDictionary, dictionaries, groups);
   }
   return options;
 }
@@ -902,6 +907,7 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
         state.dictionaries,
       ),
       state.dictionaries,
+      state.groups,
     );
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
       values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
@@ -1205,7 +1211,7 @@ const WORKER_HANDLERS = {
     }
     const expected = Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, revision + 1]));
     if (!sameJsonValue(backupRevisions(snapshot), expected)) throw new Error("Invalid backup restore revisions.");
-    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
+    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries, snapshot.state.groups))) {
       throw new Error("The backup reader settings refer to unavailable dictionaries.");
     }
     await writeLocalState({
@@ -1499,7 +1505,7 @@ function optionsWriteResult(message, patch, state, storedOptions) {
   const current = { ...projectStoredOptions(storedOptions), revision };
   if (message.baseRevision !== revision) return optionsWriteConflict(message, current);
   const patched = { ...current, ...patch };
-  const options = state === null ? patched : normaliseDictionarySelections(patched, state.dictionaries);
+  const options = state === null ? patched : normaliseDictionarySelections(patched, state.dictionaries, state.groups);
   if (!sameJsonValue(options, { ...storedOptions, revision })) options.revision += 1;
   return checkedOptionsResult(message, { options });
 }
@@ -1681,7 +1687,7 @@ function firstInstallSelections(previousSelections, outcomes, dictionaryState, s
   if (Object.keys(patch).length === 0) return { applied, options: null };
   const revision = optionsRevision(storedOptions);
   const options = normaliseDictionarySelections(
-    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries,
+    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries, dictionaryState?.groups ?? [],
   );
   return { applied, options: sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 } };
 }

@@ -4878,6 +4878,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       { frequencyOrder: "sideways" }, { frequencyDictionary: {} },
       { kanjiClickDictionary: { title: "字", kind: "other" } },
       { kanjiClickDictionary: { title: "", kind: "kanji" } },
+      { kanjiClickDictionary: { kind: "tabGroup", id: "" } },
+      { kanjiClickDictionary: { kind: "tabGroup", title: "kanji-group" } },
     ];
     const rejected = [];
     for (const patch of invalid) {
@@ -4936,6 +4938,33 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && stateCommit.ok === true && pruned.revision === 4 && pruned.scanLength === 16
         && Object.keys(pruned).length === 2,
       JSON.stringify({ missingRevision, sparseUnchanged, empty, absentUnchanged, stateCommit, pruned }));
+    await local.remove("dictionaryState");
+    await local.set({ options: saved.options });
+
+    // A clicked-kanji group reference is a stable ID, like an Image source
+    // group: strict CAS keeps it exactly, a dictionary commit that keeps the
+    // group leaves it alone, and removing the group resets the option.
+    const groupRef = { kind: "tabGroup", id: "kanji-group" };
+    const kanjiGroup = { id: "kanji-group", name: "Kanji", dictionaryIds: [] };
+    const optionsRevision = async () => (await local.get("options")).options.revision;
+    const stateCas = (baseRevision, groups) => send({ target: "hoshidicts-worker", type: "hd_state_cas", baseRevision, dictionaries: [], groups });
+    const groupCreated = await stateCas(0, [kanjiGroup]);
+    const groupWrite = await send(message({ kanjiClickDictionary: { ...groupRef, ignored: true } }, { baseRevision: await optionsRevision() }));
+    const groupRepeat = await send(message({ kanjiClickDictionary: groupRef }, { baseRevision: groupWrite.options?.revision }));
+    const groupRenamed = await stateCas(1, [{ ...kanjiGroup, name: "Kanji dictionaries" }]);
+    const afterRename = (await local.get("options")).options;
+    const groupRemoved = await stateCas(2, []);
+    const afterRemoval = (await local.get("options")).options;
+    const missingGroup = await send(message({ kanjiClickDictionary: { kind: "tabGroup", id: "never-created" } }, { baseRevision: afterRemoval.revision }));
+    check("a clicked-kanji group reference passes strict options CAS, survives group edits and resets with the group's removal",
+      groupCreated.ok === true && groupWrite.ok === true && groupRepeat.ok === true
+        && JSON.stringify(groupWrite.options?.kanjiClickDictionary) === JSON.stringify(groupRef)
+        && groupRepeat.options?.revision === groupWrite.options?.revision
+        && groupRenamed.ok === true && JSON.stringify(afterRename) === JSON.stringify(groupWrite.options)
+        && groupRemoved.ok === true && afterRemoval.kanjiClickDictionary === ""
+        && afterRemoval.revision === groupWrite.options.revision + 1
+        && missingGroup.ok === true && missingGroup.options?.kanjiClickDictionary === "",
+      JSON.stringify({ groupCreated, groupWrite, groupRepeat, groupRenamed, afterRename, groupRemoved, afterRemoval, missingGroup }));
     await local.remove("dictionaryState");
     await local.set({ options: saved.options });
 
@@ -11543,6 +11572,17 @@ async function designPreviewStage() {
       ? { ...entry, displayName: "Unrelated renamed dictionary" } : entry) };
     update();
     kanjiSource &&= query(".gsm-hoshidicts-glossary-card") === kanjiCard;
+    // A group sample shows one card per member behind member tabs, in group order.
+    state = { ...state, revision: 3, groups: [{ id: "kanji-group", name: "Kanji", dictionaryIds: ["second", "first"] }] };
+    options = { ...options, kanjiClickDictionary: { kind: "tabGroup", id: "kanji-group" } };
+    update();
+    kanjiSource &&= JSON.stringify([...popup.querySelectorAll('[role="tab"]')].map(tab => tab.textContent))
+      === JSON.stringify(["All", "Second", "Unrelated renamed dictionary"])
+      && JSON.stringify([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map(title => title.title))
+        === JSON.stringify(["Second", "First"])
+      && popup.textContent.includes("ショク · ジキ") && popup.textContent.includes("sample single-kanji entry")
+      && query("form") === kanjiNote;
+    state = { ...state, revision: 4, groups: [] };
     options = { ...options, kanjiClickDictionary: { title: "Second", kind: "kanji" } };
     update();
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
@@ -15533,6 +15573,85 @@ async function contentNoteStage() {
     return outcomes;
   }
 
+  async function kanjiGroupCase() {
+    const outcomes = {};
+    const packages = [
+      genericPackage({ id: "terms-a", title: "Terms A", path: "/dicts/Terms A" }),
+      genericPackage({ id: "native-b", title: "Native B", path: "/dicts/Native B", termCount: 0, kanjiCount: 1 }),
+      genericPackage({ id: "terms-c", title: "Terms C", path: "/dicts/Terms C" }),
+      genericPackage({ id: "native-d", title: "Native D", path: "/dicts/Native D", termCount: 0, kanjiCount: 1 }),
+    ];
+    const groupState = (revision, dictionaryIds) => ({ schemaVersion: 1, revision, dictionaries: packages,
+      groups: [{ id: "kanji-group", name: "Kanji", dictionaryIds }] });
+    const nativeEntry = (dictionary) => ({ dictionary, onyomi: "ショク", kunyomi: "", tags: "", definitions: ["eat"], stats: [] });
+    const harness = await createHarness({ kind: "tabGroup", id: "kanji-group" });
+    const pendingLookup = (dictionary) => {
+      const index = harness.pending.findIndex(({ request }) =>
+        request.type === "hd_lookup_dictionary" && request.dictionary === dictionary);
+      return index < 0 ? null : harness.pending.splice(index, 1)[0];
+    };
+    const issued = (start) => harness.sent.slice(start)
+      .filter((request) => ["hd_kanji", "hd_lookup_dictionary"].includes(request.type))
+      .map((request) => request.dictionary ?? request.type);
+    try {
+      harness.emitState(groupState(2, ["terms-a", "native-b", "terms-c"]));
+      await harness.initialLookup();
+      const start = harness.sent.length;
+      const clicked = harness.driver.showKanji("食");
+      const fanOut = issued(start);
+      // Replies land out of group order; the merged view still follows the group,
+      // and a native entry outside the group stays out of it.
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [harness.term("食", "Terms C")] });
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native D"), nativeEntry("Native B")] } });
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [harness.term("食", "Terms A")] });
+      await clicked;
+      const render = harness.render();
+      const nativeGlossary = render.kind === "terms" ? JSON.parse(render.results[1]?.term.glossaries[0]?.glossary ?? "null") : null;
+      outcomes["a clicked-kanji group asks every member at once and renders merged results as ordered member tabs"] =
+        JSON.stringify(fanOut) === JSON.stringify(["hd_kanji", "Terms A", "Terms C"])
+        && render.kind === "terms"
+        && JSON.stringify(render.results.map((result) => [result.term.expression, result.term.reading,
+          result.term.glossaries.map((glossary) => glossary.dictionary)]))
+          === JSON.stringify([["食", "よみ", ["Terms A", "Terms C"]], ["食", "", ["Native B"]]])
+        && nativeGlossary?.[0]?.type === "structured-content"
+        && JSON.stringify(nativeGlossary).includes("ショク") && JSON.stringify(nativeGlossary).includes("eat")
+        && JSON.stringify(render.context.dictionaryTabScope) === JSON.stringify(["Terms A", "Native B", "Terms C"])
+        && typeof render.context.onBack === "function";
+      await render.context.onBack();
+
+      // A group that misses everywhere falls back to the automatic native
+      // entries the fan-out already returned.
+      const missStart = harness.sent.length;
+      const missed = harness.driver.showKanji("食");
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [] });
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [] });
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native D")] } });
+      await missed;
+      outcomes["a clicked-kanji group that misses everywhere falls back to automatic native kanji without another request"] =
+        harness.render().kind === "kanji"
+        && JSON.stringify(harness.render().value.entries.map((entry) => entry.dictionary)) === JSON.stringify(["Native D"])
+        && JSON.stringify(issued(missStart)) === JSON.stringify(["hd_kanji", "Terms A", "Terms C"]);
+      await harness.render().context.onBack();
+
+      // A term-only group defers the native fallback until every member misses.
+      harness.emitState(groupState(3, ["terms-c", "terms-a"]));
+      const termsStart = harness.sent.length;
+      const termsOnly = harness.driver.showKanji("食");
+      const eager = issued(termsStart);
+      harness.reply(pendingLookup("Terms A"), { dictionaryCount: 4, results: [] });
+      harness.reply(pendingLookup("Terms C"), { dictionaryCount: 4, results: [] });
+      await harness.settle();
+      harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [nativeEntry("Native B")] } });
+      await termsOnly;
+      outcomes["a term-only clicked-kanji group asks for native kanji only after every member misses"] =
+        JSON.stringify(eager) === JSON.stringify(["Terms C", "Terms A"])
+        && JSON.stringify(issued(termsStart)) === JSON.stringify(["Terms C", "Terms A", "hd_kanji"])
+        && harness.render().kind === "kanji"
+        && harness.render().value.entries[0].dictionary === "Native B";
+    } finally { harness.close(); }
+    return outcomes;
+  }
+
   async function eventFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -19476,7 +19595,7 @@ async function contentNoteStage() {
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
       ...await frequencyDefinitionBlurCase() },
-    kanjiNavigation: await kanjiNavigationCase(),
+    kanjiNavigation: { ...await kanjiNavigationCase(), ...await kanjiGroupCase() },
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
@@ -20068,6 +20187,49 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
     ]), JSON.stringify(inheritedProjections));
+  // A clicked-kanji group compares its members side by side: every member with
+  // an entry is its own tab in group order, replacing the group and favourite
+  // tabs, and a native kanji entry renders as one structured card.
+  const nativeEntry = kanji.entries[0];
+  const scopeSelections = [];
+  view.renderResults([{ ...noteResults[0], term: { ...noteResults[0].term, expression: kanji.character, reading: "",
+    glossaries: [
+      { dictionary: "Dictionary B", glossary: JSON.stringify(["a term member's single-kanji entry"]) },
+      { dictionary: nativeEntry.dictionary, glossary: HDPopup.kanjiEntryGlossary(nativeEntry) },
+    ] } }], candidate, { ...tabContext, expandAll: true,
+    dictionaryTabScope: ["Missing", nativeEntry.dictionary, "Dictionary B"],
+    onDictionaryTabSelected(selection) { scopeSelections.push(selection); } });
+  const scopeTabs = () => [...popup.querySelectorAll('[role="tab"]')].map((tab) => [tab.textContent, { ...tab.dataset }]);
+  const allScopeTabs = scopeTabs();
+  popup.querySelector(`[role="tab"][data-dictionary="${nativeEntry.dictionary}"]`)?.click();
+  const nativeCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
+  const nativeContent = nativeCard?.querySelector(".gsm-hoshidicts-glossary-content");
+  const nativeCardState = {
+    cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map((title) => title.title),
+    structured: nativeContent?.classList.contains("structured-content"),
+    readings: [...nativeContent?.querySelectorAll("[data-sc-content=reading]") ?? []].map((node) => node.textContent),
+    tags: nativeContent?.querySelector("[data-sc-content=tags]")?.textContent,
+    meanings: [...nativeContent?.querySelectorAll("ol > li") ?? []].map((item) => item.textContent),
+    details: [...nativeContent?.querySelectorAll("details table tr") ?? []]
+      .map((row) => [...row.cells].map((cell) => cell.textContent)),
+    summary: nativeContent?.querySelector("details > summary")?.textContent,
+  };
+  // The live presentation update keeps the scope: a renamed group cannot bring
+  // the ordinary group tabs back or drop the selected member.
+  view.updateDictionaryPresentation({ ...tabContext, dictionaryTabGroups: [
+    { id: "scoped", name: "Renamed", dictionaries: [nativeEntry.dictionary, "Dictionary B"] }] });
+  check("a clicked-kanji group renders each contributing member as an ordered tab and native entries as structured cards",
+    JSON.stringify(allScopeTabs) === JSON.stringify([
+      ["All", {}], [nativeEntry.dictionary, { dictionary: nativeEntry.dictionary }], ["Favourite B", { dictionary: "Dictionary B" }],
+    ])
+      && JSON.stringify(scopeTabs()) === JSON.stringify(allScopeTabs)
+      && JSON.stringify(scopeSelections) === JSON.stringify([null, { dictionary: nativeEntry.dictionary }])
+      && JSON.stringify(nativeCardState) === JSON.stringify({
+        cards: [nativeEntry.dictionary], structured: true,
+        readings: ["On ショク · ジキ", "Kun く.う · た.べる"], tags: "jouyou grade2", meanings: ["food", "eat", "meal"],
+        details: nativeEntry.stats.map(({ name, value }) => [name, value]), summary: "Details",
+      }),
+    JSON.stringify({ allScopeTabs, afterUpdate: scopeTabs(), scopeSelections, nativeCardState }));
   const selectedTabs = [];
   view.renderResults(noteResults, candidate, {
     dictionaryPresentation: [{ title: "Dictionary B", displayName: "Favourite B", favorite: true }],

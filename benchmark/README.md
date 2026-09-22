@@ -151,7 +151,19 @@ after clicking a kanji when a term dictionary is selected. It pins Bee's
 Ultimate Kanji Dictionary by byte length and SHA-256, uses three fresh profiles
 by default, measures both immediately after import and after a complete Chrome
 restart, and interleaves ordinary `hd_lookup` controls. Every selected reply
-must be semantically identical to the ordinary reply for the same character.
+must be semantically identical to the ordinary reply's cards for Bee's for the
+same character.
+
+It also measures a clicked-kanji **group of three**: Bee's beside two in-memory
+members from `test/make-fixture.mjs`'s `kanjiGroupFixture()`, one kanji-bank
+dictionary and one more term dictionary, both answering every query character.
+The three archives import as one Settings batch and the group is created
+through the worker's dictionary CAS. `groupMs` times the content script's
+fan-out for that group, one `hd_kanji` and two `hd_lookup_dictionary` requests
+dispatched and awaited together on the page clock, and checks every member's
+reply; `groupToSelectedMedianRatio` compares its median with the single
+selected lookup. Like the single case, it excludes click dispatch and popup
+rendering.
 
 ```bash
 export HACHIDORI_KANJI_ARCHIVE=/absolute/path/to/bees-ultimate-kanji-dictionary.zip
@@ -160,11 +172,12 @@ HACHIDORI_KANJI_QUIET=1 node benchmark/kanji-click.mjs
 
 Override the repeated work with `HACHIDORI_KANJI_SAMPLES` and
 `HACHIDORI_KANJI_PASSES`. Set `HACHIDORI_BENCH_REPO` to benchmark another
-Hachidori checkout with the same harness during an A/B comparison. The result
-includes exact revisions, an extension-tree hash, archive and Chrome identities,
-host details, first-request timings, and steady p50/p95 timings. Like the
-general lookup benchmark, it deliberately excludes hover delay, click dispatch,
-and popup rendering.
+Hachidori checkout with the same harness during an A/B comparison, and
+`HACHIDORI_ALLOW_NO_SANDBOX=1` where sandboxed Chrome cannot start. The result
+includes exact revisions, an extension-tree hash, archive, member fixture and
+Chrome identities, host details, first-request timings, and steady p50/p95
+timings. Like the general lookup benchmark, it deliberately excludes hover
+delay, click dispatch, and popup rendering.
 
 ## Tiny deterministic acceptance run
 
