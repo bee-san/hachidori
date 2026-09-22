@@ -5099,18 +5099,6 @@ const RECOMMENDED_DICTIONARIES = [
     revision: "2026.09.10",
     capabilities: ["term"],
   },
-  {
-    sourceId: "sankoku8-eng",
-    name: "Sankoku 8 English",
-    publisherUrl: "https://github.com/shoui520/sankoku8-eng",
-    downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip",
-    indexUrl: null,
-    githubRepositoryId: "1371843420",
-    requiredCapability: "term",
-    title: "sankoku8-gpt-5.6-luna",
-    revision: "sankoku8-gpt-5.6-luna",
-    capabilities: ["term"],
-  },
 ];
 
 function checkRecommendedDictionaries() {
@@ -5149,7 +5137,7 @@ function checkRecommendedDictionaries() {
   const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
-    "the catalogue names exactly six trusted recommendations and their publishers",
+    "the catalogue names exactly five trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
@@ -8993,15 +8981,15 @@ async function main() {
       // The scenario injects exactly two failures: jmnedict fails to download and
       // the kanji dictionary fails to import. The rest succeed.
       && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, true, false, false, false])
+        === JSON.stringify([false, true, true, false, false])
       && recommendedSettings.partial.state
         === `Finished ${RECOMMENDED_DICTIONARIES.length} of ${RECOMMENDED_DICTIONARIES.length}`
-          + " recommended dictionaries — 4 imported, 2 failed."
+          + " recommended dictionaries — 3 imported, 2 failed."
       && recommendedSettings.starterHiddenAfterFirst === false
       && recommendedSettings.partial.starterHidden === false
       && recommendedSettings.partial.retryHidden === false
       && JSON.stringify(recommendedSettings.partial.sourceIds)
-        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"])
+        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
@@ -10067,7 +10055,7 @@ async function startupPageStage() {
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]]);
+        ["bees-ultimate-grammar-dictionary", "Already installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").focus();
@@ -10080,7 +10068,7 @@ async function startupPageStage() {
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
       && status().textContent === "Installing default dictionaries…";
@@ -10119,7 +10107,7 @@ async function startupPageStage() {
     const failureView = heading() === "Some dictionaries could not be installed"
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
       && document.getElementById("setup-countdown-label") === null && installs().length === 2;
 

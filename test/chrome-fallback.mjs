@@ -120,7 +120,7 @@ function launch() {
 }
 
 // Accepting Start setup begins the first-run dictionary run inside the fallback
-// engine. Its four catalogue downloads are answered 503 on the offscreen
+// engine. Its five catalogue downloads are answered 503 on the offscreen
 // target's Fetch domain, so nothing reaches the network and the library the
 // assertions below inspect stays empty until the fixture import.
 const setupArchiveRequests = [];

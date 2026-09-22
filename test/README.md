@@ -641,7 +641,7 @@ What it proves, in order:
    MDD media and stylesheet answer `hd_media` and `hd_styles`, the `/.hdw-mdx`
    staging directory is gone afterwards, and a ZIP import carrying resources
    is refused before staging. The recommendation stage separately
-   pins the four catalogue entries and publisher links, download/import phases,
+   pins the five catalogue entries and publisher links, download/import phases,
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
 4. **Managed dictionary updates.** Manual checks cover every managed package,
@@ -1819,7 +1819,7 @@ launches the same fallback build against the retained profile. Both launches
 must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
 fixture and custom-dictionary lookups, restore the revisioned source and fixed
 package, and leave OPFS empty. The fresh profile also starts the first-run
-dictionary run inside the fallback engine; its four catalogue downloads are
+dictionary run inside the fallback engine; its five catalogue downloads are
 answered 503 on the offscreen target so nothing reaches the network, the run
 must record one failed outcome per source before the fixture import shares the
 same engine lock, and the relaunch must neither reseed the setup record nor
