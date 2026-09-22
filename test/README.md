@@ -28,7 +28,7 @@ HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
 ```
 
-`test/tooling/package-lock.json` locks jsdom **30.0.1**, Puppeteer **25.10.0**,
+`test/tooling/package-lock.json` locks jsdom **30.1.1**, Puppeteer **25.10.0**,
 the browser installer **3.2.2**, web-ext **10.6.0**, and the geckodriver
 downloader **6.1.1** (with geckodriver **0.36.0**), plus their transitive
 dependencies. The small
@@ -938,7 +938,7 @@ it in `test/tooling`. Direct commands can also use an external dependency tree:
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$CACHE_ROOT/hachidori-e2e"
 cd "$CACHE_ROOT/hachidori-e2e"
-npm install --save-exact jsdom@30.0.1 puppeteer-core@25.10.0 @puppeteer/browsers@3.2.2
+npm install --save-exact jsdom@30.1.1 puppeteer-core@25.10.0 @puppeteer/browsers@3.2.2
 ./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
