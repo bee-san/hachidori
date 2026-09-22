@@ -51,6 +51,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
+import { LIBRARY_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -260,6 +261,7 @@ const PLANNED = [
   "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
+  LIBRARY_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,
@@ -8779,6 +8781,8 @@ async function main() {
     enableExtensions: true,
     dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
+    // Keep real scrollbar geometry for the Library navigation regression.
+    ignoreDefaultArgs: ["--hide-scrollbars"],
     userDataDir: PROFILE,
     args: [
       "--no-sandbox",
@@ -10319,6 +10323,7 @@ async function main() {
 
   await showSettingsSection(page, "dictionaries");
   await page.setViewport({ width: 1280, height: 900 });
+  await checkLibraryNavigation(browser, page.url().split("#")[0], check);
   const libraryFirst = await page.evaluate(() => {
     window.scrollTo(0, 0);
     const row = document.querySelector("#dict-list .dict-row");
