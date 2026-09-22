@@ -11004,7 +11004,7 @@ async function sourceHighlightStage() {
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
   const candidate = id => {
     const element = document.getElementById(id);
-    return { sourceElements: [element], sentence: element.textContent, matchOffset: id === "a" ? 1 : 0 };
+    return { sourceElements: [element], sourceText: element.textContent, sourceOffset: id === "a" ? 1 : 0 };
   };
   const visits = { a: 0, b: 0 };
   const createWalker = document.createTreeWalker.bind(document);
@@ -11045,7 +11045,7 @@ async function sourceHighlightStage() {
     shadow.append(nested);
     left.append(host);
     document.body.append(left, right);
-    a.apply({ sourceElements: [nested], sentence: "読む", matchOffset: 0 }, "読む");
+    a.apply({ sourceElements: [nested], sourceText: "読む", sourceOffset: 0 }, "読む");
     right.append(host);
     await settle();
     host.remove();
@@ -11065,7 +11065,7 @@ async function sourceHighlightStage() {
     suspendSource.textContent = "食べる";
     document.body.append(suspendSource);
     const suspendScope = highlighter.scope("suspend");
-    const suspendCandidate = { sourceElements: [suspendSource], sentence: suspendSource.textContent, matchOffset: 0 };
+    const suspendCandidate = { sourceElements: [suspendSource], sourceText: suspendSource.textContent, sourceOffset: 0 };
     suspendScope.apply(suspendCandidate, "食べる");
     const publishedBefore = texts() === "食べる";
     const releaseFirst = highlighter.suspend();
@@ -11089,11 +11089,11 @@ async function sourceHighlightStage() {
     });
     document.body.append(...boxes);
     const boxedScope = highlighter.scope("boxed");
-    boxedScope.apply({ sourceElements: boxes.map((box) => box.firstChild), sentence: "食べた", matchOffset: 1 }, "べた");
+    boxedScope.apply({ sourceElements: boxes.map((box) => box.firstChild), sourceText: "食べた", sourceOffset: 1 }, "べた");
     const boxedRanges = ranges();
     const boxedPainted = texts() === "べ|た" && boxedRanges.length === 2
       && boxedRanges.every((range, index) => range.startContainer === boxes[index + 1].firstChild);
-    // Text changing elsewhere in the sentence leaves the match in place.
+    // Text changing elsewhere in the sources leaves the match in place.
     boxes[0].firstChild.data = "俺";
     await settle();
     const boxedNeighbour = texts() === "べ|た";
@@ -11150,12 +11150,12 @@ async function sourceHighlightFallbackCase(window) {
     return queryDocument(selector, ...args);
   };
   try {
-    first.apply({ sourceElements: [source], sentence: source.textContent, matchOffset: 1 }, "食べる");
+    first.apply({ sourceElements: [source], sourceText: source.textContent, sourceOffset: 1 }, "食べる");
     await frame();
     const mark = marks()[0];
     const exact = marks().length === 1 && mark.style.left === "100px" && mark.style.top === "200px"
       && mark.style.width === "50px" && mark.style.height === "16px";
-    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    second.apply({ sourceElements: [otherSource], sourceText: otherSource.textContent, sourceOffset: 0 }, "Keep");
     await frame();
     const both = marks().length === 2 && marks()[0] === mark;
     const beforeClear = geometryReads;
@@ -11188,7 +11188,7 @@ async function sourceHighlightFallbackCase(window) {
     await frame();
     delete document.getAnimations;
     delete sibling.getAnimations;
-    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    second.apply({ sourceElements: [otherSource], sourceText: otherSource.textContent, sourceOffset: 0 }, "Keep");
     await frame();
     source.style.visibility = "hidden";
     second.clear(); // Preserve pending source geometry before reconnecting observers.
@@ -11246,7 +11246,7 @@ async function sourceHighlightFallbackCase(window) {
     const adoptedBefore = document.adoptedStyleSheets;
     document.adoptedStyleSheets = [pageStyle.sheet, sharedStyle.sheet];
     otherShadow.adoptedStyleSheets = [pageStyle.sheet];
-    second.apply({ sourceElements: [shadowSource], sentence: "Keep", matchOffset: 0 }, "Keep");
+    second.apply({ sourceElements: [shadowSource], sourceText: "Keep", sourceOffset: 0 }, "Keep");
     await frame();
     await frame();
     const beforeSheetSwitch = coverScans;
@@ -11270,7 +11270,7 @@ async function sourceHighlightFallbackCase(window) {
     let documentRoot;
     try {
       view.renderKanji({ character: "食", entries: [] },
-        { sourceElements: [source], sentence: source.textContent, matchOffset: 1 });
+        { sourceElements: [source], sourceText: source.textContent, sourceOffset: 1 });
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
@@ -14255,6 +14255,7 @@ async function staleKanjiResponseStage(invalidation) {
   window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "sentence.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -14596,6 +14597,7 @@ async function contentNoteStage() {
     window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "sentence.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "audio-content.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
     window.eval(instrumented);
@@ -14618,7 +14620,10 @@ async function contentNoteStage() {
         text,
       })),
       sentence: "\u98df\u3079\u305f",
+      sentenceSource: "\u98df\u3079\u305f",
       sourceElements: [anchor],
+      sourceOffset: 0,
+      sourceText: "\u98df\u3079\u305f",
       vertical: false,
     };
 
@@ -17559,9 +17564,11 @@ async function contentNoteStage() {
       && harness.take("hd_lookup") === null && rendered?.results.length === 1
       && rendered.results[0].term.expression === "食べる"
       && rendered.candidate.query === query
-      && rendered.candidate.sentence === " 食べたかった "
-      && rendered.candidate.matchOffset === 1
-      && rendered.candidate.sourceElements.map((node) => node.textContent).join("") === rendered.candidate.sentence;
+      && rendered.candidate.sentence === "食べたかった"
+      && rendered.candidate.matchOffset === 0
+      && rendered.candidate.sourceText === " 食べたかった "
+      && rendered.candidate.sourceOffset === 1
+      && rendered.candidate.sourceElements.map((node) => node.textContent).join("") === rendered.candidate.sourceText;
     harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: false });
     const raw = " hello\n world ";
     const rawRequest = selectText(raw);
@@ -17768,8 +17775,8 @@ async function contentNoteStage() {
     };
     block.innerHTML = '<b style="display:inline">食</b><i style="display:inline">べたかった</i>。';
     const inline = scan(block.firstChild.firstChild);
-    const crossedInline = inline?.query === "食べたかった。"
-      && inline.sourceElements.map((element) => element.textContent).join("") === inline.sentence;
+    const crossedInline = inline?.query === "食べたかった。" && inline.sentence === "食べたかった。"
+      && inline.sourceElements.map((element) => element.textContent).join("") === inline.sourceText;
     block.textContent = "hello world";
     const japaneseOnly = scan(block.firstChild) === null;
     harness.emitOptions({ onlyScanJapaneseText: false });
@@ -17849,13 +17856,16 @@ async function contentNoteStage() {
     const boxed = scan(glyphSpan.firstChild);
     const { scanLength } = window.HDReaderOptions.DEFAULT_OPTIONS;
     const boxedFirst = boxed?.query === Array.from(firstText).slice(2, 2 + scanLength).join("") && boxed.matchOffset === 2
-      && boxed.sentence === firstText && boxed.anchor === glyphSpan
+      && boxed.sentence === firstText && boxed.sourceOffset === 2 && boxed.anchor === glyphSpan
       && boxed.sourceElements.every((node) => node.nodeType === 3 && firstBlock.contains(node))
-      && boxed.sourceElements.map((node) => node.textContent).join("") === boxed.sentence
+      && boxed.sourceElements.map((node) => node.textContent).join("") === boxed.sourceText
+      && boxed.sourceText === firstText
       && boxed.vertical === false;
     const boxedSecond = scan(secondBlock.children[1].firstChild);
-    const boxedNext = boxedSecond?.query === "あ、やっぱり……」" && boxedSecond.sentence === "「あ、やっぱり……」"
-      && boxedSecond.matchOffset === 1 && boxedSecond.vertical === true;
+    // The flex glyph boxes are one line; the quotes around it are not part of its sentence.
+    const boxedNext = boxedSecond?.query === "あ、やっぱり……」" && boxedSecond.sentence === "あ、やっぱり……"
+      && boxedSecond.matchOffset === 0 && boxedSecond.sourceText === "「あ、やっぱり……」"
+      && boxedSecond.sourceOffset === 1 && boxedSecond.vertical === true;
     firstBlock.remove();
     secondBlock.remove();
     for (const separator of separators) separator.remove();
@@ -17870,6 +17880,96 @@ async function contentNoteStage() {
       "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
         (boxedFirst && boxedNext) || { boxed: boxed && { ...boxed, anchor: null, anchorRange: null, scanEntries: null, sourceElements: boxed.sourceElements.length },
           boxedSecond: boxedSecond && { query: boxedSecond.query, sentence: boxedSecond.sentence, matchOffset: boxedSecond.matchOffset, vertical: boxedSecond.vertical } },
+    };
+  }
+
+  // Yomitan's sentence around the match (issue #292): a texthooker line, one
+  // sentence out of several in a text node, and the refinement to the matched
+  // word once the engine has answered.
+  async function sentenceBoundaryCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const scan = (node, offset = 0) => {
+      document.elementFromPoint = () => node.parentElement;
+      window.Range.prototype.getClientRects = function () {
+        return this.startOffset === offset ? [{ left: 0, top: 0, right: 1, bottom: 1 }] : [];
+      };
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      return harness.driver.resolveCandidate(0, 0);
+    };
+    const summary = (candidate) => candidate && {
+      sentence: candidate.sentence, matchOffset: candidate.matchOffset,
+      sourceText: candidate.sourceText, sourceOffset: candidate.sourceOffset,
+    };
+    // texthooker-ui (PR #79): every hooked line is a <p> followed by a "\n" text
+    // node inside a flex <main>; a milestone <div> sits between two lines with
+    // no whitespace node before the next <p>.
+    const main = document.createElement("main");
+    main.style.cssText = "display:flex;flex-direction:column";
+    main.innerHTML = '\n<p>一行目の文</p>\n<p id="hooked">二行目に食べたかった言葉</p>\n'
+      + '<div style="display:flex"><div style="display:flex"><span>Milestone 1000 (1024)</span></div></div>'
+      + '<p id="after">三行目の文</p>\n';
+    document.body.append(main);
+    const hooked = summary(scan(document.getElementById("hooked").firstChild, 4));
+    const hookedLine = JSON.stringify(hooked) === JSON.stringify({
+      sentence: "二行目に食べたかった言葉", matchOffset: 4, sourceText: "二行目に食べたかった言葉", sourceOffset: 4,
+    });
+    const after = summary(scan(document.getElementById("after").firstChild));
+    const afterMilestone = JSON.stringify(after) === JSON.stringify({
+      sentence: "三行目の文", matchOffset: 0, sourceText: "三行目の文", sourceOffset: 0,
+    });
+    main.remove();
+
+    const block = document.createElement("div");
+    block.textContent = "一つ目の文だ。二つ目に食べたかった。三つ目の文だ。";
+    document.body.append(block);
+    const middle = summary(scan(block.firstChild, 11));
+    const middleSentence = JSON.stringify(middle) === JSON.stringify({
+      sentence: "二つ目に食べたかった。", matchOffset: 4, sourceText: block.textContent, sourceOffset: 11,
+    });
+    // A source line wrap inside a paragraph renders as one line, so it becomes
+    // spaces inside the sentence rather than its end; a preserved line break
+    // ends it. jsdom reports the longhand only when it is declared.
+    block.innerHTML = "<span>一つ目の文だ。二つ目に食べ\n  たかった。三つ目の文だ。</span>";
+    const wrapped = summary(scan(block.firstChild.firstChild, 11));
+    const wrappedSentence = wrapped?.sentence === "二つ目に食べ   たかった。" && wrapped.matchOffset === 4
+      && wrapped.sourceText === block.textContent;
+    block.firstChild.style.setProperty("white-space-collapse", "preserve");
+    const preserved = summary(scan(block.firstChild.firstChild, 11));
+    const preservedSentence = preserved?.sentence === "二つ目に食べ" && preserved.matchOffset === 4;
+    block.remove();
+
+    // The reply extends the match from the hovered glyph to the matched word:
+    // the dots of U.S.A. are not sentence terminators once it is the match.
+    harness.emitOptions({ onlyScanJapaneseText: false });
+    const paragraph = document.createElement("p");
+    paragraph.textContent = "The U.S.A. is big. Yes.";
+    document.body.append(paragraph);
+    const candidate = scan(paragraph.firstChild, 4);
+    const provisional = summary(candidate);
+    const operation = harness.driver.runLookup(candidate);
+    const request = harness.take("hd_lookup");
+    if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("U.S.A.")] });
+    await operation;
+    await harness.settle();
+    const rendered = harness.render();
+    const refined = provisional?.sentence === "The U." && provisional.matchOffset === 4
+      && request?.request.text.startsWith("U.S.A. is big.") && rendered?.kind === "terms"
+      && rendered.candidate.sentence === "The U.S.A. is big." && rendered.candidate.matchOffset === 4
+      && rendered.candidate.sourceText === paragraph.textContent && rendered.candidate.sourceOffset === 4;
+    paragraph.remove();
+    harness.close();
+    return {
+      "a texthooker line is its own sentence, whether a newline node or only a block edge separates it from its neighbours":
+        (hookedLine && afterMilestone) || { hooked, after },
+      "one sentence of a text node is cut at its terminators while collapsed line wraps stay inside it":
+        (middleSentence && wrappedSentence && preservedSentence) || { middle, wrapped, preserved },
+      "the engine reply refines the sentence around the whole matched word":
+        refined || { provisional, request: request?.request.text, rendered: summary(rendered?.candidate) },
     };
   }
 
@@ -19378,7 +19478,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),

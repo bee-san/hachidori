@@ -22,7 +22,7 @@ function fixture(t) {
   } } };
   window.HDPopup = { normaliseDictionaryTab: value => value };
   window.HDCapture = { release(pin) { if (pin?.token) released.push(pin.token); } };
-  for (const file of ["reader-options.js", "dictionary-group-state.js", "lookup-stats-identity.js"]) window.eval(extension(file));
+  for (const file of ["reader-options.js", "dictionary-group-state.js", "lookup-stats-identity.js", "sentence.js"]) window.eval(extension(file));
   // Expose the production request/lifetime entrypoints; only UI creation and the
   // browser message transport are replaced. Every stale/error branch runs as shipped.
   const marker = "  start();\n}());";
@@ -35,7 +35,8 @@ function fixture(t) {
       uiPromise = Promise.resolve();
       currentGeneration = 1;
       const anchor = document.querySelector("p");
-      const candidate = { anchor, query: "猫", sentence: "猫", matchOffset: 0,
+      const candidate = { anchor, query: "猫", sentence: "猫", matchOffset: 0, sentenceSource: "猫",
+        sourceElements: [anchor], sourceText: "猫", sourceOffset: 0,
         scanEntries: [{ node: anchor.firstChild, offset: 0, sourceLength: 1, text: "猫" }] };
       highlighter = { clearAll() {}, refresh() {} };
       for (const level of [rootLevel, createLevelState(1)]) {

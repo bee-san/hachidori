@@ -76,6 +76,10 @@ the service worker and both engine runtimes run the same code.
   are the comparison and size rules the transaction boundaries share.
 - **Lookup statistics.** `lookup-stats-identity.js`, a classic script so the
   content script can use it, and `lookup-stats.js`.
+- **Sentences.** `sentence.js` is Yomitan's sentence extraction: the content
+  script cuts the text around a match at terminators, matching quotes and line
+  breaks before it becomes the Anki sentence, the Note prefill and the `%s`
+  of a custom link.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
   `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note

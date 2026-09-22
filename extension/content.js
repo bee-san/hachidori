@@ -3,11 +3,13 @@
  * Hachidori.
  *
  * Rendering lives in render/popup.js and render/glossary.js (ported from
- * GameSentenceMiner PR #549); this file only produces the
- * {sentence, matchOffset, sourceElements} candidates those modules consume and
- * drives the request/reply state machine. Like Yomitan's default layout-unaware
- * scan, page text is read in DOM order regardless of how it is boxed, and a
- * pointer candidate's sources are the text nodes around the hovered glyph.
+ * GameSentenceMiner PR #549); this file only produces the candidates those
+ * modules consume and drives the request/reply state machine. A candidate
+ * carries its raw page text as {sourceElements, sourceText, sourceOffset} for
+ * the highlighter and Yomitan's sentence around the match as {sentence,
+ * matchOffset} for Anki notes. Like Yomitan's default layout-unaware scan,
+ * page text is read in DOM order regardless of how it is boxed, and a pointer
+ * candidate's sources are the text nodes around the hovered glyph.
  *
  * Copyright (C) 2026 Manhhao
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -45,6 +47,7 @@
   } = globalThis.HDReaderOptions;
   const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
   const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
+  const { SENTENCE_SCAN_EXTENT, extractSentence } = globalThis.HDSentence;
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
@@ -60,9 +63,6 @@
   const MAX_MEDIA_CONCURRENT_REQUESTS = 4;
   const MAX_MEDIA_PENDING_REQUESTS = 128;
   const MEDIA_REQUEST_TIMEOUT_MS = 4000;
-  // Yomitan's sentence scan extent: how far the sentence reaches to either
-  // side of the hovered glyph before a newline cuts it.
-  const SENTENCE_SCAN_EXTENT = 200;
 
   // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
   // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
@@ -106,6 +106,10 @@
   // A whitespace-only text node with a line break separates blocks in the
   // source ("</p>\n<p>", an overlay's block separator) and ends the sentence.
   const BLOCK_SEPARATOR_PATTERN = /^\s*[\n\r]\s*$/u;
+  // So does the edge of the paragraph, list item or table cell the text is laid
+  // out in. Flex, grid and positioned boxes are not in this set: an overlay
+  // boxes every glyph of one line in its own positioned flex span.
+  const BLOCK_DISPLAYS = new Set(["block", "list-item", "table-cell"]);
   const PRESERVED_WHITESPACE = new Set([
     "pre",
     "pre-wrap",
@@ -574,15 +578,25 @@
     );
   }
 
+  /** The nearest ancestor laid out as its own block, or null above the root. */
+  function blockAncestor(element, styleCache) {
+    for (let current = element; current; current = current.parentElement) {
+      if (BLOCK_DISPLAYS.has(computedStyleFor(current, styleCache).display)) return current;
+    }
+    return null;
+  }
+
   /**
    * The text nodes around `startNode`, in document order, that make up the
-   * sentence: neighbours up to SENTENCE_SCAN_EXTENT characters each way, cut at
-   * a block separator, a line break or a control. They are the candidate's
-   * `sourceElements`, so `sourceElements.map(textContent).join("") === sentence`
-   * holds by construction, which is what createSourceHighlighter requires.
+   * sentence's source: neighbours up to SENTENCE_SCAN_EXTENT characters each
+   * way, cut at a block separator, another block, a line break or a control.
+   * They are the candidate's `sourceElements`, so
+   * `sourceElements.map(textContent).join("") === sourceText` holds by
+   * construction, which is what createSourceHighlighter requires.
    */
   function collectSentenceSources(startNode, root, styleCache) {
     const sources = [startNode];
+    const block = blockAncestor(startNode.parentElement, styleCache);
     for (const backward of [true, false]) {
       const walker = createScanWalker(root, styleCache);
       walker.currentNode = startNode;
@@ -593,6 +607,7 @@
           !node ||
           node.nodeType !== Node.TEXT_NODE ||
           BLOCK_SEPARATOR_PATTERN.test(node.nodeValue || "") ||
+          blockAncestor(node.parentElement, styleCache) !== block ||
           // The walker stops at a control going forward but reaches its text
           // first going backward.
           (backward && isEditingElement(node.parentElement?.closest(EDITING_SELECTOR)))
@@ -604,6 +619,50 @@
       }
     }
     return sources;
+  }
+
+  /**
+   * `sourceText` with the segment breaks CSS collapses replaced by spaces, so
+   * that only a rendered line break ends the sentence: a paragraph wrapped
+   * across source lines is one line on the page.
+   */
+  function sentenceSource(sources, styleCache) {
+    let text = "";
+    const append = (node) => {
+      const raw = node.nodeValue || "";
+      text += preservesWhitespace(node.parentElement, styleCache) ? raw : raw.replace(/[\n\r]/gu, " ");
+    };
+    for (const source of sources) {
+      if (source.nodeType === Node.TEXT_NODE) {
+        append(source);
+        continue;
+      }
+      const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) append(walker.currentNode);
+    }
+    return text;
+  }
+
+  /**
+   * Completes a candidate with its raw source coordinates and its sentence.
+   * `sourceText` is the text of `sourceElements` and `sourceOffset` the match's
+   * start in it; the highlighter and rawMatchedText work there. `sentence` and
+   * `matchOffset` are Yomitan's sentence around the match, which Anki notes,
+   * the Note form and custom links receive. Until the engine answers, the match
+   * is the hovered glyph; the reply refines it to the matched word.
+   */
+  function withSentence(candidate, sourceOffset, matchLength, styleCache) {
+    candidate.sourceText = candidate.sourceElements.map((source) => source.textContent || "").join("");
+    candidate.sourceOffset = sourceOffset;
+    candidate.sentenceSource = sentenceSource(candidate.sourceElements, styleCache);
+    return refineSentence(candidate, matchLength);
+  }
+
+  function refineSentence(candidate, matchLength) {
+    const { sentence, matchOffset } = extractSentence(candidate.sentenceSource, candidate.sourceOffset, matchLength);
+    candidate.sentence = sentence;
+    candidate.matchOffset = matchOffset;
+    return candidate;
   }
 
   function withinSources(sources, node) {
@@ -807,10 +866,10 @@
 
     const first = entries[0];
     const sourceElements = collectSentenceSources(first.node, document.body, styleCache);
-    let matchOffset;
+    let matchStart;
     let anchorRange;
     try {
-      matchOffset = sourceOffset(sourceElements, first.node, first.offset);
+      matchStart = sourceOffset(sourceElements, first.node, first.offset);
       anchorRange = document.createRange();
       anchorRange.setStart(first.node, first.offset);
       anchorRange.setEnd(
@@ -823,18 +882,16 @@
     } catch {
       return null;
     }
-    return {
+    return withSentence({
       anchor: first.node.parentElement,
       anchorRange,
-      matchOffset,
       query,
       scanEntries: entries,
-      sentence: sourceElements.map((source) => source.nodeValue || "").join(""),
       sourceDepth: -1,
       sourceElements,
       vertical: computedStyleFor(first.node.parentElement, styleCache)
         .writingMode.startsWith("vertical"),
-    };
+    }, matchStart, first.sourceLength, styleCache);
   }
 
   function resolveDefinitionCandidate(clientX, clientY, level) {
@@ -909,10 +966,10 @@
       return null;
     }
     const first = entries[0];
-    let matchOffset;
+    let matchStart;
     let anchorRange;
     try {
-      matchOffset = rangeOffsetWithin(lookupText, first.node, first.offset);
+      matchStart = rangeOffsetWithin(lookupText, first.node, first.offset);
       anchorRange = document.createRange();
       anchorRange.setStart(first.node, first.offset);
       anchorRange.setEnd(
@@ -925,18 +982,16 @@
     } catch {
       return null;
     }
-    return {
+    return withSentence({
       anchor: lookupText,
       anchorRange,
-      matchOffset,
       query,
       scanEntries: entries,
-      sentence: lookupText.textContent || "",
       sourceDepth: level.depth,
       sourceElements: [lookupText],
       vertical: computedStyleFor(lookupText, styleCache)
         .writingMode.startsWith("vertical"),
-    };
+    }, matchStart, first.sourceLength, styleCache);
   }
 
   function selectionBoundaryElement(node) {
@@ -972,18 +1027,17 @@
       if (isEditingElement(control) && range.intersectsNode(control)
           && hasVisibleContent(control, styleCache)) return null;
     }
-    return {
+    const rawSelectionText = range.toString();
+    return withSentence({
       anchor,
       anchorRange: range.cloneRange(),
       exactSelection: true,
-      matchOffset: rangeOffsetWithin(anchor, range.startContainer, range.startOffset),
       query,
-      rawSelectionText: range.toString(),
-      sentence: anchor.textContent || "",
+      rawSelectionText,
       sourceDepth: -1,
       sourceElements: [anchor],
       vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
-    };
+    }, rangeOffsetWithin(anchor, range.startContainer, range.startOffset), rawSelectionText.length, styleCache);
   }
 
   // Yomitan's Scan text at selection: an ordinary scan from the selection's
@@ -1064,14 +1118,14 @@
 
   /**
    * Translates a matched length in scan coordinates into the raw substring of
-   * `candidate.sentence` that covers it. createSourceHighlighter measures the
-   * highlight as `matchedText.length` from `candidate.matchOffset` inside
-   * `sentence`, and `sentence` still carries the rt text and uncollapsed
+   * `candidate.sourceText` that covers it. createSourceHighlighter measures the
+   * highlight as `matchedText.length` from `candidate.sourceOffset` inside
+   * `sourceText`, and `sourceText` still carries the rt text and uncollapsed
    * whitespace the scan dropped -- so the engine's own `matched` string is the
    * wrong length whenever the word crosses ruby or a line wrap.
    */
   function rawMatchedText(candidate, matched) {
-    if (candidate.linkAnchor) return candidate.sentence;
+    if (candidate.linkAnchor) return candidate.sourceText;
     if (candidate.exactSelection === true) return candidate.rawSelectionText;
     const last = matchedScanEnd(candidate, matched);
     if (!last) {
@@ -1086,8 +1140,8 @@
           last.offset + last.sourceLength
         )
       );
-      if (end > candidate.matchOffset) {
-        return candidate.sentence.slice(candidate.matchOffset, end);
+      if (end > candidate.sourceOffset) {
+        return candidate.sourceText.slice(candidate.sourceOffset, end);
       }
     } catch {
       // Fall through to the engine's own string.
@@ -2773,6 +2827,9 @@
     if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
+      // The sentence was cut around the hovered glyph; a terminator inside the
+      // matched word (U.S.A.) must not end it.
+      refineSentence(request.candidate, request.highlightText.length);
     }
     return renderTerms(
       results,
@@ -2892,12 +2949,11 @@
     if (!anchor?.isConnected || !query) {
       return;
     }
-    // Link text is an anchor/highlight, never the query's page-scan offsets.
-    const candidate = {
-      anchor, linkAnchor: true, query, matchOffset: 0,
-      sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
-      vertical: false,
-    };
+    // Link text is an anchor/highlight, never the query's page-scan offsets,
+    // and the whole of it is the match, so it is its own sentence.
+    const candidate = withSentence({
+      anchor, linkAnchor: true, query, sourceElements: [anchor], sourceDepth: level.depth, vertical: false,
+    }, 0, (anchor.textContent || "").length, new Map());
     return openChildLookup(candidate, level, {
       focusChild,
       primaryReading,

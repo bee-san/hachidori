@@ -82,10 +82,16 @@ HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js 
 ```
 
 Use `HACHIDORI_HOVER_SAMPLES` to change the profile count. Each profile also times
-1,000 production `resolveCandidate()` calls at a glyph and 1,000 at a point in
-the tile's padding, 20 CSS pixels left of the text, after 100 excluded warmups
-per point. `session-*-hit-testing.json` records coordinates, duration and accepted
+1,000 production `resolveCandidate()` calls at a glyph, 1,000 at a point in
+the tile's padding, 20 CSS pixels left of the text, and 1,000 at a word 600
+characters into a 5,000-character paragraph held in one text node with no
+sentence terminator, after 100 excluded warmups per point.
+`session-*-hit-testing.json` records coordinates, duration and accepted
 candidate counts, so a padding miss can be distinguished from a false lookup.
+Its `sentenceCost` times the sentence extraction alone on that long-paragraph
+candidate at extents from 50 to 800 characters, and on synthetic texts of
+1,000 to 50,000 characters at the default extent, so its cost can be checked
+to grow with the extent rather than the paragraph.
 Those synchronous timings exclude pointer scheduling, messaging, engine lookup
 and rendering; the normal hover timings include them. The three-entry fixture
 isolates scanning and rendering overhead and does not represent a large library.

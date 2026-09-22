@@ -1219,9 +1219,9 @@
     }
 
     // Each source's text when its candidate was first painted. A pointer scan's
-    // sources are the sentence's text nodes, so the match is located through
-    // this snapshot and only the sources it covers have to be unchanged; text
-    // edited elsewhere in the sentence leaves the highlight in place.
+    // sources are the text nodes around the match, so the match is located
+    // through this snapshot and only the sources it covers have to be unchanged;
+    // text edited elsewhere in those nodes leaves the highlight in place.
     const sourceSnapshots = new WeakMap();
 
     function createMatchRanges(candidate, matchedText) {
@@ -1229,8 +1229,8 @@
       if (matchLength <= 0 || !Array.isArray(candidate.sourceElements)) {
         return null;
       }
-      const startOffset = Math.max(0, candidate.matchOffset);
-      const endOffset = Math.min(candidate.sentence.length, startOffset + matchLength);
+      const startOffset = Math.max(0, candidate.sourceOffset);
+      const endOffset = Math.min(candidate.sourceText.length, startOffset + matchLength);
       if (endOffset <= startOffset) {
         return null;
       }
@@ -1243,7 +1243,7 @@
       let snapshot = sourceSnapshots.get(candidate);
       if (!snapshot) {
         snapshot = sourceElements.map((element) => element.textContent || "");
-        if (snapshot.join("") !== candidate.sentence) {
+        if (snapshot.join("") !== candidate.sourceText) {
           return null;
         }
         sourceSnapshots.set(candidate, snapshot);

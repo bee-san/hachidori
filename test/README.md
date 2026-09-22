@@ -79,6 +79,18 @@ the jsdom override above. The Chrome suite mines the fixture dictionary and
 renders both graph styles offline in light, dark and styled cards, including
 the hollow-particle regression for card CSS that colors mora dots by radius.
 
+`node --test test/sentence.test.mjs` is the table-driven contract of
+`extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
+end, enclosing quotes and brackets left out, nested and preceding pairs kept
+whole, line breaks, the extent cap, surrogate pairs at the window's edge, the
+match itself never scanned, and the offset feeding the Anki `{sentence}` field.
+It needs no jsdom. The extension smoke suite scans texthooker-ui's line DOM, one
+sentence of a three-sentence text node and a collapsed line wrap through the
+real content script, and checks that the engine reply refines the sentence
+around the whole matched word. The Chrome suite mines a texthooker line through
+the real popup and the fake AnkiConnect and requires that one line as the note's
+sentence.
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
