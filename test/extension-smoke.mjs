@@ -11572,6 +11572,17 @@ async function designPreviewStage() {
       ? { ...entry, displayName: "Unrelated renamed dictionary" } : entry) };
     update();
     kanjiSource &&= query(".gsm-hoshidicts-glossary-card") === kanjiCard;
+    // A group sample shows one card per member behind member tabs, in group order.
+    state = { ...state, revision: 3, groups: [{ id: "kanji-group", name: "Kanji", dictionaryIds: ["second", "first"] }] };
+    options = { ...options, kanjiClickDictionary: { kind: "tabGroup", id: "kanji-group" } };
+    update();
+    kanjiSource &&= JSON.stringify([...popup.querySelectorAll('[role="tab"]')].map(tab => tab.textContent))
+      === JSON.stringify(["All", "Second", "Unrelated renamed dictionary"])
+      && JSON.stringify([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map(title => title.title))
+        === JSON.stringify(["Second", "First"])
+      && popup.textContent.includes("ショク · ジキ") && popup.textContent.includes("sample single-kanji entry")
+      && query("form") === kanjiNote;
+    state = { ...state, revision: 4, groups: [] };
     options = { ...options, kanjiClickDictionary: { title: "Second", kind: "kanji" } };
     update();
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
