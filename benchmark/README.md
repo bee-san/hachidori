@@ -204,7 +204,8 @@ before measuring. After each size's moves it waits beyond the two-second idle
 window and checks the saved lookup order again. A separate `phase: "idle"` raw
 row records whether the engine generation restarted; those waits are excluded
 from move latency and must be reported separately. `--expect-path order-only`
-also requires that no deferred worker rebuild occurs.
+also requires that no deferred worker rebuild occurs. The [issue #285 measurements](../docs/dictionary-reorder-benchmark.md)
+record the settled baseline, paired results and timing limitations.
 
 ### Recommended installation
 

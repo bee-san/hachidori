@@ -605,7 +605,9 @@ What it proves, in order:
    The real-Chrome dictionary-management scenario checks immediate rank and DOM
    movement before acknowledgement, five rapid moves becoming one commit, a
    later in-flight move surviving an older reply, and two Settings pages
-   producing one winning CAS and an explicit rollback in the losing page.
+   producing one winning CAS and an explicit rollback in the losing page. It also
+   checks that the unsaved-work guard covers both the debounce and held replies
+   and clears after the reorder settles.
    Frequency controls cover paired source/direction patches, explicit Auto,
    preserved manual choices, unavailable selections, and focused native drafts
    across newer options and capability changes. Alias writes retain frequency

@@ -2490,7 +2490,8 @@ its revision only through this page's preceding successful commit; another
 Settings page's winning write causes a visible failure and restores its saved
 state, including metadata and membership changes. Pending order drafts are
 discarded on failure, while deliberate focus, selection and open Details survive
-successful moves.
+successful moves. The existing unsaved-work warning also covers the debounce
+and in-flight dictionary commits when leaving Settings.
 
 ## Runtime messages
 
