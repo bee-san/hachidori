@@ -880,7 +880,7 @@ function normaliseDictionaryState(value) {
 // records: the stored state and the page produce the same values in a
 // different key sequence, so JSON.stringify order cannot decide equality.
 function canonicalDictionary(entry) {
-  return JSON.stringify(entry, Object.keys(entry).sort());
+  return JSON.stringify(entry, Object.keys(entry).sort((a, b) => a.localeCompare(b)));
 }
 
 function adoptDictionaryState(value) {
