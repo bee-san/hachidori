@@ -1257,6 +1257,21 @@ ordering, and native/term clicked-kanji preview switching without losing Note
 or Back state. Unrelated dictionary changes retain the current clicked-kanji
 cards and disclosures.
 
+`chrome-settings-first-frame.mjs` proves the first *visible* Settings frame
+already uses the saved theme (#296): a settled-state read cannot see the
+browser-preference palette that used to paint before `settings.js` read the
+options. A `requestAnimationFrame` probe registered before any page script
+records every frame from document creation, and a CDP screencast started
+before navigation supplies the painted frames; each is sampled at gutter
+pixels and must be either the browser's blank canvas or the saved theme. Light
+under a dark preference, the dark default under a light one, AUTO and a custom
+palette are covered, plus a held storage read (the page stays blank, then
+paints the saved theme) and a failed read (the page releases to the preference
+palette instead of staying blank, and `settings.js` still applies the saved
+theme). `HACHIDORI_SETTINGS_THEME_FILMSTRIP` saves the four ordinary
+scenarios' frames as a captioned filmstrip PNG; the launcher writes it to
+`test/tmp/ci/settings-theme-first-frame.png`.
+
 Three custom-CSS assertions check immediate unsaved preview, character count,
 persisted source and scoped reset; real CSS cascade after built-in and late
 dictionary styles, invalid-rule handling and page isolation; and live parent/

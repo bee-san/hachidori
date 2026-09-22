@@ -117,6 +117,8 @@ the service worker and both engine runtimes run the same code.
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
+  `settings-theme.js` is the classic script in its `<head>` that applies the
+  saved theme before the first paint, ahead of the `settings.js` module;
   `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `memory-settings.js`
   the Advanced → Memory readout and each Library row's *In memory* line;
