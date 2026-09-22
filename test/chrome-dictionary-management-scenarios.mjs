@@ -1,7 +1,94 @@
 import assert from "node:assert/strict";
 import { buildTitledZip } from "./make-fixture.mjs";
 
-export async function dictionaryManagementScenarios(page) {
+export const REORDER_CHECKS = [
+  "dictionary moves render before the engine reply and coalesce across rapid and in-flight edits",
+  "concurrent Settings reorders reject the stale CAS and restore the authoritative list",
+];
+
+async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState, waitOrder, check }) {
+  const initial = await readState();
+  await page.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+    const probe = { requests: [], delivered: false, original };
+    globalThis.reorderProbe = probe;
+    chrome.runtime.sendMessage = async (...args) => {
+      if (args[0]?.type !== "hd_apply_state") return original(...args);
+      probe.requests.push(args[0]);
+      const reply = await original(...args);
+      if (probe.requests.length === 1) await new Promise(done => { probe.release = done; });
+      probe.delivered = true;
+      return reply;
+    };
+  });
+  const immediate = await page.evaluate(({ id, rank }) => {
+    const row = document.querySelector(`[data-dictionary-id="${id}"]`);
+    const before = performance.now();
+    for (const direction of ["up", "down", "up", "down", "up"]) row.querySelector(`.dict-${direction}`).click();
+    return { rank: row.querySelector(".dict-rank").textContent,
+      position: [...row.parentElement.children].indexOf(row) + 1,
+      enabled: !row.querySelector(".dict-up").disabled, delivered: reorderProbe.delivered,
+      milliseconds: performance.now() - before, expected: rank };
+  }, { id: gamma.id, rank: prefix.length + 2 });
+  assert.equal(immediate.rank, String(immediate.expected), JSON.stringify(immediate));
+  assert.equal(immediate.position, immediate.expected);
+  assert.equal(immediate.enabled, true);
+  assert.equal(immediate.delivered, false);
+  await page.waitForFunction(() => typeof reorderProbe.release === "function");
+  assert.equal(await page.evaluate(() => reorderProbe.requests.length), 1, "five rapid moves send one final order");
+  // The storage event already arrived, but its older order must not replace a
+  // newer optimistic move while the first acknowledgement is held.
+  await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-up`).click(), gamma.id);
+  assert.equal(await page.$eval(`[data-dictionary-id="${gamma.id}"] .dict-rank`, el => el.textContent), String(prefix.length + 1));
+  if (process.env.HACHIDORI_REORDER_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_REORDER_SCREENSHOT });
+  await page.evaluate(() => reorderProbe.release());
+  const firstTwo = initial.dictionaries.slice(prefix.length, prefix.length + 2).map(entry => entry.id);
+  await waitOrder([...prefix, gamma.id, ...firstTwo]);
+  assert.equal(await page.evaluate(() => reorderProbe.requests.length), 2, "an in-flight move follows the first commit exactly once");
+  check(REORDER_CHECKS[0], true);
+
+  const other = await page.browser().newPage();
+  try {
+    await other.goto(page.url());
+    await other.waitForSelector(`[data-dictionary-id="${beta.id}"] .dict-up`);
+    await page.bringToFront();
+    await page.evaluate(() => {
+      const original = reorderProbe.original;
+      chrome.runtime.sendMessage = async (...args) => {
+        if (args[0]?.type === "hd_apply_state") await new Promise(done => { reorderProbe.send = done; });
+        return original(...args);
+      };
+    });
+    await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-down`).click(), gamma.id);
+    await page.waitForFunction(() => typeof reorderProbe.send === "function");
+    await other.bringToFront();
+    await other.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-up`).click(), beta.id);
+    await other.waitForFunction(async id => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      return dictionaryState.dictionaries.at(-2).id === id;
+    }, {}, beta.id);
+    const winner = await readState();
+    await page.bringToFront();
+    await page.evaluate(() => reorderProbe.send());
+    await page.waitForFunction(() => document.getElementById("engine-status").textContent.includes("Dictionary change was not saved"));
+    await waitOrder(winner.dictionaries.map(entry => entry.id));
+    assert.deepEqual((await readState()).dictionaries, winner.dictionaries);
+    check(REORDER_CHECKS[1], true);
+  } finally {
+    await other.close();
+    await page.evaluate(() => { chrome.runtime.sendMessage = reorderProbe.original; });
+  }
+  const restored = await page.evaluate(async dictionaries => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_apply_state",
+      baseRevision: dictionaryState.revision, dictionaries });
+  }, initial.dictionaries);
+  assert.equal(restored.ok, true);
+  await page.reload();
+  await waitOrder(initial.dictionaries.map(entry => entry.id));
+}
+
+export async function dictionaryManagementScenarios(page, check = () => {}) {
   const click = async selector => {
     const point = await page.$eval(selector, element => {
       element.scrollIntoView({ block: "center", behavior: "instant" });
@@ -45,6 +132,7 @@ export async function dictionaryManagementScenarios(page) {
   const prefix = initial.dictionaries.map(entry => entry.id);
   const [alpha, beta, gamma] = imported;
   await waitOrder([...prefix, alpha.id, beta.id, gamma.id]);
+  await optimisticReorderScenarios(page, { gamma, beta, prefix, readState, waitOrder, check });
   await click(`${row(alpha)} .dict-details-toggle`);
   await click(`${row(alpha)} .dict-selected`);
   await click(`${row(alpha)} .dict-down`);

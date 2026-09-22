@@ -5645,6 +5645,7 @@ async function main() {
     "error",
     "failedDictionaries",
     "generation",
+    "lastLoadPath",
     "loading",
     "lowMemory",
     "ok",
