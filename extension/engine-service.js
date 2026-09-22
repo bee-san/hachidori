@@ -1149,6 +1149,19 @@ function reorderLoadedDictionaries(dictionaries) {
   return ordered.reduce((count, dictionary) => count + kindsForPackage(dictionary).length, 0);
 }
 
+// A disabled package must also prove it loads before it is committed: add and
+// drop each one in place rather than rebuilding the whole set around it.
+// Returns false when the engine refused a drop.
+function verifyDisabledPackagesInPlace(dictionaries) {
+  for (const dictionary of dictionaries) {
+    if (dictionary.enabled !== false || isVerified(dictionary)) continue;
+    addDictionaries([dictionary], true);
+    if (!engine.ccall("hdw_remove_dict", "number", ["string"], [dictionary.path])) return false;
+    verifiedPackages.set(dictionary.path, packageKinds(dictionary));
+  }
+  return true;
+}
+
 // Returns the loaded count, or null when the change needs the full rebuild.
 // A package this session has not loaded yet (a freshly imported generation) is
 // added here too: hdw_add_dict is the verification, and a failure falls back to
@@ -1171,14 +1184,7 @@ function loadDictionariesIncrementally(dictionaries) {
       addDictionaries([dictionary], true);
       present.set(dictionary.path, packageKinds(dictionary));
     }
-    // A disabled package must also prove it loads before it is committed; add
-    // and drop it in place rather than rebuilding the whole set around it.
-    for (const dictionary of dictionaries) {
-      if (dictionary.enabled !== false || isVerified(dictionary)) continue;
-      addDictionaries([dictionary], true);
-      if (!engine.ccall("hdw_remove_dict", "number", ["string"], [dictionary.path])) return null;
-      verifiedPackages.set(dictionary.path, packageKinds(dictionary));
-    }
+    if (!verifyDisabledPackagesInPlace(dictionaries)) return null;
     const order = JSON.stringify(enabled.map((dictionary) => dictionary.path));
     if (!engine.ccall("hdw_set_dict_order", "number", ["string"], [order])) return null;
   } catch (error) {
