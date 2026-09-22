@@ -33,8 +33,14 @@ export async function checkDictionaryRankLayout(page, observe) {
         const title = row.querySelector(".dict-title");
         const text = document.createRange();
         text.selectNodeContents(rank);
+        const style = getComputedStyle(rank);
         return {
           position, rank: rank.textContent,
+          font: style.font,
+          minWidth: style.minWidth,
+          rankWidth: rank.getBoundingClientRect().width,
+          textWidth: text.getBoundingClientRect().width,
+          columns: getComputedStyle(row).gridTemplateColumns,
           rankRight: rank.getBoundingClientRect().right,
           textRight: text.getBoundingClientRect().right,
           titleLeft: title.getBoundingClientRect().left,
@@ -77,8 +83,10 @@ export async function checkDictionaryRankLayout(page, observe) {
         assert.ok(Math.max(sample.rankRight, sample.textRight) + 4 <= sample.titleLeft,
           `rank ${sample.position} needs at least 4px before its title: ${JSON.stringify(sample)}`);
       }
-      assert.equal(new Set(geometry.samples.map(sample => sample.titleLeft)).size, 1, "titles must share one gutter");
-      assert.equal(new Set(geometry.samples.map(sample => sample.textRight)).size, 1, "rank digits must align at the end");
+      assert.equal(new Set(geometry.samples.map(sample => sample.titleLeft)).size, 1,
+        `titles must share one gutter: ${JSON.stringify(geometry)}`);
+      assert.equal(new Set(geometry.samples.map(sample => sample.textRight)).size, 1,
+        `rank digits must align at the end: ${JSON.stringify(geometry)}`);
     }
     return { before, after, reused };
   } finally {
