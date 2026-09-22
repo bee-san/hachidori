@@ -2,9 +2,14 @@
 
 export const LIBRARY_NAVIGATION_CHECK = "Library tabs keep their geometry when the page scrollbar appears or disappears";
 
-export async function checkLibraryNavigation(browser, settingsUrl, check) {
-  const page = await browser.newPage();
+export async function checkLibraryNavigation(puppeteer, launchOptions, settingsUrl, check) {
+  // Keep native scrollbars local to this regression: popup scenarios rely on
+  // Puppeteer's usual hidden scrollbars. Omit the shared suite's profile too.
+  const browser = await puppeteer.launch({ ...launchOptions, userDataDir: undefined,
+    ignoreDefaultArgs: ["--hide-scrollbars"] });
   try {
+    await browser.waitForTarget(target => target.url() === new URL("background.js", settingsUrl).href);
+    const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 900 });
     await page.goto(`${settingsUrl}#dictionaries`);
     await page.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"));
@@ -32,6 +37,6 @@ export async function checkLibraryNavigation(browser, settingsUrl, check) {
           && row.left === measurements[0].left && row.width === measurements[0].width),
       JSON.stringify(measurements));
   } finally {
-    await page.close();
+    await browser.close();
   }
 }

@@ -8781,8 +8781,6 @@ async function main() {
     enableExtensions: true,
     dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
-    // Keep real scrollbar geometry for the Library navigation regression.
-    ignoreDefaultArgs: ["--hide-scrollbars"],
     userDataDir: PROFILE,
     args: [
       "--no-sandbox",
@@ -10323,7 +10321,7 @@ async function main() {
 
   await showSettingsSection(page, "dictionaries");
   await page.setViewport({ width: 1280, height: 900 });
-  await checkLibraryNavigation(browser, page.url().split("#")[0], check);
+  await checkLibraryNavigation(launch, launchArgs, page.url().split("#")[0], check);
   const libraryFirst = await page.evaluate(() => {
     window.scrollTo(0, 0);
     const row = document.querySelector("#dict-list .dict-row");

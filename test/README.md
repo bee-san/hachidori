@@ -947,9 +947,10 @@ for.
 
 ## `chrome-e2e.mjs`
 
-The Library navigation regression keeps real page scrollbars enabled (removing
-Puppeteer's `--hide-scrollbars` default). It makes Dictionaries tall, visits all
-five Library tabs and returns, requires both overflowing and short panels and a
+The Library navigation regression launches its own temporary browser with real
+scrollbars (removing Puppeteer's `--hide-scrollbars` default). It makes
+Dictionaries tall, visits all five Library tabs and returns, requires both
+overflowing and short panels and a
 nonzero scrollbar width, and checks identical navigation left/width values with
 zero tolerance. It also checks the root's computed `scrollbar-gutter: stable`.
 
