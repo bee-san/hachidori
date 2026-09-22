@@ -87,8 +87,11 @@ the tile's padding, 20 CSS pixels left of the text, after 100 excluded warmups
 per point. `session-*-hit-testing.json` records coordinates, duration and accepted
 candidate counts, so a padding miss can be distinguished from a false lookup.
 Those synchronous timings exclude pointer scheduling, messaging, engine lookup
-and rendering; the normal hover timings include them. The two-entry fixture
+and rendering; the normal hover timings include them. The three-entry fixture
 isolates scanning and rendering overhead and does not represent a large library.
+Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
+elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
+summaries are on, so those timings include the summary walkers.
 
 ## Linked-browser relay latency
 
