@@ -719,6 +719,12 @@ What it proves, in order:
    wrappers, nulls, and ignored tags remain in that budget. Rejections name the
    attempted value and limit; shallow structural paths stay exact while deep
    paths elide their middle and never copy glossary payload text.
+   `structuredContentDeepFixture()` keeps a 大辞泉-shaped の entry nested past
+   the former depth limit with placeholder text: its deepest gloss must reach
+   the rendered glossary, the compact summary (every gloss in order, without
+   labels or examples) and the Anki `glossary`/`glossary-plain` fields, and
+   wrapper depths 1 through 500 never fail on depth alone; only the preview's
+   512-value budget ends a summary.
    Deferred, tab, Show more, and storage-projection node-limit failures omit
    only their definition body, including among 100 dictionary cards. Unexpected
    renderer failures still reach the current view owner. Replaced, cleared,
@@ -1298,6 +1304,9 @@ exact limit and structural path. The warning retains both contextual and cause
 stacks, stays bounded without glossary payload text, and the next healthy hover
 recovers. `HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT` and
 `HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT` capture the two visible states.
+The `structuredContentDeepFixture()` archive then imports through real WASM;
+hovering its の shows the deepest gloss with no failure notice and a compact
+summary of real text, before the package is removed again.
 
 The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The

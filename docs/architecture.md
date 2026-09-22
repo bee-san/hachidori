@@ -1248,9 +1248,12 @@ space child, then the original Japanese; the summary keeps the English half when
 the text after that space opens with Japanese. Senses holding only a ⇨ reference
 and index entries that are bare sub-headword links contribute nothing, so the
 summary moves on as it does for Jitendex redirects.
-Existing display/traversal bounds
-apply only to this preview; native results and complete glossary bytes remain
-unchanged. Default-off rendering does not run summary extraction.
+The preview's discovery, text collection and leading-image walkers use explicit
+frames like the glossary renderer, so a deeply nested entry (大辞泉 nests の
+more than 25 values deep) still yields its text; each walk inspects at most 512
+values, and that budget is the preview's only traversal bound. Existing display
+bounds apply only to this preview; native results and complete glossary bytes
+remain unchanged. Default-off rendering does not run summary extraction.
 
 A 36px thumbnail uses the existing safe image renderer and generation/dictionary
 media resolver. Summary and full-card consumers share one in-flight request and
