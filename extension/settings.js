@@ -876,15 +876,25 @@ function normaliseDictionaryState(value) {
   };
 }
 
+// A key-order-independent serialization for comparing two normalised package
+// records: the stored state and the page produce the same values in a
+// different key sequence, so JSON.stringify order cannot decide equality.
+function canonicalDictionary(entry) {
+  return JSON.stringify(entry, Object.keys(entry).sort());
+}
+
 function adoptDictionaryState(value) {
   const next = normaliseDictionaryState(value);
   if (next.revision <= dictionaryState.revision) {
     return false;
   }
   if (reorderReuseHint) {
-    const previous = new Map(dictionaries.map(entry => [entry.id, JSON.stringify(entry)]));
+    // Only the order may differ for a reuse: compare each package's fields
+    // independent of key order, since the stored state and the page normalise
+    // the same values in a different key sequence.
+    const previous = new Map(dictionaries.map(entry => [entry.id, canonicalDictionary(entry)]));
     reorderReuseHint = next.dictionaries.length === previous.size
-      && next.dictionaries.every(entry => previous.get(entry.id) === JSON.stringify(entry));
+      && next.dictionaries.every(entry => previous.get(entry.id) === canonicalDictionary(entry));
   }
   dictionaryState = next;
   // Keep the newest local order visible across storage events and older
@@ -2525,9 +2535,9 @@ function queueDictionaryStateChange(update, reloadEngine, { orderBatch = null } 
   const run = dictionaryCommitTail.then(async previous => {
     if (orderBatch === null) return commitDictionaryStateChange(update, reloadEngine);
     await orderBatch.ready;
-    if (orderBatch.epoch !== dictionaryReorderEpoch || (queuedBehindChange && !previous?.ok)) {
-      return { ok: false, state: dictionaryState };
-    }
+    // Every failed commit bumps the epoch after restoring the authoritative
+    // state, so a batch drafted before that rollback is stale and dropped.
+    if (orderBatch.epoch !== dictionaryReorderEpoch) return { ok: false, state: dictionaryState };
     // Advance only through this page's preceding successful commit. Adopting
     // another page's revision here would silently overwrite its winning order.
     return commitDictionaryStateChange(update, reloadEngine, queuedBehindChange ? previous.state : baseState);
