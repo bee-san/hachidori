@@ -83,12 +83,12 @@ const MEDIA_TYPES = {
   svg: "image/svg+xml",
 };
 
-// Status and release do not touch the loaded dictionaries. Imports stage their
+// Status, memory and release do not touch the loaded dictionaries. Imports stage their
 // network body outside the engine queue, then explicitly serialize only the
 // revalidation and native installation phase.
 // Dictionary download reads serve an archive already built by its open, so
 // they need no turn in the queue either.
-const UNQUEUED = new Set(["hd_status", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
+const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -115,8 +115,11 @@ let started = false;
 let createHoshidicts = null;
 let storageBackend = "memory";
 // The single-thread runtime imports on one thread with small read-ahead; the
-// pthread runtimes (OPFS or IDBFS) use the bounded worker group.
+// pthread runtimes (OPFS or IDBFS) use the bounded worker group, unless the
+// low-memory worker asks for one thread too.
 let lowRam = true;
+// Whether this is a pthread runtime, as hd_status reports it.
+let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
 let reportProgress = null;
 // Download progress is a transient UI signal; one report per chunk would flood
@@ -131,6 +134,7 @@ export function configureEngineService(request, options = {}) {
   createHoshidicts = options.createHoshidicts;
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
+  threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
 }
 
@@ -1082,6 +1086,8 @@ function resetEngine() {
 
 function trackLoaded(dictionaries) {
   loadedPackages = dictionaries.map((dictionary) => ({
+    id: optionalText(dictionary.id),
+    title: text(dictionary.title),
     path: dictionary.path,
     kinds: packageKinds(dictionary),
   }));
@@ -3143,10 +3149,45 @@ const HANDLERS = {
       failedDictionaries: loadFailures,
       generation,
       storageBackend,
-      threaded: !lowRam,
+      threaded,
+      // Which worker is serving: the low-memory one imports single-threaded
+      // inside the small pool (docs/memory.md).
+      lowMemory: threaded && lowRam,
     };
   },
+
+  // Emscripten's mmap copies each mapped file into linear memory, so a loaded
+  // package's resident bytes are the sizes of the files hoshidicts maps for
+  // it, once per kind it was added as (query.cpp add_dict_ maps the directory
+  // again for every kind). The heap itself never shrinks, so heapBytes also
+  // keeps whatever an import or rebuild peaked at.
+  hd_memory() {
+    requireEngine();
+    const dictionaries = (loadedPackages ?? []).map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      path: entry.path,
+      bytes: mappedBytes(entry.path) * entry.kinds.split(",").length,
+    }));
+    // Growth on an engine pthread reaches this thread's HEAPU8 view only once
+    // some glue touches the heap; a stat does (see writeFileBytes).
+    exists("/dicts");
+    return { heapBytes: engine.HEAPU8.byteLength, dictionaries };
+  },
 };
+
+// The files query.cpp maps when a package loads; dict.zstd is read into a
+// zstd dictionary instead, which holds the same bytes.
+const MAPPED_FILES = ["hash.table", "bloom.filter", "blobs.bin", "media.bin", "media.idx", "scan.idx", "dict.zstd"];
+
+function mappedBytes(path) {
+  let bytes = 0;
+  for (const name of MAPPED_FILES) {
+    const file = `${path}/${name}`;
+    if (exists(file)) bytes += engine.FS.stat(file).size;
+  }
+  return bytes;
+}
 
 function failurePayload(type) {
   switch (type) {

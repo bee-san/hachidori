@@ -149,9 +149,13 @@
     frequencyDictionary: "",
     frequencyOrder: "auto",
     automaticBackupDays: 2,
+    // Recycle the engine worker after dictionary changes and import on one
+    // thread; see docs/memory.md. Not a reader behaviour, so no hotkey toggle.
+    lowMemoryMode: false,
     keybinds: DEFAULT_KEYBINDS,
   };
-  const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS).filter(key => typeof DEFAULT_OPTIONS[key] === "boolean");
+  const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
+    .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && key !== "lowMemoryMode");
   const NUMBER_RANGES = {
     scanLength: [1, 64],
     maxResults: [1, 256],

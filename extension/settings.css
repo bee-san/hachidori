@@ -954,6 +954,7 @@ input[type="checkbox"] {
 .dict-canonical,
 .dict-pinned,
 .dict-metadata,
+.dict-memory,
 .dict-update-status,
 .dict-badge {
   color: var(--text-dim);
@@ -981,7 +982,8 @@ input[type="checkbox"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
 }
-.dict-metadata {
+.dict-metadata,
+.dict-memory {
   flex-basis: 100%;
 }
 .dict-schedule {

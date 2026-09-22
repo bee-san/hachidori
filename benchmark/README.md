@@ -183,6 +183,22 @@ explicitly skipped on other platforms. Its Linux assertions remain unchanged;
 the other framework tests, including the current-account Chrome cache fixture,
 also run on macOS. This does not add non-Linux process metrics to the runner.
 
+## Low memory mode
+
+`low-memory-mode.mjs` alternates fresh-profile samples with
+[Low memory mode](../docs/memory.md) off and on: one archive imported through
+Settings' real file input, the import wall time (file selection to ready
+status), the engine heap (`hd_memory.heapBytes`) and the summed Chrome
+process-tree RSS right after the import settles and, with the mode on, again
+after the worker has been recycled, then the median and p95 of repeated
+`hd_lookup` round trips. Peak import RSS is not sampled; the standard runner
+above does that.
+
+```sh
+node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip --samples 3 \
+  --output benchmark/results/low-memory-mode.json
+```
+
 ## Standard Jitendex + Pixiv Light matrix
 
 The checked-in `jitendex-pixiv-light.json` suite runs Jitendex and Pixiv Light as

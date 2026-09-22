@@ -4479,6 +4479,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     customJavaScript: true,
     localFileAccessPrompt: !overlayMode,
     mediaCapture: !overlayMode,
+    lowMemoryMode: true,
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.chrome.runtime.connect ??= () => ({
@@ -4506,6 +4507,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const experimentalSettings = readFileSync(resolve(EXTENSION, "experimental-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const memorySettings = readFileSync(resolve(EXTENSION, "memory-settings.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -4551,6 +4554,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
+    .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
@@ -4577,7 +4581,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -5600,6 +5604,7 @@ async function main() {
     "failedDictionaries",
     "generation",
     "loading",
+    "lowMemory",
     "ok",
     "ready",
     "requestId",
@@ -5677,6 +5682,40 @@ async function main() {
     [true, { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] }, false],
   );
 
+  // hd_engine_config: the offscreen document reads the engine's own option;
+  // a page cannot, and a change to the stored option is pushed to the document.
+  const engineConfigSender = { id: swChrome.runtime.id, url: swChrome.runtime.getURL("offscreen.html") };
+  const readEngineConfig = (sender) => bus.sendMessage("offscreen-config", {
+    target: "hoshidicts-worker", type: "hd_engine_config", requestId: "engine-config",
+  }, sender);
+  const configFromPage = await readEngineConfig({ id: swChrome.runtime.id, url: swChrome.runtime.getURL("settings.html") });
+  const pushFromPage = await pageChrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_engine_config", lowMemoryMode: true });
+  const configOff = await readEngineConfig(engineConfigSender);
+  const optionsBeforeLowMemory = (await storage.api().local.get("options")).options;
+  const pushesBefore = bus.log.filter((row) => row.type === "hd_engine_config" && row.from === "sw").length;
+  const lowMemoryWrite = await writeReaderOptions(optionsBeforeLowMemory.revision, { lowMemoryMode: true });
+  const enginePushes = () => bus.log.filter((row) => row.type === "hd_engine_config" && row.from === "sw").length;
+  for (let attempt = 0; attempt < 50 && enginePushes() === pushesBefore; attempt += 1) {
+    await new Promise((done) => setTimeout(done, 2));
+  }
+  const configOn = await readEngineConfig(engineConfigSender);
+  // An unrelated option write does not push.
+  const unrelatedWrite = await writeReaderOptions(lowMemoryWrite.options.revision, { scanLength: 20 });
+  await new Promise((done) => setTimeout(done, 20));
+  const pushesAfterUnrelated = enginePushes();
+  check(
+    "hd_engine_config is read by the engine host only and pushed when the option changes",
+    configFromPage?.ok === false
+      && pushFromPage?.ok === false
+      && configOff?.ok === true && configOff.lowMemoryMode === false
+      && lowMemoryWrite.ok === true
+      && configOn?.ok === true && configOn.lowMemoryMode === true
+      && unrelatedWrite.ok === true
+      && pushesAfterUnrelated === pushesBefore + 1,
+    JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, pushesBefore, pushesAfterUnrelated }),
+  );
+  await writeReaderOptions(unrelatedWrite.options.revision, { lowMemoryMode: false, scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
+
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);
   const imported = await request("hd_import", { blobUrl, fileName: "hachidori-fixture.zip", lowRam: false });
@@ -5750,6 +5789,28 @@ async function main() {
   const afterLogicalImport = await request("hd_status");
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
+
+  // hd_memory: the heap, and each loaded package's mapped file bytes once per
+  // native kind it was added as (the fixture package loads under four).
+  const memory = await request("hd_memory");
+  const mappedFileBytes = ["hash.table", "bloom.filter", "blobs.bin", "media.bin", "media.idx", "scan.idx", "dict.zstd"]
+    .reduce((sum, name) => {
+      try { return sum + observedEngine.FS.stat(`${importedPackage.path}/${name}`).size; } catch { return sum; }
+    }, 0);
+  check(
+    "hd_memory reports the heap and each loaded package's mapped bytes",
+    memory.ok === true
+      && Number.isInteger(memory.heapBytes)
+      && memory.heapBytes === observedEngine.HEAPU8.byteLength
+      && memory.dictionaries.length === 1
+      && memory.dictionaries[0].id === importedPackage.id
+      && memory.dictionaries[0].title === importedPackage.title
+      && memory.dictionaries[0].path === importedPackage.path
+      && mappedFileBytes > 0
+      && memory.dictionaries[0].bytes === mappedFileBytes * 4
+      && memory.heapBytes >= memory.dictionaries[0].bytes,
+    JSON.stringify({ memory, mappedFileBytes }),
+  );
 
   // A dictionary with keys longer than the scan length: the import records the
   // longest such key on the package row (from scan.idx), and the same
@@ -9493,6 +9554,7 @@ async function settingsNavigationStage() {
       requests.push(structuredClone(message));
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+      if (message.type === "hd_memory") return { ok: true, heapBytes: 0, dictionaries: [] };
       if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
         semanticRevision: "a".repeat(64), text: "" } };
       if (message.type === "hd_backup_auto_list") {

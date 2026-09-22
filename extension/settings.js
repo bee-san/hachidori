@@ -12,6 +12,7 @@ import { createAnkiTemplateSettingsController } from "./anki-settings.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createExperimentalSettings } from "./experimental-settings.js";
+import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
@@ -184,6 +185,7 @@ let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController;
 let experimentalController;
+let memoryController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
@@ -343,6 +345,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
+  if (activeSection === "advanced") refreshMemorySettings();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
@@ -585,6 +588,30 @@ function renderExperimentalSettings() {
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.
   if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
+}
+
+// Low memory mode recycles the engine worker, so it needs the threaded engine:
+// not Firefox, and not a browser where the offscreen document runs the local
+// engine (hd_status.threaded false). The memory readout stays either way.
+function renderLowMemoryMode() {
+  const available = HOST_CAPABILITIES.lowMemoryMode && lastEngineStatus?.threaded !== false;
+  element("low-memory-mode").hidden = !available;
+  element("opt-low-memory-mode-help").hidden = !available;
+  element("low-memory-mode-unavailable").hidden = available;
+  element("opt-low-memory-mode").checked = options.lowMemoryMode;
+}
+
+function memorySettings() {
+  memoryController ??= createMemorySettings({ document, numberFormat, readMemory: () => send("hd_memory") });
+  return memoryController;
+}
+
+// The readout is asked for on demand, not polled: when Advanced is shown or
+// the engine publishes a new generation while it is shown, and when a Library
+// row's Details opens. Nothing is requested while the Library is being worked
+// on: a rebuilt row shows the last reading.
+function refreshMemorySettings() {
+  void memorySettings().refresh();
 }
 
 // With the MDX dictionaries flag on, the picker and drop zone also take .mdx
@@ -1369,8 +1396,13 @@ async function refreshStatus() {
     scheduleStatusPoll(STATUS_RETRY_MS);
     return;
   }
+  const previousGeneration = lastEngineStatus?.generation;
   lastEngineStatus = reply;
   renderEngineStatus();
+  renderLowMemoryMode();
+  if (activeSection === "advanced" && reply.ready && !reply.loading && reply.generation !== previousGeneration) {
+    refreshMemorySettings();
+  }
   if (!reply.ready || reply.loading) {
     scheduleStatusPoll();
   }
@@ -1746,6 +1778,7 @@ function renderOptions() {
   renderPopupImageSources();
   renderMetadataControls();
   renderExperimentalSettings();
+  renderLowMemoryMode();
   updateDesignPreview();
   updateAudioSettings();
   updateMediaSettings();
@@ -2141,8 +2174,13 @@ function bindDictionaryOrder(row, entry, index) {
 function renderDictionaryRow(template, entry, index) {
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.dictionaryId = entry.id;
-  row.querySelector(".dict-details").open = expandedDictionaryIds.has(entry.id);
-  row.querySelector(".dict-details-toggle").setAttribute("aria-label", `Details for ${entry.title}`);
+  const details = row.querySelector(".dict-details");
+  details.open = expandedDictionaryIds.has(entry.id);
+  const toggle = row.querySelector(".dict-details-toggle");
+  toggle.setAttribute("aria-label", `Details for ${entry.title}`);
+  // A reader opening Details asks for the In memory line; a rebuilt row that
+  // is already open shows the last reading.
+  toggle.addEventListener("click", () => { if (!details.open) refreshMemorySettings(); });
   row.querySelector(".dict-pinned").hidden = !isManagedCustomDictionary(entry);
   row.classList.toggle("is-off", !entry.enabled);
   bindDictionarySelection(row, entry);
@@ -2253,6 +2291,7 @@ function renderDictionaries(reuseRows = false) {
   if (!element("engine-status").classList.contains("is-error")) renderEngineStatus();
   renderDictionarySelection(visible);
   setControlsDisabled(importing);
+  memorySettings().renderRows();
 }
 
 function dictionaryMoveTarget(current, index, move) {
@@ -3228,6 +3267,10 @@ function attachHandlers() {
   });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-low-memory-mode").addEventListener("change", (event) => {
+    options.lowMemoryMode = event.target.checked;
     writeOptions();
   });
   element("opt-audio-autoplay").addEventListener("change", (event) => {

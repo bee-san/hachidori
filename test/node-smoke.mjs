@@ -394,6 +394,41 @@ const DICTIONARY_COUNT = Object.keys(KINDS).length;
 
 // ---------------------------------------------------------------------------
 
+G('memory (mmap emulation keeps every mapped file in the heap)');
+
+// The same files engine-service.js's hd_memory sums. Emscripten's mmap copies
+// each into linear memory once per add_dict, so the four kinds above hold four
+// copies. dict.zstd is read into a zstd dictionary, which holds the same bytes.
+const MAPPED_FILES = ['hash.table', 'bloom.filter', 'blobs.bin', 'media.bin', 'media.idx', 'scan.idx', 'dict.zstd'];
+const mappedBytes = (dir) => MAPPED_FILES.reduce((sum, name) => {
+  try {
+    return sum + M.FS.stat(`${dir}/${name}`).size;
+  } catch {
+    return sum;
+  }
+}, 0);
+// Touch the heap through glue first: a pthread that grew the memory leaves
+// this thread's view stale until then.
+const heapBytes = () => {
+  M.FS.stat('/dicts');
+  return M.HEAPU8.byteLength;
+};
+const fixtureMappedBytes = mappedBytes(DICT_DIR);
+const heapAfterImport = heapBytes();
+console.log(`  mapped bytes per kind: ${fixtureMappedBytes}; heap after import + ${DICTIONARY_COUNT} adds: ${heapAfterImport}`);
+check('the mapped files are the ones the loader opens', () => {
+  ok(fixtureMappedBytes > 0, 'no mapped bytes');
+  for (const name of ['hash.table', 'bloom.filter', 'blobs.bin', 'media.bin', 'media.idx']) {
+    ok(M.FS.stat(`${DICT_DIR}/${name}`).size > 0, `${name} is empty or missing`);
+  }
+});
+check('the heap holds every mapped copy', () => {
+  ok(heapAfterImport >= fixtureMappedBytes * DICTIONARY_COUNT,
+    `heap ${heapAfterImport} < ${DICTIONARY_COUNT} x ${fixtureMappedBytes}`);
+});
+
+// ---------------------------------------------------------------------------
+
 G('hdw_lookup');
 
 const AUTO_OPTIONS = JSON.stringify({ frequencyDictionary: '', frequencyOrder: 'auto', primaryReading: '' });
@@ -826,6 +861,14 @@ check('reset drops every dictionary', () => {
 check('dictionaries can be reloaded from the same MEMFS directory', () => {
   eq(addDict(DICT_DIR, 0), 1, `add_dict after reset: ${lastError()}`);
   eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
+
+// Linear memory never shrinks: the import high-water mark stays for the life
+// of the module, which is what the extension's engine recycling reclaims.
+const heapAfterReload = heapBytes();
+console.log(`  heap after reset + 1 add: ${heapAfterReload} (after import: ${heapAfterImport})`);
+check('the heap keeps the import high-water mark after a reset', () => {
+  ok(heapAfterReload >= heapAfterImport, `heap shrank from ${heapAfterImport} to ${heapAfterReload}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -1565,6 +1608,48 @@ check('large media imports and loads but only fetches up to 4 MiB', () => {
   eq(lastError(), '', 'healthy media error');
   ok(lookup('食べる').results.length > 0, 'dictionary remains usable');
 });
+
+// ---------------------------------------------------------------------------
+
+G('low-memory pool (HACHIDORI_PTHREAD_POOL_SIZE = 2)');
+
+// engine-worker-runtime.js sets this before createHoshidicts for the
+// low-memory worker: one importer thread plus the OPFS proxy. The built glue
+// must read the override, and the low-RAM importer must complete in it. Node
+// grows an exhausted pool on demand (PThread.getNewWorker), so the strict pool
+// (PTHREAD_POOL_SIZE_STRICT=2) is only exercised by the real-Chrome suite.
+if (VARIANT === 'hoshidicts') {
+  console.log('  single-thread runtime has no pool; the low-RAM import path is covered above');
+} else {
+  check('the built glue sizes its pool from the runtime override', () => {
+    ok(readFileSync(MODULE_PATH, 'utf8').includes('globalThis.HACHIDORI_PTHREAD_POOL_SIZE??'), 'override expression missing from the glue');
+  });
+  globalThis.HACHIDORI_PTHREAD_POOL_SIZE = 2;
+  const L = await createHoshidicts();
+  delete globalThis.HACHIDORI_PTHREAD_POOL_SIZE;
+  const lcall = (name, ret, types, args) => L.ccall(name, ret, types, args);
+  L.FS.mkdir('/work');
+  L.FS.writeFile('/work/fixture.zip', buildFixtureZip());
+  L.FS.writeFile('/work/many-banks.zip', buildManyBankZip());
+  check('storage initializes in the small pool', () => {
+    eq(lcall('hdw_init_storage', 'number', ['number'], [0]), 1, lcall('hdw_last_error', 'string', [], []));
+  });
+  const lowReport = JSON.parse(lcall('hdw_import', 'string', ['string', 'string', 'number'], ['/work/fixture.zip', '/dicts', 1]));
+  check('a low-RAM import completes with two pool threads', () => {
+    eq(lowReport.success, true, lowReport.error);
+    eq(lowReport.termCount, EXPECTED.termCount, 'termCount');
+  });
+  const lowManyReport = JSON.parse(lcall('hdw_import', 'string', ['string', 'string', 'number'], ['/work/many-banks.zip', '/dicts', 1]));
+  check('twenty term banks import single-threaded in the small pool', () => {
+    eq(lowManyReport.success, true, lowManyReport.error);
+    eq(lowManyReport.termCount, MANY_BANK_COUNT, 'term count');
+  });
+  check('the small-pool module loads and answers lookups', () => {
+    eq(lcall('hdw_add_dict', 'number', ['string', 'number'], [DICT_DIR, 0]), 1, lcall('hdw_last_error', 'string', [], []));
+    const result = JSON.parse(lcall('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], ['食べたかった', 32, 16, '']));
+    eq(result.results[0]?.term.expression, '食べる', 'expression');
+  });
+}
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {

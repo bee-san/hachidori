@@ -9,6 +9,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { LOW_MEMORY_WORKER_NAME } from "./engine-recycler.js";
 import {
   configureEngineService,
   handleEngineMessage,
@@ -56,11 +57,20 @@ function reportEngineProgress(progress) {
   });
 }
 
+// One importer thread (max_import_threads(true) == 1) plus the WasmFS OPFS
+// proxy thread.
+const LOW_MEMORY_PTHREAD_POOL_SIZE = 2;
+
 export function startEngineWorker({ createHoshidicts, storageBackend }) {
+  // offscreen.js picks the name; see engine-recycler.js.
+  const lowMemory = globalThis.name === LOW_MEMORY_WORKER_NAME;
+  // Read by the -sPTHREAD_POOL_SIZE expression in wasm/CMakeLists.txt.
+  if (lowMemory) globalThis.HACHIDORI_PTHREAD_POOL_SIZE = LOW_MEMORY_PTHREAD_POOL_SIZE;
   configureEngineService(requestHost, {
     createHoshidicts,
     storageBackend,
-    lowRam: false,
+    threaded: true,
+    lowRam: lowMemory,
     reportProgress: reportEngineProgress,
   });
   startEngine();

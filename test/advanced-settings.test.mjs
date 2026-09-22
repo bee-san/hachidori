@@ -23,7 +23,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, fire
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: !firefox,
-    localFileAccessPrompt: !overlayMode, mediaCapture: !overlayMode && !firefox,
+    localFileAccessPrompt: !overlayMode, mediaCapture: !overlayMode && !firefox, lowMemoryMode: !firefox,
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode && !firefox };
   window.chrome = {
@@ -37,6 +37,8 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, fire
     ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],
+    ["dictionary-progress.js", ["formatBytes"]],
+    ["memory-settings.js", ["createMemorySettings"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
   ]) {

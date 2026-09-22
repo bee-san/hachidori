@@ -445,6 +445,9 @@ const PLANNED = [
   "removing the dictionary clears its settings rows",
   "removing the dictionary deletes its OPFS directory",
   "lookups miss after the dictionary is removed",
+  "low memory mode recycles the engine worker and reports memory in Settings",
+  "low memory mode imports single-threaded and recycles the import high-water mark",
+  "turning low memory mode off restarts the full-pool worker",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "deep structured content renders while node-limit failures omit only their definition",
@@ -12802,6 +12805,124 @@ async function main() {
     removedLookup?.ok === true && removedLookup?.dictionaryCount === 0
       && Array.isArray(removedLookup?.results) && removedLookup.results.length === 0,
     `lookup reply: ${JSON.stringify(removedLookup)}`);
+
+  // ---- Low memory mode (docs/memory.md). The option replaces the engine worker
+  // once it has been idle, so the import high-water mark that linear memory
+  // never gives back is reclaimed; a recycled worker publishes generations from
+  // zero again, which is how a restart shows up here. The low-memory worker is
+  // the only place the strict two-thread pool is exercised in a browser.
+  const lowMemoryTitle = "low-memory-fixture";
+  const engineRequest = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen", type, requestId: `e2e-low-memory-${type}`, ...fields,
+  }), type, fields);
+  // A recycled worker reports the mode it was created with, and publishes its
+  // generations from zero again.
+  const waitForRecycle = (lowMemory, generation) => page.waitForFunction(async (expected, previous) => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ok && status.ready && !status.loading && status.lowMemory === expected
+      && (previous === null || status.generation < previous) ? status : false;
+  }, { timeout: 30_000, polling: 250 }, lowMemory, generation).then((handle) => handle.jsonValue());
+  await showSettingsSection(page, "advanced");
+  const lowMemoryBefore = await page.evaluate(async () => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-lm-status" });
+    const memory = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory" });
+    await new Promise((done) => setTimeout(done, 50));
+    const total = document.getElementById("memory-total").textContent;
+    const available = !document.getElementById("low-memory-mode").hidden;
+    const toggle = document.getElementById("opt-low-memory-mode");
+    const wasChecked = toggle.checked;
+    toggle.click();
+    return { status, memory, total, available, wasChecked };
+  });
+  const lowMemoryStatus = await waitForRecycle(true, null).catch(() => null);
+  const lowMemoryOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  check(
+    "low memory mode recycles the engine worker and reports memory in Settings",
+    lowMemoryBefore.available && !lowMemoryBefore.wasChecked
+      && lowMemoryBefore.status.lowMemory === false
+      && lowMemoryBefore.memory.ok === true && Number.isInteger(lowMemoryBefore.memory.heapBytes)
+      && lowMemoryBefore.memory.dictionaries.length === 0
+      && /^Engine memory: [\d.]+ (KB|MB|GB) across 0 dictionaries$/u.test(lowMemoryBefore.total)
+      && lowMemoryOptions?.lowMemoryMode === true
+      && lowMemoryStatus?.threaded === true && lowMemoryStatus.storageBackend === "opfs",
+    JSON.stringify({ before: lowMemoryBefore, after: lowMemoryStatus, lowMemoryMode: lowMemoryOptions?.lowMemoryMode }),
+  );
+
+  await showSettingsSection(page, "add-dictionaries");
+  await page.evaluate((base64, name) => {
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], name, { type: "application/zip" }));
+    const input = document.getElementById("import-file");
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, buildTitledZip(lowMemoryTitle).toString("base64"), `${lowMemoryTitle}.zip`);
+  const lowMemoryImported = await page.waitForFunction(async (title) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === title);
+    if (!dictionary || !status?.ok || !status.ready || status.loading) return false;
+    const memory = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory" });
+    return { dictionary, status, memory };
+  }, { timeout: 90_000, polling: 100 }, lowMemoryTitle).then((handle) => handle.jsonValue()).catch(() => null);
+  const recycledAfterImport = lowMemoryImported
+    ? await waitForRecycle(true, lowMemoryImported.status.generation).catch(() => null) : null;
+  let afterRecycle = null;
+  if (recycledAfterImport) {
+    afterRecycle = await page.evaluate(async () => ({
+      memory: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory-2" }),
+      lookup: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "e2e-lm-lookup", text: "食べる" }),
+    }));
+    // Opening a row's Details asks for its In memory line; showing Advanced asks for the total.
+    await showSettingsSection(page, "dictionaries");
+    await page.evaluate((title) => {
+      const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.querySelector(".dict-title").textContent === title);
+      row.querySelector(".dict-details-toggle").click();
+    }, lowMemoryTitle);
+    afterRecycle.rowMemory = await page.waitForFunction((title) => {
+      const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.querySelector(".dict-title").textContent === title);
+      const text = row?.querySelector(".dict-memory")?.textContent ?? "";
+      return text.includes("\u2248") ? text : false;
+    }, { timeout: 10_000, polling: 100 }, lowMemoryTitle).then((handle) => handle.jsonValue()).catch(() => null);
+    await showSettingsSection(page, "advanced");
+    afterRecycle.total = await page.waitForFunction(() => {
+      const text = document.getElementById("memory-total").textContent;
+      return /across 1 dictionary$/u.test(text) ? text : false;
+    }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  }
+  check(
+    "low memory mode imports single-threaded and recycles the import high-water mark",
+    lowMemoryImported?.memory.ok === true
+      && lowMemoryImported.memory.dictionaries.length === 1
+      && lowMemoryImported.memory.dictionaries[0].id === lowMemoryImported.dictionary.id
+      && lowMemoryImported.memory.dictionaries[0].bytes > 0
+      && recycledAfterImport?.threaded === true && recycledAfterImport.dictionaryCount === 1
+      && afterRecycle?.memory.ok === true
+      && afterRecycle.memory.heapBytes < lowMemoryImported.memory.heapBytes
+      && afterRecycle.memory.dictionaries[0]?.bytes === lowMemoryImported.memory.dictionaries[0].bytes
+      && afterRecycle.lookup.ok === true && afterRecycle.lookup.results[0]?.term.expression === "食べる"
+      && /^In memory: \u2248 [\d.]+ (KB|MB|GB)$/u.test(afterRecycle.rowMemory ?? "")
+      && /across 1 dictionary$/u.test(afterRecycle.total ?? ""),
+    JSON.stringify({ imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
+  );
+
+  await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());
+  const fullPoolStatus = recycledAfterImport ? await waitForRecycle(false, null).catch(() => null) : null;
+  const fullPoolOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const fullPoolLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  check(
+    "turning low memory mode off restarts the full-pool worker",
+    fullPoolOptions?.lowMemoryMode === false
+      && fullPoolStatus?.threaded === true && fullPoolStatus.dictionaryCount === 1
+      && fullPoolLookup.ok === true && fullPoolLookup.results[0]?.term.expression === "食べる",
+    JSON.stringify({ status: fullPoolStatus, lookup: fullPoolLookup, lowMemoryMode: fullPoolOptions?.lowMemoryMode }),
+  );
+  await engineRequest("hd_remove", { title: lowMemoryTitle });
+  await page.waitForFunction(async () => {
+    const stored = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return (stored.dictionaryState?.dictionaries ?? []).length === 0 && status?.ok && status.ready && !status.loading;
+  }, { timeout: 90_000, polling: 250 });
 
   const boundedTitle = "bounded-response-fixture";
   let deepGlossary = "private-depth-leaf-must-not-be-logged";

@@ -466,6 +466,17 @@ bool dictionary_files_present(const std::filesystem::path &dir) {
          non_empty_file(dir / "blobs.bin");
 }
 
+// The loader maps every file into linear memory (Emscripten's mmap copies it
+// in), and a refused memory.grow surfaces only as MAP_FAILED with errno ENOMEM
+// (WasmFS syscalls.cpp _mmap_js; classic FS FS.ErrnoError(ENOMEM)). Callers zero
+// errno before the add so that case reads differently from a damaged package.
+std::string rejected_dictionary(const char* kind, const std::string& dict_path) {
+  if (errno == ENOMEM) {
+    return std::string{"not enough memory to load "} + kind + " dictionary: " + dict_path;
+  }
+  return std::string{kind} + " dictionary rejected: " + dict_path;
+}
+
 uint64_t meta_count(const SummaryMetaCount &counts, const std::string &mode) {
   auto it = counts.find(mode);
   return it == counts.end() ? 0 : it->second;
@@ -934,29 +945,30 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
       set_error("not an imported dictionary directory: " + dict_path);
       return 0;
     }
+    errno = 0;
     switch (kind) {
       case 0:
         if (!e.query.add_term_dict(dict_path)) {
-          set_error("term dictionary rejected: " + dict_path);
+          set_error(rejected_dictionary("term", dict_path));
           return 0;
         }
         e.term_paths.push_back(dict_path);
         break;
       case 1:
         if (!e.query.add_freq_dict(dict_path)) {
-          set_error("frequency dictionary rejected: " + dict_path);
+          set_error(rejected_dictionary("frequency", dict_path));
           return 0;
         }
         break;
       case 2:
         if (!e.query.add_pitch_dict(dict_path)) {
-          set_error("pitch dictionary rejected: " + dict_path);
+          set_error(rejected_dictionary("pitch", dict_path));
           return 0;
         }
         break;
       default:
         if (!e.query.add_kanji_dict(dict_path)) {
-          set_error("kanji dictionary rejected: " + dict_path);
+          set_error(rejected_dictionary("kanji", dict_path));
           return 0;
         }
         break;

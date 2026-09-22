@@ -120,6 +120,24 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
+`node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs
+test/low-memory-option.test.mjs` covers [Low memory mode](../docs/memory.md):
+the pure recycle scheduler (no restart while busy, the two-second idle window,
+one restart for back-to-back mutations, a restart on option mismatch in either
+direction), the Settings → Advanced → Memory readout and each Library row's
+*In memory* line from a stubbed `hd_memory` reply (an em dash when the engine
+is busy or unreachable, a refresh on a new engine generation while Advanced is
+shown and when a row's Details opens, the switch saving
+through the ordinary options queue, and the switch hidden on Firefox and with
+the single-thread engine), and the `lowMemoryMode` option's normalisation. The
+memory settings suite uses the same external jsdom dependency. `node-smoke.mjs`
+records the heap after import and after `hdw_reset` and imports inside a
+two-thread pool; `extension-smoke.mjs` checks the `hd_memory` reply against the
+engine's file sizes and the offscreen-only `hd_engine_config` read and push;
+`chrome-e2e.mjs` turns the mode on in a real Chrome, watches the worker recycle
+(the generation restarts from zero), imports in the strict two-thread pool,
+and checks that the heap dropped, lookups still hit and the readout renders.
+
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
 test/sharing-host.test.mjs
 test/anki-client-media.test.mjs test/sharing-settings.test.mjs
