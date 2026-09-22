@@ -966,7 +966,7 @@
     if (!isScannableElement(selectionBoundaryElement(range.startContainer), styleCache)
         || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
     const query = selection.toString();
-    if (!query.trim()) return null;
+    if (!query.trim() || (options.onlyScanJapaneseText && !isJapaneseToken(query))) return null;
     const anchor = selectionBoundaryElement(range.commonAncestorContainer);
     for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
       if (isEditingElement(control) && range.intersectsNode(control)
@@ -990,6 +990,8 @@
   // first text. The live selection, not the scanned word, keeps it retained.
   function resolveSelectionScanCandidate(selection = window.getSelection()) {
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
+    const query = selection.toString();
+    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) return null;
     const range = selection.getRangeAt(0);
     let node = range.startContainer, offset = range.startOffset;
     if (node.nodeType !== Node.TEXT_NODE) {
@@ -998,7 +1000,7 @@
       offset = 0;
     }
     const candidate = node ? resolveCandidateAt(node, offset) : null;
-    return candidate && { ...candidate, selectionRange: range.cloneRange(), selectionText: selection.toString() };
+    return candidate && { ...candidate, selectionRange: range.cloneRange(), selectionText: query };
   }
 
   function candidateStart(candidate) {
@@ -2695,7 +2697,7 @@
 
   function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
     if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-    if (dictionaryCount === 0 || request.exactSelection) {
+    if (dictionaryCount === 0 || (request.exactSelection && options.showNoResultNotice)) {
       show(request.candidate, level);
       level.activeHighlightText = "";
       level.activeTermRender = null;
@@ -2714,6 +2716,9 @@
       return false;
     }
     hide(level);
+    // A hidden miss keeps the selection like a rendered notice does, so pointer
+    // movement cannot repeat its lookup until the selection changes or Escape.
+    if (request.exactSelection) activeSelectionCandidate = request.candidate;
     return false;
   }
 

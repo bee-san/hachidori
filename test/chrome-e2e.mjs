@@ -318,6 +318,7 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
+  "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
   "ordinary selections follow hover and both activation modes for all four modifiers",
   "matching activation preserves exact selections, cross-inline highlights and personal definitions",
@@ -7463,7 +7464,7 @@ async function checkReaderActivation(settings, tab, popup) {
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only",
+    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
   ]);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const worker = await installMediaReplyProbe(browser, settings);
@@ -7502,6 +7503,74 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await pause();
   };
   try {
+    await editSettingsControls(settings, {
+      "opt-lookup-mode": "hover", "opt-japanese-only": true, "opt-no-result-notice": true,
+    });
+    // A fresh page has no reader host until its first lookup, so an English
+    // selection there proves the gate by leaving the DOM alone; a Japanese
+    // selection on the same page then proves the reader was live all along.
+    const fresh = await browser.newPage();
+    let englishIgnored, freshHit;
+    try {
+      await fresh.goto(tab.url(), { waitUntil: "load" });
+      await fresh.bringToFront();
+      const cdp = await fresh.createCDPSession();
+      const contexts = new Set();
+      cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.add(context.id));
+      cdp.on("Runtime.executionContextDestroyed", ({ executionContextId }) => contexts.delete(executionContextId));
+      await cdp.send("Runtime.enable");
+      const extensionId = new URL(settings.url()).host;
+      let ready = false;
+      for (let attempt = 0; attempt < 100 && !ready; attempt++) {
+        for (const contextId of contexts) {
+          const { result } = await cdp.send("Runtime.evaluate", { contextId, awaitPromise: true,
+            expression: `globalThis.chrome?.runtime?.id === ${JSON.stringify(extensionId)}
+              && globalThis.HDReaderReady?.then(() => true)` });
+          ready ||= result.value === true;
+        }
+        if (!ready) await new Promise(done => setTimeout(done, 100));
+      }
+      await cdp.detach();
+      if (!ready) throw new Error("the fresh page's reader did not become ready");
+      const selectFresh = (text) => fresh.$eval("#verb", (element, contents) => {
+        element.textContent = contents;
+        window.getSelection().selectAllChildren(element);
+      }, text);
+      const before = (await lookups()).length;
+      await selectFresh("hello world");
+      await fresh.evaluate(() => new Promise(done => setTimeout(done, 250)));
+      englishIgnored = (await lookups()).length === before && await fresh.$("hachidori-host") === null;
+      await selectFresh("食べる");
+      freshHit = (await (await popupReader(fresh)).waitForVisible())?.plain;
+    } finally { await fresh.close(); }
+    await tab.bringToFront();
+    await selectVerb("ぬるぽがっ");
+    const defaultNotice = (await popup.waitForVisible())?.plain;
+    await editSettingsControls(settings, { "opt-no-result-notice": false });
+    await tab.bringToFront();
+    const hiddenStart = (await lookups()).length;
+    await selectVerb("ぬるぽがっ");
+    for (let attempt = 0; attempt < 50 && (await lookups()).length === hiddenStart; attempt++) await pause();
+    await pause();
+    const hiddenMiss = !popup.visible(await popup.state()) && (await lookups()).at(-1)?.text === "ぬるぽがっ";
+    await selectVerb("食べる");
+    const hit = (await popup.waitForVisible())?.plain;
+    await editSettingsControls(settings, { "opt-no-result-notice": true });
+    if (process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT) {
+      await settings.bringToFront();
+      await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+      const controls = await settings.$("#selection-notice-settings");
+      await controls.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await settings.evaluate(() => new Promise(requestAnimationFrame));
+      await controls.screenshot({ path: process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT });
+    }
+    await tab.bringToFront();
+    await selectVerb("ぬるぽがっ");
+    const restoredNotice = (await popup.waitForVisible())?.plain;
+    check("Japanese-only selections leave English text alone and the notice setting propagates to open readers",
+      englishIgnored && freshHit?.includes("食べる") && defaultNotice?.includes("No definition found.")
+        && hiddenMiss && hit?.includes("食べる") && restoredNotice?.includes("No definition found."),
+      JSON.stringify({ englishIgnored, freshHit, defaultNotice, hiddenMiss, hit, restoredNotice }));
     await editSettingsControls(settings, {
       "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
       "opt-scan-length": "1", "opt-japanese-only": true,
@@ -7671,9 +7740,13 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const hiddenHighlight = await tab.evaluate((name) =>
       Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
     const hiddenQuery = (await lookups()).at(-1)?.text;
+    await editSettingsControls(settings, { "opt-japanese-only": false });
+    await tab.bringToFront();
     const blockText = await selectVerb("<div>hello</div><div>world</div>", ["Shift"]);
     await pause();
     const blockQuery = (await lookups()).at(-1)?.text;
+    await editSettingsControls(settings, { "opt-japanese-only": true });
+    await tab.bringToFront();
     const customText = await selectVerb("未登録語", ["Shift"]);
     const customPopup = await popup.state();
     const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");

@@ -8,7 +8,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 
 - Lookups start on **hover**. Holding an activation key over a game is awkward.
 - The **word highlight** starts off. A highlight drawn over game text gets in the way.
-- **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text; with no entry for it, the popup offers the pencil to add your own definition.
+- **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text, subject to Reading's Japanese-only setting. With no entry for it, the popup offers the pencil to add your own definition unless Reading → Personal dictionary → **Show a popup when a selection has no definition** is off; the no-dictionaries notice still appears.
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - Hachidori's **screen recorder** is unavailable. GameSentenceMiner owns game screenshots, recordings and sentence audio instead.
 - Chrome-owned pages are unavailable, so **browser shortcut management** and the **local-file access prompt** are disabled. Page/popup keybinds still work. **Custom toolbar links** remain editable and the reader asks the host to open their validated HTTP(S) URLs in the system browser. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
@@ -101,6 +101,7 @@ the preferences for its own reading surface:
 | Area | Overlay-local preferences |
 | --- | --- |
 | Activation and scanning | Lookups on/off, Japanese-only scanning, lookup mode, activation key, hover delay and hide delay |
+| Selection notices | Show a popup when a selection has no definition |
 | Source highlight | Highlight the word on the page |
 | Popup layout | Width, height, columns, toolbar position and nesting depth |
 

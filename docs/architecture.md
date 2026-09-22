@@ -744,9 +744,10 @@ only their host through browser focus/event APIs; their private editors cannot
 be inspected. The reader does not intercept shadow creation or block every
 focused component to guess at those internals.
 
-An automatic page selection takes priority over pointer scanning and bypasses
-the language gate, but follows the same lookup mode and activation key as a
-pointer lookup. Hover mode accepts an ordinary selection. Activation and sticky
+An automatic page selection takes priority over pointer scanning and follows
+the same lookup mode, activation key and `onlyScanJapaneseText` gate as a
+pointer lookup, so with that default a selected English word or URL neither
+looks up nor opens the popup. Hover mode accepts an ordinary selection. Activation and sticky
 activation accept it only while the configured activation key is held. Plain
 selection or other modifiers alone do not look up, paint a source highlight or
 expose the personal-definition pencil. As with pointer lookup, another modifier
@@ -754,7 +755,8 @@ held alongside the configured one does not disable it. Lookup waits until the
 mouse drag ends. Once an activation-qualified selection is accepted, key release
 does not discard it, so the popup and pencil workflow remain usable. Explicit
 selected-text commands from keybinds and startup practice bypass this automatic
-gate, while reader disablement and editing exclusions still apply.
+activation gate, while reader disablement, the Japanese-only gate and editing
+exclusions still apply.
 
 The lookup sends the complete visible selected string without trimming or
 truncation and accepts only results whose `matched` text equals that string.
@@ -763,7 +765,12 @@ engine scan window; a prefix-only result is not an exact match. A miss retains
 selection ownership until the selection changes or is dismissed, so pointer
 movement cannot silently replace it with a prefix. Its notice exposes the same
 personal-dictionary pencil as term and kanji results, prefilled with the
-selected word even when no dictionaries are installed. Saving uses the managed
+selected word even when no dictionaries are installed. Reading → Personal
+dictionary → **Show a popup when a selection has no definition**
+(`showNoResultNotice`, default on) owns that notice: switched off, a miss with
+loaded dictionaries hides the popup and still retains the selection, while the
+no-dictionaries notice stays because it reports that nothing is installed.
+Saving uses the managed
 Note append transaction and replays that exact request to show the new
 definition; publisher dictionaries remain unchanged.
 

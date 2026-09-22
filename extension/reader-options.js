@@ -101,6 +101,7 @@
     maxResults: 32,
     hoverEnabled: true,
     onlyScanJapaneseText: true,
+    showNoResultNotice: true,
     lookupMode: "activationSticky",
     activationKey: "Shift",
     hoverDelayMs: 0,

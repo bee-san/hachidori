@@ -1388,6 +1388,16 @@ inside a hidden editor.
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.
+One hover-mode check opens a fresh copy of the page and selects English text
+once its reader is ready: no worker lookup and no `hachidori-host` may appear
+before a Japanese selection on that same page opens the popup. It then turns
+**Show a popup when a selection has no definition** off in Settings, requires a
+Japanese miss in the open tab to look up without a popup while a hit still
+renders, and requires the notice back once the switch is on again.
+`HACHIDORI_SELECTION_SETTINGS_SCREENSHOT` captures that Settings group. The
+extension suite applies the Japanese-only gate to both selection resolvers,
+including a Latin selection that precedes Japanese text, and keeps the
+no-dictionaries notice and the retained selection when the notice is off.
 
 Seven source-highlight assertions cover selected-text DOM replacement/stale
 cleanup without selection changes, native ancestor Range identity and fallback
