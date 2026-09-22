@@ -52,7 +52,7 @@ import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
-import { LIBRARY_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
+import { LIBRARY_NAVIGATION_CHECK, SETTINGS_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -259,6 +259,7 @@ const PLANNED = [
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   LIBRARY_NAVIGATION_CHECK,
+  SETTINGS_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,

@@ -977,6 +977,11 @@ Dictionaries tall, visits all five Library tabs and returns, requires both
 overflowing and short panels and a
 nonzero scrollbar width, and checks identical navigation left/width values with
 zero tolerance. It also checks the root's computed `scrollbar-gutter: stable`.
+The same browser then walks Library → Sharing → Backup & restore → Advanced →
+Library at 1920px (above the shell's 1440px maximum, where a vanishing
+scrollbar would recentre the sidebar) and at 1280px (below it, where the main
+column would widen instead), requiring identical brand, search field, section
+navigation and main-column left/width values across the tall-to-short change.
 
 Audio adds three browser assertions: default reading TTS plus ordered/disabled
 custom sources survive save/reload; encoded JSON discovery tries an undecodable
