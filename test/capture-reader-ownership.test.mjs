@@ -122,6 +122,8 @@ test("ordinary reader hover candidates carry precise DOM boundaries for capture 
   caret.setStart(paragraph.firstChild, 0);
   caret.collapse(true);
   document.caretRangeFromPoint = () => caret;
+  document.elementFromPoint = () => paragraph;
+  f.window.Range.prototype.getClientRects = () => [{ left: 0, top: 0, right: 20, bottom: 20 }];
   const candidate = f.driver.resolveCandidate(10, 10);
   assert.equal(candidate.anchor, paragraph);
   assert.equal(candidate.anchorRange.toString(), "犬");

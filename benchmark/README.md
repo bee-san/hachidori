@@ -69,6 +69,27 @@ The lookup benchmark intentionally excludes web-page scanning, the configured
 hover delay, and popup rendering. It measures the extension's backend lookup
 path without injecting benchmark code into the engine.
 
+## Hover popup and glyph hit testing
+
+`hover-popup.mjs` drives real pointer movement through the content script and
+records input-to-first-result and input-to-complete-result timings, cold and warm,
+with result signatures and raw samples from three fresh Chrome profiles:
+
+```sh
+node benchmark/hover-popup-fixture.mjs /tmp/hover-fixture.zip
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/hover-popup.mjs /tmp/hover-results /tmp/hover-fixture.zip
+```
+
+Use `HACHIDORI_HOVER_SAMPLES` to change the profile count. Each profile also times
+1,000 production `resolveCandidate()` calls at a glyph and 1,000 at a point in
+the tile's padding, 20 CSS pixels left of the text, after 100 excluded warmups
+per point. `session-*-hit-testing.json` records coordinates, duration and accepted
+candidate counts, so a padding miss can be distinguished from a false lookup.
+Those synchronous timings exclude pointer scheduling, messaging, engine lookup
+and rendering; the normal hover timings include them. The two-entry fixture
+isolates scanning and rendering overhead and does not represent a large library.
+
 ## Linked-browser relay latency
 
 The existing two-browser Sharing suite can record healthy linked-browser lookup

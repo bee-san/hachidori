@@ -761,10 +761,28 @@
    */
   function resolveCandidate(clientX, clientY) {
     const caretRange = caretRangeAt(clientX, clientY);
-    if (!caretRange) {
+    const node = caretRange?.startContainer;
+    if (node?.nodeType !== Node.TEXT_NODE
+        || !document.elementFromPoint(clientX, clientY)?.contains(node)) {
       return null;
     }
-    return resolveCandidateAt(caretRange.startContainer, caretRange.startOffset);
+    const text = node.nodeValue || "";
+    let offset = caretRange.startOffset;
+    // Caret alignment can step back onto the low surrogate of a wide glyph.
+    if (offset > 0 && (text.charCodeAt(offset) & 0xfc00) === 0xdc00) offset -= 1;
+    if (offset >= text.length) return null;
+    const glyph = document.createRange();
+    glyph.setStart(node, offset);
+    glyph.setEnd(node, offset + (text.codePointAt(offset) > 0xffff ? 2 : 1));
+    // Caret APIs snap to nearby text even in padding. Admit only the pointed
+    // glyph, with two CSS pixels for thin glyphs and subpixel layout.
+    for (const rect of glyph.getClientRects()) {
+      if (clientX >= rect.left - 2 && clientX <= rect.right + 2
+          && clientY >= rect.top - 2 && clientY <= rect.bottom + 2) {
+        return resolveCandidateAt(node, offset);
+      }
+    }
+    return null;
   }
 
   function resolveCandidateAt(startNode, startOffset) {

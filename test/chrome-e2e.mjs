@@ -52,6 +52,7 @@ import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
+import { LIBRARY_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -262,6 +263,7 @@ const PLANNED = [
   "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
+  LIBRARY_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,
@@ -392,6 +394,8 @@ const PLANNED = [
   "a multiline match anchors the popup to the scanned line fragment",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
+  "hover hits glyphs and rejects padded tiles and transparent covering elements",
+  "vertical hover hits glyphs and rejects the surrounding padding",
   "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
@@ -7289,6 +7293,71 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.length === 6 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
+async function checkHoverHitTesting(tab, popup) {
+  const outcomes = [];
+  await tab.evaluate(() => {
+    const fixture = document.createElement("section");
+    fixture.id = "hover-hit-fixture";
+    fixture.style.cssText = "position:fixed;inset:0;background:#fff;color:#222;z-index:1000;font:28px sans-serif";
+    fixture.innerHTML = '<h2 style="font:22px sans-serif;margin:24px">Hover glyph hit testing</h2>'
+      + '<a id="hover-hit-label" style="position:absolute;left:64px;top:100px;width:200px;height:96px;padding:12px 24px;background:#edf2f7">食べたかった</a>'
+      + '<a id="hover-hit-vertical" style="position:absolute;left:400px;top:100px;width:96px;height:260px;padding:24px 12px;background:#edf2f7;writing-mode:vertical-rl">食べたかった</a>'
+      + '<div id="hover-hit-cover" hidden style="position:absolute;left:64px;top:100px;width:248px;height:120px"></div>'
+      + '<div id="hover-hit-pointer" style="position:fixed;width:10px;height:10px;border:2px solid #dc2626;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none"></div>';
+    document.body.append(fixture);
+  });
+  try {
+    const points = await tab.evaluate(() => {
+      const point = (id, vertical) => {
+        const node = document.getElementById(id).firstChild;
+        const range = document.createRange();
+        range.setStart(node, 0); range.setEnd(node, 1);
+        const rect = range.getBoundingClientRect();
+        return { glyph: { x: rect.left + rect.width * .7, y: rect.top + rect.height * .7 },
+          padding: { x: rect.left - 20, y: rect.top + rect.height / 2 },
+          below: { x: rect.left + rect.width / 2, y: rect.bottom + (vertical ? 220 : 20) } };
+      };
+      return { horizontal: point("hover-hit-label", false), vertical: point("hover-hit-vertical", true) };
+    });
+    async function move(name, point, expected) {
+      await tab.keyboard.press("Escape");
+      await popup.waitForHidden();
+      await tab.mouse.move(2, 2);
+      await tab.evaluate(({ x, y }) => {
+        const marker = document.getElementById("hover-hit-pointer");
+        marker.style.left = `${x}px`; marker.style.top = `${y}px`;
+      }, point);
+      await tab.mouse.move(point.x, point.y);
+      // The negative assertion waits through the same real hover scheduling as a hit.
+      const visible = await popup.waitForVisible(expected ? 3000 : 350);
+      outcomes.push({ name, expected, visible: visible !== null,
+        correct: expected ? visible?.plain.includes("食べる") === true : visible === null });
+      if (process.env.HACHIDORI_HOVER_SCREENSHOTS) {
+        mkdirSync(process.env.HACHIDORI_HOVER_SCREENSHOTS, { recursive: true });
+        await tab.screenshot({ path: resolve(process.env.HACHIDORI_HOVER_SCREENSHOTS, `${name}.png`) });
+      }
+    }
+    await move("glyph", points.horizontal.glyph, true);
+    await move("padding", points.horizontal.padding, false);
+    await move("below-label", points.horizontal.below, false);
+    await tab.$eval("#hover-hit-cover", cover => { cover.hidden = false; });
+    await move("covered", points.horizontal.glyph, false);
+    await tab.$eval("#hover-hit-cover", cover => { cover.hidden = true; });
+    check("hover hits glyphs and rejects padded tiles and transparent covering elements",
+      outcomes.every(row => row.correct), JSON.stringify(outcomes));
+    outcomes.length = 0;
+    await move("vertical-glyph", points.vertical.glyph, true);
+    await move("vertical-padding", points.vertical.padding, false);
+    await move("vertical-below", points.vertical.below, false);
+    check("vertical hover hits glyphs and rejects the surrounding padding",
+      outcomes.every(row => row.correct), JSON.stringify(outcomes));
+  } finally {
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await tab.evaluate(() => document.getElementById("hover-hit-fixture").remove());
+  }
+}
+
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
     "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hide-delay",
@@ -10324,6 +10393,7 @@ async function main() {
 
   await showSettingsSection(page, "dictionaries");
   await page.setViewport({ width: 1280, height: 900 });
+  await checkLibraryNavigation(launch, launchArgs, page.url().split("#")[0], check);
   const libraryFirst = await page.evaluate(() => {
     window.scrollTo(0, 0);
     const row = document.querySelector("#dict-list .dict-row");
@@ -10590,7 +10660,7 @@ async function main() {
     narrowPosition.inputWidth > 0
       && Math.abs(narrowPosition.inputWidth - (narrowPosition.fontSize * 4.5)) <= 1
       && narrowPosition.actionsRight <= narrowPosition.rowRight + 1
-      && narrowPosition.scrollWidth === narrowPosition.pageWidth,
+      && narrowPosition.scrollWidth <= narrowPosition.pageWidth,
     JSON.stringify(narrowPosition),
   );
   await page.setViewport({ width: 800, height: 600 });
@@ -11192,6 +11262,7 @@ async function main() {
   const hover = (selector, options) => hoverForPopup(tab, popup, selector, options);
   await checkPopupResize(page, tab);
   check("mouse resizing retains session dimensions without changing Design settings", true);
+  await checkHoverHitTesting(tab, popup);
 
   // CSS.highlights is a per-document registry, so the extension's entry is
   // readable from the page's own world even though the content script that set

@@ -965,6 +965,13 @@ for.
 
 ## `chrome-e2e.mjs`
 
+The Library navigation regression launches its own temporary browser with real
+scrollbars (removing Puppeteer's `--hide-scrollbars` default). It makes
+Dictionaries tall, visits all five Library tabs and returns, requires both
+overflowing and short panels and a
+nonzero scrollbar width, and checks identical navigation left/width values with
+zero tolerance. It also checks the root's computed `scrollbar-gutter: stable`.
+
 Audio adds three browser assertions: default reading TTS plus ordered/disabled
 custom sources survive save/reload; encoded JSON discovery tries an undecodable
 candidate before naturally completing a one-second PCM WAV; no-result, HTTP
@@ -1321,6 +1328,12 @@ input-before-change seed is synthetic. `HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT`
 and `HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT` capture Reading in both themes.
 `HACHIDORI_SUMMARY_POPUP_SCREENSHOT` captures the summary beside the complete
 definitions after the shared leading image has loaded.
+
+The real browser checks horizontal and vertical glyph hits, padded link tiles,
+and a transparent element covering text. `HACHIDORI_HOVER_SCREENSHOTS=/path/to/dir`
+saves each state with a red marker at the actual pointer coordinates. The
+extension smoke suite additionally checks the two-pixel tolerance and complete
+supplementary Unicode characters when the caret lands after the glyph.
 
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
