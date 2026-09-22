@@ -1116,6 +1116,7 @@ function isVerified(dictionary) {
 // Only hd_apply_state (and its rollback) uses this path; an explicit reload
 // still retries failed packages. The native set comes from the last successful
 // load, not from verification of packages which are intentionally unloaded.
+// Returns the loaded count, or null when the change needs loadDictionaries().
 function reorderLoadedDictionaries(dictionaries) {
   if (loadedPackages === null || loadedManifest?.size !== dictionaries.length
     || !dictionaries.every(dictionary => {
@@ -1125,8 +1126,10 @@ function reorderLoadedDictionaries(dictionaries) {
     })) return null;
   const present = new Set(loadedPackages.map(entry => entry.path));
   const ordered = dictionaries.filter(dictionary => present.has(dictionary.path));
+  // A refused order changes nothing natively; the loaded set has drifted and
+  // the ordinary load path rebuilds it.
   if (!engine.ccall("hdw_set_dict_order", "number", ["string"], [JSON.stringify(ordered.map(entry => entry.path))])) {
-    throw new Error("the loaded dictionaries could not be reordered");
+    return null;
   }
   trackLoaded(ordered, dictionaries);
   lastLoadPath = "order-only";
