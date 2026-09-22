@@ -51,6 +51,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios } from "./chrome-dictionary-management-scenarios.mjs";
+import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
 import { LIBRARY_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
@@ -231,6 +232,7 @@ const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json
   .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const PLANNED = [
+  DICTIONARY_RANK_CHECK,
   "dictionary pointer reorder and confirmed bulk removal persist across reload",
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
@@ -10887,6 +10889,8 @@ async function main() {
 
   await dictionaryManagementScenarios(page);
   check("dictionary pointer reorder and confirmed bulk removal persist across reload", true);
+
+  check(DICTIONARY_RANK_CHECK, true, JSON.stringify(await checkDictionaryRankLayout(page)));
 
   await showSettingsSection(page, "dictionary-groups");
   const groupManagement = await page.evaluate(async ({ fixtureId, genericId }) => {
