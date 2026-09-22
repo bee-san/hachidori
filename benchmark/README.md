@@ -159,6 +159,50 @@ and popup rendering.
 
 ## Tiny deterministic acceptance run
 
+### Dictionary reordering
+
+`dictionary-reorder.mjs` imports six-term fixture clones with distinct titles
+through the real Settings file input, growing each fresh profile to 10, 50 and
+150 dictionaries. At each size it excludes two warmup moves and measures ten
+arrow moves. Every saved order is checked against a real lookup's glossary
+order. It uses the browser harness's launch arguments, verified shutdown and
+durable `raw.jsonl` writer.
+
+```sh
+HACHIDORI_CHROME=/path/to/pinned/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/dictionary-reorder.mjs --revision BASE_SHA --samples 3 \
+  --output benchmark/results/reorder-before
+HACHIDORI_CHROME=/path/to/pinned/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/dictionary-reorder.mjs --revision HEAD_SHA --samples 3 \
+  --expect-path order-only --output benchmark/results/reorder-after
+```
+
+Use fresh output directories and the same Node, Chrome and tooling. For paired
+comparisons run one sample per command, alternating the two revisions at least
+three times. `--revision` extracts only that committed extension into the output
+directory; it does not switch branches or touch another checkout. Without it,
+the current working extension is measured. `--counts`, `--moves`, `--samples`
+and `--low-memory true` select the matrix. The definition records the revision,
+extension hash, archive identities, runtime versions and host. Each size also
+saves a Library screenshot on its first sample.
+
+All timings use the Settings page clock: click to the changed DOM rank and
+position, click to the engine acknowledgement, send to acknowledgement, and
+click to the first successful lookup using the committed order. Click to
+acknowledgement includes the 150 ms trailing debounce; send to acknowledgement
+excludes it. The DOM metric excludes paint and CDP overhead. The small fixtures
+measure Settings/message/native-order overhead, not large-dictionary I/O or
+import speed. Old revisions without `hd_status.lastLoadPath` record
+`unreported-baseline`; the extension smoke suite's native-call spies establish
+their reset/add/warm-lookup behaviour independently.
+
+With `--low-memory true`, setup waits for the import's required worker recycle
+before measuring. After each size's moves it waits beyond the two-second idle
+window and checks the saved lookup order again. A separate `phase: "idle"` raw
+row records whether the engine generation restarted; those waits are excluded
+from move latency and must be reported separately. `--expect-path order-only`
+also requires that no deferred worker rebuild occurs.
+
 ### Recommended installation
 
 `recommended-install.mjs` measures Settings' recommended-install button through

@@ -158,6 +158,14 @@ async function sample(iteration) {
         === `Finished ${count} of ${count} archives — ${count} imported, 0 failed.`,
       { timeout: 600_000, polling: 100 }, count - installed);
       installed = count;
+      if (lowMemory) {
+        // Exclude the import's necessary recycle from reorder measurements.
+        await page.waitForFunction(async count => {
+          const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+          return status.ok && status.ready && !status.loading && status.lowMemory
+            && status.dictionaryCount === count && status.generation === 1;
+        }, { timeout: 60_000, polling: 100 }, count);
+      }
       await page.evaluate(() => { location.hash = "dictionaries"; });
       await page.waitForFunction(count => document.querySelectorAll("#dict-list .dict-row").length === count, {}, count);
       await measureMove(page, 0); // excluded warmup, restored by the second move
@@ -167,7 +175,31 @@ async function sample(iteration) {
         assert.equal(result.storageBackend, "opfs");
         assert.equal(result.threaded, true);
         if (expectedPath !== null) assert.equal(result.path, expectedPath);
-        appendJsonlDurable(resolve(output, "raw.jsonl"), { revision: definition.revision, iteration, count, move, lowMemory, ...result });
+        appendJsonlDurable(resolve(output, "raw.jsonl"), { revision: definition.revision, iteration, count, move, lowMemory, phase: "move", ...result });
+      }
+      if (lowMemory) {
+        const deferred = await page.evaluate(async query => {
+          const request = (type, fields = {}) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields });
+          const before = await request("hd_status");
+          const started = performance.now();
+          await new Promise(done => setTimeout(done, 2500));
+          let after = await request("hd_status");
+          while (!after.ready || after.loading) {
+            await new Promise(done => setTimeout(done, 100));
+            after = await request("hd_status");
+          }
+          const lookup = await request("hd_lookup", { text: query.text });
+          const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+          const titles = dictionaryState.dictionaries.flatMap(entry => [entry.title, entry.title]);
+          if (!lookup.ok || lookup.results[0]?.term.expression !== query.expectedExpression
+            || JSON.stringify(lookup.results[0].term.glossaries.map(entry => entry.dictionary)) !== JSON.stringify(titles)) {
+            throw new Error("the lookup after the recycle window did not retain the saved order");
+          }
+          return { beforeGeneration: before.generation, afterGeneration: after.generation,
+            recycled: after.generation !== before.generation, idleToLookupMs: performance.now() - started };
+        }, query);
+        if (expectedPath === "order-only") assert.equal(deferred.recycled, false, "order-only work must not schedule a deferred rebuild");
+        appendJsonlDurable(resolve(output, "raw.jsonl"), { revision: definition.revision, iteration, count, lowMemory, phase: "idle", ...deferred });
       }
       console.log(`sample ${iteration}: ${count} dictionaries, ${moves} moves`);
       if (iteration === 1) await page.screenshot({ path: resolve(output, `library-${count}.png`) });

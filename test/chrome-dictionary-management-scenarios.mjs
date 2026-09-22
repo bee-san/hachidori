@@ -15,6 +15,7 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
     chrome.runtime.sendMessage = async (...args) => {
       if (args[0]?.type !== "hd_apply_state") return original(...args);
       probe.requests.push(args[0]);
+      if (probe.requests.length === 1) await new Promise(done => { probe.sendFirst = done; });
       const reply = await original(...args);
       if (probe.requests.length === 1) await new Promise(done => { probe.release = done; });
       probe.delivered = true;
@@ -34,11 +35,13 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
   assert.equal(immediate.position, immediate.expected);
   assert.equal(immediate.enabled, true);
   assert.equal(immediate.delivered, false);
-  await page.waitForFunction(() => typeof reorderProbe.release === "function");
+  await page.waitForFunction(() => typeof reorderProbe.sendFirst === "function");
   assert.equal(await page.evaluate(() => reorderProbe.requests.length), 1, "five rapid moves send one final order");
-  // The storage event already arrived, but its older order must not replace a
-  // newer optimistic move while the first acknowledgement is held.
+  // Both the storage event and the acknowledgement for the first batch arrive
+  // after this newer move; neither may replace its optimistic order.
   await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-up`).click(), gamma.id);
+  await page.evaluate(() => reorderProbe.sendFirst());
+  await page.waitForFunction(() => typeof reorderProbe.release === "function");
   assert.equal(await page.$eval(`[data-dictionary-id="${gamma.id}"] .dict-rank`, el => el.textContent), String(prefix.length + 1));
   if (process.env.HACHIDORI_REORDER_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_REORDER_SCREENSHOT });
   await page.evaluate(() => reorderProbe.release());
@@ -54,13 +57,18 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
     await page.bringToFront();
     await page.evaluate(() => {
       const original = reorderProbe.original;
+      reorderProbe.conflictRequests = 0;
       chrome.runtime.sendMessage = async (...args) => {
-        if (args[0]?.type === "hd_apply_state") await new Promise(done => { reorderProbe.send = done; });
+        if (args[0]?.type === "hd_apply_state") {
+          reorderProbe.conflictRequests += 1;
+          await new Promise(done => { reorderProbe.send = done; });
+        }
         return original(...args);
       };
     });
     await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-down`).click(), gamma.id);
     await page.waitForFunction(() => typeof reorderProbe.send === "function");
+    await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-down`).click(), gamma.id);
     await other.bringToFront();
     await other.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-up`).click(), beta.id);
     await other.waitForFunction(async id => {
@@ -72,6 +80,7 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
     await page.evaluate(() => reorderProbe.send());
     await page.waitForFunction(() => document.getElementById("engine-status").textContent.includes("Dictionary change was not saved"));
     await waitOrder(winner.dictionaries.map(entry => entry.id));
+    assert.equal(await page.evaluate(() => reorderProbe.conflictRequests), 1, "rollback discards the queued optimistic draft");
     assert.deepEqual((await readState()).dictionaries, winner.dictionaries);
     check(REORDER_CHECKS[1], true);
   } finally {

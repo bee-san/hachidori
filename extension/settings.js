@@ -904,7 +904,7 @@ function adoptUpdateSettings(value) {
 }
 
 function pruneDictionarySelection() {
-  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
+  const installedIds = new Set(dictionaryState.dictionaries.map((dictionary) => dictionary.id));
   for (const id of selectedDictionaryIds) {
     if (!installedIds.has(id)) {
       selectedDictionaryIds.delete(id);
@@ -2361,7 +2361,7 @@ function moveDictionary(id, move) {
     void queueDictionaryStateChange(current => {
       const byId = new Map(current.dictionaries.map(entry => [entry.id, entry]));
       return { ...current, dictionaries: batch.ids.map(id => byId.get(id)) };
-    }, true, { reorder: true, orderBatch: batch });
+    }, true, { orderBatch: batch });
   }
   pendingDictionaryOrder.ids = next.map(entry => entry.id);
   clearTimeout(pendingDictionaryOrder.timer);
@@ -2497,7 +2497,8 @@ async function commitDictionaryStateChange(update, reloadEngine, baseState = dic
   }
 }
 
-function queueDictionaryStateChange(update, reloadEngine, { reorder = false, orderBatch = null } = {}) {
+function queueDictionaryStateChange(update, reloadEngine, { orderBatch = null } = {}) {
+  const reorder = orderBatch !== null;
   // A different edit ends the current burst, so later moves cannot jump ahead
   // of an enable, alias, favourite, or group edit in the existing CAS queue.
   if (!reorder) flushDictionaryOrder();
@@ -2545,11 +2546,11 @@ function queueDictionaryStateChange(update, reloadEngine, { reorder = false, ord
   return settled;
 }
 
-function commitDictionaries(update, reloadEngine, options) {
+function commitDictionaries(update, reloadEngine) {
   return queueDictionaryStateChange((current) => {
     const dictionaries = update(current.dictionaries);
     return dictionaries === null ? null : { ...current, dictionaries };
-  }, reloadEngine, options);
+  }, reloadEngine);
 }
 
 function commitGroups(update) {
