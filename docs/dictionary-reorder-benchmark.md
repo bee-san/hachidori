@@ -4,65 +4,61 @@ Issue [#285](https://github.com/bee-san/hachidori/issues/285): Library moves now
 update the existing rows immediately and coalesce saves for 150 ms. The engine
 changes native order without reloading an unchanged manifest or warming lookup.
 
-The final comparison uses baseline
-`f8c57115f7f3b8ef57101225cc4fd8a4e165b559` (including merged Low memory mode,
-PR #281) and implementation `5cc4f73300cc8bff06da726cced3d011a72c77e4`.
-Evidence commit `82cecd98028b1cdcc7346721e9f423adb6de35c3` preserved the
-measured extension. The branch subsequently integrated current main
-`f0d95e9cb704e550fe1b4fabdcfd5c427ffb5e7b` to resolve a Chrome-test import
-conflict, retaining both scenarios. That integration's runtime differences
-from the measured implementation are `extension/content.js` (merged hover hit-testing
-fix, #301) and `extension/settings.css` (merged scrollbar fix, #302).
-A subsequent Sonar simplification extracted existing disclosure/reusable-row
-collection into `collectReusableDictionaryRows`, called only after the
-order-only early return. The extracted loops are unchanged. Source comparison
-against the measured implementation confirms identical `renderDictionaryOrder`,
-`moveDictionary`, `flushDictionaryOrder`, `queueDictionaryStateChange` and the
-`renderDictionaries` prefix through that early return. Engine/offscreen code,
-the benchmark driver and focused reorder tests are unchanged. The paired
-benchmark was not repeated for this extraction outside its order-only path.
-The paired measurements retain the agreed settled engine baseline and measured
-implementation; they were not rerun for these unrelated main changes.
-The host was Linux 7.2.6-1-cachyos, Intel Core Ultra 7 165U, 14 logical CPUs,
-with 66,833,809,408 bytes of RAM.
+The comparison uses baseline `c42cb4190fc3138fa0927ce37fe9d01dfb5e6dfd`
+(`origin/main` at the time of measurement) and implementation
+`7c7625a2201290b2933a6f50ba2a671125039d52`. The branch head was subsequently
+rebased onto `origin/main` `c97339bb8455c4f75319cfe729fb0d5a2017282f` (PR #290
+removing Sankoku from the recommended catalogue, PR #276 bumping the test-only
+`puppeteer-core` lockfile). The only extension difference from the measured
+implementation is `extension/recommended-dictionaries.js` (16 deleted catalogue
+lines, PR #290); `engine-service.js`, `offscreen.js`, `settings.js`, the reorder
+benchmark and the focused tests are byte-identical to the measured head, so the
+reorder path was not re-measured for that unrelated catalogue edit.
 
-An isolated move now deliberately waits for the debounce before saving; its
-reply and first committed lookup arrive later despite the faster native path.
-The improvement is immediate interaction and coalesced work, not a claim that
-the whole click-to-save interval became shorter.
+The host was Linux 6.12.103 (Amazon Linux 2023), Intel Xeon Platinum 8488C, 16
+logical CPUs, 132 GB RAM, shared with light concurrent work (load average
+~3–5 during the run).
 
-## Final measured results
+An isolated move now deliberately waits for the 150 ms debounce before saving;
+its reply and first committed lookup arrive later despite the faster native
+path. The improvement is immediate interaction and coalesced work, not a claim
+that the whole click-to-save interval became shorter.
+
+## Measured results
 
 All values are milliseconds, median / nearest-rank p95. Each regular cell has
 30 moves across three fresh profiles; profiles alternate baseline then head.
 
 | Dictionaries | Metric | Baseline | Head |
 | ---: | --- | ---: | ---: |
-| 10 | Click → DOM | 12.32 / 18.30 | 1.78 / 3.49 |
-| 10 | Click → reply | 5.63 / 12.24 | 156.95 / 158.46 |
-| 10 | Send → reply | 5.01 / 11.52 | 4.91 / 5.97 |
-| 10 | Click → first ranked lookup | 15.21 / 32.98 | 160.90 / 162.55 |
-| 50 | Click → DOM | 31.47 / 39.56 | 3.17 / 5.13 |
-| 50 | Click → reply | 13.55 / 25.44 | 163.52 / 166.21 |
-| 50 | Send → reply | 11.70 / 24.01 | 9.97 / 12.63 |
-| 50 | Click → first ranked lookup | 38.51 / 55.49 | 170.96 / 174.98 |
-| 150 | Click → DOM | 98.45 / 120.23 | 5.81 / 9.65 |
-| 150 | Click → reply | 39.40 / 67.10 | 175.62 / 180.17 |
-| 150 | Send → reply | 34.24 / 63.14 | 19.36 / 23.01 |
-| 150 | Click → first ranked lookup | 117.09 / 134.77 | 189.00 / 196.61 |
+| 10 | Click → DOM | 10.06 / 12.59 | 1.39 / 2.04 |
+| 10 | Click → reply | 4.74 / 6.74 | 155.16 / 155.98 |
+| 10 | Send → reply | 4.16 / 6.18 | 3.67 / 4.19 |
+| 10 | Click → first ranked lookup | 12.34 / 15.48 | 158.13 / 158.93 |
+| 50 | Click → DOM | 29.27 / 38.06 | 2.97 / 3.94 |
+| 50 | Click → reply | 11.81 / 22.58 | 161.49 / 162.83 |
+| 50 | Send → reply | 10.50 / 20.79 | 8.26 / 10.30 |
+| 50 | Click → first ranked lookup | 37.98 / 55.86 | 167.79 / 171.04 |
+| 150 | Click → DOM | 79.46 / 105.27 | 6.19 / 8.06 |
+| 150 | Click → reply | 26.30 / 58.34 | 174.84 / 179.32 |
+| 150 | Send → reply | 22.78 / 54.41 | 18.73 / 21.33 |
+| 150 | Click → first ranked lookup | 93.62 / 125.11 | 189.73 / 195.17 |
 
-Per-profile median click-to-DOM (baseline → head, pairs 2/3/4):
+Per-profile median click-to-DOM (baseline → head, pairs 1/2/3):
 
-| Dictionaries | Pair 2 | Pair 3 | Pair 4 |
+| Dictionaries | Pair 1 | Pair 2 | Pair 3 |
 | ---: | ---: | ---: | ---: |
-| 10 | 12.71 → 1.85 | 9.87 → 1.48 | 12.48 → 1.73 |
-| 50 | 30.22 → 3.10 | 32.01 → 2.75 | 30.98 → 3.59 |
-| 150 | 100.73 → 5.56 | 93.74 → 5.68 | 102.64 → 5.96 |
+| 10 | 9.54 → 1.27 | 9.51 → 1.44 | 11.11 → 1.28 |
+| 50 | 32.11 → 3.34 | 28.38 → 3.01 | 29.37 → 2.75 |
+| 150 | 82.89 → 5.62 | 80.50 → 5.38 | 76.21 → 6.55 |
 
-All 120 measured head moves reported `order-only` and changed the DOM
-before the reply. Across regular and low-memory runs, all 40 head moves at
-150 dictionaries were below 16 ms DOM and 50 ms send-to-reply (maxima
-9.88 ms and 26.50 ms respectively). No measured head move used a native full-load path.
+All 90 measured head moves reported `order-only` and changed the DOM before
+the reply arrived. Across regular and low-memory runs, every head move at 150
+dictionaries stayed below 16 ms click-to-DOM and 50 ms send-to-reply (maxima
+8.35 ms and 22.75 ms respectively). No measured head move used a native
+full-load path. The baseline records `unreported-baseline` because it predates
+`hd_status.lastLoadPath`; the extension smoke suite's native-call spies
+establish its reset/add/warm-lookup behaviour independently.
 
 ### Low memory mode and deferred work
 
@@ -72,76 +68,53 @@ low-memory profile pairs.
 
 | Dictionaries | DOM median, base → head | Send/reply median, base → head | Generation after idle, base | Generation after idle, head |
 | ---: | ---: | ---: | --- | --- |
-| 10 | 11.40 → 1.42 | 5.03 → 4.02 | 13 → 1 | 13 → 13 |
-| 50 | 35.29 → 2.88 | 14.43 → 8.81 | 13 → 1 | 13 → 13 |
-| 150 | 78.82 → 6.14 | 27.29 → 22.32 | 13 → 1 | 13 → 13 |
+| 10 | 11.63 → 1.49 | 5.09 → 3.83 | 13 → 1 | 13 → 13 |
+| 50 | 31.87 → 2.80 | 10.68 → 7.76 | 13 → 1 | 13 → 13 |
+| 150 | 85.84 → 5.21 | 27.79 → 20.63 | 13 → 1 | 13 → 13 |
 
 Every idle check preserved the correct lookup order. The baseline rebuilt its
-worker after the moves; the head retained its generation at all three sizes.
+worker after the moves (generation reset to 1); the head retained its
+generation at all three sizes, so a pure reorder allocates no import
+high-water mark and schedules no fresh recycle.
 
 Raw measured rows, archive hashes, exact extension hashes, runtime versions and
 per-profile host snapshots are in [the evidence directory](benchmark-data/dictionary-reorder/).
-Original screenshots, source snapshots and setup archives remain under the
-ignored local `benchmark/results/reorder-settled/` directories.
 
 ## Reproduce
 
 Use Node 22.23.1, Chrome for Testing 152.0.7977.75 and the locked
-`test/tooling` dependencies. Set `HACHIDORI_CHROME`, `HACHIDORI_PUPPETEER`,
-and `HACHIDORI_JSDOM` as described in [the test guide](../test/README.md).
-The recorded Linux runs use an isolated network namespace to avoid the host's
-live Anki local-audio service, leaving that service running. Each sample creates
-and removes its own disposable browser profile.
+`test/tooling` dependencies. Set `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`
+as described in [the test guide](../test/README.md). The recorded runs use an
+isolated network namespace to avoid the host's live Anki local-audio service.
+Each sample creates and removes its own disposable browser profile.
 
 ```sh
-unshare --user --map-root-user --net sh -c 'ip link set lo up && bash test/tmp/reorder-final-pairs.sh'
+unshare --user --map-root-user --net sh -c 'ip link set lo up && bash reorder-pairs.sh'
 ```
 
-The script used for that command is:
+where `reorder-pairs.sh` alternates the two revisions three times plus one
+low-memory pair (`BASE`/`HEAD` are the SHAs above):
 
 ```sh
 set -eu
-base=f8c57115f7f3b8ef57101225cc4fd8a4e165b559
-head=5cc4f73300cc8bff06da726cced3d011a72c77e4
 for pair in 1 2 3; do
-  node benchmark/dictionary-reorder.mjs --revision "$base" --samples 1 \
-    --output "benchmark/results/reorder-settled/base-$pair"
-  node benchmark/dictionary-reorder.mjs --revision "$head" --samples 1 \
-    --expect-path order-only --output "benchmark/results/reorder-settled/head-$pair"
+  node benchmark/dictionary-reorder.mjs --revision "$BASE" --samples 1 \
+    --output benchmark/results/reorder/base-$pair
+  node benchmark/dictionary-reorder.mjs --revision "$HEAD" --samples 1 \
+    --expect-path order-only --output benchmark/results/reorder/head-$pair
 done
-node benchmark/dictionary-reorder.mjs --revision "$base" --samples 1 --low-memory true \
-  --output benchmark/results/reorder-settled/base-low-memory
-node benchmark/dictionary-reorder.mjs --revision "$head" --samples 1 --low-memory true \
-  --expect-path order-only --output benchmark/results/reorder-settled/head-low-memory
+node benchmark/dictionary-reorder.mjs --revision "$BASE" --samples 1 --low-memory true \
+  --output benchmark/results/reorder/base-low-memory
+node benchmark/dictionary-reorder.mjs --revision "$HEAD" --samples 1 --low-memory true \
+  --expect-path order-only --output benchmark/results/reorder/head-low-memory
 ```
-
-Pair 1 overlapped another worker's user-resumed Chrome suite and is excluded.
-The launcher paused after that pair; after the other suite and its browser
-processes exited, pairs 2 and 3 and the low-memory pair ran. Only the affected
-pair was repeated, with these additional commands:
-
-```sh
-node benchmark/dictionary-reorder.mjs --revision f8c57115f7f3b8ef57101225cc4fd8a4e165b559 \
-  --samples 1 --output benchmark/results/reorder-settled/base-4
-node benchmark/dictionary-reorder.mjs --revision 5cc4f73300cc8bff06da726cced3d011a72c77e4 \
-  --samples 1 --expect-path order-only --output benchmark/results/reorder-settled/head-4
-```
-
-The final regular table uses pairs 2, 3 and 4 only. Pair 1 remains under the
-ignored local result directory as diagnostic evidence.
 
 The input grows from 10 to 50 to 150 six-term fixture clones with unique titles,
 imported through the real Settings file input and real WASM importer. Each size
 excludes two warmup moves, then records ten moves. Every move checks durable
 order and all 2 × N glossary titles in the first real lookup after its reply.
-Baseline and head alternate across three fresh-profile pairs; Low memory mode
-has one additional pair and an idle-window check at every size.
-
-The replacement commands used the same isolated-network wrapper and pinned
-environment as the initial script. No test suites ran alongside the clean
-profiles in the recorded process observations. Load averages remained nonzero;
-light host work, scheduling, thermal and power-management variation are not
-controlled by this benchmark.
+`--revision` extracts only that committed extension into the output directory;
+it does not switch branches or touch another checkout.
 
 ## Timing boundaries
 
@@ -157,18 +130,15 @@ controlled by this benchmark.
   order. These waits are excluded from move timings. The bridge regression
   separately verifies that pending import and mode-change recycling still runs.
 - Small fixtures measure orchestration and native ordering, not large-dictionary
-  I/O, import speed or memory savings. The host is shared; process observations
-  and load snapshots accompany the results. These are local measurements, not
-  a browser-wide latency guarantee.
-- The existing cross-engine `benchmark/compare.mjs` uses a different schema.
-  This focused benchmark reuses its browser and durable JSONL helpers; the
-  accompanying table summarizes the reorder-specific raw rows directly.
+  I/O, import speed or memory savings. The host is shared; light host work,
+  scheduling, thermal and power-management variation are not controlled by this
+  benchmark. These are local measurements, not a browser-wide latency guarantee.
 
 ## Visible result
 
-The screenshot was taken while the first engine acknowledgement was held.
-`management-gamma` already reflects a subsequent move to rank 1, and valid
-arrow controls remain usable.
+The screenshot was taken while the first engine acknowledgement was held. A
+subsequent optimistic move already reflects rank 1, and valid arrow controls
+remain usable.
 
 ![Optimistic dictionary order before the held acknowledgement](assets/dictionary-reorder-optimistic.png)
 
@@ -176,71 +146,23 @@ arrow controls remain usable.
 
 The engine derives the fast path from an unchanged loaded manifest (identity,
 path, kinds and enabled state), including tolerated failed packages. It retains
-those diagnostics; changed sets still use existing validation/loading. No new
-message type or client-provided bypass flag is needed. Low memory mode trusts
-only a successful engine `order-only` result when excluding a fresh recycle.
+those diagnostics; a refused native order or any changed set falls back to the
+existing load path. No new message type or client-provided bypass flag is
+needed. Low memory mode trusts only a successful engine `order-only` result
+when excluding a fresh recycle.
 
 Settings reuses its serialized CAS queue, authoritative-state restoration,
 row/focus helpers and existing unsaved-work guard. Rapid moves share one batch;
 new moves during an in-flight commit follow that page's acknowledgement.
-Competing Settings writes fail explicitly and discard stale queued drafts.
-The diff's simplification pass removed the redundant reorder option and avoided
-another persistence or lifecycle mechanism. A follow-up for Sonar S3776 moved
-the existing disclosure/reusable-row collection and removed-ID pruning into a
-small helper after the order-only early return, without suppression. There are
-no new settings, dependencies, submodule changes or generated WASM changes relative to the base.
+Competing Settings writes fail explicitly, bump the reorder epoch, and discard
+the stale queued draft. A settled reorder reuses the existing rows by comparing
+package records independent of key order. The diff added no settings,
+dependencies, submodule changes or generated WASM changes relative to the base;
+drag-and-drop remains the existing pointer/keyboard reorder controls.
 
-## Validation commands and outcomes
+## Validation
 
-The full local suites below ran on measured implementation `5cc4f73`, using the
-pinned runtime above. External locked tooling was read only; no dependency
-installation or global tooling change was made. Full hosted CI must validate
-the final merged head.
-
-| Command | Outcome |
-| --- | --- |
-| `node test/make-fixture.mjs` | Exit 0; generated the existing local fixtures. |
-| `node test/extension-smoke.mjs` | 601 passed, 0 failed. |
-| `node test/threaded-bridge-smoke.mjs` | Exit 0; real offscreen settlement regression proves no fresh reorder recycle, preserved pending import recycle, preserved mode-change recycle. Expected injected worker errors and Node's MockTimers experimental warning are logged. |
-| `node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs test/low-memory-option.test.mjs test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` | 34 tests passed, 0 failed. |
-| `HACHIDORI_SHARING_PORT=18885 node test/chrome-sharing.mjs` | 13/13 checks passed, exit 0. |
-| `unshare --user --map-root-user --net sh -c 'ip link set lo up && node test/chrome-e2e.mjs'` | 241/241 checks passed, exit 0, including every new reorder/unload check. |
-
-After integrating main, `node --check test/chrome-e2e.mjs` exited 0 and
-`unshare --user --map-root-user --net sh -c 'ip link set lo up && node test/tmp/reorder-check.mjs'`
-passed all three planned reorder/unload checks and the existing pointer,
-boundary, focus, selection, reload and bulk-removal scenario. Both the reorder
-and Library-navigation imports, planned checks and calls remain present.
-
-The focused real-Chrome dictionary scenario also passed separately in a fresh
-profile, through the exported `dictionaryManagementScenarios` used by full E2E.
-Its unload regression dispatches a cancelable `beforeunload` immediately after
-clicks, while an acknowledgement is held, and after settlement. Before the
-one-condition guard fix the first assertion failed (`false !== true`); all
-three phases now pass. This exercises the actual Settings unload handler,
-not Chrome's native confirmation-dialog appearance.
-
-The native regression was run before implementation: **596 passed, 3 failed**.
-The failures showed retained warm lookup and full resets/re-adds beside an
-unchanged unloadable committed package (enabled and disabled variants).
-Healthy imports already retained verification; the missing fast path concerned
-that tolerated failed package, which must keep its diagnostic rather than be
-marked successfully verified.
-
-Initial timing evidence remains separately under
-`benchmark/results/reorder-initial-pinned` (base `4be36f5`) and
-`benchmark/results/reorder-first-fix` (head `008a293`). Those single-profile
-runs predate #281 and are not the final comparison. An earlier diagnostic run
-with system Node 26/Chromium 153 timed out importing 150 dictionaries; its
-partial data is excluded. The final pairs use the same pinned Node/Chrome for
-both revisions.
-
-After the Sonar helper extraction, the same pinned commands passed again:
-`node test/make-fixture.mjs` (exit 0), `node test/extension-smoke.mjs`
-(**603 passed, 0 failed**), the focused real-Chrome reorder/unload runner
-(all three planned checks plus pointer/focus/selection/reload/bulk removal),
-`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs`
-(**17 passed, 0 failed**) and
-`HACHIDORI_SHARING_PORT=18885 node test/chrome-sharing.mjs` (**13/13 passed**).
-`git diff --check` is clean. These results supplement the measured revision's
-full E2E result above; exact-head hosted gates must run again after the push.
+See the pull request for the full command list and outcomes on the rebased
+head, including the Node contract suite, both WASM smoke variants, the offscreen
+bridge regression, the extension smoke suite, and the real-Chrome end-to-end
+suite. Full hosted CI validates the exact merged head.
