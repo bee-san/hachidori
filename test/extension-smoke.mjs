@@ -16252,7 +16252,7 @@ async function contentNoteStage() {
 
   // Issue #299: a primary press in an ancestor retires its descendants at once,
   // even focused ones, without waiting for the hover-hide delay. Drafts stay
-  // protected, and a press on a link leaves the replacement to that click.
+  // protected, and a press on a link keeps that link's own child for its click.
   async function nestedClickCase() {
     const harness = await createHarness();
     const window = harness.anchor.ownerDocument.defaultView;
