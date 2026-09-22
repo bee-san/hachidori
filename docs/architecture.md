@@ -723,12 +723,20 @@ own selection rules.
 Automatic scanning reads page text in DOM order regardless of layout, as
 Yomitan's default layout-unaware scan does: it crosses inline and block elements
 alike, including glyphs boxed one per absolutely positioned span by an overlay,
-and stops only at `<br>`, editing controls or contenteditable text. The sentence
-is the run of neighbouring text nodes around the hovered glyph, up to 200
-characters each way, cut at a whitespace-only text node containing a line break
-(the separator between blocks in page source and in overlays). Those text nodes
-are the candidate's sources, so the highlight and the Anki sentence use the same
-text. A focused page editor keeps printable
+and stops only at `<br>`, editing controls or contenteditable text. The
+candidate's sources are the run of neighbouring text nodes around the hovered
+glyph, up to 200 characters each way, cut at a whitespace-only text node
+containing a line break (the separator between blocks in page source and in
+overlays) and at the edge of the paragraph, list item or table cell the glyph
+is laid out in; flex, grid and positioned boxes, which overlays use for every
+glyph, are crossed. The highlight is drawn in that source text. The Anki
+sentence, the Note prefill and a custom link's `%s` are Yomitan's sentence cut
+out of it by `sentence.js`: outward from the matched word to a terminator
+(`。．.！!？?…` and their vertical forms, kept at the end) or a rendered line
+break, leaving out a quote or bracket pair that encloses the word and keeping a
+pair inside the sentence whole, capped at the 200-character extent and trimmed.
+The sentence is cut around the hovered glyph first and again around the whole
+matched word once the engine has answered. A focused page editor keeps printable
 activation keys available for typing. Pointer lookups and modifier activation
 still work over separate page text, including example links beside an
 autofocused search field. The live `onlyScanJapaneseText`
