@@ -135,6 +135,9 @@ test("dictionary outcomes accumulate across runs and continuing records an incom
   assert.deepEqual(retry.dictionaries.selectionsApplied, ["jitendex"]);
   assert.deepEqual(retry.dictionaries.recordedRuns, ["run-1", "run-2"]);
   assert.deepEqual(normaliseSetupState(retry), retry);
+  // An outcome keyed by a source the catalogue has since dropped is kept as recorded.
+  const retired = recordSetupDictionaries(retry, { runId: "run-3", outcomes: { "sankoku8-eng": { status: "already-installed" } } });
+  assert.deepEqual(normaliseSetupState(retired).dictionaries.outcomes["sankoku8-eng"], { status: "already-installed", seconds: null, error: null });
   assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", outcomes: { jitendex: { status: "done" } } }), /malformed/u);
   assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", runSeconds: -1 }), /invalid/u);
   assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", selectionsApplied: ["jiten"] }), /unknown/u);

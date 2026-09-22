@@ -336,7 +336,7 @@ const PLANNED = [
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
-  "settings page renders exactly six safe recommended dictionary links",
+  "settings page renders exactly five safe recommended dictionary links",
   "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
@@ -9896,7 +9896,7 @@ async function main() {
   });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
-    "settings page renders exactly six safe recommended dictionary links",
+    "settings page renders exactly five safe recommended dictionary links",
     JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),

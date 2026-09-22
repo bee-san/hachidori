@@ -280,7 +280,7 @@ try {
   assert.equal(setupArchiveRequests.length, 0, "fallback setup waits for the welcome decision");
   await startup.evaluate(() => document.getElementById("setup-start").click());
   let page = await openSettings(browser, id);
-  // Let the automatic run fail all four sources before importing through the
+  // Let the automatic run fail all five sources before importing through the
   // same engine lock; a single run must have asked for each source once.
   await page.waitForFunction(async (expected) => {
     const { setupState } = await chrome.storage.local.get("setupState");
