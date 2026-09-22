@@ -20097,6 +20097,49 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
     ]), JSON.stringify(inheritedProjections));
+  // A clicked-kanji group compares its members side by side: every member with
+  // an entry is its own tab in group order, replacing the group and favourite
+  // tabs, and a native kanji entry renders as one structured card.
+  const nativeEntry = kanji.entries[0];
+  const scopeSelections = [];
+  view.renderResults([{ ...noteResults[0], term: { ...noteResults[0].term, expression: kanji.character, reading: "",
+    glossaries: [
+      { dictionary: "Dictionary B", glossary: JSON.stringify(["a term member's single-kanji entry"]) },
+      { dictionary: nativeEntry.dictionary, glossary: HDPopup.kanjiEntryGlossary(nativeEntry) },
+    ] } }], candidate, { ...tabContext, expandAll: true,
+    dictionaryTabScope: ["Missing", nativeEntry.dictionary, "Dictionary B"],
+    onDictionaryTabSelected(selection) { scopeSelections.push(selection); } });
+  const scopeTabs = () => [...popup.querySelectorAll('[role="tab"]')].map((tab) => [tab.textContent, { ...tab.dataset }]);
+  const allScopeTabs = scopeTabs();
+  popup.querySelector(`[role="tab"][data-dictionary="${nativeEntry.dictionary}"]`)?.click();
+  const nativeCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
+  const nativeContent = nativeCard?.querySelector(".gsm-hoshidicts-glossary-content");
+  const nativeCardState = {
+    cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map((title) => title.title),
+    structured: nativeContent?.classList.contains("structured-content"),
+    readings: [...nativeContent?.querySelectorAll("[data-sc-content=reading]") ?? []].map((node) => node.textContent),
+    tags: nativeContent?.querySelector("[data-sc-content=tags]")?.textContent,
+    meanings: [...nativeContent?.querySelectorAll("ol > li") ?? []].map((item) => item.textContent),
+    details: [...nativeContent?.querySelectorAll("details table tr") ?? []]
+      .map((row) => [...row.cells].map((cell) => cell.textContent)),
+    summary: nativeContent?.querySelector("details > summary")?.textContent,
+  };
+  // The live presentation update keeps the scope: a renamed group cannot bring
+  // the ordinary group tabs back or drop the selected member.
+  view.updateDictionaryPresentation({ ...tabContext, dictionaryTabGroups: [
+    { id: "scoped", name: "Renamed", dictionaries: [nativeEntry.dictionary, "Dictionary B"] }] });
+  check("a clicked-kanji group renders each contributing member as an ordered tab and native entries as structured cards",
+    JSON.stringify(allScopeTabs) === JSON.stringify([
+      ["All", {}], [nativeEntry.dictionary, { dictionary: nativeEntry.dictionary }], ["Favourite B", { dictionary: "Dictionary B" }],
+    ])
+      && JSON.stringify(scopeTabs()) === JSON.stringify(allScopeTabs)
+      && JSON.stringify(scopeSelections) === JSON.stringify([null, { dictionary: nativeEntry.dictionary }])
+      && JSON.stringify(nativeCardState) === JSON.stringify({
+        cards: [nativeEntry.dictionary], structured: true,
+        readings: ["On ショク · ジキ", "Kun く.う · た.べる"], tags: "jouyou grade2", meanings: ["food", "eat", "meal"],
+        details: nativeEntry.stats.map(({ name, value }) => [name, value]), summary: "Details",
+      }),
+    JSON.stringify({ allScopeTabs, afterUpdate: scopeTabs(), scopeSelections, nativeCardState }));
   const selectedTabs = [];
   view.renderResults(noteResults, candidate, {
     dictionaryPresentation: [{ title: "Dictionary B", displayName: "Favourite B", favorite: true }],

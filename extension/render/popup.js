@@ -1515,18 +1515,50 @@
         ...selection, dictionaries: new Set(members),
       };
     }
+    const dictionaryTab = (dictionary) => tab(
+      dictionaryDisplayNames.get(dictionary) || dictionary,
+      dictionary, { dictionary }, [dictionary], "dictionary",
+    );
+    // A clicked-kanji group compares its members side by side: every member
+    // with an entry is its own tab in group order, instead of the reader's
+    // group and favourite tabs.
+    if (Array.isArray(renderContext.dictionaryTabScope)) {
+      const tabs = [
+        tab("All", "All dictionaries", null, [], "tab"),
+        ...renderContext.dictionaryTabScope.filter((title) => available.has(title)).map(dictionaryTab),
+      ];
+      return { tabs, dictionaryDisplayNames };
+    }
     const tabs = [
       tab("All", "All dictionaries", null, [], "tab"),
       ...availableGroups.map((group) => tab(
         group.name, `Tab group: ${group.name}`,
         { groupId: group.id }, group.dictionaries, "group",
       )),
-      ...favourites.map((dictionary) => tab(
-        dictionaryDisplayNames.get(dictionary) || dictionary,
-        dictionary, { dictionary }, [dictionary], "dictionary",
-      )),
+      ...favourites.map(dictionaryTab),
     ];
     return { tabs, dictionaryDisplayNames };
+  }
+
+  // A native kanji entry as one structured-content glossary, so a clicked-kanji
+  // group can lay it out beside its term dictionaries' cards.
+  function kanjiEntryGlossary(entry) {
+    const tokens = (value) => Array.isArray(value) ? value : String(value || "").split(/\s+/u).filter(Boolean);
+    const tags = tokens(entry.tags);
+    const readings = [["On", tokens(entry.onyomi)], ["Kun", tokens(entry.kunyomi)]]
+      .filter(([, values]) => values.length > 0)
+      .map(([label, values]) => ({ tag: "div", data: { content: "reading" },
+        content: [{ tag: "strong", content: label }, ` ${values.join(" · ")}`] }));
+    const definitions = Array.isArray(entry.definitions) ? entry.definitions : [];
+    const stats = Array.isArray(entry.stats) ? entry.stats : [];
+    return JSON.stringify([{ type: "structured-content", content: [
+      ...(tags.length > 0 ? [{ tag: "div", data: { content: "tags" }, content: tags.join(" ") }] : []),
+      ...readings,
+      ...(definitions.length > 0 ? [{ tag: "ol", content: definitions.map((content) => ({ tag: "li", content })) }] : []),
+      ...(stats.length > 0 ? [{ tag: "details", content: [{ tag: "summary", content: "Details" },
+        { tag: "table", content: stats.map((stat) => ({ tag: "tr", content: [
+          { tag: "th", content: String(stat.name) }, { tag: "td", content: String(stat.value) }] })) }] }] : []),
+    ] }]);
   }
 
   function isRecord(value) {
@@ -4120,7 +4152,9 @@
             && context.popupImageSources !== imageContext.popupImageSources;
           if ((imagesChanged || summaryChanged) && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
           const focused = popup.getRootNode().activeElement;
-          const next = createDictionaryTabs(dictionaries, context);
+          // Presentation updates carry the reader's inventory, not this view's
+          // clicked-kanji scope, which stays with the render that chose it.
+          const next = createDictionaryTabs(dictionaries, { ...renderContext, ...context });
           const previous = tabDescriptors;
           const selectedKey = previous[selectedIndex].key;
           let index = next.tabs.findIndex(tab => tab.key === selectedKey);
@@ -4251,6 +4285,7 @@
     extractCompactDefinitionSummary,
     formatCompactFrequencyNumber,
     formatFrequencyValue,
+    kanjiEntryGlossary,
     metadataOptions,
   };
 }));
