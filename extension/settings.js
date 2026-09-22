@@ -1755,6 +1755,7 @@ function renderOptions() {
   }
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  element("opt-no-result-notice").checked = options.showNoResultNotice;
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-audio-autoplay").checked = options.audioAutoplay;
@@ -3276,6 +3277,10 @@ function attachHandlers() {
   });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-no-result-notice").addEventListener("change", (event) => {
+    options.showNoResultNotice = event.target.checked;
     writeOptions();
   });
   element("opt-low-memory-mode").addEventListener("change", (event) => {

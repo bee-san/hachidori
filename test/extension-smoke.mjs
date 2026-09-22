@@ -17379,6 +17379,7 @@ async function contentNoteStage() {
       && rendered.candidate.sentence === " 食べたかった "
       && rendered.candidate.matchOffset === 1
       && rendered.candidate.sourceElements.map((node) => node.textContent).join("") === rendered.candidate.sentence;
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: false });
     const raw = " hello\n world ";
     const rawRequest = selectText(raw);
     if (rawRequest) harness.reply(rawRequest, { dictionaryCount: 1, results: [] });

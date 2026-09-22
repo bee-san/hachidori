@@ -7508,7 +7508,24 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const fresh = await browser.newPage();
     let englishIgnored;
     try {
+      const cdp = await fresh.createCDPSession();
+      const contexts = [];
+      cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.push(context));
+      await cdp.send("Runtime.enable");
       await fresh.goto(tab.url(), { waitUntil: "load" });
+      // Wait for the production reader before asserting the absence of a host.
+      const extensionId = new URL(settings.url()).host;
+      let ready = false;
+      for (let attempt = 0; attempt < 50 && !ready; attempt++) {
+        for (const context of contexts.filter(value => value.name === extensionId)) {
+          const { result } = await cdp.send("Runtime.evaluate", { contextId: context.id,
+            expression: "globalThis.HDReaderReady?.then(() => true)", awaitPromise: true });
+          ready ||= result.value === true;
+        }
+        if (!ready) await new Promise(done => setTimeout(done, 100));
+      }
+      if (!ready) throw new Error("selection regression could not find the ready reader");
+      await cdp.detach();
       const before = (await lookups()).length;
       await fresh.$eval("#verb", element => {
         element.textContent = "hello world";
@@ -7533,7 +7550,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       await settings.bringToFront();
       const controls = await settings.$("#selection-notice-settings");
       await controls.scrollIntoView();
-      await controls.screenshot({ path: process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT });
+      await settings.screenshot({ path: process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT });
     }
     await tab.bringToFront();
     await selectVerb("ぬるぽがっ");
