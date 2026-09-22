@@ -31,6 +31,51 @@
   }
 
   /**
+   * Tracks the pairs a walk passes through. `opening` maps a character that
+   * begins a pair in the walking direction to the one that ends it, `closing`
+   * the reverse. True when the walk reaches the end of a pair the match is
+   * inside: the sentence stops before it. Yomitan pushes with unshift and
+   * removes with pop, which loses nesting; this is the stack it means.
+   */
+  function leavesPair(pending, character, opening, closing) {
+    if (closing.has(character)) {
+      if (pending.length === 0) return true;
+      if (pending[pending.length - 1] === character) pending.pop();
+      return false;
+    }
+    if (opening.has(character)) pending.push(opening.get(character));
+    return false;
+  }
+
+  /** Walks backward from `from` to `limit`; a terminator stays out of the sentence. */
+  function sentenceStart(text, from, limit) {
+    const pending = [];
+    let start = from;
+    for (; start > limit; start -= 1) {
+      const character = text[start - 1];
+      if (character === "\n" || (pending.length === 0 && TERMINATORS.has(character))) break;
+      if (leavesPair(pending, character, OPENER_OF, CLOSER_OF)) break;
+    }
+    return start;
+  }
+
+  /** Walks forward from `from` to `limit`; a run of terminators ends the sentence and belongs to it. */
+  function sentenceEnd(text, from, limit) {
+    const pending = [];
+    let end = from;
+    for (; end < limit; end += 1) {
+      const character = text[end];
+      if (character === "\n") break;
+      if (pending.length === 0 && TERMINATORS.has(character)) {
+        while (end < limit && TERMINATORS.has(text[end])) end += 1;
+        break;
+      }
+      if (leavesPair(pending, character, CLOSER_OF, OPENER_OF)) break;
+    }
+    return end;
+  }
+
+  /**
    * The sentence of `text` around the match at `matchOffset` of `matchLength`
    * UTF-16 code units, and the match's offset inside that sentence. The walk
    * never enters the match itself, so a terminator inside the matched word
@@ -44,45 +89,8 @@
     // Only the window's edges can land inside a surrogate pair; step inside it.
     if (windowStart < matchStart && isLowSurrogate(text, windowStart)) windowStart += 1;
     if (windowEnd > matchEnd && isLowSurrogate(text, windowEnd)) windowEnd -= 1;
-
-    let start = matchStart;
-    // Openers still to be matched while walking backward through pairs. Yomitan
-    // pushes with unshift and removes with pop, which loses nesting; this is the
-    // stack it means.
-    const pending = [];
-    for (; start > windowStart; start -= 1) {
-      const character = text[start - 1];
-      if (character === "\n") break;
-      if (pending.length === 0 && TERMINATORS.has(character)) break;
-      if (CLOSER_OF.has(character)) {
-        if (pending.length === 0) break;
-        if (pending[pending.length - 1] === character) {
-          pending.pop();
-          continue;
-        }
-      }
-      if (OPENER_OF.has(character)) pending.push(OPENER_OF.get(character));
-    }
-
-    let end = matchEnd;
-    pending.length = 0;
-    for (; end < windowEnd; end += 1) {
-      const character = text[end];
-      if (character === "\n") break;
-      if (pending.length === 0 && TERMINATORS.has(character)) {
-        while (end < windowEnd && TERMINATORS.has(text[end])) end += 1;
-        break;
-      }
-      if (OPENER_OF.has(character)) {
-        if (pending.length === 0) break;
-        if (pending[pending.length - 1] === character) {
-          pending.pop();
-          continue;
-        }
-      }
-      if (CLOSER_OF.has(character)) pending.push(CLOSER_OF.get(character));
-    }
-
+    let start = sentenceStart(text, matchStart, windowStart);
+    let end = sentenceEnd(text, matchEnd, windowEnd);
     while (start < matchStart && isWhitespace(text[start])) start += 1;
     while (end > matchEnd && isWhitespace(text[end - 1])) end -= 1;
     return { sentence: text.slice(start, end), matchOffset: matchStart - start };
