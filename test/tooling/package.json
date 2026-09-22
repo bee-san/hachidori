@@ -32,7 +32,7 @@
     "@puppeteer/browsers": "3.2.2",
     "geckodriver": "6.1.1",
     "jsdom": "30.0.1",
-    "puppeteer-core": "25.10.0",
+    "puppeteer-core": "25.11.0",
     "web-ext": "10.6.0"
   }
 }
