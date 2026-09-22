@@ -997,7 +997,12 @@ function selectedDefinitionBlurFrequencyDictionary(title = options.definitionBlu
 function normaliseDictionarySelections() {
   let changed = false;
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
-  if (kanjiSelection) {
+  if (kanjiSelection?.kind === "tabGroup") {
+    if (!dictionaryState.groups.some((group) => group.id === kanjiSelection.id)) {
+      options.kanjiClickDictionary = "";
+      changed = true;
+    }
+  } else if (kanjiSelection) {
     const selected = dictionaries.find((entry) => entry.title === kanjiSelection.title);
     const requestedKind = kanjiSelection.kind || (selected && hasCapability(selected, "kanji") ? "kanji" : "term");
     if (!selected || selected.enabled === false || !hasCapability(selected, requestedKind)) {
@@ -1724,12 +1729,26 @@ function appendStaleKanjiChoice(select, previousSelection, selectedValue, availa
   }
   const stale = document.createElement("option");
   stale.value = selectedValue;
-  stale.textContent = `${previousSelection.title} (not available)`;
+  stale.textContent = `${previousSelection.kind === "tabGroup" ? "Group" : previousSelection.title} (not available)`;
   select.appendChild(stale);
+}
+
+function appendKanjiGroupChoices(select, availableValues) {
+  if (dictionaryState.groups.length === 0) return;
+  const optgroup = document.createElement("optgroup");
+  optgroup.label = "Groups";
+  for (const group of dictionaryState.groups) {
+    const option = new Option(group.name, selectionValue({ kind: "tabGroup", id: group.id }));
+    availableValues.add(option.value);
+    optgroup.appendChild(option);
+  }
+  select.appendChild(optgroup);
 }
 
 function renderKanjiChoices() {
   const select = element("opt-kanji-dictionary");
+  // Inventory updates wait for focusout, as the Image source chooser does.
+  if (select === document.activeElement) return;
   const previousSelection = selectionParts(options.kanjiClickDictionary);
   select.textContent = "";
 
@@ -1757,6 +1776,7 @@ function renderKanjiChoices() {
   for (const group of groups) {
     appendKanjiGroup(select, enabled, group, availableValues);
   }
+  appendKanjiGroupChoices(select, availableValues);
 
   const selectedValue = selectedKanjiValue(previousSelection, withKanji, withTerms);
   appendStaleKanjiChoice(select, previousSelection, selectedValue, availableValues);
@@ -3535,6 +3555,7 @@ function attachHandlers() {
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-blur-frequency-dictionary") renderDefinitionBlurFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
+      if (event.target.id === "opt-kanji-dictionary") renderKanjiChoices();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
       if (event.target.closest("#definition-blur-settings")) {
         renderDefinitionBlurControls();
