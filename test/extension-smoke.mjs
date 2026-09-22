@@ -16882,11 +16882,22 @@ async function contentNoteStage() {
         if (lookup) harness.reply(lookup, { dictionaryCount, results: [] });
         await harness.settle();
         const visible = dictionaryCount === 0 || showNoResultNotice;
-        outcomes.push({ showNoResultNotice, dictionaryCount, passed: lookup !== null
-          && harness.driver.snapshot().popupHidden === !visible
+        const missed = lookup !== null && harness.driver.snapshot().popupHidden === !visible
           && (!visible || (harness.render()?.kind === "notice"
             && harness.render().value.startsWith(dictionaryCount === 0
-              ? "No dictionaries loaded." : "No definition found."))) });
+              ? "No dictionaries loaded." : "No definition found.")));
+        // The miss keeps the unchanged selection, shown or hidden; a new selection looks up.
+        harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+        const retained = harness.take("hd_lookup") === null;
+        harness.anchor.textContent = "食べる";
+        window.getSelection().selectAllChildren(harness.anchor);
+        window.document.dispatchEvent(new window.Event("selectionchange"));
+        const next = harness.take("hd_lookup");
+        if (next) harness.reply(next, { dictionaryCount: 1, results: [harness.term("食べる")] });
+        await harness.settle();
+        outcomes.push({ showNoResultNotice, dictionaryCount, missed, retained,
+          passed: missed && retained && next?.request.text === "食べる"
+            && harness.render()?.kind === "terms" && !harness.driver.snapshot().popupHidden });
         harness.close();
       }
     }
