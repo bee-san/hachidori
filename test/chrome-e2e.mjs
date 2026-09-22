@@ -7505,60 +7505,71 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await editSettingsControls(settings, {
       "opt-lookup-mode": "hover", "opt-japanese-only": true, "opt-no-result-notice": true,
     });
+    // A fresh page has no reader host until its first lookup, so an English
+    // selection there proves the gate by leaving the DOM alone; a Japanese
+    // selection on the same page then proves the reader was live all along.
     const fresh = await browser.newPage();
-    let englishIgnored;
+    let englishIgnored, freshHit;
     try {
-      const cdp = await fresh.createCDPSession();
-      const contexts = [];
-      cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.push(context));
-      await cdp.send("Runtime.enable");
       await fresh.goto(tab.url(), { waitUntil: "load" });
-      // Wait for the production reader before asserting the absence of a host.
+      await fresh.bringToFront();
+      const cdp = await fresh.createCDPSession();
+      const contexts = new Set();
+      cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.add(context.id));
+      cdp.on("Runtime.executionContextDestroyed", ({ executionContextId }) => contexts.delete(executionContextId));
+      await cdp.send("Runtime.enable");
       const extensionId = new URL(settings.url()).host;
       let ready = false;
-      for (let attempt = 0; attempt < 50 && !ready; attempt++) {
-        for (const context of contexts.filter(value => value.name === extensionId)) {
-          const { result } = await cdp.send("Runtime.evaluate", { contextId: context.id,
-            expression: "globalThis.HDReaderReady?.then(() => true)", awaitPromise: true });
+      for (let attempt = 0; attempt < 100 && !ready; attempt++) {
+        for (const contextId of contexts) {
+          const { result } = await cdp.send("Runtime.evaluate", { contextId, awaitPromise: true,
+            expression: `globalThis.chrome?.runtime?.id === ${JSON.stringify(extensionId)}
+              && globalThis.HDReaderReady?.then(() => true)` });
           ready ||= result.value === true;
         }
         if (!ready) await new Promise(done => setTimeout(done, 100));
       }
-      if (!ready) throw new Error("selection regression could not find the ready reader");
       await cdp.detach();
-      const before = (await lookups()).length;
-      await fresh.$eval("#verb", element => {
-        element.textContent = "hello world";
+      if (!ready) throw new Error("the fresh page's reader did not become ready");
+      const selectFresh = (text) => fresh.$eval("#verb", (element, contents) => {
+        element.textContent = contents;
         window.getSelection().selectAllChildren(element);
-      });
+      }, text);
+      const before = (await lookups()).length;
+      await selectFresh("hello world");
       await fresh.evaluate(() => new Promise(done => setTimeout(done, 250)));
-      englishIgnored = (await lookups()).length === before
-        && await fresh.$("hachidori-host") === null;
+      englishIgnored = (await lookups()).length === before && await fresh.$("hachidori-host") === null;
+      await selectFresh("食べる");
+      freshHit = (await (await popupReader(fresh)).waitForVisible())?.plain;
     } finally { await fresh.close(); }
     await tab.bringToFront();
     await selectVerb("ぬるぽがっ");
-    const defaultNotice = await popup.waitForVisible();
+    const defaultNotice = (await popup.waitForVisible())?.plain;
     await editSettingsControls(settings, { "opt-no-result-notice": false });
     await tab.bringToFront();
+    const hiddenStart = (await lookups()).length;
     await selectVerb("ぬるぽがっ");
+    for (let attempt = 0; attempt < 50 && (await lookups()).length === hiddenStart; attempt++) await pause();
     await pause();
     const hiddenMiss = !popup.visible(await popup.state()) && (await lookups()).at(-1)?.text === "ぬるぽがっ";
     await selectVerb("食べる");
-    const hit = await popup.waitForVisible();
+    const hit = (await popup.waitForVisible())?.plain;
     await editSettingsControls(settings, { "opt-no-result-notice": true });
     if (process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT) {
       await settings.bringToFront();
+      await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
       const controls = await settings.$("#selection-notice-settings");
-      await controls.scrollIntoView();
-      await settings.screenshot({ path: process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT });
+      await controls.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await settings.evaluate(() => new Promise(requestAnimationFrame));
+      await controls.screenshot({ path: process.env.HACHIDORI_SELECTION_SETTINGS_SCREENSHOT });
     }
     await tab.bringToFront();
     await selectVerb("ぬるぽがっ");
-    const restoredNotice = await popup.waitForVisible();
+    const restoredNotice = (await popup.waitForVisible())?.plain;
     check("Japanese-only selections leave English text alone and the notice setting propagates to open readers",
-      englishIgnored && defaultNotice?.plain.includes("No definition found.") && hiddenMiss
-        && hit?.plain.includes("食べる") && restoredNotice?.plain.includes("No definition found."),
-      JSON.stringify({ englishIgnored, hiddenMiss, defaultNotice, hit, restoredNotice }));
+      englishIgnored && freshHit?.includes("食べる") && defaultNotice?.includes("No definition found.")
+        && hiddenMiss && hit?.includes("食べる") && restoredNotice?.includes("No definition found."),
+      JSON.stringify({ englishIgnored, freshHit, defaultNotice, hiddenMiss, hit, restoredNotice }));
     await editSettingsControls(settings, {
       "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
       "opt-scan-length": "1", "opt-japanese-only": true,
