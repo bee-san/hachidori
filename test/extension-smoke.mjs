@@ -5527,7 +5527,7 @@ async function main() {
     stateCasAttempts: 0,
     durableFilesystemWrites: 0,
   };
-  const nativeCounts = { resets: 0, adds: 0, removes: 0, reorders: 0 };
+  const nativeCounts = { resets: 0, adds: 0, removes: 0, reorders: 0, lookups: 0 };
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
     observedEngine = module;
@@ -5553,6 +5553,8 @@ async function main() {
         loadedDictionaryPaths.delete(argumentValues[0]);
       } else if (name === "hdw_set_dict_order" && result) {
         nativeCounts.reorders += 1;
+      } else if (name === "hdw_lookup") {
+        nativeCounts.lookups += 1;
       }
       return result;
     };
@@ -7883,6 +7885,7 @@ async function main() {
     baseRevision: stateWithThreePackages.revision,
     dictionaries: [...stateWithThreePackages.dictionaries].reverse(),
   });
+  const reorderSkippedWarmup = nativeCounts.lookups === nativeBeforeReorder.lookups;
   const lookupAfterReorder = await request("hd_lookup", { text: "食べる" });
   const statusAfterReorder = await request("hd_status");
   const dictionaryNames = (lookup) => lookup.results.flatMap((result) =>
@@ -7895,6 +7898,8 @@ async function main() {
       && nativeCounts.resets === nativeBeforeReorder.resets
       && nativeCounts.adds === nativeBeforeReorder.adds
       && nativeCounts.reorders === nativeBeforeReorder.reorders + 1
+      && reorderSkippedWarmup
+      && statusAfterReorder.lastLoadPath === "order-only"
       && statusAfterReorder.dictionaryCount === statusBeforeReorder.dictionaryCount
       && statusAfterReorder.generation === statusBeforeReorder.generation + 1
       && lookupAfterReorder.ok === true
@@ -8079,10 +8084,25 @@ async function main() {
         === JSON.stringify(authoritativeInvalidState.dictionaries.map(({ id, path }) => [id, path])),
     JSON.stringify({ invalidStateWrite, invalidReload, invalidStatus, lookupBesideInvalid, stateAfterInvalidReload }),
   );
+  const beforeFailedPackageOrder = { ...nativeCounts };
+  const reorderedInvalidState = await request("hd_apply_state", {
+    baseRevision: stateAfterInvalidReload.revision,
+    dictionaries: [...stateAfterInvalidReload.dictionaries].reverse(),
+  });
+  const reorderedInvalidStatus = await request("hd_status");
+  check("reordering beside an unloadable committed package neither reloads nor loses its diagnostic",
+    reorderedInvalidState.ok === true
+      && nativeCounts.resets === beforeFailedPackageOrder.resets
+      && nativeCounts.adds === beforeFailedPackageOrder.adds
+      && nativeCounts.lookups === beforeFailedPackageOrder.lookups
+      && nativeCounts.reorders === beforeFailedPackageOrder.reorders + 1
+      && reorderedInvalidStatus.lastLoadPath === "order-only"
+      && JSON.stringify(reorderedInvalidStatus.failedDictionaries) === JSON.stringify(invalidStatus.failedDictionaries),
+    JSON.stringify({ beforeFailedPackageOrder, nativeCounts, reorderedInvalidStatus }));
   const disabledInvalidWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
-    baseRevision: stateAfterInvalidReload.revision,
+    baseRevision: reorderedInvalidState.state.revision,
     dictionaries: stateAfterInvalidReload.dictionaries.map((dictionary) =>
       dictionary.title === invalidLoadTitle ? { ...dictionary, enabled: false } : dictionary),
   });
@@ -8098,10 +8118,25 @@ async function main() {
       && disabledInvalidStatus.failedDictionaries[0].id === invalidPackage.id,
     JSON.stringify({ disabledInvalidWrite, disabledInvalidReload, disabledInvalidStatus }),
   );
+  const beforeDisabledPackageOrder = { ...nativeCounts };
+  const reorderedDisabledInvalid = await request("hd_apply_state", {
+    baseRevision: stateAfterDisabledInvalidReload.revision,
+    dictionaries: [...stateAfterDisabledInvalidReload.dictionaries].reverse(),
+  });
+  const reorderedDisabledStatus = await request("hd_status");
+  check("an unchanged disabled failed package does not force order-only edits to rebuild",
+    reorderedDisabledInvalid.ok === true
+      && nativeCounts.resets === beforeDisabledPackageOrder.resets
+      && nativeCounts.adds === beforeDisabledPackageOrder.adds
+      && nativeCounts.lookups === beforeDisabledPackageOrder.lookups
+      && nativeCounts.reorders === beforeDisabledPackageOrder.reorders + 1
+      && reorderedDisabledStatus.lastLoadPath === "order-only"
+      && JSON.stringify(reorderedDisabledStatus.failedDictionaries) === JSON.stringify(disabledInvalidStatus.failedDictionaries),
+    JSON.stringify({ beforeDisabledPackageOrder, nativeCounts, reorderedDisabledStatus }));
   const repairedStateWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
-    baseRevision: stateAfterDisabledInvalidReload.revision,
+    baseRevision: reorderedDisabledInvalid.state.revision,
     dictionaries: stateAfterDisabledInvalidReload.dictionaries.filter(
       (dictionary) => dictionary.title !== invalidLoadTitle,
     ),
