@@ -176,6 +176,8 @@ status and the Updates panel's one-dictionary summary. Both checks use
 omitting it checks all managed packages. An empty array checks none. The row's
 **Update** button installs that package; **Install updates** keeps the bulk flow.
 
+![A managed dictionary row after checking for an update, with the refresh button beside Update](assets/dictionary-update-check.png)
+
 The global Off/hourly/daily/weekly/monthly setting is the
 default; each managed package can inherit it or choose its own interval or Off.
 One nonperiodic Chrome alarm targets the earliest package due time and
