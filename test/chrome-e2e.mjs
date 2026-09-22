@@ -38,6 +38,7 @@ import {
   imageSizingFixture,
   makePng,
   nestedLinksFixture,
+  structuredContentDeepFixture,
 } from "./make-fixture.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -457,6 +458,7 @@ const PLANNED = [
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "deep structured content renders while node-limit failures omit only their definition",
+  "a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -13280,6 +13282,51 @@ async function main() {
       && nodeRender.recovered?.plain?.includes("healthy bounded lookup"),
     JSON.stringify({ boundedPackage, renderFailures, deepRender, nodeRender }),
   );
+
+  // The reported の/何事 failure (#287): a 大辞泉-shaped entry nested beyond the
+  // former depth limit renders, and its compact summary shows real text.
+  const deepFixture = structuredContentDeepFixture();
+  await installMediaArchive(page, deepFixture.archive());
+  const summaryOptions = await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 } });
+    if (!reply.ok) throw new Error(reply.error);
+    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
+      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount };
+  });
+  await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, deepFixture.query);
+  const deepEntry = await hoverForPopup(tab2, popup2, "#kanjiword", {
+    accept: state => !state.failure && state.plain.includes(deepFixture.leaf),
+  });
+  let deepSummaries = [];
+  for (let attempt = 0; attempt < 40 && deepSummaries[0]?.items?.length !== deepFixture.summary.length; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 250));
+    deepSummaries = await popup2.compactSummaries();
+  }
+  check(
+    "a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary",
+    deepEntry?.plain?.includes(deepFixture.leaf) && !deepEntry.failure
+      && deepEntry.plain.includes(deepFixture.title)
+      && deepSummaries.length === 1 && deepSummaries[0].dictionary === deepFixture.title
+      && JSON.stringify(deepSummaries[0].items) === JSON.stringify(deepFixture.summary),
+    JSON.stringify({ plain: deepEntry?.plain, failure: deepEntry?.failure, deepSummaries, expected: deepFixture.summary }),
+  );
+  await tab2.mouse.move(2, 2);
+  await popup2.waitForHidden();
+  await page.evaluate(async (restore) => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: restore });
+    if (!reply.ok) throw new Error(reply.error);
+  }, summaryOptions);
+  await engineRequest("hd_remove", { title: deepFixture.title });
+  await page.waitForFunction(async (title) => {
+    const stored = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return !(stored.dictionaryState?.dictionaries ?? []).some((entry) => entry.title === title)
+      && status?.ok && status.ready && !status.loading;
+  }, { timeout: 90_000, polling: 250 }, deepFixture.title);
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({
