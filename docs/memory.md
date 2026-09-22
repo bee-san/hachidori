@@ -72,8 +72,10 @@ things:
    restore has settled and the engine has been idle for two seconds, the
    offscreen document terminates the engine worker and starts a new one, which
    reloads the installed dictionaries from OPFS (or IDBFS). The new worker's
-   heap holds only the mapped files, so the import high-water mark is given
-   back to the browser. A pure reorder uses the already loaded native set and
+   heap holds only the mapped files: on IDBFS that gives the import high-water
+   mark back to the browser, and on OPFS (where the import worker already
+   returned it) whatever the swaps of replaced generations left in the heap.
+   A pure reorder uses the already loaded native set and
    allocates no import high-water mark, so it does not request a recycle. It
    still restarts the idle window of a pending import or mode-change recycle.
 2. **Imports on one thread with a minimal thread pool.** The recycled worker

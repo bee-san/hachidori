@@ -13257,7 +13257,7 @@ async function main() {
     }),
     new Promise((resolveWake) => setTimeout(() => resolveWake({ timeout: true }), 10_000)),
   ])).catch((error) => ({ error: String(error) }));
-  const expectedRecreatedCheck = Date.parse(failedAlarmPackage.lastUpdateCheck.checkedAt) + 3_600_000;
+  const expectedRecreatedCheck = Date.parse((hoverUpdatedPackage ?? failedAlarmPackage).lastUpdateCheck.checkedAt) + 3_600_000;
   const recreatedAlarm = await page.waitForFunction(async ({ alarmName, expected }) => {
     const alarms = await chrome.alarms.getAll();
     const alarm = alarms.find((candidate) => candidate.name === alarmName);
@@ -13620,6 +13620,7 @@ async function main() {
     return { status, memory, total, available, wasChecked };
   });
   const lowMemoryStatus = await waitForRecycle(true, null).catch(() => null);
+  const lowMemoryHeapBeforeImport = lowMemoryStatus === null ? null : (await engineRequest("hd_memory")).heapBytes;
   const lowMemoryOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   check(
     "low memory mode recycles the engine worker and reports memory in Settings",
@@ -13683,12 +13684,16 @@ async function main() {
       && lowMemoryImported.memory.dictionaries[0].bytes > 0
       && recycledAfterImport?.threaded === true && recycledAfterImport.dictionaryCount === 1
       && afterRecycle?.memory.ok === true
-      && afterRecycle.memory.heapBytes < lowMemoryImported.memory.heapBytes
+      // The import ran in the terminated import worker: the engine's heap did
+      // not take the import's high-water mark (an in-engine import grows it by
+      // well over 16 MiB), and the recycle has nothing of it left to give back.
+      && lowMemoryImported.memory.heapBytes < lowMemoryHeapBeforeImport + 16 * 1024 * 1024
+      && afterRecycle.memory.heapBytes <= lowMemoryImported.memory.heapBytes
       && afterRecycle.memory.dictionaries[0]?.bytes === lowMemoryImported.memory.dictionaries[0].bytes
       && afterRecycle.lookup.ok === true && afterRecycle.lookup.results[0]?.term.expression === "食べる"
       && /^In memory: \u2248 [\d.]+ (KB|MB|GB)$/u.test(afterRecycle.rowMemory ?? "")
       && /across 1 dictionary$/u.test(afterRecycle.total ?? ""),
-    JSON.stringify({ imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
+    JSON.stringify({ heapBeforeImport: lowMemoryHeapBeforeImport, imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
   );
 
   await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());

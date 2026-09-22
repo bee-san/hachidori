@@ -3645,10 +3645,11 @@ function renderChangedDictionaryState() {
 // A scheduled update records that an update is available immediately before
 // installing it; that write is the page's cue to start polling hd_status so
 // the row can show which package is being replaced.
-function updateBecameAvailable(previous, next) {
-  const before = new Map((previous?.dictionaries ?? []).map((entry) => [entry?.id, entry?.lastUpdateCheck?.status]));
+function updateAvailabilityRecorded(previous, next) {
+  const before = new Map((previous?.dictionaries ?? []).map((entry) => [entry?.id, JSON.stringify(entry?.lastUpdateCheck ?? null)]));
   return (next?.dictionaries ?? []).some((entry) =>
-    entry?.lastUpdateCheck?.status === "update-available" && before.get(entry.id) !== "update-available");
+    entry?.lastUpdateCheck?.status === "update-available"
+      && before.get(entry.id) !== JSON.stringify(entry.lastUpdateCheck));
 }
 
 function handleDictionaryStateChange(change) {
@@ -3661,7 +3662,7 @@ function handleDictionaryStateChange(change) {
   }
   if (adopted) {
     renderChangedDictionaryState();
-    if (updateBecameAvailable(change.oldValue, change.newValue)) scheduleStatusPoll(0);
+    if (updateAvailabilityRecorded(change.oldValue, change.newValue)) scheduleStatusPoll(0);
   }
   return true;
 }
