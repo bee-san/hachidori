@@ -16228,8 +16228,8 @@ async function contentNoteStage() {
       harness.callbacks(1).positionPopup();
       const clamped = same(geometry(1), { left: 458, top: 224 });
       const noPaneReads = paneReads === 0;
-      // A pane whose word sits in the lower half but has no fitting side takes
-      // the roomier side; a preferred edge overrides the automatic toolbar.
+      // A pane whose word fits on neither side takes the roomier side, clamped
+      // to the viewport; a preferred edge overrides the automatic toolbar.
       harness.emitOptions({ popupToolbarPosition: "bottom" });
       childLink.getBoundingClientRect = box(300, 200, 40, 20);
       harness.callbacks(1).positionPopup();
@@ -16238,7 +16238,7 @@ async function contentNoteStage() {
       window.innerHeight = 500;
       childLink.getBoundingClientRect = box(300, 260, 40, 20);
       harness.callbacks(1).positionPopup();
-      const roomier = same(geometry(1), { left: 300, top: 74, toolbar: "bottom" });
+      const roomier = same(geometry(1), { left: 300, top: 6, toolbar: "bottom" });
       window.innerHeight = 768;
       // Scale and zoom convert the word's page rectangle into popup pixels.
       harness.emitOptions({ popupToolbarPosition: "auto", popupScalePercent: 50 });
