@@ -4652,6 +4652,18 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const noticeCases = [];
+    for (const value of [false, true, "false", 0, null]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ showNoResultNotice: value }));
+      noticeCases.push(typeof value === "boolean"
+        ? reply.ok === true && reply.options?.showNoResultNotice === value
+        : reply.ok === false && await unchanged(saved));
+    }
+    check("selection notices default on and use strict boolean options CAS",
+      reader.normaliseOptions({}).showNoResultNotice === true
+        && reader.normaliseOptions({ showNoResultNotice: "false" }).showNoResultNotice === true
+        && noticeCases.every(Boolean), JSON.stringify(noticeCases));
     const cssCases = [];
     for (const value of ["", "/* 日本語 */\r\n.gsm-hoshidicts-popup { color: red; }\n", "/*" + "x".repeat(40_000) + "*/"]) {
       await local.set({ options: saved.options });
@@ -14497,6 +14509,8 @@ async function contentNoteStage() {
     hideTimerPending() { return hideTimer !== null; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
+    resolveSelectedLookupCandidate,
+    resolveSelectionScanCandidate,
     resolveDefinitionCandidate(clientX, clientY, depth = 0) {
       return resolveDefinitionCandidate(clientX, clientY, levels[depth]);
     },
@@ -16828,6 +16842,58 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function selectionLanguageCase() {
+    const outcomes = [];
+    for (const onlyScanJapaneseText of [true, false]) {
+      for (const query of ["hello", "hello world", "https://example.test", "食べる", "hello食べる"]) {
+        const harness = await createHarness(undefined, { options: { onlyScanJapaneseText } });
+        const window = harness.popup.ownerDocument.defaultView;
+        // The following Japanese text must not make an English selection scannable.
+        harness.anchor.textContent = query + "食べる";
+        const selection = window.getSelection();
+        selection.setBaseAndExtent(harness.anchor.firstChild, 0, harness.anchor.firstChild, query.length);
+        const exact = harness.driver.resolveSelectedLookupCandidate();
+        const scan = harness.driver.resolveSelectionScanCandidate();
+        window.document.dispatchEvent(new window.Event("selectionchange"));
+        const lookup = harness.take("hd_lookup");
+        const allowed = !onlyScanJapaneseText || query.includes("食");
+        if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term(query)] });
+        await harness.settle();
+        outcomes.push({ query, onlyScanJapaneseText, passed: Boolean(exact) === allowed
+          && Boolean(scan) === allowed && Boolean(lookup) === allowed
+          && harness.driver.snapshot().popupHidden === !allowed });
+        harness.close();
+      }
+    }
+    return { "both selection resolvers apply the Japanese gate to the selected text":
+      outcomes.every(value => value.passed) || outcomes };
+  }
+
+  async function selectionNoticeCase() {
+    const outcomes = [];
+    for (const showNoResultNotice of [true, false]) {
+      for (const dictionaryCount of [0, 1]) {
+        const harness = await createHarness(undefined, { options: { showNoResultNotice } });
+        const window = harness.popup.ownerDocument.defaultView;
+        harness.anchor.textContent = "ぬるぽがっ";
+        window.getSelection().selectAllChildren(harness.anchor);
+        window.document.dispatchEvent(new window.Event("selectionchange"));
+        const lookup = harness.take("hd_lookup");
+        if (lookup) harness.reply(lookup, { dictionaryCount, results: [] });
+        await harness.settle();
+        const visible = dictionaryCount === 0 || showNoResultNotice;
+        outcomes.push({ showNoResultNotice, dictionaryCount, passed: lookup !== null
+          && harness.driver.snapshot().popupHidden === !visible
+          && (!visible || (harness.render()?.kind === "notice"
+            && harness.render().value.startsWith(dictionaryCount === 0
+              ? "No dictionaries loaded." : "No definition found."))) });
+        harness.close();
+      }
+    }
+    return { "selection miss notices are optional while the no-dictionaries notice stays visible":
+      outcomes.every(value => value.passed) || outcomes };
+  }
+
   async function selectionEditingCase() {
     const outcomes = [];
     for (const tag of ["button", "span", "contents", "restored", "restored-child"]) {
@@ -19134,6 +19200,7 @@ async function contentNoteStage() {
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
+      ...await selectionLanguageCase(), ...await selectionNoticeCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
