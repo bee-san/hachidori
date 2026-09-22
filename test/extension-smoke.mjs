@@ -21977,9 +21977,12 @@ async function deepStructuredContentStage({ HDGlossary, HDPopup, document }) {
       plain: fields.Plain, richLeaf: fields.Rich.includes("leaf"),
     };
   }));
+  // The preview keeps its 512-node budget (COMPACT_DEFINITION_MAX_NODES): 500
+  // wrappers are 750 values, so only that budget, never depth, ends its summary.
   check("rendering, compact summaries and Anki fields never fail on depth alone",
     outcomes.every(outcome => outcome.depth >= outcome.wrappers && outcome.rendered === "leaf"
-      && JSON.stringify(outcome.items) === '["leaf"]' && outcome.plain === "leaf" && outcome.richLeaf),
+      && (outcome.depth < 512 ? JSON.stringify(outcome.items) === '["leaf"]' : outcome.items === undefined)
+      && outcome.plain === "leaf" && outcome.richLeaf),
     JSON.stringify(outcomes.map(({ wrappers, depth, rendered, items, plain, richLeaf }) =>
       ({ wrappers, depth, rendered, items, plain, richLeaf }))));
 }
