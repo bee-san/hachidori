@@ -711,6 +711,50 @@ export function compactSummaryFixture() {
   ] };
 }
 
+// 大辞泉's の nests part-of-speech groups, numbered senses, ㋐ sub-senses and
+// ruby examples 25+ values deep, which is the shape that hit the former depth
+// limit (#287). Placeholder text stands in for the publisher's; the hierarchy
+// is what matters. `summary` is the compact preview the extractor owes each
+// group: every gloss in order, without the part-of-speech label or examples.
+export function structuredContentDeepFixture() {
+  const title = 'structured-content-deep-fixture';
+  const query = 'の';
+  const leaf = '第一語義の細分㋑の説明。';
+  const marked = (tag, marker, content) => ({ tag, data: { content: marker }, content });
+  const example = () => marked('div', 'examples', [marked('span', 'example', [
+    '「', { tag: 'ruby', content: ['用例', { tag: 'rt', content: 'ようれい' }] }, '」',
+  ])]);
+  const subsense = (mark, gloss) => ({ tag: 'li', content: [marked('div', 'subsense', [
+    marked('span', 'sense-mark', mark),
+    marked('span', 'gloss', [{ tag: 'span', lang: 'ja', content: gloss }]),
+    example(),
+  ])] });
+  const sense = (number, gloss, subsenses = []) => ({ tag: 'li', content: [marked('div', 'sense', [
+    marked('span', 'sense-number', number),
+    marked('span', 'gloss', gloss),
+    ...subsenses.length ? [marked('ol', 'subsenses', subsenses.map(entry => subsense(...entry)))] : [],
+  ])] });
+  const group = (partOfSpeech, senses) => ({ tag: 'li', content: [marked('div', 'sense-group', [
+    marked('span', 'part-of-speech', partOfSpeech),
+    marked('ol', 'senses', senses.map(entry => sense(...entry))),
+  ])] });
+  const glossary = [{ type: 'structured-content', content: [marked('div', 'entry', [
+    marked('div', 'headword', [{ tag: 'span', lang: 'ja', content: query }]),
+    marked('div', 'body', [marked('ol', 'sense-groups', [
+      group('［格助］', [
+        ['１', '第一語義の説明。', [['㋐', '第一語義の細分㋐の説明。'], ['㋑', leaf]]],
+        ['２', '第二語義の説明。'],
+      ]),
+      group('［終助］', [['１', '第三語義の説明。']]),
+    ])]),
+  ])] }];
+  return {
+    title, query, leaf, glossary: JSON.stringify(glossary),
+    summary: ['１第一語義の説明。㋐第一語義の細分㋐の説明。 ㋑第一語義の細分㋑の説明。 ２第二語義の説明。', '１第三語義の説明。'],
+    archive: () => buildTitledZip(title, { terms: [[query, query, '', '', 0, glossary, 1, '']] }),
+  };
+}
+
 export function imageSizingFixture() {
   const cases = [
     ['landscape', { width: 200, height: 100 }, 200, 50],
