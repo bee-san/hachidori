@@ -5519,7 +5519,7 @@ async function main() {
   let streamError = null;
   try {
     streamed = await engineService.streamResponseToFile(
-      {
+      { FS: {
         open: (path) => ({ fd: 7, path }),
         // WasmFS FS.write copies byte by byte from JavaScript, so the body must
         // arrive as one write rather than one per stream chunk.
@@ -5532,7 +5532,7 @@ async function main() {
         close() {
           streamClosed = true;
         },
-      },
+      } },
       {
         body: {
           getReader: () => ({

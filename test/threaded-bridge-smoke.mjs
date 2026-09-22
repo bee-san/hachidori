@@ -199,7 +199,7 @@ for (const type of ["hd_backup_prepare", "hd_backup_auto_prepare", "hd_custom_sa
   await Promise.all(saturated.map(entry => entry.promise));
 }
 
-const stagedImport = request("hd_import", "staged-import");
+const stagedImport = request("hd_import", "staged-import", { managedFingerprint: { id: "managed-a" } });
 await tick();
 const stagedImportMessage = engine.messages.at(-1);
 assert.equal(stagedImportMessage.message.type, "hd_import");
@@ -207,6 +207,8 @@ const stagedStatus = await send("hd_status", "status-during-staging");
 assert.equal(stagedStatus.loading, true);
 assert.equal(stagedStatus.threaded, true);
 assert.equal(stagedStatus.storageBackend, "opfs");
+assert.deepEqual(stagedStatus.updating, { id: "managed-a", phase: "downloading", fallback: null },
+  "status names the package an admitted import replaces before the engine reports a phase");
 const stagedLookup = request("hd_lookup", "lookup-during-staging");
 await tick();
 const stagedLookupMessage = engine.messages.at(-1);
@@ -237,6 +239,8 @@ engine.emit("message", {
   response: { type: "hd_lookup_result", requestId: "second-lookup-during-staging", ok: true, results: [] },
 });
 assert.equal((await secondStagedLookup.promise).ok, true);
+// An isolated import (engine-service.js runIsolatedImportTransaction) leaves the
+// committed dictionaries loaded, so its installing phase takes no read lock.
 engine.emit("message", {
   channel: "engine-progress",
   id: 73,
@@ -253,13 +257,72 @@ assert.deepEqual(engine.messages.at(-1), {
   ok: true,
   error: null,
 });
-assert.match((await send("hd_lookup", "lookup-during-install")).error, /busy mutating/);
+const isolatedInstallStatus = await send("hd_status", "status-during-isolated-install");
+assert.equal(isolatedInstallStatus.loading, true);
+assert.deepEqual(isolatedInstallStatus.updating, { id: "managed-a", phase: "installing", fallback: null });
+const isolatedInstallLookup = request("hd_lookup", "lookup-during-isolated-install");
+await tick();
+const isolatedInstallLookupMessage = engine.messages.at(-1);
+assert.equal(isolatedInstallLookupMessage.message.type, "hd_lookup", "reads reach the engine while an isolated import installs");
+engine.emit("message", {
+  channel: "engine-response",
+  id: isolatedInstallLookupMessage.id,
+  response: { type: "hd_lookup_result", requestId: "lookup-during-isolated-install", ok: true, results: [] },
+});
+assert.equal((await isolatedInstallLookup.promise).ok, true);
+assert.match((await send("hd_remove", "remove-during-isolated-install")).error, /busy mutating/);
 engine.emit("message", {
   channel: "engine-response",
   id: stagedImportMessage.id,
   response: { type: "hd_import_result", requestId: "staged-import", ok: true },
 });
 assert.equal((await stagedImport.promise).ok, true);
+const idleStatus = request("hd_status", "status-after-import");
+await tick();
+const idleStatusMessage = engine.messages.at(-1);
+assert.equal(idleStatusMessage.message.type, "hd_status", "an idle bridge asks the engine for its own status");
+engine.emit("message", {
+  channel: "engine-response",
+  id: idleStatusMessage.id,
+  response: { type: "hd_status_result", requestId: "status-after-import", ok: true, ready: true, loading: false,
+    dictionaryCount: 1, generation: 2, storageBackend: "opfs", threaded: true },
+});
+assert.equal((await idleStatus.promise).updating, undefined, "only the bridge's snapshot reports an import");
+
+// An import inside the live engine (no isolated importer) unloads the committed
+// dictionaries first, so its installing phase still refuses reads.
+const memoryImport = request("hd_import", "memory-import", {
+  importDecision: { action: "replace", target: { id: "replaced-b" } },
+});
+await tick();
+const memoryImportMessage = engine.messages.at(-1);
+assert.equal(memoryImportMessage.message.type, "hd_import");
+engine.emit("message", {
+  channel: "engine-progress",
+  id: 74,
+  progress: {
+    requestId: "memory-import",
+    phase: "installing",
+    receivedBytes: 8,
+    totalBytes: 8,
+    fallback: "memory",
+  },
+});
+assert.deepEqual(engine.messages.at(-1), {
+  channel: "engine-progress-ack",
+  id: 74,
+  ok: true,
+  error: null,
+});
+assert.match((await send("hd_lookup", "lookup-during-install")).error, /busy mutating/);
+assert.deepEqual((await send("hd_status", "status-during-memory-install")).updating,
+  { id: "replaced-b", phase: "installing", fallback: "memory" });
+engine.emit("message", {
+  channel: "engine-response",
+  id: memoryImportMessage.id,
+  response: { type: "hd_import_result", requestId: "memory-import", ok: true },
+});
+assert.equal((await memoryImport.promise).ok, true);
 
 const mutationTypes = [
   "hd_apply_state",
@@ -555,8 +618,11 @@ try {
     phase: "installing",
     receivedBytes: 8,
     totalBytes: 8,
+    fallback: "memory",
   });
   assert.match((await send("hd_lookup", "local-lookup-during-install")).error, /busy mutating/);
+  assert.deepEqual((await send("hd_status", "local-status-during-install")).updating,
+    { id: null, phase: "installing", fallback: "memory" });
   localRequests.shift().resolve({
     type: "hd_import_result",
     requestId: "local-staged-import",

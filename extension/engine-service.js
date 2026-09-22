@@ -122,6 +122,11 @@ let lowRam = true;
 let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
 let reportProgress = null;
+// Optional importer running in its own engine instance on the shared OPFS
+// root (engine-worker-runtime.js), so hd_import never blocks or unloads this
+// engine. IDBFS runtimes have none: two instances cannot share one IDBFS
+// store, so they import inside the live engine (see runImportTransaction).
+let isolatedImport = null;
 // Download progress is a transient UI signal; one report per chunk would flood
 // the host bridge on a fast connection.
 const PROGRESS_INTERVAL_MS = 100;
@@ -136,6 +141,7 @@ export function configureEngineService(request, options = {}) {
   lowRam = options.lowRam !== false;
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
+  isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
 }
 
 function describe(error) {
@@ -478,11 +484,17 @@ function removeUnreferencedDictionaryRoot(name, referencedRoots) {
   return true;
 }
 
+// Generation roots an isolated import is still writing. No manifest references
+// them yet, and the import runs outside the engine queue, so a reload's cleanup
+// could otherwise run in between and delete them.
+const importingRoots = new Set();
+
 async function cleanupUnreferencedDictionaries(dictionaries) {
   const referencedRoots = new Set(dictionaries.map((dictionary) => dictionaryRoot(dictionary)));
   if (referencedRoots.has(null)) {
     throw new Error("the committed dictionary state contains an invalid path");
   }
+  for (const root of importingRoots) referencedRoots.add(root);
   let changed = false;
   for (const name of engine.FS.readdir(DICT_ROOT)) {
     changed = removeUnreferencedDictionaryRoot(name, referencedRoots) || changed;
@@ -1066,12 +1078,13 @@ function addDictionaries(dictionaries, includeDisabled) {
 // 100-150 ms for Jitendex or Pixiv), and the engine cannot reorder or drop a
 // loaded package on its own, so the first version of this rebuilt the whole
 // set on every change. `loadedPackages` and `verifiedPackages` let a change
-// that only reorders, disables, or re-enables packages this session already
-// loaded be applied in place through hdw_remove_dict / hdw_add_dict /
-// hdw_set_dict_order instead. Package paths are generation-scoped and their
-// files never change once loaded, so a package that loaded once this session
-// loads again; anything else falls back to the full rebuild below, which also
-// discards whatever an interrupted incremental step left behind.
+// that reorders, disables, or re-enables packages this session already loaded,
+// or swaps one package's generation for a freshly imported one, be applied in
+// place through hdw_remove_dict / hdw_add_dict / hdw_set_dict_order instead.
+// Package paths are generation-scoped and their files never change once
+// loaded, so a package that loaded once this session loads again; a failure
+// falls back to the full rebuild below, which also discards whatever an
+// interrupted incremental step left behind.
 let loadedPackages = null;
 // Includes disabled and tolerated failed packages. A reorder of this exact
 // manifest must not retry a failed package or rebuild its healthy neighbours.
@@ -1137,8 +1150,11 @@ function reorderLoadedDictionaries(dictionaries) {
 }
 
 // Returns the loaded count, or null when the change needs the full rebuild.
+// A package this session has not loaded yet (a freshly imported generation) is
+// added here too: hdw_add_dict is the verification, and a failure falls back to
+// the full rebuild, which tolerates only committed packages.
 function loadDictionariesIncrementally(dictionaries) {
-  if (loadedPackages === null || !dictionaries.every(isVerified)) {
+  if (loadedPackages === null) {
     return null;
   }
   const enabled = dictionaries.filter((dictionary) => dictionary.enabled !== false);
@@ -1154,6 +1170,14 @@ function loadDictionariesIncrementally(dictionaries) {
       if (present.has(dictionary.path)) continue;
       addDictionaries([dictionary], true);
       present.set(dictionary.path, packageKinds(dictionary));
+    }
+    // A disabled package must also prove it loads before it is committed; add
+    // and drop it in place rather than rebuilding the whole set around it.
+    for (const dictionary of dictionaries) {
+      if (dictionary.enabled !== false || isVerified(dictionary)) continue;
+      addDictionaries([dictionary], true);
+      if (!engine.ccall("hdw_remove_dict", "number", ["string"], [dictionary.path])) return null;
+      verifiedPackages.set(dictionary.path, packageKinds(dictionary));
     }
     const order = JSON.stringify(enabled.map((dictionary) => dictionary.path));
     if (!engine.ccall("hdw_set_dict_order", "number", ["string"], [order])) return null;
@@ -1799,14 +1823,16 @@ async function consumeResponse(response, consume, onProgress = null) {
 const PROT_READ_WRITE = 0x1 | 0x2;
 const MAP_SHARED = 0x01;
 
-// Writes one buffer as the whole file. WasmFS's FS.write copies from JavaScript
+// Writes one buffer as the whole file of `module`'s filesystem. WasmFS's
+// FS.write copies from JavaScript
 // one byte at a time (about 25 ns per byte: a full second for the 39 MiB
 // Jitendex archive), and its FS.writeFile on the OPFS backend appends to an
 // existing file and leaves it undeletable until the next start. A shared
 // writable mapping gives a single typed-array copy and one write-back through
 // the OPFS proxy. The legacy FS (single-thread IDBFS build) has no munmap and
 // its FS.write is already a typed-array copy, so it takes the direct path.
-function writeFileBytes(FS, path, data) {
+function writeFileBytes(module, path, data) {
+  const { FS } = module;
   const stream = FS.open(path, "w+");
   try {
     if (data.byteLength === 0 || typeof FS.mmap !== "function" || typeof FS.munmap !== "function") {
@@ -1825,10 +1851,10 @@ function writeFileBytes(FS, path, data) {
       // Module.HEAPU8 is swapped out after memory growth only once some glue
       // touches the heap; FS.stat does, so a view too short for the mapping is
       // refreshed before the copy.
-      let heap = engine.HEAPU8;
+      let heap = module.HEAPU8;
       if (heap.byteLength < mapping.ptr + data.byteLength) {
         FS.stat(path);
-        heap = engine.HEAPU8;
+        heap = module.HEAPU8;
       }
       heap.set(data, mapping.ptr);
       FS.msync(stream, mapping.ptr, 0, data.byteLength, MAP_SHARED);
@@ -1872,13 +1898,13 @@ async function collectResponse(response, onProgress = null) {
 }
 
 // `source` is a Response, or bytes already collected by stageImportArchive.
-export async function streamResponseToFile(FS, source, path, onProgress = null) {
+export async function streamResponseToFile(module, source, path, onProgress = null) {
   if (source instanceof Uint8Array) {
-    writeFileBytes(FS, path, source);
+    writeFileBytes(module, path, source);
     return source.byteLength;
   }
   const { bytes, byteLength } = await collectResponse(source, onProgress);
-  writeFileBytes(FS, path, bytes);
+  writeFileBytes(module, path, bytes);
   return byteLength;
 }
 
@@ -1912,7 +1938,11 @@ function importStagingPaths(fileName, resources) {
   };
 }
 
-async function importDictionaryArchive(
+// Stages the archive in `module`'s scratch filesystem and runs its native
+// importer into `generationRoot`. Shared with the isolated import worker, whose
+// module is a second engine instance on the same OPFS root.
+export async function importDictionaryArchive(
+  module,
   archiveSource,
   generationRoot,
   importLowRam,
@@ -1920,7 +1950,7 @@ async function importDictionaryArchive(
   expectedArchiveBytes = null,
   resources = [],
 ) {
-  const FS = engine.FS;
+  const { FS } = module;
   const { directory, archivePath, resourcePaths } = importStagingPaths(fileName, resources);
   try {
     if (directory !== null) {
@@ -1930,7 +1960,7 @@ async function importDictionaryArchive(
         // Left by an interrupted import; its files are overwritten below.
       }
     }
-    const archiveBytes = await streamResponseToFile(FS, archiveSource, archivePath);
+    const archiveBytes = await streamResponseToFile(module, archiveSource, archivePath);
     if (archiveBytes === 0) {
       throw new Error(`${fileName} is empty`);
     }
@@ -1938,11 +1968,11 @@ async function importDictionaryArchive(
       throw new Error(`${fileName} changed while it was staged`);
     }
     resources.forEach((resource, index) => {
-      writeFileBytes(FS, resourcePaths[index], resource.bytes);
+      writeFileBytes(module, resourcePaths[index], resource.bytes);
     });
-    return normaliseReport(
+    const report = normaliseReport(
       parseJson(
-        engine.ccall(
+        module.ccall(
           "hdw_import",
           "string",
           ["string", "string", "number"],
@@ -1951,6 +1981,14 @@ async function importDictionaryArchive(
         "hdw_import",
       ),
     );
+    if (report.success && report.title === "") {
+      // hdw_import refuses a title it cannot use as a folder name, so this is
+      // unreachable; without a title there is nothing to register, and a row
+      // with an empty title would poison reconcile().
+      report.success = false;
+      report.error = `${fileName} declares no dictionary title`;
+    }
+    return report;
   } finally {
     removeStagedFile(FS, archivePath);
     for (const path of resourcePaths) removeStagedFile(FS, path);
@@ -2219,6 +2257,31 @@ async function stageImportResources(request) {
   return staged;
 }
 
+// After a successful native import into `generationRoot`: flush it, then
+// `commit` loads and publishes it. A failed commit restores the committed set
+// and discards the generation.
+async function commitImportedRoot(generationRoot, report, commit) {
+  try {
+    await persistFilesystem();
+    await commit(generationRoot, report);
+  } catch (error) {
+    if (error instanceof UnknownDictionaryStateCommitError) {
+      // Storage may already reference the new path. Neither generation is safe
+      // to delete until an authoritative read succeeds.
+      reloadError = error;
+      throw error;
+    }
+    await rollbackImportedGeneration(generationRoot, error);
+    throw error;
+  }
+  return report;
+}
+
+// Imports inside this engine. The loaded dictionaries are mapped into the same
+// 32-bit address space the importer needs, so they are unloaded first and the
+// offscreen bridge refuses reads until the commit (or the rollback) reloads
+// them. The custom dictionary always compiles this way; hd_import does only
+// when the runtime has no isolated importer.
 async function runImportTransaction(
   archiveSource,
   fileName,
@@ -2228,9 +2291,8 @@ async function runImportTransaction(
   resources = [],
 ) {
   const generationRoot = createGenerationRoot();
-  // Unload before importing: the loaded dictionaries are mapped into the same
-  // 32-bit address space the importer needs. Public count/generation state is
-  // not changed until either the candidate or the committed state is loaded.
+  // Public count/generation state is not changed until either the candidate or
+  // the committed state is loaded.
   resetEngine();
 
   // The archive is scratch: staging it in MEMFS instead of OPFS saves the
@@ -2238,9 +2300,9 @@ async function runImportTransaction(
   // Jitendex) and writes nothing to disk that the importer does not keep. The
   // heap holds one extra copy of the archive for the duration of the import.
   let report;
-  let rollbackAttempted = false;
   try {
     report = await importDictionaryArchive(
+      engine,
       archiveSource,
       generationRoot,
       importLowRam,
@@ -2248,34 +2310,69 @@ async function runImportTransaction(
       expectedArchiveBytes,
       resources,
     );
-    if (report.success && report.title === "") {
-      // hdw_import refuses a title it cannot use as a folder name, so this is
-      // unreachable; without a title there is nothing to register, and a row
-      // with an empty title would poison reconcile().
-      report.success = false;
-      report.error = `${fileName} declares no dictionary title`;
-    }
-    if (report.success) {
-      await persistFilesystem();
-      await commit(generationRoot, report);
-    } else {
-      const failure = new Error(report.error || `${fileName} could not be imported`);
-      rollbackAttempted = true;
-      await rollbackImportedGeneration(generationRoot, failure);
-    }
   } catch (error) {
-    if (error instanceof UnknownDictionaryStateCommitError) {
-      // Storage may already reference the new path. Neither generation is safe
-      // to delete until an authoritative read succeeds.
-      reloadError = error;
-      throw error;
-    }
-    if (!rollbackAttempted) {
-      await rollbackImportedGeneration(generationRoot, error);
-    }
+    await rollbackImportedGeneration(generationRoot, error);
     throw error;
   }
-  return report;
+  if (!report.success) {
+    await rollbackImportedGeneration(
+      generationRoot,
+      new Error(report.error || `${fileName} could not be imported`),
+    );
+    return report;
+  }
+  return commitImportedRoot(generationRoot, report, commit);
+}
+
+// Imports through the isolated importer while this engine keeps answering
+// lookups from the committed generations, then swaps the new generation in
+// under the engine queue: `commit` removes the replaced package and adds the
+// new one in place (loadDictionariesIncrementally), a few milliseconds during
+// which lookups wait rather than fail. Only the swap runs inside serialise().
+async function runIsolatedImportTransaction(
+  archive,
+  fileName,
+  importLowRam,
+  commit,
+  expectedArchiveBytes,
+  resources,
+) {
+  const generationRoot = createGenerationRoot();
+  importingRoots.add(generationRoot);
+  let report;
+  try {
+    report = await isolatedImport({
+      archive,
+      fileName,
+      generationRoot,
+      lowRam: importLowRam,
+      expectedArchiveBytes,
+      resources,
+    });
+  } catch (error) {
+    await serialise(() => discardImportingRoot(generationRoot));
+    throw error;
+  }
+  return serialise(async () => {
+    requireEngine();
+    if (!report.success) {
+      await discardImportingRoot(generationRoot);
+      return report;
+    }
+    importingRoots.delete(generationRoot);
+    return commitImportedRoot(generationRoot, report, commit);
+  });
+}
+
+// The engine never loaded anything from a root the isolated importer wrote, so
+// a failed import only has to remove the files.
+async function discardImportingRoot(generationRoot) {
+  importingRoots.delete(generationRoot);
+  try {
+    await discardGeneration(generationRoot);
+  } catch (error) {
+    console.warn(`hoshidicts: could not discard the failed dictionary generation: ${describe(error)}`);
+  }
 }
 
 class CustomCommitRejectedError extends Error {
@@ -2563,7 +2660,7 @@ async function stageBackupFiles(prepared, roots) {
     if (!dictionary) throw new Error(`The backup file has no dictionary: ${file.path}`);
     const path = `${dictionary.path}/${relative.join("/")}`;
     engine.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
-    await streamResponseToFile(engine.FS, new Response(file.data), path);
+    await streamResponseToFile(engine, new Response(file.data), path);
   }
   for (const dictionary of dictionaries) await validateBackupDictionaryFiles(dictionary);
   await persistFilesystem();
@@ -2986,51 +3083,63 @@ const HANDLERS = {
         throw new Error(`${stagedRequest.fileName} is empty`);
       }
       const stagedResources = await stageImportResources(stagedRequest);
-
-      return await serialise(async () => {
-        requireEngine();
+      const { fileName, importLowRam } = stagedRequest;
+      const installing = {
+        requestId,
+        phase: "installing",
+        receivedBytes: staged.byteLength,
+        totalBytes: staged.byteLength,
+      };
+      // The commit re-reads the request: a managed package can change while
+      // its archive downloads or installs.
+      const revalidate = async () => {
         const request = await prepareImportRequest(message);
         if (!samePreparedImport(stagedRequest, request)) {
           throw new Error("the dictionary import request changed while its archive was downloading");
         }
-        const {
-          expectedRevision,
-          fileName,
-          importDecision,
-          importLowRam,
-          managedSource,
-          recommendedSource,
-        } = request;
-        // The native importer has no progress callback. Awaiting this transition
-        // lets the offscreen bridge reject new reads before hdw_reset unloads
-        // the committed dictionaries.
-        await reportProgress?.({
-          requestId,
-          phase: "installing",
-          receivedBytes: staged.byteLength,
-          totalBytes: staged.byteLength,
-        });
-        const report = await runImportTransaction(
+        return request;
+      };
+      const commit = (request) => (generationRoot, importedReport) =>
+        commitImportedGeneration(
+          generationRoot,
+          importedReport,
+          request.recommendedSource,
+          request.managedSource,
+          request.expectedRevision,
+          request.importDecision,
+        );
+      const replyFor = (report) => (report.success
+        ? { report }
+        : { ok: false, error: report.error || `${fileName} could not be imported`, report });
+
+      if (isolatedImport !== null) {
+        await reportProgress?.(installing);
+        return replyFor(await runIsolatedImportTransaction(
           staged.bytes,
           fileName,
           importLowRam,
-          (generationRoot, importedReport) =>
-            commitImportedGeneration(
-              generationRoot,
-              importedReport,
-              recommendedSource,
-              managedSource,
-              expectedRevision,
-              importDecision,
-            ),
+          async (generationRoot, importedReport) => commit(await revalidate())(generationRoot, importedReport),
           staged.byteLength,
           stagedResources,
-        );
+        ));
+      }
 
-        if (!report.success) {
-          return { ok: false, error: report.error || `${fileName} could not be imported`, report };
-        }
-        return { report };
+      return await serialise(async () => {
+        requireEngine();
+        const request = await revalidate();
+        // The native importer has no progress callback, and this runtime has
+        // no isolated importer, so the archive is imported inside the live
+        // engine's memory. Awaiting this transition lets the offscreen bridge
+        // reject new reads before hdw_reset unloads the committed dictionaries.
+        await reportProgress?.({ ...installing, fallback: "memory" });
+        return replyFor(await runImportTransaction(
+          staged.bytes,
+          fileName,
+          importLowRam,
+          commit(request),
+          staged.byteLength,
+          stagedResources,
+        ));
       });
     } finally {
       stagingImports -= 1;
