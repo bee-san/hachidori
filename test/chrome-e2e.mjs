@@ -12079,8 +12079,10 @@ async function main() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = await popup.state();
     if (state?.text.includes(GENERIC_KANJI_GLOSSARY)) {
+      // The lookup count paints after its own worker round trip; keep the view
+      // once it stops changing so the pointer comparison below is exact.
+      if (state.text === genericKanjiState?.text) break;
       genericKanjiState = state;
-      break;
     }
     await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
   }
