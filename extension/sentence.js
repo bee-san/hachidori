@@ -27,7 +27,8 @@
   }
 
   function isLowSurrogate(text, index) {
-    return (text.charCodeAt(index) & 0xfc00) === 0xdc00;
+    const unit = text.codePointAt(index);
+    return unit >= 0xdc00 && unit <= 0xdfff;
   }
 
   /**
