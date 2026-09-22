@@ -17244,12 +17244,13 @@ async function contentNoteStage() {
     const experimental = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, longKeyScan: true };
     const harness = await createHarness(undefined, { options: { experimental } });
     const window = harness.popup.ownerDocument.defaultView;
-    window.Range.prototype.getClientRects = () => [];
+    window.Range.prototype.getClientRects = () => [{ left: 0, top: 0, right: 20, bottom: 20 }];
     const document = window.document;
     const block = document.createElement("p");
     block.style.display = "block";
     block.textContent = "\u3042".repeat(300);
     document.body.append(block);
+    document.elementFromPoint = () => block;
     const scan = () => {
       const range = document.createRange();
       range.setStart(block.firstChild, 0);
@@ -17339,12 +17340,15 @@ async function contentNoteStage() {
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
-    window.Range.prototype.getClientRects = () => [];
     const document = window.document;
     const block = document.createElement("p");
     block.style.display = "block";
     document.body.append(block);
     const scan = (node, offset = 0) => {
+      document.elementFromPoint = () => node.parentElement;
+      window.Range.prototype.getClientRects = function () {
+        return this.startOffset === offset ? [{ left: 0, top: 0, right: 1, bottom: 1 }] : [];
+      };
       const range = document.createRange();
       range.setStart(node, offset);
       range.collapse(true);
@@ -17472,6 +17476,8 @@ async function contentNoteStage() {
         + '昨日すき焼きを<span style="display:inline">食べました</span></a>';
       document.body.append(search, example);
       const link = example.querySelector("a");
+      document.elementFromPoint = () => link;
+      window.Range.prototype.getClientRects = () => [{ left: 190, top: 190, right: 210, bottom: 210 }];
       const range = document.createRange();
       range.setStart(link.firstChild, 0);
       range.collapse(true);

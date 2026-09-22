@@ -704,6 +704,13 @@ off it collects `scanLength` as before, so the engine never sees a longer key.
 Scans shorter than eight code points never extend, so a clicked-kanji lookup
 stays one character.
 
+Pointer scanning first requires the caret's complete Unicode character rectangle
+to contain the pointer, with two CSS pixels of tolerance. The hit-tested page
+element must contain that text node, so padded tiles and unrelated elements
+covering text cannot trigger distant lookups. This applies equally to horizontal
+and vertical text; exact selections and the reader's boxed-glyph drag keep their
+own selection rules.
+
 Automatic scanning reads page text in DOM order regardless of layout, as
 Yomitan's default layout-unaware scan does: it crosses inline and block elements
 alike, including glyphs boxed one per absolutely positioned span by an overlay,
