@@ -14,8 +14,9 @@ const ENGINE_WORKER_SCRIPT = /\/engine-worker(?:-idbfs)?\.js$/u;
 class FakeWorker {
   static creationError = null;
 
-  constructor(url) {
+  constructor(url, options) {
     this.url = String(url);
+    this.name = options?.name;
     if (ENGINE_WORKER_SCRIPT.test(this.url) && FakeWorker.creationError !== null) {
       throw FakeWorker.creationError;
     }
@@ -62,6 +63,7 @@ Object.defineProperty(globalThis, "navigator", {
   },
 });
 
+let configuredLowMemory = true;
 globalThis.chrome = {
   runtime: {
     onMessage: {
@@ -69,7 +71,8 @@ globalThis.chrome = {
         runtimeListeners.push(listener);
       },
     },
-    sendMessage: async () => ({}),
+    sendMessage: async (message) => message.type === "hd_engine_config"
+      ? { ok: true, lowMemoryMode: configuredLowMemory } : {},
   },
 };
 
@@ -84,6 +87,15 @@ function importedRuntime() {
   return (...args) => listeners.some(listener => listener(...args) === true);
 }
 let relay = importedRuntime();
+
+// The initial config read has finished, but the capability probe has not.
+// A newer option push must win when that probe finally selects a worker.
+configuredLowMemory = false;
+assert.equal(relay(
+  { target: "hoshidicts-offscreen", type: "hd_engine_config", relayed: true, lowMemoryMode: false },
+  { url: "background.js" },
+  () => {},
+), true);
 
 function request(type, requestId, fields = {}) {
   const responses = [];
@@ -118,6 +130,7 @@ assert.equal((await startupStatus.promise).storageBackend, undefined);
 capabilityWorkers[0].emit("message", { channel: "opfs-capability-result", ok: true });
 await tick();
 assert.equal(engineWorkers.length, 1);
+assert.equal(engineWorkers[0].name, "hoshidicts-engine", "a config push during selection supersedes the startup read");
 assert.match(engineWorkers[0].url, /\/engine-worker\.js$/u, "a passing OPFS probe selects the direct-OPFS worker");
 const engine = engineWorkers[0];
 const queued = startup.map((entry) => entry.promise);
