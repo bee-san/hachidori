@@ -1312,10 +1312,16 @@ The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
 real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
 independent parent/child Note drafts and Escape, same-level kanji Back followed
-by child Back, live depth lowering/zero, and narrow-window geometry. Reimports
-and held service-worker replies also prove top/bottom Note forms stay mounted,
-focused and reachable, and a still-focused tab survives same-view refresh.
-`HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
+by child Back, live depth lowering/zero, and narrow-window geometry. Two further
+assertions drive the chain with a real mouse: linked and hovered children hang
+from their source text (below it, else above, left aligned) and follow the
+parent's content scroll, popup scale and a narrow viewport; a primary click in
+an ancestor pane dismisses focused, hovered and still-pending descendants at
+once while an open child draft stays until Escape closes its form, and a click
+on the root's link keeps its same-query child without another lookup.
+Reimports and held service-worker replies also prove top/bottom Note forms stay
+mounted, focused and reachable, and a still-focused tab survives same-view
+refresh. `HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
 `HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
 
 `dictionaryTabsFixture()` extends that linked source with three unequal glossary

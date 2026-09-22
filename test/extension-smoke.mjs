@@ -15973,7 +15973,8 @@ async function contentNoteStage() {
       const oneBatch = frames.size === 1 && layouts === 0;
       frame();
       recordMasonryReads = false;
-      const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+      // Placement measures each pane's source text, never the panes themselves.
+      const resize = layouts === 4 && rootReads === 1 && popupReads === 0 && frames.size === 0
         && initialMasonryReads.length === 8 && initialMasonryReads.every(read =>
           read.widths.every(width => width !== "" && width === read.widths[0])
           && read.transforms.every(transform => transform === ""))
@@ -15989,7 +15990,7 @@ async function contentNoteStage() {
       layouts = 0; rootReads = 0; popupReads = 0;
       observers.forEach(observer => observer.callback());
       frame();
-      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 0 && frames.size === 0
         && [0, 1, 2, 3].every(depth => {
           const popup = harness.driver.popupAt(depth);
           const card = popup.querySelector(".gsm-hoshidicts-glossary-grid").firstElementChild;
@@ -16184,6 +16185,139 @@ async function contentNoteStage() {
     harness.close();
     return { "ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning":
       corridor && reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
+  }
+
+  // Issue #299: a child opens beside its own source text, like Yomitan, not
+  // beside its parent's box. The placement loop reads no pane rectangles.
+  async function nestedPlacementCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    try {
+      await harness.initialLookup();
+      const open = async (query, depth) => {
+        const operation = harness.internalLink({ query }, depth);
+        harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(query)] });
+        await operation;
+        return harness.driver.viewRequest(depth + 1).candidate.anchor;
+      };
+      const childLink = await open("child", 0);
+      const grandchildLink = await open("grandchild", 1);
+      const box = (left, top, width, height) => () => ({ left, top, right: left + width, bottom: top + height, width, height });
+      let paneReads = 0;
+      for (const depth of [0, 1, 2]) {
+        harness.driver.popupAt(depth).getBoundingClientRect = () => { paneReads += 1; return box(0, 0, 0, 0)(); };
+      }
+      const geometry = (depth) => {
+        const popup = harness.driver.popupAt(depth);
+        return { left: Number.parseFloat(popup.style.left), top: Number.parseFloat(popup.style.top),
+          width: Number.parseFloat(popup.style.width), height: Number.parseFloat(popup.style.height),
+          toolbar: popup.dataset.toolbarPosition };
+      };
+      const same = (actual, expected) => Object.entries(expected).every(([key, value]) => actual[key] === value);
+      // Room below the word: the child hangs from the word's line, left aligned,
+      // and its Automatic toolbar sits at the top, nearest the word.
+      childLink.getBoundingClientRect = box(300, 200, 40, 20);
+      grandchildLink.getBoundingClientRect = box(330, 700, 40, 20);
+      harness.callbacks(0).positionPopup();
+      const below = same(geometry(1), { left: 300, top: 224, width: 560, height: 420, toolbar: "top" });
+      // No room below the grandchild's word: it rises above that word instead,
+      // still measured from its own link rather than the child's pane.
+      const above = same(geometry(2), { left: 330, top: 276, width: 560, height: 420, toolbar: "bottom" });
+      // The viewport clamps the left edge without moving the vertical anchor.
+      childLink.getBoundingClientRect = box(900, 200, 40, 20);
+      harness.callbacks(1).positionPopup();
+      const clamped = same(geometry(1), { left: 458, top: 224 });
+      const noPaneReads = paneReads === 0;
+      // A pane whose word fits on neither side takes the roomier side, clamped
+      // to the viewport; a preferred edge overrides the automatic toolbar.
+      harness.emitOptions({ popupToolbarPosition: "bottom" });
+      childLink.getBoundingClientRect = box(300, 200, 40, 20);
+      harness.callbacks(1).positionPopup();
+      const explicitToolbar = same(geometry(1), { left: 300, top: 224, toolbar: "bottom" });
+      harness.emitOptions({ popupToolbarPosition: "auto" });
+      window.innerHeight = 500;
+      childLink.getBoundingClientRect = box(300, 260, 40, 20);
+      harness.callbacks(1).positionPopup();
+      const roomier = same(geometry(1), { left: 300, top: 6, toolbar: "bottom" });
+      window.innerHeight = 768;
+      // Scale and zoom convert the word's page rectangle into popup pixels.
+      harness.emitOptions({ popupToolbarPosition: "auto", popupScalePercent: 50 });
+      harness.callbacks(1).positionPopup();
+      const scaled = same(geometry(1), { left: 600, top: 564, width: 560, height: 420 });
+      return { "child popups anchor to their own source text below or above it and read no pane rectangles":
+        below && above && clamped && noPaneReads && explicitToolbar && roomier && scaled
+        || { below, above, clamped, noPaneReads, explicitToolbar, roomier, scaled } };
+    } finally { harness.close(); }
+  }
+
+  // Issue #299: a primary press in an ancestor retires its descendants at once,
+  // even focused ones, without waiting for the hover-hide delay. Drafts stay
+  // protected, and a press on a link keeps that link's own child for its click.
+  async function nestedClickCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    try {
+      await harness.initialLookup();
+      const parent = harness.driver.viewRequest();
+      const open = async (query, depth) => {
+        const operation = harness.internalLink({ query }, depth);
+        harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(query)] });
+        await operation;
+        return harness.driver.viewRequest(depth + 1);
+      };
+      const press = (target, init = {}) => target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0, ...init }));
+      window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+      window.clearTimeout = (id) => timers.delete(id);
+      const child = await open("child", 0);
+      await open("grandchild", 1);
+      const grandchildPopup = harness.driver.popupAt(2);
+      grandchildPopup.tabIndex = -1;
+      grandchildPopup.focus();
+      const sent = harness.sent.length;
+      press(harness.driver.popupAt(1));
+      const childPress = !harness.driver.popupAt(2) && grandchildPopup.hidden && grandchildPopup.isConnected === false
+        && harness.driver.viewRequest(1) === child && !harness.driver.snapshot(1).popupHidden
+        && harness.driver.viewRequest() === parent && harness.sent.length === sent
+        && harness.popup.getRootNode().activeElement !== child.candidate.anchor;
+      await open("grandchild again", 1);
+      press(harness.popup, { button: 2 });
+      const secondaryIgnored = Boolean(harness.driver.popupAt(2)) && Boolean(harness.driver.popupAt(1));
+      // A pending definition scan cannot reopen what the press dismissed.
+      harness.driver.onPopupMouseMove({ target: harness.popup, clientX: 20, clientY: 20, buttons: 0 }, 0);
+      const scanArmed = [...timers.values()].some((timer) => timer.delay === 0);
+      press(harness.popup);
+      const rootPress = !harness.driver.popupAt(1) && !harness.driver.popupAt(2) && !harness.driver.snapshot().popupHidden
+        && harness.driver.viewRequest() === parent && scanArmed && ![...timers.values()].some((timer) => timer.delay === 0);
+      // A press on an internal link keeps that link's own child for the click
+      // to reuse or replace, and retires only the branch below it.
+      const linked = await open("linked", 0);
+      await open("below linked", 1);
+      const anchor = linked.candidate.anchor;
+      anchor.dataset.hoshidictsQuery = "linked";
+      press(anchor);
+      const linkPress = harness.driver.viewRequest(1) === linked && !harness.driver.snapshot(1).popupHidden
+        && !harness.driver.popupAt(2);
+      // A draft or pending append protects descendants from an ancestor press.
+      harness.edit(true, 1);
+      press(harness.popup);
+      const draftRetained = harness.driver.viewRequest(1) === linked && harness.driver.snapshot(1).noteEditing;
+      harness.edit(false, 1);
+      press(harness.popup);
+      const closedDraftDismissed = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+      // A late reply for a child pending at the press cannot revive it.
+      const pending = harness.internalLink({ query: "late" });
+      const request = harness.take("hd_lookup");
+      press(harness.popup);
+      const pendingPruned = !harness.driver.popupAt(1);
+      harness.reply(request, { dictionaryCount: 1, results: [harness.term("late")] });
+      await pending;
+      const lateIgnored = !harness.driver.popupAt(1) && harness.driver.viewRequest() === parent && !harness.driver.snapshot().popupHidden;
+      return { "an ancestor press dismisses focused, hovered and pending descendants at once while drafts and link presses are left alone":
+        childPress && secondaryIgnored && rootPress && linkPress && draftRetained && closedDraftDismissed && pendingPruned && lateIgnored
+        || { childPress, secondaryIgnored, rootPress, linkPress, draftRetained, closedDraftDismissed, pendingPruned, lateIgnored } };
+    } finally { harness.close(); }
   }
 
   async function nestedNotesCase() {
@@ -19254,7 +19388,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
@@ -19302,6 +19436,23 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       ["auto", "beside", "bottom", "bottom"], ["auto", null, undefined, "top"],
       ["top", "above", "bottom", "top"], ["bottom", "below", "top", "bottom"],
     ].every(([preference, placement, current, expected]) => HDPopup.resolveToolbarPosition(preference, placement, current) === expected));
+  check("calculatePopupPosition prefers above for roots and below for nested panes, falling back to the roomier side", (() => {
+    const viewport = { width: 1000, height: 600 };
+    const place = (anchor, preferBelow, height = 200) =>
+      HDPopup.calculatePopupPosition(anchor, { width: 300, height }, viewport, { preferBelow });
+    const roomy = { left: 100, top: 250, right: 140, bottom: 270 };
+    const low = { left: 100, top: 500, right: 140, bottom: 520 };
+    const high = { left: 100, top: 40, right: 140, bottom: 60 };
+    const root = place(roomy), child = place(roomy, true);
+    // A 400px pane fits on neither side of a word 190px from the top: the
+    // roomier side wins and the viewport clamps the result.
+    const upper = place({ left: 100, top: 190, right: 140, bottom: 210 }, true, 400);
+    const lower = place({ left: 100, top: 400, right: 140, bottom: 420 }, true, 400);
+    return root.placement === "above" && root.top === 46 && child.placement === "below" && child.top === 274
+      && child.left === 100 && place(low, true).placement === "above" && place(low, true).top === 296
+      && place(high).placement === "below" && place(high).top === 64
+      && upper.placement === "below" && upper.top === 194 && lower.placement === "above" && lower.top === 6;
+  })());
   check("render/glossary.js publishes HDGlossary", Boolean(HDGlossary), "HDGlossary was undefined");
   check("render/popup.js publishes HDPopup", Boolean(HDPopup), "HDPopup was undefined");
   if (!HDGlossary || !HDPopup) {

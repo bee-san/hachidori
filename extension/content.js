@@ -1479,10 +1479,10 @@
     }, (error) => console.debug("hachidori: page zoom unavailable", error));
   }
 
-  function calculatePopupPosition(anchorRect, viewport, vertical) {
+  function calculatePopupPosition(anchorRect, viewport, vertical, preferBelow = false) {
     return window.HDPopup.calculatePopupPosition(anchorRect, sessionPopupSize ?? {
       width: options.popupWidthPx, height: options.popupHeightPx,
-    }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical });
+    }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical, preferBelow });
   }
 
   function anchorRectFor(candidate) {
@@ -1666,6 +1666,14 @@
     if (level.popup.dataset.toolbarPosition !== desired) level.view.setToolbarPosition(desired);
   }
 
+  function placePopup(level, position, resetToolbar) {
+    positionToolbar(level, position.placement, resetToolbar);
+    level.popup.style.left = `${position.left}px`;
+    level.popup.style.top = `${position.top}px`;
+    level.popup.style.width = `${position.width}px`;
+    level.popup.style.height = `${position.height}px`;
+  }
+
   function positionPopup(fromLevel = rootLevel, resetToolbar = false) {
     if (fromLevel.retired || fromLevel.popup?.inert || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
@@ -1676,59 +1684,37 @@
       return;
     }
     highlighter?.refresh();
+    const viewport = popupViewport();
     if (fromLevel === rootLevel) {
-      const position = popupResize?.level === rootLevel ? popupResizePosition() : calculatePopupPosition(
+      placePopup(rootLevel, popupResize?.level === rootLevel ? popupResizePosition() : calculatePopupPosition(
         popupRect(anchorRectFor(rootLevel.activeCandidate)),
-        popupViewport(),
+        viewport,
         rootLevel.activeCandidate.vertical
-      );
-      positionToolbar(rootLevel, position.placement, resetToolbar);
-      rootLevel.popup.style.left = `${position.left}px`;
-      rootLevel.popup.style.top = `${position.top}px`;
-      rootLevel.popup.style.width = `${position.width}px`;
-      rootLevel.popup.style.height = `${position.height}px`;
+      ), resetToolbar);
     }
     if (levels.length === 1) return;
-    const viewport = popupViewport();
     if (viewport.width <= POPUP_PADDING_PX * 2 || viewport.height <= POPUP_PADDING_PX * 2) {
       pruneLevels(1);
       // Finish this placement before a newly unprotected view can reproject.
       window.queueMicrotask(flushDictionaryPresentation);
       return;
     }
-    const startDepth = Math.max(1, fromLevel.depth);
-    let parentRect = popupRect(levels[startDepth - 1].popup.getBoundingClientRect());
-    for (const level of levels.slice(startDepth)) {
+    // Like Yomitan, a child opens beside the text that opened it: below that
+    // word when it fits, otherwise above, aligned with its left edge and
+    // clamped to the viewport. Only each pane's own source is measured, so no
+    // ancestor box is read for any descendant.
+    for (const level of levels.slice(Math.max(1, fromLevel.depth))) {
       if (level.popup.hidden) break;
       if (!anchorConnected(level.activeCandidate)) {
         hide(level);
         break;
       }
-      positionToolbar(level, "beside", resetToolbar);
-      const anchorRect = popupRect(anchorRectFor(level.activeCandidate));
-      const width = Math.min(sessionPopupSize?.width ?? options.popupWidthPx, viewport.width - POPUP_PADDING_PX * 2);
-      const height = Math.min(sessionPopupSize?.height ?? options.popupHeightPx, viewport.height - POPUP_PADDING_PX * 2);
-      const rightRoom = viewport.width - parentRect.right - POPUP_GAP_PX - POPUP_PADDING_PX;
-      const leftRoom = parentRect.left - POPUP_GAP_PX - POPUP_PADDING_PX;
-      const preferredLeft = rightRoom >= width || rightRoom >= leftRoom
-        ? parentRect.right + POPUP_GAP_PX
-        : parentRect.left - width - POPUP_GAP_PX;
-      const left = Math.max(POPUP_PADDING_PX, Math.min(preferredLeft, viewport.width - width - POPUP_PADDING_PX));
-      const top = Math.max(POPUP_PADDING_PX, Math.min(anchorRect.top, viewport.height - height - POPUP_PADDING_PX));
-      level.popup.style.left = `${left}px`;
-      level.popup.style.top = `${top}px`;
-      level.popup.style.width = `${width}px`;
-      level.popup.style.height = `${height}px`;
-      if (popupResize?.level === level) {
-        const position = popupResizePosition();
-        level.popup.style.left = `${position.left}px`;
-        level.popup.style.top = `${position.top}px`;
-        level.popup.style.width = `${position.width}px`;
-        level.popup.style.height = `${position.height}px`;
-      }
-      // Each parent box is read once, after its own placement, not once per
-      // ancestor for every descendant. Narrow viewports may overlap panes.
-      parentRect = popupRect(level.popup.getBoundingClientRect());
+      placePopup(level, popupResize?.level === level ? popupResizePosition() : calculatePopupPosition(
+        popupRect(anchorRectFor(level.activeCandidate)),
+        viewport,
+        level.activeCandidate.vertical,
+        true
+      ), resetToolbar);
     }
   }
 
@@ -1939,6 +1925,20 @@
     }, { capture: true, passive: true });
     popup.addEventListener("wheel", onPopupWheel, { passive: false });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
+    // Yomitan dismisses a nested popup when its parent is pressed. A primary
+    // press here retires this pane's descendants at once, focused or not, and
+    // drops a pending definition scan so an older lookup cannot reopen one.
+    // A draft or pending append protects them as on every other hide path. A
+    // press on an internal link keeps that link's own child for its click to
+    // reuse or replace, retiring only the branch below it.
+    popup.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 || level.retired) return;
+      const link = popupLinkAt(event.target, level)?.hasAttribute("data-hoshidicts-query") === true;
+      const depth = level.depth + (link ? 2 : 1);
+      if (levels.length <= depth || hasProtectedNote(depth)) return;
+      clearScanTimer();
+      dismissLevels(depth, false);
+    });
     popup.addEventListener(
       "mousemove",
       (event) => onPopupMouseMove(event, level),
@@ -2361,17 +2361,20 @@
     if (levels.length === 1) clearTransferTimer();
   }
 
+  // Retiring panes can release a deferred parent replay or projection.
+  function dismissLevels(depth, restoreFocus = true) {
+    pruneLevels(depth, restoreFocus);
+    flushDeferredNotes();
+    flushDictionaryPresentation();
+  }
+
   function hide(level = rootLevel) {
     if (level === rootLevel || popupResize?.level === level) stopPopupResize();
     audio?.retire(level);
     mining?.retire(level);
     clearDefinitionBlurTimer(level);
     if (level !== rootLevel) {
-      if (!level.retired) {
-        pruneLevels(level.depth);
-        flushDeferredNotes();
-        flushDictionaryPresentation();
-      }
+      if (!level.retired) dismissLevels(level.depth);
       return;
     }
     cancelPopupLayout();
@@ -2451,9 +2454,7 @@
       descendantTimer = null;
       if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)
           && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) {
-        pruneLevels(depth);
-        flushDeferredNotes();
-        flushDictionaryPresentation();
+        dismissLevels(depth);
       }
     };
     if (options.popupHideDelayMs === 0) prune();
