@@ -757,7 +757,7 @@ function hasCapability(dictionary, kind) {
   return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
 }
 
-function normaliseDictionarySelections(value, dictionaries) {
+function normaliseDictionarySelections(value, dictionaries, groups = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return value;
   }
@@ -774,7 +774,11 @@ function normaliseDictionarySelections(value, dictionaries) {
   const selection = typeof options.kanjiClickDictionary === "string"
     ? { title: options.kanjiClickDictionary, kind: "" }
     : options.kanjiClickDictionary;
-  if (selection?.title) {
+  if (selection?.kind === "tabGroup") {
+    // A group keeps its stable ID through renames and membership edits; only
+    // its removal resets the option, like a removed dictionary does.
+    if (!groups.some((group) => group.id === selection.id)) options.kanjiClickDictionary = "";
+  } else if (selection?.title) {
     const selected = dictionaries.find((entry) => entry.title === selection.title);
     let kind = selection.kind;
     if (!KANJI_SELECTION_KINDS.has(kind)) {
@@ -902,6 +906,7 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
         state.dictionaries,
       ),
       state.dictionaries,
+      state.groups,
     );
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
       values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
@@ -1205,7 +1210,7 @@ const WORKER_HANDLERS = {
     }
     const expected = Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, revision + 1]));
     if (!sameJsonValue(backupRevisions(snapshot), expected)) throw new Error("Invalid backup restore revisions.");
-    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
+    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries, snapshot.state.groups))) {
       throw new Error("The backup reader settings refer to unavailable dictionaries.");
     }
     await writeLocalState({
@@ -1499,7 +1504,7 @@ function optionsWriteResult(message, patch, state, storedOptions) {
   const current = { ...projectStoredOptions(storedOptions), revision };
   if (message.baseRevision !== revision) return optionsWriteConflict(message, current);
   const patched = { ...current, ...patch };
-  const options = state === null ? patched : normaliseDictionarySelections(patched, state.dictionaries);
+  const options = state === null ? patched : normaliseDictionarySelections(patched, state.dictionaries, state.groups);
   if (!sameJsonValue(options, { ...storedOptions, revision })) options.revision += 1;
   return checkedOptionsResult(message, { options });
 }
@@ -1681,7 +1686,7 @@ function firstInstallSelections(previousSelections, outcomes, dictionaryState, s
   if (Object.keys(patch).length === 0) return { applied, options: null };
   const revision = optionsRevision(storedOptions);
   const options = normaliseDictionarySelections(
-    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries,
+    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries, dictionaryState?.groups ?? [],
   );
   return { applied, options: sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 } };
 }

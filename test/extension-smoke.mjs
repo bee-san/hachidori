@@ -4878,6 +4878,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       { frequencyOrder: "sideways" }, { frequencyDictionary: {} },
       { kanjiClickDictionary: { title: "字", kind: "other" } },
       { kanjiClickDictionary: { title: "", kind: "kanji" } },
+      { kanjiClickDictionary: { kind: "tabGroup", id: "" } },
+      { kanjiClickDictionary: { kind: "tabGroup", title: "kanji-group" } },
     ];
     const rejected = [];
     for (const patch of invalid) {
@@ -4936,6 +4938,33 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && stateCommit.ok === true && pruned.revision === 4 && pruned.scanLength === 16
         && Object.keys(pruned).length === 2,
       JSON.stringify({ missingRevision, sparseUnchanged, empty, absentUnchanged, stateCommit, pruned }));
+    await local.remove("dictionaryState");
+    await local.set({ options: saved.options });
+
+    // A clicked-kanji group reference is a stable ID, like an Image source
+    // group: strict CAS keeps it exactly, a dictionary commit that keeps the
+    // group leaves it alone, and removing the group resets the option.
+    const groupRef = { kind: "tabGroup", id: "kanji-group" };
+    const kanjiGroup = { id: "kanji-group", name: "Kanji", dictionaryIds: [] };
+    const optionsRevision = async () => (await local.get("options")).options.revision;
+    const stateCas = (baseRevision, groups) => send({ target: "hoshidicts-worker", type: "hd_state_cas", baseRevision, dictionaries: [], groups });
+    const groupCreated = await stateCas(0, [kanjiGroup]);
+    const groupWrite = await send(message({ kanjiClickDictionary: { ...groupRef, ignored: true } }, { baseRevision: await optionsRevision() }));
+    const groupRepeat = await send(message({ kanjiClickDictionary: groupRef }, { baseRevision: groupWrite.options?.revision }));
+    const groupRenamed = await stateCas(1, [{ ...kanjiGroup, name: "Kanji dictionaries" }]);
+    const afterRename = (await local.get("options")).options;
+    const groupRemoved = await stateCas(2, []);
+    const afterRemoval = (await local.get("options")).options;
+    const missingGroup = await send(message({ kanjiClickDictionary: { kind: "tabGroup", id: "never-created" } }, { baseRevision: afterRemoval.revision }));
+    check("a clicked-kanji group reference passes strict options CAS, survives group edits and resets with the group's removal",
+      groupCreated.ok === true && groupWrite.ok === true && groupRepeat.ok === true
+        && JSON.stringify(groupWrite.options?.kanjiClickDictionary) === JSON.stringify(groupRef)
+        && groupRepeat.options?.revision === groupWrite.options?.revision
+        && groupRenamed.ok === true && JSON.stringify(afterRename) === JSON.stringify(groupWrite.options)
+        && groupRemoved.ok === true && afterRemoval.kanjiClickDictionary === ""
+        && afterRemoval.revision === groupWrite.options.revision + 1
+        && missingGroup.ok === true && missingGroup.options?.kanjiClickDictionary === "",
+      JSON.stringify({ groupCreated, groupWrite, groupRepeat, groupRenamed, afterRename, groupRemoved, afterRemoval, missingGroup }));
     await local.remove("dictionaryState");
     await local.set({ options: saved.options });
 
