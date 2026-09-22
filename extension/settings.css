@@ -892,7 +892,7 @@ input[type="checkbox"] {
 }
 .dict-row {
   display: grid;
-  grid-template-columns: 16px 30px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(30px, max-content) minmax(0, 1fr) auto;
   align-items: start;
   gap: 4px 12px;
   padding: var(--row-padding) 0;
@@ -930,6 +930,8 @@ input[type="checkbox"] {
 .dict-rank {
   font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+  text-align: end;
 }
 .dict-main {
   min-width: 0;
