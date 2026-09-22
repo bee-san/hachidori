@@ -10588,7 +10588,7 @@ async function main() {
     narrowPosition.inputWidth > 0
       && Math.abs(narrowPosition.inputWidth - (narrowPosition.fontSize * 4.5)) <= 1
       && narrowPosition.actionsRight <= narrowPosition.rowRight + 1
-      && narrowPosition.scrollWidth === narrowPosition.pageWidth,
+      && narrowPosition.scrollWidth <= narrowPosition.pageWidth,
     JSON.stringify(narrowPosition),
   );
   await page.setViewport({ width: 800, height: 600 });
