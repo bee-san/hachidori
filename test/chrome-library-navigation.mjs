@@ -12,7 +12,8 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 900 });
     await page.goto(`${settingsUrl}#dictionaries`);
-    await page.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"));
+    await page.bringToFront();
+    await page.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"), { polling: 50 });
     // Exercise a long library independently of how many dictionaries other
     // scenarios have imported. The other panels keep their natural heights.
     await page.$eval("#dictionaries", panel => { panel.style.minHeight = "1200px"; });
