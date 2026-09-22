@@ -2716,6 +2716,9 @@
       return false;
     }
     hide(level);
+    // A hidden miss keeps the selection like a rendered notice does, so pointer
+    // movement cannot repeat its lookup until the selection changes or Escape.
+    if (request.exactSelection) activeSelectionCandidate = request.candidate;
     return false;
   }
 
