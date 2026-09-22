@@ -185,6 +185,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * settings-theme.js marks the root until the saved theme is read. Nothing of
+ * the interface paints before then, including the canvas: a transparent body
+ * leaves the browser's own page background instead of the preference palette.
+ */
+:root[data-hoshidicts-theme-pending] body {
+  visibility: hidden;
+  background: transparent;
+}
+
 a {
   color: var(--accent);
   text-underline-offset: 3px;
