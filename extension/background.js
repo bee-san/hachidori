@@ -757,6 +757,24 @@ function hasCapability(dictionary, kind) {
   return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
 }
 
+// The stored clicked-kanji selection after a dictionary or group change: a
+// group keeps its stable ID through renames and membership edits and resets
+// only when the group is removed, like a removed or disabled dictionary does.
+function normaliseKanjiClickSelection(value, dictionaries, groups) {
+  const selection = typeof value === "string" ? { title: value, kind: "" } : value;
+  if (selection?.kind === "tabGroup") {
+    return groups.some((group) => group.id === selection.id) ? value : "";
+  }
+  if (!selection?.title) return value;
+  const selected = dictionaries.find((entry) => entry.title === selection.title);
+  let kind = selection.kind;
+  if (!KANJI_SELECTION_KINDS.has(kind)) {
+    kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
+  }
+  if (!selected || selected.enabled === false || !hasCapability(selected, kind)) return "";
+  return KANJI_SELECTION_KINDS.has(selection.kind) ? value : { title: selection.title, kind };
+}
+
 function normaliseDictionarySelections(value, dictionaries, groups = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return value;
@@ -770,25 +788,8 @@ function normaliseDictionarySelections(value, dictionaries, groups = []) {
   ) {
     options.frequencyDictionary = "";
   }
-
-  const selection = typeof options.kanjiClickDictionary === "string"
-    ? { title: options.kanjiClickDictionary, kind: "" }
-    : options.kanjiClickDictionary;
-  if (selection?.kind === "tabGroup") {
-    // A group keeps its stable ID through renames and membership edits; only
-    // its removal resets the option, like a removed dictionary does.
-    if (!groups.some((group) => group.id === selection.id)) options.kanjiClickDictionary = "";
-  } else if (selection?.title) {
-    const selected = dictionaries.find((entry) => entry.title === selection.title);
-    let kind = selection.kind;
-    if (!KANJI_SELECTION_KINDS.has(kind)) {
-      kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
-    }
-    if (!selected || selected.enabled === false || !hasCapability(selected, kind)) {
-      options.kanjiClickDictionary = "";
-    } else if (!KANJI_SELECTION_KINDS.has(selection.kind)) {
-      options.kanjiClickDictionary = { title: selection.title, kind };
-    }
+  if (Object.hasOwn(options, "kanjiClickDictionary")) {
+    options.kanjiClickDictionary = normaliseKanjiClickSelection(options.kanjiClickDictionary, dictionaries, groups);
   }
   return options;
 }
