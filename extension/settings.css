@@ -2089,7 +2089,7 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
   .dict-row {
-    grid-template-columns: 16px 24px minmax(0, 1fr);
+    grid-template-columns: 16px minmax(24px, max-content) minmax(0, 1fr);
     gap: 10px;
     padding: 14px 0;
   }

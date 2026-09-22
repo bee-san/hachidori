@@ -22,9 +22,10 @@ export async function checkDictionaryRankLayout(page, observe) {
     id: `rank-layout-${index}`, title: `辞書 ${index + 1}`, path: `/dicts/辞書 ${index + 1}`,
     enabled: false,
   }))];
-  const measure = () => page.evaluate(() => {
+  const measureLayout = () => page.evaluate(() => {
     const rows = [...document.querySelectorAll("#dict-list .dict-row")];
     return {
+      viewportWidth: innerWidth,
       count: rows.length,
       lastRank: rows.at(-1).querySelector(".dict-rank").textContent,
       samples: [9, 99, 120].map(position => {
@@ -36,8 +37,10 @@ export async function checkDictionaryRankLayout(page, observe) {
         const style = getComputedStyle(rank);
         return {
           position, rank: rank.textContent,
-          font: style.font,
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
           minWidth: style.minWidth,
+          width: style.width,
           rankWidth: rank.getBoundingClientRect().width,
           textWidth: text.getBoundingClientRect().width,
           columns: getComputedStyle(row).gridTemplateColumns,
@@ -48,6 +51,16 @@ export async function checkDictionaryRankLayout(page, observe) {
       }),
     };
   });
+  const measure = async stage => {
+    const layouts = [];
+    for (const width of [1280, 320]) {
+      await page.setViewport({ width, height: 900 });
+      const geometry = await measureLayout();
+      layouts.push(geometry);
+      await observe?.(`${stage}-${width}`, geometry);
+    }
+    return layouts;
+  };
   try {
     await page.setViewport({ width: 1280, height: 900 });
     await write(dictionaries);
@@ -55,8 +68,7 @@ export async function checkDictionaryRankLayout(page, observe) {
     await page.evaluate(() => { location.hash = "dictionaries"; });
     await page.waitForFunction(() => document.querySelectorAll("#dict-list .dict-row").length === 120
       && !document.querySelector("#dict-list .dict-down").disabled);
-    const before = await measure();
-    await observe?.("before-reorder", before);
+    const before = await measure("before-reorder");
     const rows = await page.evaluateHandle(() => [...document.querySelectorAll("#dict-list .dict-row")]);
     const movedId = dictionaries[8].id;
     const selector = `.dict-row[data-dictionary-id="${movedId}"]`;
@@ -69,13 +81,12 @@ export async function checkDictionaryRankLayout(page, observe) {
       return dictionaryState.dictionaries.at(-1).id === movedId
         && last.dataset.dictionaryId === movedId && !last.querySelector(".dict-up").disabled;
     }, { timeout: 10000 }, movedId);
-    const after = await measure();
+    const after = await measure("after-reorder");
     const reused = await page.evaluate(rows => rows.every(row =>
       document.querySelector(`#dict-list [data-dictionary-id="${row.dataset.dictionaryId}"]`) === row), rows);
     await rows.dispose();
-    await observe?.("after-reorder", { ...after, reused });
     assert.equal(reused, true, "reordering must exercise the existing row reuse path");
-    for (const geometry of [before, after]) {
+    for (const geometry of [...before, ...after]) {
       assert.equal(geometry.count, 120);
       assert.equal(geometry.lastRank, "120");
       for (const sample of geometry.samples) {
@@ -83,11 +94,14 @@ export async function checkDictionaryRankLayout(page, observe) {
         assert.ok(Math.max(sample.rankRight, sample.textRight) + 4 <= sample.titleLeft,
           `rank ${sample.position} needs at least 4px before its title: ${JSON.stringify(sample)}`);
       }
-      assert.equal(new Set(geometry.samples.map(sample => sample.titleLeft)).size, 1,
-        `titles must share one gutter: ${JSON.stringify(geometry)}`);
-      assert.equal(new Set(geometry.samples.map(sample => sample.textRight)).size, 1,
-        `rank digits must align at the end: ${JSON.stringify(geometry)}`);
+      // The ch minimum and intrinsic text round 1/64px apart with CI's system font.
+      for (const [key, label] of [["titleLeft", "titles must share one gutter"], ["textRight", "rank digits must align at the end"]]) {
+        const coordinates = geometry.samples.map(sample => sample[key]);
+        const spread = Math.max(...coordinates) - Math.min(...coordinates);
+        assert.ok(spread <= 1 / 64, `${label} (spread ${spread}px): ${JSON.stringify(geometry)}`);
+      }
     }
+    console.log("PASS dictionary rank geometry", JSON.stringify({ before, after, reused }));
     return { before, after, reused };
   } finally {
     await write(originals);
