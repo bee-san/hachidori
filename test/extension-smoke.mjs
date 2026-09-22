@@ -1286,7 +1286,7 @@ async function managedCheckStage() {
     sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
     return true;
   });
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error,
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, TypeError,
     fetch: async url => {
       fetched.push(url);
       return { ok: true, url, json: async () => ({ revision: "test-2" }) };
@@ -9018,13 +9018,20 @@ async function main() {
       && managedUpdateSettings.initial.lastChecked.includes("9/4/2026")
       && managedUpdateSettings.initial.managedStatus.includes("Update available")
       && managedUpdateSettings.initial.managedUpdateHidden === false
+      && managedUpdateSettings.initial.managedCheckHidden === false
       && managedUpdateSettings.initial.insecureMetadata.includes("Local archive")
       && managedUpdateSettings.initial.insecureStatus === "Not update-checkable"
       && managedUpdateSettings.initial.insecureUpdateHidden === true
+      && managedUpdateSettings.initial.insecureCheckHidden === true
       && managedUpdateSettings.initial.localStatus === "Not update-checkable"
       && managedUpdateSettings.initial.localUpdateHidden === true
+      && managedUpdateSettings.initial.localCheckHidden === true
       && managedUpdateSettings.checkRequest?.type === "hd_updates_check"
+      && managedUpdateSettings.checkRequest.dictionaryIds === undefined
       && managedUpdateSettings.checkedState.includes("1 update available")
+      && managedUpdateSettings.rowCheckRequest?.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.rowCheckDisabled === true
+      && managedUpdateSettings.rowCheckedState === "Checked 1 managed dictionary — 1 update available, 0 failed."
       && managedUpdateSettings.oneRequest?.type === "hd_updates_install"
       && managedUpdateSettings.oneRequest.dictionaryIds?.join(",") === "managed-id"
       && managedUpdateSettings.afterOneStatus.startsWith("Up to date")
@@ -12808,11 +12815,14 @@ async function settingsManagedUpdatesStage() {
       lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
       managedStatus: managedRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       managedUpdateHidden: managedRow()?.querySelector(".dict-update")?.hidden,
+      managedCheckHidden: managedRow()?.querySelector(".dict-update-check")?.hidden,
       insecureMetadata: insecureRow()?.querySelector(".dict-metadata")?.textContent ?? "",
       insecureStatus: insecureRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       insecureUpdateHidden: insecureRow()?.querySelector(".dict-update")?.hidden,
+      insecureCheckHidden: insecureRow()?.querySelector(".dict-update-check")?.hidden,
       localStatus: localRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       localUpdateHidden: localRow()?.querySelector(".dict-update")?.hidden,
+      localCheckHidden: localRow()?.querySelector(".dict-update-check")?.hidden,
     },
   };
 
@@ -12821,6 +12831,13 @@ async function settingsManagedUpdatesStage() {
   await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
   result.checkRequest = updateRequests.find((request) => request.type === "hd_updates_check");
   result.checkedState = window.document.getElementById("update-state")?.textContent ?? "";
+
+  managedRow()?.querySelector(".dict-update-check")?.click();
+  result.rowCheckDisabled = managedRow()?.querySelector(".dict-update-check")?.disabled;
+  await waitSchedule(() => updateRequests.filter(request => request.type === "hd_updates_check").length === 2);
+  await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
+  result.rowCheckRequest = updateRequests.filter(request => request.type === "hd_updates_check")[1];
+  result.rowCheckedState = window.document.getElementById("update-state")?.textContent ?? "";
 
   managedRow()?.querySelector(".dict-update")?.click();
   await waitSchedule(() => updateRequests.filter((request) => request.type === "hd_updates_install").length >= 1);

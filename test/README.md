@@ -645,8 +645,10 @@ What it proves, in order:
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
 4. **Managed dictionary updates.** Manual checks cover every managed package,
-   including disabled packages, without downloading an archive; per-package and
-   global results persist. Manual installs and the one global alarm both recheck
+   including disabled packages, without downloading an archive or changing an
+   installed revision. Scoped checks fetch one selected index and leave other
+   packages' statuses untouched; per-package and global results persist.
+   Manual installs and the one global alarm both recheck
    before replacing a generation, preserve presentation and groups, commit
    successful status atomically, and retain a working generation after failure.
    Generic and
@@ -1415,7 +1417,8 @@ Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
 the harness deliberately does not intercept the dedicated worker directly. The
 browser assertions prove check-only behavior for enabled and disabled packages,
-persisted Settings status, atomic Update all replacement, the one global periodic
+one row's check and explicit Update without touching another package, persisted
+Settings status, atomic Update all replacement, the one global periodic
 alarm, scheduled installation for a disabled package, failure rollback without
 OPFS debris, and alarm recreation after the exact worker version stops.
 
