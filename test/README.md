@@ -1322,6 +1322,12 @@ and `HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT` capture Reading in both themes.
 `HACHIDORI_SUMMARY_POPUP_SCREENSHOT` captures the summary beside the complete
 definitions after the shared leading image has loaded.
 
+The real browser checks horizontal and vertical glyph hits, padded link tiles,
+and a transparent element covering text. `HACHIDORI_HOVER_SCREENSHOTS=/path/to/dir`
+saves each state with a red marker at the actual pointer coordinates. The
+extension smoke suite additionally checks the two-pixel tolerance and complete
+supplementary Unicode characters when the caret lands after the glyph.
+
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
