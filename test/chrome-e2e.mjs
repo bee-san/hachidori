@@ -297,6 +297,7 @@ const PLANNED = [
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
+  "a note mined from a texthooker line carries that one line as its sentence and highlights only the word",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -1760,12 +1761,13 @@ async function hoverForPopup(page, popup, selector, {
   accept = null,
   charFraction = 0.15,
   attempts = 12,
+  point = null,
 } = {}) {
-  const box = await (await page.$(selector)).boundingBox();
+  const box = point ?? await (await page.$(selector)).boundingBox();
   // Aim at the first glyph rather than the centre, so the scan starts at the
   // beginning of the word and `matched` covers the whole inflection.
-  const x = box.x + box.width * charFraction;
-  const y = box.y + box.height / 2;
+  const x = point ? point.x : box.x + box.width * charFraction;
+  const y = point ? point.y : box.y + box.height / 2;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     // mousemove only fires when the position changes, so step off the word
     // before stepping back onto it.
@@ -5105,6 +5107,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse, repairCalls }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
+    await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
   } finally {
     control.preflightGate?.resolve();
     control.preflightGate = null;
@@ -5238,6 +5241,68 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       window.__hostObserver?.disconnect();
       document.querySelector("hachidori-host").style.removeProperty("opacity");
     });
+  }
+}
+
+// The Anki sentence is the one hooked line (issue #292). texthooker-ui renders
+// every line as a <p> followed by a "\n" text node inside a flex column, and a
+// milestone <div> between two lines has no such node before the next <p>: the
+// line after it used to swallow the milestone's text, and every line reached
+// its neighbours on pages with no newline nodes at all.
+async function checkSentenceMining({ tab, popup, configure, calls, notes, settled }) {
+  const template = value => ({ value, overwriteMode: "overwrite" });
+  const line = "三行目で本を読む。";
+  try {
+    await configure(false, { fieldTemplates: { Front: template("{expression} sentence"), Back: template("{sentence}"), Audio: template("") } });
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    const point = await tab.evaluate(line => {
+      const main = document.createElement("main");
+      main.id = "hooked-lines";
+      main.style.cssText = "position:fixed;left:600px;top:40px;width:640px;display:flex;flex-direction:column;font:26px/1.6 serif;background:#fff";
+      const paragraph = text => {
+        const p = document.createElement("p");
+        p.style.cssText = "margin:8px 0;padding:16px 8px;border:2px solid transparent";
+        p.textContent = text;
+        return p;
+      };
+      const milestone = document.createElement("div");
+      milestone.style.cssText = "display:flex;justify-content:center;margin:8px 0;padding:8px;font-size:12px;border-top:2px dashed #888;border-bottom:2px dashed #888";
+      milestone.innerHTML = '<div style="display:flex;align-items:center"><span>Milestone 1000 (1024)</span></div>';
+      const hooked = paragraph(line);
+      hooked.id = "hooked-line";
+      main.append("\n", paragraph("一行目のテキストだ。"), "\n", paragraph("二行目で漢字を書いた。"), "\n", milestone, hooked, "\n");
+      document.body.append(main);
+      const node = hooked.firstChild;
+      const range = document.createRange();
+      range.setStart(node, line.indexOf("読"));
+      range.setEnd(node, line.indexOf("読") + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + rect.width * 0.3, y: rect.top + rect.height / 2 };
+    }, line);
+    const shown = await hoverForPopup(tab, popup, "#hooked-line", { point, accept: state => state.plain.includes("読む") });
+    const highlight = await tab.evaluate(name => {
+      const ranges = [...(CSS.highlights.get(name) ?? [])];
+      return { text: ranges.map(range => range.toString()).join(""),
+        inLine: ranges.every(range => range.startContainer === document.getElementById("hooked-line").firstChild) };
+    }, HIGHLIGHT_NAME);
+    const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const addsBefore = calls.filter(call => call.action === "addNote").length;
+    const focused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
+    const saved = await settled(state => state?.controls.some(control => control.state === "success"));
+    const note = [...notes.values()].at(-1);
+    check("a note mined from a texthooker line carries that one line as its sentence and highlights only the word",
+      shown !== null && highlight.text === "読む" && highlight.inLine
+        && ready.controls[0].action === "add" && focused
+        && saved.controls[0].state === "success"
+        && calls.filter(call => call.action === "addNote").length === addsBefore + 1
+        && note.Front === "読む sentence"
+        && note.Back === "三行目で本を<b>読む</b>。",
+      JSON.stringify({ shown: shown?.plain, highlight, ready: ready.controls[0], focused, saved: saved.controls[0], note }));
+  } finally {
+    await tab.keyboard.press("Escape");
+    await tab.evaluate(() => document.getElementById("hooked-lines")?.remove());
   }
 }
 
