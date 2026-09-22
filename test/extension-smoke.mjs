@@ -16290,13 +16290,15 @@ async function contentNoteStage() {
       press(harness.popup);
       const rootPress = !harness.driver.popupAt(1) && !harness.driver.popupAt(2) && !harness.driver.snapshot().popupHidden
         && harness.driver.viewRequest() === parent && scanArmed && ![...timers.values()].some((timer) => timer.delay === 0);
-      // A press on an internal link leaves the child to that link's own click,
-      // which reuses a same-query child or replaces its branch.
+      // A press on an internal link keeps that link's own child for the click
+      // to reuse or replace, and retires only the branch below it.
       const linked = await open("linked", 0);
+      await open("below linked", 1);
       const anchor = linked.candidate.anchor;
       anchor.dataset.hoshidictsQuery = "linked";
       press(anchor);
-      const linkPress = harness.driver.viewRequest(1) === linked && !harness.driver.snapshot(1).popupHidden;
+      const linkPress = harness.driver.viewRequest(1) === linked && !harness.driver.snapshot(1).popupHidden
+        && !harness.driver.popupAt(2);
       // A draft or pending append protects descendants from an ancestor press.
       harness.edit(true, 1);
       press(harness.popup);

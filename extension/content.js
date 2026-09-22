@@ -1928,14 +1928,16 @@
     // Yomitan dismisses a nested popup when its parent is pressed. A primary
     // press here retires this pane's descendants at once, focused or not, and
     // drops a pending definition scan so an older lookup cannot reopen one.
-    // A draft or pending append protects them as on every other hide path,
-    // and a press on an internal link leaves the replacement to its click.
+    // A draft or pending append protects them as on every other hide path. A
+    // press on an internal link keeps that link's own child for its click to
+    // reuse or replace, retiring only the branch below it.
     popup.addEventListener("mousedown", (event) => {
-      if (event.button !== 0 || level.retired || levels.length <= level.depth + 1
-          || popupLinkAt(event.target, level)?.hasAttribute("data-hoshidicts-query")
-          || hasProtectedNote(level.depth + 1)) return;
+      if (event.button !== 0 || level.retired) return;
+      const link = popupLinkAt(event.target, level)?.hasAttribute("data-hoshidicts-query") === true;
+      const depth = level.depth + (link ? 2 : 1);
+      if (levels.length <= depth || hasProtectedNote(depth)) return;
       clearScanTimer();
-      dismissLevels(level.depth + 1, false);
+      dismissLevels(depth, false);
     });
     popup.addEventListener(
       "mousemove",

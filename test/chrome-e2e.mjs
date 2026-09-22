@@ -409,6 +409,8 @@ const PLANNED = [
   "repeated keyboard activation returns focus to an existing child lookup close control",
   "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
+  "linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports",
+  "a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
@@ -1187,13 +1189,13 @@ async function popupReader(page, depth = 0) {
     return result.value ?? null;
   }
 
-  async function nested(action = "read") {
+  async function nested(action = "read", selector = null) {
     const object = await resolvePopupObject();
     if (!object) return null;
     const { result } = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId, returnByValue: true,
-      arguments: [{ value: action }],
-      functionDeclaration: `function (action) {
+      arguments: [{ value: action }, { value: selector }],
+      functionDeclaration: `function (action, selector) {
         const root = this.getRootNode();
         const link = this.querySelector("a[data-hoshidicts-query]");
         if (action === "focus-link") link.focus();
@@ -1205,6 +1207,9 @@ async function popupReader(page, depth = 0) {
           .find(fragment => fragment.width > 0 && fragment.height > 0);
         return {
           depth: Number(this.dataset.hoshidictsDepth), rect: rect.toJSON(),
+          toolbar: this.dataset.toolbarPosition,
+          scrollTop: this.querySelector(".gsm-hoshidicts-content-scroll")?.scrollTop ?? null,
+          element: selector ? this.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null : null,
           linkRect: linkRect?.toJSON(),
           linkPoint: linkFragment && {
             x: linkFragment.x + linkFragment.width / 2,
@@ -1293,6 +1298,9 @@ async function popupReader(page, depth = 0) {
         const saved = root.__retainedControls;
         const input = saved?.input;
         const rect = input?.getBoundingClientRect();
+        // Reachability concerns this pane's own rows: a child pane hanging
+        // from a source link may legitimately overlap them, as in Yomitan.
+        const ownTopmost = (x, y) => root.elementsFromPoint(x, y).find(element => this.contains(element));
         return {
           toolbar: this.dataset.toolbarPosition,
           sameForm: this.querySelector('form') === saved?.form,
@@ -1300,10 +1308,10 @@ async function popupReader(page, depth = 0) {
             && !saved.observer.takeRecords().some(record => [...record.removedNodes].includes(saved.form)),
           draft: input?.value, selection: [input?.selectionStart, input?.selectionEnd],
           inputFocused: root.activeElement === input,
-          inputReachable: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
+          inputReachable: rect && ownTopmost(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
           inputRect: rect?.toJSON(), popupRect: this.getBoundingClientRect().toJSON(),
           scrollTop: this.querySelector(".gsm-hoshidicts-content-scroll").scrollTop,
-          centerOwner: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className,
+          centerOwner: rect && ownTopmost(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className,
           tabFocused: root.activeElement === this.querySelector('[role="tab"][aria-selected="true"]'),
           replaced: this.querySelector('.gsm-hoshidicts-tab-panel') !== saved?.panel,
         };
@@ -2170,10 +2178,16 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await optionsWrite({ popupScalePercent: 100 });
     await until(childState, value => value.rect.width === 640, "restore child scale");
     const automaticRoot = (await rootState()).toolbar;
+    // Automatic follows the child's own placement: a pane hanging below its
+    // source link keeps the toolbar at the top, one rising above it at the
+    // bottom; a pane the viewport clamped over its link may take either edge.
+    const sourceLink = (await popup.nested()).linkRect;
+    const automaticChild = value => value.rect.top >= sourceLink.bottom ? ["top"]
+      : value.rect.bottom <= sourceLink.top ? ["bottom"] : ["top", "bottom"];
     evidence.toolbarChild = true;
     for (const edge of ["bottom", "top", "auto"]) {
       await optionsWrite({ popupToolbarPosition: edge });
-      await until(childState, value => value.toolbar === (edge === "auto" ? "top" : edge), "E16 child toolbar edge");
+      await until(childState, value => (edge === "auto" ? automaticChild(value) : [edge]).includes(value.toolbar), "E16 child toolbar edge");
       evidence.toolbarChild &&= (await rootState()).toolbar === (edge === "auto" ? automaticRoot : edge);
     }
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
@@ -2568,10 +2582,12 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await popup.dictionaryTabs("select", "all");
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
-    await until(() => child.compactSummaries(), value => value[0]?.items[0] === "Text before the image."
-      && value[0].image.length === 0, "E10 child late-image negative");
+    // The primary header travels with the toolbar edge, which now follows the
+    // child's placement, so summaries are matched by content rather than order.
+    await until(() => child.compactSummaries(), value => value.some(summary => summary.items[0] === "Text before the image."
+      && summary.image.length === 0), "E10 child late-image negative");
     await until(() => child.compactSummaries(), value => value.length === 2
-      && value[1].items.length === 3, "E10 deferred headers use current preferences");
+      && value.some(summary => summary.items.length === 3), "E10 deferred headers use current preferences");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
 
     await show(fixture.broken);
@@ -2793,8 +2809,163 @@ async function checkNestedLinks(settings, tab, popup, browser) {
   const bounded = (value) => value && value.rect.width > 0 && value.rect.height > 0
     && value.rect.left >= 5 && value.rect.top >= 5
     && value.rect.right <= value.viewport.width - 5 && value.rect.bottom <= value.viewport.height - 5;
+  // Yomitan-style placement: left aligned with the source rectangle (clamped
+  // to the viewport), hanging below it or rising above it by the popup gap.
+  // A pane the viewport had to clamp vertically touches an edge instead.
+  const anchoredTo = (rect, anchor, viewport, scale = 1) => {
+    if (!rect || !anchor || !viewport) return { ok: false, rect, anchor };
+    const near = (a, b) => Math.abs(a - b) <= 1.5;
+    const gap = 4 * scale, padding = 6 * scale;
+    const leftAligned = near(rect.left, Math.max(padding, Math.min(anchor.left, viewport.width - rect.width - padding)));
+    const below = near(rect.top, anchor.bottom + gap);
+    const above = near(rect.bottom, anchor.top - gap);
+    const clamped = near(rect.top, padding) || near(rect.bottom, viewport.height - padding);
+    return { ok: leftAligned && (below || above || clamped), leftAligned, below, above, clamped };
+  };
+  const toolbarPreference = originalOptions.popupToolbarPosition ?? "auto";
+  const toolbarFollows = (layout, anchored) => Boolean(layout) && (toolbarPreference !== "auto"
+    ? layout.toolbar === toolbarPreference
+    : anchored.below ? layout.toolbar === "top"
+      : anchored.above ? layout.toolbar === "bottom" : ["top", "bottom"].includes(layout.toolbar));
+  const inside = (rect, point) => point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+  const pointOutside = (rect, cover) => [
+    { x: rect.left + 8, y: rect.top + 8 }, { x: rect.left + 8, y: rect.bottom - 8 },
+    { x: rect.right - 8, y: rect.top + 8 }, { x: rect.right - 8, y: rect.bottom - 8 },
+  ].find(point => !inside(cover, point)) ?? { x: rect.left + 8, y: rect.top + 8, covered: true };
   let definitionEvidence;
   let evidence;
+  let clickEvidence;
+  const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
+  async function until(read, predicate, label) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await read();
+      if (predicate(value)) return value;
+      if (Date.now() >= deadline) return { timedOut: label, value };
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+  }
+  const settle = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  // Issue #299 with a real mouse: children hang from their source text and a
+  // primary click in an ancestor retires descendants at once. The hide delay
+  // is raised to its maximum so no timer can explain a dismissal here.
+  async function nestedClickScenario() {
+    const evidence = {};
+    const sizes = { popupWidthPx: originalOptions.popupWidthPx ?? 560, popupHeightPx: originalOptions.popupHeightPx ?? 420,
+      popupScalePercent: originalOptions.popupScalePercent ?? 100 };
+    let worker = null;
+    const openChild = async () => {
+      const source = await popup.nested("focus-link");
+      await tab.keyboard.press("Enter");
+      const state = await waitForPopupState(child, value => value.plain.includes(fixture.child));
+      return { source, state, layout: await child.nested() };
+    };
+    const openGrandchild = async () => {
+      const source = await child.nested("focus-link");
+      await tab.keyboard.press("Enter");
+      const state = await waitForPopupState(grandchild, value => value.plain.includes(fixture.grandchild));
+      return { source, state, layout: await grandchild.nested() };
+    };
+    const depths = async () => (await popup.nested())?.depths;
+    // Click the first glyph of plain glossary text; report whether a
+    // descendant pane covered that point so a miss stays diagnosable.
+    const clickText = async (reader, text) => {
+      const hit = await reader.definitionTextRect(text);
+      if (!hit) return { text: null };
+      const point = { x: hit.rect.x + hit.rect.width / 2, y: hit.rect.y + hit.rect.height / 2 };
+      const covers = [];
+      for (const pane of reader === popup ? [child, grandchild] : [grandchild]) covers.push((await pane.nested())?.rect);
+      await tab.mouse.click(point.x, point.y);
+      return { text: hit.text, covered: covers.some(rect => rect && inside(rect, point)) };
+    };
+    try {
+      await setDepth(2);
+      await writeOptions({ popupHideDelayMs: 5000, onlyScanJapaneseText: true });
+      const chainChild = await openChild();
+      const chainGrandchild = await openGrandchild();
+      evidence.chain = { rootLink: chainChild.source.linkRect, child: chainChild.layout,
+        childLink: chainGrandchild.source.linkRect, grandchild: chainGrandchild.layout,
+        grandchildFocused: chainGrandchild.state?.focusedClass ?? "", highlights: await highlights() };
+      // The parent's content scroll moves the grandchild with its link.
+      await writeOptions({ popupWidthPx: 280, popupHeightPx: 200 });
+      const shrunkChild = await until(() => child.nested(), value => value?.rect.width === 280, "shrunk child");
+      const unscrolledLink = shrunkChild.linkRect;
+      const scrolled = await child.dictionaryTabs("scroll", 40);
+      const scrolledChild = await child.nested();
+      const followed = await until(() => grandchild.nested(),
+        value => anchoredTo(value?.rect, scrolledChild.linkRect, value?.viewport).ok, "grandchild follows parent scroll");
+      evidence.scroll = { scrollTop: scrolled?.scrollTop, unscrolledLink, scrolledLink: scrolledChild.linkRect, grandchild: followed };
+      // Popup scale converts the source rectangle once for every pane.
+      await writeOptions({ popupScalePercent: 75 });
+      const scaledChild = await until(() => child.nested(), value => value?.rect.width === 210, "scaled child");
+      evidence.scaled = { rootLink: (await popup.nested())?.linkRect, child: scaledChild,
+        grandchild: await until(() => grandchild.nested(), value => value?.rect.width === 210, "scaled grandchild") };
+      await writeOptions(sizes);
+      await until(() => child.nested(), value => value?.rect.width === sizes.popupWidthPx, "restored child size");
+      // 1. A click on plain text in the child retires the focused grandchild
+      //    at once and keeps the child and root.
+      const childClick = await clickText(child, "The referenced entry.");
+      evidence.childClick = { ...childClick, grandchild: await grandchild.state(), child: await child.state(),
+        root: await popup.state(), depths: await depths(), highlights: await highlights() };
+      // 2. A hover-opened grandchild and its parent both fall to a root click.
+      const hoverSource = await child.definitionTextRect(fixture.grandchild);
+      await moveToDefinition(hoverSource);
+      const hoverGrandchild = await waitForPopupState(grandchild, value => value.plain.includes(fixture.grandchild));
+      const hoverLayout = await grandchild.nested();
+      const rootBefore = await popup.state();
+      const rootClick = await clickText(popup, "A linked definition.");
+      evidence.rootClick = { ...rootClick, hoverGrandchild: Boolean(hoverGrandchild), hoverSource: hoverSource?.rect, hoverLayout,
+        depths: await depths(), child: await child.state(), grandchild: await grandchild.state(),
+        root: await popup.state(), rootBefore, highlights: await highlights() };
+      // 3. An open child draft protects it from the root click; Escape closes
+      //    the form first, after which the same click dismisses the child.
+      await openChild();
+      await child.click(".gsm-hoshidicts-note-button");
+      const draft = await child.writeNote({ definition: "draft survives a parent click" });
+      const draftClick = await clickText(popup, "A linked definition.");
+      evidence.draftClick = { ...draftClick, draft, child: await child.state(), depths: await depths() };
+      await tab.keyboard.press("Escape");
+      evidence.formClosed = await child.state();
+      const closedClick = await clickText(popup, "A linked definition.");
+      evidence.closedDraftClick = { ...closedClick, depths: await depths(), child: await child.state() };
+      // 4. A grandchild lookup still pending at the click cannot reopen it.
+      worker = await installMediaReplyProbe(browser, settings);
+      await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+      await openChild();
+      await child.nested("blur");
+      await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
+      await moveToDefinition(await child.definitionTextRect(fixture.grandchild));
+      const held = await worker.evaluate(async () => {
+        const deadline = Date.now() + 10_000;
+        while (!globalThis.__ownedMediaProbe.heldLookups.length) {
+          if (Date.now() >= deadline) return false;
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        return true;
+      });
+      const heldDepths = await depths();
+      const pendingClick = await clickText(popup, "A linked definition.");
+      const dismissedDepths = await depths();
+      await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.heldLookups.splice(0)) release(); });
+      await settle(500);
+      evidence.pending = { ...pendingClick, held, heldDepths, dismissedDepths, afterRelease: await depths(),
+        grandchild: await grandchild.state(), child: await child.state(), root: await popup.state() };
+      // 5. A real click on the root's link keeps its same-query child (no new
+      //    lookup) and retires only the branch below it.
+      const linkChild = await openChild();
+      await openGrandchild();
+      const lookupsBefore = await worker.evaluate(() => globalThis.__ownedMediaProbe.lookups.length);
+      await tab.mouse.click(linkChild.source.linkPoint.x, linkChild.source.linkPoint.y);
+      await settle(300);
+      evidence.linkClick = { depths: await depths(), child: await child.state(),
+        lookups: (await worker.evaluate(() => globalThis.__ownedMediaProbe.lookups.length)) - lookupsBefore };
+      return evidence;
+    } finally {
+      if (worker) await restoreMediaReplyProbe(worker);
+      await writeOptions({ ...sizes, popupHideDelayMs: originalOptions.popupHideDelayMs ?? 160,
+        onlyScanJapaneseText: originalOptions.onlyScanJapaneseText ?? true });
+    }
+  }
   await installMediaArchive(settings, fixture.archive);
   try {
     await setDepth(2);
@@ -2890,14 +3061,17 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.mouse.click(source.linkPoint.x, source.linkPoint.y);
     const mouseChild = await child.waitForVisible();
     const mousePosition = await child.nested();
-    let corridorRetained = false;
+    let childHoverRetained = false;
+    let returnPoint = null;
     if (mousePosition) {
       await popup.nested("blur");
-      await tab.mouse.move((source.rect.right + mousePosition.rect.left) / 2, mousePosition.rect.top + 20);
-      await new Promise(resolve => setTimeout(resolve, 120));
-      corridorRetained = child.visible(await child.state());
+      // A child now overlaps its parent below the source link, so the pointer
+      // enters it directly; resting inside it must outlast the hide delay.
       await tab.mouse.move(mousePosition.rect.right - 8, mousePosition.rect.bottom - 8);
-      await tab.mouse.move(source.rect.left + 8, source.rect.top + 8);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      childHoverRetained = child.visible(await child.state());
+      returnPoint = pointOutside(source.rect, mousePosition.rect);
+      await tab.mouse.move(returnPoint.x, returnPoint.y);
     }
     const pointerReturn = await child.waitForHidden();
     await popup.nested("focus-link");
@@ -2930,7 +3104,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     const parentClosed = await popup.state();
     const childStillEditing = await child.state();
     await tab.keyboard.press("Escape");
-    await child.nested("focus-link");
+    const secondSource = await child.nested("focus-link");
     await tab.keyboard.press("Enter");
     const second = await waitForPopupState(grandchild, state => state.plain.includes(fixture.grandchild)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
@@ -2949,6 +3123,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     }
     await tab.setViewport({ width: 520, height: 740 });
     await tab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const narrowRoot = await popup.nested();
+    const narrowChild = await child.nested();
     const narrow = await grandchild.nested();
     await tab.setViewport({ width: 1880, height: 960 });
     await setDepth(1);
@@ -2994,14 +3170,15 @@ async function checkNestedLinks(settings, tab, popup, browser) {
         && fallback.covered.ownerRects[0].length === 0
         && fallback.after.groups === 1 && fallback.after.sameOwner && fallback.after.ownerRects[0].length > 0,
       JSON.stringify({ fullHighlights, ancestorHighlight, fallback }));
+    clickEvidence = await nestedClickScenario();
     await setDepth(0);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, repeatedKeyboardFocus,
+    evidence = { source, mouseChild, mousePosition, childHoverRetained, returnPoint, pointerReturn, first, repeatedKeyboardFocus,
       focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
-      second, fullChain, limited, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
+      secondSource, second, fullChain, limited, narrowRoot, narrowChild, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
     await writeOptions({
       activationKey: originalOptions.activationKey ?? "Shift",
@@ -3059,7 +3236,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       grandchild: evidence.focusedPointerGrandchild }));
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
-      && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn
+      && evidence.mouseChild !== null && evidence.childHoverRetained && !evidence.returnPoint?.covered && evidence.pointerReturn
       && evidence.first?.plain.includes(fixture.child) && bounded(evidence.chain)
       && evidence.chain.sameParent && evidence.chain.sameAnchor && evidence.chain.imagesReady
       && evidence.draft?.term === fixture.child && evidence.draft.reading === fixture.reading
@@ -3073,6 +3250,67 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
       && JSON.stringify(evidence.disabled.depths) === "[0]"
       && evidence.refreshedControls.every(value => value === true), JSON.stringify(evidence));
+  const placement = {
+    hoverChild: anchoredTo(definitionEvidence.definitionChildLayout?.rect, definitionEvidence.definitionSource?.rect,
+      definitionEvidence.definitionChildLayout?.viewport),
+    hoverGrandchild: anchoredTo(definitionEvidence.definitionChain?.rect, definitionEvidence.definitionGrandchildSource?.rect,
+      definitionEvidence.definitionChain?.viewport),
+    mouseChild: anchoredTo(evidence.mousePosition?.rect, evidence.source.linkRect, evidence.mousePosition?.viewport),
+    keyboardChild: anchoredTo(evidence.chain?.rect, evidence.source.linkRect, evidence.chain?.viewport),
+    keyboardGrandchild: anchoredTo(evidence.fullChain?.rect, evidence.secondSource?.linkRect, evidence.fullChain?.viewport),
+    scenarioChild: anchoredTo(clickEvidence.chain?.child?.rect, clickEvidence.chain?.rootLink, clickEvidence.chain?.child?.viewport),
+    scenarioGrandchild: anchoredTo(clickEvidence.chain?.grandchild?.rect, clickEvidence.chain?.childLink, clickEvidence.chain?.grandchild?.viewport),
+    scrolledGrandchild: anchoredTo(clickEvidence.scroll?.grandchild?.rect, clickEvidence.scroll?.scrolledLink, clickEvidence.scroll?.grandchild?.viewport),
+    scaledChild: anchoredTo(clickEvidence.scaled?.child?.rect, clickEvidence.scaled?.rootLink, clickEvidence.scaled?.child?.viewport, 0.75),
+    scaledGrandchild: anchoredTo(clickEvidence.scaled?.grandchild?.rect, clickEvidence.scaled?.child?.linkRect,
+      clickEvidence.scaled?.grandchild?.viewport, 0.75),
+    narrowChild: anchoredTo(evidence.narrowChild?.rect, evidence.narrowRoot?.linkRect, evidence.narrowChild?.viewport),
+    narrowGrandchild: anchoredTo(evidence.narrow?.rect, evidence.narrowChild?.linkRect, evidence.narrow?.viewport),
+  };
+  const beside = anchored => anchored.ok && (anchored.below || anchored.above);
+  check("linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports",
+    beside(placement.hoverChild) && toolbarFollows(definitionEvidence.definitionChildLayout, placement.hoverChild)
+      && beside(placement.hoverGrandchild) && beside(placement.mouseChild) && toolbarFollows(evidence.mousePosition, placement.mouseChild)
+      && beside(placement.keyboardChild) && beside(placement.keyboardGrandchild)
+      && beside(placement.scenarioChild) && toolbarFollows(clickEvidence.chain?.child, placement.scenarioChild)
+      && beside(placement.scenarioGrandchild) && toolbarFollows(clickEvidence.chain?.grandchild, placement.scenarioGrandchild)
+      && clickEvidence.scroll?.scrollTop >= 20
+      && clickEvidence.scroll.scrolledLink.top <= clickEvidence.scroll.unscrolledLink.top - 20
+      && placement.scrolledGrandchild.ok && placement.scaledChild.ok && placement.scaledGrandchild.ok
+      && clickEvidence.scaled?.child?.rect.width === 210 && clickEvidence.scaled?.grandchild?.rect.width === 210
+      && placement.narrowChild.ok && placement.narrowGrandchild.ok && bounded(evidence.narrowChild) && bounded(evidence.narrow),
+    JSON.stringify({ placement, hover: { source: definitionEvidence.definitionSource, child: definitionEvidence.definitionChildLayout,
+      grandchildSource: definitionEvidence.definitionGrandchildSource, grandchild: definitionEvidence.definitionChain },
+    mouse: { link: evidence.source.linkRect, child: evidence.mousePosition }, chain: clickEvidence.chain, scroll: clickEvidence.scroll,
+    scaled: clickEvidence.scaled, narrow: { root: evidence.narrowRoot, child: evidence.narrowChild, grandchild: evidence.narrow } }));
+  // A keyboard-opened child highlights its source link text, so the retained
+  // set is the chain's first two highlights rather than the child's query.
+  const highlightsOf = texts => JSON.stringify(texts);
+  check("a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts",
+    clickEvidence.chain?.grandchildFocused.includes("gsm-hoshidicts-popup-close")
+      && clickEvidence.chain.highlights.length === 3 && clickEvidence.chain.highlights[0] === fixture.query
+      && clickEvidence.childClick?.text === "T" && !clickEvidence.childClick.covered
+      && !grandchild.visible(clickEvidence.childClick.grandchild) && child.visible(clickEvidence.childClick.child)
+      && clickEvidence.childClick.child.plain.includes(fixture.child) && clickEvidence.childClick.root?.plain.includes(fixture.query)
+      && JSON.stringify(clickEvidence.childClick.depths) === "[0,1]"
+      && highlightsOf(clickEvidence.childClick.highlights) === highlightsOf(clickEvidence.chain.highlights.slice(0, 2))
+      && clickEvidence.rootClick?.hoverGrandchild && clickEvidence.rootClick.text === "A" && !clickEvidence.rootClick.covered
+      && JSON.stringify(clickEvidence.rootClick.depths) === "[0]"
+      && !child.visible(clickEvidence.rootClick.child) && !grandchild.visible(clickEvidence.rootClick.grandchild)
+      && clickEvidence.rootClick.root?.plain === clickEvidence.rootClick.rootBefore?.plain
+      && highlightsOf(clickEvidence.rootClick.highlights) === highlightsOf([fixture.query])
+      && clickEvidence.draftClick?.draft?.term === fixture.child && !clickEvidence.draftClick.covered
+      && clickEvidence.draftClick.child?.noteOpen && clickEvidence.draftClick.child.noteDefinition === "draft survives a parent click"
+      && JSON.stringify(clickEvidence.draftClick.depths) === "[0,1]"
+      && child.visible(clickEvidence.formClosed) && !clickEvidence.formClosed.noteOpen
+      && JSON.stringify(clickEvidence.closedDraftClick?.depths) === "[0]" && !child.visible(clickEvidence.closedDraftClick.child)
+      && clickEvidence.pending?.held && JSON.stringify(clickEvidence.pending.heldDepths) === "[0,1]"
+      && JSON.stringify(clickEvidence.pending.dismissedDepths) === "[0]" && JSON.stringify(clickEvidence.pending.afterRelease) === "[0]"
+      && !grandchild.visible(clickEvidence.pending.grandchild) && !child.visible(clickEvidence.pending.child)
+      && clickEvidence.pending.root?.plain.includes(fixture.query)
+      && JSON.stringify(clickEvidence.linkClick?.depths) === "[0,1]" && clickEvidence.linkClick.child?.plain.includes(fixture.child)
+      && clickEvidence.linkClick.lookups === 0,
+    JSON.stringify(clickEvidence));
 }
 
 async function checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth) {
