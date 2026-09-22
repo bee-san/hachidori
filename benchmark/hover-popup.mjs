@@ -33,7 +33,7 @@ writeFileSync(resolve(output, 'manifest.json'), JSON.stringify(manifest, null, 2
 const puppeteer = await import(pathToFileURL(process.env.HACHIDORI_PUPPETEER).href);
 const server = createServer((_request, response) => {
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
-  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}</style><span id="w0">食べる</span><span id="w1">漢字</span>');
+  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}#hit-tile{position:absolute;left:60px;top:650px;width:200px;height:96px;padding:12px 24px}</style><span id="w0">食べる</span><span id="w1">漢字</span><br><a id="hit-tile">食べる</a>');
 });
 await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
 const rows = [];
@@ -188,6 +188,19 @@ try {
         await scan(0, 'child-replace', 1, nested[0]);
         await tab.screenshot({ path: resolve(output, `session-${session}-child.png`) });
       } else console.log(JSON.stringify({ session, nested: 'not supported by visible first definition', points: nested }));
+      const hitPoints = await tab.$eval('#hit-tile', node => {
+        const range = document.createRange();
+        range.setStart(node.firstChild, 0); range.setEnd(node.firstChild, 1);
+        const rect = range.getBoundingClientRect();
+        return { glyph: { x: rect.left + rect.width * .2, y: rect.top + rect.height / 2 },
+          padding: { x: rect.left - 20, y: rect.top + rect.height / 2 } };
+      });
+      const hitTesting = await evaluate(`__hoverProbe.hitTesting(${JSON.stringify(hitPoints)})`);
+      writeFileSync(resolve(output, `session-${session}-hit-testing.json`), JSON.stringify({
+        points: hitPoints, samples: hitTesting,
+        boundary: 'synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering',
+      }, null, 2));
+      console.log(JSON.stringify({ session, hitTesting }));
     } finally {
       await browser?.close();
       rmSync(directory, { recursive: true, force: true });

@@ -98,6 +98,18 @@
     read() { return { ...active, now: performance.now(), events: events.slice(active?.eventStart), longTasks }; },
     state,
     events: () => events,
+    hitTesting(points, iterations = 1000) {
+      hide();
+      return Object.entries(points).map(([name, { x, y }]) => {
+        for (let i = 0; i < 100; i++) resolveCandidate(x, y);
+        let hits = 0;
+        const start = performance.now();
+        for (let i = 0; i < iterations; i++) {
+          if (resolveCandidate(x, y)) hits++;
+        }
+        return { name, iterations, hits, totalMs: performance.now() - start };
+      });
+    },
     point(query, depth = 0) {
       const popup = levels[depth].popup;
       const walker = document.createTreeWalker(popup.querySelector('.gsm-hoshidicts-definitions'), NodeFilter.SHOW_TEXT);

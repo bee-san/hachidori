@@ -17293,6 +17293,49 @@ async function contentNoteStage() {
         flagOff === 9 && flagBackOn === 45 || { flagOff, flagBackOn } };
   }
 
+  async function hoverGlyphCase() {
+    const harness = await createHarness();
+    const { ownerDocument: document } = harness.popup;
+    const window = document.defaultView;
+    const label = document.createElement("a");
+    label.textContent = "𠮷食べた";
+    const cover = document.createElement("div");
+    document.body.append(label, cover);
+    let offset = 0;
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(label.firstChild, offset);
+      range.collapse(true);
+      return range;
+    };
+    document.elementFromPoint = () => label;
+    const probes = [];
+    window.Range.prototype.getClientRects = function () {
+      probes.push(this.toString());
+      return [{ left: 10, right: 30, top: 10, bottom: 30 }];
+    };
+    const scan = (x, y) => harness.driver.resolveCandidate(x, y);
+    const inside = scan(15, 20)?.query === label.textContent;
+    const padding = scan(15, 50) === null;
+    const slack = scan(8.5, 20)?.query === label.textContent && scan(7, 20) === null;
+    document.elementFromPoint = () => cover;
+    const covered = scan(15, 20) === null;
+    document.elementFromPoint = () => document.body;
+    const ancestor = scan(15, 20)?.query === label.textContent;
+    document.elementFromPoint = () => label;
+    offset = 2; // Right half of a supplementary glyph: caret is after both code units.
+    const supplementary = scan(25, 20)?.query === label.textContent && probes.includes("𠮷");
+    offset = label.textContent.length;
+    const end = scan(50, 50) === null;
+    harness.close();
+    return {
+      "hover requires the pointed glyph within two pixels and rejects occluding elements":
+        (inside && padding && slack && covered && ancestor && end)
+        || { inside, padding, slack, covered, ancestor, end },
+      "hover in the trailing half of a supplementary glyph starts at its complete code point": supplementary,
+    };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -18918,7 +18961,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await longKeyWindowCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
