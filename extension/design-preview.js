@@ -17,8 +17,9 @@
   iconStylesheet.href = "icons.css";
   shadow.append(stylesheet, iconStylesheet, popup);
   const source = document.getElementById("preview-source");
-  const candidate = { query: "食べる", sentence: source.textContent,
-    sourceElements: [source], matchOffset: source.textContent.indexOf("食べる") };
+  const sourceOffset = source.textContent.indexOf("食べる");
+  const candidate = { query: "食べる", sentence: source.textContent, matchOffset: sourceOffset,
+    sourceElements: [source], sourceText: source.textContent, sourceOffset };
   let options = { ...HDReaderOptions.DEFAULT_OPTIONS };
   let state;
   let sample;
