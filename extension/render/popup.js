@@ -1646,20 +1646,14 @@
 
   // The compact walkers use explicit frames like the glossary renderer, so
   // nesting depth is never a failure condition; the node budget bounds the work.
-  function compactDefinitionArrayFrame(value) {
-    return { kind: "array", value, index: 0 };
-  }
-
   function* collectCompactDefinitionText(root, state) {
     const stack = [{ kind: "value", value: root }];
     // Enclosing arrays, outermost first. A child's first text decides its
     // block separator, so empty inline children never need a block check.
     const arrays = [];
     const separators = () => {
-      let first = arrays.length;
-      while (first > 0 && !arrays[first - 1].childHasText) first -= 1;
       let count = 0;
-      for (let index = first; index < arrays.length; index += 1) {
+      for (let index = arrays.length - 1; index >= 0 && !arrays[index].childHasText; index -= 1) {
         const array = arrays[index];
         array.childIsBlock = isCompactDefinitionBlock(array.value[array.index - 1]);
         if (array.hasText && (array.previousWasBlock || array.childIsBlock)) count += 1;
@@ -1691,7 +1685,7 @@
           typeof value === "boolean") {
         text = String(value);
       } else if (Array.isArray(value)) {
-        const array = { ...compactDefinitionArrayFrame(value),
+        const array = { kind: "array", value, index: 0,
           hasText: false, previousWasBlock: false, childHasText: false, childIsBlock: false };
         arrays.push(array);
         stack.push(array);
@@ -1728,7 +1722,7 @@
       state.nodes += 1;
       const { value } = frame;
       if (Array.isArray(value)) {
-        stack.push(compactDefinitionArrayFrame(value));
+        stack.push({ kind: "array", value, index: 0 });
         continue;
       }
       if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) continue;
@@ -1918,7 +1912,7 @@
       state.nodes += 1;
       const { value } = frame;
       if (Array.isArray(value)) {
-        stack.push(compactDefinitionArrayFrame(value));
+        stack.push({ kind: "array", value, index: 0 });
         continue;
       }
       if (!isRecord(value)) {
