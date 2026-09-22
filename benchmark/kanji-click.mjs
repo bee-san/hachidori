@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
@@ -9,6 +10,7 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
+import { kanjiGroupFixture } from "../test/make-fixture.mjs";
 import { directoryContentSha256, hostSnapshot, sha256File } from "./system.mjs";
 
 const SCRIPT_REPO = resolve(import.meta.dirname, "..");
@@ -17,10 +19,22 @@ const EXTENSION = resolve(REPO, "extension");
 const TITLE = "Bee's Ultimate Kanji Dictionary";
 const EXPECTED_ARCHIVE_BYTES = 11_782_705;
 const EXPECTED_ARCHIVE_SHA256 = "f96fbead89f86a584298f710d71f49eccec623b54f1c73a00501a87567e93f09";
-const EXPECTED_DICTIONARY_COUNT = 2;
 const TARGET = "hoshidicts-offscreen";
 const TIMEOUT_MS = 300_000;
 const QUERIES = ["食", "日", "生", "行", "人", "見", "学", "大", "本", "年", "時", "手"];
+// The clicked-kanji group: Bee's term entries beside one native kanji bank and
+// one more term dictionary, so a click fans out to one hd_kanji and two
+// hd_lookup_dictionary requests, the heaviest shape for three members. Bee's
+// reads every kanji as itself; the fixture's reading keeps the terms separate.
+const GROUP_ID = "kanji-click-benchmark-group";
+const [KANJI_MEMBER, TERM_MEMBER] = kanjiGroupFixture(QUERIES.map((character) => [character, "べんち"])).dictionaries;
+const GROUP_MEMBERS = [
+  { kind: "term", title: TITLE },
+  { kind: "kanji", title: KANJI_MEMBER.title },
+  { kind: "term", title: TERM_MEMBER.title },
+];
+// Bee's term and frequency kinds plus one kind from each fixture member.
+const EXPECTED_DICTIONARY_COUNT = 4;
 
 function positiveInteger(value, fallback, label) {
   if (value === undefined || value === "") return fallback;
@@ -166,27 +180,42 @@ async function openSettings(browser, id) {
   return page;
 }
 
-async function importArchive(page, archiveUrl) {
+async function importArchives(page, archives) {
   await page.evaluate(() =>
     document.querySelector('#library-navigation a[href="#add-dictionaries"]')?.click());
   await page.waitForFunction(() => {
     const input = document.getElementById("import-file");
     return input && !input.disabled && !input.closest("[hidden]");
   }, { timeout: TIMEOUT_MS });
-  await page.evaluate(async ({ archiveUrl: url, name }) => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`archive fetch failed: HTTP ${response.status}`);
-    const file = new File([await response.blob()], name, { type: "application/zip" });
+  await page.evaluate(async (files) => {
     const transfer = new DataTransfer();
-    transfer.items.add(file);
+    for (const { url, name } of files) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`archive fetch failed: HTTP ${response.status}`);
+      transfer.items.add(new File([await response.blob()], name, { type: "application/zip" }));
+    }
     const input = document.getElementById("import-file");
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
-  }, { archiveUrl, name: ARCHIVE.split("/").at(-1) });
-  await page.waitForFunction(() =>
-    /^Finished 1 of 1 archive — 1 imported, 0 failed\.$/u.test(
-      document.getElementById("import-state")?.textContent?.trim() || "",
-    ), { timeout: TIMEOUT_MS, polling: 50 });
+  }, archives);
+  const count = archives.length;
+  await page.waitForFunction((expected) =>
+    (document.getElementById("import-state")?.textContent?.trim() || "") === expected,
+  { timeout: TIMEOUT_MS, polling: 50 }, `Finished ${count} of ${count} archives — ${count} imported, 0 failed.`);
+}
+
+// The production group state the content script resolves a click through.
+async function createGroup(page) {
+  const reply = await page.evaluate(async ({ groupId, titles }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const ids = titles.map((title) => dictionaryState.dictionaries.find((entry) => entry.title === title)?.id);
+    if (ids.some((id) => !id)) throw new Error(`group members are not all installed: ${JSON.stringify(ids)}`);
+    return chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_state_cas", baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries, groups: [{ id: groupId, name: "Kanji", dictionaryIds: ids }],
+    });
+  }, { groupId: GROUP_ID, titles: GROUP_MEMBERS.map((member) => member.title) });
+  if (reply?.ok !== true) throw new Error(`group creation failed: ${JSON.stringify(reply)}`);
 }
 
 async function launch(profile) {
@@ -200,6 +229,7 @@ async function launch(profile) {
       "--disable-dev-shm-usage",
       `--disable-extensions-except=${EXTENSION}`,
       `--load-extension=${EXTENSION}`,
+      ...(process.env.HACHIDORI_ALLOW_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
     ],
   });
   const version = await browser.version();
@@ -215,9 +245,19 @@ function semanticSignature(reply) {
   return JSON.stringify(semantic);
 }
 
-async function lookup(page, type, character) {
-  const result = await request(page, type, {
-    dictionary: TITLE,
+// The content script's projection of an ordinary reply to one dictionary's
+// cards: the other loaded members contribute nothing to the selected route.
+function projectToDictionary(reply, dictionary) {
+  const results = reply.results
+    .map((result) => ({ ...result, term: { ...result.term,
+      glossaries: result.term.glossaries.filter((glossary) => glossary.dictionary === dictionary) } }))
+    .filter((result) => result.term.glossaries.length > 0);
+  return { ...reply, results };
+}
+
+function lookupFields(dictionary, character) {
+  return {
+    dictionary,
     maxResults: 32,
     options: {
       frequencyDictionary: "",
@@ -226,24 +266,69 @@ async function lookup(page, type, character) {
     },
     scanLength: 1,
     text: character,
-  });
+  };
+}
+
+function assertReply(reply, type, requestId) {
+  if (reply?.type !== `${type}_result` || reply.requestId !== requestId
+      || reply.ok !== true || reply.error !== null) {
+    throw new Error(`${type} failed: ${JSON.stringify(reply)}`);
+  }
+}
+
+async function lookup(page, type, character) {
+  const result = await request(page, type, lookupFields(TITLE, character));
   if (!Array.isArray(result.reply.results) || result.reply.results.length === 0) {
     throw new Error(`${type} missed ${character}`);
   }
-  return { latencyMs: result.latencyMs, signature: semanticSignature(result.reply) };
+  // The ordinary lookup also answers from the group's term member; the
+  // selected route must match its cards for Bee's exactly.
+  const semantic = type === "hd_lookup" ? projectToDictionary(result.reply, TITLE) : result.reply;
+  return { latencyMs: result.latencyMs, signature: semanticSignature(semantic) };
+}
+
+// The content script's clicked-kanji fan-out for the group: one hd_kanji for
+// its native members and one hd_lookup_dictionary per term member, dispatched
+// together and awaited together, timed on the page clock like the single case.
+async function groupLookup(page, character) {
+  const requests = [
+    { type: "hd_kanji", fields: { character } },
+    ...GROUP_MEMBERS.filter((member) => member.kind === "term")
+      .map((member) => ({ type: "hd_lookup_dictionary", fields: lookupFields(member.title, character) })),
+  ].map((entry) => ({ ...entry, requestId: `kanji-click-benchmark-${++nextRequestId}` }));
+  const result = await page.evaluate(async ({ target, requests: batch }) => {
+    const started = performance.now();
+    const replies = await Promise.all(batch.map(({ type, requestId, fields }) =>
+      chrome.runtime.sendMessage({ target, type, requestId, ...fields })));
+    return { latencyMs: performance.now() - started, replies };
+  }, { target: TARGET, requests });
+  const [kanji, selected, extra] = result.replies;
+  requests.forEach(({ type, requestId }, index) => assertReply(result.replies[index], type, requestId));
+  if (!kanji.kanji?.entries?.some((entry) => entry.dictionary === KANJI_MEMBER.title)) {
+    throw new Error(`the native member missed ${character}: ${JSON.stringify(kanji.kanji)}`);
+  }
+  if (!Array.isArray(selected.results) || selected.results.length === 0) throw new Error(`the group's ${TITLE} lookup missed ${character}`);
+  if (!Array.isArray(extra.results) || extra.results.length === 0) throw new Error(`the group's ${TERM_MEMBER.title} lookup missed ${character}`);
+  return { latencyMs: result.latencyMs, signature: semanticSignature(selected) };
 }
 
 async function measurePhase(page) {
   const firstSelected = await lookup(page, "hd_lookup_dictionary", QUERIES[0]);
+  const firstGroup = await groupLookup(page, QUERIES[0]);
   const selectedMs = [];
   const ordinaryMs = [];
+  const groupMs = [];
   const signatures = {};
   for (let pass = 0; pass < LOOKUP_PASSES; pass += 1) {
     for (const character of QUERIES) {
       const ordinary = await lookup(page, "hd_lookup", character);
       const selected = await lookup(page, "hd_lookup_dictionary", character);
+      const group = await groupLookup(page, character);
       if (selected.signature !== ordinary.signature) {
         throw new Error(`selected and ordinary lookup semantics differ for ${character}`);
+      }
+      if (group.signature !== selected.signature) {
+        throw new Error(`the group's selected lookup semantics differ for ${character}`);
       }
       if (signatures[character] && signatures[character] !== selected.signature) {
         throw new Error(`lookup semantics changed between passes for ${character}`);
@@ -251,9 +336,10 @@ async function measurePhase(page) {
       signatures[character] = selected.signature;
       ordinaryMs.push(ordinary.latencyMs);
       selectedMs.push(selected.latencyMs);
+      groupMs.push(group.latencyMs);
     }
   }
-  if (firstSelected.signature !== signatures[QUERIES[0]]) {
+  if (firstSelected.signature !== signatures[QUERIES[0]] || firstGroup.signature !== signatures[QUERIES[0]]) {
     throw new Error(`first selected lookup semantics differ for ${QUERIES[0]}`);
   }
   if (expectedSignatures === null) {
@@ -261,7 +347,7 @@ async function measurePhase(page) {
   } else if (JSON.stringify(expectedSignatures) !== JSON.stringify(signatures)) {
     throw new Error("lookup semantics changed between profiles or restart phases");
   }
-  return { firstSelectedMs: firstSelected.latencyMs, selectedMs, ordinaryMs };
+  return { firstSelectedMs: firstSelected.latencyMs, firstGroupMs: firstGroup.latencyMs, selectedMs, ordinaryMs, groupMs };
 }
 
 async function close(browser) {
@@ -292,25 +378,35 @@ function stats(values) {
 
 const samples = [];
 const totalStarted = performance.now();
+const members = new Map([
+  ["/kanji-member.zip", KANJI_MEMBER.archive],
+  ["/term-member.zip", TERM_MEMBER.archive],
+]);
 const archiveServer = createServer((request_, response) => {
-  if (request_.url !== "/dictionary.zip") {
+  const member = members.get(request_.url);
+  if (request_.url !== "/dictionary.zip" && !member) {
     response.writeHead(404).end();
     return;
   }
   response.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
-    "Content-Length": archiveIdentity.bytes,
+    "Content-Length": member ? member.length : archiveIdentity.bytes,
     "Content-Type": "application/zip",
     "Cross-Origin-Resource-Policy": "cross-origin",
   });
-  createReadStream(ARCHIVE).pipe(response);
+  if (member) response.end(member);
+  else createReadStream(ARCHIVE).pipe(response);
 });
 await new Promise((resolveListen, reject) => {
   archiveServer.once("error", reject);
   archiveServer.listen(0, "127.0.0.1", resolveListen);
 });
 const archiveAddress = archiveServer.address();
-const archiveUrl = `http://127.0.0.1:${archiveAddress.port}/dictionary.zip`;
+const origin = `http://127.0.0.1:${archiveAddress.port}`;
+const archives = [
+  { url: `${origin}/dictionary.zip`, name: ARCHIVE.split("/").at(-1) },
+  ...[...members.keys()].map((path) => ({ url: `${origin}${path}`, name: path.slice(1) })),
+];
 
 try {
   for (let sample = 0; sample < SAMPLE_COUNT; sample += 1) {
@@ -322,8 +418,9 @@ try {
       const id = await extensionId(browser);
       let page = await openSettings(browser, id);
       await waitReady(page, 0);
-      await importArchive(page, archiveUrl);
+      await importArchives(page, archives);
       await waitReady(page, EXPECTED_DICTIONARY_COUNT);
+      await createGroup(page);
       const postImport = await measurePhase(page);
       await close(browser);
       browser = null;
@@ -357,19 +454,27 @@ const aggregate = {};
 for (const phase of ["postImport", "postRestart"]) {
   aggregate[phase] = {
     firstSelectedMs: stats(samples.map((sample) => sample[phase].firstSelectedMs)),
+    firstGroupMs: stats(samples.map((sample) => sample[phase].firstGroupMs)),
     selectedMs: stats(samples.flatMap((sample) => sample[phase].selectedMs)),
     ordinaryMs: stats(samples.flatMap((sample) => sample[phase].ordinaryMs)),
+    groupMs: stats(samples.flatMap((sample) => sample[phase].groupMs)),
   };
+  aggregate[phase].groupToSelectedMedianRatio = aggregate[phase].groupMs.median / aggregate[phase].selectedMs.median;
 }
 
 process.stdout.write(`${JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   revisions: {
     hachidori: revision(REPO),
     hoshidicts: revision(resolve(REPO, "third_party/hoshidicts")),
   },
   extensionSha256: directoryContentSha256(EXTENSION),
   archive: { path: ARCHIVE, ...archiveIdentity },
+  group: {
+    members: GROUP_MEMBERS,
+    fixtures: Object.fromEntries([[KANJI_MEMBER.title, KANJI_MEMBER.archive], [TERM_MEMBER.title, TERM_MEMBER.archive]]
+      .map(([title, archive]) => [title, { bytes: archive.length, sha256: createHash("sha256").update(archive).digest("hex") }])),
+  },
   chrome: { path: CHROME, version: browserVersion },
   host: hostSnapshot(),
   sampleCount: SAMPLE_COUNT,
