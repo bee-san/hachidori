@@ -38,6 +38,7 @@ import {
   imageSizingFixture,
   makePng,
   nestedLinksFixture,
+  structuredContentDeepFixture,
 } from "./make-fixture.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -457,6 +458,7 @@ const PLANNED = [
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "deep structured content renders while node-limit failures omit only their definition",
+  "a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
@@ -13280,6 +13282,59 @@ async function main() {
       && nodeRender.recovered?.plain?.includes("healthy bounded lookup"),
     JSON.stringify({ boundedPackage, renderFailures, deepRender, nodeRender }),
   );
+
+  // The reported の/何事 failure (#287): a 大辞泉-shaped entry nested beyond the
+  // former depth limit renders, and its compact summary shows real text.
+  const deepFixture = structuredContentDeepFixture();
+  const writeOptions = (patch) => page.evaluate(async (patch) => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+    return options;
+  }, patch);
+  // An automatic backup may take the engine's mutation lock after any of these
+  // state changes, failing lookups meanwhile: mutate and hover only while idle.
+  const deepEngineIdle = (installed) => page.waitForFunction(async (title, installed) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return (dictionaryState?.dictionaries ?? []).some((entry) => entry.title === title) === installed
+      && status?.ok && status.ready && !status.loading;
+  }, { timeout: 90_000, polling: 250 }, deepFixture.title, installed);
+  const optionsBeforeSummary = await writeOptions({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 });
+  await deepEngineIdle(false);
+  await installMediaArchive(page, deepFixture.archive());
+  await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, deepFixture.query);
+  let deepEntry = null;
+  let deepSummaries = [];
+  for (let attempt = 0; attempt < 6 && deepSummaries.length === 0; attempt += 1) {
+    await deepEngineIdle(true);
+    deepEntry = await hoverForPopup(tab2, popup2, "#kanjiword", { attempts: 4,
+      accept: state => !state.failure && state.plain.includes(deepFixture.leaf) });
+    if (deepEntry) deepSummaries = await popup2.compactSummaries();
+  }
+  check(
+    "a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary",
+    deepEntry?.plain?.includes(deepFixture.leaf) && !deepEntry.failure
+      && deepEntry.plain.includes(deepFixture.title)
+      && deepSummaries.length === 1 && deepSummaries[0].dictionary === deepFixture.title
+      && JSON.stringify(deepSummaries[0].items) === JSON.stringify(deepFixture.summary),
+    JSON.stringify({ plain: deepEntry?.plain, failure: deepEntry?.failure, deepSummaries, expected: deepFixture.summary }),
+  );
+  await tab2.mouse.move(2, 2);
+  await popup2.waitForHidden();
+  await writeOptions({ showCompactDefinitionSummary: optionsBeforeSummary.showCompactDefinitionSummary,
+    compactDefinitionSummaryCount: optionsBeforeSummary.compactDefinitionSummaryCount });
+  await page.evaluate(async (title) => {
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove",
+        requestId: `deep-remove-${crypto.randomUUID()}`, title });
+      if (reply?.ok || Date.now() >= deadline) return reply;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }, deepFixture.title);
+  await deepEngineIdle(false);
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({

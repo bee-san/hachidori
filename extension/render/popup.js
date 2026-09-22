@@ -123,7 +123,6 @@
   const MAX_COMPACT_DEFINITION_SUMMARY_COUNT = 6;
   const COMPACT_DEFINITION_MAX_CHARACTERS = 240;
   const COMPACT_DEFINITION_MAX_NODES = 512;
-  const COMPACT_DEFINITION_MAX_DEPTH = 16;
   const COMPACT_DEFINITION_LETTER = /[A-Za-zぁ-ゟァ-ヿ㐀-鿿Ａ-Ｚａ-ｚ]/u;
   const COMPACT_DEFINITION_JAPANESE = /[ぁ-ゟァ-ヿ㐀-鿿]/u;
   const COMPACT_DEFINITION_BLOCK_TAGS = new Set([
@@ -1645,90 +1644,98 @@
     return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(compactDefinitionTag(value));
   }
 
-  function* collectCompactDefinitionText(value, state, depth = 0) {
-    if (
-      state.nodes >= COMPACT_DEFINITION_MAX_NODES ||
-      depth > COMPACT_DEFINITION_MAX_DEPTH
-    ) {
-      return;
-    }
-    state.nodes += 1;
-    if (typeof value === "string" || typeof value === "number" ||
-        typeof value === "boolean") {
-      const text = String(value);
-      if (text) yield text;
-      return;
-    }
-    if (Array.isArray(value)) {
-      let hasText = false;
-      let previousWasBlock = false;
-      for (const child of value) {
-        if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
-        let childIsBlock = false;
-        let childHasText = false;
-        for (const text of collectCompactDefinitionText(child, state, depth + 1)) {
-          if (!childHasText) {
-            childIsBlock = isCompactDefinitionBlock(child);
-            if (hasText && (previousWasBlock || childIsBlock)) yield " ";
-          }
-          childHasText = true;
-          yield text;
-        }
-        if (childHasText) {
-          hasText = true;
-          previousWasBlock = childIsBlock;
-        }
+  // The compact walkers use explicit frames like the glossary renderer, so
+  // nesting depth is never a failure condition; the node budget bounds the work.
+  function* collectCompactDefinitionText(root, state) {
+    const stack = [{ kind: "value", value: root }];
+    // Enclosing arrays, outermost first. A child's first text decides its
+    // block separator, so empty inline children never need a block check.
+    const arrays = [];
+    const separators = () => {
+      let count = 0;
+      for (let index = arrays.length - 1; index >= 0 && !arrays[index].childHasText; index -= 1) {
+        const array = arrays[index];
+        array.childIsBlock = isCompactDefinitionBlock(array.value[array.index - 1]);
+        if (array.hasText && (array.previousWasBlock || array.childIsBlock)) count += 1;
+        array.childHasText = true;
       }
-      return;
+      return count;
+    };
+    while (stack.length > 0) {
+      const frame = stack.pop();
+      if (frame.kind === "array") {
+        if (frame.childHasText) {
+          frame.hasText = true;
+          frame.previousWasBlock = frame.childIsBlock;
+        }
+        if (frame.index < frame.value.length && state.nodes < COMPACT_DEFINITION_MAX_NODES) {
+          frame.childHasText = false;
+          stack.push(frame, { kind: "value", value: frame.value[frame.index] });
+          frame.index += 1;
+        } else {
+          arrays.pop();
+        }
+        continue;
+      }
+      if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) continue;
+      state.nodes += 1;
+      const { value } = frame;
+      let text = "";
+      if (typeof value === "string" || typeof value === "number" ||
+          typeof value === "boolean") {
+        text = String(value);
+      } else if (Array.isArray(value)) {
+        const array = { kind: "array", value, index: 0,
+          hasText: false, previousWasBlock: false, childHasText: false, childIsBlock: false };
+        arrays.push(array);
+        stack.push(array);
+        continue;
+      } else {
+        if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) continue;
+        const tag = compactDefinitionTag(value);
+        if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) continue;
+        if (tag !== "br") {
+          const content = compactDefinitionContent(value);
+          if (content !== undefined) stack.push({ kind: "value", value: content });
+          continue;
+        }
+        text = " ";
+      }
+      if (!text) continue;
+      for (let count = separators(); count > 0; count -= 1) yield " ";
+      yield text;
     }
-    if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
-      return;
-    }
-    const tag = compactDefinitionTag(value);
-    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) {
-      return;
-    }
-    if (tag === "br") {
-      yield " ";
-      return;
-    }
-    const content = compactDefinitionContent(value);
-    if (content !== undefined) yield* collectCompactDefinitionText(content, state, depth + 1);
   }
 
-  function findCompactDefinitionNodes(value, predicate, state, depth = 0) {
-    if (
-      state.nodes >= COMPACT_DEFINITION_MAX_NODES ||
-      depth > COMPACT_DEFINITION_MAX_DEPTH
-    ) {
-      return [];
-    }
-    state.nodes += 1;
-    if (Array.isArray(value)) {
-      const matches = [];
-      for (const child of value) {
-        matches.push(...findCompactDefinitionNodes(
-          child,
-          predicate,
-          state,
-          depth + 1
-        ));
-        if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
+  function findCompactDefinitionNodes(root, predicate, state) {
+    const matches = [];
+    const stack = [{ kind: "value", value: root }];
+    while (stack.length > 0 && state.nodes < COMPACT_DEFINITION_MAX_NODES) {
+      const frame = stack.pop();
+      if (frame.kind === "array") {
+        if (frame.index < frame.value.length) {
+          stack.push(frame, { kind: "value", value: frame.value[frame.index] });
+          frame.index += 1;
+        }
+        continue;
       }
-      return matches;
+      state.nodes += 1;
+      const { value } = frame;
+      if (Array.isArray(value)) {
+        stack.push({ kind: "array", value, index: 0 });
+        continue;
+      }
+      if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) continue;
+      const tag = compactDefinitionTag(value);
+      if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) continue;
+      if (predicate(value, tag)) {
+        matches.push(value);
+        continue;
+      }
+      const content = compactDefinitionContent(value);
+      if (content !== undefined) stack.push({ kind: "value", value: content });
     }
-    if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
-      return [];
-    }
-    const tag = compactDefinitionTag(value);
-    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return [];
-    if (predicate(value, tag)) {
-      return [value];
-    }
-    const content = compactDefinitionContent(value);
-    return content !== undefined
-      ? findCompactDefinitionNodes(content, predicate, state, depth + 1)
-      : [];
+    return matches;
   }
 
   function isCompactDefinitionList(_value, tag) {
@@ -1890,22 +1897,35 @@
 
   // null means no visible content; false means text or another non-image lead.
   // Stop at that first meaningful token, not at an image later in a definition.
-  function leadingCompactDefinitionImage(value, state, depth = 0) {
-    if (state.nodes >= COMPACT_DEFINITION_MAX_NODES || depth > COMPACT_DEFINITION_MAX_DEPTH) return false;
-    state.nodes += 1;
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        const leading = leadingCompactDefinitionImage(child, state, depth + 1);
-        if (leading !== null) return leading;
+  function leadingCompactDefinitionImage(root, state) {
+    const stack = [{ kind: "value", value: root }];
+    while (stack.length > 0) {
+      const frame = stack.pop();
+      if (frame.kind === "array") {
+        if (frame.index < frame.value.length) {
+          stack.push(frame, { kind: "value", value: frame.value[frame.index] });
+          frame.index += 1;
+        }
+        continue;
       }
-      return null;
+      if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) return false;
+      state.nodes += 1;
+      const { value } = frame;
+      if (Array.isArray(value)) {
+        stack.push({ kind: "array", value, index: 0 });
+        continue;
+      }
+      if (!isRecord(value)) {
+        if (value != null && /\S/u.test(String(value))) return false;
+        continue;
+      }
+      if (isIgnoredCompactDefinitionSection(value)) continue;
+      const tag = compactDefinitionTag(value);
+      if (tag === "img") return value;
+      if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) continue;
+      stack.push({ kind: "value", value: compactDefinitionContent(value) });
     }
-    if (!isRecord(value)) return value != null && /\S/u.test(String(value)) ? false : null;
-    if (isIgnoredCompactDefinitionSection(value)) return null;
-    const tag = compactDefinitionTag(value);
-    if (tag === "img") return value;
-    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
-    return leadingCompactDefinitionImage(compactDefinitionContent(value), state, depth + 1);
+    return null;
   }
 
   function extractCompactDefinitionSummary(

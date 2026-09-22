@@ -25,6 +25,7 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
+import { buildAnkiResourceFields } from "../extension/anki-resources.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
 import { canDiscoverSharingHost } from "../extension/sharing-protocol.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
@@ -60,6 +61,7 @@ import {
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
+  structuredContentDeepFixture,
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
@@ -20102,6 +20104,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  await deepStructuredContentStage({ HDGlossary, HDPopup, document });
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   internalLinksRenderStage({ HDGlossary, document, window });
   await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
@@ -21922,6 +21925,66 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     view.destroy();
     popup.remove();
   }
+}
+
+// Depth is not a failure condition anywhere in the render path (#287): the
+// glossary, the compact summary and Anki fields owe deep content its leaf text.
+async function deepStructuredContentStage({ HDGlossary, HDPopup, document }) {
+  const fixture = structuredContentDeepFixture();
+  const depth = (value, level = 0) => Array.isArray(value)
+    ? Math.max(level, ...value.map(child => depth(child, level + 1)))
+    : value !== null && typeof value === "object"
+      ? depth(value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content, level + 1)
+      : level;
+  const render = glossary => {
+    const parent = document.createElement("div");
+    HDGlossary.appendTextOnlyGlossary(document, parent, glossary);
+    return parent.textContent;
+  };
+  const summary = glossary => HDPopup.extractCompactDefinitionSummary([{ dictionary: fixture.title, glossary }], null, 6)?.items;
+  const ankiFields = async glossary => (await buildAnkiResourceFields({
+    term: { expression: fixture.query, reading: fixture.query, rules: "", frequencies: [], pitches: [],
+      glossaries: [{ dictionary: fixture.title, glossary, definitionTags: "", termTags: "" }] },
+    trace: [], dictionaryAliases: {}, frequencyDictionaries: [], generation: 1,
+  }, { Rich: { value: "{glossary}", overwriteMode: "coalesce" }, Plain: { value: "{glossary-plain-no-dictionary}", overwriteMode: "coalesce" } },
+  { document, dictionaryPaths: { [fixture.title]: "/dicts/deep" }, styles: async () => [] })).fields;
+  const fixtureDepth = depth(JSON.parse(fixture.glossary)[0]);
+  const rendered = render(fixture.glossary);
+  check("a 大辞泉-shaped glossary nested beyond the former depth limit renders its deepest gloss",
+    fixtureDepth >= 25 && rendered.includes(fixture.leaf), JSON.stringify({ fixtureDepth, rendered }));
+  const items = summary(fixture.glossary);
+  check("the compact summary of that glossary is every gloss in order without labels or examples",
+    JSON.stringify(items) === JSON.stringify(fixture.summary) && items.every(item => !item.includes("用例")),
+    JSON.stringify({ items, expected: fixture.summary }));
+  const fields = await ankiFields(fixture.glossary);
+  check("Anki glossary and glossary-plain fields contain that glossary's deepest gloss",
+    fields.Rich.includes(fixture.leaf) && fields.Plain.includes(fixture.leaf),
+    JSON.stringify(fields));
+
+  const nested = wrappers => {
+    let value = "leaf";
+    for (let index = 0; index < wrappers; index += 1) {
+      value = index % 2 === 0 ? { type: "text", text: value } : { tag: "span", content: [value] };
+    }
+    return JSON.stringify([value]);
+  };
+  const depths = [1, 10, 24, 25, 64, 500];
+  const outcomes = await Promise.all(depths.map(async wrappers => {
+    const glossary = nested(wrappers);
+    const fields = await ankiFields(glossary);
+    return {
+      wrappers, depth: depth(JSON.parse(glossary)[0]), rendered: render(glossary), items: summary(glossary),
+      plain: fields.Plain, richLeaf: fields.Rich.includes("leaf"),
+    };
+  }));
+  // The preview keeps its 512-node budget (COMPACT_DEFINITION_MAX_NODES): 500
+  // wrappers are 750 values, so only that budget, never depth, ends its summary.
+  check("rendering, compact summaries and Anki fields never fail on depth alone",
+    outcomes.every(outcome => outcome.depth >= outcome.wrappers && outcome.rendered === "leaf"
+      && (outcome.depth < 512 ? JSON.stringify(outcome.items) === '["leaf"]' : outcome.items === undefined)
+      && outcome.plain === "leaf" && outcome.richLeaf),
+    JSON.stringify(outcomes.map(({ wrappers, depth, rendered, items, plain, richLeaf }) =>
+      ({ wrappers, depth, rendered, items, plain, richLeaf }))));
 }
 
 main().catch((error) => {

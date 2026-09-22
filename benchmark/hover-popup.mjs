@@ -20,8 +20,8 @@ const samples = Number(process.env.HACHIDORI_HOVER_SAMPLES ?? 3);
 assert.ok(Number.isSafeInteger(samples) && samples > 0);
 const settings = { hoverEnabled: true, lookupMode: 'hover', hoverDelayMs: 0, popupNestingMaxDepth: 2,
   popupWidthPx: 520, popupHeightPx: 500, popupColumns: 1, maxResults: 32,
-  definitionBlurEnabled: false };
-const words = ['食べる', '漢字'];
+  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 };
+const words = ['食べる', '漢字', '深層'];
 const manifest = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(), settings, words,
   extensionSha256: directoryContentSha256(resolve(root, 'extension')),
@@ -33,7 +33,7 @@ writeFileSync(resolve(output, 'manifest.json'), JSON.stringify(manifest, null, 2
 const puppeteer = await import(pathToFileURL(process.env.HACHIDORI_PUPPETEER).href);
 const server = createServer((_request, response) => {
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
-  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}#hit-tile{position:absolute;left:60px;top:650px;width:200px;height:96px;padding:12px 24px}</style><span id="w0">食べる</span><span id="w1">漢字</span><br><a id="hit-tile">食べる</a>');
+  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}#hit-tile{position:absolute;left:60px;top:650px;width:200px;height:96px;padding:12px 24px}</style><span id="w2">深層</span><span id="w0">食べる</span><span id="w1">漢字</span><br><a id="hit-tile">食べる</a>');
 });
 await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
 const rows = [];
@@ -152,6 +152,11 @@ try {
       await tab.screenshot({ path: resolve(output, `session-${session}-cold.png`) });
       for (let i = 0; i < 2; i++) await scan((i + 1) % 2, `warmup-${i}`);
       for (let i = 0; i < 8; i++) await scan((i + 1) % 2, `root-${i}`);
+      // The depth-40 entry alternates with a flat one so each hover replaces a popup.
+      for (let i = 0; i < 8; i++) {
+        await scan(2, `deep-nesting-${i}`);
+        await scan((i + 1) % 2, `deep-nesting-flat-${i}`);
+      }
       await tab.tracing.start({ path: resolve(output, `session-${session}-trace.json`), screenshots: false });
       await scan(1, 'trace-0');
       await scan(0, 'trace-1');
@@ -181,7 +186,8 @@ try {
       const final = await evaluate('__hoverProbe.state()');
       assert.equal(final[0].expressions[0], words[0], 'delayed genuine reply cannot repaint newer result');
       writeFileSync(resolve(output, `session-${session}-rapid.json`), JSON.stringify({ superseded, delivered, final, metrics }, null, 2));
-      const points = await evaluate(`JSON.stringify(${JSON.stringify(words)}.map(word => __hoverProbe.point(word)))`);
+      // Only the two flat entries name each other in their definitions.
+      const points = await evaluate(`JSON.stringify(${JSON.stringify(words.slice(0, 2))}.map(word => __hoverProbe.point(word)))`);
       const nested = JSON.parse(points);
       if (nested.every(Boolean)) {
         await scan(1, 'child-first', 1, nested[1]);
