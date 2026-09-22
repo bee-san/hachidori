@@ -1270,6 +1270,57 @@ async function automaticBackupBackgroundStage() {
       lowered: loweredStore.backups.map(record => record.createdAt) }));
 }
 
+async function managedCheckStage() {
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("check-worker", bus, storage, alarms);
+  const dictionaries = ["first", "second"].map((id, index) => genericPackage({
+    id, title: id, path: `/dicts/${id}`, revision: "test-1", enabled: index === 0,
+    isUpdatable: true, indexUrl: `https://example.com/${id}.json`, downloadUrl: `https://example.com/${id}.zip`,
+  }));
+  await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries },
+    dictionaryUpdates: { revision: 1, schedule: "off", lastCheckedAt: null } });
+  const fetched = [], relayed = [];
+  bus.addListener("check-engine", (message, _sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    relayed.push(message.type);
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true });
+    return true;
+  });
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, TypeError,
+    fetch: async url => {
+      fetched.push(url);
+      return { ok: true, url, json: async () => ({ revision: "test-2" }) };
+    } });
+  const send = fields => bus.sendMessage("check-page", { target: "hachidori-updates", type: "hd_updates_check", ...fields });
+  const selected = await send({ dictionaryIds: ["second"] });
+  const selectedState = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  check("a scoped check requests one index and changes only that package's check status without importing",
+    selected.ok && selected.outcomes.length === 1 && selected.outcomes[0].id === "second"
+      && JSON.stringify(fetched) === JSON.stringify([dictionaries[1].indexUrl])
+      && JSON.stringify(selectedState.dictionaries[0]) === JSON.stringify(dictionaries[0])
+      && selectedState.dictionaries[1].lastUpdateCheck?.status === "update-available"
+      && selectedState.dictionaries.every((entry, index) => entry.revision === dictionaries[index].revision
+        && entry.path === dictionaries[index].path)
+      && !relayed.includes("hd_import"),
+    JSON.stringify({ selected, selectedState, fetched, relayed }));
+  fetched.length = 0;
+  const all = await send({});
+  const allState = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  check("Check now checks all managed indexes but never imports or changes installed revisions when newer indexes exist",
+    all.ok && all.outcomes.length === 2
+      && JSON.stringify(fetched) === JSON.stringify(dictionaries.map(entry => entry.indexUrl))
+      && allState.dictionaries.every((entry, index) => entry.lastUpdateCheck?.status === "update-available"
+        && entry.revision === dictionaries[index].revision && entry.path === dictionaries[index].path)
+      && !relayed.includes("hd_import"),
+    JSON.stringify({ all, allState, fetched, relayed }));
+  fetched.length = 0;
+  const empty = await send({ dictionaryIds: [] });
+  const invalid = await Promise.all([null, "second", {}].map(dictionaryIds => send({ dictionaryIds })));
+  check("scoped checks accept an empty selection and reject non-array selections before fetching",
+    empty.ok && empty.outcomes.length === 0 && invalid.every(reply => !reply.ok && /dictionary IDs/u.test(reply.error))
+      && fetched.length === 0, JSON.stringify({ empty, invalid, fetched }));
+}
+
 async function managedScheduleStage() {
   let now = Date.parse("2026-09-07T12:00:00Z");
   const hour = 3_600_000;
@@ -5183,6 +5234,7 @@ async function main() {
   await backupLifecyclePortStage();
   await automaticBackupBackgroundStage();
   await managedScheduleStage();
+  await managedCheckStage();
   await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
@@ -8966,13 +9018,20 @@ async function main() {
       && managedUpdateSettings.initial.lastChecked.includes("9/4/2026")
       && managedUpdateSettings.initial.managedStatus.includes("Update available")
       && managedUpdateSettings.initial.managedUpdateHidden === false
+      && managedUpdateSettings.initial.managedCheckHidden === false
       && managedUpdateSettings.initial.insecureMetadata.includes("Local archive")
       && managedUpdateSettings.initial.insecureStatus === "Not update-checkable"
       && managedUpdateSettings.initial.insecureUpdateHidden === true
+      && managedUpdateSettings.initial.insecureCheckHidden === true
       && managedUpdateSettings.initial.localStatus === "Not update-checkable"
       && managedUpdateSettings.initial.localUpdateHidden === true
+      && managedUpdateSettings.initial.localCheckHidden === true
       && managedUpdateSettings.checkRequest?.type === "hd_updates_check"
+      && managedUpdateSettings.checkRequest.dictionaryIds === undefined
       && managedUpdateSettings.checkedState.includes("1 update available")
+      && managedUpdateSettings.rowCheckRequest?.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.rowCheckDisabled === true
+      && managedUpdateSettings.rowCheckedState === "Checked 1 managed dictionary — 1 update available, 0 failed."
       && managedUpdateSettings.oneRequest?.type === "hd_updates_install"
       && managedUpdateSettings.oneRequest.dictionaryIds?.join(",") === "managed-id"
       && managedUpdateSettings.afterOneStatus.startsWith("Up to date")
@@ -12756,11 +12815,14 @@ async function settingsManagedUpdatesStage() {
       lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
       managedStatus: managedRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       managedUpdateHidden: managedRow()?.querySelector(".dict-update")?.hidden,
+      managedCheckHidden: managedRow()?.querySelector(".dict-update-check")?.hidden,
       insecureMetadata: insecureRow()?.querySelector(".dict-metadata")?.textContent ?? "",
       insecureStatus: insecureRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       insecureUpdateHidden: insecureRow()?.querySelector(".dict-update")?.hidden,
+      insecureCheckHidden: insecureRow()?.querySelector(".dict-update-check")?.hidden,
       localStatus: localRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       localUpdateHidden: localRow()?.querySelector(".dict-update")?.hidden,
+      localCheckHidden: localRow()?.querySelector(".dict-update-check")?.hidden,
     },
   };
 
@@ -12769,6 +12831,13 @@ async function settingsManagedUpdatesStage() {
   await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
   result.checkRequest = updateRequests.find((request) => request.type === "hd_updates_check");
   result.checkedState = window.document.getElementById("update-state")?.textContent ?? "";
+
+  managedRow()?.querySelector(".dict-update-check")?.click();
+  result.rowCheckDisabled = managedRow()?.querySelector(".dict-update-check")?.disabled;
+  await waitSchedule(() => updateRequests.filter(request => request.type === "hd_updates_check").length === 2);
+  await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
+  result.rowCheckRequest = updateRequests.filter(request => request.type === "hd_updates_check")[1];
+  result.rowCheckedState = window.document.getElementById("update-state")?.textContent ?? "";
 
   managedRow()?.querySelector(".dict-update")?.click();
   await waitSchedule(() => updateRequests.filter((request) => request.type === "hd_updates_install").length >= 1);

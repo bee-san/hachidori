@@ -2040,8 +2040,11 @@ const UPDATE_HANDLERS = {
     return result;
   },
 
-  async hd_updates_check() {
-    return queueManagedUpdate({ install: false });
+  async hd_updates_check(message) {
+    if (message.dictionaryIds !== undefined && !Array.isArray(message.dictionaryIds)) {
+      throw new TypeError("the dictionary update request carried no dictionary IDs");
+    }
+    return queueManagedUpdate({ dictionaryIds: message.dictionaryIds, install: false });
   },
 
   async hd_updates_install(message) {

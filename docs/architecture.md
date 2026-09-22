@@ -169,7 +169,16 @@ module shared by the worker, engine, and Settings page.
 
 **Check now** fetches each candidate's index and records `up-to-date`,
 `update-available`, or `check-failed` against that package generation. It does
-not download archives. The global Off/hourly/daily/weekly/monthly setting is the
+not download archives or change installed revisions. The refresh button in a
+managed dictionary row's **Details** checks only that package and updates its
+status and the Updates panel's one-dictionary summary. Both checks use
+`hd_updates_check`; its optional `dictionaryIds` array selects packages, while
+omitting it checks all managed packages. An empty array checks none. The row's
+**Update** button installs that package; **Install updates** keeps the bulk flow.
+
+![A managed dictionary row after checking for an update, with the refresh button beside Update](assets/dictionary-update-check.png)
+
+The global Off/hourly/daily/weekly/monthly setting is the
 default; each managed package can inherit it or choose its own interval or Off.
 One nonperiodic Chrome alarm targets the earliest package due time and
 automatically installs available revisions, including those for disabled
@@ -2497,7 +2506,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_backup_read`, `hd_backup_export`, `hd_backup_prepare`, `hd_backup_restore`, `hd_backup_cancel` | Read the complete manual payload, export it, stage and confirm a complete replacement, or discard staged roots |
 | `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect every retained record's immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
-| `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
+| `hd_updates_check` | Check the optional `dictionaryIds` array (all managed indexes when omitted) and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |

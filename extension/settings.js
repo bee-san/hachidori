@@ -1841,6 +1841,14 @@ function bindDictionaryUpdate(row, entry) {
   output.classList.toggle("is-available", status.tone === "available");
   output.classList.toggle("is-error", status.tone === "error");
 
+  const check = row.querySelector(".dict-update-check");
+  check.hidden = !isUpdateCheckable(entry);
+  check.setAttribute("aria-label", `Check for updates to ${dictionaryLabel(entry)}`);
+  check.title = `Check for updates to ${dictionaryLabel(entry)}`;
+  check.addEventListener("click", () => {
+    void runManagedUpdate("hd_updates_check", [entry.id]);
+  });
+
   const update = row.querySelector(".dict-update");
   update.hidden = entry.lastUpdateCheck?.status !== "update-available" || !isUpdateCheckable(entry);
   update.setAttribute("aria-label", `Update ${dictionaryLabel(entry)}`);
@@ -1950,6 +1958,7 @@ function focusedManagementControl() {
       "dict-down",
       "dict-position-input",
       "dict-move",
+      "dict-update-check",
       "dict-update",
       "dict-update-schedule",
       "dict-remove",

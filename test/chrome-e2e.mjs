@@ -365,6 +365,8 @@ const PLANNED = [
   "the dictionary position input stays compact on a narrow Settings page",
   "the Settings enabled control re-enables the preserved package",
   "Check now checks every managed dictionary including disabled packages without downloading",
+  "a row check fetches only its managed index and reports availability without installing",
+  "a row Update installs only the checked package",
   "managed update controls render persisted availability and last-checked state",
   "lookups stay available while a managed archive download is held",
   "Update all atomically replaces a managed generation and preserves presentation",
@@ -3997,6 +3999,50 @@ async function checkSettingsTransport(page) {
     evidence.rejected && evidence.unchanged && saved.options.revision === evidence.revision + 1
       && saved.options.maxResults === nextMaxResults && saved.status.generation === evidence.generation,
     JSON.stringify({ evidence, saved }));
+}
+
+async function checkScopedManagedUpdate(page, routes) {
+  const { fixtureIndexRoute, genericIndexRoute, fixtureArchiveRoute, genericArchiveRoute } = routes;
+  const readState = () => page.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState);
+  const before = await readState();
+  const original = before.dictionaries.find(entry => entry.id === GENERIC_KANJI_ID);
+  const row = `.dict-row[data-dictionary-id="${GENERIC_KANJI_ID}"]`;
+  await openDictionaryDetails(page, GENERIC_KANJI_ID);
+  const otherStatus = await page.$eval(`.dict-row[data-dictionary-id="${FIXTURE_ID}"] .dict-update-status`, el => el.textContent);
+  await page.click(`${row} .dict-update-check`);
+  await page.waitForFunction(() => document.getElementById("update-state")?.textContent ===
+    "Checked 1 managed dictionary — 1 update available, 0 failed.", { timeout: 30_000 });
+  const checked = await readState();
+  const ui = await page.evaluate(({ id, otherId }) => ({
+    status: document.querySelector(`[data-dictionary-id="${id}"] .dict-update-status`).textContent,
+    otherStatus: document.querySelector(`[data-dictionary-id="${otherId}"] .dict-update-status`).textContent,
+    updateVisible: document.querySelector(`[data-dictionary-id="${id}"] .dict-update`).checkVisibility(),
+  }), { id: GENERIC_KANJI_ID, otherId: FIXTURE_ID });
+  const requests = () => ({ fixtureIndex: fixtureIndexRoute.requests, genericIndex: genericIndexRoute.requests,
+    fixtureArchive: fixtureArchiveRoute.requests, genericArchive: genericArchiveRoute.requests });
+  check("a row check fetches only its managed index and reports availability without installing",
+    ui.status === "Update available: test-row" && ui.otherStatus === otherStatus && ui.updateVisible
+      && genericIndexRoute.requests === 1 && fixtureIndexRoute.requests === 0
+      && genericArchiveRoute.requests === 0 && fixtureArchiveRoute.requests === 0
+      && checked.dictionaries.every((entry, index) => entry.id === GENERIC_KANJI_ID
+        ? entry.revision === original.revision && entry.path === original.path && entry.lastUpdateCheck?.status === "update-available"
+        : JSON.stringify(entry) === JSON.stringify(before.dictionaries[index])),
+    JSON.stringify({ before, checked, ui, requests: requests() }));
+  if (process.env.HACHIDORI_ROW_UPDATE_SCREENSHOT) {
+    await page.setViewport({ width: 1200, height: 900 });
+    await (await page.$(row)).screenshot({ path: process.env.HACHIDORI_ROW_UPDATE_SCREENSHOT });
+  }
+  await page.click(`${row} .dict-update`);
+  await page.waitForFunction(() => document.getElementById("update-state")?.textContent ===
+    "Finished 1 dictionary update — 1 updated, 0 failed.", { timeout: 90_000 });
+  const updated = await readState();
+  check("a row Update installs only the checked package",
+    genericIndexRoute.requests === 2 && fixtureIndexRoute.requests === 0
+      && genericArchiveRoute.requests === 1 && fixtureArchiveRoute.requests === 0
+      && updated.dictionaries.every((entry, index) => entry.id === GENERIC_KANJI_ID
+        ? entry.revision === "test-row" && entry.path !== original.path && entry.lastUpdateCheck?.status === "up-to-date"
+        : JSON.stringify(entry) === JSON.stringify(before.dictionaries[index])),
+    JSON.stringify({ updated, requests: requests() }));
 }
 
 async function checkManagementAutosave(page, browser, settingsUrl) {
@@ -12077,15 +12123,17 @@ async function main() {
   const fixtureArchiveRoute = { requests: 0 };
   const genericArchiveRoute = { requests: 0 };
   setJsonResponse(fixtureIndexRoute, { revision: "test-1" });
-  setJsonResponse(genericIndexRoute, { revision: "test-2" });
   setArchiveResponse(fixtureArchiveRoute, readFileSync(FIXTURE));
-  setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
-    title: GENERIC_KANJI_TITLE,
-    revision: "test-2",
-    indexUrl: GENERIC_MANAGED_INDEX_URL,
-    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
-    capabilities: ["term"],
-  }));
+  const setGenericUpdate = revision => {
+    setJsonResponse(genericIndexRoute, { revision });
+    setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
+      title: GENERIC_KANJI_TITLE, revision,
+      indexUrl: GENERIC_MANAGED_INDEX_URL,
+      downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+      capabilities: ["term"],
+    }));
+  };
+  setGenericUpdate("test-row");
   const indexRoutes = new Map([
     [MANAGED_INDEX_URL, fixtureIndexRoute],
     [GENERIC_MANAGED_INDEX_URL, genericIndexRoute],
@@ -12105,6 +12153,11 @@ async function main() {
   );
   setupArchives.routes = archiveRoutes;
 
+  await checkScopedManagedUpdate(page, { fixtureIndexRoute, genericIndexRoute, fixtureArchiveRoute, genericArchiveRoute });
+  setGenericUpdate("test-2");
+  const genericIndexesBeforeCheck = genericIndexRoute.requests;
+  const genericArchivesBeforeCheck = genericArchiveRoute.requests;
+  const beforeCheckState = (await page.evaluate(() => chrome.storage.local.get("dictionaryState"))).dictionaryState;
   await showSettingsSection(page, "updates");
   await page.bringToFront();
   await page.click("#update-check-now");
@@ -12133,9 +12186,11 @@ async function main() {
       && checkedGeneric?.lastUpdateCheck?.status === "update-available"
       && checkedGeneric.lastUpdateCheck.remoteRevision === "test-2"
       && fixtureIndexRoute.requests === 1
-      && genericIndexRoute.requests === 1
+      && genericIndexRoute.requests === genericIndexesBeforeCheck + 1
       && fixtureArchiveRoute.requests === 0
-      && genericArchiveRoute.requests === 0
+      && genericArchiveRoute.requests === genericArchivesBeforeCheck
+      && checkedStorage.dictionaryState.dictionaries.every((entry, index) =>
+        entry.revision === beforeCheckState.dictionaries[index].revision && entry.path === beforeCheckState.dictionaries[index].path)
       && Number.isFinite(Date.parse(checkedStorage.dictionaryUpdates?.lastCheckedAt)),
     JSON.stringify({
       managedFixture,
@@ -12286,7 +12341,7 @@ async function main() {
   check(
     "Update all atomically replaces a managed generation and preserves presentation",
     manualUpdateSummary === "Finished 1 dictionary update — 1 updated, 0 failed."
-      && genericArchiveRoute.requests === 1
+      && genericArchiveRoute.requests === genericArchivesBeforeCheck + 1
       && afterUpdatePackage?.id === beforeUpdatePackage?.id
       && afterUpdatePackage?.path !== beforeUpdatePackage?.path
       && afterUpdatePackage?.revision === "test-2"
@@ -12380,14 +12435,7 @@ async function main() {
     if (!reply.ok) throw new Error(reply.error);
   }, GENERIC_KANJI_ID);
 
-  setJsonResponse(genericIndexRoute, { revision: "test-3" });
-  setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
-    title: GENERIC_KANJI_TITLE,
-    revision: "test-3",
-    indexUrl: GENERIC_MANAGED_INDEX_URL,
-    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
-    capabilities: ["term"],
-  }));
+  setGenericUpdate("test-3");
   const archiveRequestsBeforeAlarm = genericArchiveRoute.requests;
   const fixtureChecksBeforeAlarm = fixtureIndexRoute.requests;
   await scheduleManagedCheckSoon();
