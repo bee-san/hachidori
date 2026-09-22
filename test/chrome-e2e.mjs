@@ -54,6 +54,7 @@ import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-setting
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
 import { LIBRARY_NAVIGATION_CHECK, SETTINGS_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
+import { SETTINGS_FIRST_FRAME_THEME_CHECK, checkSettingsFirstFrameTheme } from "./chrome-settings-first-frame.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -263,6 +264,7 @@ const PLANNED = [
   LIBRARY_NAVIGATION_CHECK,
   SETTINGS_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
+  SETTINGS_FIRST_FRAME_THEME_CHECK,
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
@@ -10749,6 +10751,7 @@ async function main() {
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
     JSON.stringify({ automaticSettingsThemes, narrowThemes, themeLayouts, themePalettes }));
+  await checkSettingsFirstFrameTheme(browser, settingsUrl, check, process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP);
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
