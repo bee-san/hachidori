@@ -190,7 +190,10 @@ All timings use the Settings page clock: click to the changed DOM rank and
 position, click to the engine acknowledgement, send to acknowledgement, and
 click to the first successful lookup using the committed order. Click to
 acknowledgement includes the 150 ms trailing debounce; send to acknowledgement
-excludes it. The DOM metric excludes paint and CDP overhead. The small fixtures
+excludes it. Reply timings stop before subsequent Settings renders (including
+group and option controls). The lookup metric includes any such work that delays
+the lookup, but does not establish final UI settlement. The DOM metric excludes
+paint and CDP overhead. The small fixtures
 measure Settings/message/native-order overhead, not large-dictionary I/O or
 import speed. Old revisions without `hd_status.lastLoadPath` record
 `unreported-baseline`; the extension smoke suite's native-call spies establish

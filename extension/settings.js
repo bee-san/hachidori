@@ -3516,7 +3516,7 @@ function attachHandlers() {
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
+    if (!importing && !backingUp && pendingDictionaryCommits === 0 && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
         && !nameDrafts.hasPendingChanges() && !customButtonController?.dirty() && !ankiController?.dirty()) {
       return;

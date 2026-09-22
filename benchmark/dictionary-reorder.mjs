@@ -57,7 +57,8 @@ const definition = {
   archives: archives.map(({ title, path, bytes }) => ({ title, bytes: bytes.length, sha256: sha256File(path) })),
   limitations: "Small six-term fixture clones; Settings orchestration and native order, not large dictionary I/O. "
     + "DOM mutation is not paint. Clicks invoke the actual DOM button handler; timings exclude CDP. "
-    + "Click-to-reply includes debounce; send-to-reply excludes it. First lookup starts after the reply and must use the new order.",
+    + "Click-to-reply includes debounce; send-to-reply excludes it. Reply timings exclude subsequent Settings renders. "
+    + "First lookup starts after the reply and must use the new order; its latency includes only rendering on that critical path, not final UI settlement.",
 };
 writeFileSync(resolve(output, "definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
 

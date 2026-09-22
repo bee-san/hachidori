@@ -4,6 +4,7 @@ import { buildTitledZip } from "./make-fixture.mjs";
 export const REORDER_CHECKS = [
   "dictionary moves render before the engine reply and coalesce across rapid and in-flight edits",
   "concurrent Settings reorders reject the stale CAS and restore the authoritative list",
+  "the unsaved-work guard covers debounced and in-flight dictionary moves and clears after saving",
 ];
 
 async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState, waitOrder, check }) {
@@ -26,15 +27,18 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
     const row = document.querySelector(`[data-dictionary-id="${id}"]`);
     const before = performance.now();
     for (const direction of ["up", "down", "up", "down", "up"]) row.querySelector(`.dict-${direction}`).click();
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
     return { rank: row.querySelector(".dict-rank").textContent,
       position: [...row.parentElement.children].indexOf(row) + 1,
       enabled: !row.querySelector(".dict-up").disabled, delivered: reorderProbe.delivered,
-      milliseconds: performance.now() - before, expected: rank };
+      milliseconds: performance.now() - before, expected: rank, unloadPrevented: leaving.defaultPrevented };
   }, { id: gamma.id, rank: prefix.length + 2 });
   assert.equal(immediate.rank, String(immediate.expected), JSON.stringify(immediate));
   assert.equal(immediate.position, immediate.expected);
   assert.equal(immediate.enabled, true);
   assert.equal(immediate.delivered, false);
+  assert.equal(immediate.unloadPrevented, true, "leaving during the debounce must warn about the visible unsaved move");
   await page.waitForFunction(() => typeof reorderProbe.sendFirst === "function");
   assert.equal(await page.evaluate(() => reorderProbe.requests.length), 1, "five rapid moves send one final order");
   // Both the storage event and the acknowledgement for the first batch arrive
@@ -42,6 +46,11 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
   await page.evaluate(id => document.querySelector(`[data-dictionary-id="${id}"] .dict-up`).click(), gamma.id);
   await page.evaluate(() => reorderProbe.sendFirst());
   await page.waitForFunction(() => typeof reorderProbe.release === "function");
+  assert.equal(await page.evaluate(() => {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    return leaving.defaultPrevented;
+  }), true, "the guard remains active until all reorder acknowledgements settle");
   assert.equal(await page.$eval(`[data-dictionary-id="${gamma.id}"] .dict-rank`, el => el.textContent), String(prefix.length + 1));
   if (process.env.HACHIDORI_REORDER_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_REORDER_SCREENSHOT });
   await page.evaluate(() => reorderProbe.release());
@@ -49,6 +58,12 @@ async function optimisticReorderScenarios(page, { gamma, beta, prefix, readState
   await waitOrder([...prefix, gamma.id, ...firstTwo]);
   assert.equal(await page.evaluate(() => reorderProbe.requests.length), 2, "an in-flight move follows the first commit exactly once");
   check(REORDER_CHECKS[0], true);
+  await page.waitForFunction(() => {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    return !leaving.defaultPrevented;
+  });
+  check(REORDER_CHECKS[2], true);
 
   const other = await page.browser().newPage();
   try {
