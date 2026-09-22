@@ -1189,13 +1189,13 @@ async function popupReader(page, depth = 0) {
     return result.value ?? null;
   }
 
-  async function nested(action = "read", selector = null) {
+  async function nested(action = "read") {
     const object = await resolvePopupObject();
     if (!object) return null;
     const { result } = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId, returnByValue: true,
-      arguments: [{ value: action }, { value: selector }],
-      functionDeclaration: `function (action, selector) {
+      arguments: [{ value: action }],
+      functionDeclaration: `function (action) {
         const root = this.getRootNode();
         const link = this.querySelector("a[data-hoshidicts-query]");
         if (action === "focus-link") link.focus();
@@ -1208,8 +1208,6 @@ async function popupReader(page, depth = 0) {
         return {
           depth: Number(this.dataset.hoshidictsDepth), rect: rect.toJSON(),
           toolbar: this.dataset.toolbarPosition,
-          scrollTop: this.querySelector(".gsm-hoshidicts-content-scroll")?.scrollTop ?? null,
-          element: selector ? this.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null : null,
           linkRect: linkRect?.toJSON(),
           linkPoint: linkFragment && {
             x: linkFragment.x + linkFragment.width / 2,
@@ -2950,14 +2948,18 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await settle(500);
       evidence.pending = { ...pendingClick, held, heldDepths, dismissedDepths, afterRelease: await depths(),
         grandchild: await grandchild.state(), child: await child.state(), root: await popup.state() };
-      // 5. A real click on the root's link keeps its same-query child (no new
-      //    lookup) and retires only the branch below it.
-      const linkChild = await openChild();
-      await openGrandchild();
+      // 5. A real click on the child's link keeps its same-query grandchild
+      //    without another lookup: a link press leaves that link's own child
+      //    to the click, which reuses it. (The grandchild never covers the
+      //    link it hangs from; the root's link may sit under a deeper pane.)
+      await openChild();
+      const linkGrandchild = await openGrandchild();
       const lookupsBefore = await worker.evaluate(() => globalThis.__ownedMediaProbe.lookups.length);
-      await tab.mouse.click(linkChild.source.linkPoint.x, linkChild.source.linkPoint.y);
+      const linkPoint = linkGrandchild.source.linkPoint;
+      await tab.mouse.click(linkPoint.x, linkPoint.y);
       await settle(300);
-      evidence.linkClick = { depths: await depths(), child: await child.state(),
+      evidence.linkClick = { depths: await depths(), grandchild: await grandchild.state(),
+        covered: Boolean(linkGrandchild.layout?.rect && inside(linkGrandchild.layout.rect, linkPoint)),
         lookups: (await worker.evaluate(() => globalThis.__ownedMediaProbe.lookups.length)) - lookupsBefore };
       return evidence;
     } finally {
@@ -3308,7 +3310,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && JSON.stringify(clickEvidence.pending.dismissedDepths) === "[0]" && JSON.stringify(clickEvidence.pending.afterRelease) === "[0]"
       && !grandchild.visible(clickEvidence.pending.grandchild) && !child.visible(clickEvidence.pending.child)
       && clickEvidence.pending.root?.plain.includes(fixture.query)
-      && JSON.stringify(clickEvidence.linkClick?.depths) === "[0,1]" && clickEvidence.linkClick.child?.plain.includes(fixture.child)
+      && JSON.stringify(clickEvidence.linkClick?.depths) === "[0,1,2]" && !clickEvidence.linkClick.covered
+      && clickEvidence.linkClick.grandchild?.plain.includes(fixture.grandchild)
       && clickEvidence.linkClick.lookups === 0,
     JSON.stringify(clickEvidence));
 }
