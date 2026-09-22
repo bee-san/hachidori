@@ -13286,23 +13286,32 @@ async function main() {
   // The reported の/何事 failure (#287): a 大辞泉-shaped entry nested beyond the
   // former depth limit renders, and its compact summary shows real text.
   const deepFixture = structuredContentDeepFixture();
-  await installMediaArchive(page, deepFixture.archive());
-  const summaryOptions = await page.evaluate(async () => {
+  const writeOptions = (patch) => page.evaluate(async (patch) => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 } });
+      baseRevision: options.revision, options: patch });
     if (!reply.ok) throw new Error(reply.error);
-    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
-      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount };
-  });
+    return options;
+  }, patch);
+  // An automatic backup may take the engine's mutation lock after any of these
+  // state changes, failing lookups meanwhile: mutate and hover only while idle.
+  const deepEngineIdle = (installed) => page.waitForFunction(async (title, installed) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return (dictionaryState?.dictionaries ?? []).some((entry) => entry.title === title) === installed
+      && status?.ok && status.ready && !status.loading;
+  }, { timeout: 90_000, polling: 250 }, deepFixture.title, installed);
+  const optionsBeforeSummary = await writeOptions({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 });
+  await deepEngineIdle(false);
+  await installMediaArchive(page, deepFixture.archive());
   await tab2.evaluate((text) => { document.getElementById("kanjiword").textContent = text; }, deepFixture.query);
-  const deepEntry = await hoverForPopup(tab2, popup2, "#kanjiword", {
-    accept: state => !state.failure && state.plain.includes(deepFixture.leaf),
-  });
+  let deepEntry = null;
   let deepSummaries = [];
-  for (let attempt = 0; attempt < 40 && deepSummaries[0]?.items?.length !== deepFixture.summary.length; attempt += 1) {
-    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 250));
-    deepSummaries = await popup2.compactSummaries();
+  for (let attempt = 0; attempt < 6 && deepSummaries.length === 0; attempt += 1) {
+    await deepEngineIdle(true);
+    deepEntry = await hoverForPopup(tab2, popup2, "#kanjiword", { attempts: 4,
+      accept: state => !state.failure && state.plain.includes(deepFixture.leaf) });
+    if (deepEntry) deepSummaries = await popup2.compactSummaries();
   }
   check(
     "a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary",
@@ -13314,19 +13323,18 @@ async function main() {
   );
   await tab2.mouse.move(2, 2);
   await popup2.waitForHidden();
-  await page.evaluate(async (restore) => {
-    const { options } = await chrome.storage.local.get("options");
-    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: restore });
-    if (!reply.ok) throw new Error(reply.error);
-  }, summaryOptions);
-  await engineRequest("hd_remove", { title: deepFixture.title });
-  await page.waitForFunction(async (title) => {
-    const stored = await chrome.storage.local.get("dictionaryState");
-    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-    return !(stored.dictionaryState?.dictionaries ?? []).some((entry) => entry.title === title)
-      && status?.ok && status.ready && !status.loading;
-  }, { timeout: 90_000, polling: 250 }, deepFixture.title);
+  await writeOptions({ showCompactDefinitionSummary: optionsBeforeSummary.showCompactDefinitionSummary,
+    compactDefinitionSummaryCount: optionsBeforeSummary.compactDefinitionSummaryCount });
+  await page.evaluate(async (title) => {
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove",
+        requestId: `deep-remove-${crypto.randomUUID()}`, title });
+      if (reply?.ok || Date.now() >= deadline) return reply;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }, deepFixture.title);
+  await deepEngineIdle(false);
 
   const mediaEvidence = await page.evaluate(async (dictionary) => {
     const request = (type, fields) => chrome.runtime.sendMessage({
