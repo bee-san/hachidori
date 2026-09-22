@@ -8,6 +8,7 @@ These instructions apply to the entire repository.
 - Keep each pull request to one coherent outcome that can be understood, tested, and reviewed independently.
 - Commit frequently in small, coherent units. Prefer a failing focused contract test followed promptly by its implementation commit when test-first work is practical.
 - Prefer the smallest straightforward change that satisfies the request and fits the existing architecture.
+- Prefer established, maintained libraries for standard functionality over implementing it from scratch; check existing dependencies first and keep custom code focused on application-specific integration.
 - Do not mix requested work with drive-by refactors, renames, formatting churn, dependency updates, or unrelated cleanup.
 - Deduplicate an invariant or algorithm when two runtime contexts genuinely need the same behavior; do not introduce a framework for a one-off.
 - Read `CONTRIBUTING.md` and the relevant architecture or test documentation before changing an unfamiliar area.
