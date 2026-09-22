@@ -524,7 +524,10 @@ Imports the real offscreen bridge with controlled worker and fallback-service
 endpoints. It verifies the existing 128-request admission bound during capability
 selection, fallback module loading, and active dispatch; responsive status;
 mutation exclusion; slot reuse; and exactly-once replies after dispatch, local
-handler, engine selection, and worker failures. Lookup/media failure framing
+handler, engine selection, and worker failures. An import's `installing`
+phase keeps reads flowing and `hd_status.updating` names the replaced package;
+only an installing phase carrying `fallback: "memory"` (an import inside the
+live engine) refuses reads with `engine-mutating`. Lookup/media failure framing
 still includes oversized correlation IDs.
 
 The fallback endpoint uses Node's built-in
@@ -849,6 +852,19 @@ What it proves, in order:
    highlight on top of the first-install options when it starts. It creates no
    setup record or tab, and leaves later edits and carried options alone (see
    [overlay mode](../docs/overlay-mode.md)).
+12. **Isolated import.** A separate engine-service instance is configured with
+   an `isolatedImport` that runs the real `importDictionaryArchive` on the
+   engine's own filesystem, which is what the direct-OPFS runtime's second
+   instance on the same OPFS root amounts to. A first install adds its
+   generation beside the loaded set without `hdw_reset`; during an update's
+   installing phase, lookups answer from the old generation (and the other
+   dictionaries keep answering), then the new generation swaps in through one
+   `hdw_remove_dict`, one `hdw_add_dict` and one `hdw_set_dict_order`, listed
+   once in `hd_memory` with the old root gone; an importer failure or a broken
+   archive leaves the engine untouched and removes the root; a commit that
+   conflicts three times unloads the new generation and keeps the committed
+   one. The IDBFS restart stage checks that its in-engine import reports
+   `fallback: "memory"` on the installing phase.
 
 ### Anki duplicate index and maturity blur
 
@@ -1505,7 +1521,13 @@ browser assertions prove check-only behavior for enabled and disabled packages,
 one row's check and explicit Update without touching another package, persisted
 Settings status, atomic Update all replacement, the one global periodic
 alarm, scheduled installation for a disabled package, failure rollback without
-OPFS debris, and alarm recreation after the exact worker version stops.
+OPFS debris, and alarm recreation after the exact worker version stops. One
+more enables the generic package and hovers the reading page every 100 ms
+(Escape, then a fresh hover) through a scheduled update whose archive download
+is held until the Settings row reads *Updating…*: every hover renders the old
+generation's glossary until the new one appears, none shows the update notice,
+`hd_status.updating` reports the package through `downloading` and
+`installing` with `fallback: null`, and the old generation root is gone.
 
 ### the profile
 

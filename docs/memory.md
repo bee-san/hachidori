@@ -23,10 +23,13 @@ bytes in. Four things follow:
   loads the package as (term, frequency, pitch, kanji), so a package that
   carries several banks holds several copies.
 - **Linear memory never shrinks.** Importing a dictionary unzips it, builds its
-  indexes and, on the threaded engine, runs an eight-thread worker group; the
-  memory that peak needs is kept for the life of the engine worker even after
-  the import has finished. Disabling or removing a dictionary frees its mapping
-  inside the heap, but the heap itself stays at its high-water mark.
+  indexes and, on the threaded engine, runs an eight-thread worker group. On
+  direct OPFS that work happens in a separate import worker that is terminated
+  afterwards, so its peak is returned to the browser and the engine's heap grows
+  only by the new dictionary's mapped files; on IDBFS (Electron, Firefox) the
+  import runs inside the engine and the memory that peak needs is kept for the
+  life of the engine worker. Disabling or removing a dictionary frees its
+  mapping inside the heap, but the heap itself stays at its high-water mark.
 - **IDBFS hosts hold a second copy.** Electron (GameSentenceMiner), Firefox, and
   Chrome without OPFS sync access handles keep the dictionary files in
   IndexedDB and mirror them into the WebAssembly filesystem, so the same bytes
