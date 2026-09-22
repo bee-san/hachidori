@@ -1,4 +1,4 @@
-Hachidori is [opinionated](https://github.com/bee-san/hachidori/blob/main/README.md#optionated). Its creator mainly reads visual novels and manga. Contributions that add bloat without a personal benefit for the creator will be declined.
+Hachidori is [opinionated](https://github.com/bee-san/hachidori/blob/main/README.md#opinionated). Its creator mainly reads visual novels and manga. Contributions that add bloat without a personal benefit for the creator will be declined.
 
 ## Problem and change
 

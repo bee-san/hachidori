@@ -25,7 +25,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and optionated.
+Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and opinionated.
 
 ## Install in 15 seconds
 
