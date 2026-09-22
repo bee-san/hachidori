@@ -40,8 +40,9 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
       JSON.stringify(measurements));
     // The short top-level sections drop the same scrollbar. Above the shell's
     // 1440px maximum that recentres the sidebar; below it the main column widens.
+    const widths = [1920, 1280];
     const sections = [];
-    for (const width of [1920, 1280]) {
+    for (const width of widths) {
       await page.setViewport({ width, height: 900 });
       for (const section of ["dictionaries", "sharing", "backup", "advanced", "dictionaries"]) {
         await page.click(`.settings-nav a[href="#${section}"]`);
@@ -61,7 +62,7 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
       }
     }
     check(SETTINGS_NAVIGATION_CHECK,
-      [1920, 1280].every(width => {
+      widths.every(width => {
         const rows = sections.filter(row => row.width === width);
         return rows.some(row => row.scrollbarWidth > 0 && row.overflowing)
           && rows.some(row => !row.overflowing)
