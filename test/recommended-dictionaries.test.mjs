@@ -4,10 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "../extension/recommended-dictionaries.js";
 import { FIRST_INSTALL_SELECTIONS } from "../extension/setup-state.js";
-import {
-  assertRecommendedDictionary, managedDictionarySource, recommendedDictionaryInstalled,
-  recommendedDownloadUrlMatches,
-} from "../extension/managed-dictionary-source.js";
+import { managedDictionaryFingerprint, managedDictionarySource } from "../extension/managed-dictionary-source.js";
 
 const EXTENSION = new URL("../extension/", import.meta.url);
 
@@ -28,9 +25,23 @@ test("every catalogue entry declares its topic and first-install option", () => 
 
 test("the catalogue summary follows its entries", () => {
   assert.deepEqual(describeRecommendedCatalogue(), {
-    count: "six",
-    topics: "words, names, kanji, frequency, grammar and translated definitions",
+    count: "five",
+    topics: "words, names, kanji, frequency and grammar",
   });
+});
+
+// Sankoku 8 English left the catalogue in #290. A package installed while it
+// was recommended keeps its sourceId, which no longer names an entry: such a
+// package is an ordinary local dictionary with no update source, never an error.
+test("a package from the retired Sankoku source is local-only", () => {
+  assert.equal(RECOMMENDED_DICTIONARIES.some((entry) => entry.sourceId === "sankoku8-eng"), false);
+  const installed = {
+    id: "1f9a3f0c5e2b4d6a8c7e9f0b1a2c3d4e", path: "/dicts/.hdw-generation-1", title: "sankoku8-gpt-5.6-luna",
+    revision: "sankoku8-gpt-5.6-luna", sourceId: "sankoku8-eng", isUpdatable: false, indexUrl: null,
+    downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip", termCount: 1,
+  };
+  assert.equal(managedDictionarySource(installed), null);
+  assert.equal(managedDictionaryFingerprint(installed), null);
 });
 
 // Startup and Settings both describe the catalogue, so a count, source ID or
@@ -49,28 +60,4 @@ test("no extension page or script keeps its own copy of the catalogue", async ()
       }
     }
   }
-});
-
-test("Sankoku English is a pinned recommendation without invented update metadata", () => {
-  const entry = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "sankoku8-eng");
-  assert.ok(entry);
-  assert.equal(entry.downloadUrl, "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip");
-  assert.equal(entry.githubRepositoryId, "1371843420");
-  assert.equal(entry.indexUrl, null);
-  const dictionary = { title: "sankoku8-gpt-5.6-luna", revision: "sankoku8-gpt-5.6-luna",
-    indexUrl: null, termCount: 1 };
-  assert.doesNotThrow(() => assertRecommendedDictionary(entry, dictionary));
-  assert.throws(() => assertRecommendedDictionary(entry, { ...dictionary, title: `${dictionary.title} en-jp` }), /title/u);
-  assert.throws(() => assertRecommendedDictionary(entry, { ...dictionary, indexUrl: "https://example.com/index.json" }), /update source/u);
-  assert.throws(() => assertRecommendedDictionary(entry, { ...dictionary, termCount: 0 }), /capability/u);
-  assert.equal(recommendedDictionaryInstalled(entry, [dictionary]), false);
-  const installed = { ...dictionary, sourceId: entry.sourceId, downloadUrl: entry.downloadUrl, isUpdatable: false };
-  assert.equal(recommendedDictionaryInstalled(entry, [installed]), true);
-  assert.equal(managedDictionarySource(installed), null);
-  assert.equal(managedDictionarySource({ ...installed, isUpdatable: true, indexUrl: "https://example.com/index.json" }), null);
-  assert.equal(recommendedDownloadUrlMatches(entry, entry.downloadUrl), true);
-  const finalUrl = "https://release-assets.githubusercontent.com/github-production-release-asset/1371843420/id?rscd=attachment%3B%20filename%3Den.zip";
-  assert.equal(recommendedDownloadUrlMatches(entry, finalUrl), true);
-  assert.equal(recommendedDownloadUrlMatches(entry, finalUrl.replace("1371843420", "1")), false);
-  assert.equal(recommendedDownloadUrlMatches(entry, entry.downloadUrl.replace("en.zip", "en-jp.zip")), false);
 });

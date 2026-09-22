@@ -5099,18 +5099,6 @@ const RECOMMENDED_DICTIONARIES = [
     revision: "2026.09.10",
     capabilities: ["term"],
   },
-  {
-    sourceId: "sankoku8-eng",
-    name: "Sankoku 8 English",
-    publisherUrl: "https://github.com/shoui520/sankoku8-eng",
-    downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip",
-    indexUrl: null,
-    githubRepositoryId: "1371843420",
-    requiredCapability: "term",
-    title: "sankoku8-gpt-5.6-luna",
-    revision: "sankoku8-gpt-5.6-luna",
-    capabilities: ["term"],
-  },
 ];
 
 function checkRecommendedDictionaries() {
@@ -5149,7 +5137,7 @@ function checkRecommendedDictionaries() {
   const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
-    "the catalogue names exactly six trusted recommendations and their publishers",
+    "the catalogue names exactly five trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
@@ -7596,6 +7584,48 @@ async function main() {
   await request("hd_remove", { title: updatedTitle });
   await request("hd_remove", { title: recommended.title });
 
+  // A package installed while its source was still recommended keeps that
+  // sourceId after the catalogue drops the entry (#290). It is then an ordinary
+  // local dictionary: never an update candidate, untouched by a check, and
+  // still answering lookups.
+  section("retired recommended source");
+  const retiredTitle = "sankoku8-gpt-5.6-luna";
+  const retiredImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildRecommendedZip({
+      title: retiredTitle, revision: "sankoku8-gpt-5.6-luna", indexUrl: null, downloadUrl: null, capabilities: ["term"],
+    })),
+    fileName: "en.zip",
+  });
+  const retiredBase = await storedDictionaryState();
+  const retiredId = retiredBase.dictionaries.find((entry) => entry.title === retiredTitle)?.id;
+  // The record exactly as the installer committed it while the source was catalogued.
+  const retiredSeed = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker", type: "hd_state_cas", baseRevision: retiredBase.revision,
+    dictionaries: retiredBase.dictionaries.map((entry) => entry.id !== retiredId ? entry : {
+      ...entry, sourceId: "sankoku8-eng", isUpdatable: false, indexUrl: null,
+      downloadUrl: "https://github.com/shoui520/sankoku8-eng/releases/download/latest/en.zip",
+    }),
+  });
+  const retiredBefore = await storedDictionaryState();
+  const retiredRowsBefore = idb.keys("/dicts").sort();
+  const retiredCheck = await pageChrome.runtime.sendMessage({ target: updateTarget, type: "hd_updates_check" });
+  const retiredScoped = await pageChrome.runtime.sendMessage({ target: updateTarget, type: "hd_updates_check", dictionaryIds: [retiredId] });
+  const retiredAfter = await storedDictionaryState();
+  const retiredLookup = await request("hd_lookup", { text: "辞書" });
+  check(
+    "a package from a retired recommended source stays local-only through update checks and keeps answering lookups",
+    retiredImport.ok === true && retiredSeed?.ok === true
+      && retiredBefore.dictionaries.find((entry) => entry.id === retiredId)?.sourceId === "sankoku8-eng"
+      && retiredCheck?.ok === true && retiredCheck.outcomes.every((outcome) => outcome.id !== retiredId)
+      && Number.isFinite(Date.parse(retiredCheck.settings?.lastCheckedAt))
+      && retiredScoped?.ok === true && retiredScoped.outcomes.length === 0
+      && JSON.stringify(retiredAfter.dictionaries) === JSON.stringify(retiredBefore.dictionaries)
+      && JSON.stringify(idb.keys("/dicts").sort()) === JSON.stringify(retiredRowsBefore)
+      && retiredLookup.ok === true && JSON.stringify(retiredLookup).includes(`${retiredTitle} term fixture`),
+    JSON.stringify({ retiredImport, retiredSeed, retiredCheck, retiredScoped, retiredBefore, retiredAfter, retiredLookup }),
+  );
+  await request("hd_remove", { title: retiredTitle });
+
   // Model an actual pre-D9 install: legacy rows named a canonical title path,
   // before immutable UUID generation roots existed.
   const legacyPath = `/dicts/${FIXTURE_TITLE}`;
@@ -8993,15 +9023,15 @@ async function main() {
       // The scenario injects exactly two failures: jmnedict fails to download and
       // the kanji dictionary fails to import. The rest succeed.
       && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, true, false, false, false])
+        === JSON.stringify([false, true, true, false, false])
       && recommendedSettings.partial.state
         === `Finished ${RECOMMENDED_DICTIONARIES.length} of ${RECOMMENDED_DICTIONARIES.length}`
-          + " recommended dictionaries — 4 imported, 2 failed."
+          + " recommended dictionaries — 3 imported, 2 failed."
       && recommendedSettings.starterHiddenAfterFirst === false
       && recommendedSettings.partial.starterHidden === false
       && recommendedSettings.partial.retryHidden === false
       && JSON.stringify(recommendedSettings.partial.sourceIds)
-        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"])
+        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
@@ -10067,7 +10097,7 @@ async function startupPageStage() {
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]]);
+        ["bees-ultimate-grammar-dictionary", "Already installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").focus();
@@ -10080,7 +10110,7 @@ async function startupPageStage() {
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
       && status().textContent === "Installing default dictionaries…";
@@ -10119,7 +10149,7 @@ async function startupPageStage() {
     const failureView = heading() === "Some dictionaries could not be installed"
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"],
-        ["bees-ultimate-grammar-dictionary", "Already installed"], ["sankoku8-eng", "Already installed"]])
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
       && document.getElementById("setup-countdown-label") === null && installs().length === 2;
 

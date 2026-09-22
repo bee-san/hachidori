@@ -210,11 +210,6 @@ const RECOMMENDED_FIXTURE_METADATA = {
     revision: "2026.09.10",
     capabilities: ["term"],
   },
-  "sankoku8-eng": {
-    title: "sankoku8-gpt-5.6-luna",
-    revision: "sankoku8-gpt-5.6-luna",
-    capabilities: ["term"],
-  },
 };
 const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
@@ -341,7 +336,7 @@ const PLANNED = [
   "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
-  "settings page renders exactly six safe recommended dictionary links",
+  "settings page renders exactly five safe recommended dictionary links",
   "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
@@ -8933,7 +8928,7 @@ async function main() {
     }
   }
 
-  // The first-run installer downloads the four catalogue archives from inside
+  // The first-run installer downloads the five catalogue archives from inside
   // the offscreen engine, so those fetches are answered on the offscreen target's
   // Fetch domain before the run can start. The first archive is held until the
   // clean-profile checks have run; the second attempt of jmnedict succeeds; Bee's
@@ -9383,7 +9378,6 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
         ["jiten", "Waiting", null, null],
         ["bees-ultimate-grammar-dictionary", "Waiting", null, null],
-        ["sankoku8-eng", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
       && startupShell.status === "Installing default dictionaries…"
@@ -9512,7 +9506,6 @@ async function main() {
         ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
         ["jiten", "Installed in N seconds"],
         ["bees-ultimate-grammar-dictionary", "Installed in N seconds"],
-        ["sankoku8-eng", "Installed in N seconds"],
       ])
       && JSON.stringify(runOutcome.actions) === JSON.stringify([["setup-retry", "Retry missing dictionaries"], ["setup-continue", "Continue setup"]])
       && runOutcome.countdown === null && runOutcome.importLink
@@ -9531,7 +9524,7 @@ async function main() {
       && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
       && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
-      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary", "sankoku8-eng"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
+      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
       && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
       && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
       && afterRun.setupState.stage === "dictionaries"
@@ -9879,10 +9872,10 @@ async function main() {
   await checkDictionaryStyles(page);
   await showSettingsSection(page, "add-dictionaries");
 
-  await page.waitForFunction(() =>
-    document.querySelectorAll("#recommended-dictionary-list > li").length === 4
+  await page.waitForFunction((expectedCount) =>
+    document.querySelectorAll("#recommended-dictionary-list > li").length === expectedCount
       && document.getElementById("recommended-starter")?.hidden === false,
-  { timeout: 90_000, polling: 100 }).catch(() => {});
+  { timeout: 90_000, polling: 100 }, RECOMMENDED_DICTIONARIES.length).catch(() => {});
   await page.setViewport({ width: 960, height: 900 });
   const desktopRecommendations = await page.evaluate(() => {
     const list = document.querySelector(".recommended-dictionary-list");
@@ -9903,7 +9896,7 @@ async function main() {
   });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
-    "settings page renders exactly six safe recommended dictionary links",
+    "settings page renders exactly five safe recommended dictionary links",
     JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),

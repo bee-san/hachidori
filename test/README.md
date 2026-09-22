@@ -641,7 +641,7 @@ What it proves, in order:
    MDD media and stylesheet answer `hd_media` and `hd_styles`, the `/.hdw-mdx`
    staging directory is gone afterwards, and a ZIP import carrying resources
    is refused before staging. The recommendation stage separately
-   pins the four catalogue entries and publisher links, download/import phases,
+   pins the five catalogue entries and publisher links, download/import phases,
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
 4. **Managed dictionary updates.** Manual checks cover every managed package,
@@ -655,6 +655,10 @@ What it proves, in order:
    catalogue-pinned source rules, final URLs, rotating HTTPS archives, stale
    fingerprints, title collisions, lost replies, concurrent group-only state,
    injected blob archives, cleanup, and alarm recreation are all exercised.
+   A package still carrying the `sourceId` of a source the catalogue has since
+   dropped (Sankoku 8 English, #290) is never an update candidate: whole-library
+   and scoped checks complete without touching or deleting it, and it keeps
+   answering lookups.
 5. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
@@ -1174,7 +1178,9 @@ unpacked extension. No personal browser settings are changed.
 `recommended-dictionaries.js` is the only place the recommended set is described:
 first-install selections and the count and topics the startup page and Settings
 show come from its entries, and no other extension page or script repeats a
-catalogue source ID, archive or index URL, or a written-out count.
+catalogue source ID, archive or index URL, or a written-out count. It also pins
+that the retired `sankoku8-eng` source stays out of the catalogue and that a
+package installed from it resolves to no managed update source.
 
 `node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
 covers the optional prompt's initial query, return/reload lifecycle, stale
@@ -1819,7 +1825,7 @@ launches the same fallback build against the retained profile. Both launches
 must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
 fixture and custom-dictionary lookups, restore the revisioned source and fixed
 package, and leave OPFS empty. The fresh profile also starts the first-run
-dictionary run inside the fallback engine; its four catalogue downloads are
+dictionary run inside the fallback engine; its five catalogue downloads are
 answered 503 on the offscreen target so nothing reaches the network, the run
 must record one failed outcome per source before the fixture import shares the
 same engine lock, and the relaunch must neither reseed the setup record nor
