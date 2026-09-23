@@ -1978,7 +1978,11 @@ upload. Pronunciation enrichment compares its complete desired values
 against the applied text-only write and the current note.
 A lost write acknowledgement is not retried; confirmed note IDs stay successful
 even if readback, enrichment, or subsequent reader refresh fails, including
-across a settings change.
+across a settings change. A saved field that differs from the submitted value
+(for example one an Anki add-on fills on add) is reported as a warning and does
+not skip deferred pronunciation; only a failed readback or a first field Anki
+did not save as submitted does, and enrichment still refuses to update a
+pronunciation field whose current value changed.
 
 Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. Dictionary CSS remains scoped, and image filenames

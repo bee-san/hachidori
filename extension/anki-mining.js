@@ -39,19 +39,25 @@ export async function readAnkiNoteFields(invoke, noteId) {
   return Object.fromEntries(Object.entries(info.fields).map(([field, value]) => [field, value?.value]));
 }
 
-export async function verifyAnkiFields(invoke, noteId, expected) {
-  const fields = await readAnkiNoteFields(invoke, noteId);
+// Names the submitted fields Anki lost or changed; null when the saved note matches.
+export function ankiFieldDifferences(fields, noteId, expected) {
   const missing = [], changed = [];
   for (const [field, value] of Object.entries(expected)) {
     if (typeof fields[field] !== "string") missing.push(field);
     else if (fields[field].normalize("NFC") !== value.normalize("NFC")) changed.push(field);
   }
-  if (missing.length === 0 && changed.length === 0) return;
+  if (missing.length === 0 && changed.length === 0) return null;
   const list = names => names.map(name => `“${name}”`).join(", ");
   const parts = [];
   if (missing.length) parts.push(`${missing.length === 1 ? "field" : "fields"} ${list(missing)} ${missing.length === 1 ? "is" : "are"} missing from note ${noteId}`);
   if (changed.length) parts.push(`${changed.length === 1 ? "field" : "fields"} ${list(changed)} ${changed.length === 1 ? "was" : "were"} saved with different content`);
-  throw new Error(`Anki's saved note differs from the submitted values: ${parts.join("; ")}. Inspect note ${noteId} in Anki.`);
+  return { fields: [...missing, ...changed],
+    message: `Anki's saved note differs from the submitted values: ${parts.join("; ")}. Inspect note ${noteId} in Anki.` };
+}
+
+export async function verifyAnkiFields(invoke, noteId, expected) {
+  const difference = ankiFieldDifferences(await readAnkiNoteFields(invoke, noteId), noteId, expected);
+  if (difference !== null) throw new Error(difference.message);
 }
 
 async function addableDecision(prepared) {
@@ -406,10 +412,16 @@ export function createAnkiMiningService({
     } catch (error) {
       warnings.push(`Duplicate index: ${error.message}`);
     }
+    // A field an Anki add-on rewrote during the add (AJT Japanese fills furigana
+    // on note_will_be_added) is reported but does not make the note untrustworthy:
+    // enrichment re-reads and guards its own target fields before updating them.
+    // Only a failed readback, or a first field Anki did not save as submitted,
+    // leaves the note's identity unknown and skips the deferred pronunciation.
     let verified = false;
     try {
-      await verifyAnkiFields(invoke, noteId, fields);
-      verified = true;
+      const difference = ankiFieldDifferences(await readAnkiNoteFields(invoke, noteId), noteId, fields);
+      verified = difference === null || !difference.fields.includes(firstField);
+      if (difference !== null) warnings.push(difference.message);
     } catch (error) {
       warnings.push(error.message);
     }
