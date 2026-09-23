@@ -2203,6 +2203,8 @@
       preview.setAttribute("aria-hidden", "true");
       preview.dataset.appearance = link.dataset.appearance;
       preview.dataset.imageRendering = link.dataset.imageRendering;
+      // The monochrome mask layer paints this same validated source.
+      preview.style.setProperty("--image", `url("${source}")`);
       const expanded = documentRef.createElement("img");
       expanded.src = source;
       expanded.alt = image.alt;
