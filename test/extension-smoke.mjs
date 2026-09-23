@@ -845,6 +845,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
+    .replace(/import \{ applyGoogleDocsFlag \} from "\.\/google-docs\.js";\s*/u, "")
     .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -864,6 +865,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     lookupAnkiIndex,
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
+    applyGoogleDocsFlag: sandbox.applyGoogleDocsFlag ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;
@@ -14575,13 +14577,13 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false } = {}) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false, url = "https://example.test/" } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
         pretendToBeVisual: true,
         runScripts: "outside-only",
-        url: "https://example.test/",
+        url,
       },
     );
     const { window } = dom;
@@ -18075,6 +18077,125 @@ async function contentNoteStage() {
     };
   }
 
+  // Google Docs paints text to <canvas>; with the flag script set it also draws
+  // `.kix-canvas-tile-content svg>g>rect` annotations carrying each text run in
+  // aria-label. The reader turns the hovered rect into an invisible SVG <text>
+  // imposter and scans that, as Yomitan's google-docs-util does.
+  function buildDocsTile(document, runs) {
+    const SVG = "http://www.w3.org/2000/svg";
+    const tile = document.createElement("div");
+    tile.className = "kix-canvas-tile-content";
+    const canvas = document.createElement("canvas");
+    const svg = document.createElementNS(SVG, "svg");
+    const group = document.createElementNS(SVG, "g");
+    const rects = runs.map((run, index) => {
+      const rect = document.createElementNS(SVG, "rect");
+      rect.setAttribute("aria-label", run);
+      rect.setAttribute("x", "100");
+      rect.setAttribute("y", String(20 + index * 40));
+      rect.setAttribute("transform", "matrix(1,0,0,1,0,0)");
+      rect.setAttribute("data-font-css", "400 14px Arial");
+      group.append(rect);
+      return rect;
+    });
+    svg.append(group);
+    tile.append(canvas, svg);
+    document.body.append(tile);
+    return { tile, canvas, svg, group, rects };
+  }
+
+  async function googleDocsCase() {
+    const { DEFAULT_OPTIONS } = globalThis.HDReaderOptions;
+    const on = { ...DEFAULT_OPTIONS.experimental, googleDocs: true };
+    const off = { ...DEFAULT_OPTIONS.experimental };
+    const harness = await createHarness(undefined, {
+      url: "https://docs.google.com/document/d/example/edit",
+    });
+    const { ownerDocument: document } = harness.popup;
+    const window = document.defaultView;
+    const run = "犬と一緒に公園を散歩する。";
+    const { canvas, group, rects: [rect, other] } = buildDocsTile(document, [run, "彼女は毎朝六時に起きて、"]);
+    // Ten CSS pixels per character from x=100; each imposter inherits its rect's row.
+    window.Range.prototype.getClientRects = function () {
+      const row = Number.parseFloat(this.startContainer.parentElement?.getAttribute?.("y") ?? "20");
+      return [{ left: 100 + this.startOffset * 10, right: 100 + this.endOffset * 10, top: row, bottom: row + 20 }];
+    };
+    const probeStyle = () => [...document.querySelectorAll("style")]
+      .find(style => style.textContent.includes("kix-canvas-tile-content"));
+    // Docs' tiles are only hit-testable while the reader's probe style is enabled.
+    let probed = 0;
+    let rectUnderPointer = rect;
+    document.elementFromPoint = () => {
+      const style = probeStyle();
+      if (style && style.disabled === false) {
+        probed += 1;
+        return rectUnderPointer;
+      }
+      return canvas;
+    };
+    document.caretRangeFromPoint = () => null;
+    const imposters = () => [...group.querySelectorAll("text")];
+    const scan = (x, y) => harness.driver.resolveCandidate(x, y);
+    const flag = (experimental) => harness.emitOptions({ hoverDelayMs: 0, lookupMode: "hover", scanLength: 9, experimental });
+
+    // Default: the flag is off, so Docs behaves as before and nothing is injected.
+    const flagOff = scan(185, 30);
+    const nothingInjected = probeStyle() === undefined && imposters().length === 0 && probed === 0;
+
+    flag(on);
+    const candidate = scan(185, 30); // Over 散, the ninth character.
+    const first = candidate?.scanEntries?.[0];
+    const imposter = imposters()[0];
+    const resolved = candidate?.query === "散歩する。" && candidate.sentence === run && candidate.matchOffset === 8
+      && candidate.sourceText === run && candidate.sourceOffset === 8 && first?.node === imposter?.firstChild
+      && candidate.anchor === imposter && candidate.anchorRange.toString() === "散" && candidate.vertical === false
+      && imposter.getAttribute("x") === "100" && imposter.getAttribute("y") === "20"
+      && imposter.style.getPropertyPriority("opacity") === "important" && probed === 1
+      && probeStyle().disabled === true;
+    const again = scan(195, 30); // 歩: same run, so the anchor node is shared.
+    const shared = again !== null && imposter !== undefined && again.anchor === imposter
+      && again.scanEntries[0].node === imposter.firstChild
+      && again.query === "歩する。" && imposters().length === 1;
+    rectUnderPointer = other;
+    const moved = scan(105, 70);
+    const replaced = moved?.query === "彼女は毎朝六時に起" && moved.sentence === "彼女は毎朝六時に起きて、"
+      && imposters().length === 1 && imposters()[0] !== imposter && moved.anchor === imposters()[0];
+    rectUnderPointer = null;
+    const margin = scan(5, 5);
+    const nothingElse = margin === null && imposters().length === 1;
+
+    rectUnderPointer = rect;
+    harness.driver.onMouseMove({ target: canvas, clientX: 185, clientY: 30 });
+    await harness.settle();
+    const request = harness.take("hd_lookup");
+    const lookedUp = request?.request.text === "散歩する。";
+
+    flag(off);
+    const flagOffAgain = scan(185, 30);
+    const released = imposters().length === 0 && probeStyle() === undefined;
+    harness.close();
+
+    // The same tile on another host is canvas as before, flag or no flag.
+    const elsewhere = await createHarness(undefined, { options: { experimental: on } });
+    const elsewhereDocument = elsewhere.popup.ownerDocument;
+    const built = buildDocsTile(elsewhereDocument, [run]);
+    elsewhereDocument.elementFromPoint = () => built.rects[0];
+    elsewhereDocument.caretRangeFromPoint = () => null;
+    const otherHost = elsewhere.driver.resolveCandidate(185, 30) === null
+      && elsewhereDocument.querySelector("style") === null && built.group.querySelector("text") === null;
+    elsewhere.close();
+
+    return {
+      "Google Docs annotation rects scan through an SVG imposter while the flag is on":
+        resolved && shared && replaced && nothingElse && lookedUp
+        || { candidate: candidate && { query: candidate.query, sentence: candidate.sentence, matchOffset: candidate.matchOffset },
+          resolved, shared, replaced, nothingElse, lookedUp, probed },
+      "the Docs path is inert while its flag is off and on other hosts":
+        flagOff === null && nothingInjected && flagOffAgain === null && released && otherHost
+        || { flagOff, nothingInjected, flagOffAgain, released, otherHost },
+    };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -19798,7 +19919,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: { ...await kanjiNavigationCase(), ...await kanjiGroupCase() },
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
