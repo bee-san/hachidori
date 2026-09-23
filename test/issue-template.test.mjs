@@ -6,15 +6,27 @@ import { enforceIssueTemplate, validateIssueBody } from "../.github/scripts/issu
 const template = readFileSync(new URL("../.github/ISSUE_TEMPLATE/feature_request.md", import.meta.url), "utf8");
 const answers = {
   "Problem": "I lose my place in a visual novel when checking an unfamiliar word.",
+  "Expected behavior": "The sentence I was reading stays visible while the popup is open.",
+  "Environment": "Hachidori 0.1.6 from the Chrome Web Store, Chrome 142 on Windows 11, Textractor texthooker page, JMdict active.",
+  "Evidence": "Screenshot attached; no console errors in the service worker or page console.",
   "Benefit to the creator": "Keeping the current sentence visible would let the creator return to reading immediately.",
   "Proposed solution and alternatives": "Keep the sentence visible in the existing popup; opening a second window interrupts reading.",
 };
+const requiredHeadings = Object.keys(answers);
 const complete = Object.entries(answers).map(([heading, answer]) => `## ${heading}\n\n${answer}`).join("\n\n") + "\n";
 const missingAnswer = (heading) => `Fill in the "${heading}" section.`;
 
 test("feature request template omits the opinionated preamble and acknowledgement checkbox", () => {
   assert.doesNotMatch(template, /^Hachidori is \[opinionated\]/m);
   assert.doesNotMatch(template, /^- \[[ xX]\]/m);
+});
+
+test("template asks for reproduction, expected behavior, environment, and evidence as required sections", () => {
+  const headings = [...template.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+  assert.deepEqual(headings, requiredHeadings);
+  assert.match(template, /chrome:\/\/extensions/);
+  assert.match(template, /service worker/);
+  assert.match(template, /Anki/);
 });
 
 test("completed issues do not require an acknowledgement checkbox", () => {
@@ -47,7 +59,7 @@ test("each missing, blank, or comment-only section is reported by name", () => {
 
 test("quoted templates in comments or code blocks do not supply headings", () => {
   for (const body of [`<!--\n${complete}\n-->`, `\`\`\`markdown\n${complete}\`\`\``, `~~~~\n${complete}~~~~`]) {
-    assert.equal(validateIssueBody(body).length, 3);
+    assert.equal(validateIssueBody(body).length, requiredHeadings.length);
   }
 });
 
