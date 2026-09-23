@@ -914,6 +914,28 @@ export function imagePreviewFixture() {
   return { archive, images, query, title };
 }
 
+// Kanji dictionaries ship stroke-order strips and headword glyphs as
+// black-on-transparent SVGs tagged `appearance: "monochrome"`, which Yomitan
+// draws in the text colour. The same glyph is rendered once tagged and once
+// untagged so the recolouring can be proven to touch only the tagged image.
+export function monochromeImageFixture() {
+  const title = 'dictionary-monochrome-image-fixture';
+  const query = '単色画像';
+  const path = 'media/glyph.svg';
+  const bytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">'
+    + '<rect x="10" y="10" width="80" height="80"/></svg>');
+  const cases = [
+    { name: 'monochrome', appearance: 'monochrome' },
+    { name: 'auto', appearance: 'auto' },
+  ];
+  const archive = buildTitledZip(title, { terms: [[query, 'たんしょくがぞう', '', '', 0, [
+    { type: 'structured-content', content: cases.map(({ name, appearance }) => ({
+      tag: 'img', path, width: 64, height: 64, alt: `${name} glyph`, appearance,
+    })) },
+  ], 1, '']], mediaEntries: [[path, bytes]] });
+  return { archive, bytes, cases, path, query, title };
+}
+
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises
 // the complete download/import path without depending on live publishers.

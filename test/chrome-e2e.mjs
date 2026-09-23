@@ -38,6 +38,7 @@ import {
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
+  monochromeImageFixture,
   nestedLinksFixture,
   structuredContentDeepFixture,
 } from "./make-fixture.mjs";
@@ -478,6 +479,7 @@ const PLANNED = [
   "image previews close on leave, blur, scrolling and pending navigation",
   "dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
   "Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
+  "monochrome dictionary images paint in the palette text colour in the card and its preview",
   "dictionary CSS hides a converter head tail through a Japanese-keyed data attribute",
 ];
 
@@ -1078,16 +1080,18 @@ async function popupReader(page, depth = 0) {
                 .map(attribute => [attribute.name, attribute.value])),
               filter: view.getComputedStyle(image).filter,
               overflow: content ? { clientWidth: content.clientWidth, scrollWidth: content.scrollWidth } : null,
-              display: { width: rect.width, height: rect.height, inlineWidth: container.style.width,
+              display: { width: rect.width, height: rect.height, rect: rect.toJSON(), inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
           theme: root.host?.dataset.hoshidictsTheme ?? null,
+          textColor: view.getComputedStyle(this).color,
           hiddenHeads: [...this.querySelectorAll("[data-sc付録] [data-sc-head]")]
             .map(node => ({ display: view.getComputedStyle(node).display, text: node.textContent })),
           preview: preview ? {
             rect: preview.getBoundingClientRect().toJSON(),
             source: expanded.src, width: expanded.naturalWidth, height: expanded.naturalHeight,
             sibling: preview.parentNode === this.parentNode,
+            appearance: preview.dataset.appearance,
             hiddenFromAccessibility: preview.getAttribute("aria-hidden"),
             pointerEvents: view.getComputedStyle(preview).pointerEvents,
             animation: view.getComputedStyle(expanded).animationName,
@@ -3890,22 +3894,29 @@ async function imageSizingChrome({ page, tab, popup }) {
     }), JSON.stringify(state?.images.map(({ display }) => display)));
 }
 
-async function gaijiSizingChrome({ page, tab, popup }) {
-  const fixture = gaijiSizingFixture();
-  const originalTheme = await page.evaluate(async () =>
-    (await chrome.storage.local.get("options")).options?.popupTheme ?? "default");
-  const setTheme = theme => page.evaluate(async nextTheme => {
+function popupTheme(page) {
+  return page.evaluate(async () => (await chrome.storage.local.get("options")).options?.popupTheme ?? "default");
+}
+
+function setPopupTheme(page, theme) {
+  return page.evaluate(async nextTheme => {
     const { options } = await chrome.storage.local.get("options");
     if ((options?.popupTheme ?? "default") === nextTheme) return;
     const reply = await chrome.runtime.sendMessage({
       target: "hoshidicts-worker",
       type: "hd_options_write",
-      requestId: `gaiji-theme-${nextTheme}`,
+      requestId: `popup-theme-${nextTheme}`,
       baseRevision: options?.revision ?? 0,
       options: { popupTheme: nextTheme },
     });
     if (!reply.ok) throw new Error(reply.error);
   }, theme);
+}
+
+async function gaijiSizingChrome({ page, tab, popup }) {
+  const fixture = gaijiSizingFixture();
+  const originalTheme = await popupTheme(page);
+  const setTheme = theme => setPopupTheme(page, theme);
   try {
     await setTheme("dark");
     await installMediaArchive(page, fixture.archive);
@@ -3952,6 +3963,85 @@ async function gaijiSizingChrome({ page, tab, popup }) {
   } finally {
     await setTheme(originalTheme);
   }
+}
+
+// The colour a screenshot of the reading tab shows at CSS-pixel points. The
+// PNG is decoded in the page so the device pixel ratio needs no bookkeeping.
+async function samplePixels(tab, points) {
+  const png = await tab.screenshot({ encoding: "base64" });
+  return tab.evaluate(async ({ png, points }) => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0);
+    const scale = bitmap.width / window.innerWidth;
+    return points.map(({ x, y }) => [...context.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data.slice(0, 3)]);
+  }, { png, points });
+}
+
+// A black-on-transparent SVG tagged `appearance: "monochrome"` (a stroke-order
+// strip, a headword glyph) is drawn in the palette text colour, so it stays
+// visible on the default dark palette and darkens again on a light one. The
+// same glyph tagged `auto` keeps its own black.
+async function monochromeImageChrome({ page, tab, popup }) {
+  const fixture = monochromeImageFixture();
+  await installMediaArchive(page, fixture.archive);
+  const originalTheme = await popupTheme(page);
+  const centre = rect => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  const rgb = colour => colour?.match(/\d+/gu)?.slice(0, 3).map(Number) ?? null;
+  const near = (pixel, colour) => Array.isArray(pixel) && Array.isArray(colour)
+    && pixel.every((channel, index) => Math.abs(channel - colour[index]) <= 3);
+  const render = async theme => {
+    await setPopupTheme(page, theme);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await hoverForPopup(tab, popup, "#verb");
+    const deadline = Date.now() + 6000;
+    let state;
+    do {
+      state = await popup.imagePreview();
+      if (state?.theme === theme && state.images.length === fixture.cases.length
+          && state.images.every(image => image.width === 100 && image.height === 100)) break;
+      await new Promise(done => setTimeout(done, 25));
+    } while (Date.now() < deadline);
+    const [monochrome, auto] = await samplePixels(tab, state.images.map(image => centre(image.display.rect)));
+    return { theme: state.theme, textColor: rgb(state.textColor), monochrome, auto };
+  };
+  let dark;
+  let preview;
+  let light;
+  try {
+    await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
+    dark = await render("default");
+    const inline = (await popup.imagePreview(0)).sourceRect;
+    let nudges = 0;
+    const deadline = Date.now() + 6000;
+    let state;
+    do {
+      await tab.mouse.move(inline.left + inline.width / 2 + (nudges++ % 2), inline.top + inline.height / 2);
+      state = await popup.imagePreview(0);
+      if (state?.preview?.width === 100) break;
+      await new Promise(done => setTimeout(done, 25));
+    } while (Date.now() < deadline);
+    const [pixel] = await samplePixels(tab, [centre(state.preview.rect)]);
+    preview = { appearance: state.preview.appearance, pixel };
+    if (process.env.HACHIDORI_MONOCHROME_IMAGE_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_MONOCHROME_IMAGE_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_MONOCHROME_IMAGE_SCREENSHOT });
+    }
+    await tab.mouse.move(1, 1);
+    light = await render("solarized-light");
+  } finally {
+    await setPopupTheme(page, originalTheme);
+  }
+  check("monochrome dictionary images paint in the palette text colour in the card and its preview",
+    dark?.theme === "default" && near(dark.monochrome, dark.textColor) && near(dark.auto, [0, 0, 0])
+      && preview?.appearance === "monochrome" && near(preview.pixel, dark.textColor)
+      && light?.theme === "solarized-light" && near(light.monochrome, light.textColor) && near(light.auto, [0, 0, 0])
+      // The two palettes disagree about the text colour, so one hard-coded tint cannot pass both.
+      && !near(dark.textColor, light.textColor),
+    JSON.stringify({ dark, preview, light }));
 }
 
 async function showSettingsSection(page, id) {
@@ -13972,6 +14062,7 @@ async function main() {
   await imagePreviewChrome({ browser, page, tab: tab2, popup: popup2 });
   await imageSizingChrome({ page, tab: tab2, popup: popup2 });
   await gaijiSizingChrome({ page, tab: tab2, popup: popup2 });
+  await monochromeImageChrome({ page, tab: tab2, popup: popup2 });
   await checkStartupFileAccess(page, browser, startupUrl);
   await browser.close();
   server.close();

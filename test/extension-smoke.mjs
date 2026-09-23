@@ -22067,9 +22067,12 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
       lazy && first?.parentNode === shadow && first.getAttribute("aria-hidden") === "true"
         && firstSource?.src === mediaUrl && firstSource.alt === "A image"
         && first.dataset.appearance === "monochrome" && first.dataset.imageRendering === "pixelated"
+        // The monochrome mask layer paints the preview's own copy of the source.
+        && first.style.getPropertyValue("--image") === `url("${mediaUrl}")`
         && shadow.activeElement === links[0] && stable && requests === beforeRequests
         && links[0].querySelector(".gloss-image-container").style.width === "16px",
-      JSON.stringify({ lazy, stable, requests, beforeRequests, source: firstSource?.src }));
+      JSON.stringify({ lazy, stable, requests, beforeRequests, source: firstSource?.src,
+        previewImage: first?.style.getPropertyValue("--image") }));
 
     event(links[0], "mouseleave");
     const focusSurvivedLeave = preview() === first;
