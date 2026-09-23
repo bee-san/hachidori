@@ -102,6 +102,9 @@ let engineError = null;
 let activeMutationRequestId = null;
 let activeStagedMutationRequestId = null;
 let activeImportRequestId = null;
+// The phase of the import this bridge is running, reported by hd_status while
+// the engine's own status is not consulted.
+let importPhase = null;
 let lastEngineStatus = {
   ok: true,
   error: null,
@@ -181,6 +184,7 @@ function finishRequest(id, response) {
   if (id === activeMutationRequestId) activeMutationRequestId = null;
   if (id === activeStagedMutationRequestId) activeStagedMutationRequestId = null;
   if (id === activeImportRequestId) activeImportRequestId = null;
+  if (request.message.type === "hd_import") importPhase = null;
   trackHeldState(request.message, response);
   // A successful native reorder allocates no dictionary/import high-water
   // mark. Keep an already pending import or mode-change recycle's idle window,
@@ -207,17 +211,31 @@ function finishRequest(id, response) {
 }
 
 function adoptEngineProgress(progress) {
-  const id = activeImportRequestId;
+  const id = activeImportRequestId ?? activeMutationRequestId;
   const request = pending.get(id);
-  if (request === undefined || request.message.requestId !== progress?.requestId) {
+  if (request?.message.type !== "hd_import" || request.message.requestId !== progress?.requestId) {
     return false;
   }
-  if (progress.phase === "installing") {
+  importPhase = { phase: progress.phase, fallback: progress.fallback ?? null };
+  // An isolated import leaves the committed dictionaries loaded and answering.
+  // An import inside the live engine unloads them first, so from here until the
+  // import commits or rolls back, reads must fail busy rather than answer that
+  // no dictionary is installed.
+  if (progress.phase === "installing" && progress.fallback === "memory") {
     activeImportRequestId = null;
     activeMutationRequestId = id;
   }
   setupInstaller?.then((installer) => installer.progress(progress));
   return true;
+}
+
+// hd_status.updating: the import this bridge is running, with the package it
+// replaces (a managed update's fingerprint or a reviewed replacement's target).
+function updatingStatus() {
+  const request = pending.get(activeImportRequestId) ?? pending.get(activeMutationRequestId);
+  if (importPhase === null || request?.message.type !== "hd_import") return null;
+  const { managedFingerprint, importDecision } = request.message;
+  return { id: managedFingerprint?.id ?? importDecision?.target?.id ?? null, ...importPhase };
 }
 
 function failEngine(error) {
@@ -414,6 +432,7 @@ function dispatchEngine(message, sendResponse) {
         || activeStagedMutationRequestId !== null
         || activeImportRequestId !== null
         || lastEngineStatus.loading,
+      updating: updatingStatus(),
     });
     return;
   }
@@ -447,8 +466,10 @@ function dispatchEngine(message, sendResponse) {
   // Reserve before engine selection or module loading can retain the payload.
   const id = ++nextRequestId;
   pending.set(id, { message, sendResponse });
-  if (message.type === "hd_import") activeImportRequestId = id;
-  else if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = id;
+  if (message.type === "hd_import") {
+    activeImportRequestId = id;
+    importPhase = { phase: "downloading", fallback: null };
+  } else if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = id;
   else if (STAGED_MUTATION_TYPES.has(message.type)) activeStagedMutationRequestId = id;
   engineSelection.then(() => {
     if (!pending.has(id)) return undefined;

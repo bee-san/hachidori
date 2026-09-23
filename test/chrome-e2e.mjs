@@ -381,6 +381,7 @@ const PLANNED = [
   "Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
   "a real browser alarm installs updates for disabled managed dictionaries",
   "a failed scheduled update preserves the working generation without OPFS debris",
+  "hovering through a scheduled update never sees an update notice and ends on the new revision",
   "worker restart recreates the configured managed-update alarm",
   "importing a term-only single-kanji dictionary succeeds",
   "dictionary management filters and bulk-updates visible stable selections",
@@ -13060,6 +13061,154 @@ async function main() {
     }),
   );
 
+  // A scheduled update of an enabled package while the reader hovers every
+  // 100 ms: the old generation answers until the new one is swapped in, so no
+  // hover is refused with the update notice, and Settings names the package on
+  // its row while the archive downloads and installs.
+  const setGenericEnabled = (enabled) => page.evaluate(async ({ dictionaryId, enabled }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_apply_state", requestId: `e2e-hover-update-enable-${enabled}`,
+      baseRevision: current.revision,
+      dictionaries: current.dictionaries.map(dictionary => dictionary.id === dictionaryId ? { ...dictionary, enabled } : dictionary),
+    });
+    if (!reply.ok) throw new Error(reply.error);
+  }, { dictionaryId: GENERIC_KANJI_ID, enabled });
+  await setGenericEnabled(true);
+  const hoverUpdateGlossary = `${GENERIC_KANJI_TITLE} test-5 glossary`;
+  // A background tab's input is throttled; the reader must be the visible tab.
+  await tab.bringToFront();
+  const beforeHoverUpdate = await hover("#verb", { accept: state => state.text.includes(`${GENERIC_KANJI_TITLE} verb fixture`) });
+  const beforeHoverUpdatePackage = (await page.evaluate(() => chrome.storage.local.get("dictionaryState")))
+    .dictionaryState.dictionaries.find(dictionary => dictionary.id === GENERIC_KANJI_ID);
+  setJsonResponse(genericIndexRoute, { revision: "test-5" });
+  setArchiveResponse(genericArchiveRoute, buildTitledZip(GENERIC_KANJI_TITLE, {
+    revision: "test-5",
+    indexUrl: GENERIC_MANAGED_INDEX_URL,
+    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+    indexOverrides: { isUpdatable: true },
+    terms: [
+      ["食べる", "たべる", "v1", "v1", 1, [hoverUpdateGlossary], 1, ""],
+      // Enough rows that the installation lasts several hover intervals.
+      ...Array.from({ length: 20_000 }, (_, index) => [
+        String.fromCharCode(0x4e00 + (index % 20_000)) + String.fromCharCode(0x3042 + (index % 80)),
+        String.fromCharCode(0x3042 + (index % 80)), "n", "", 1, [`filler ${index}`], index + 2, "",
+      ]),
+    ],
+  }));
+  const heldHoverDownload = Promise.withResolvers();
+  const releaseHoverDownload = Promise.withResolvers();
+  genericArchiveRoute.respond = async () => {
+    heldHoverDownload.resolve();
+    await releaseHoverDownload.promise;
+    return genericArchiveRoute;
+  };
+  const hoverStates = [];
+  const updatingSamples = [];
+  const hoverStartedAt = Date.now();
+  let hovering = true;
+  const verbBox = await (await tab.$("#verb")).boundingBox();
+  // Like hoverForPopup, step off and back onto the word until a popup renders:
+  // a reply the state change just invalidated is discarded and the reader
+  // waits for the pointer to move again, as it would under a real hand.
+  const hoverOnce = async () => {
+    for (const deadline = Date.now() + 3_000; Date.now() < deadline;) {
+      await tab.mouse.move(2, 2);
+      await tab.mouse.move(verbBox.x + verbBox.width * 0.15, verbBox.y + verbBox.height / 2);
+      for (const attemptDeadline = Date.now() + 400; Date.now() < attemptDeadline;) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const state = await popup.state().catch(() => null);
+        if (state !== null && popup.visible(state)) return state.plain;
+      }
+    }
+    return null;
+  };
+  const hoverLoop = (async () => {
+    while (hovering) {
+      // Escape closes the retained view so that each pass is a fresh lookup;
+      // the next pass starts as soon as this one has rendered (or given up).
+      await tab.keyboard.press("Escape");
+      await popup.waitForHidden(1_000);
+      hoverStates.push({ at: Date.now() - hoverStartedAt, plain: await hoverOnce() });
+    }
+  })();
+  const statusLoop = (async () => {
+    while (hovering) {
+      const status = await page.evaluate(() => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-hover-update-status",
+      }));
+      if (status?.updating) updatingSamples.push({ at: Date.now() - hoverStartedAt, ...status.updating });
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  })();
+  await scheduleManagedCheckSoon();
+  const hoverDownloadHeld = await Promise.race([
+    heldHoverDownload.promise.then(() => true),
+    new Promise(resolve => setTimeout(() => resolve(false), 30_000)),
+  ]);
+  const rowWhileUpdating = hoverDownloadHeld
+    ? await page.waitForFunction(dictionaryId => {
+      const text = document.querySelector(`.dict-row[data-dictionary-id="${dictionaryId}"] .dict-update-status`)?.textContent;
+      return text === "Updating…" ? text : false;
+    }, { timeout: 10_000, polling: 100 }, GENERIC_KANJI_ID).then(handle => handle.jsonValue()).catch(() => null)
+    : null;
+  // The hold also lets the status poll observe the downloading phase.
+  for (const deadline = Date.now() + 10_000; hoverDownloadHeld && Date.now() < deadline
+    && !updatingSamples.some(entry => entry.phase === "downloading");) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  releaseHoverDownload.resolve();
+  genericArchiveRoute.respond = null;
+  const hoverUpdatedPackage = await page.waitForFunction(async dictionaryId => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const dictionary = dictionaryState?.dictionaries?.find(entry => entry.id === dictionaryId);
+    return dictionary?.revision === "test-5" && dictionary.lastUpdateCheck?.status === "up-to-date" ? dictionary : false;
+  }, { timeout: 90_000, polling: 100 }, GENERIC_KANJI_ID).then(handle => handle.jsonValue()).catch(() => null);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  hovering = false;
+  await Promise.all([hoverLoop, statusLoop]);
+  const afterHoverUpdate = await hover("#verb", { accept: state => state.text.includes(hoverUpdateGlossary) });
+  const pathsAfterHoverUpdate = await listOpfsPaths(page);
+  // The row reads Updating… from the last status poll until the next one (at
+  // most a second later) reports the import settled.
+  const rowAfterHoverUpdate = await page.waitForFunction(dictionaryId => {
+    const text = document.querySelector(`.dict-row[data-dictionary-id="${dictionaryId}"] .dict-update-status`)?.textContent;
+    return text === "Up to date" ? text : false;
+  }, { timeout: 5_000, polling: 100 }, GENERIC_KANJI_ID).then(handle => handle.jsonValue()).catch(() => null);
+  const hoverTexts = hoverStates.map(entry => entry.plain);
+  const duringHoverUpdate = hoverTexts.filter(text => text !== null && !text.includes(hoverUpdateGlossary));
+  check(
+    "hovering through a scheduled update never sees an update notice and ends on the new revision",
+    beforeHoverUpdate !== null && hoverDownloadHeld && rowWhileUpdating === "Updating…"
+      && updatingSamples.some(entry => entry.id === GENERIC_KANJI_ID && entry.phase === "downloading")
+      && updatingSamples.some(entry => entry.id === GENERIC_KANJI_ID && entry.phase === "installing" && entry.fallback === null)
+      && hoverTexts.length >= 5
+      && hoverTexts.every(text => text !== null && !text.includes("Dictionary update in progress") && text.includes("食べる"))
+      && duringHoverUpdate.length > 0
+      && duringHoverUpdate.every(text => text.includes(`${GENERIC_KANJI_TITLE} verb fixture`))
+      && hoverTexts.some(text => text.includes(hoverUpdateGlossary))
+      && afterHoverUpdate !== null
+      && hoverUpdatedPackage?.enabled === true && hoverUpdatedPackage.path !== beforeHoverUpdatePackage?.path
+      && generationExists(pathsAfterHoverUpdate, hoverUpdatedPackage.path)
+      && generationIsAbsent(pathsAfterHoverUpdate, ownedGenerationRoot(beforeHoverUpdatePackage?.path, GENERIC_KANJI_TITLE))
+      && rowAfterHoverUpdate === "Up to date",
+    JSON.stringify({
+      beforeHoverUpdate: beforeHoverUpdate?.text?.slice(0, 200), hoverDownloadHeld, rowWhileUpdating, updatingSamples,
+      hoverStates: hoverStates.map(entry => ({
+        at: entry.at,
+        old: entry.plain?.includes(`${GENERIC_KANJI_TITLE} verb fixture`) ?? null,
+        new: entry.plain?.includes(hoverUpdateGlossary) ?? null,
+        notice: entry.plain?.includes("Dictionary update in progress") ?? null,
+      })),
+      afterHoverUpdate: afterHoverUpdate?.text?.slice(0, 200),
+      beforeHoverUpdatePackage, hoverUpdatedPackage, pathsAfterHoverUpdate, rowAfterHoverUpdate,
+    }),
+  );
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await page.bringToFront();
+  await setGenericEnabled(false);
+
   // Simulate Chrome clearing the configured alarm before worker restart.
   await page.evaluate(alarmName => chrome.alarms.clear(alarmName), MANAGED_UPDATE_ALARM);
   const alarmGone = await page.waitForFunction(async (alarmName) =>
@@ -13108,7 +13257,7 @@ async function main() {
     }),
     new Promise((resolveWake) => setTimeout(() => resolveWake({ timeout: true }), 10_000)),
   ])).catch((error) => ({ error: String(error) }));
-  const expectedRecreatedCheck = Date.parse(failedAlarmPackage.lastUpdateCheck.checkedAt) + 3_600_000;
+  const expectedRecreatedCheck = Date.parse((hoverUpdatedPackage ?? failedAlarmPackage).lastUpdateCheck.checkedAt) + 3_600_000;
   const recreatedAlarm = await page.waitForFunction(async ({ alarmName, expected }) => {
     const alarms = await chrome.alarms.getAll();
     const alarm = alarms.find((candidate) => candidate.name === alarmName);
@@ -13471,6 +13620,7 @@ async function main() {
     return { status, memory, total, available, wasChecked };
   });
   const lowMemoryStatus = await waitForRecycle(true, null).catch(() => null);
+  const lowMemoryHeapBeforeImport = lowMemoryStatus === null ? null : (await engineRequest("hd_memory")).heapBytes;
   const lowMemoryOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   check(
     "low memory mode recycles the engine worker and reports memory in Settings",
@@ -13534,12 +13684,16 @@ async function main() {
       && lowMemoryImported.memory.dictionaries[0].bytes > 0
       && recycledAfterImport?.threaded === true && recycledAfterImport.dictionaryCount === 1
       && afterRecycle?.memory.ok === true
-      && afterRecycle.memory.heapBytes < lowMemoryImported.memory.heapBytes
+      // The import ran in the terminated import worker: the engine's heap did
+      // not take the import's high-water mark (an in-engine import grows it by
+      // well over 16 MiB), and the recycle has nothing of it left to give back.
+      && lowMemoryImported.memory.heapBytes < lowMemoryHeapBeforeImport + 16 * 1024 * 1024
+      && afterRecycle.memory.heapBytes <= lowMemoryImported.memory.heapBytes
       && afterRecycle.memory.dictionaries[0]?.bytes === lowMemoryImported.memory.dictionaries[0].bytes
       && afterRecycle.lookup.ok === true && afterRecycle.lookup.results[0]?.term.expression === "食べる"
       && /^In memory: \u2248 [\d.]+ (KB|MB|GB)$/u.test(afterRecycle.rowMemory ?? "")
       && /across 1 dictionary$/u.test(afterRecycle.total ?? ""),
-    JSON.stringify({ imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
+    JSON.stringify({ heapBeforeImport: lowMemoryHeapBeforeImport, imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
   );
 
   await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());

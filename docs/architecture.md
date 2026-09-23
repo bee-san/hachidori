@@ -29,7 +29,8 @@ settings.html / content.js
                  └─ offscreen.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
                       ├─ primary: engine-worker.js
-                      │    └─ pthread Wasm + WasmFS direct OPFS
+                      │    ├─ pthread Wasm + WasmFS direct OPFS
+                      │    └─ import-worker.js: a second instance per hd_import
                       ├─ no OPFS access handles: engine-worker-idbfs.js
                       │    └─ pthread Wasm + classic FS + IDBFS
                       └─ fallback: engine-service.js
@@ -85,12 +86,25 @@ Each dictionary import follows one logical transaction:
 
 1. `settings.html` sends the next local ZIP with `hd_import`, or the shared offscreen installer sends the next missing catalogue source's pinned archive URL.
 2. The service worker transfers the archive to the offscreen document.
-3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
+3. On the direct-OPFS runtime, the engine worker hands the archive to `import-worker.js`: a second Hoshidicts instance on the same OPFS root, which imports the Yomitan banks through the C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root and is terminated once it has reported. A committed root is never overwritten in place, and the live engine keeps answering lookups from the committed generations throughout: `hdw_import` is one synchronous native call, so whichever instance runs it answers nothing until it returns.
 4. The generated files are flushed to the storage backend before metadata can reference them.
-5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it. A package already committed at its path that no longer loads does not block the candidate; see below.
-6. Only a confirmed commit publishes the new dictionary count and generation.
-7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
+5. Under the engine queue, the candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it. A replaced package is removed and the new generation added in place (`hdw_remove_dict`, `hdw_add_dict`, `hdw_set_dict_order`), so lookups wait for those few milliseconds rather than fail; the rest of the loaded set is untouched. A package already committed at its path that no longer loads does not block the candidate; see below.
+6. Only a confirmed commit publishes the new dictionary count and generation. A refused commit unloads the new generation again and keeps the committed one; a failed import discards its root without touching the engine.
+7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots. A root an isolated import is still writing is retained until that import settles.
 8. The settings page renders success only after that reply.
+
+The IDBFS runtimes (Electron's pthread engine and the single-thread engine
+Firefox uses) have no isolated importer: two instances cannot share one IDBFS
+store. There the archive is imported inside the live engine, whose loaded
+dictionaries are mapped into the same 32-bit address space the importer needs,
+so `runImportTransaction` unloads them first and reloads the committed set
+afterwards. Its `installing` progress event carries `fallback: "memory"`, and
+only then does the offscreen bridge refuse reads with `engine-mutating` until
+the import settles; the reader shows *Dictionary update in progress* for those
+lookups. `hd_status` from the bridge reports the import it is running as
+`updating: { id, phase, fallback }` (`id` is the replaced package's, or null
+for a new install; `phase` is `downloading` or `installing`), which the
+Settings row uses to say *Updating…*.
 
 Multiple selected local archives remain separate transactions. Settings runs
 them sequentially, keeps an outcome for each file, and continues after a failure.
@@ -2481,7 +2495,7 @@ Template/custom-button settings writes unavailable before a request is sent.
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
-The engine holds every loaded dictionary's generated files in WebAssembly linear memory (Emscripten emulates `mmap` by copying), and that memory never shrinks, so an import's high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's mapped bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`). [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
+The engine holds every loaded dictionary's generated files in WebAssembly linear memory (Emscripten emulates `mmap` by copying), and that memory never shrinks. On direct OPFS an import's high-water mark belongs to the terminated `import-worker.js` instance and is returned to the browser; the engine's heap grows only by the new generation's mapped files. On IDBFS the import runs inside the engine, so its high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's mapped bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`). [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
@@ -2550,7 +2564,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
-| `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
+| `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode; while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report the engine heap size and each loaded package's resident bytes (its mapped files, once per native kind); see [memory.md](memory.md) |
 | `hd_engine_config` | Read `options.lowMemoryMode` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when the stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |

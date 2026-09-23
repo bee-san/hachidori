@@ -23,10 +23,13 @@ bytes in. Four things follow:
   loads the package as (term, frequency, pitch, kanji), so a package that
   carries several banks holds several copies.
 - **Linear memory never shrinks.** Importing a dictionary unzips it, builds its
-  indexes and, on the threaded engine, runs an eight-thread worker group; the
-  memory that peak needs is kept for the life of the engine worker even after
-  the import has finished. Disabling or removing a dictionary frees its mapping
-  inside the heap, but the heap itself stays at its high-water mark.
+  indexes and, on the threaded engine, runs an eight-thread worker group. On
+  direct OPFS that work happens in a separate import worker that is terminated
+  afterwards, so its peak is returned to the browser and the engine's heap grows
+  only by the new dictionary's mapped files; on IDBFS (Electron, Firefox) the
+  import runs inside the engine and the memory that peak needs is kept for the
+  life of the engine worker. Disabling or removing a dictionary frees its
+  mapping inside the heap, but the heap itself stays at its high-water mark.
 - **IDBFS hosts hold a second copy.** Electron (GameSentenceMiner), Firefox, and
   Chrome without OPFS sync access handles keep the dictionary files in
   IndexedDB and mirror them into the WebAssembly filesystem, so the same bytes
@@ -69,8 +72,10 @@ things:
    restore has settled and the engine has been idle for two seconds, the
    offscreen document terminates the engine worker and starts a new one, which
    reloads the installed dictionaries from OPFS (or IDBFS). The new worker's
-   heap holds only the mapped files, so the import high-water mark is given
-   back to the browser. A pure reorder uses the already loaded native set and
+   heap holds only the mapped files: on IDBFS that gives the import high-water
+   mark back to the browser, and on OPFS (where the import worker already
+   returned it) whatever the swaps of replaced generations left in the heap.
+   A pure reorder uses the already loaded native set and
    allocates no import high-water mark, so it does not request a recycle. It
    still restarts the idle window of a pending import or mode-change recycle.
 2. **Imports on one thread with a minimal thread pool.** The recycled worker

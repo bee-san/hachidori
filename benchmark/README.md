@@ -290,6 +290,35 @@ node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip --samples 3 \
   --output benchmark/results/low-memory-mode.json
 ```
 
+## Dictionary update availability
+
+`dictionary-update.mjs` measures what a reader sees while a dictionary is
+replaced by a newer generation. Each sample is a fresh profile; for each library
+size in `--others` it imports that many six-term fixture clones through the
+real Settings file input, then updates the target dictionary through the same
+`hd_import` transaction a managed update runs (a same-title archive at the next
+revision) while the page issues `hd_lookup` round trips every 100 ms,
+alternating a word only the target answers with a word only the others answer.
+It records the import wall time, the lookups refused with `engine-mutating` and
+the window they span, the slowest answered lookup (an in-place swap shows up as
+latency, not as a refusal), when the first reply carried the new revision, the
+engine heap before and after, the transient OPFS bytes while both generations
+exist, and whether `hd_status.updating` was reported.
+
+```sh
+node benchmark/dictionary-update.mjs --output benchmark/results/dictionary-update
+node benchmark/dictionary-update.mjs --revision origin/main --output benchmark/results/dictionary-update-base
+node benchmark/dictionary-update.mjs --archive jitendex.zip --update-archive jitendex-next.zip --query 食べる
+```
+
+`--revision` snapshots another commit's `extension/` tree with `git archive`, so
+a base can be measured from the same worktree. The default target is a
+synthetic 100,000-row dictionary (`--target-rows`); `--archive` measures a real
+one and `--update-archive` supplies its next revision (a copy whose
+`index.json` revision differs). Rows go to `raw.jsonl` with `definition.json`
+beside them. The other dictionaries are small, so their reload cost is small;
+lookups are backend round trips, not page scanning or popup rendering.
+
 ## Standard Jitendex + Pixiv Light matrix
 
 The checked-in `jitendex-pixiv-light.json` suite runs Jitendex and Pixiv Light as

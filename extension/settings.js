@@ -1450,13 +1450,15 @@ async function refreshStatus() {
     return;
   }
   const previousGeneration = lastEngineStatus?.generation;
+  const previousUpdating = lastEngineStatus?.updating?.id ?? null;
   lastEngineStatus = reply;
   renderEngineStatus();
+  renderUpdatingRows(previousUpdating, reply.updating?.id ?? null);
   renderLowMemoryMode();
   if (activeSection === "advanced" && reply.ready && !reply.loading && reply.generation !== previousGeneration) {
     refreshMemorySettings();
   }
-  if (!reply.ready || reply.loading) {
+  if (!reply.ready || reply.loading || updating) {
     scheduleStatusPoll();
   }
 }
@@ -1883,6 +1885,13 @@ function dictionaryMetadata(entry) {
 }
 
 function dictionaryUpdateStatus(entry) {
+  const engineUpdating = lastEngineStatus?.updating;
+  if (engineUpdating?.id === entry.id) {
+    return {
+      text: engineUpdating.fallback === "memory" ? "Updating… lookups pause until it finishes" : "Updating…",
+      tone: "busy",
+    };
+  }
   if (!isUpdateCheckable(entry)) {
     return { text: "Not update-checkable", tone: "" };
   }
@@ -1901,14 +1910,29 @@ function dictionaryUpdateStatus(entry) {
   return { text: "Not checked", tone: "" };
 }
 
-function bindDictionaryUpdate(row, entry) {
+function renderDictionaryUpdateStatus(row, entry) {
   const status = dictionaryUpdateStatus(entry);
   const output = row.querySelector(".dict-update-status");
   output.textContent = status.text;
-  output.hidden = !entry.lastUpdateCheck;
+  output.hidden = !entry.lastUpdateCheck && status.tone !== "busy";
   output.classList.toggle("is-ready", status.tone === "ready");
   output.classList.toggle("is-available", status.tone === "available");
   output.classList.toggle("is-error", status.tone === "error");
+}
+
+// hd_status.updating names the package an import is replacing; only that row
+// (and the one a previous poll named) changes.
+function renderUpdatingRows(previousId, currentId) {
+  for (const id of new Set([previousId, currentId])) {
+    const entry = id === null ? undefined : dictionaries.find((dictionary) => dictionary.id === id);
+    const row = entry === undefined ? null
+      : element("dict-list").querySelector(`.dict-row[data-dictionary-id="${CSS.escape(id)}"]`);
+    if (row !== null) renderDictionaryUpdateStatus(row, entry);
+  }
+}
+
+function bindDictionaryUpdate(row, entry) {
+  renderDictionaryUpdateStatus(row, entry);
 
   const check = row.querySelector(".dict-update-check");
   check.hidden = !isUpdateCheckable(entry);
@@ -3119,6 +3143,9 @@ async function runManagedUpdate(type, dictionaryIds = null) {
   updating = true;
   setControlsDisabled(true);
   setUpdateState(type === "hd_updates_check" ? "Checking managed dictionaries…" : "Updating dictionaries…");
+  // The engine names the package it is replacing (hd_status.updating); polls
+  // continue while this operation runs so that row can say so.
+  scheduleStatusPoll(0);
   try {
     const fields = dictionaryIds === null ? {} : { dictionaryIds };
     const reply = await send(type, fields, UPDATE_TARGET);
@@ -3615,6 +3642,16 @@ function renderChangedDictionaryState() {
   renderDictionaryState();
 }
 
+// A scheduled update records that an update is available immediately before
+// installing it; that write is the page's cue to start polling hd_status so
+// the row can show which package is being replaced.
+function updateAvailabilityRecorded(previous, next) {
+  const before = new Map((previous?.dictionaries ?? []).map((entry) => [entry?.id, JSON.stringify(entry?.lastUpdateCheck ?? null)]));
+  return (next?.dictionaries ?? []).some((entry) =>
+    entry?.lastUpdateCheck?.status === "update-available"
+      && before.get(entry.id) !== JSON.stringify(entry.lastUpdateCheck));
+}
+
 function handleDictionaryStateChange(change) {
   let adopted;
   try {
@@ -3625,6 +3662,7 @@ function handleDictionaryStateChange(change) {
   }
   if (adopted) {
     renderChangedDictionaryState();
+    if (updateAvailabilityRecorded(change.oldValue, change.newValue)) scheduleStatusPoll(0);
   }
   return true;
 }

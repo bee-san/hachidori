@@ -47,6 +47,7 @@ import {
   EXPECTED,
   TRAINED_TERMS,
   TRAINED_TITLE,
+  buildNotAZip,
   buildRecommendedZip,
   buildTitledZip,
   buildLongKeyZip,
@@ -5519,7 +5520,7 @@ async function main() {
   let streamError = null;
   try {
     streamed = await engineService.streamResponseToFile(
-      {
+      { FS: {
         open: (path) => ({ fd: 7, path }),
         // WasmFS FS.write copies byte by byte from JavaScript, so the body must
         // arrive as one write rather than one per stream chunk.
@@ -5532,7 +5533,7 @@ async function main() {
         close() {
           streamClosed = true;
         },
-      },
+      } },
       {
         body: {
           getReader: () => ({
@@ -9640,6 +9641,9 @@ async function main() {
       && downloadEvents.length >= 1 && downloadEvents.every((event) => event.totalBytes === null)
       && downloadEvents.at(-1).receivedBytes === jmnedictArchive.byteLength
       && installingEvents.length === 1 && installingEvents[0].receivedBytes === jmnedictArchive.byteLength
+      // An IDBFS runtime has no isolated importer, so the archive is imported
+      // inside the live engine and the bridge is told to refuse reads.
+      && installingEvents[0].fallback === "memory"
       && importProgress.indexOf(installingEvents[0]) > importProgress.indexOf(downloadEvents.at(-1))
       && Number.isFinite(stagedLookupMs) && Number.isFinite(installPauseMs) && installPauseMs >= 0
       && wrongArchive.ok === false && wrongArchive.error.includes("catalogue archive URL")
@@ -9654,8 +9658,205 @@ async function main() {
   );
   console.log(`        staged lookup ${stagedLookupMs.toFixed(1)} ms; serialized install ${installPauseMs.toFixed(1)} ms`);
 
+  await isolatedImportStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb, trainedExpression });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/* ------------------------------------------------------- isolated import stage */
+
+// The direct-OPFS runtime imports through a second engine instance while this
+// one keeps answering (engine-service.js runIsolatedImportTransaction). The
+// isolated importer here is the real importDictionaryArchive on this engine's
+// own filesystem, which is what a second instance on the same OPFS root
+// amounts to; a hold before the native import stands in for its duration.
+async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb, trainedExpression }) {
+  section("isolated import: lookups keep answering, the generation swaps in place");
+  const service = await import(
+    `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?isolated`
+  );
+  let stageEngine = null;
+  const native = { resets: 0, adds: 0, removes: 0, reorders: 0, imports: 0 };
+  const progress = [];
+  let hold = null;
+  let importerFailure = null;
+  let failedRoot = null;
+  let conflictCas = false;
+  let casConflicts = 0;
+  const isolatedImport = async (request) => {
+    if (hold !== null) await hold;
+    if (importerFailure !== null) {
+      // A worker that died mid-import leaves whatever it had written.
+      failedRoot = request.generationRoot;
+      stageEngine.FS.mkdirTree(`${request.generationRoot}/partial`);
+      stageEngine.FS.writeFile(`${request.generationRoot}/partial/blobs.bin`, new Uint8Array(16));
+      throw importerFailure;
+    }
+    return service.importDictionaryArchive(stageEngine, request.archive, request.generationRoot,
+      request.lowRam, request.fileName, request.expectedArchiveBytes, request.resources);
+  };
+  service.configureEngineService(
+    async (message) => {
+      if (message.type === "hd_state_cas" && conflictCas) {
+        casConflicts += 1;
+        const current = await offscreenChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_read" });
+        return { ok: false, conflict: true, error: "injected commit conflict", state: current.state };
+      }
+      return offscreenChrome.runtime.sendMessage(message);
+    },
+    {
+      createHoshidicts: async (...args) => {
+        const module = await createHoshidicts(...args);
+        stageEngine = module;
+        const ccall = module.ccall.bind(module);
+        module.ccall = (name, returnType, argumentTypes, argumentValues) => {
+          const result = ccall(name, returnType, argumentTypes, argumentValues);
+          if (name === "hdw_reset") native.resets += 1;
+          else if (name === "hdw_add_dict" && result) native.adds += 1;
+          else if (name === "hdw_remove_dict" && result) native.removes += 1;
+          else if (name === "hdw_set_dict_order" && result) native.reorders += 1;
+          else if (name === "hdw_import") native.imports += 1;
+          return result;
+        };
+        return module;
+      },
+      storageBackend: "idbfs",
+      lowRam: true,
+      reportProgress: (event) => progress.push(structuredClone(event)),
+      isolatedImport,
+    },
+  );
+  let counter = 0;
+  const request = (type, fields = {}) => {
+    counter += 1;
+    return service.handleEngineMessage({ type, requestId: `isolated-${counter}`, ...fields });
+  };
+  service.startEngine();
+  let status = await request("hd_status");
+  const deadline = Date.now() + 30000;
+  while (!(status.ok && status.ready && !status.loading) && Date.now() < deadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    status = await request("hd_status");
+  }
+  const loadedCount = status.dictionaryCount;
+  const snapshot = () => ({ ...native });
+  const generationRoots = () => idb.keys("/dicts").filter((path) => /^\/dicts\/\.hdw-generation-[^/]+$/u.test(path));
+  const memoryRow = async (title) => (await request("hd_memory")).dictionaries.filter((entry) => entry.title === title);
+  const title = "isolated-update-target";
+  const query = "更新語";
+  const archive = (revision) => new Uint8Array(buildTitledZip(title, {
+    revision: `rev-${revision}`,
+    terms: [[query, "こうしんご", "", "", 0, [`revision ${revision}`], 1, ""]],
+  }));
+  const revisionOf = (lookup) => lookup.results?.[0]?.term?.glossaries
+    ?.map((entry) => entry.glossary).join("\n").match(/"revision (\d+)"/u)?.[1] ?? null;
+
+  // First install: the new package is added beside the loaded set.
+  const beforeInstall = snapshot();
+  const install = await request("hd_import", { blobUrl: createObjectURL(archive(1)), fileName: `${title}.zip` });
+  const installedState = await storedDictionaryState();
+  const installedPackage = installedState.dictionaries.find((entry) => entry.title === title);
+  const afterInstall = snapshot();
+  check(
+    "an isolated first install adds the new generation without resetting or reloading the loaded set",
+    install.ok === true && install.report?.success === true && native.imports === beforeInstall.imports + 1
+      && installedPackage?.revision === "rev-1" && ownedGenerationRoot(installedPackage.path, title) !== ""
+      && afterInstall.resets === beforeInstall.resets && afterInstall.removes === beforeInstall.removes
+      && afterInstall.adds === beforeInstall.adds + 1 && afterInstall.reorders === beforeInstall.reorders + 1
+      && (await request("hd_status")).dictionaryCount === loadedCount + 1
+      && revisionOf(await request("hd_lookup", { text: query })) === "1"
+      && progress.filter((event) => event.phase === "installing").every((event) => event.fallback === undefined),
+    JSON.stringify({ install, installedPackage, beforeInstall, afterInstall, progress }),
+  );
+
+  // Update: while the isolated importer works, both the replaced package and
+  // the others answer from the committed generations.
+  const release = Promise.withResolvers();
+  hold = release.promise;
+  const generationBefore = (await request("hd_status")).generation;
+  const beforeUpdate = snapshot();
+  const rootsBefore = generationRoots();
+  const update = request("hd_import", { blobUrl: createObjectURL(archive(2)), fileName: `${title}.zip` });
+  await new Promise((done) => setTimeout(done, 50));
+  const statusDuring = await request("hd_status");
+  const duringTarget = await request("hd_lookup", { text: query });
+  const duringOther = await request("hd_lookup", { text: trainedExpression });
+  const nativeDuring = snapshot();
+  hold = null;
+  release.resolve();
+  const updated = await update;
+  const updatedState = await storedDictionaryState();
+  const updatedPackage = updatedState.dictionaries.find((entry) => entry.title === title);
+  const afterUpdate = snapshot();
+  const afterLookup = await request("hd_lookup", { text: query });
+  const rootsAfter = generationRoots();
+  const oldRoot = ownedGenerationRoot(installedPackage.path, title);
+  const newRoot = ownedGenerationRoot(updatedPackage?.path, title);
+  check(
+    "lookups during an isolated update answer from the old generation, then the new one swaps in without a reset",
+    statusDuring.loading === true && statusDuring.generation === generationBefore
+      && duringTarget.ok === true && revisionOf(duringTarget) === "1" && duringTarget.generation === generationBefore
+      && duringOther.ok === true && duringOther.results.some((result) => result.term?.expression === trainedExpression)
+      && JSON.stringify(nativeDuring) === JSON.stringify(beforeUpdate)
+      && updated.ok === true && updatedPackage?.id === installedPackage.id && updatedPackage.revision === "rev-2"
+      && newRoot !== "" && newRoot !== oldRoot
+      && afterUpdate.resets === beforeUpdate.resets && afterUpdate.imports === beforeUpdate.imports + 1
+      && afterUpdate.removes === beforeUpdate.removes + 1 && afterUpdate.adds === beforeUpdate.adds + 1
+      && afterUpdate.reorders === beforeUpdate.reorders + 1
+      && afterLookup.generation === generationBefore + 1 && revisionOf(afterLookup) === "2"
+      && (await request("hd_status")).dictionaryCount === loadedCount + 1
+      && updatedState.dictionaries.filter((entry) => entry.id === installedPackage.id).length === 1
+      && (await memoryRow(title)).map((entry) => entry.path).join() === updatedPackage.path
+      && rootsBefore.includes(oldRoot) && !rootsAfter.includes(oldRoot) && rootsAfter.includes(newRoot),
+    JSON.stringify({ statusDuring, duringTarget: revisionOf(duringTarget), duringOther: duringOther.ok, nativeDuring, beforeUpdate,
+      afterUpdate, updated, updatedPackage, rootsBefore, rootsAfter, afterLookup: revisionOf(afterLookup) }),
+  );
+
+  // The importer fails: nothing in the engine changes and its debris is removed.
+  const beforeFailure = snapshot();
+  const generationBeforeFailure = (await request("hd_status")).generation;
+  importerFailure = new Error("injected import worker failure");
+  const failedImport = await request("hd_import", { blobUrl: createObjectURL(archive(3)), fileName: `${title}.zip` });
+  importerFailure = null;
+  const brokenReport = await request("hd_import", { blobUrl: createObjectURL(new Uint8Array(buildNotAZip())), fileName: "broken.zip" });
+  const afterFailure = snapshot();
+  const stateAfterFailure = await storedDictionaryState();
+  check(
+    "a failed isolated import leaves the engine untouched and removes its generation root",
+    failedImport.ok === false && failedImport.error.includes("injected import worker failure")
+      && brokenReport.ok === false && brokenReport.report?.success === false
+      // The broken archive reached the native importer; the loaded set did not move.
+      && JSON.stringify(afterFailure) === JSON.stringify({ ...beforeFailure, imports: beforeFailure.imports + 1 })
+      && (await request("hd_status")).generation === generationBeforeFailure
+      && revisionOf(await request("hd_lookup", { text: query })) === "2"
+      && JSON.stringify(stateAfterFailure) === JSON.stringify(updatedState)
+      && JSON.stringify(generationRoots()) === JSON.stringify(rootsAfter)
+      && failedRoot !== null && !stageEngine.FS.analyzePath(failedRoot).exists,
+    JSON.stringify({ failedImport, brokenReport, beforeFailure, afterFailure, failedRoot, roots: generationRoots() }),
+  );
+
+  // The commit conflicts: the new package is unloaded again, the old one kept.
+  conflictCas = true;
+  const beforeConflict = snapshot();
+  const conflicted = await request("hd_import", { blobUrl: createObjectURL(archive(3)), fileName: `${title}.zip` });
+  conflictCas = false;
+  const afterConflict = snapshot();
+  const stateAfterConflict = await storedDictionaryState();
+  const conflictLookup = await request("hd_lookup", { text: query });
+  check(
+    "an isolated update whose commit conflicts unloads the new generation and keeps the committed one",
+    conflicted.ok === false && conflicted.error.includes("injected commit conflict") && casConflicts === 3
+      && JSON.stringify(stateAfterConflict) === JSON.stringify(updatedState)
+      && afterConflict.resets === beforeConflict.resets
+      && afterConflict.removes === beforeConflict.removes + 2 && afterConflict.adds === beforeConflict.adds + 2
+      && conflictLookup.ok === true && revisionOf(conflictLookup) === "2"
+      && (await memoryRow(title)).map((entry) => entry.path).join() === updatedPackage.path
+      && JSON.stringify(generationRoots()) === JSON.stringify(rootsAfter)
+      && (await request("hd_status")).ok === true,
+    JSON.stringify({ conflicted, casConflicts, beforeConflict, afterConflict, conflictLookup: revisionOf(conflictLookup), roots: generationRoots() }),
+  );
+  await request("hd_remove", { id: installedPackage.id, title });
 }
 
 /* ------------------------------------------------------- renderer integration stage */
