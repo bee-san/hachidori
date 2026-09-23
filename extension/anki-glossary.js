@@ -11,10 +11,15 @@ function plainText(node) {
 
 function imageSize(image, value) {
   const units = value.sizeUnits === "em" ? "em" : "px";
+  const positive = size => Number.isFinite(size) && size > 0;
+  const preferred = { width: value.preferredWidth, height: value.preferredHeight };
+  // HTML width/height attributes are CSS pixels, so only a pixel-sized image can
+  // use them. An em-sized image (sankoku8's 0.5em × 1em pitch-accent mark, #325)
+  // carries its declared size as CSS instead of becoming a 0.5px × 1px image.
+  const styled = positive(preferred.width) || positive(preferred.height) ? preferred : units === "em" ? value : {};
   for (const dimension of ["width", "height"]) {
-    if (Number.isFinite(value[dimension]) && value[dimension] > 0) image.setAttribute(dimension, String(value[dimension]));
-    const preferred = value[dimension === "width" ? "preferredWidth" : "preferredHeight"];
-    if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${units}`;
+    if (units === "px" && positive(value[dimension])) image.setAttribute(dimension, String(value[dimension]));
+    if (positive(styled[dimension])) image.style[dimension] = `${styled[dimension]}${units}`;
   }
   if (image.style.width && !image.style.height) image.style.height = "auto";
   else if (image.style.height && !image.style.width) image.style.width = "auto";
