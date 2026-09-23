@@ -2518,17 +2518,8 @@ html[data-hoshidicts-theme="girlypop"],
   z-index: 2147483647;
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
   display: inline-block;
+  overflow: hidden;
   line-height: 0;
-  pointer-events: none;
-}
-
-.gsm-hoshidicts-image-hover-preview img {
-  display: block;
-  width: min(92vw, calc(var(--gsm-hoshidicts-popup-width, 560px) + 360px));
-  height: min(92vh, calc(var(--gsm-hoshidicts-popup-height, 420px) + 360px));
-  max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
-  box-sizing: border-box;
   border: 1px solid color-mix(
     in srgb,
     var(--hoshidicts-palette-base-content) 30%,
@@ -2541,17 +2532,45 @@ html[data-hoshidicts-theme="girlypop"],
     transparent
   );
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.72), 0 4px 20px rgba(0, 0, 0, 0.55);
-  object-fit: contain;
+  pointer-events: none;
+}
+
+/* The frame above stays unanimated: positionImagePreview measures the preview
+   box as soon as it is attached, and a scale keyframe on the measured element
+   would place the full-size preview outside the viewport. */
+.gsm-hoshidicts-image-hover-preview img,
+.gsm-hoshidicts-image-hover-preview[data-appearance="monochrome"]::after {
   animation: gsm-hoshidicts-image-emerge 150ms ease-out both;
 }
 
+.gsm-hoshidicts-image-hover-preview img {
+  display: block;
+  width: min(92vw, calc(var(--gsm-hoshidicts-popup-width, 560px) + 360px));
+  height: min(92vh, calc(var(--gsm-hoshidicts-popup-height, 420px) + 360px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  object-fit: contain;
+}
+
 .gsm-hoshidicts-image-hover-preview[data-image-rendering="pixelated"] img,
-.gsm-hoshidicts-image-hover-preview[data-image-rendering="crisp-edges"] img {
+.gsm-hoshidicts-image-hover-preview[data-image-rendering="pixelated"]::after,
+.gsm-hoshidicts-image-hover-preview[data-image-rendering="crisp-edges"] img,
+.gsm-hoshidicts-image-hover-preview[data-image-rendering="crisp-edges"]::after {
   image-rendering: pixelated;
 }
 
 .gsm-hoshidicts-image-hover-preview[data-appearance="monochrome"] img {
-  filter: grayscale(1) opacity(0.72) brightness(1.8);
+  visibility: hidden;
+}
+
+.gsm-hoshidicts-image-hover-preview[data-appearance="monochrome"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* The preview is a sibling of .gsm-hoshidicts-popup: it sees the palette on
+     :host but not the popup's --text-color alias. */
+  background: var(--hoshidicts-palette-base-content);
+  mask: var(--image) center / contain no-repeat;
 }
 
 @keyframes gsm-hoshidicts-image-emerge {
@@ -2560,7 +2579,8 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gsm-hoshidicts-image-hover-preview img {
+  .gsm-hoshidicts-image-hover-preview img,
+  .gsm-hoshidicts-image-hover-preview[data-appearance="monochrome"]::after {
     animation: none;
   }
 }
@@ -2641,12 +2661,22 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gloss-image-link[data-image-rendering="pixelated"] .gloss-image,
-.gloss-image-link[data-image-rendering="crisp-edges"] .gloss-image {
+.gloss-image-link[data-image-rendering="pixelated"] .gloss-image-background,
+.gloss-image-link[data-image-rendering="crisp-edges"] .gloss-image,
+.gloss-image-link[data-image-rendering="crisp-edges"] .gloss-image-background {
   image-rendering: pixelated;
 }
 
+/* A monochrome image is drawn in the text colour: the background layer paints
+   var(--text-color) through the image's alpha once the media reply has set its
+   --image. The <img> stays laid out but unpainted, as it remains the load and
+   error target, the keyboard focus anchor and the preview's source. */
 .gloss-image-link[data-appearance="monochrome"] .gloss-image {
-  filter: grayscale(1) opacity(0.72) brightness(1.8);
+  visibility: hidden;
+}
+
+.gloss-image-link[data-appearance="monochrome"][data-image-load-state="loaded"] .gloss-image-background {
+  display: block;
 }
 
 .gloss-image-link-text {

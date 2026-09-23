@@ -1095,7 +1095,7 @@ async function popupReader(page, depth = 0) {
             hiddenFromAccessibility: preview.getAttribute("aria-hidden"),
             pointerEvents: view.getComputedStyle(preview).pointerEvents,
             animation: view.getComputedStyle(expanded).animationName,
-            background: view.getComputedStyle(expanded).backgroundColor,
+            background: view.getComputedStyle(preview).backgroundColor,
           } : null,
         };
       }`,
@@ -4014,6 +4014,8 @@ async function monochromeImageChrome({ page, tab, popup }) {
   try {
     await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
     dark = await render("default");
+    // The preview emerges through an opacity animation; sample it fully opaque.
+    await tab.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
     const inline = (await popup.imagePreview(0)).sourceRect;
     let nudges = 0;
     const deadline = Date.now() + 6000;
@@ -4033,6 +4035,7 @@ async function monochromeImageChrome({ page, tab, popup }) {
     await tab.mouse.move(1, 1);
     light = await render("solarized-light");
   } finally {
+    await tab.emulateMediaFeatures([]);
     await setPopupTheme(page, originalTheme);
   }
   check("monochrome dictionary images paint in the palette text colour in the card and its preview",

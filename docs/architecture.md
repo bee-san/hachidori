@@ -1484,7 +1484,9 @@ the palette without being clipped by the glossary card or popup scrollport.
 The preview copies the original image's exact current source and alt text; it
 does not resolve media again or change inline dimensions. The shared positioning
 function clamps it to the viewport with an 8-pixel margin. Pixelated and
-monochrome presentation are retained, and reduced motion disables the animation.
+monochrome presentation are retained: a monochrome image is drawn in the palette
+text colour by a layer masked with the image, in the card and in the preview.
+Reduced motion disables the animation.
 
 Each popup owns one requested preview image, including a still-loading image.
 A load may resume only that current intent: it cannot replace a newer
