@@ -104,6 +104,9 @@ changing and may be removed:
 - **MDX dictionaries** — import MDict `.mdx` dictionaries with their `.mdd`
   resource files from **Add dictionaries**, next to Yomitan ZIPs. Choose the
   `.mdx` and its `.mdd` files together.
+- **Google Docs** — look up words while reading a Google Doc. Docs paints its
+  text to a canvas; Hachidori asks it to expose the text as well, which Google
+  may change or remove without notice. The sentence is the hovered run of text.
 
 
 # Opinionated

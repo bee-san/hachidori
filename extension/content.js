@@ -849,11 +849,135 @@
     return range.toString().length;
   }
 
+  // Google Docs paints text to <canvas>. While Settings → Advanced →
+  // Experimental features → Google Docs is on, background.js has Docs draw its
+  // SVG annotation layer as well (google-docs-flag.js): one <rect aria-label>
+  // per run of text, with the run's position, transform and font, but still no
+  // text node. The reader lays an invisible SVG <text> imposter over the hovered
+  // rect and scans that, as Yomitan's google-docs-util does.
+  const GOOGLE_DOCS_HOST = location.hostname === "docs.google.com";
+  const DOCS_RECT_SELECTOR = ".kix-canvas-tile-content svg>g>rect";
+  let docsProbeStyle = null;
+  // One imposter per hovered rect: repeated moves over the same run keep
+  // sameAnchorNode() true, so they share the pending lookup and the popup.
+  let docsImposter = null;
+
+  function docsEnabled() {
+    return GOOGLE_DOCS_HOST && options.experimental.googleDocs === true;
+  }
+
+  function releaseDocsImposter() {
+    docsImposter?.text.remove();
+    docsImposter = null;
+  }
+
+  function releaseDocsProbe() {
+    releaseDocsImposter();
+    docsProbeStyle?.remove();
+    docsProbeStyle = null;
+  }
+
+  /** The annotation rect under the pointer, or null. The tiles are only hit-testable while the probe style is on. */
+  function docsRectAt(clientX, clientY) {
+    if (!docsProbeStyle) {
+      docsProbeStyle = document.createElement("style");
+      docsProbeStyle.textContent = ".kix-canvas-tile-content{pointer-events:none!important}"
+        + ".kix-canvas-tile-content svg>g>rect{pointer-events:all!important}";
+      (document.head || document.documentElement).append(docsProbeStyle);
+    }
+    docsProbeStyle.disabled = false;
+    const element = document.elementFromPoint(clientX, clientY);
+    docsProbeStyle.disabled = true;
+    return element?.matches(DOCS_RECT_SELECTOR) && element.getAttribute("aria-label") ? element : null;
+  }
+
+  /** The SVG <text> carrying `rect`'s run at its position, transform and font; invisible and not hit-testable. */
+  function docsImposterFor(rect) {
+    const run = rect.getAttribute("aria-label");
+    if (docsImposter?.rect === rect && docsImposter.text.isConnected && docsImposter.node.nodeValue === run) {
+      return docsImposter;
+    }
+    releaseDocsImposter();
+    const node = document.createTextNode(run);
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    for (const name of ["x", "y"]) {
+      if (rect.hasAttribute(name)) text.setAttribute(name, rect.getAttribute(name));
+    }
+    text.append(node);
+    const transform = rect.getAttribute("transform") || "";
+    const important = (property, value) => text.style.setProperty(property, value, "important");
+    important("all", "initial");
+    important("transform", transform);
+    important("font", rect.getAttribute("data-font-css") || "");
+    important("text-anchor", "start");
+    rect.parentNode.append(text);
+    // Docs positions the rect by its box and the <text> by its baseline.
+    const box = rect.getBoundingClientRect();
+    const drawn = text.getBoundingClientRect();
+    const dy = ((box.top - drawn.top) + (box.bottom - drawn.bottom)) / 2;
+    important("transform", `translate(0px,${dy}px) ${transform}`);
+    important("opacity", "0");
+    important("pointer-events", "none");
+    docsImposter = { rect, text, node };
+    return docsImposter;
+  }
+
+  /** The offset of the glyph under the pointer, found by bisecting the imposter's client rects. */
+  function docsOffsetAt(node, clientX, clientY) {
+    const range = document.createRange();
+    let start = 0;
+    let end = node.nodeValue.length;
+    while (end - start > 1) {
+      const mid = (start + end) >> 1;
+      range.setStart(node, mid);
+      range.setEnd(node, end);
+      const hit = [...range.getClientRects()].some(rect =>
+        clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom);
+      if (hit) start = mid; else end = mid;
+    }
+    // Bisection can land on the low surrogate of a wide glyph.
+    if (start > 0 && (node.nodeValue.charCodeAt(start) & 0xfc00) === 0xdc00) start -= 1;
+    return start;
+  }
+
+  function resolveDocsCandidate(clientX, clientY) {
+    const rect = docsRectAt(clientX, clientY);
+    if (!rect) return null;
+    const { text, node } = docsImposterFor(rect);
+    const styleCache = new Map();
+    // The imposter lives inside Docs' <svg>, which the page scan treats as
+    // opaque, so it is scanned with the <text> itself as the root: the walk
+    // ends with its one text node and never crosses into the rest of the tile.
+    const entries = collectScanEntries(node, docsOffsetAt(node, clientX, clientY), text, scanWindow(), styleCache);
+    if (entries.length === 0) return null;
+    const query = entries.map((entry) => entry.text).join("");
+    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) return null;
+    const first = entries[0];
+    const anchorRange = document.createRange();
+    anchorRange.setStart(node, first.offset);
+    anchorRange.setEnd(node, Math.min(node.nodeValue.length, first.offset + first.sourceLength));
+    // `sourceElements` is the run's one text node, so the sentence and the
+    // highlight work in the run as they do in a page's text nodes.
+    return withSentence({
+      anchor: text,
+      anchorRange,
+      query,
+      scanEntries: entries,
+      sourceDepth: -1,
+      sourceElements: [node],
+      vertical: false,
+    }, first.offset, first.sourceLength, styleCache);
+  }
+
   /**
    * Builds a candidate for the caret at (clientX, clientY), or null when there
    * is nothing Japanese to look up there.
    */
   function resolveCandidate(clientX, clientY) {
+    if (docsEnabled()) {
+      const docs = resolveDocsCandidate(clientX, clientY);
+      if (docs) return docs;
+    }
     const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE
@@ -1250,6 +1374,7 @@
     }
     appearance?.destroy();
     customStyle?.destroy();
+    releaseDocsProbe();
     host?.remove();
     host = null;
     shadow = null;
@@ -4016,6 +4141,7 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
     if (customButtonsChanged) {
       for (const level of levels) level.view?.setCustomButtons(options.customButtons);
     }

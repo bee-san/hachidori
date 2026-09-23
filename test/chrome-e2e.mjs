@@ -262,6 +262,7 @@ const PLANNED = [
   "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
+  "the Google Docs flag registers its document_start MAIN-world script only while on",
   LIBRARY_NAVIGATION_CHECK,
   SETTINGS_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
@@ -11073,6 +11074,33 @@ async function main() {
   // Media capture is experimental: its section joins the navigation only after
   // the Advanced switch is on, so the layout sweep turns it on first.
   await showSettingsSection(page, "advanced");
+  // The Google Docs switch registers a MAIN-world script for docs.google.com
+  // from the service worker; the extension page can read the registry itself.
+  const docsScripts = () => page.evaluate(() =>
+    chrome.scripting.getRegisteredContentScripts({ ids: ["hachidori-google-docs"] }));
+  const docsRegistered = async (expected) => {
+    const deadline = Date.now() + 10_000;
+    let scripts = await docsScripts();
+    while ((scripts.length > 0) !== expected && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      scripts = await docsScripts();
+    }
+    return scripts;
+  };
+  const docsBefore = await docsScripts();
+  await page.click("#opt-experimental-googleDocs");
+  const docsOn = await docsRegistered(true);
+  await page.click("#opt-experimental-googleDocs");
+  const docsOff = await docsRegistered(false);
+  const [docsScript] = docsOn;
+  check(
+    "the Google Docs flag registers its document_start MAIN-world script only while on",
+    docsBefore.length === 0 && docsOn.length === 1 && docsOff.length === 0
+      && docsScript.matches.join() === "*://docs.google.com/*" && docsScript.runAt === "document_start"
+      && docsScript.world === "MAIN" && docsScript.allFrames === true
+      && docsScript.js.length === 1 && docsScript.js[0].endsWith("google-docs-flag.js"),
+    JSON.stringify({ docsBefore, docsOn, docsOff }),
+  );
   await page.click("#opt-experimental-mediaMining");
   await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden
     && document.getElementById("options-status").textContent.trim() === "Saved.", { timeout: 10_000, polling: 100 });

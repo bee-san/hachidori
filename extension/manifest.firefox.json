@@ -13,6 +13,7 @@
   "permissions": [
     "alarms",
     "downloads",
+    "scripting",
     "storage",
     "unlimitedStorage",
     "<all_urls>"

@@ -120,6 +120,11 @@ the service worker and both engine runtimes run the same code.
   and downloads the compatible `.ankiaddon` release from
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
+- **Google Docs.** `google-docs.js` registers `google-docs-flag.js` from the
+  service worker while the experimental flag is on: a `document_start`
+  main-world script on `docs.google.com` that asks Docs to draw its SVG
+  annotation layer, which `content.js` then scans through an SVG `<text>`
+  imposter.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `settings-theme.js` is the classic script in its `<head>` that applies the
   saved theme before the first paint, ahead of the `settings.js` module;

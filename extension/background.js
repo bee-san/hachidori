@@ -68,6 +68,7 @@ import {
   advanceSetupState, capabilityAnkiOptions, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 import { applyCustomJavaScript } from "./custom-javascript.js";
+import { applyGoogleDocsFlag } from "./google-docs.js";
 
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseOptions, projectStoredOptions,
@@ -2012,6 +2013,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
   void reconcileAnkiIndex();
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
+  void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
   const lowMemoryMode = normaliseOptions(changes[OPTIONS_KEY].newValue).lowMemoryMode;
   if (lowMemoryMode === normaliseOptions(changes[OPTIONS_KEY].oldValue).lowMemoryMode) return;
   // Sent to the offscreen document only if it exists: a document created later
@@ -3371,8 +3373,11 @@ sharingReady = initialiseSharing().catch((error) => {
 });
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
-void chrome.storage.local.get(OPTIONS_KEY).then(stored =>
-  applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).customPopupJavascript));
+void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
+  const options = normaliseOptions(stored[OPTIONS_KEY]);
+  void applyCustomJavaScript(chrome, options.customPopupJavascript);
+  void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
+});
 
 if (OVERLAY_MODE) {
   seedOverlayModeOptions().catch((error) => {

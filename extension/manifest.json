@@ -15,6 +15,7 @@
     "alarms",
     "downloads",
     "offscreen",
+    "scripting",
     "storage",
     "unlimitedStorage",
     "userScripts"

@@ -401,6 +401,32 @@ async function main() {
       extensionProtocol: "moz-extension:",
     });
 
+    // Firefox 128+ accepts a MAIN-world registration through browser.scripting
+    // in MV2, so the Google Docs flag needs no xray fallback: toggling it in
+    // Settings registers and unregisters the flag script.
+    await execute(`location.hash = "#advanced";`);
+    const docsScripts = () => execute(`
+      const done = arguments[arguments.length - 1];
+      browser.scripting.getRegisteredContentScripts({ ids: ["hachidori-google-docs"] }).then(done);
+    `, [], true);
+    const docsRegistered = async (expected) => {
+      let scripts = await docsScripts();
+      for (let attempt = 0; attempt < 50 && (scripts.length > 0) !== expected; attempt += 1) {
+        await sleep(100);
+        scripts = await docsScripts();
+      }
+      return scripts;
+    };
+    assert.deepEqual(await docsScripts(), []);
+    await execute(`document.getElementById("opt-experimental-googleDocs").click();`);
+    const docsOn = await docsRegistered(true);
+    assert.equal(docsOn.length, 1, "the Google Docs flag script was not registered");
+    assert.deepEqual({ matches: docsOn[0].matches, runAt: docsOn[0].runAt, world: docsOn[0].world, allFrames: docsOn[0].allFrames },
+      { matches: ["*://docs.google.com/*"], runAt: "document_start", world: "MAIN", allFrames: true });
+    assert.ok(docsOn[0].js.some(path => path.endsWith("google-docs-flag.js")), JSON.stringify(docsOn[0].js));
+    await execute(`document.getElementById("opt-experimental-googleDocs").click();`);
+    assert.deepEqual(await docsRegistered(false), []);
+
     // The shortcuts button must reach Firefox's Manage Extension Shortcuts
     // view, which lives in about:addons and is only reachable through
     // commands.openShortcutSettings(). Its controller mounts with the section.
@@ -588,7 +614,7 @@ async function main() {
     console.log(
       `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension}, first-run setup,`
         + ` ${engine.storageBackend} import/lookup,`
-        + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI,`
+        + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI, Google Docs flag script registration,`
         + ` shortcuts manager, local-file instructions,`
         + ` Anki status, pronunciation fetched and ${audioOutcome}, backup round-trip, sharing status and screenshot passed.`
         + ` Settings: ${settingsUrl}; toolbar: ${toolbarUrl}`,
