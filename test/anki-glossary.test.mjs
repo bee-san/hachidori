@@ -74,6 +74,35 @@ test("plain Anki definitions omit decorative link icons and preferred image size
   assert.equal(tall.style.width, "auto");
 });
 
+test("Anki export sizes em images with CSS in em while pixel and unitless images keep their width/height attributes", async t => {
+  const { document, request } = fixture(t);
+  request.term.glossaries = [{ dictionary: "B", glossary: JSON.stringify([{ type: "structured-content", content: [
+    // sankoku8's pitch-accent mark: HTML width/height attributes are CSS pixels, so
+    // "0.5" × "1" would be a sub-pixel image on the Anki note.
+    { tag: "img", path: "image.png", width: 0.5, height: 1, sizeUnits: "em" },
+    { tag: "img", path: "image.png", width: 200, height: 100, preferredWidth: 2, sizeUnits: "em" },
+    { tag: "img", path: "image.png", width: 200, height: 100, sizeUnits: "px" },
+    { tag: "img", path: "image.png", width: 200, height: 100 },
+  ] }]) }];
+  const holder = document.createElement("div");
+  holder.innerHTML = await createAnkiDefinitionRenderer(document, request)({});
+  const [accent, preferred, pixels, unitless] = holder.querySelectorAll("img");
+  assert.equal(accent.style.width, "0.5em");
+  assert.equal(accent.style.height, "1em");
+  assert.equal(accent.getAttribute("width"), null);
+  assert.equal(accent.getAttribute("height"), null);
+  assert.equal(preferred.style.width, "2em");
+  assert.equal(preferred.style.height, "auto");
+  assert.equal(preferred.getAttribute("width"), null);
+  assert.equal(preferred.getAttribute("height"), null);
+  for (const image of [pixels, unitless]) {
+    assert.equal(image.getAttribute("width"), "200");
+    assert.equal(image.getAttribute("height"), "100");
+    assert.equal(image.style.width, "");
+    assert.equal(image.style.height, "");
+  }
+});
+
 test("serialized dictionary CSS cannot close its HTML style element and existing CSS escapes stay intact", async t => {
   const { document, request } = fixture(t);
   const original = globalThis.HDGlossary.applyDictionaryStyles;

@@ -5453,6 +5453,9 @@ async function checkAnkiGlossaryExport(page) {
           { tag: "strong", content: "Scoped definition" },
           { tag: "img", path: "image.png", width: 200, height: 100, preferredWidth: 400 },
           { tag: "img", path: "image.png", width: 200, height: 100, preferredHeight: 200 },
+          // sankoku8's pitch-accent mark (#325): an em-sized image must measure in
+          // em on the note, not as a 0.5px × 1px presentational width/height.
+          { tag: "img", path: "image.png", width: 0.5, height: 1, sizeUnits: "em" },
         ] },
       ]) }] }, trace: [], dictionaryAliases: {}, generation: 1,
       dictionaryMedia: [{ dictionary, path: "image.png", filename: "hd-anki-inert-image.png" }],
@@ -5462,14 +5465,14 @@ async function checkAnkiGlossaryExport(page) {
       const inert = document.implementation.createHTMLDocument("");
       inert.body.innerHTML = html;
       const images = [...inert.querySelectorAll("img")];
-      const safe = images.length === 2 && !inert.querySelector("[onerror], script")
+      const safe = images.length === 3 && !inert.querySelector("[onerror], script")
         && images.every(image => image.getAttribute("src") === "hd-anki-inert-image.png");
       if (!safe) return { safe, html };
       // Only now mount a copy, replacing planned Anki filenames with a local
       // image so layout is measured without fetching the exported media.
       for (const image of images) image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"></svg>');
       const holder = document.createElement("div");
-      holder.style.cssText = "width: 1000px; color: rgb(0, 0, 0);";
+      holder.style.cssText = "width: 1000px; color: rgb(0, 0, 0); font-size: 20px;";
       holder.append(...inert.body.childNodes);
       const outside = document.createElement("strong");
       outside.className = "gloss-sc-strong";
@@ -5486,7 +5489,9 @@ async function checkAnkiGlossaryExport(page) {
     });
     check("Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
       result.safe && result.color === "rgb(17, 34, 51)" && result.outsideColor === "rgb(0, 0, 0)"
-        && result.sizes.every(([width, height]) => width === 400 && height === 200)
+        && result.sizes.length === 3
+        && result.sizes.slice(0, 2).every(([width, height]) => width === 400 && height === 200)
+        && result.sizes[2][0] === 10 && result.sizes[2][1] === 20
         && imageRequests.length === 0, JSON.stringify({ ...result, imageRequests }));
   } finally { page.off("request", observe); }
 }
