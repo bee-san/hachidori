@@ -5471,8 +5471,11 @@ async function checkAnkiGlossaryExport(page) {
       // Only now mount a copy, replacing planned Anki filenames with a local
       // image so layout is measured without fetching the exported media.
       for (const image of images) image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"></svg>');
+      // Settings' own stylesheet sets the glossary text size; fix the em base
+      // where the accent mark sits so its measurement is 0.5em × 1em of 20px.
+      images[2].parentElement.style.fontSize = "20px";
       const holder = document.createElement("div");
-      holder.style.cssText = "width: 1000px; color: rgb(0, 0, 0); font-size: 20px;";
+      holder.style.cssText = "width: 1000px; color: rgb(0, 0, 0);";
       holder.append(...inert.body.childNodes);
       const outside = document.createElement("strong");
       outside.className = "gloss-sc-strong";
