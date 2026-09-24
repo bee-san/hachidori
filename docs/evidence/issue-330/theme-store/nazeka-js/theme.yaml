@@ -2,10 +2,10 @@
 schema: 1
 slug: nazeka
 name: Nazeka
-version: 1.0.0
+version: 1.1.0
 author: bee-san
 link: https://github.com/wareya/nazeka
-description: Nazeka's dense popup — #111111 background, cyan headword with the reading beside it, 13 px glosses, and nothing else. The JS removes the top bar and flattens the cards.
+description: Nazeka's popup as texthook.js draws it — #111111 box with a 1 px #cccccc frame, 18 px cyan headword with 《reading》, the looked-up sentence at the right, 13 px senses as "(pos) (1) gloss; gloss", kanji mode as plain lines. Only the audio and Anki buttons stay.
 tags: [dark, compact, classic, nazeka]
 license: GPL-3.0-or-later
 minHachidoriVersion: 0.1.7
@@ -34,10 +34,25 @@ css: theme.css
 js:                      # bundled-only: shipped inside the Hachidori release, never fetched at runtime
   file: theme.js
   hooks: [onRender]
-  summary: Moves the headword and reading into the body, removes the top bar, hides tags, frequency, pitch, images and dictionary titles.
+  summary: Rebuilds each entry as Nazeka's rows (looked-up text, 「headword」《reading》～deconjugation #frequency, compact senses; kanji mode lines), moves the audio and Anki buttons inline and hides the rest of the top bar.
 options:                 # one-shot suggestions applied on activation, with Undo
   popupOpacityPercent: 100
   popupColumns: 1
 screenshot: screenshot.png
 preview:
   swatches: ["#111111", "#cccccc", "#99ddff", "#99ff99"]
+benchmark:               # benchmark/hover-popup.mjs, this theme vs default, same Chrome and archives (see "How to benchmark a theme")
+  harness: hover-popup.mjs
+  harnessCommit: fc3eb73053be4851e68217de22cacd8e36a14935   # Hachidori commit the harness and reader came from
+  chrome: 152.0.7977.75
+  sessions: 5
+  measuredAt: 2026-09-24
+  onRenderP95Ms: 0.3     # 280 hook calls; budget 2
+  onRenderMaxMs: 0.6
+  hoverCompleteMedianMs: { default: 33.2, theme: 33.3 }   # 食べる, warm
+  longEntryCompleteMedianMs: { default: 33.3, theme: 33.3 }   # 漢字 with 24 senses
+  deepEntryCompleteMedianMs: { default: 33.3, theme: 33.3 }   # 深層, 40 nested elements
+  kanjiOpenMedianMs: { default: 3.4, theme: 4.1 }          # click → kanji view in the DOM
+  coldFirstMedianMs: { default: 38.5, theme: 41.1 }        # first hover of a fresh profile
+  heapDeltaMiB: 0.33
+  results: https://github.com/bee-san/hachidori/blob/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/benchmark/run2/summary.md

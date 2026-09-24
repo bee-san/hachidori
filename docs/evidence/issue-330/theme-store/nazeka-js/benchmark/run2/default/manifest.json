@@ -1,0 +1,52 @@
+{
+  "revision": "fc3eb73053be4851e68217de22cacd8e36a14935",
+  "node": "v22.23.1",
+  "cpu": "Intel(R) Xeon(R) Platinum 8488C",
+  "logicalCpus": 16,
+  "load": [
+    8.57,
+    9.78,
+    16.21
+  ],
+  "settings": {
+    "hoverEnabled": true,
+    "lookupMode": "hover",
+    "hoverDelayMs": 0,
+    "popupNestingMaxDepth": 2,
+    "popupWidthPx": 520,
+    "popupHeightPx": 500,
+    "popupColumns": 1,
+    "maxResults": 32,
+    "definitionBlurEnabled": false,
+    "showCompactDefinitionSummary": true,
+    "compactDefinitionSummaryCount": 3
+  },
+  "words": [
+    "食べる",
+    "漢字",
+    "深層"
+  ],
+  "extensionSha256": "14d7bdbe1b24c55a7f1f48e5416b6693b48c65f8d41fe5c77246cd3a168605ae",
+  "samples": 5,
+  "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+  "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+  "probeSha256": "bea62cc4ac10fdd927603f7c4120a3af522ff85b2c3f50c7c3b0e0cd601d9719",
+  "harnessSha256": "ff37019e2abd30b9f20f69abd82e4f42064b3312085b31765ed5580f9b60c40a",
+  "archives": [
+    {
+      "path": "/tmp/theme-bench/run2/hover-popup-fixture.zip",
+      "bytes": 631,
+      "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
+    },
+    {
+      "path": "/tmp/theme-bench/run2/theme-bench-senses.zip",
+      "bytes": 912,
+      "sha256": "190d78a71ae8f636b5c21739313989cc124ddaadbaff50c48847d4c601b4a26e"
+    },
+    {
+      "path": "/tmp/theme-bench/run2/theme-bench-kanji.zip",
+      "bytes": 574,
+      "sha256": "3175f2b9c8b424dcf24c8309b8dcbc027d62343e604bfbdd780a7c9a1539f345"
+    }
+  ]
+}

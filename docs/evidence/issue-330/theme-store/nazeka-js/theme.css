@@ -1,12 +1,23 @@
-/* themes/nazeka/theme.css — Nazeka after wareya/nazeka texthook.js defaults (8b220fb):
- * bgcolor #111111, fgcolor #CCCCCC, hlcolor #99DDFF, hlcolor2 #99FF99, titlecolor #D8A888,
- * dict_item_fontsize 18, reading_fontsize 15, definition_fontsize 13, padding 2,
- * 1px border in fgcolor, 2px radius, no drop shadow, <hr> at 25 % opacity.
+/* themes/nazeka/theme.css — Nazeka (wareya/nazeka 8b220fb), default settings.
  *
- * The palette block below is what `build-index.mjs` generates from theme.yaml;
- * the rest is this theme's own CSS. Structure (moving the headword into the body,
- * removing the top bar, hiding tags/frequency/pitch/images) is theme.js's job;
- * anything it hides carries data-theme-hidden, which this file collapses. */
+ * Source of every value, texthook.js unless noted:
+ *   :5-81   defaults  bgcolor #111111 · fgcolor #CCCCCC · hlcolor #99DDFF · hlcolor2 #99FF99
+ *                     dict_item_fontsize 18 · reading_fontsize 15 · definition_fontsize 13
+ *                     padding 2 · width 600 · corner 0 · compact true · info_styling false
+ *   :219-221 box      outer: bg #111, radius 3px · middle: 1px solid #111, radius 2.5px
+ *                     inner: 1px solid #ccc, radius 2px, padding 2px, "Arial, sans-serif", 13px
+ *   :592-641 style    .nazeka_main_keb/.nazeka_main_reb 18px hlcolor, nowrap,
+ *                       "IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif"
+ *                     .nazeka_sub_reb 15px hlcolor2 · .nazeka_sub_keb 15px
+ *                     .nazeka_original float right, margin 0 2px 0 4px, opacity .7
+ *                     .jmdict_definitions / .json_definition margin 0 4px 6px · .kanji_info 2px 4px
+ *   :440-521 senses   compact: "(pos) (1) gloss; gloss; (2) …" as plain inline text
+ *   :765-768 entries  .nazeka_word_container margin-bottom 3px, no separators
+ *   :1030-1039 freq   80 % size, margin-top 4px, opacity .7, margin-left 5px
+ *
+ * The palette block is generated from theme.yaml. Structure (the original-text
+ * row, 《reading》, deconjugation, the kanji lines, moving the buttons) is
+ * theme.js's job; anything it hides carries data-theme-hidden. */
 
 :host([data-hoshidicts-theme="nazeka"]) {
   --hoshidicts-palette-color-scheme: dark;
@@ -29,70 +40,186 @@
   --hoshidicts-palette-error: #ff7070;
 }
 
-/* The popup box: content-sized, hard 1 px border, no glass. */
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-popup {
-  --hoshidicts-border: color-mix(in srgb, var(--hoshidicts-palette-base-content) 25%, transparent);
-  --hoshidicts-border-strong: var(--hoshidicts-palette-base-content);
-  --hoshidicts-card-background: transparent;
-  height: auto !important;                       /* Nazeka hugs its content … */
-  max-height: var(--gsm-hoshidicts-popup-height, 420px); /* … up to the Design height */
-  border: 1px solid var(--hoshidicts-border-strong);
-  border-radius: 2px;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  font-family: "IPAGothic", "TakaoGothic", "Noto Sans CJK JP", "Meiryo", sans-serif;
-  font-size: 13px;
-  line-height: 1.3;
-}
-
 :host([data-hoshidicts-theme="nazeka"]) [data-theme-hidden] {
   display: none !important;
 }
 
+/* Box: outer #111 radius 3, then the 1 px #ccc frame with 2 px padding.
+ * Nazeka's popup shrinks to its text: min-width 150, max-width 600 (:5-81, :219). */
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-popup {
+  --hoshidicts-border: rgba(204, 204, 204, 0.25);
+  --hoshidicts-border-strong: #cccccc;
+  --hoshidicts-card-background: transparent;
+  --nazeka-jp: "IPAGothic", "TakaoGothic", "Noto Sans CJK JP Regular", "Noto Sans CJK JP", "Meiryo", sans-serif;
+  width: fit-content !important;
+  min-width: 150px;
+  max-width: min(600px, var(--gsm-hoshidicts-popup-width, 560px));
+  height: auto !important;
+  max-height: var(--gsm-hoshidicts-popup-height, 420px);
+  padding: 0;
+  border: 1px solid #111111;
+  border-radius: 3px;
+  background: #111111;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #cccccc;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  line-height: normal;
+  text-align: left;
+}
+
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-content-scroll {
   flex: 0 1 auto;
-  padding: 3px 6px 5px;
+  padding: 2px;
+  border: 1px solid #cccccc;
+  border-radius: 2px;
 }
 
-/* Header built by theme.js: 「食べる」 18 px hlcolor, reading 15 px hlcolor2 beside it. */
-:host([data-hoshidicts-theme="nazeka"]) .nazeka-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 10px;
-  margin: 0 0 2px;
+/* "looked up …" row: float right, 70 % — Nazeka's .nazeka_original. The audio
+ * and Anki buttons sit in it like Nazeka's 24 px arrow/close icons (:676-716);
+ * every other action (Note, custom, close) stays hidden. */
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-original {
+  float: right;
+  margin: 0 2px 0 4px;
+  opacity: 0.7;
+  white-space: nowrap;
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .nazeka-head .gsm-hoshidicts-expression,
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
-  font-size: 18px;
-  line-height: 1.2;
-  color: var(--hoshidicts-palette-primary);
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-lookup {
+  font-weight: bold;
+  color: #99ddff;
 }
 
-/* The reading is shown inline instead of as furigana. */
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-expression rt {
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .gsm-hoshidicts-entry-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .gsm-hoshidicts-entry-actions > :not(.gsm-hoshidicts-audio-control, .gsm-hoshidicts-mine-button) {
   display: none;
 }
 
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .gsm-hoshidicts-mining-feedback {
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions button,
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #cccccc;
+  font: 12px Arial, sans-serif;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .gsm-hoshidicts-text-action-button {
+  width: auto;
+  padding: 0 4px;
+}
+
+/* Kanji mode header: "Currently in individual kanji mode. [Back]" (texthook.js:1199-1206). */
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back {
+  width: auto;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  color: #cccccc;
+  font: inherit;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back::before {
+  content: "Press [";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back::after {
+  content: "] to cancel.";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions button:hover,
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions button:focus-visible,
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back:hover,
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-mode .gsm-hoshidicts-kanji-back:focus-visible {
+  color: #ffffff;
+  background: #2a2a2a;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .hd-icon,
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-actions .gsm-hoshidicts-audio-button::before {
+  width: 18px;
+  height: 18px;
+}
+
+/* Headword row: 「食べる」 18 px hlcolor, 《reading》 15 px hlcolor2, ～deconjugation. */
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-entry {
+  margin: 0 0 3px;
+  padding: 0;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-word {
+  display: block;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-word .gsm-hoshidicts-expression {
+  font-family: var(--nazeka-jp);
+  font-size: 18px;
+  line-height: normal;
+  color: #99ddff;
+  white-space: nowrap;
+  ruby-position: over;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-word .gsm-hoshidicts-expression rt {
+  display: none;                       /* the reading is written out as 《たべる》 */
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-word .gsm-hoshidicts-kanji-link {
+  border-bottom: 0;
+}
+
 :host([data-hoshidicts-theme="nazeka"]) .nazeka-reading {
+  font-family: var(--nazeka-jp);
   font-size: 15px;
-  color: var(--hoshidicts-palette-secondary);
+  color: #99ff99;
+  white-space: nowrap;
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-headword {
-  gap: 0 10px;
-  align-items: baseline;
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-freq {
+  margin-left: 5px;
+  font-size: 80%;
+  opacity: 0.7;
 }
 
-/* Definitions: flat 13 px list, dictionaries separated by a faint rule. */
+/* Senses as Nazeka's compact text: "(vt) (1) to eat; to live on; (2) …", margin 0 4px 6px. */
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-grid {
   display: block;
   margin: 0;
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card {
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card,
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -100,78 +227,125 @@
   box-shadow: none;
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
-  margin-top: 3px;
-  padding-top: 3px;
-  border-top: 1px solid var(--hoshidicts-border);
+/* A second dictionary gets Nazeka's ―title― header; the first is shown bare like JMdict. */
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card-title {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card:not(:first-child) > .gsm-hoshidicts-glossary-card-title {
+  display: block;
+  margin: 0 4px;
+  color: #cccccc;
+  font-size: 13px;
+  user-select: text;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card:not(:first-child) > .gsm-hoshidicts-glossary-card-title::before,
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-card:not(:first-child) > .gsm-hoshidicts-glossary-card-title::after {
+  content: "―";
 }
 
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definitions {
-  margin: 0;
-  padding-left: 16px;
+  display: block;
+  margin: 0 4px 6px;
+  padding: 0;
+  list-style: none;
+  counter-reset: nazeka-sense;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definitions > li {
+  display: inline;
+  counter-increment: nazeka-sense;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definitions > li:not(:last-child)::after {
+  content: "; ";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definition-tags {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definition-tags .gsm-hoshidicts-tag {
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definition-tags .gsm-hoshidicts-tag::before {
+  content: ", ";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definition-tags .gsm-hoshidicts-tag:first-child::before {
+  content: "(";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definition-tags .gsm-hoshidicts-tag:last-child::after {
+  content: ") ";
 }
 
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content {
+  display: inline;
   font-size: 13px;
-  line-height: 1.3;
+  line-height: normal;
+  white-space: normal;
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
-  margin-top: 4px;
-  padding-top: 4px;
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-definitions > li:not(:only-child) > .gsm-hoshidicts-glossary-content::before {
+  content: "(" counter(nazeka-sense) ") ";
 }
 
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-entry-header {
-  min-height: 0;
-  gap: 0 10px;
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content .gloss-list {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content .gloss-item {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content .gloss-item:not(:last-child)::after {
+  content: "; ";
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content img,
+:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-glossary-content .gloss-image-container {
+  display: none;                       /* Nazeka has no images */
 }
 
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-show-more {
-  padding: 1px 4px;
-  font-size: 12px;
-}
-
-/* Kanji view: glyph + readings + meanings, Back as a small text link. */
-:host([data-hoshidicts-theme="nazeka"]) .nazeka-head .gsm-hoshidicts-kanji-glyph {
-  font-size: 28px;
-  line-height: 1.1;
-  color: var(--hoshidicts-palette-primary);
-}
-
-:host([data-hoshidicts-theme="nazeka"]) .nazeka-head .gsm-hoshidicts-kanji-back {
-  margin-left: auto;
-  padding: 0 4px;
+  margin: 0 4px 4px;
+  padding: 0;
   border: 0;
   background: transparent;
-  color: var(--hoshidicts-palette-accent);
+  color: #99ddff;
   font: inherit;
-  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Kanji mode: Nazeka's plain lines (texthook.js:1188-1303). */
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-glyph {
+  font-family: var(--nazeka-jp);
+  font-size: 18px;
+  color: #99ddff;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-info {
+  margin: 2px 4px 2px;
+}
+
+:host([data-hoshidicts-theme="nazeka"]) .nazeka-kanji-info .nazeka-reading {
+  font-size: 15px;
 }
 
 :host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-kanji-entry {
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-kanji-readings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 12px;
-  margin: 0;
-}
-
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-kanji-reading-group {
-  display: inline-flex;
-  gap: 0 6px;
-}
-
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-kanji-reading-group strong {
-  color: var(--hoshidicts-palette-secondary);
-  font-weight: 400;
-}
-
-:host([data-hoshidicts-theme="nazeka"]) .gsm-hoshidicts-kanji-meanings {
-  margin: 2px 0 0;
-  padding-left: 16px;
 }

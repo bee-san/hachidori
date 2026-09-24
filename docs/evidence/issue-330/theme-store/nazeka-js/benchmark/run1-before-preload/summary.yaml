@@ -1,0 +1,15 @@
+benchmark:               # benchmark/hover-popup.mjs, this theme vs default, same Chrome and archives
+  harness: hover-popup.mjs
+  harnessCommit: fc3eb73053be4851e68217de22cacd8e36a14935
+  chrome: 152.0.7977.75
+  sessions: 5
+  measuredAt: 2026-09-24
+  onRenderP95Ms: 0.3
+  onRenderMaxMs: 0.7
+  hoverCompleteMedianMs: { default: 33.2, theme: 33.3 }
+  longEntryCompleteMedianMs: { default: 33.3, theme: 33.3 }
+  deepEntryCompleteMedianMs: { default: 33.3, theme: 33.3 }
+  kanjiOpenMedianMs: { default: 3.3, theme: 4.1 }
+  coldFirstMedianMs: { default: 38.5, theme: 58.2 }
+  heapDeltaMiB: 0.36
+  results: <URL of raw.json/summary.md for this run>

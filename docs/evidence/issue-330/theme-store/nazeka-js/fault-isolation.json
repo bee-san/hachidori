@@ -1,6 +1,6 @@
 {
   "warnings": [
-    "hachidori: theme \"nazeka\" onRender threw; its JavaScript is off for this page TypeError: deliberate theme fault for the isolation check\n    at onRender (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/vendor/themes/nazeka/theme.js:3:9)\n    at runThemeHook (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:2182:7)\n    at syncTheme (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:2123:68)"
+    "hachidori: theme \"nazeka\" onRender threw; its JavaScript is off for this page TypeError: deliberate theme fault for the isolation check\n    at onRender (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/vendor/themes/nazeka/theme.js:3:9)\n    at runThemeHook (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:2197:7)\n    at bindResultActions (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:2412:5)\n    at onResultsRendered (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:2347:38)\n    at renderProjection (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/render/popup.js:4053:9)\n    at activateTab (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/render/popup.js:4013:9)\n    at Object.renderResults (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/render/popup.js:4145:7)\n    at renderTerms (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:3039:18)\n    at executeTermRequest (chrome-extension://jmlhpkbahippiijcbnneodelnmpafeon/content.js:3148:12)"
   ],
   "hookCalls": 0,
   "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
@@ -8,7 +8,7 @@
     "entries": 2,
     "chromeHidden": true,
     "nazekaHead": false,
-    "background": "color(srgb 0.0666667 0.0666667 0.0666667 / 0.85)",
+    "background": "rgb(17, 17, 17)",
     "glossSize": "13px",
     "text": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that "
   },
@@ -16,7 +16,7 @@
     "entries": 2,
     "chromeHidden": false,
     "nazekaHead": false,
-    "background": "color(srgb 0.0666667 0.0666667 0.0666667 / 0.85)",
+    "background": "rgb(17, 17, 17)",
     "glossSize": "13px",
     "text": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that "
   },

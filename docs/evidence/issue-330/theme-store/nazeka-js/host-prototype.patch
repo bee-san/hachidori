@@ -1,5 +1,5 @@
 diff --git a/extension/content.js b/extension/content.js
-index 36a3706..06da395 100644
+index 36a3706..b952e0c 100644
 --- a/extension/content.js
 +++ b/extension/content.js
 @@ -135,6 +135,15 @@
@@ -18,7 +18,7 @@ index 36a3706..06da395 100644
    let audio, mining;
    let options = { ...DEFAULT_OPTIONS };
    let dictionaries = [];
-@@ -2066,6 +2075,121 @@
+@@ -2066,6 +2075,147 @@
      }
    }
  
@@ -47,14 +47,20 @@ index 36a3706..06da395 100644
 +    return Object.hasOwn(THEME_JS, options.popupTheme) ? options.popupTheme : null;
 +  }
 +
++  // Loads the active theme's CSS and module as soon as the options name it —
++  // at content-script start, not at the first popup — so the first hover on a
++  // page renders themed without waiting on a fetch and a dynamic import
++  // (measured: +20 ms first frame / +34 ms complete on the cold hover when the
++  // load started at buildUi; see docs/evidence/issue-330/theme-store/nazeka-js/benchmark).
 +  async function syncTheme() {
 +    const slug = activeThemeSlug();
-+    if (!themeStyle || themeModule?.slug === slug || themeLoading?.slug === slug) return;
 +    if (!slug) {
 +      themeModule = null;
-+      themeStyle.update(null);
++      themeLoading = null;
++      themeStyle?.update(null);
 +      return;
 +    }
++    if (themeModule?.slug === slug || themeLoading?.slug === slug) return;
 +    const loading = { slug };
 +    themeLoading = loading;
 +    try {
@@ -64,8 +70,8 @@ index 36a3706..06da395 100644
 +        import(`${base}theme.js`),
 +      ]);
 +      if (themeLoading !== loading || activeThemeSlug() !== slug) return;
-+      themeStyle.update(css);
-+      themeModule = { slug, module: loaded.default, disabled: false };
++      themeModule = { slug, module: loaded.default, css, disabled: false };
++      themeStyle?.update(css);
 +      for (const level of levels) {
 +        if (level.popup && !level.popup.hidden && level.themeKind) runThemeHook(level, level.themeKind);
 +      }
@@ -83,6 +89,14 @@ index 36a3706..06da395 100644
 +    if (!theme || theme.disabled || !popup || theme.slug !== activeThemeSlug()) return;
 +    const hook = theme.module?.onRender;
 +    if (typeof hook !== "function") return;
++    // What was looked up: the matched page text and Yomitan's sentence around it
++    // (content.js:706-708), so a theme can show Nazeka's "looked up …" row.
++    const candidate = level.activeCandidate;
++    const lookup = candidate ? Object.freeze({
++      text: level.activeTermRender?.matchedText || candidate.query || "",
++      sentence: candidate.sentence || "",
++      offset: Number.isInteger(candidate.matchOffset) ? candidate.matchOffset : -1,
++    }) : null;
 +    const view = Object.freeze({
 +      kind,
 +      depth: level.depth,
@@ -90,6 +104,7 @@ index 36a3706..06da395 100644
 +      chrome: popup.querySelector(":scope > .gsm-hoshidicts-result-chrome"),
 +      content: popup.querySelector(":scope > .gsm-hoshidicts-content-scroll"),
 +      entries: Object.freeze([...popup.querySelectorAll(".gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry")]),
++      lookup,
 +    });
 +    // A theme may only move nodes between the popup subtree and its own detached
 +    // elements (api.el); nothing can be attached to the page document.
@@ -132,24 +147,36 @@ index 36a3706..06da395 100644
 +      console.warn(`hachidori: theme "${theme.slug}" onRender threw; its JavaScript is off for this page`, error);
 +    } finally {
 +      const elapsed = performance.now() - started;
++      themeStats.calls += 1;
++      themeStats.totalMs += elapsed;
++      themeStats.samples.push({ kind, depth: level.depth, ms: elapsed });
 +      if (elapsed > 8) console.debug(`hachidori theme ${theme.slug}: onRender took ${elapsed.toFixed(1)} ms`);
 +    }
 +  }
++  // Benchmark readout for the prototype: benchmark/hover-popup.mjs reads this from
++  // the content-script world after each scan.
++  const themeStats = { calls: 0, totalMs: 0, samples: [] };
++  globalThis.__hachidoriThemeStats = {
++    read: () => ({ theme: themeModule?.slug ?? null, disabled: themeModule?.disabled ?? false,
++      calls: themeStats.calls, totalMs: themeStats.totalMs, samples: themeStats.samples.slice() }),
++    reset() { themeStats.calls = 0; themeStats.totalMs = 0; themeStats.samples.length = 0; },
++  };
 +  // ---------------------------------------------------------------------------
 +
    function buildUi(styles) {
      host = document.createElement(HOST_TAG);
      // Inline !important is the only declaration a page cannot override, and the
-@@ -2097,6 +2221,8 @@
+@@ -2097,6 +2247,9 @@
      appearance.update(options);
      customStyle = window.HDPopup.createCustomPopupStyle(shadow);
      customStyle.update(options.customPopupCss);
 +    themeStyle = createThemeStyle(shadow); // theme JS host prototype (#334)
++    themeStyle.update(themeModule?.css ?? null); // already loaded at start when the options name a theme
 +    void syncTheme();
  
      highlighter = window.HDPopup.createSourceHighlighter(
        window,
-@@ -2256,6 +2382,7 @@
+@@ -2256,6 +2409,7 @@
          frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
        };
      } });
@@ -157,7 +184,7 @@ index 36a3706..06da395 100644
    }
  
    function paintLookupStatistics(request, level) {
-@@ -3221,6 +3348,7 @@
+@@ -3221,6 +3375,7 @@
      }
      ensureDictionaryStyles(currentGeneration);
      positionPopup(level);
@@ -165,7 +192,7 @@ index 36a3706..06da395 100644
      if (!replayOptions?.preserveViewControls) focusPopupControl(".gsm-hoshidicts-kanji-back", level);
      return true;
    }
-@@ -4178,6 +4306,7 @@
+@@ -4178,6 +4333,7 @@
      audio?.update(options);
      mining?.update(options);
      appearance?.update(options);

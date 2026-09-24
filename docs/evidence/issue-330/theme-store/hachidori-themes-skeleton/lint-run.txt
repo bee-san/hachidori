@@ -1,5 +1,5 @@
-$ eslint -c scripts/theme-js.eslint.config.mjs themes/nazeka/theme.js   # the prototype
-(0 problems)
+$ eslint -c scripts/theme-js.eslint.config.mjs themes/nazeka/theme.js   # the prototype, v1.1.0 (170 lines, 2026-09-24; v1.0.0 also passed)
+(0 problems, exit 0)
 
 $ eslint -c scripts/theme-js.eslint.config.mjs themes/evil/theme.js     # a hostile module
 import x from "./x.js";

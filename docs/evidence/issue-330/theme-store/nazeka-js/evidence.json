@@ -13,6 +13,18 @@
       "kanji": 0,
       "nazeka": false,
       "chromeHidden": false,
+      "buttons": [
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-mine-button:Mine to Anki",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食",
+        "gsm-hoshidicts-note-button:Edit personal dictionary",
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-mine-button:Mine to Anki",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食"
+      ],
+      "mineButton": true,
+      "audioButton": true,
+      "lookedUp": null,
       "theme": "light",
       "sheets": 1,
       "background": "color(srgb 0.999871 1.00005 1.00007)",
@@ -33,6 +45,13 @@
       "kanji": 1,
       "nazeka": false,
       "chromeHidden": false,
+      "buttons": [
+        "gsm-hoshidicts-kanji-back:Back to previous results",
+        "gsm-hoshidicts-note-button:Edit personal dictionary"
+      ],
+      "mineButton": false,
+      "audioButton": false,
+      "lookedUp": null,
       "theme": "light",
       "sheets": 1,
       "background": "color(srgb 0.999871 1.00005 1.00007)",
@@ -46,16 +65,27 @@
       "rect": {
         "x": 248,
         "y": 155,
-        "width": 560,
-        "height": 153.75
+        "width": 463.28125,
+        "height": 134.515625
       },
       "term": 2,
       "kanji": 0,
       "nazeka": true,
       "chromeHidden": true,
+      "buttons": [
+        "gsm-hoshidicts-mine-button:Mine to Anki",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食",
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-mine-button:Mine to Anki",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食"
+      ],
+      "mineButton": true,
+      "audioButton": true,
+      "lookedUp": "朝ごはんを食べたかった。",
       "theme": "nazeka",
       "sheets": 2,
-      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "background": "rgb(17, 17, 17)",
       "headwordSize": "18px",
       "headwordColor": "rgb(153, 221, 255)",
       "readingInline": "たべる",
@@ -66,45 +96,76 @@
       "rect": {
         "x": 248,
         "y": 155,
-        "width": 560,
-        "height": 121.015625
+        "width": 355.1875,
+        "height": 162
       },
       "term": 0,
       "kanji": 1,
-      "nazeka": true,
+      "nazeka": false,
       "chromeHidden": true,
+      "buttons": [
+        "gsm-hoshidicts-kanji-back:Back to previous results"
+      ],
+      "mineButton": false,
+      "audioButton": false,
+      "lookedUp": null,
       "theme": "nazeka",
       "sheets": 2,
-      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "background": "rgb(17, 17, 17)",
       "headwordSize": "13px",
       "headwordColor": "rgb(204, 204, 204)",
-      "readingInline": null,
+      "readingInline": "ショク",
       "glossSize": "13px",
-      "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
+      "textSample": "Currently in individual kanji mode. Back食Grade: KyouikuStrokes: 9Jouyou readings:On'yomi: ショク、ジキKun'yomi: く.う、た.べるMeanings: food; eat; mealhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
     },
     "nazeka-back": {
       "rect": {
         "x": 248,
         "y": 155,
-        "width": 560,
-        "height": 153.75
+        "width": 463.28125,
+        "height": 134.515625
       },
       "term": 2,
       "kanji": 0,
       "nazeka": true,
       "chromeHidden": true,
+      "buttons": [
+        "gsm-hoshidicts-mine-button:Checking Anki card statu",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食",
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-kanji-link:Look up kanji 食",
+        "gsm-hoshidicts-mine-button:Checking Anki card statu",
+        "gsm-hoshidicts-audio-button:Play pronunciation for 食"
+      ],
+      "mineButton": true,
+      "audioButton": true,
+      "lookedUp": "朝ごはんを食べたかった。",
       "theme": "nazeka",
       "sheets": 2,
-      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "background": "rgb(17, 17, 17)",
       "headwordSize": "18px",
       "headwordColor": "rgb(153, 221, 255)",
       "readingInline": "たべる",
       "glossSize": "13px",
-      "textSample": "to eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action w"
+      "textSample": "to eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action w",
+      "ankiCallsSoFar": [
+        "findNotes",
+        "deckNames",
+        "modelNames",
+        "modelFieldNames",
+        "canAddNotesWithErrorDetail"
+      ]
     }
   },
   "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
   "importDetail": [
-    "hachidori-fixture.zip :: Imported hachidori-fixture in 0.2 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+    "hachidori-fixture.zip :: Imported hachidori-fixture in 0.4 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+  ],
+  "ankiCalls": [
+    "findNotes",
+    "deckNames",
+    "modelNames",
+    "modelFieldNames",
+    "canAddNotesWithErrorDetail"
   ]
 }

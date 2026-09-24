@@ -1,0 +1,77 @@
+diff --git a/benchmark/hover-popup.mjs b/benchmark/hover-popup.mjs
+index 8bca28c..7337228 100644
+--- a/benchmark/hover-popup.mjs
++++ b/benchmark/hover-popup.mjs
+@@ -20,7 +20,9 @@ const samples = Number(process.env.HACHIDORI_HOVER_SAMPLES ?? 3);
+ assert.ok(Number.isSafeInteger(samples) && samples > 0);
+ const settings = { hoverEnabled: true, lookupMode: 'hover', hoverDelayMs: 0, popupNestingMaxDepth: 2,
+   popupWidthPx: 520, popupHeightPx: 500, popupColumns: 1, maxResults: 32,
+-  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 };
++  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3,
++  // Theme benchmark (issue #334): e.g. HACHIDORI_HOVER_OPTIONS='{"popupTheme":"nazeka"}'
++  ...JSON.parse(process.env.HACHIDORI_HOVER_OPTIONS ?? '{}') };
+ const words = ['食べる', '漢字', '深層'];
+ const manifest = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(), settings, words,
+@@ -141,6 +143,8 @@ try {
+         }
+         row.metricsBefore = beforeMetrics;
+         row.metricsAfter = (await cdp.send('Performance.getMetrics')).metrics;
++        // Theme JS cost (issue #334): the host records every onRender call.
++        row.theme = await evaluate('globalThis.__hachidoriThemeStats ? __hachidoriThemeStats.read() : null');
+         rows.push(row);
+         writeFileSync(resolve(output, 'raw.json'), JSON.stringify(rows, null, 2));
+         console.log(JSON.stringify({ session, label, firstMs: row.firstMs, completeMs: row.completeMs,
+@@ -149,6 +153,7 @@ try {
+       }
+       async function scan(index, label, depth = 0, point = null) {
+         const metrics = (await cdp.send('Performance.getMetrics')).metrics;
++        await evaluate('globalThis.__hachidoriThemeStats?.reset()');
+         await evaluate(`__hoverProbe.arm(${JSON.stringify(words[index])}, ${depth})`);
+         if (point) await tab.mouse.move(point.x, point.y); else await move(index);
+         return finish(label, metrics);
+@@ -199,6 +204,44 @@ try {
+         await scan(0, 'child-replace', 1, nested[0]);
+         await tab.screenshot({ path: resolve(output, `session-${session}-child.png`) });
+       } else console.log(JSON.stringify({ session, nested: 'not supported by visible first definition', points: nested }));
++      // Kanji view (issue #334): with the 漢字 popup open, click its first kanji link
++      // programmatically (no pointer travel, so no nested hover lookup) and time the
++      // click → kanji entries in the DOM → next frame path, plus the theme's onRender.
++      for (let i = 0; i < 8; i++) {
++        // Leave the previous view through a different word (深層): the same candidate
++        // as the open popup would not start a new lookup.
++        await scan(2, `kanji-reset-${i}`);
++        await scan(1, `kanji-term-${i}`);
++        const metrics = (await cdp.send('Performance.getMetrics')).metrics;
++        await evaluate('globalThis.__hachidoriThemeStats?.reset()');
++        const timing = await evaluate(`new Promise(resolve => {
++          const shadow = document.querySelector('hachidori-host').shadowRoot;
++          const popup = shadow.querySelector('.gsm-hoshidicts-popup');
++          const link = popup.querySelector('.gsm-hoshidicts-kanji-link');
++          if (!link) { resolve(null); return; }
++          const observer = new MutationObserver(() => {
++            if (!popup.querySelector('.gsm-hoshidicts-kanji-entry')) return;
++            observer.disconnect();
++            const rendered = performance.now();
++            requestAnimationFrame(() => resolve({ start, rendered, frame: performance.now(), character: link.textContent }));
++          });
++          observer.observe(shadow, { subtree: true, childList: true });
++          const start = performance.now();
++          link.click();
++        })`);
++        assert.ok(timing, 'kanji link present in the 漢字 popup');
++        const row = { session, label: `kanji-view-${i}`, kind: 'kanji', character: timing.character,
++          renderMs: timing.rendered - timing.start, frameMs: timing.frame - timing.start,
++          metricsBefore: metrics, metricsAfter: (await cdp.send('Performance.getMetrics')).metrics,
++          theme: await evaluate('globalThis.__hachidoriThemeStats ? __hachidoriThemeStats.read() : null') };
++        rows.push(row);
++        writeFileSync(resolve(output, 'raw.json'), JSON.stringify(rows, null, 2));
++        console.log(JSON.stringify({ session, label: row.label, renderMs: row.renderMs, frameMs: row.frameMs }));
++        // The click focused the popup, which holds it open against hover; Escape
++        // releases it so the next hover starts a fresh lookup.
++        await tab.keyboard.press('Escape');
++        await new Promise(resolveWait => setTimeout(resolveWait, 100));
++      }
+       const hitPoints = await tab.$eval('#hit-tile', node => {
+         const range = document.createRange();
+         range.setStart(node.firstChild, 0); range.setEnd(node.firstChild, 1);

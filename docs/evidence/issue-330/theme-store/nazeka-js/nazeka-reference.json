@@ -1,0 +1,76 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "source": "wareya/nazeka 8b220fb texthook.js:5-82,431-1304",
+  "shots": {
+    "nazeka-reference-term": {
+      "rect": {
+        "x": 245.015625,
+        "y": 174,
+        "width": 408.796875,
+        "height": 59,
+        "top": 174,
+        "right": 653.8125,
+        "bottom": 233,
+        "left": 245.015625
+      },
+      "text": "朝ごはんを食べたかった。朝ごはんを食べたかった。5.nazeka_main_keb{font-size:18px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif;color:#99DDFF} .nazeka_main_reb{font-size:18px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif;color:#99DDFF} .nazeka_fg hr{margin: 0.5em; padding: 0; border: none; border-top: 1px solid #CCCCCC; opacity: 0.25} .nazeka_sub_keb{font-size:15px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif} .nazeka_sub_reb{font-size:15px;white-space:nowrap;color:#99FF99} .nazeka_original{float: right; margin-right: 2px; margin-left:4px; opacity:0.7;} .json_head{margin: 0 4px 6px;} .jmdict_definitions{margin: 0 4px 6px;} .json_definition{margin: 0 4px 6px;} .kanji_info{margin: 2px 4px 2px;} たべる食べる食べる《たべる》～want→past(v1, vt) (1) to eat; to live on (e.g. a salary); (2) (col) to make a living",
+      "styles": {
+        "inner": {
+          "fontFamily": "Arial, sans-serif",
+          "fontSize": "13px",
+          "color": "rgb(204, 204, 204)",
+          "backgroundColor": "rgb(17, 17, 17)",
+          "borderTopColor": "rgb(204, 204, 204)",
+          "padding": "2px"
+        },
+        "keb": {
+          "fontSize": "18px",
+          "color": "rgb(153, 221, 255)",
+          "fontFamily": "IPAGothic, TakaoGothic, \"Noto Sans CJK JP Regular\", Meiryo, sans-serif"
+        },
+        "reb": {
+          "fontSize": "15px",
+          "color": "rgb(153, 255, 153)"
+        },
+        "original": {
+          "opacity": "0.7",
+          "cssFloat": "right"
+        }
+      }
+    },
+    "nazeka-reference-kanji": {
+      "rect": {
+        "x": 245.015625,
+        "y": 174,
+        "width": 445.5,
+        "height": 217,
+        "top": 174,
+        "right": 690.515625,
+        "bottom": 391,
+        "left": 245.015625
+      },
+      "text": ".nazeka_main_keb{font-size:18px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif;color:#99DDFF} .nazeka_main_reb{font-size:18px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif;color:#99DDFF} .nazeka_fg hr{margin: 0.5em; padding: 0; border: none; border-top: 1px solid #CCCCCC; opacity: 0.25} .nazeka_sub_keb{font-size:15px;white-space:nowrap;font-family: IPAGothic,TakaoGothic,Noto Sans CJK JP Regular,Meiryo,sans-serif} .nazeka_sub_reb{font-size:15px;white-space:nowrap;color:#99FF99} .nazeka_original{float: right; margin-right: 2px; margin-left:4px; opacity:0.7;} .json_head{margin: 0 4px 6px;} .jmdict_definitions{margin: 0 4px 6px;} .json_definition{margin: 0 4px 6px;} .kanji_info{margin: 2px 4px 2px;} Currently in individual kanji mode. Press [k] to cancel.食Grade: KyouikuStrokes: 9Jouyou readings:On'yomi: ショク、ジキKun'yomi: く.う、た.べるComposition: ⿱𠆢良Data for non-jouyou kanji may contain errors.Composition might not render correctly if it contains obscure characters.",
+      "styles": {
+        "inner": {
+          "fontFamily": "Arial, sans-serif",
+          "fontSize": "13px",
+          "color": "rgb(204, 204, 204)",
+          "backgroundColor": "rgb(17, 17, 17)",
+          "borderTopColor": "rgb(204, 204, 204)",
+          "padding": "2px"
+        },
+        "keb": {
+          "fontSize": "18px",
+          "color": "rgb(153, 221, 255)",
+          "fontFamily": "IPAGothic, TakaoGothic, \"Noto Sans CJK JP Regular\", Meiryo, sans-serif"
+        },
+        "reb": {
+          "fontSize": "15px",
+          "color": "rgb(153, 255, 153)"
+        },
+        "original": null
+      }
+    }
+  },
+  "pageErrors": []
+}
