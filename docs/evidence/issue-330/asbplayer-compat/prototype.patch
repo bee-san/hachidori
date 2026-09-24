@@ -1,0 +1,94 @@
+--- a/extension/manifest.json	2026-09-24 06:29:02.280088304 +0000
++++ b/extension/manifest.json	2026-09-24 06:55:09.642243350 +0000
+@@ -104,7 +104,9 @@
+       ],
+       "css": [
+         "content.css"
+-      ]
++      ],
++      "all_frames": true,
++      "match_about_blank": true
+     }
+   ],
+   "content_security_policy": {
+@@ -129,4 +131,4 @@
+       ]
+     }
+   ]
+-}
++}
+\ No newline at end of file
+--- a/extension/content.js	2026-09-24 06:29:02.280088304 +0000
++++ b/extension/content.js	2026-09-24 06:55:09.642243350 +0000
+@@ -2092,7 +2092,7 @@
+       shadow.appendChild(fallback);
+     }
+ 
+-    document.body.appendChild(host);
++    hostParent().appendChild(host);
+     appearance = window.HDPopup.createPopupAppearance(host);
+     appearance.update(options);
+     customStyle = window.HDPopup.createCustomPopupStyle(shadow);
+@@ -2535,13 +2535,50 @@
+     return uiPromise;
+   }
+ 
++  // Elements whose children never paint, or that cannot host page nodes; a
++  // fullscreen one of these falls back to body (the popup cannot be shown there
++  // anyway, and an <iframe> fullscreen is another document's business).
++  const UNHOSTABLE_TAGS = new Set(["iframe", "frame", "video", "audio", "canvas", "img", "object", "embed", "svg", "math"]);
++
++  /**
++   * The element the host must live under so it paints: the fullscreen element
++   * when a page element is fullscreen (the top layer only paints that element's
++   * subtree, so a body-mounted host is covered), otherwise document.body.
++   * Yomitan's Popup._getFrameParentElement makes the same choice.
++   */
++  function hostParent() {
++    const fullscreen = document.fullscreenElement;
++    if (
++      fullscreen &&
++      fullscreen !== host &&
++      fullscreen.getRootNode() === document &&
++      !fullscreen.shadowRoot &&
++      !UNHOSTABLE_TAGS.has(fullscreen.localName) &&
++      !(host && host.contains(fullscreen))
++    ) {
++      return fullscreen;
++    }
++    return document.body;
++  }
++
++  function mountHost() {
++    if (!host) return;
++    const parent = hostParent();
++    // A single-page app that swapped out document.body took the host with it;
++    // a fullscreen change moves the host into or out of the fullscreen element.
++    if (parent && host.parentNode !== parent) parent.appendChild(host);
++  }
++
++  function onFullscreenChange() {
++    if (disposed || !host) return;
++    mountHost();
++    positionPopup();
++  }
++
+   function show(candidate, level = rootLevel) {
+     level.activeCandidate = candidate;
+     level.activeSignature = candidateSignature(candidate);
+-    if (!host.isConnected && document.body) {
+-      // A single-page app that swapped out document.body took the host with it.
+-      document.body.appendChild(host);
+-    }
++    mountHost();
+     level.popup.hidden = false;
+     level.popup.inert = false;
+     level.view.scrollElement.scrollTop = 0;
+@@ -4276,6 +4313,7 @@
+     window.addEventListener("pagehide", onPageHide);
+     window.addEventListener("pageshow", onPageShow);
+     window.addEventListener("resize", refreshPageZoom);
++    document.addEventListener("fullscreenchange", onFullscreenChange);
+     refreshPageZoom();
+   }
+ 

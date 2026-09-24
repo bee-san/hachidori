@@ -1,0 +1,27 @@
+extension id: bjbphlenodbejfceapfooeanikkdichh; chrome Chrome/152.0.7977.75
+options: lookupMode=hover (default is activationSticky: hold Shift while hovering)
+dictionaries installed: ["hachidori-fixture"]
+CONTROL plain page popup visible: true text="食べるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates th"
+sample.webm bytes: 263112
+asbplayer app loaded: https://app.asbplayer.dev/ title="asbplayer"
+uploaded sample.webm + sample.srt through the hidden <input type=file>
+frames in the app page: [{"url":"https://app.asbplayer.dev/","name":"","parent":false},{"url":"https://app.asbplayer.dev/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2Ff19d3900-d21f-4b9f-9d85-0d514cbdceac&channel=3dcd68aa-d5ca-438f-9dec-a8ca209a2992&popout=false","name":"","parent":true}]
+Hachidori content script presence per frame: [{"url":"https://app.asbplayer.dev/","HDPopup":"undefined","host":false,"fullscreenElement":null},{"url":"https://app.asbplayer.dev/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2Ff19d3900-d21f-4b9f-9d85-0d514cbdceac&channel=3","HDPopup":"undefined","host":false,"fullscreenElement":null}]
+subtitle list DOM: {"cellHtml":"<td class=\"MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium jss89 asb-subtitles css-1vt9nic\" aria-label=\"Click, hold, and drag to mine multiple subtitles\"><span class=\"\" data-track=\"0\" style=\"--asb-reading-size: 0.5em; --asb-frequency-size: 0.5em; --asb-pitch-accent-size: 0.1em;\">食べたかった</span></td>","spanText":"食べたかった","iframe":"<iframe class=\"jss45\" src=\"/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2Ff19d3900-d21f-4b9f-9d85-0d514cbdceac&amp;channel=3dcd68aa-d5ca-438f-9dec-a8ca209a2992&amp;popout=false\" title=\"asbplayer\" style=\"pointer-events: auto;\"></iframe>"}
+subtitle list cell for 食べたかった at {"x":1066,"y":89.578125,"height":19,"width":97.03125}
+A. SUBTITLE LIST (top frame) popup visible: true text="食べるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates th" rect={"left":834,"top":113,"width":560,"height":420}
+B. video overlay cue rendered inside iframe: true
+B. overlay DOM in iframe: {"html":"<span class=\"asb-subtitles asbplayer-subtitles\" style=\"--asb-reading-size: 0.5em !important;--asb-frequency-size: 0.3em !important;--asb-pitch-accent-size: 0.1em !important;color: #ffffff !important;font-size: 36px !important;font-weight: 700 !important;-webkit-text-stroke: 0 transparent !important;text-shadow: 0 0 3px #000000, 0 0 3px #000000, 0 0 3px #000000, 0 0 3px #000000 !important\" data-track=\"0\">食べたかった</span>","rect":{"x":416.546875,"y":707,"w":216.90625,"h":54},"fullscreen":null,"HDPopup":"undefined","host":false}
+B. VIDEO OVERLAY (in iframe) popup visible in top frame: false; top-frame caretRangeFromPoint={"caretContainer":"DIV","elementFromPoint":"iframe[title=asbplayer]"}
+B. hachidori-host inside iframe document: true; popup inside iframe visible: true text="Looked up 3 times142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to make a living食unrelated term-dictionary de" rect={"left":417,"top":289,"width":560,"height":420}
+C. pop-out button: {"rect":{"x":968,"y":794,"w":40,"h":40},"visibility":"hidden","opacity":"1","hiddenBy":"button.MuiButtonBase-root:hidden/1/inline-flex","label":"Pop Out"}
+C. targets after click: ["about:blank","chrome-extension://bjbphlenodbejfceapfooeanikkdichh/settings.html","chrome-extension://bjbphlenodbejfceapfooeanikkdichh/startup.html","http://127.0.0.1:38479/","https://app.asbplayer.dev/","https://app.asbplayer.dev/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2Ff19d3900-d21f-4b"]
+C. pop-out window overlay cue rendered: true; HDPopup in pop-out: undefined
+C. pop-out overlay DOM: {"x":391.546875,"y":471,"w":216.90625,"h":54,"html":"<span class=\"asb-subtitles asbplayer-subtitles\" style=\"--asb-reading-size: 0.5em !important;--asb-frequency-size: 0.3em !important;--asb-pitch-accent-size: 0.1em !important;color: #ffffff !important;font-size: 36px !important;font-weight: 700 !important;-webkit-text-stroke: 0 transparent !important;"}
+C. POP-OUT window (top frame) popup visible: true text="Looked up 4 times142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to make a living食unrelated term-dictionary de" rect={"left":392,"top":53,"width":560,"height":420} topmost=hachidori-host
+C2. after cue change: popup visible=true rect={"left":392,"top":53,"width":560,"height":420} text="Looked up 4 times142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to make a living食unrelated term-dictionary de"; asbplayer offscreen cache: {"offscreenChildren":1,"offscreenText":"食べたかった","showing":"漢字を読む"}
+C3. web-app fullscreen: {"fullscreenElement":null,"w":1000,"h":600}
+C3. fullscreen (documentElement) popup visible: true topmostAtCenter=hachidori-host fullscreenElement=null
+
+--- console ---
+[asbplayer-app] error: [asbplayer][fonts] SecurityError: User activation is required.

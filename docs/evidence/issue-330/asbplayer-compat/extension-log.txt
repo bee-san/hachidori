@@ -1,0 +1,20 @@
+Hachidori id: ifffcddkfdlnamjmciendjdekejkngjc; asbplayer id: hkledmpjpaehamkiehglnbelcpdflcab; chrome Chrome/152.0.7977.75
+Hachidori: fixture imported, lookupMode=hover
+asbplayer extension bound to the <video> (drag zone present)
+subtitles loaded into the extension overlay (container present)
+D. non-fullscreen overlay: {"x":521.9921875,"y":413,"w":236.015625,"h":52,"text":"食べたかった","className":"asbplayer-subtitles","containerClass":"asbplayer-subtitles-container-bottom","containerParent":"body.asbplayer-token-container","html":"<div class=\"asbplayer-subtitles\"><span data-track=\"0\" class=\"\" style=\"--asb-reading-size: 0.5em !important;--asb-frequency-size: 0.3em !important;--asb-pitch-accent-size: 0.1em !important;color: #ffffff !important;font-size: 36px !important;font-weight: 700 !i"}
+D. NON-FULLSCREEN extension overlay popup visible: true text="Looked up 1 time142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to mak" rect={"left":532,"top":6,"width":560,"height":420} topmost=hachidori-host
+D2. after the cue changed: popup visible=true rect={"left":532,"top":6,"width":560,"height":420} text="Looked up 1 time142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to mak"; asbplayer offscreen cache: {"offscreen":[{"children":0,"text":"","x":1280,"y":800,"connected":true},{"children":3,"text":"食べたかった sample.srt食べたかった","x":1280,"y":800,"connected":true},{"children":0,"text":"","x":1280,"y":800,"connected":true}],"showing":"漢字を読む"}
+D2b. after a scroll event (positionPopup): popup visible=false rect={"left":0,"top":0,"width":0,"height":0}
+E0. fullscreen state: {"fullscreenElement":"html"}
+E0. documentElement-fullscreen overlay: {"x":521.9921875,"y":453,"w":236.015625,"h":52,"text":"食べたかった","className":"asbplayer-fullscreen-subtitles","containerClass":"asbplayer-subtitles-container-bottom","containerParent":"div#player","html":"<div class=\"asbplayer-fullscreen-subtitles\"><span data-track=\"0\" class=\"\" style=\"--asb-reading-size: 0.5em !important;--asb-frequency-size: 0.3em !important;--asb-pitch-accent-size: 0.1em !important;color: #ffffff !important;font-size: 36px !important;font-wei"}
+E0. FULLSCREEN (documentElement) popup: visible=true topmostAtCenter=hachidori-host hostParent=body.asbplayer-token-container hostInsideFullscreen=true
+E. fullscreen state: {"fullscreenElement":"player","innerWidth":1280,"innerHeight":800}
+E. fullscreen overlay: {"x":521.9921875,"y":673,"w":236.015625,"h":52,"text":"食べたかった","className":"asbplayer-fullscreen-subtitles","containerClass":"asbplayer-subtitles-container-bottom","containerParent":"div#player","html":"<div class=\"asbplayer-fullscreen-subtitles\"><span data-track=\"0\" class=\"\" style=\"--asb-reading-size: 0.5em !important;--asb-frequency-size: 0.3em !important;--asb-pitch-accent-size: 0.1em !important;color: #ffffff !important;font-size: 36px !important;font-wei"}
+E. FULLSCREEN (player div) popup state: popupExists=true hidden=false rect={"left":532,"top":249,"width":560,"height":420} text="Looked up 3 times142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to ma" topmostAtCenter=video#v hostParent=body.asbplayer-token-container fullscreenElement=div#player hostInsideFullscreen=false
+E. elementFromPoint inside the popup's box while fullscreen: video#v
+F. probe at verb (326,650): {"element":"span#verb","caret":"#text@0","fullscreen":null,"scrollY":0,"innerHeight":800} box={"x":313.5,"y":630,"height":40,"width":168.015625}
+F. CONTROL prose on the same page popup visible: true state={"host":true,"popup":true,"hidden":false,"rect":{"left":532,"top":249,"width":560,"height":420},"text":"Looked up 3 times142たべる[2]たべる[0]たべる[0] LHHtabeɾɯhachidori-fixturevtto eatto live on (e.g. a salary)col(colloquial) to ma","topmostAtCenter":"video#v","hostParent":"body.asbplayer-token-container","fullscreenElement":null,"hostInsideFullscreen":null}
+
+--- console ---
+[video-page] warn: [asbplayer][annotations/anki] Anki permission request failed: Error: Failed to fetch
