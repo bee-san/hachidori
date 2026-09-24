@@ -1,0 +1,49 @@
+# themes/manga-vertical/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: manga-vertical
+name: Tategaki (manga)
+version: 1.0.0
+author: bee-san
+link: https://github.com/bee-san/hachidori/issues/334
+description: A vertical margin note for manga and vertical text. The popup is set in writing-mode vertical-rl beside the speech bubble, paper-white with ink-black text, furigana as ruby, glosses in narrow columns, a tail pointing at the word, and a vertical toolbar.
+tags: [light, manga, compact, classic, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                       # manga page stock: warm paper, ink, one 朱 (vermilion) spot colour
+  color-scheme: light
+  base-100: "#f7f2e8"          # paper
+  base-200: "#efe8da"          # toolbar strip / chrome
+  base-300: "#e3dac8"
+  base-content: "#1d1b18"      # ink
+  primary: "#b8321f"           # 朱: furigana, sense numbers, focus rings
+  primary-content: "#f7f2e8"
+  secondary: "#2f4f7f"         # 藍: the inflected tail of the surface form
+  secondary-content: "#f7f2e8"
+  accent: "#7d6218"            # pitch / IPA seals
+  accent-content: "#f7f2e8"
+  neutral: "#5b5650"           # grammar tags
+  neutral-content: "#f7f2e8"
+  info: "#3b5b8c"              # frequency seals
+  info-content: "#f7f2e8"
+  success: "#3d6b3a"
+  warning: "#a86a12"
+  error: "#a52a1c"
+css: theme.css
+js:                            # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: Adds furigana to the word as written in the bubble, moves the buttons into a vertical toolbar, rebuilds the kanji view as a colophon, points the tail at the word, lists the words looked up on this page.
+options:                       # one-shot suggestions applied on activation, with Undo
+  popupWidthPx: 320            # a narrow, tall strip beside the bubble
+  popupHeightPx: 560
+  popupOpacityPercent: 100     # paper is opaque
+  popupColumns: 1
+  popupToolbarPosition: top    # keeps the headword column on the right (block-start)
+  showCompactDefinitionSummary: true   # the gist columns next to the headword
+  compactDefinitionSummaryCount: 3
+  showPitchAccentBadge: false  # the headword furigana already draws the accent; the badge row would cost a column per dictionary
+screenshot: screenshot.png
+preview:
+  swatches: ["#f7f2e8", "#1d1b18", "#b8321f", "#2f4f7f"]

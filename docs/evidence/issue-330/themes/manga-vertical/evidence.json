@@ -1,0 +1,1745 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "dictionaries": [
+    "/home/skerraut/.cache/hachidori-bench/jitendex-yomitan.zip",
+    "/tmp/manga-dicts/KANJIDIC_english.zip",
+    "/tmp/manga-dicts/kanjium_pitch_accents.zip",
+    "/tmp/manga-dicts/innocent_corpus.zip",
+    "/local/home/skerraut/.herdr/worktrees/hachidori/theme330-manga-vertical/test/fixtures/hachidori-fixture.zip"
+  ],
+  "viewport": {
+    "width": 1180,
+    "height": 920
+  },
+  "themeOptions": {
+    "popupWidthPx": 320,
+    "popupHeightPx": 560,
+    "popupOpacityPercent": 100,
+    "popupColumns": 1,
+    "popupToolbarPosition": "top",
+    "showCompactDefinitionSummary": true,
+    "compactDefinitionSummaryCount": 3,
+    "showPitchAccentBadge": false
+  },
+  "shots": {
+    "default-term-page": {
+      "rect": {
+        "x": 107,
+        "y": 88,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "light",
+      "sheets": 1,
+      "writingMode": "horizontal-tb",
+      "background": "color(srgb 0.99987 1.00005 1.00007 / 0.85)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Noto Sans CJK JP\"",
+      "transition": "0s",
+      "tail": {
+        "display": null,
+        "x": null,
+        "y": null,
+        "origin": null
+      },
+      "toolbar": false,
+      "toolbarButtons": [],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 2,
+      "headwordSize": "32px",
+      "glossSize": "16px",
+      "gist": [],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 558,
+        "clientWidth": 558
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha",
+      "clip": null
+    },
+    "default-term": {
+      "rect": {
+        "x": 107,
+        "y": 88,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "light",
+      "sheets": 1,
+      "writingMode": "horizontal-tb",
+      "background": "color(srgb 0.99987 1.00005 1.00007 / 0.85)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Noto Sans CJK JP\"",
+      "transition": "0s",
+      "tail": {
+        "display": null,
+        "x": null,
+        "y": null,
+        "origin": null
+      },
+      "toolbar": false,
+      "toolbarButtons": [],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 2,
+      "headwordSize": "32px",
+      "glossSize": "16px",
+      "gist": [],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 558,
+        "clientWidth": 558
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha",
+      "clip": {
+        "x": 43,
+        "y": 24,
+        "width": 755.09375,
+        "height": 548
+      }
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 107,
+        "y": 88,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 2,
+      "theme": "light",
+      "sheets": 1,
+      "writingMode": "horizontal-tb",
+      "background": "color(srgb 0.99987 1.00005 1.00007 / 0.85)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Noto Sans CJK JP\"",
+      "transition": "0s",
+      "tail": {
+        "display": null,
+        "x": null,
+        "y": null,
+        "origin": null
+      },
+      "toolbar": false,
+      "toolbarButtons": [],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 0,
+      "headwordSize": null,
+      "glossSize": null,
+      "gist": [],
+      "tabs": [],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 558,
+        "clientWidth": 558
+      },
+      "activeElement": "button.gsm-hoshidicts-kanji-back",
+      "textSample": "食BackKANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269grade2halpern_kkd2578halpern_kkld1316halpern_",
+      "clip": {
+        "x": 73,
+        "y": 54,
+        "width": 628,
+        "height": 488
+      }
+    },
+    "default-long": {
+      "rect": {
+        "x": 477,
+        "y": 215,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "theme": "light",
+      "sheets": 1,
+      "writingMode": "horizontal-tb",
+      "background": "color(srgb 0.99987 1.00005 1.00007 / 0.85)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Noto Sans CJK JP\"",
+      "transition": "0s",
+      "tail": {
+        "display": null,
+        "x": null,
+        "y": null,
+        "origin": null
+      },
+      "toolbar": false,
+      "toolbarButtons": [],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 2,
+      "headwordSize": "32px",
+      "glossSize": "16px",
+      "gist": [],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 558,
+        "clientWidth": 558
+      },
+      "activeElement": null,
+      "textSample": "掛かけるける掛けてみる → 掛ける-みるTry to do something. Usage: Attach みる after the て-form of verbs.-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that connects two clauses together. U",
+      "clip": {
+        "x": 443,
+        "y": 181,
+        "width": 628,
+        "height": 488
+      }
+    },
+    "theme-term-page": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": null
+    },
+    "theme-term": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 608,
+        "y": 23.779014587402344,
+        "width": 485.94287109375,
+        "height": 689.6500244140625
+      }
+    },
+    "theme-term-popup": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-hover-kanji": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-term-scrolled": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-focus-toolbar": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": "button.gsm-hoshidicts-note-button",
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-note-form": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": "input.gsm-hoshidicts-note-term",
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-tab-switched": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 4,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All",
+        "Jitendex*"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 2693,
+        "clientWidth": 81
+      },
+      "activeElement": "button.gsm-hoshidicts-tab",
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-kanji": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 0,
+      "kanji": 2,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Back to previous results",
+        "Edit personal dictionary"
+      ],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 0,
+      "headwordSize": null,
+      "glossSize": null,
+      "gist": [],
+      "tabs": [],
+      "yomi": [
+        "音ショク・ジキ",
+        "訓くう・くらう・たべる・はむ",
+        "音ショク・ジキ",
+        "訓くう・たべる"
+      ],
+      "facts": [
+        "画数九画",
+        "学年小二",
+        "頻度328位",
+        "旧JLPT四級",
+        "画数九画",
+        "学年小二",
+        "頻度382位"
+      ],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 412,
+        "clientWidth": 152
+      },
+      "activeElement": "button.gsm-hoshidicts-kanji-back",
+      "textSample": "食画数九画学年小二頻度328位旧JLPT四級BackKANJIDIC [2026-267]jouyou音ショク・ジキ訓くう・くらう・たべる・はむOnショク · ジキKunく.う · く.らう · た.べる · は.むMeanings意味eatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269g",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    },
+    "theme-kanji-page": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 0,
+      "kanji": 2,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Back to previous results",
+        "Edit personal dictionary"
+      ],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 0,
+      "headwordSize": null,
+      "glossSize": null,
+      "gist": [],
+      "tabs": [],
+      "yomi": [
+        "音ショク・ジキ",
+        "訓くう・くらう・たべる・はむ",
+        "音ショク・ジキ",
+        "訓くう・たべる"
+      ],
+      "facts": [
+        "画数九画",
+        "学年小二",
+        "頻度328位",
+        "旧JLPT四級",
+        "画数九画",
+        "学年小二",
+        "頻度382位"
+      ],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 412,
+        "clientWidth": 152
+      },
+      "activeElement": "button.gsm-hoshidicts-kanji-back",
+      "textSample": "食画数九画学年小二頻度328位旧JLPT四級BackKANJIDIC [2026-267]jouyou音ショク・ジキ訓くう・くらう・たべる・はむOnショク · ジキKunく.う · く.らう · た.べる · は.むMeanings意味eatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269g",
+      "clip": null
+    },
+    "theme-back": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "逃げる×2",
+        "読む"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": "button.gsm-hoshidicts-kanji-link",
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con"
+    },
+    "theme-te-form": {
+      "rect": {
+        "x": 374,
+        "y": 354,
+        "width": 320,
+        "height": 560
+      },
+      "term": 1,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(341px - 9px)",
+        "origin": "0% 341px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 読む",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "食べる",
+        "逃げる×2"
+      ],
+      "surface": "読よんでみよう",
+      "surfaceRuby": [
+        "読(よ)"
+      ],
+      "steps": "volitional・みる・て",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to read",
+        "to recite (e.g. a sutra)",
+        "to chant"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 1334,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "読よむむ読よんでみようvolitional・みる・て読んでみよう → 読むvolitional1. Expresses speaker's will or intention. 2. Expresses an invitation to the other party. 3. (Used in …ようとする) Indicates being on the verge of initiating a",
+      "clip": {
+        "x": 278,
+        "y": 288.6583251953125,
+        "width": 481.259033203125,
+        "height": 631.3416748046875
+      }
+    },
+    "theme-long": {
+      "rect": {
+        "x": 477,
+        "y": 215,
+        "width": 320,
+        "height": 560
+      },
+      "term": 6,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(57px - 9px)",
+        "origin": "0% 57px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 掛ける",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "読む×2",
+        "食べる",
+        "逃げる×2"
+      ],
+      "surface": "掛かけてみる",
+      "surfaceRuby": [
+        "掛(か)"
+      ],
+      "steps": "みる・て",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to hang up (e.g. a coat, a picture on the wall)",
+        "to let hang",
+        "to suspend (from)",
+        "credit",
+        "money owed on an account",
+        "bill",
+        "-clad",
+        "in the midst of",
+        "tenths (e.g. wholesale price, as tenths of retail price)",
+        "credit",
+        "money owed on an account",
+        "bill",
+        "charge",
+        "duty",
+        "person in charge",
+        "-clad",
+        "in the midst of",
+        "tenths (e.g. wholesale price, as tenths of retail price)"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 11340,
+        "clientWidth": 73
+      },
+      "activeElement": null,
+      "textSample": "掛かけるける掛かけてみるみる・て掛けてみる → 掛ける-みるTry to do something. Usage: Attach みる after the て-form of verbs.-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that connects two clauses t",
+      "clip": {
+        "x": 380,
+        "y": 106,
+        "width": 482.2591552734375,
+        "height": 734.9792022705078
+      }
+    },
+    "theme-long-page": {
+      "rect": {
+        "x": 477,
+        "y": 215,
+        "width": 320,
+        "height": 560
+      },
+      "term": 6,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(57px - 9px)",
+        "origin": "0% 57px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 掛ける",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "読む×2",
+        "食べる",
+        "逃げる×2"
+      ],
+      "surface": "掛かけてみる",
+      "surfaceRuby": [
+        "掛(か)"
+      ],
+      "steps": "みる・て",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to hang up (e.g. a coat, a picture on the wall)",
+        "to let hang",
+        "to suspend (from)",
+        "credit",
+        "money owed on an account",
+        "bill",
+        "-clad",
+        "in the midst of",
+        "tenths (e.g. wholesale price, as tenths of retail price)",
+        "credit",
+        "money owed on an account",
+        "bill",
+        "charge",
+        "duty",
+        "person in charge",
+        "-clad",
+        "in the midst of",
+        "tenths (e.g. wholesale price, as tenths of retail price)"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 11340,
+        "clientWidth": 73
+      },
+      "activeElement": null,
+      "textSample": "掛かけるける掛かけてみるみる・て掛けてみる → 掛ける-みるTry to do something. Usage: Attach みる after the て-form of verbs.-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that connects two clauses t",
+      "clip": null
+    },
+    "theme-term-left-page": {
+      "rect": {
+        "x": 187,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "calc(100% - 9px)",
+        "y": "calc(75px - 9px)",
+        "origin": "100% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "掛ける",
+        "読む×2",
+        "逃げる×2"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 73
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": null
+    },
+    "theme-term-no-anchor": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "none",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "100% 0"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "掛ける",
+        "読む×2",
+        "逃げる×2"
+      ],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 73
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 608,
+        "y": 24,
+        "width": 485,
+        "height": 689.6492919921875
+      }
+    },
+    "theme-horizontal-page": {
+      "rect": {
+        "x": 557,
+        "y": 65,
+        "width": 320,
+        "height": 560
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "manga-vertical",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "color": "rgb(29, 27, 24)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "calc(26px - 9px)",
+        "y": "-9px",
+        "origin": "26px 0%"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 約束",
+        "Edit personal dictionary"
+      ],
+      "history": [
+        "食べる×2",
+        "掛ける",
+        "読む×2",
+        "逃げる×2"
+      ],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 1,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "promise",
+        "agreement",
+        "arrangement",
+        "approximately",
+        "about",
+        "promise"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 1602,
+        "clientWidth": 100
+      },
+      "activeElement": null,
+      "textSample": "約束やくそくLooked up 1 time34.3kAllJitendex食べる×2掛ける読む×2逃げる×2promiseagreementarrangementJitendex★nounsurutransitivepromiseagreementarrangementone's wordcontractpact自じ分ぶんが約やく束そくしたことはちゃんと実じっ行こうするように最さい善ぜんを尽つく",
+      "clip": null
+    },
+    "night-term-page": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical-night",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+      "color": "rgb(236, 230, 216)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": null
+    },
+    "night-term": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 5,
+      "kanji": 0,
+      "theme": "manga-vertical-night",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+      "color": "rgb(236, 230, 216)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "history": [],
+      "surface": "食たべたかった",
+      "surfaceRuby": [
+        "食(た)"
+      ],
+      "steps": "た・たい",
+      "headwordRuby": 2,
+      "headwordSize": "30px",
+      "glossSize": "15px",
+      "gist": [
+        "to eat",
+        "to live on (e.g. a salary)",
+        "to live off",
+        "unrelated term-dictionary definition",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating",
+        "food",
+        "foodstuff",
+        "eating"
+      ],
+      "tabs": [
+        "All*",
+        "Jitendex"
+      ],
+      "yomi": [],
+      "facts": [],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 3050,
+        "clientWidth": 81
+      },
+      "activeElement": null,
+      "textSample": "食たべるべる食たべたかったた・たい食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's con",
+      "clip": {
+        "x": 608,
+        "y": 23.778968811035156,
+        "width": 485.943115234375,
+        "height": 689.650390625
+      }
+    },
+    "night-kanji": {
+      "rect": {
+        "x": 709,
+        "y": 88,
+        "width": 320,
+        "height": 560
+      },
+      "term": 0,
+      "kanji": 2,
+      "theme": "manga-vertical-night",
+      "sheets": 2,
+      "writingMode": "vertical-rl",
+      "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+      "color": "rgb(236, 230, 216)",
+      "fontFamily": "\"Noto Serif CJK JP\"",
+      "transition": "0.16s, 0.12s",
+      "tail": {
+        "display": "block",
+        "x": "-9px",
+        "y": "calc(75px - 9px)",
+        "origin": "0% 75px"
+      },
+      "toolbar": true,
+      "toolbarButtons": [
+        "Back to previous results",
+        "Edit personal dictionary"
+      ],
+      "history": [],
+      "surface": null,
+      "surfaceRuby": [],
+      "steps": null,
+      "headwordRuby": 0,
+      "headwordSize": null,
+      "glossSize": null,
+      "gist": [],
+      "tabs": [],
+      "yomi": [
+        "音ショク・ジキ",
+        "訓くう・くらう・たべる・はむ",
+        "音ショク・ジキ",
+        "訓くう・たべる"
+      ],
+      "facts": [
+        "画数九画",
+        "学年小二",
+        "頻度328位",
+        "旧JLPT四級",
+        "画数九画",
+        "学年小二",
+        "頻度382位"
+      ],
+      "chromeHidden": false,
+      "contentScroll": {
+        "scrollWidth": 412,
+        "clientWidth": 152
+      },
+      "activeElement": "button.gsm-hoshidicts-kanji-back",
+      "textSample": "食画数九画学年小二頻度328位旧JLPT四級BackKANJIDIC [2026-267]jouyou音ショク・ジキ訓くう・くらう・たべる・はむOnショク · ジキKunく.う · く.らう · た.べる · は.むMeanings意味eatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269g",
+      "clip": {
+        "x": 683,
+        "y": 62,
+        "width": 372,
+        "height": 612
+      }
+    }
+  },
+  "checks": {
+    "termAnchor": {
+      "x": 688.046875,
+      "y": 100.421875,
+      "rect": {
+        "x": 671.046875,
+        "y": 88,
+        "width": 34,
+        "height": 24.84375
+      }
+    },
+    "computedColors": {
+      "paper": "color(srgb 0.968627 0.94902 0.909804)",
+      "ink": "rgb(29, 27, 24)",
+      "furigana": "rgb(184, 50, 31)",
+      "surfaceRest": "rgb(47, 79, 127)",
+      "steps": "color(srgb 0.318902 0.308235 0.289882)",
+      "gist": "rgb(29, 27, 24)",
+      "cardTitle": "color(srgb 0.318902 0.308235 0.289882)",
+      "gloss": "rgb(29, 27, 24)",
+      "tabText": "color(srgb 0.318902 0.308235 0.289882)",
+      "tabSelectedText": "rgb(247, 242, 232)",
+      "tabSelectedBackground": "rgb(29, 27, 24)",
+      "frequencyTag": "rgb(59, 91, 140)",
+      "grammarTag": null,
+      "pitchTag": null,
+      "history": "color(srgb 0.318902 0.308235 0.289882)",
+      "historyCount": "rgb(184, 50, 31)",
+      "toolbarBackground": "color(srgb 0.937255 0.909804 0.854902)",
+      "toolbarButton": "rgb(29, 27, 24)",
+      "toolbarButtonBackground": "rgb(247, 242, 232)",
+      "lookupStats": "color(srgb 0.318902 0.308235 0.289882)"
+    },
+    "kanjiLinkHoverColor": {
+      "color": "rgb(184, 50, 31)",
+      "borderLeft": "1px solid rgb(184, 50, 31)"
+    },
+    "scrolledLeft": -81,
+    "focusTrail": [
+      "button.gsm-hoshidicts-kanji-link (Look up kanji 食)",
+      "button.gsm-hoshidicts-tab (All dictionaries)",
+      "button.gsm-hoshidicts-audio-button (Play pronunciation for 食べる)",
+      "button.gsm-hoshidicts-note-button (Edit personal dictionary)"
+    ],
+    "noteForm": {
+      "writingMode": "horizontal-tb",
+      "order": [
+        "gsm-hoshidicts-result-chrome",
+        "gsm-hoshidicts-mining-feedback",
+        "gsm-hoshidicts-note-form",
+        "gsm-hoshidicts-resize-handle",
+        "mv-toolbar",
+        "gsm-hoshidicts-content-scroll"
+      ],
+      "term": "食べる",
+      "reading": "たべる"
+    },
+    "leftPlacement": {
+      "popup": {
+        "x": 186.05642700195312,
+        "y": 87.77885437011719,
+        "width": 320.9435729980469,
+        "height": 561.6512451171875
+      },
+      "tail": {
+        "display": "block",
+        "x": "calc(100% - 9px)",
+        "y": "calc(75px - 9px)",
+        "origin": "100% 75px"
+      }
+    },
+    "reducedMotionTransition": "0s",
+    "nightColors": {
+      "paper": "color(srgb 0.0862745 0.0901961 0.105882)",
+      "ink": "rgb(236, 230, 216)",
+      "furigana": "rgb(232, 131, 107)",
+      "surfaceRest": "rgb(147, 180, 230)",
+      "steps": "color(srgb 0.724078 0.707137 0.669176)",
+      "gist": "rgb(236, 230, 216)",
+      "cardTitle": "color(srgb 0.724078 0.707137 0.669176)",
+      "gloss": "rgb(236, 230, 216)",
+      "tabText": "color(srgb 0.724078 0.707137 0.669176)",
+      "tabSelectedText": "rgb(22, 23, 27)",
+      "tabSelectedBackground": "rgb(236, 230, 216)",
+      "frequencyTag": "rgb(143, 176, 224)",
+      "grammarTag": null,
+      "pitchTag": null,
+      "history": null,
+      "historyCount": null,
+      "toolbarBackground": "color(srgb 0.117647 0.12549 0.14902)",
+      "toolbarButton": "rgb(236, 230, 216)",
+      "toolbarButtonBackground": "rgb(22, 23, 27)",
+      "lookupStats": "color(srgb 0.724078 0.707137 0.669176)"
+    }
+  },
+  "importState": "Finished 5 of 5 archives — 5 imported, 0 failed.",
+  "importSeconds": 3.057,
+  "importDetail": [
+    "jitendex-yomitan.zip :: Imported Jitendex.org [2026-08-11] in 1.6 seconds: 435,448 terms, 250 media files.",
+    "KANJIDIC_english.zip :: Imported KANJIDIC [2026-267] in 0.3 seconds: 10,384 kanji.",
+    "kanjium_pitch_accents.zip :: Imported Kanjium Pitch Accents in 0.3 seconds: 124,137 pitch entries.",
+    "innocent_corpus.zip :: Imported Innocent Corpus in 0.4 seconds: 285,718 frequency entries.",
+    "hachidori-fixture.zip :: Imported hachidori-fixture in 0.3 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+  ],
+  "favourite": [
+    "Jitendex.org [2026-08-11]"
+  ],
+  "hachidoriConsole": []
+}

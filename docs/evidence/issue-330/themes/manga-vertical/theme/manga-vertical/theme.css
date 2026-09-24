@@ -1,0 +1,880 @@
+/* themes/manga-vertical/theme.css — Tategaki: a vertical margin note beside a
+ * manga speech bubble. Paper-white page stock, ink-black text, one spot colour
+ * (朱, the vermilion of a hanko seal) for the reading and the kanji you can click.
+ *
+ * The palette block is what `build-index.mjs` generates from theme.yaml; the
+ * rest is this theme's own CSS. Everything is set in `writing-mode: vertical-rl`,
+ * so "column" below means a vertical line of text and the popup's block axis
+ * runs right to left: headword column on the right, glosses flowing left, the
+ * toolbar strip on the far left. Physical properties are used on purpose.
+ * Structure (surface-form furigana, the toolbar strip, the kanji colophon, the
+ * tail, page memory) is theme.js's job; anything it hides carries
+ * data-theme-hidden, which this file collapses. */
+
+:host([data-hoshidicts-theme="manga-vertical"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #f7f2e8;
+  --hoshidicts-palette-base-200: #efe8da;
+  --hoshidicts-palette-base-300: #e3dac8;
+  --hoshidicts-palette-base-content: #1d1b18;
+  --hoshidicts-palette-primary: #b8321f;
+  --hoshidicts-palette-primary-content: #f7f2e8;
+  --hoshidicts-palette-secondary: #2f4f7f;
+  --hoshidicts-palette-secondary-content: #f7f2e8;
+  --hoshidicts-palette-accent: #7d6218;
+  --hoshidicts-palette-accent-content: #f7f2e8;
+  --hoshidicts-palette-neutral: #5b5650;
+  --hoshidicts-palette-neutral-content: #f7f2e8;
+  --hoshidicts-palette-info: #3b5b8c;
+  --hoshidicts-palette-info-content: #f7f2e8;
+  --hoshidicts-palette-success: #3d6b3a;
+  --hoshidicts-palette-warning: #a86a12;
+  --hoshidicts-palette-error: #a52a1c;
+}
+
+/* ---------------------------------------------------------------- the bubble */
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup {
+  --mv-ink: var(--hoshidicts-palette-base-content);
+  --mv-rule: color-mix(in srgb, var(--hoshidicts-palette-base-content) 22%, transparent);
+  --mv-tone: color-mix(in srgb, var(--hoshidicts-palette-base-content) 9%, transparent);
+  --hoshidicts-border: var(--mv-rule);
+  --hoshidicts-border-strong: var(--mv-ink);
+  --hoshidicts-card-background: transparent;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  overflow: visible;                         /* the tail lives outside the box */
+  border: 1.5px solid var(--mv-ink);
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: "Noto Serif CJK JP", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Meiryo", serif;
+  font-size: 15px;
+  line-height: 1.8;                          /* column pitch */
+  font-feature-settings: "vert", "vrt2", "palt";
+  transform-origin: var(--theme-tail-origin, 100% 0);
+  transition: transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 120ms ease-out;
+}
+
+/* The bubble pops out of the word it explains. @starting-style needs the
+ * sanitiser to allowlist it (see the proposal's "Open questions"); without it
+ * the popup simply appears, as today. */
+@starting-style {
+  :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup {
+    transition: none;
+  }
+}
+
+/* The tail: a rotated square on the edge facing the word, clipped to its outer
+ * half. theme.js sets the five --theme-tail-* variables from view.anchor. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup::before {
+  content: "";
+  position: absolute;
+  z-index: -1;                               /* above the popup's own border, below its children */
+  display: var(--theme-tail-display, none);
+  left: var(--theme-tail-x, 0);
+  top: var(--theme-tail-y, 0);
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--mv-ink);
+  background: var(--hoshidicts-popup-background);
+  clip-path: var(--theme-tail-clip, none);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+/* --------------------------------------------------- headword column (chrome) */
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-result-chrome {
+  display: block;
+  flex: 0 0 auto;
+  max-height: none;
+  max-width: 70%;
+  overflow: hidden;
+  border-bottom: 0;
+  border-left: 1px solid var(--mv-rule);
+  border-radius: 0 15px 15px 0;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-header {
+  display: block;
+  min-height: 0;
+  padding: 14px 10px 12px 8px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-entry-header {
+  display: block;
+  min-height: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-headword {
+  display: block;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-expression {
+  display: block;
+  font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--mv-ink);
+  ruby-position: over;                       /* the right-hand side in vertical-rl */
+  ruby-align: space-around;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-expression rt {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--hoshidicts-palette-primary);
+  letter-spacing: 0;
+  font-feature-settings: "vert", "vrt2";
+}
+
+/* Kanji in the headword open the kanji view. Ruby already owns the right-hand
+ * side, so the marker sits on the left, as a 傍線 does when ruby is present. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-link {
+  border-bottom: 0;
+  border-left: 1px dotted var(--mv-rule);
+  padding: 0;
+  transition: color 90ms ease-out, border-color 90ms ease-out;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  color: var(--hoshidicts-palette-primary);
+  border-left-color: var(--hoshidicts-palette-primary);
+  border-left-style: solid;
+  outline: none;
+}
+
+/* Pitch furigana: the accent line moves from over the reading to beside it —
+ * high on the right, low on the left, the drop marked under the mora. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-ruby {
+  vertical-align: baseline;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-reading {
+  padding: 0 1px 0 2px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-mora {
+  margin: 0 0 -1px;
+  padding: 1px 2px;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-mora[data-pitch-level="high"] {
+  border-right-color: var(--hoshidicts-pitch);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-mora[data-pitch-level="low"] {
+  border-left-color: var(--hoshidicts-pitch);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-mora[data-pitch-transition]::after {
+  top: auto;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  border-right: 0;
+  border-bottom: 2px solid var(--hoshidicts-pitch);
+}
+
+/* The word as it stands in the bubble (theme.js), with inherited furigana and
+ * the inflection steps: 食(た)べたかった ｜ たい・た */
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface {
+  display: block;
+  margin-top: 10px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--mv-ink);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface-word {
+  display: block;
+  ruby-position: over;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface-word rt {
+  font-size: 9px;
+  color: var(--hoshidicts-palette-primary);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface-rest {
+  color: var(--hoshidicts-palette-secondary);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface-steps {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-color-light1);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-surface-steps::before {
+  content: "活用 ";
+  color: var(--text-color-light1);
+}
+
+/* Frequency / pitch / grammar capsule, moved here by theme.js. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-metadata-row {
+  display: block;
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-metadata-capsule {
+  display: inline-block;
+  vertical-align: top;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-frequencies,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-grammar {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-lookup-stats {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color-light1);
+  font-size: 11px;
+}
+
+/* Tags and badges become small vertical seals: an outlined box with the text
+ * running down it, digits and Latin rotated like a book spine. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-grammar-tag {
+  display: inline-block;
+  margin: 0 0 4px;
+  padding: 3px 1px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 10.5px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  vertical-align: baseline;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-frequency {
+  color: var(--hoshidicts-palette-info);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-pitch,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-ipa {
+  color: var(--hoshidicts-palette-accent);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-term,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-definition,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-deinflection,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-grammar-tag {
+  color: var(--hoshidicts-palette-neutral);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-contour {
+  display: inline-flex;
+}
+
+/* The gist: the renderer's compact summary (Settings → Design → Compact
+ * summary, suggested on by theme.yaml), moved by theme.js to the head of the
+ * scrolling glosses — one sense per column, numbered 一二三, right next to the
+ * headword; the full dictionary cards continue to its left. */
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-gist {
+  margin: 0 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--mv-rule);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-summary {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--mv-ink);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-image {
+  display: none;
+}
+
+/* The senses run on in one column, 一、二、三 in 朱, and wrap into the next
+ * column when it is full — as a 国語辞典 sets them, not one sense per line. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-items {
+  counter-reset: mv-gist;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-items > li {
+  display: inline;
+  counter-increment: mv-gist;
+  margin-inline-end: 0.9em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-items > li::before,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-items > li + li::before {
+  content: counter(mv-gist, cjk-decimal) "、";
+  opacity: 1;
+  color: var(--hoshidicts-palette-primary);
+}
+
+/* Dictionary tabs read as the thumb index cut into a paper dictionary's edge. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-metadata-strip {
+  display: block;
+  width: auto;
+  padding: 12px 4px 10px 4px;
+  border-top: 0;
+  border-left: 1px solid var(--mv-rule);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tab-list {
+  display: flex;
+  flex-direction: row;                       /* row = the inline axis = downwards */
+  gap: 8px;
+  overflow: visible;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tab {
+  padding: 8px 3px;
+  border: 1px solid var(--mv-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-color-light1);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  border-color: var(--mv-ink);
+  background: var(--mv-ink);
+  color: var(--hoshidicts-palette-base-100);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tab:focus-visible {
+  outline: 2px solid var(--hoshidicts-palette-primary);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ the glosses */
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-content-scroll {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;                          /* the block axis scrolls, i.e. leftwards */
+  overflow-y: hidden;
+  padding: 16px 10px 12px 14px;
+  mask-image: linear-gradient(to right, transparent, #000 14px);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin: 0 12px 0 0;
+  padding: 0 12px 0 0;
+  border-top: 0;
+  border-right: 3px double var(--mv-rule);
+}
+
+/* Secondary entries (inside the scrolling glosses) get a smaller headword. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
+  font-size: 22px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-metadata,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tags {
+  display: block;
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-metadata:empty,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tags:empty {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin-top: 0;
+  margin-right: 12px;
+  padding-right: 12px;
+  border-right: 1px solid var(--mv-rule);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-card-title {
+  margin: 0 0 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-color-light1);
+}
+
+/* Senses numbered 一、二、三 in the top margin, the way a 国語辞典 sets them. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definitions {
+  margin: 0;
+  padding: 1.7em 0 0;
+  list-style: cjk-decimal outside;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definitions > li::marker {
+  color: var(--hoshidicts-palette-primary);
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definitions-single {
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definitions > li {
+  margin: 0 4px 0 0;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definition-tags {
+  display: block;
+  margin-bottom: 6px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-content {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--mv-ink);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-content ul,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-content ol {
+  margin: 0;
+  padding: 1.2em 0 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-content details {
+  padding: 1.2em 0 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-glossary-content table {
+  writing-mode: horizontal-tb;               /* tables stay tables */
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-show-more {
+  display: block;
+  width: auto;
+  height: auto;
+  margin: 0 10px 0 0;
+  padding: 10px 6px;
+  border: 1px solid var(--mv-rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-color-light1);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-show-more:hover,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-show-more:focus-visible {
+  border-color: var(--hoshidicts-palette-primary);
+  color: var(--hoshidicts-palette-primary);
+  background: transparent;
+}
+
+/* ------------------------------------------------- toolbar strip (theme.js) */
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar {
+  order: 1;                                  /* visually last (the left edge), early in the DOM for Tab */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;                       /* row = downwards */
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-width: 42px;
+  padding: 10px 4px;
+  border-right: 1px solid var(--mv-rule);
+  border-radius: 15px 0 0 15px;
+  background:
+    radial-gradient(circle at 1px 1px, var(--mv-tone) 0.8px, transparent 1px) 0 0 / 4px 4px,
+    var(--hoshidicts-chrome-background);    /* screentone */
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-entry-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-popup-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid var(--mv-ink);
+  border-radius: 50%;                        /* small round seals */
+  background: var(--hoshidicts-palette-base-100);
+  color: var(--mv-ink);
+  transition: background-color 90ms ease-out, color 90ms ease-out;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-kanji-back {
+  height: auto;
+  min-height: 34px;
+  padding: 8px 0;
+  border-radius: 17px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-text-action-button {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 8px 0;
+  border: 1px solid var(--mv-rule);
+  border-radius: 17px;
+  background: var(--hoshidicts-palette-base-100);
+  color: var(--mv-ink);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar button:hover:not(:disabled),
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar button[aria-expanded="true"] {
+  background: var(--mv-ink);
+  color: var(--hoshidicts-palette-base-100);
+  border-color: var(--mv-ink);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar button:focus-visible {
+  outline: 2px solid var(--hoshidicts-palette-primary);
+  outline-offset: 2px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-toolbar .gsm-hoshidicts-audio-button[data-state="playing"] {
+  border-color: var(--hoshidicts-palette-primary);
+  color: var(--hoshidicts-palette-primary);
+}
+
+/* Page memory: the last five words looked up on this page, faint, at the foot
+ * of the strip; ×n when a word came back. */
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-history {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--mv-rule);
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-color-light1);
+  overflow: hidden;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-history-item {
+  display: block;
+  margin: 0 0 6px;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-history-count {
+  margin-top: 2px;
+  color: var(--hoshidicts-palette-primary);
+  font-size: 10px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-tcy {
+  text-combine-upright: all;
+}
+
+/* ------------------------------------------------------------ kanji view */
+
+/* The glyph sits in a 漢字練習帳 square: dashed cross-lines, ink glyph. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-navigation {
+  display: flex;
+  flex-direction: row;                       /* row = downwards: glyph, then the facts under it */
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0;
+}
+
+/* 画数・学年・頻度・旧JLPT (theme.js, from the stats <dl>) wrap under the glyph:
+ * column = the block axis (leftwards), wrapping down when the square is full. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-navigation .mv-facts {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4px 6px;
+  width: 96px;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-navigation .mv-fact {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-glyph {
+  display: block;
+  width: 96px;
+  height: 96px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1.5px solid var(--mv-ink);
+  background:
+    linear-gradient(to right, transparent calc(50% - 0.5px), var(--mv-rule) calc(50% - 0.5px), var(--mv-rule) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(50% - 0.5px), var(--mv-rule) calc(50% - 0.5px), var(--mv-rule) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  color: var(--mv-ink);
+  font-size: 76px;
+  line-height: 93px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-entry {
+  padding: 0;
+  border-top: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  margin-right: 12px;
+  padding-right: 12px;
+  border-right: 3px double var(--mv-rule);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-entry > .gsm-hoshidicts-tags {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0 0 6px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-dictionary {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0 10px 6px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--text-color-light1);
+}
+
+/* 音・訓 rows built by theme.js; the okurigana after KANJIDIC's dot is lighter. */
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-yomi,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-fact {
+  display: block;
+  margin: 0 0 0 4px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-yomi-label,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-fact-label,
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-meanings-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 0;
+  border: 1px solid var(--hoshidicts-palette-primary);
+  border-radius: 3px;
+  color: var(--hoshidicts-palette-primary);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-meanings-label {
+  display: inline-block;
+  margin: 0 0 8px 8px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-yomi-okurigana {
+  color: var(--text-color-light1);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-yomi-separator {
+  color: var(--text-color-light1);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-fact-value {
+  color: var(--mv-ink);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .mv-facts {
+  display: block;
+  margin: 0 0 0 4px;
+}
+
+/* Meanings run on after the 意味 seal in the same column: 一、eat 二、food. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-meanings {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mv-meaning;
+  font-size: 15px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-meanings > li {
+  display: inline;
+  counter-increment: mv-meaning;
+  margin-inline-end: 0.9em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-meanings > li::before {
+  content: counter(mv-meaning, cjk-decimal) "、";
+  color: var(--hoshidicts-palette-primary);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats {
+  margin: 0;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats > summary {
+  letter-spacing: 0.08em;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats dl {
+  display: block;
+  margin: 0 0 0 6px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats dt {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats dt::after {
+  content: " ";
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats dd {
+  display: inline;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-stats dd::after {
+  content: "";
+  display: block;
+}
+
+/* ------------------------------------------- horizontal islands, notices */
+
+/* Forms and menus stay horizontal panels: the Note form slides in as a column
+ * between the headword and the glosses; the audio-source menu and any failure
+ * notice read left to right. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-audio-menu,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-lookup-failure,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-image-hover-preview {
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+/* The Note form is a 付箋 — a sticky slip laid over the foot of the bubble —
+ * rather than one more vertical column: a horizontal form needs the width. */
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  width: auto;
+  max-height: 72%;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--mv-ink);
+  border-radius: 4px;
+  background: var(--hoshidicts-palette-base-200);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  font-family: "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Meiryo", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form textarea {
+  background: var(--hoshidicts-palette-base-100);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-actions button {
+  border-color: var(--mv-ink);
+  border-radius: 999px;
+  background: var(--hoshidicts-palette-base-100);
+  font-family: inherit;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-actions .gsm-hoshidicts-note-save {
+  border-color: var(--hoshidicts-palette-primary);
+  color: var(--hoshidicts-palette-primary);
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-mining-feedback {
+  width: min-content;
+  max-width: 200px;
+  margin: 12px 8px;
+  border-radius: 6px;
+}
+
+:host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-lookup-notice {
+  margin: 4px 0;
+  border: 0;
+  border-right: 3px solid var(--hoshidicts-palette-primary);
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 14px;
+  color: var(--mv-ink);
+}

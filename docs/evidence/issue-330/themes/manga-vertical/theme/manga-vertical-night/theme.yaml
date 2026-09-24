@@ -1,0 +1,49 @@
+# themes/manga-vertical-night/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: manga-vertical-night
+name: Tategaki (manga, night)
+version: 1.0.0
+author: bee-san
+link: https://github.com/bee-san/hachidori/issues/334
+description: The Tategaki vertical margin note on a dark page for reading manga at night. Same vertical-rl layout, ruby furigana, tail and toolbar as manga-vertical; near-black stock with warm off-white ink.
+tags: [dark, manga, compact, classic, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: dark
+extends: manga-vertical        # proposal: inherit theme.css + theme.js from the parent, override only the palette
+palette:
+  color-scheme: "dark"
+  base-100: "#16171b"
+  base-200: "#1e2026"
+  base-300: "#2a2d35"
+  base-content: "#ece6d8"
+  primary: "#e8836b"
+  primary-content: "#16171b"
+  secondary: "#93b4e6"
+  secondary-content: "#16171b"
+  accent: "#d1b45a"
+  accent-content: "#16171b"
+  neutral: "#aaa59b"
+  neutral-content: "#16171b"
+  info: "#8fb0e0"
+  info-content: "#16171b"
+  success: "#7fbf7a"
+  warning: "#e0a94a"
+  error: "#ef6b5c"
+css: theme.css                 # today: a copy of manga-vertical/theme.css with this slug and palette
+js:
+  file: theme.js               # today: a copy of manga-vertical/theme.js with this slug
+  hooks: [onRender]
+  summary: Adds furigana to the word as written in the bubble, moves the buttons into a vertical toolbar, rebuilds the kanji view as a colophon, points the tail at the word, lists the words looked up on this page.
+options:
+  popupWidthPx: 320
+  popupHeightPx: 560
+  popupOpacityPercent: 100
+  popupColumns: 1
+  popupToolbarPosition: top
+  showCompactDefinitionSummary: true
+  compactDefinitionSummaryCount: 3
+  showPitchAccentBadge: false
+screenshot: screenshot.png
+preview:
+  swatches: ["#16171b", "#ece6d8", "#e8836b", "#93b4e6"]

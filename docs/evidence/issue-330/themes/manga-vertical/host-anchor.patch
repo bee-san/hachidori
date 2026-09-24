@@ -1,0 +1,81 @@
+# Worktree-only additions on top of docs/evidence/issue-330/theme-store/nazeka-js/host-prototype.patch (issue #334, manga-vertical evidence):
+# registers the two slugs, adds the proposed view.anchor, and a debug timing line used by hook-timing.mjs. Not for merging.
+--- a/extension/content.js	2026-09-24 16:02:24.998084578 +0000
++++ b/extension/content.js	2026-09-24 12:25:54.579713675 +0000
+@@ -140,7 +140,11 @@
+   // module with a synchronous `onRender(view, api)` hook that runs after the
+   // renderer has finished. A throwing hook switches the theme's JS off for this
+   // page and the CSS layer keeps working.
+-  const THEME_JS = { nazeka: "vendor/themes/nazeka/" };
++  const THEME_JS = {
++    nazeka: "vendor/themes/nazeka/",
++    "manga-vertical": "vendor/themes/manga-vertical/",
++    "manga-vertical-night": "vendor/themes/manga-vertical-night/",
++  };
+   let themeStyle = null;
+   let themeModule = null;
+   let themeLoading = null;
+@@ -2129,6 +2133,16 @@
+     }
+   }
+ 
++  function themeAnchorFor(level) {
++    const candidate = level.activeCandidate;
++    if (!candidate || !anchorConnected(candidate)) return null;
++    const rect = popupRect(anchorRectFor(candidate));
++    const position = popupResize?.level === level ? popupResizePosition()
++      : calculatePopupPosition(rect, popupViewport(), candidate.vertical, level.depth > 0);
++    return Object.freeze({ x: rect.left - position.left, y: rect.top - position.top,
++      width: rect.width, height: rect.height, boxWidth: position.width, boxHeight: position.height });
++  }
++
+   function runThemeHook(level, kind) {
+     level.themeKind = kind;
+     const theme = themeModule;
+@@ -2136,6 +2150,14 @@
+     if (!theme || theme.disabled || !popup || theme.slug !== activeThemeSlug()) return;
+     const hook = theme.module?.onRender;
+     if (typeof hook !== "function") return;
++    // Proposed API addition (manga-vertical evidence, #334): where the hovered
++    // word is, relative to the popup box and in the popup's own CSS pixels, so a
++    // theme can point at it. The hook runs before activateTab's positionPopup,
++    // so the box is computed the way placePopup will place it rather than read
++    // from a stale style. `undefined` when the page opts out (evidence only),
++    // `null` when nothing anchors the level.
++    const anchor = document.documentElement.hasAttribute("data-hd-theme-no-anchor")
++      ? undefined : themeAnchorFor(level);
+     const view = Object.freeze({
+       kind,
+       depth: level.depth,
+@@ -2143,6 +2165,7 @@
+       chrome: popup.querySelector(":scope > .gsm-hoshidicts-result-chrome"),
+       content: popup.querySelector(":scope > .gsm-hoshidicts-content-scroll"),
+       entries: Object.freeze([...popup.querySelectorAll(".gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry")]),
++      anchor,
+     });
+     // A theme may only move nodes between the popup subtree and its own detached
+     // elements (api.el); nothing can be attached to the page document.
+@@ -2186,6 +2209,7 @@
+     } finally {
+       const elapsed = performance.now() - started;
+       if (elapsed > 8) console.debug(`hachidori theme ${theme.slug}: onRender took ${elapsed.toFixed(1)} ms`);
++      console.debug(`HDTIMING kind=${kind} nodes=${popup.querySelectorAll("*").length} ms=${elapsed.toFixed(2)}`);
+     }
+   }
+   // ---------------------------------------------------------------------------
+--- a/extension/reader-options.js	2026-09-24 16:02:42.198102982 +0000
++++ b/extension/reader-options.js	2026-09-24 11:06:12.772904813 +0000
+@@ -187,10 +187,11 @@
+     { label: "Automatic", ids: ["auto"] },
+     { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
+       "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss",
+-      "nazeka"] }, // theme JS host prototype (#334): bundled JS theme slug
++      "nazeka", "manga-vertical-night"] }, // theme JS host prototype (#334): bundled JS theme slugs
+     { label: "Light", ids: ["girlypop", "solarized-light", "light", "cupcake", "bumblebee", "emerald", "corporate",
+       "retro", "cyberpunk", "valentine", "garden", "lofi", "pastel", "fantasy", "wireframe", "cmyk", "autumn", "acid",
+-      "lemonade", "winter", "nord", "caramellatte", "silk"] },
++      "lemonade", "winter", "nord", "caramellatte", "silk",
++      "manga-vertical"] }, // theme JS host prototype (#334): bundled JS theme slug
+     { label: "High contrast", ids: ["high-contrast"] },
+   ].map(({ label, ids }) => ({ label, themes: ids.map(id => ({ id,
+     label: id === "default" ? "Hachidori (default)"

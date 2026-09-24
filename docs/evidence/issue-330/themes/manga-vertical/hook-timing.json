@@ -1,0 +1,465 @@
+{
+  "rounds": 8,
+  "words": [
+    "食べたかった",
+    "掛けてみる",
+    "逃げる",
+    "読んで",
+    "笑わせる",
+    "食 (kanji) + Back"
+  ],
+  "term": {
+    "n": 79,
+    "min": 0,
+    "median": 0.2,
+    "p95": 0.4,
+    "max": 0.9,
+    "nodesMax": 1298
+  },
+  "kanji": {
+    "n": 8,
+    "min": 0.3,
+    "median": 0.5,
+    "p95": 0.9,
+    "max": 0.9,
+    "nodesMax": 201
+  },
+  "samples": [
+    {
+      "kind": "term",
+      "nodes": 550,
+      "ms": 0.9
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.9
+    },
+    {
+      "kind": "term",
+      "nodes": 288,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 672,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 1288,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 182,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 228,
+      "ms": 0
+    },
+    {
+      "kind": "term",
+      "nodes": 227,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 60,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 483,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 166,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 560,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.6
+    },
+    {
+      "kind": "term",
+      "nodes": 297,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 679,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 1295,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 188,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 234,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 232,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.5
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.2
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.4
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.3
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 170,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 564,
+      "ms": 0.1
+    },
+    {
+      "kind": "kanji",
+      "nodes": 201,
+      "ms": 0.5
+    },
+    {
+      "kind": "term",
+      "nodes": 301,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 682,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 1298,
+      "ms": 0.1
+    },
+    {
+      "kind": "term",
+      "nodes": 190,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 236,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 233,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 64,
+      "ms": 0.2
+    },
+    {
+      "kind": "term",
+      "nodes": 487,
+      "ms": 0.2
+    }
+  ],
+  "boundary": "performance.now() around hook(view, api) in the prototype host (content.js runThemeHook); excludes building view/api and the anchor rect"
+}

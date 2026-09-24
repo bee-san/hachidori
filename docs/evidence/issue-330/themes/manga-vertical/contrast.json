@@ -1,0 +1,266 @@
+[
+  {
+    "mode": "light",
+    "pair": "ink on paper (headword, glosses)",
+    "foreground": "rgb(29, 27, 24)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 15.4,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "朱 furigana / sense numbers on paper (12 px rt)",
+    "foreground": "rgb(184, 50, 31)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 5.36,
+    "wcag": "AA"
+  },
+  {
+    "mode": "light",
+    "pair": "藍 inflected tail on paper (15 px)",
+    "foreground": "rgb(47, 79, 127)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 7.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "muted text: 活用 steps, page memory, lookup count (11–12 px)",
+    "foreground": "color(srgb 0.318902 0.308235 0.289882)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 7.36,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "faint text: dictionary name (10 px)",
+    "foreground": "color(srgb 0.318902 0.308235 0.289882)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 7.36,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "frequency seal text/border on paper (10.5 px)",
+    "foreground": "rgb(59, 91, 140)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 6.15,
+    "wcag": "AA"
+  },
+  {
+    "mode": "light",
+    "pair": "selected thumb tab: paper on ink",
+    "foreground": "rgb(247, 242, 232)",
+    "background": "rgb(29, 27, 24)",
+    "ratio": 15.4,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "unselected thumb tab text on paper",
+    "foreground": "color(srgb 0.318902 0.308235 0.289882)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 7.36,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "toolbar button ink on its paper disc",
+    "foreground": "rgb(29, 27, 24)",
+    "background": "rgb(247, 242, 232)",
+    "ratio": 15.4,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "toolbar strip (screentone base) vs paper — decorative, no text",
+    "foreground": "color(srgb 0.937255 0.909804 0.854902)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 1.09,
+    "wcag": "fail"
+  },
+  {
+    "mode": "light",
+    "pair": "朱 ×n repeat mark on paper (10 px)",
+    "foreground": "rgb(184, 50, 31)",
+    "background": "color(srgb 0.968627 0.94902 0.909804)",
+    "ratio": 5.36,
+    "wcag": "AA"
+  },
+  {
+    "mode": "night",
+    "pair": "ink on paper (headword, glosses)",
+    "foreground": "rgb(236, 230, 216)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 14.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "朱 furigana / sense numbers on paper (12 px rt)",
+    "foreground": "rgb(232, 131, 107)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 6.73,
+    "wcag": "AA"
+  },
+  {
+    "mode": "night",
+    "pair": "藍 inflected tail on paper (15 px)",
+    "foreground": "rgb(147, 180, 230)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 8.45,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "muted text: 活用 steps, page memory, lookup count (11–12 px)",
+    "foreground": "color(srgb 0.724078 0.707137 0.669176)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 8.69,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "faint text: dictionary name (10 px)",
+    "foreground": "color(srgb 0.724078 0.707137 0.669176)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 8.69,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "frequency seal text/border on paper (10.5 px)",
+    "foreground": "rgb(143, 176, 224)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 8.06,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "selected thumb tab: paper on ink",
+    "foreground": "rgb(22, 23, 27)",
+    "background": "rgb(236, 230, 216)",
+    "ratio": 14.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "unselected thumb tab text on paper",
+    "foreground": "color(srgb 0.724078 0.707137 0.669176)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 8.69,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "toolbar button ink on its paper disc",
+    "foreground": "rgb(236, 230, 216)",
+    "background": "rgb(22, 23, 27)",
+    "ratio": 14.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "toolbar strip (screentone base) vs paper — decorative, no text",
+    "foreground": "color(srgb 0.117647 0.12549 0.14902)",
+    "background": "color(srgb 0.0862745 0.0901961 0.105882)",
+    "ratio": 1.1,
+    "wcag": "fail"
+  },
+  {
+    "mode": "light",
+    "pair": "palette ink on base-100",
+    "foreground": "#1d1b18",
+    "background": "#f7f2e8",
+    "ratio": 15.4,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "palette primary on base-100",
+    "foreground": "#b8321f",
+    "background": "#f7f2e8",
+    "ratio": 5.36,
+    "wcag": "AA"
+  },
+  {
+    "mode": "light",
+    "pair": "palette secondary on base-100",
+    "foreground": "#2f4f7f",
+    "background": "#f7f2e8",
+    "ratio": 7.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "light",
+    "pair": "palette accent on base-100",
+    "foreground": "#7d6218",
+    "background": "#f7f2e8",
+    "ratio": 5.18,
+    "wcag": "AA"
+  },
+  {
+    "mode": "light",
+    "pair": "palette neutral on base-100",
+    "foreground": "#5b5650",
+    "background": "#f7f2e8",
+    "ratio": 6.51,
+    "wcag": "AA"
+  },
+  {
+    "mode": "light",
+    "pair": "palette info on base-100",
+    "foreground": "#3b5b8c",
+    "background": "#f7f2e8",
+    "ratio": 6.15,
+    "wcag": "AA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette ink on base-100",
+    "foreground": "#ece6d8",
+    "background": "#16171b",
+    "ratio": 14.39,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette primary on base-100",
+    "foreground": "#e8836b",
+    "background": "#16171b",
+    "ratio": 6.73,
+    "wcag": "AA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette secondary on base-100",
+    "foreground": "#93b4e6",
+    "background": "#16171b",
+    "ratio": 8.45,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette accent on base-100",
+    "foreground": "#d1b45a",
+    "background": "#16171b",
+    "ratio": 8.86,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette neutral on base-100",
+    "foreground": "#aaa59b",
+    "background": "#16171b",
+    "ratio": 7.3,
+    "wcag": "AAA"
+  },
+  {
+    "mode": "night",
+    "pair": "palette info on base-100",
+    "foreground": "#8fb0e0",
+    "background": "#16171b",
+    "ratio": 8.06,
+    "wcag": "AAA"
+  }
+]
