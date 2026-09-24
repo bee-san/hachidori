@@ -1,0 +1,47 @@
+# themes/tamagotchi-lcd/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: tamagotchi-lcd
+name: Tango Pet LCD
+version: 1.0.0
+author: bee-san
+link: https://github.com/bee-san/hachidori/issues/334
+description: A translucent pink plastic egg around a sage dot-matrix LCD. Three physical keys (A audio, B feed to Anki, C next page) drive the reader; Tango, a pixel creature, walks the bottom of the screen and eats every word you mine.
+tags: [light, js, monochrome, vn]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                     # a monochrome LCD: sage paper, near-black ink, inverse video for emphasis
+  color-scheme: light
+  base-100: "#cfd8b4"        # LCD paper
+  base-200: "#c3cda9"
+  base-300: "#b5c19a"
+  base-content: "#1c261c"    # ink
+  primary: "#1c261c"         # accent = ink (inverse video), also the page highlight
+  primary-content: "#cfd8b4"
+  secondary: "#3b4a3a"       # soft ink (furigana, readings, muted text)
+  secondary-content: "#cfd8b4"
+  accent: "#1c261c"          # pitch contour
+  accent-content: "#cfd8b4"
+  neutral: "#b5c19a"         # plain tag background
+  neutral-content: "#1c261c"
+  info: "#1c261c"            # frequency source (inverse video)
+  info-content: "#cfd8b4"
+  success: "#1c261c"         # a monochrome screen has no colours; state uses text, icons and inverse video
+  warning: "#3b4a3a"
+  error: "#1c261c"
+css: theme.css
+js:                          # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: Adds a status line, a walking pixel pet and three A/B/C keys that press the reader's own audio, Anki and Back buttons; pages long entries; draws the kanji as a 24-dot bitmap.
+options:                     # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 88    # a slightly see-through shell
+  popupWidthPx: 520
+  popupHeightPx: 560         # an upright egg; the shell and keys need the room
+  popupColumns: 1
+  popupToolbarPosition: top
+  showCompactDefinitionSummary: false
+screenshot: screenshot.png
+preview:
+  swatches: ["#ff8fc6", "#2a2431", "#cfd8b4", "#1c261c"]

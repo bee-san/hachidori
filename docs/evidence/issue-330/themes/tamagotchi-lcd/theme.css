@@ -1,0 +1,1191 @@
+/* themes/tamagotchi-lcd/theme.css — "Tango Pet LCD" (issue #334, wave 2).
+ *
+ * The popup is a translucent pink plastic egg. Inside it, a dark bezel frames a
+ * sage-green dot-matrix LCD; under the screen sit three physical keys (A, B, C)
+ * that theme.js wires to audio, Anki and paging. A pixel creature walks along
+ * the bottom of the screen; CSS owns every frame of its animation and reacts to
+ * the reader's own state attributes (mine/audio button data-state) with :has().
+ *
+ * Legibility rule: the definitions are ordinary selectable text on a solid LCD
+ * surface. The dot grid is painted BEHIND the text (the unlit dots of the
+ * matrix), never over it; only the pet and the kanji bitmap are made of dots.
+ *
+ * All artwork is CSS gradients, box-shadow pixels and Unicode; nothing is
+ * fetched. The palette block is what build-index.mjs generates from theme.yaml.
+ */
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #cfd8b4;
+  --hoshidicts-palette-base-200: #c3cda9;
+  --hoshidicts-palette-base-300: #b5c19a;
+  --hoshidicts-palette-base-content: #1c261c;
+  --hoshidicts-palette-primary: #1c261c;
+  --hoshidicts-palette-primary-content: #cfd8b4;
+  --hoshidicts-palette-secondary: #3b4a3a;
+  --hoshidicts-palette-secondary-content: #cfd8b4;
+  --hoshidicts-palette-accent: #1c261c;
+  --hoshidicts-palette-accent-content: #cfd8b4;
+  --hoshidicts-palette-neutral: #b5c19a;
+  --hoshidicts-palette-neutral-content: #1c261c;
+  --hoshidicts-palette-info: #1c261c;
+  --hoshidicts-palette-info-content: #cfd8b4;
+  --hoshidicts-palette-success: #1c261c;
+  --hoshidicts-palette-warning: #3b4a3a;
+  --hoshidicts-palette-error: #1c261c;
+}
+
+/* ---------------------------------------------------------------------------
+ * The device. Sizes are the user's (Design → width/height); the shell radii are
+ * in px so the egg keeps its shape at any size.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup {
+  --tama-shell: #ff8fc6;
+  --tama-shell-deep: #b8367f;
+  --tama-print: #3a1430;                       /* lettering printed on the shell */
+  --tama-bezel: #2a2431;
+  --tama-paper: var(--hoshidicts-palette-base-100);
+  --tama-ink: var(--hoshidicts-palette-base-content);
+  --tama-ink-soft: var(--hoshidicts-palette-secondary);
+  --tama-grid: rgba(28, 38, 28, 0.11);          /* unlit dots behind the text */
+  --tama-cap: #f7f2e6;
+  --tama-cap-shadow: #a5968a;
+  --tama-side: 40px;                            /* screen inset from the shell */
+  --tama-top: 30px;
+  --tama-deck: 92px;                            /* room for the keys */
+  --tama-floor: 54px;                           /* Tango's walkway, with headroom for bubbles */
+  --tama-screen-radius: 16px 16px 46px 46px;   /* the plate follows the egg at the bottom */
+  --hoshidicts-border: color-mix(in srgb, var(--tama-ink) 55%, var(--tama-paper));
+  --hoshidicts-border-strong: var(--tama-ink);
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-surface: transparent;
+  --hoshidicts-surface-raised: transparent;
+  --hoshidicts-accent-soft: color-mix(in srgb, var(--tama-ink) 14%, var(--tama-paper));
+  --hoshidicts-text-muted: var(--tama-ink-soft);
+  --hoshidicts-text-faint: var(--tama-ink-soft);
+  --hoshidicts-link: var(--tama-ink);
+  --hoshidicts-link-hover: var(--tama-ink-soft);
+  --hoshidicts-scrollbar: transparent;
+  padding: var(--tama-top) var(--tama-side) 0;
+  border: 0;
+  border-radius: 104px 104px 250px 250px / 104px 104px 230px 230px;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.62) 0 5%, rgba(255, 255, 255, 0.2) 13%, transparent 24%),
+    radial-gradient(130% 90% at 50% 118%, color-mix(in srgb, var(--tama-shell-deep) 55%, transparent), transparent 62%),
+    color-mix(in srgb, var(--tama-shell) var(--hoshidicts-background-opacity), transparent);
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 255, 255, 0.55),
+    inset 0 -22px 34px rgba(120, 20, 80, 0.22),
+    0 26px 54px rgba(70, 10, 45, 0.45),
+    0 3px 10px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(9px) saturate(1.25);
+  backdrop-filter: blur(9px) saturate(1.25);
+  font-family: "DotGothic16", "PixelMplus12", "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  timeline-scope: --tama-scroll;
+}
+
+/* The LCD: a bezel ring and a matt sage plate carrying the unlit dot grid. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup::before {
+  content: "";
+  position: absolute;
+  inset: var(--tama-top) var(--tama-side) var(--tama-deck);
+  border-radius: var(--tama-screen-radius);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 2px, var(--tama-grid) 2px 3px),
+    repeating-linear-gradient(0deg, transparent 0 2px, var(--tama-grid) 2px 3px),
+    var(--tama-paper);
+  box-shadow:
+    inset 0 3px 10px rgba(20, 30, 20, 0.28),
+    0 0 0 7px var(--tama-bezel),
+    0 0 0 9px rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+}
+
+/* Glass over the LCD: a faint highlight, no pattern, so the text stays crisp. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: var(--tama-top) var(--tama-side) var(--tama-deck);
+  border-radius: var(--tama-screen-radius);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16) 0 10%, rgba(255, 255, 255, 0.04) 26%, transparent 40%);
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+/* Flex order keeps the device layout whatever the toolbar-position setting does
+   to the DOM order: screen top, screen body, feedback, Tango's floor, keys. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-result-chrome { order: 1; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-content-scroll { order: 2; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-failure { order: 3; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-floor { order: 4; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-deck { order: 5; }
+
+/* ---------------------------------------------------------------------------
+ * Screen top: status line, headword, dictionary tabs.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-result-chrome {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  max-height: 60%;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-result-chrome {
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 4px 2px 3px;
+  border-bottom: 2px dotted var(--tama-ink);
+  color: var(--tama-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-hearts {
+  display: inline-flex;
+  gap: 3px;
+}
+
+/* Hearts: one per two words fed, dim until lit. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-heart::before {
+  content: "\2665";
+  font-size: 12px;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-heart {
+  opacity: 0.3;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-heart[data-lit="true"] {
+  opacity: 1;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-fed {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scroll gauge: a 9-step bar driven by the screen's own scroll position. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-gauge {
+  display: inline-flex;
+  width: 54px;
+  height: 8px;
+  margin-left: auto;
+  padding: 1px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 1px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-content-scroll {
+  scroll-timeline: --tama-scroll block;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-gauge-fill {
+  width: 100%;
+  background: repeating-linear-gradient(90deg, var(--tama-ink) 0 4px, transparent 4px 6px);
+  animation: tama-gauge linear both;
+  animation-timeline: --tama-scroll;
+  animation-timing-function: steps(9, jump-none);
+}
+
+@keyframes tama-gauge {
+  from { width: 11%; }
+  to { width: 100%; }
+}
+
+/* A caption that types itself out and clears; theme.js removes it on animationend. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-toast {
+  padding: 0 6px;
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+  animation: tama-toast-out 1.8s steps(1, end) 1 forwards;
+}
+
+@keyframes tama-toast-out {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes tama-toast-hold {
+  from, to { opacity: 1; }
+}
+
+/* The reader's remaining action buttons (Note, custom buttons and links) sit at
+   the end of the status line as small LCD chips; audio and Anki are the keys. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-entry-actions {
+  flex: 0 1 auto;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  align-self: center;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-audio-control,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-mine-button {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-text-action-button {
+  width: auto;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font-size: 10px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-note-button .hd-icon {
+  width: 12px;
+  height: 12px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-note-button:hover,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-note-button[aria-expanded="true"],
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-status .gsm-hoshidicts-text-action-button:hover {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+/* Headword: 26 px with furigana, the reading repeated inline in LCD brackets. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-primary-header {
+  min-height: 0;
+  padding: 6px 0 4px;
+  gap: 6px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-headword {
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-expression {
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-expression rt {
+  font-size: 12px;
+  color: var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-reading {
+  font-size: 14px;
+  color: var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-reading::before { content: "【"; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-reading::after { content: "】"; }
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-link {
+  border-bottom: 2px dotted var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-compact-definition-summary {
+  font-size: 12px;
+  color: var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-deinflection {
+  font-size: 11px;
+}
+
+/* Dictionary tabs as menu segments; the selected one is inverse video. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-metadata-strip {
+  padding: 0 0 5px;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tab-list {
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tab {
+  min-height: 20px;
+  padding: 1px 7px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tab:hover:not(:disabled):not([aria-selected="true"]) {
+  background: var(--hoshidicts-accent-soft);
+  color: var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+/* ---------------------------------------------------------------------------
+ * Screen body. The scrollbar is gone: the gauge above and the C key page it.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-content-scroll {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 4px 10px 6px;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-primary-metadata-capsule {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-stats {
+  margin: 2px 0;
+  padding: 0 5px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  font-size: 11px;
+}
+
+/* Tags and badges: every colour becomes ink; sources are inverse video. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tag {
+  padding: 1px 4px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tag-frequency,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tag-pitch,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tag-ipa {
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-frequency-source,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-frequency-body,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-pitch-body,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-ipa-body {
+  padding: 1px 4px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-frequency-source {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-frequency-body,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-pitch-body {
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-pitch-mora {
+  border-top-width: 2px;
+  border-bottom-width: 2px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-pitch-contour {
+  color: var(--tama-ink);
+}
+
+/* Definitions: flat, numbered, one dictionary per block with a ▸ label. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-grid {
+  gap: 6px;
+  margin-top: 5px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  padding-top: 5px;
+  border-top: 1px dotted var(--tama-ink-soft);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-card-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-card-title::before {
+  content: "▸ ";
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-definitions {
+  margin: 2px 0 0;
+  padding-left: 22px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-definitions > li {
+  margin: 2px 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-definitions > li::marker {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-glossary-content {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-tag-definition {
+  font-size: 9px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 2px dotted var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
+  font-size: 22px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-show-more,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup-close {
+  min-height: 22px;
+  padding: 1px 8px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-show-more:hover,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-show-more:focus-visible,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-back:hover,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup-close:hover {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-structured-link {
+  text-decoration-style: dotted;
+}
+
+/* Dictionary images turn into ink-on-paper prints. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gloss-image {
+  filter: grayscale(1) contrast(1.4);
+  mix-blend-mode: multiply;
+  image-rendering: pixelated;
+}
+
+/* Feedback rows (mining, notices, failures) as LCD chips. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-notice,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-failure {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 6px;
+  padding: 3px 7px;
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-mining-feedback[data-kind="error"],
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-failure {
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-failure-detail {
+  color: inherit;
+  opacity: 0.8;
+  text-transform: none;
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-note-form {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 6px;
+  padding: 6px;
+  border: 2px dotted var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-note-form textarea {
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font: inherit;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-note-actions button {
+  border: 1px solid var(--tama-ink);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tama-ink);
+  font: 700 11px/1.2 inherit;
+  text-transform: uppercase;
+}
+
+/* Resize grip: a screw in the shell instead of a corner triangle. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-resize-handle {
+  right: 30px;
+  bottom: 22px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  clip-path: none;
+  background:
+    linear-gradient(var(--tama-print), var(--tama-print)) 50% 50% / 8px 2px no-repeat,
+    linear-gradient(var(--tama-print), var(--tama-print)) 50% 50% / 2px 8px no-repeat,
+    radial-gradient(circle at 40% 35%, #fff 0 20%, #d9c9d3 60%, #9c7e91 100%);
+  box-shadow: inset 0 0 0 1px rgba(58, 20, 48, 0.6);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tango's floor: the strip of LCD under the text where the pet walks.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-floor {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 var(--tama-floor);
+  height: var(--tama-floor);
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 0 0 46px 46px;
+}
+
+/* The ground line. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-floor::before {
+  content: "";
+  position: absolute;
+  left: 30px;
+  right: 30px;
+  bottom: 3px;
+  height: 0;
+  border-top: 2px dotted var(--tama-ink);
+  opacity: 0.6;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet {
+  position: absolute;
+  bottom: 4px;
+  left: 34px;
+  width: calc(12 * var(--theme-pet-unit, 3px));
+  height: calc(12 * var(--theme-pet-unit, 3px));
+  color: var(--tama-ink);
+  animation: tama-walk 16s steps(36, jump-none) infinite alternate;
+}
+
+/* Walks the width of the screen and back, one dot at a time. */
+@keyframes tama-walk {
+  from { left: 34px; }
+  to { left: calc(100% - 34px - 12 * var(--theme-pet-unit, 3px)); }
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-body {
+  position: absolute;
+  inset: 0;
+  animation: tama-face 32s steps(1, end) infinite;
+}
+
+/* Faces the way it walks: flipped on the way back. */
+@keyframes tama-face {
+  0%, 49.99% { transform: scaleX(1); }
+  50%, 100% { transform: scaleX(-1); }
+}
+
+/* The sprite is one transparent dot; the box-shadow list is the picture. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-sprite {
+  position: absolute;
+  left: calc(-1 * var(--theme-pet-unit, 3px));
+  top: calc(-1 * var(--theme-pet-unit, 3px));
+  width: var(--theme-pet-unit, 3px);
+  height: var(--theme-pet-unit, 3px);
+  box-shadow: var(--theme-pet-idlea);
+  animation: tama-step 0.7s steps(1, end) infinite;
+}
+
+@keyframes tama-step {
+  0%, 49.99% { box-shadow: var(--theme-pet-walka); }
+  50%, 100% { box-shadow: var(--theme-pet-walkb); }
+}
+
+@keyframes tama-idle {
+  0%, 89.99% { box-shadow: var(--theme-pet-idlea); }
+  90%, 100% { box-shadow: var(--theme-pet-idleb); }
+}
+
+@keyframes tama-eat {
+  0%, 49.99% { box-shadow: var(--theme-pet-eata); }
+  50%, 100% { box-shadow: var(--theme-pet-eatb); }
+}
+
+@keyframes tama-sing {
+  0%, 59.99% { box-shadow: var(--theme-pet-sing); }
+  60%, 100% { box-shadow: var(--theme-pet-idlea); }
+}
+
+/* The meal: three chomps, then a smile. */
+@keyframes tama-chomp {
+  0%, 12% { box-shadow: var(--theme-pet-eata); }
+  12.01%, 24% { box-shadow: var(--theme-pet-eatb); }
+  24.01%, 36% { box-shadow: var(--theme-pet-eata); }
+  36.01%, 48% { box-shadow: var(--theme-pet-eatb); }
+  48.01%, 60% { box-shadow: var(--theme-pet-eata); }
+  60.01%, 100% { box-shadow: var(--theme-pet-happy); }
+}
+
+/* Things above Tango's head: a 5-dot-wide sprite, hidden until a state lights it. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-bubble {
+  position: absolute;
+  left: calc(9 * var(--theme-pet-unit, 3px));
+  top: calc(-5 * var(--theme-pet-unit, 3px));
+  width: var(--theme-pet-unit, 3px);
+  height: var(--theme-pet-unit, 3px);
+  visibility: hidden;
+  box-shadow: var(--theme-bubble-heart);
+}
+
+@keyframes tama-bob {
+  0%, 49.99% { transform: translateY(0); }
+  50%, 100% { transform: translateY(calc(-1 * var(--theme-pet-unit, 3px))); }
+}
+
+@keyframes tama-blink {
+  0%, 59.99% { opacity: 1; }
+  60%, 100% { opacity: 0.25; }
+}
+
+/* Hovering the screen or the keys: Tango stops and blinks at you. Keyed on the
+   popup's children, not the popup: Chrome keeps a stale :hover on the popup
+   element itself when it is unhidden under the pointer and then moved. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-result-chrome:hover, .gsm-hoshidicts-content-scroll:hover, .tama-deck:hover) .tama-pet {
+  animation-play-state: paused;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-result-chrome:hover, .gsm-hoshidicts-content-scroll:hover, .tama-deck:hover) .tama-sprite {
+  animation: tama-idle 2.4s steps(1, end) infinite;
+}
+
+/* Mood from the lookup count (theme.js reads the reader's count slot). */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="sleepy"],
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="asleep"] {
+  animation-play-state: paused;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="sleepy"] .tama-sprite,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="asleep"] .tama-sprite {
+  animation: none;
+  box-shadow: var(--theme-pet-sleepy);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="sleepy"] .tama-bubble,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-mood="asleep"] .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-zzz);
+  animation: tama-bob 1.6s steps(1, end) infinite;
+}
+
+/* Audio playing: Tango sings and a note bobs over its head. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .tama-pet {
+  animation-play-state: paused;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .tama-sprite {
+  animation: tama-sing 0.5s steps(1, end) infinite;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-note);
+  animation: tama-bob 0.5s steps(1, end) infinite;
+}
+
+/* Anki: chewing while the note is being written … */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .tama-pet {
+  animation-play-state: paused;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .tama-sprite {
+  animation: tama-eat 0.4s steps(1, end) infinite;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-morsel);
+  animation: tama-bob 0.4s steps(1, end) infinite;
+}
+
+/* … a heart while the word is in your deck (fresh or already there) … */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="success"], .gsm-hoshidicts-mine-button[data-state="view-existing"]) .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-heart);
+}
+
+/* … and a 1 ms animation the moment success lands: theme.js listens for its
+   animationstart to count the meal. No observer, no timer. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-fed-detector {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="success"]) .tama-fed-detector {
+  animation: tama-fed 1ms linear 1 both;
+}
+
+@keyframes tama-fed {
+  from, to { visibility: visible; }
+}
+
+/* An error on either key: "!" over the head. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="error"], .gsm-hoshidicts-audio-button[data-state="error"]) .tama-bubble,
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="bang"] .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-bang);
+  animation: tama-blink 0.6s steps(1, end) infinite;
+}
+
+/* Reactions set by theme.js: a finite animation whose end clears the attribute. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react] {
+  animation-play-state: paused;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react] .tama-body {
+  animation: tama-face 32s steps(1, end) infinite, tama-react 3s linear 1;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="bang"] .tama-body {
+  animation: tama-face 32s steps(1, end) infinite, tama-react 1.4s linear 1;
+}
+
+@keyframes tama-react {
+  from, to { visibility: visible; }
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="fed"] .tama-sprite {
+  animation: tama-chomp 3s steps(1, end) 1 forwards;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="fed"] .tama-bubble {
+  visibility: visible;
+  box-shadow: var(--theme-bubble-heart);
+  animation: tama-bob 0.5s steps(1, end) infinite;
+}
+
+/* Stage badge: grows a leaf at 3 words, a crown at 6 (frames come from theme.js). */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-stage="3"] {
+  color: var(--tama-ink);
+}
+
+/* "More below" arrow, visible only while the screen can still scroll down. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-more {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  color: var(--tama-ink);
+  font-size: 11px;
+  font-weight: 700;
+  visibility: hidden;
+  animation: tama-more linear both, tama-blink 1s steps(1, end) infinite;
+  animation-timeline: --tama-scroll, auto;
+}
+
+@keyframes tama-more {
+  0%, 99% { visibility: visible; }
+  100% { visibility: hidden; }
+}
+
+/* Power-on wipe when a new word arrives. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-boot {
+  position: absolute;
+  z-index: 4;
+  inset: var(--tama-top) var(--tama-side) var(--tama-deck);
+  border-radius: var(--tama-screen-radius);
+  background: var(--tama-paper);
+  clip-path: inset(0 0 100% 0);
+  pointer-events: none;
+  animation: tama-boot 0.32s steps(7, jump-none) 1 both;
+}
+
+@keyframes tama-boot {
+  from { clip-path: inset(0 0 0 0); }
+  to { clip-path: inset(0 0 100% 0); }
+}
+
+/* ---------------------------------------------------------------------------
+ * The keys.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-deck {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 var(--tama-deck);
+  height: var(--tama-deck);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 40px;
+  padding-top: 6px;
+  box-sizing: border-box;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key {
+  display: grid;
+  grid-template-areas: "cap" "face";
+  justify-items: center;
+  align-items: start;
+  row-gap: 0;
+  min-width: 64px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tama-print);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-b {
+  margin-top: 8px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-cap {
+  grid-area: cap;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #ffffff 0 16%, var(--tama-cap) 44%, #d8ccbd 100%);
+  box-shadow:
+    0 4px 0 var(--tama-cap-shadow),
+    0 6px 10px rgba(60, 10, 45, 0.45),
+    inset 0 1px 0 #ffffff;
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key:hover .tama-cap {
+  background: radial-gradient(circle at 36% 30%, #ffffff 0 22%, #fbf7ee 48%, #e0d5c6 100%);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key:active .tama-cap {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 var(--tama-cap-shadow),
+    0 2px 4px rgba(60, 10, 45, 0.45),
+    inset 0 1px 0 #ffffff;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key:focus-visible {
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key:focus-visible .tama-cap {
+  box-shadow:
+    0 0 0 3px var(--tama-print),
+    0 0 0 6px #ffffff,
+    0 4px 0 var(--tama-cap-shadow),
+    0 6px 10px rgba(60, 10, 45, 0.45);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-face {
+  grid-area: face;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "letter glyph" "hint hint";
+  justify-items: center;
+  align-items: center;
+  column-gap: 4px;
+  row-gap: 1px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-letter { grid-area: letter; font-size: 12px; line-height: 14px; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-glyph { grid-area: glyph; font-size: 11px; line-height: 14px; }
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-hint { grid-area: hint; font-size: 9px; line-height: 11px; opacity: 0.85; white-space: nowrap; }
+
+/* C shows "next" while the screen can still scroll, decided by the scroll
+   timeline itself (no layout read in JS), and its end action otherwise. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-page {
+  visibility: hidden;
+  animation: tama-more linear both;
+  animation-timeline: --tama-scroll;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key-else {
+  animation: tama-less linear both;
+  animation-timeline: --tama-scroll;
+}
+
+@keyframes tama-less {
+  0%, 99% { visibility: hidden; }
+  100% { visibility: visible; }
+}
+
+/* B without Anki: a dim cap, the hint says why. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-key[aria-disabled="true"] .tama-cap {
+  background: radial-gradient(circle at 36% 30%, #f1eee8 0 16%, #d9d3c9 44%, #b8b0a5 100%);
+}
+
+/* The B cap glows pink while the word is in your deck. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="success"], .gsm-hoshidicts-mine-button[data-state="view-existing"]) .tama-key-b .tama-cap {
+  background: radial-gradient(circle at 36% 30%, #ffffff 0 12%, #ffd3ea 40%, #f39ac8 100%);
+}
+
+/* ---------------------------------------------------------------------------
+ * Kanji view.
+ * ------------------------------------------------------------------------- */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-navigation {
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0 4px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-bitmap {
+  position: relative;
+  display: inline-block;
+  width: calc(24 * 3px);
+  height: calc(24 * 3px);
+  color: var(--tama-ink);
+}
+
+/* Two 1 ms clocks for theme.js (no timers allowed): the bitmap is rasterised
+   once this element exists, and the mood is read once the reader shows the count. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-bitmap {
+  animation: tama-raster 1ms linear 1 both;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-lookup-stats:not([hidden]) {
+  animation: tama-counted 1ms linear 1 both;
+}
+
+@keyframes tama-raster {
+  from, to { visibility: visible; }
+}
+
+@keyframes tama-counted {
+  from, to { visibility: visible; }
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-bitmap-dots {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 3px;
+  height: 3px;
+  box-shadow: var(--theme-kanji-bitmap, none);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-glyph {
+  font-size: 54px;
+  font-weight: 700;
+  color: var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-entry {
+  padding: 4px 0;
+  border-top: 2px dotted var(--tama-ink);
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-entry:first-child {
+  border-top: 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-dictionary {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-dictionary::before {
+  content: "▸ ";
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-entry h4 {
+  margin: 4px 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-readings {
+  gap: 2px;
+  margin: 4px 0;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-reading-group {
+  grid-template-columns: 34px 1fr;
+  align-items: baseline;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-reading-group strong {
+  padding: 0 4px;
+  background: var(--tama-ink);
+  color: var(--tama-paper);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-kanji-meanings {
+  margin: 2px 0 4px;
+  padding-left: 22px;
+}
+
+/* Strokes / grade / frequency as one stats line, like the pet's own stats. */
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-kstats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin: 4px 0 2px;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-kstats dt {
+  display: inline;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-kstats dt::after {
+  content: " ";
+}
+
+:host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-kstats dd {
+  display: inline;
+  margin: 0 0 0 -6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * Reduced motion: no walking, blinking, chewing or wiping. States still show
+ * as still frames, and the 1 ms detector stays because it draws nothing.
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-content-scroll {
+    scroll-behavior: auto;
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-body,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-sprite,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-bubble,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-boot,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-result-chrome:hover, .gsm-hoshidicts-content-scroll:hover, .tama-deck:hover) .tama-sprite,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .tama-sprite,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .tama-sprite,
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="fed"] .tama-sprite {
+    animation: none;
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet {
+    left: calc(100% - 34px - 12 * var(--theme-pet-unit, 3px));
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .tama-sprite {
+    box-shadow: var(--theme-pet-sing);
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .tama-sprite {
+    box-shadow: var(--theme-pet-eata);
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react="fed"] .tama-sprite {
+    box-shadow: var(--theme-pet-happy);
+  }
+
+  /* The reaction clock still has to end so theme.js can clear the attribute. */
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-pet[data-react] .tama-body {
+    animation: tama-react 3s linear 1;
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-more {
+    animation: tama-more linear both;
+    animation-timeline: --tama-scroll;
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-toast {
+    animation: tama-toast-hold 2.4s linear 1 forwards;
+  }
+
+  :host([data-hoshidicts-theme="tamagotchi-lcd"]) .tama-cap {
+    transition: none;
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "default": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3
+    },
+    "root": {
+      "samples": 24,
+      "firstMs": {
+        "median": 17.6,
+        "p95": 48.1
+      },
+      "completeMs": {
+        "median": 37.3,
+        "p95": 102.7
+      }
+    },
+    "cold": {
+      "samples": 3,
+      "firstMs": {
+        "median": 152.5,
+        "p95": 189.8
+      },
+      "completeMs": {
+        "median": 154.6,
+        "p95": 295.5
+      }
+    },
+    "deepNesting": {
+      "samples": 48,
+      "firstMs": {
+        "median": 17.6,
+        "p95": 43.7
+      },
+      "completeMs": {
+        "median": 44.5,
+        "p95": 83.7
+      }
+    }
+  },
+  "theme": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3,
+      "popupTheme": "tamagotchi-lcd"
+    },
+    "root": {
+      "samples": 24,
+      "firstMs": {
+        "median": 28.6,
+        "p95": 53.1
+      },
+      "completeMs": {
+        "median": 68.1,
+        "p95": 103.3
+      }
+    },
+    "cold": {
+      "samples": 3,
+      "firstMs": {
+        "median": 169.5,
+        "p95": 205.1
+      },
+      "completeMs": {
+        "median": 288.2,
+        "p95": 321.1
+      }
+    },
+    "deepNesting": {
+      "samples": 48,
+      "firstMs": {
+        "median": 25.3,
+        "p95": 55.7
+      },
+      "completeMs": {
+        "median": 55.4,
+        "p95": 100.3
+      }
+    }
+  },
+  "onRenderHookMs": {
+    "samples": 30,
+    "median": 0.2,
+    "p95": 0.9,
+    "max": 9.4,
+    "note": "measured by the worktree host around hook(view, api) during the capture run; excludes the layout the new DOM costs the reader afterwards"
+  }
+}
