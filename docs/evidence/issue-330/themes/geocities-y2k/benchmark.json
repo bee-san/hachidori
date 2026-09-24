@@ -1,0 +1,144 @@
+{
+  "default": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "sessions": 3,
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3,
+      "popupTheme": "default"
+    },
+    "groups": {
+      "cold": {
+        "n": 3,
+        "firstMedianMs": 49.3,
+        "firstP95Ms": 73,
+        "completeMedianMs": 69,
+        "completeP95Ms": 126.2,
+        "blankMedianMs": 48.1
+      },
+      "root": {
+        "n": 24,
+        "firstMedianMs": 16.8,
+        "firstP95Ms": 16.9,
+        "completeMedianMs": 33.3,
+        "completeP95Ms": 33.5,
+        "blankMedianMs": 0
+      },
+      "deep": {
+        "n": 24,
+        "firstMedianMs": 16.8,
+        "firstP95Ms": 17,
+        "completeMedianMs": 33.2,
+        "completeP95Ms": 33.6,
+        "blankMedianMs": 0
+      },
+      "deep-flat": {
+        "n": 24,
+        "firstMedianMs": 16.8,
+        "firstP95Ms": 16.9,
+        "completeMedianMs": 33.3,
+        "completeP95Ms": 35.8,
+        "blankMedianMs": 0
+      },
+      "child": {
+        "n": 6,
+        "firstMedianMs": 16.8,
+        "firstP95Ms": 19.7,
+        "completeMedianMs": 33.2,
+        "completeP95Ms": 37.3,
+        "blankMedianMs": 3
+      },
+      "rapid-final": {
+        "n": 3,
+        "firstMedianMs": 16.8,
+        "firstP95Ms": 16.8,
+        "completeMedianMs": 33.3,
+        "completeP95Ms": 33.3,
+        "blankMedianMs": 0
+      }
+    },
+    "jsHeapUsedMiBLast": 3.55,
+    "jsHeapUsedMiBMax": 3.79
+  },
+  "theme": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "sessions": 3,
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3,
+      "popupTheme": "geocities-y2k"
+    },
+    "groups": {
+      "cold": {
+        "n": 3,
+        "firstMedianMs": 50.4,
+        "firstP95Ms": 50.5,
+        "completeMedianMs": 80.9,
+        "completeP95Ms": 92.2,
+        "blankMedianMs": 48.7
+      },
+      "root": {
+        "n": 24,
+        "firstMedianMs": 17,
+        "firstP95Ms": 19.9,
+        "completeMedianMs": 33.2,
+        "completeP95Ms": 47.1,
+        "blankMedianMs": 0
+      },
+      "deep": {
+        "n": 24,
+        "firstMedianMs": 17.1,
+        "firstP95Ms": 18.7,
+        "completeMedianMs": 33.3,
+        "completeP95Ms": 47.6,
+        "blankMedianMs": 0
+      },
+      "deep-flat": {
+        "n": 24,
+        "firstMedianMs": 17,
+        "firstP95Ms": 17.8,
+        "completeMedianMs": 33.2,
+        "completeP95Ms": 33.4,
+        "blankMedianMs": 0
+      },
+      "child": {
+        "n": 6,
+        "firstMedianMs": 16.9,
+        "firstP95Ms": 18.2,
+        "completeMedianMs": 33,
+        "completeP95Ms": 44.4,
+        "blankMedianMs": 6.2
+      },
+      "rapid-final": {
+        "n": 3,
+        "firstMedianMs": 18.3,
+        "firstP95Ms": 18.3,
+        "completeMedianMs": 33.4,
+        "completeP95Ms": 34.3,
+        "blankMedianMs": 0
+      }
+    },
+    "jsHeapUsedMiBLast": 3,
+    "jsHeapUsedMiBMax": 3.91
+  }
+}

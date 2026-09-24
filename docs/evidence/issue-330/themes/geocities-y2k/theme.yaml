@@ -1,0 +1,42 @@
+# themes/geocities-y2k/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: geocities-y2k
+name: Geocities Y2K
+version: 1.0.0
+author: hachidori theme lab
+description: Every word gets its own 1999 personal homepage — tiled stars, a scrolling welcome marquee, a bevelled profile table, an odometer visitor counter fed by the lookup count, 88x31 dictionary buttons, a guestbook Anki button and kaomoji that know the part of speech. Definitions stay plain.
+tags: [light, pastel, spacious, classic, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                    # pastel lavender page, black-on-white content cells
+  color-scheme: light
+  base-100: "#f3e9ff"       # lavender page background under the tiled stars
+  base-200: "#ffffff"       # content cells (definitions live here)
+  base-300: "#e4d7f7"       # bevelled table headers, sidebar frames
+  base-content: "#1a1030"   # ink
+  primary: "#a3007a"        # magenta headings, link buttons, guestbook ink
+  primary-content: "#ffffff"
+  secondary: "#0000cc"      # 1999 link blue
+  secondary-content: "#ffffff"
+  accent: "#b35c00"         # 2 000-era amber for tags and "NEW!"
+  accent-content: "#ffffff"
+  neutral: "#d4d0c8"        # the operating-system grey of bevelled buttons
+  neutral-content: "#000000"
+  info: "#4b2a8a"           # frequency badge purple
+  info-content: "#ffffff"
+  success: "#007a33"
+  warning: "#8a6a00"
+  error: "#c8102e"
+css: theme.css
+js:                         # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: Rebuilds the popup as a homepage — moves the headword into a profile table, the buttons into a guestbook, the dictionary tabs into a link list, adds a visitor counter, kaomoji, webring and sparkle trail.
+options:                    # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100
+  popupColumns: 1
+screenshot: screenshot.png
+preview:
+  swatches: ["#f3e9ff", "#a3007a", "#0000cc", "#ffffff", "#1a1030", "#b35c00"]

@@ -1,0 +1,1211 @@
+/* themes/geocities-y2k/theme.css — a 1999 Japanese personal homepage for every word.
+ *
+ * The palette block is what build-index.mjs generates from theme.yaml; the rest
+ * is this theme's own CSS. Structure (profile table, guestbook, counter, link
+ * list, kanji plaque) is theme.js's job; anything it hides carries
+ * data-theme-hidden, which this file collapses. Every picture here is a CSS
+ * gradient, a border style or a Unicode glyph: no resource fetches, no fonts, no
+ * escapes. All animations stop under prefers-reduced-motion (last block),
+ * except the invisible 200 ms "tick" the visitor counter uses as its timer.
+ *
+ * Legibility rule: the definitions and the headword are solid dark ink on solid
+ * white; the 1999 chaos lives in the margins, headings, badges and sidebar. */
+
+:host([data-hoshidicts-theme="geocities-y2k"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #f3e9ff;
+  --hoshidicts-palette-base-200: #ffffff;
+  --hoshidicts-palette-base-300: #e4d7f7;
+  --hoshidicts-palette-base-content: #1a1030;
+  --hoshidicts-palette-primary: #a3007a;
+  --hoshidicts-palette-primary-content: #ffffff;
+  --hoshidicts-palette-secondary: #0000cc;
+  --hoshidicts-palette-secondary-content: #ffffff;
+  --hoshidicts-palette-accent: #b35c00;
+  --hoshidicts-palette-accent-content: #ffffff;
+  --hoshidicts-palette-neutral: #d4d0c8;
+  --hoshidicts-palette-neutral-content: #000000;
+  --hoshidicts-palette-info: #4b2a8a;
+  --hoshidicts-palette-info-content: #ffffff;
+  --hoshidicts-palette-success: #007a33;
+  --hoshidicts-palette-warning: #8a6a00;
+  --hoshidicts-palette-error: #c8102e;
+}
+
+/* ---- the "browser window": tiled stars, bevelled edge, hard shadow ---------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-popup {
+  --y2k-ink: #1a1030;
+  --y2k-ink-soft: #4b2a8a;
+  --y2k-bevel: #cbbde6;          /* frame borders (outset/inset compute the light and dark edges) */
+  --y2k-bevel-dark: #b9a8d9;
+  --y2k-cell: #e4d7f7;           /* table header cells */
+  --y2k-paper: #faf5ff;          /* frame interiors */
+  --y2k-grey: #d4d0c8;           /* the operating-system grey of 1999 buttons */
+  --y2k-magenta: #a3007a;
+  --y2k-blue: #0000cc;
+  --y2k-gold: #ffd400;
+  --y2k-rainbow: linear-gradient(90deg, #c00000, #9e5000, #7a6a00, #007a33, #0044cc, #6a00a8);
+  --y2k-stripes: repeating-linear-gradient(135deg, #ffd400 0 6px, #111111 6px 12px);
+  --hoshidicts-border: var(--y2k-bevel-dark);
+  --hoshidicts-border-strong: var(--y2k-ink-soft);
+  --hoshidicts-accent-soft: #efe6ff;
+  --hoshidicts-link: var(--y2k-blue);
+  --hoshidicts-link-hover: var(--y2k-magenta);
+  --hoshidicts-scrollbar: var(--y2k-ink-soft);
+  height: auto !important;                                  /* a homepage hugs its content … */
+  max-height: var(--gsm-hoshidicts-popup-height, 420px);    /* … up to the Design height */
+  border: 3px outset var(--y2k-bevel);
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 6px 6px, #ffffff 0 1.2px, transparent 1.9px) 0 0 / 28px 28px,
+    radial-gradient(circle at 20px 18px, #ffd6f5 0 1px, transparent 1.7px) 0 0 / 28px 28px,
+    radial-gradient(circle at 13px 25px, #cfe8ff 0 0.9px, transparent 1.6px) 0 0 / 28px 28px,
+    linear-gradient(45deg, rgba(255, 255, 255, 0.38) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.38) 75%) 0 0 / 14px 14px,
+    linear-gradient(45deg, rgba(255, 255, 255, 0.38) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.38) 75%) 7px 7px / 14px 14px,
+    var(--hoshidicts-popup-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 5px 5px 0 rgba(26, 16, 48, 0.32);
+  color: var(--y2k-ink);
+  font-family: "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-content-scroll {
+  flex: 0 1 auto;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar-thumb {
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: linear-gradient(#ff5fd7, #ffd400 50%, #47d4ff);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar-track {
+  background: var(--y2k-cell);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-resize-handle {
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--y2k-ink-soft) 3px 4px);
+}
+
+/* ---- page shell built by theme.js ------------------------------------------ */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page {
+  position: relative;
+  container: y2k / inline-size;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 168px;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 8px 2px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-main,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-side {
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-side {
+  position: sticky;
+  top: 34px;                                   /* under the sticky marquee */
+}
+
+@container y2k (max-width: 439px) {
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-side {
+    position: static;
+  }
+}
+
+/* ---- the <marquee> welcome banner ------------------------------------------ */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 28px;
+  overflow: hidden;
+  border-bottom: 3px double var(--y2k-ink-soft);
+  background: linear-gradient(#fff9d6, #fff3b0);
+  color: #3a0a5a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 28px;
+  white-space: nowrap;
+}
+
+/* Glitter: a sheet of tiny white points that jumps position four times a second. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 0.9px, transparent 1.5px) 0 0 / 11px 11px;
+  pointer-events: none;
+  animation: y2k-glitter 1.2s steps(4, end) infinite;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-track {
+  display: inline-block;
+  padding-left: 100%;
+  animation: y2k-marquee 18s linear -3s infinite;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-track > span {
+  margin-right: 10px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-star {
+  color: #a06a00;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-word {
+  color: var(--y2k-magenta);
+  font-size: 15px;
+}
+
+@keyframes y2k-marquee {
+  to { transform: translateX(-100%); }
+}
+
+@keyframes y2k-glitter {
+  0% { background-position: 0 0; }
+  25% { background-position: 3px 7px; }
+  50% { background-position: 8px 2px; }
+  75% { background-position: 5px 9px; }
+  100% { background-position: 0 0; }
+}
+
+/* ---- bevelled frames and rainbow headings ---------------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-frame {
+  margin: 0 0 8px;
+  padding: 5px 8px 8px;
+  border: 3px outset var(--y2k-bevel);
+  background: var(--y2k-paper);
+  box-shadow: inset 1px 1px 0 #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading-text {
+  background: var(--y2k-rainbow);
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: y2k-shimmer 6s linear infinite;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading-star {
+  color: #a06a00;
+  font-size: 11px;
+  animation: y2k-twinkle 1.6s ease-in-out infinite;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading-star:last-child {
+  animation-delay: 0.8s;
+}
+
+@keyframes y2k-shimmer {
+  to { background-position: 200% 0; }
+}
+
+@keyframes y2k-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.6); }
+}
+
+/* ---- プロフィール: the headword as a self-introduction table ---------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-table {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px;                                    /* cellspacing="2" */
+  border: 2px inset var(--y2k-bevel-dark);
+  background: var(--y2k-bevel-dark);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-th {
+  display: flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px outset #ffffff;
+  background: var(--y2k-cell);
+  color: #3b2160;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px inset #d9cdee;
+  background: #ffffff;
+  color: var(--y2k-ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name {
+  position: relative;
+  padding: 6px 8px 5px;
+}
+
+/* The renderer's own header sits inside the 名前 cell: its buttons are moved to
+   the guestbook by theme.js, so only the headword is left to lay out. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name .gsm-hoshidicts-primary-header {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name .gsm-hoshidicts-headword {
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name .gsm-hoshidicts-expression {
+  color: var(--y2k-ink);
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name .gsm-hoshidicts-compact-definition-summary {
+  flex: 1 1 100%;
+  min-height: 0;
+  margin: 2px 0 0;
+  color: var(--y2k-ink-soft);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-name .gsm-hoshidicts-expression rt {
+  color: var(--y2k-ink-soft);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  color: var(--y2k-blue);
+  background: #fff3b0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reading {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-new {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 0 4px;
+  border: 1px outset #ffb0b0;
+  background: #c8102e;
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 16px;
+  animation: y2k-blink 1s steps(2, end) infinite;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page[data-visit="first"] .y2k-new {
+  display: inline-block;
+}
+
+@keyframes y2k-blink {
+  50% { opacity: 0; }
+}
+
+/* Metadata the renderer scattered over the entry, now table rows. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-primary-grammar,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-primary-frequencies,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-primary-grammar-tag + .gsm-hoshidicts-primary-grammar-tag::before {
+  content: "";
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-primary-grammar-tag,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tag {
+  padding: 1px 5px;
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: var(--y2k-grey);
+  color: #000000;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tag-frequency,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tag-pitch,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tag-ipa {
+  padding: 0;
+  border: 2px inset var(--y2k-bevel-dark);
+  background: #ffffff;
+  color: var(--y2k-ink);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-frequency-source {
+  background: var(--y2k-ink-soft);
+  color: #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-frequency-body,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-pitch-body {
+  background: #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-deinflection {
+  margin: 0;
+  color: var(--y2k-ink);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-td .gsm-hoshidicts-deinflection > summary {
+  color: var(--y2k-blue);
+  text-decoration: underline;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-hitokoto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-kaomoji {
+  display: inline-block;
+  color: #6a00a8;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The face dances while the pronunciation plays: reactive to the audio button's state. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .y2k-kaomoji {
+  animation: y2k-dance 0.45s ease-in-out infinite alternate;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .y2k-marquee-track {
+  animation-duration: 7s;
+}
+
+@keyframes y2k-dance {
+  from { transform: translateY(0) rotate(-6deg); }
+  to { transform: translateY(-3px) rotate(6deg); }
+}
+
+/* ---- 意味: the one place that stays plain ----------------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-meanings {
+  background: #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-primary-metadata-row {
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-primary-metadata-capsule,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-lookup-stats {
+  display: none;                               /* shown in the profile table / counter instead */
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-card {
+  margin: 0 0 6px;
+  padding: 7px 10px 8px;
+  border: 2px inset var(--y2k-bevel);
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* Dictionary name as an 88×31 banner button of the era. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-card-title[data-y2k-banner],
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-dictionary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 31px;
+  box-sizing: border-box;
+  margin: 0 0 4px;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 2px outset var(--y2k-bevel);
+  background: linear-gradient(#ffffff, var(--y2k-cell));
+  color: var(--y2k-ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions {
+  margin: 2px 0 0;
+  padding-left: 24px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions > li::marker {
+  color: var(--y2k-magenta);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-content {
+  color: var(--y2k-ink);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tag-definition {
+  font-size: 10px;
+}
+
+/* 工事中: a sense with no gloss yet. :empty tracks the renderer's deferred fills,
+   so a second entry's body that arrives a frame later loses the tape by itself. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-content:empty::before {
+  content: "工事中";
+  display: inline-block;
+  margin: 2px 8px 2px 0;
+  padding: 1px 8px;
+  border: 4px solid;
+  border-image: var(--y2k-stripes) 4;
+  background: #fff8dc;
+  color: #000000;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-glossary-content:empty::after {
+  content: "(・_・;) この意味はまだ書かれていません";
+  color: #5a4a00;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+/* Lookup blur (Settings → Memory): blurred definitions get construction tape too. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions[data-definition-blur-state="pending"],
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions[data-definition-blur-state="blurred"] {
+  padding: 4px 8px 6px 30px;
+  border: 4px solid;
+  border-image: var(--y2k-stripes) 4;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions[data-definition-blur-state="pending"]::before,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-definitions[data-definition-blur-state="blurred"]::before {
+  content: "工事中 — 思い出してから見よう";
+  display: block;
+  margin: 0 0 4px -22px;
+  color: #3a2a00;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+/* Later entries: a rainbow <hr> and a smaller headword. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 4px solid;
+  border-image: var(--y2k-rainbow) 1;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
+  font-size: 22px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression rt {
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header > .gsm-hoshidicts-entry-actions {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-text-action-button {
+  flex-basis: 26px;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: var(--y2k-grey);
+  color: #000000;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .hd-icon,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-audio-button::before {
+  width: 14px;
+  height: 14px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-tags,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-metadata {
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-show-more {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: var(--y2k-grey);
+  color: #000000;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- sidebar: 訪問者数 ----------------------------------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter {
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 3px 4px;
+  margin: 0;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-odometer {
+  display: inline-flex;
+  gap: 2px;
+  min-width: 100px;
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 2px inset #8a8a8a;
+  background: #000000;
+  color: #7fff7f;
+  font-family: monospace;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  line-height: 20px;
+  vertical-align: middle;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter[data-state="waiting"] .y2k-odometer::after {
+  content: "・・・・・・";
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter[data-state="off"] .y2k-odometer::after {
+  content: "------";
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel {
+  display: block;
+  width: 14px;
+  height: 20px;
+  overflow: hidden;
+  background: linear-gradient(#3a3a3a, #000000 35%, #000000 65%, #3a3a3a);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel-strip {
+  display: block;
+  transform: translateY(calc(var(--y2k-digit, 0) * -20px));
+  animation: y2k-roll 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel-strip > span {
+  display: block;
+  height: 20px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel:nth-child(2) .y2k-reel-strip { animation-delay: 0.06s; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel:nth-child(3) .y2k-reel-strip { animation-delay: 0.12s; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel:nth-child(4) .y2k-reel-strip { animation-delay: 0.18s; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel:nth-child(5) .y2k-reel-strip { animation-delay: 0.24s; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel:nth-child(6) .y2k-reel-strip { animation-delay: 0.3s; }
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d0 { --y2k-digit: 0; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d1 { --y2k-digit: 1; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d2 { --y2k-digit: 2; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d3 { --y2k-digit: 3; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d4 { --y2k-digit: 4; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d5 { --y2k-digit: 5; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d6 { --y2k-digit: 6; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d7 { --y2k-digit: 7; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d8 { --y2k-digit: 8; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-d9 { --y2k-digit: 9; }
+
+@keyframes y2k-roll {
+  from { transform: translateY(0); }
+}
+
+/* The counter's timer: an invisible 200 ms animation whose end theme.js listens
+   for. It is deliberately left running under prefers-reduced-motion (nothing moves). */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter.y2k-ticking {
+  animation: y2k-tick 0.2s linear 1;
+}
+
+@keyframes y2k-tick {
+  from { outline-color: transparent; }
+  to { outline-color: transparent; }
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-counter-mood {
+  margin: 5px 0 0;
+  color: var(--y2k-ink-soft);
+  font-size: 11px;
+}
+
+/* ---- sidebar: リンク集 (dictionary tabs / buttons as 88×31 banners) ------------ */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-links .gsm-hoshidicts-tab-list,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  overflow: visible;
+  scrollbar-width: auto;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-links .gsm-hoshidicts-tab,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-banner {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  max-width: 88px;
+  height: 31px;
+  min-height: 31px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 2px outset var(--y2k-bevel);
+  border-radius: 0;
+  background: linear-gradient(#ffffff, var(--y2k-cell));
+  color: var(--y2k-ink);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-links .gsm-hoshidicts-tab:hover:not(:disabled):not([aria-selected="true"]),
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-banner:hover {
+  background: linear-gradient(#ffffff, #fff3b0);
+  color: var(--y2k-blue);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-links .gsm-hoshidicts-tab:active,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-banner:active {
+  border-style: inset;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-links .gsm-hoshidicts-tab[aria-selected="true"] {
+  border-style: inset;
+  border-color: var(--y2k-magenta);
+  background: linear-gradient(#a3007a, #6a0050);
+  color: #ffffff;
+}
+
+/* ---- sidebar: ゲストブック (the reader's real buttons, relabelled) ------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-entry-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-control {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-control > button {
+  flex: 1 1 auto;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-popup-close,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-text-action-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  width: 100%;
+  max-width: none;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: var(--y2k-grey);
+  color: #000000;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: left;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button:hover:not(:disabled),
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button:hover:not(:disabled),
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-note-button:hover,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-kanji-back:hover,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-popup-close:hover,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-text-action-button:hover:not(:disabled) {
+  border-color: var(--y2k-grey);
+  background: #e8e4dc;
+  color: var(--y2k-blue);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook button:active:not(:disabled) {
+  border-style: inset;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook button:disabled {
+  color: #6b6b6b;
+  text-shadow: 1px 1px 0 #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .hd-icon,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button::before,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-popup-close::before {
+  width: 14px;
+  height: 14px;
+}
+
+/* Labels: the icons stay, the words are the 1999 site's. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button::after { content: "書き込む"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="checking"]::after { content: "確認中…"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="mining"]::after { content: "書き込み中…"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="add-duplicate"]::after { content: "もう一度書く"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="overwrite"]::after { content: "書き直す"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="success"]::after { content: "記帳ありがとう！"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="view-existing"]::after { content: "記帳済み・見る"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="error"]::after { content: "エラー…"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="unavailable"]::after { content: "Anki お休み中"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button::after { content: "BGM ♪"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button[data-state="loading"]::after { content: "BGM 読込中…"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button[data-state="playing"]::after { content: "♪♪ 再生中 ♪♪"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button[data-state="error"]::after { content: "BGM エラー"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-note-button::after { content: "日記を書く"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-note-button[aria-expanded="true"]::after { content: "日記を閉じる"; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-popup-close::after { content: "閉じる"; }
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-kanji-back {
+  font-size: 0;                                /* the renderer's "Back"; aria-label keeps the name */
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-kanji-back::after {
+  content: "← トップに戻る";
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-button[data-state="playing"] {
+  border-color: #47d4ff;
+  background: repeating-linear-gradient(90deg, #cfeeff 0 4px, var(--y2k-grey) 4px 8px);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="success"],
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-mine-button[data-state="view-existing"] {
+  color: #005c26;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-guestbook .gsm-hoshidicts-audio-status {
+  flex: 1 1 100%;
+  max-width: none;
+  padding: 2px 0 0;
+  color: var(--y2k-ink-soft);
+  font-size: 10px;
+}
+
+/* ---- WebRing + footer -------------------------------------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-webring {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  margin: 0 0 8px;
+  padding: 4px 6px;
+  border: 2px inset var(--y2k-bevel-dark);
+  background: var(--y2k-cell);
+  color: var(--y2k-ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-ring-button {
+  padding: 2px 8px;
+  border: 2px outset var(--y2k-grey);
+  background: var(--y2k-grey);
+  color: #000000;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-ring-button:hover {
+  color: var(--y2k-blue);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-ring-button:active {
+  border-style: inset;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 0;
+  padding: 2px 8px 8px;
+  color: var(--y2k-ink-soft);
+  font-size: 10px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-footer-item + .y2k-footer-item::before {
+  content: "｜";
+  margin: 0 4px;
+  color: var(--y2k-bevel-dark);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-footer-made {
+  color: var(--y2k-magenta);
+  font-weight: 700;
+}
+
+/* Keyboard focus: the dotted rectangle every 1999 browser drew. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page button:focus-visible,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page summary:focus-visible,
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page .gsm-hoshidicts-tab:focus-visible {
+  outline: 2px dotted #000000;
+  outline-offset: 1px;
+}
+
+/* ---- 今日の漢字 ------------------------------------------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-plaque {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 18px;
+  padding: 10px 12px;
+  border: 4px inset var(--y2k-bevel);
+  background: linear-gradient(135deg, #ffffff, #efe6ff);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-plaque .gsm-hoshidicts-primary-header {
+  display: block;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-plaque .gsm-hoshidicts-kanji-navigation {
+  justify-content: center;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-plaque .gsm-hoshidicts-kanji-glyph {
+  padding: 4px 14px;
+  border: 3px double var(--y2k-ink-soft);
+  background: #ffffff;
+  color: var(--y2k-ink);
+  font-family: "Noto Serif CJK JP", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-size: 92px;
+  line-height: 1.1;
+  text-shadow: 3px 3px 0 var(--y2k-bevel);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-stickers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sticker {
+  padding: 2px 9px;
+  border: 2px outset #f5c400;
+  background: #fff3b0;
+  color: #3a2a00;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sticker:nth-child(2n) {
+  transform: rotate(2deg);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-hitokoto-kanji {
+  justify-content: center;
+  margin: 6px 0 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-entry {
+  padding: 0;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 4px solid;
+  border-image: var(--y2k-rainbow) 1;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-readings {
+  gap: 5px;
+  margin: 4px 0 6px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-reading-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reading-label {
+  padding: 0 6px;
+  border: 2px outset var(--y2k-cell);
+  background: var(--y2k-cell);
+  color: #3b2160;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Readings as "bullet GIFs": a spinning four-point star drawn with conic-gradient. */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-bullets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-bullets > li::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  background: conic-gradient(from 45deg, #ff5fd7, #ffd400, #47d4ff, #ff5fd7);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  vertical-align: -1px;
+  animation: y2k-bullet-spin 3s linear infinite;
+}
+
+@keyframes y2k-bullet-spin {
+  to { transform: rotate(360deg); }
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-meanings {
+  margin: 2px 0 8px;
+  padding-left: 24px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-meanings > li::marker {
+  color: var(--y2k-magenta);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-stats > summary {
+  display: none;                               /* theme.js opens it; the データ heading names it */
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-stats dl {
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px;
+  margin: 0;
+  border: 2px inset var(--y2k-bevel-dark);
+  background: var(--y2k-bevel-dark);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-stats dt {
+  padding: 2px 7px;
+  border: 1px outset #ffffff;
+  background: var(--y2k-cell);
+  color: #3b2160;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-kanji-stats dd {
+  padding: 2px 8px;
+  border: 1px inset #d9cdee;
+  background: #ffffff;
+}
+
+/* ---- the reader's other surfaces in period dress ----------------------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-note-form {
+  margin: 8px;
+  border: 3px outset var(--y2k-bevel);
+  border-radius: 0;
+  background: var(--y2k-paper);
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-note-form textarea {
+  border: 2px inset var(--y2k-bevel-dark);
+  border-radius: 0;
+  background: #ffffff;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-note-actions button {
+  border: 2px outset var(--y2k-grey);
+  border-radius: 0;
+  background: var(--y2k-grey);
+  color: #000000;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-lookup-notice,
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-lookup-failure {
+  margin: 8px;
+  border: 2px inset var(--y2k-bevel-dark);
+  border-radius: 0;
+  background: #fff3b0;
+  color: #3a2a00;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-mining-feedback[data-kind="success"] {
+  border-color: #007a33;
+  background: #e2f7e8;
+  color: #005c26;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-mining-feedback[data-kind="error"] {
+  border-color: #c8102e;
+  background: #ffe3e7;
+  color: #8a0a1f;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .gsm-hoshidicts-audio-menu {
+  border: 3px outset var(--y2k-bevel);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 rgba(26, 16, 48, 0.32);
+}
+
+/* ---- the sparkle cursor trail (theme.js positions each glyph) ----------------- */
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sparkle {
+  position: absolute;
+  z-index: 3;
+  top: var(--y2k-y, 0);
+  left: var(--y2k-x, 0);
+  color: #ff5fd7;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  text-shadow: 0 0 4px #ffffff;
+  transform: translate(-50%, -50%);
+  animation: y2k-sparkle 0.7s ease-out forwards;
+}
+
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sparkle-1 { color: #d19a00; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sparkle-2 { color: #1a9fd6; }
+:host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sparkle-3 { color: #a3007a; }
+
+@keyframes y2k-sparkle {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.6) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% + 18px)) scale(1.3) rotate(90deg); }
+}
+
+/* ---- motion off ------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-track,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee::after,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading-text,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-heading-star,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-new,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-reel-strip,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-bullets > li::before,
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-page:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .y2k-kaomoji {
+    animation: none;
+  }
+
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-marquee-track {
+    display: block;
+    padding-left: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+  }
+
+  :host([data-hoshidicts-theme="geocities-y2k"]) .y2k-sparkle {
+    display: none;
+  }
+}
