@@ -34,6 +34,8 @@ test("Firefox MV2 manifest preserves supported shared Chrome declarations", () =
     chromeManifest.content_scripts[0].js.filter(path => path !== "capture-content.js"),
   );
   assert.deepEqual(firefoxManifest.content_scripts[0].css, chromeManifest.content_scripts[0].css);
+  assert.equal(chromeManifest.content_scripts[0].all_frames, true);
+  assert.equal(firefoxManifest.content_scripts[0].all_frames, true);
   assert.deepEqual(
     firefoxManifest.web_accessible_resources,
     chromeManifest.web_accessible_resources[0].resources,
