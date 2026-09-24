@@ -1,0 +1,1038 @@
+/* themes/rpg-dialogue/theme.css — a 16-bit RPG message window for Hachidori.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The palette block is what `build-index.mjs` generates from theme.yaml; the
+ * rest is this theme's own CSS. Structure (paging, typewriter spans, the
+ * speaker plate, status strip, footer, command window and kanji stat block) is
+ * theme.js's job; this file draws it. Everything visual is gradients, borders
+ * and box-shadow pixels: no external resources, no images, no fonts, no network.
+ *
+ * Layout the JS produces inside .gsm-hoshidicts-popup (transparent stage):
+ *   .rpg-plate                      portrait + speaker name box
+ *   .gsm-hoshidicts-content-scroll  THE MESSAGE WINDOW (blue gradient, double border)
+ *     .rpg-status                   reading · PITCH HP bar · FREQ · lookup count
+ *     .gsm-hoshidicts-tab-panel     entries/cards/senses; only [data-rpg-current] shows
+ *     .rpg-footer                   location banner · page counter · ▼ button (sticky)
+ *   .rpg-menu                       COMMAND WINDOW (▶ hand cursor)
+ */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) {
+  --hoshidicts-palette-color-scheme: dark;
+  --hoshidicts-palette-base-100: #141c8c;
+  --hoshidicts-palette-base-200: #0b1160;
+  --hoshidicts-palette-base-300: #2434c4;
+  --hoshidicts-palette-base-content: #f8f8ff;
+  --hoshidicts-palette-primary: #ffe066;
+  --hoshidicts-palette-primary-content: #1a1030;
+  --hoshidicts-palette-secondary: #8ae6ff;
+  --hoshidicts-palette-secondary-content: #06082e;
+  --hoshidicts-palette-accent: #7cf59a;
+  --hoshidicts-palette-accent-content: #06082e;
+  --hoshidicts-palette-neutral: #2a3494;
+  --hoshidicts-palette-neutral-content: #f8f8ff;
+  --hoshidicts-palette-info: #6f9dff;
+  --hoshidicts-palette-info-content: #06082e;
+  --hoshidicts-palette-success: #7cf59a;
+  --hoshidicts-palette-warning: #ffb347;
+  --hoshidicts-palette-error: #ff7b8e;
+}
+
+/* ---- the stage ------------------------------------------------------------ */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup {
+  --theme-rpg-tick: 22ms;                 /* one typed character */
+  --rpg-white: #f8f8ff;
+  --rpg-grey: #cdd1f2;                    /* inner frame line, dim labels (5.3:1 on the lightest window stop) */
+  --rpg-ink: #06082e;                     /* text shadow, frame gap */
+  --rpg-gold: var(--hoshidicts-palette-primary);
+  --rpg-cyan: var(--hoshidicts-palette-secondary);
+  --rpg-green: var(--hoshidicts-palette-accent);
+  --rpg-window: linear-gradient(180deg, #2a3ad4 0%, #1a24ae 30%, #0f167c 70%, #0a0f56 100%);
+  --rpg-frame:
+    inset 0 0 0 2px var(--rpg-ink),
+    inset 0 0 0 4px var(--rpg-grey),
+    0 6px 0 rgba(0, 0, 0, 0.35);
+  --hoshidicts-border: var(--rpg-grey);
+  --hoshidicts-border-strong: var(--rpg-white);
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-text-muted: var(--rpg-grey);
+  --hoshidicts-text-faint: var(--rpg-grey);
+  --hoshidicts-link: var(--rpg-cyan);
+  --hoshidicts-link-hover: var(--rpg-white);
+  --hoshidicts-pitch: var(--rpg-green);
+  height: auto !important;
+  max-height: none;
+  padding: 0;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--rpg-white);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+/* ---- the message window --------------------------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-content-scroll {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  position: relative;
+  min-height: 128px;
+  max-height: var(--theme-rpg-window-max, 260px);
+  padding: 14px 18px 6px;
+  border: 3px solid var(--rpg-white);
+  border-radius: 10px;
+  background: var(--rpg-window);
+  box-shadow: var(--rpg-frame);
+  text-shadow: 2px 2px 0 var(--rpg-ink);
+  scrollbar-width: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Only the current page's entry, card and sense are shown; theme.js marks them. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-entry:not([data-rpg-current]),
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-entry:not([data-rpg-current]),
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-card:not([data-rpg-current]),
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-definitions > li:not([data-rpg-current]),
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-show-more,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-entry > .gsm-hoshidicts-entry-header,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-primary-metadata-row,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-metadata,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-entry > .gsm-hoshidicts-tags,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-card-title,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-dictionary,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-entry h4,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-stats {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-tab-panel {
+  flex: 1 0 auto;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-entry,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-entry {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* One card at a time: undo the grid and any masonry placement. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-grid {
+  display: block !important;
+  height: auto !important;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-card {
+  position: static !important;
+  width: auto !important;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none !important;
+  visibility: visible !important;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-definitions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-definitions > li {
+  margin: 0;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-content {
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-structured-link {
+  color: var(--rpg-cyan);
+  text-decoration-color: var(--rpg-cyan);
+}
+
+/* Lists a dictionary writes inside a sense: RPG-style ▸ markers. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-content ul {
+  padding-left: 18px;
+  list-style-type: "▸ ";
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-glossary-content ul > li::marker {
+  color: var(--rpg-gold);
+}
+
+/* Sense tags as small status badges. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-definition-tags {
+  margin: 0 0 4px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-tag {
+  padding: 1px 5px;
+  border: 2px solid var(--rpg-grey);
+  border-radius: 0;
+  background: var(--rpg-ink);
+  color: var(--rpg-gold);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: none;
+  text-transform: uppercase;
+}
+
+/* ---- typewriter ----------------------------------------------------------- */
+
+/* Each character is hidden until its tick, then revealed. One `to` keyframe,
+ * linear, forwards, because Chrome 152 stops applying the fill of discrete
+ * steps(1, end) animations after ~50 of them — measured while building this.
+ * Bundled theme CSS is adopted verbatim (it is reviewed at vendoring, not run
+ * through the fetched-CSS sanitiser), so @keyframes is available here; see the
+ * API-gap note in the PR comment about the sanitiser dropping @keyframes for
+ * CSS-only themes. theme.js also sets data-rpg-typed the moment a page is
+ * revealed, and reduced motion cancels the animation — neither leaves text
+ * hidden. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-ch {
+  visibility: hidden;
+  animation: rpg-type 1ms linear forwards;
+  animation-delay: calc(var(--i, 0) * var(--theme-rpg-tick, 22ms));
+}
+
+@keyframes rpg-type {
+  to { visibility: visible; }
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) [data-rpg-typed] .rpg-ch {
+  animation: none;
+  visibility: visible;
+}
+
+/* ---- speaker plate -------------------------------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-plate {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0 0 -7px 12px;
+  position: relative;
+  z-index: 1;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-bird {
+  display: block;
+  position: relative;
+  width: 54px;
+  height: 46px;
+  border: 3px solid var(--rpg-white);
+  border-radius: 10px;
+  background: var(--rpg-window);
+  box-shadow: inset 0 0 0 2px var(--rpg-ink), inset 0 0 0 4px var(--rpg-grey), 0 4px 0 rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* 20×16 pixel hummingbird (box-shadow art below), 2 px per pixel. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-bird::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 2px;
+  height: 2px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 40px;
+  padding: 5px 16px 7px;
+  border: 3px solid var(--rpg-white);
+  border-radius: 10px;
+  background: var(--rpg-window);
+  box-shadow: inset 0 0 0 2px var(--rpg-ink), inset 0 0 0 4px var(--rpg-grey), 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: var(--rpg-gold);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: 2px 2px 0 var(--rpg-ink);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-name[data-kind="kanji"] {
+  font-size: 34px;
+  padding: 6px 18px 4px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-name-text {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+/* Kanji in the name box are buttons forwarding to the reader's kanji links. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-kanji {
+  margin: 0;
+  padding: 0 1px;
+  border: 0;
+  border-bottom: 3px dotted color-mix(in srgb, var(--rpg-gold) 60%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-kanji:hover,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-kanji:focus-visible {
+  color: var(--rpg-white);
+  border-bottom-color: var(--rpg-white);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-kanji:disabled {
+  border-bottom-color: transparent;
+  cursor: default;
+}
+
+/* ♪ while the reader's audio button reports playing; the bird bobs along. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .rpg-name::after {
+  content: "♪";
+  margin-left: 6px;
+  color: var(--rpg-cyan);
+  font-size: 20px;
+  animation: rpg-note 0.6s steps(2, end) infinite;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .rpg-bird::before {
+  animation: rpg-bob 0.5s steps(2, end) infinite;
+}
+
+@keyframes rpg-note {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px); }
+}
+
+@keyframes rpg-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-2px); }
+}
+
+/* ---- status strip: reading · pitch HP bar · stats ------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  padding: 0 0 7px;
+  border-bottom: 2px solid color-mix(in srgb, var(--rpg-grey) 45%, transparent);
+  color: var(--rpg-grey);
+  font-size: 13px;
+  line-height: 1.3;
+  text-shadow: 1px 1px 0 var(--rpg-ink);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-status[hidden] {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-reading {
+  color: var(--rpg-cyan);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-shadow: 2px 2px 0 var(--rpg-ink);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pitch {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pitch-label,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pitch-num {
+  color: var(--rpg-green);
+  margin-bottom: 15px;
+}
+
+/* One HP segment per mora: high sits on the top rail, low on the bottom one;
+ * the accent drop is where the bar steps down. Kana sit under their segment. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp-seg {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  width: 22px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp-bar {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border: 2px solid var(--rpg-ink);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--rpg-green) 28%, var(--rpg-ink));
+  margin-bottom: 8px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp-seg[data-level="high"] .rpg-hp-bar {
+  background: var(--rpg-green);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55);
+  margin-bottom: 14px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp-seg[data-transition="drop"]::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 2px;
+  height: 14px;
+  background: var(--rpg-green);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hp-mora {
+  color: var(--rpg-white);
+  font-size: 13px;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stats {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-left: auto;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-chip .rpg-pxt {
+  color: var(--rpg-gold);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-chip-value {
+  color: var(--rpg-white);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The reader paints "Looked up N times" into this element later. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stats .gsm-hoshidicts-lookup-stats {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rpg-grey);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---- footer: location · page counter · ▼ -------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-footer {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  position: sticky;
+  bottom: -6px;
+  margin: 6px -6px -6px;
+  padding: 12px 6px 6px;
+  background: linear-gradient(180deg, transparent, #0a0f56 55%);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-location {
+  color: var(--rpg-grey);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 var(--rpg-ink);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-location:not(:empty)::before {
+  content: "◆ ";
+  color: var(--rpg-gold);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-counter {
+  margin-left: auto;
+  color: var(--rpg-white);
+  transform: scale(1.4);
+  transform-origin: right bottom;
+  margin-right: 6px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--rpg-white);
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-next:focus-visible {
+  outline: 2px solid var(--rpg-gold);
+  outline-offset: 1px;
+}
+
+/* The ▼ and ■ are box-shadow pixel art on a 2 px anchor. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-down,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-end {
+  display: none;
+  position: relative;
+  width: 14px;
+  height: 12px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-down::before,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-end::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 2px;
+  height: 2px;
+  filter: drop-shadow(2px 2px 0 var(--rpg-ink));
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-footer[data-rpg-state="ready"] .rpg-px-down {
+  display: block;
+  animation: rpg-blink 0.9s steps(1, end) infinite;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-footer[data-rpg-state="end"] .rpg-px-end {
+  display: block;
+}
+
+@keyframes rpg-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+/* ---- command window ------------------------------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-menu {
+  align-self: flex-end;
+  min-width: 176px;
+  margin: 0 8px 4px 0;
+  padding: 6px 12px 5px 10px;
+  border: 3px solid var(--rpg-white);
+  border-radius: 10px;
+  background: var(--rpg-window);
+  box-shadow: var(--rpg-frame);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmds {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 1px 6px 1px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--rpg-white);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-align: left;
+  text-shadow: 2px 2px 0 var(--rpg-ink);
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd[hidden] {
+  display: none;
+}
+
+/* The ▶ hand cursor: a 24×18 box-shadow sprite, drawn only on the focused or
+ * hovered command so the one the keyboard is on is always visible. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd::before {
+  content: "";
+  flex: 0 0 2px;
+  width: 2px;
+  height: 2px;
+  margin: 0 22px 16px 0;
+  visibility: hidden;
+  filter: drop-shadow(2px 2px 0 var(--rpg-ink));
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd:hover::before,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd:focus::before {
+  visibility: visible;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd:hover,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd:focus {
+  color: var(--rpg-gold);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd:focus-visible {
+  outline: 2px solid var(--rpg-gold);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd[aria-disabled="true"] {
+  color: color-mix(in srgb, var(--rpg-grey) 70%, var(--rpg-ink));
+  cursor: default;
+}
+
+/* Live state from the reader's own buttons, mirrored without JavaScript. */
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .rpg-cmd[data-cmd="audio"]::after {
+  content: "♪";
+  color: var(--rpg-cyan);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="mining"]) .rpg-cmd[data-cmd="anki"]::after,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="checking"]) .rpg-cmd[data-cmd="anki"]::after {
+  content: "…";
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="success"]) .rpg-cmd[data-cmd="anki"]::after,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="view-existing"]) .rpg-cmd[data-cmd="anki"]::after {
+  content: "✓";
+  color: var(--rpg-green);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-mine-button[data-state="error"]) .rpg-cmd[data-cmd="anki"]::after {
+  content: "✕";
+  color: var(--hoshidicts-palette-error);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-hint {
+  margin: 4px 0 0 2px;
+  padding-top: 4px;
+  border-top: 2px solid color-mix(in srgb, var(--rpg-grey) 45%, transparent);
+  color: var(--rpg-grey);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-shadow: 1px 1px 0 var(--rpg-ink);
+  white-space: nowrap;
+}
+
+/* ---- kanji view: item description window ---------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-entry > .gsm-hoshidicts-tags {
+  margin: 0 0 8px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 8px;
+  color: var(--rpg-cyan);
+  font-size: 15px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-reading-group {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-reading-group strong {
+  padding: 0 5px;
+  border: 2px solid var(--rpg-grey);
+  background: var(--rpg-ink);
+  color: var(--rpg-gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-shadow: none;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-meanings {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 17px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-meanings > li {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-kanji-meanings > li + li::before {
+  content: " · ";
+  color: var(--rpg-grey);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-statblock {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 14px;
+  margin: 0 0 6px;
+  padding: 8px 0 0;
+  border-top: 2px solid color-mix(in srgb, var(--rpg-grey) 45%, transparent);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat {
+  display: contents;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat-label {
+  margin: 0;
+  align-self: center;
+  color: var(--rpg-gold);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat-data {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--rpg-white);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat-misc .rpg-stat-data {
+  color: var(--rpg-grey);
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pips {
+  display: inline-flex;
+  gap: 2px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pip {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--rpg-ink);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--rpg-green) 22%, var(--rpg-ink));
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pip[data-on] {
+  background: var(--rpg-green);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat[data-stat="freq"] .rpg-pip[data-on] {
+  background: var(--rpg-gold);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-stat[data-stat="jlpt"] .rpg-pip[data-on] {
+  background: var(--rpg-cyan);
+}
+
+/* ---- pixel font ----------------------------------------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-pxt {
+  display: inline-flex;
+  gap: 2px;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px {
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 10px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+}
+
+/* ---- the reader's own controls that stay visible -------------------------- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-mining-feedback:not([hidden]),
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-lookup-notice,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-lookup-failure {
+  border: 3px solid var(--rpg-white);
+  border-radius: 10px;
+  background: var(--rpg-window);
+  box-shadow: var(--rpg-frame);
+  color: var(--rpg-white);
+  text-shadow: 2px 2px 0 var(--rpg-ink);
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-note-form {
+  padding: 12px 16px;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-note-form textarea {
+  border: 2px solid var(--rpg-grey);
+  border-radius: 0;
+  background: var(--rpg-ink);
+  color: var(--rpg-white);
+  text-shadow: none;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-mining-feedback:not([hidden]) {
+  margin: 0 8px 0 0;
+  padding: 6px 12px;
+  align-self: flex-end;
+}
+
+/* ---- motion --------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-ch {
+    animation: none;
+    visibility: visible;
+  }
+
+  /* With animations off the text is complete at once; the script only learns
+   * that on the first key press, so show a still ▼ meanwhile. */
+  :host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-footer[data-rpg-state="typing"] .rpg-px-down {
+    display: block;
+  }
+
+  :host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-footer[data-rpg-state="ready"] .rpg-px-down,
+  :host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .rpg-name::after,
+  :host([data-hoshidicts-theme="rpg-dialogue"]) .gsm-hoshidicts-popup:has(.gsm-hoshidicts-audio-button[data-state="playing"]) .rpg-bird::before {
+    animation: none;
+  }
+}
+
+/* ---- generated by pixel-css.mjs: box-shadow pixel art (2 px per pixel) ---- */
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-bird::before {
+  box-shadow: 12px 2px 0 0 #2a1a4a, 14px 2px 0 0 #2a1a4a, 16px 2px 0 0 #2a1a4a, 10px 4px 0 0 #2a1a4a, 12px 4px 0 0 #b48cff, 14px 4px 0 0 #b48cff, 16px 4px 0 0 #b48cff, 18px 4px 0 0 #2a1a4a, 8px 6px 0 0 #2a1a4a, 10px 6px 0 0 #b48cff, 12px 6px 0 0 #b48cff, 14px 6px 0 0 #b48cff, 16px 6px 0 0 #b48cff, 18px 6px 0 0 #b48cff, 20px 6px 0 0 #2a1a4a, 6px 8px 0 0 #2a1a4a, 8px 8px 0 0 #b48cff, 10px 8px 0 0 #b48cff, 12px 8px 0 0 #b48cff, 14px 8px 0 0 #b48cff, 16px 8px 0 0 #b48cff, 18px 8px 0 0 #b48cff, 20px 8px 0 0 #2a1a4a, 6px 10px 0 0 #2a1a4a, 8px 10px 0 0 #b48cff, 10px 10px 0 0 #b48cff, 12px 10px 0 0 #b48cff, 14px 10px 0 0 #b48cff, 16px 10px 0 0 #b48cff, 18px 10px 0 0 #2a1a4a, 20px 10px 0 0 #2a1a4a, 22px 10px 0 0 #2a1a4a, 24px 10px 0 0 #2a1a4a, 8px 12px 0 0 #2a1a4a, 10px 12px 0 0 #b48cff, 12px 12px 0 0 #b48cff, 14px 12px 0 0 #b48cff, 16px 12px 0 0 #2a1a4a, 18px 12px 0 0 #ff7bc6, 20px 12px 0 0 #ff7bc6, 22px 12px 0 0 #ff7bc6, 24px 12px 0 0 #ff7bc6, 26px 12px 0 0 #2a1a4a, 0px 14px 0 0 #b48cff, 2px 14px 0 0 #b48cff, 10px 14px 0 0 #2a1a4a, 12px 14px 0 0 #2a1a4a, 14px 14px 0 0 #2a1a4a, 16px 14px 0 0 #ff7bc6, 18px 14px 0 0 #ff7bc6, 20px 14px 0 0 #ff7bc6, 22px 14px 0 0 #ffffff, 24px 14px 0 0 #ff7bc6, 26px 14px 0 0 #ff7bc6, 28px 14px 0 0 #2a1a4a, 30px 14px 0 0 #ffd166, 32px 14px 0 0 #ffd166, 34px 14px 0 0 #ffd166, 36px 14px 0 0 #ffd166, 2px 16px 0 0 #b48cff, 4px 16px 0 0 #b48cff, 10px 16px 0 0 #2a1a4a, 12px 16px 0 0 #ff7bc6, 14px 16px 0 0 #ff7bc6, 16px 16px 0 0 #ff7bc6, 18px 16px 0 0 #ff7bc6, 20px 16px 0 0 #ff7bc6, 22px 16px 0 0 #ff7bc6, 24px 16px 0 0 #ff7bc6, 26px 16px 0 0 #ff7bc6, 28px 16px 0 0 #2a1a4a, 4px 18px 0 0 #b48cff, 6px 18px 0 0 #b48cff, 8px 18px 0 0 #2a1a4a, 10px 18px 0 0 #ff7bc6, 12px 18px 0 0 #ff7bc6, 14px 18px 0 0 #ff7bc6, 16px 18px 0 0 #ff7bc6, 18px 18px 0 0 #ff7bc6, 20px 18px 0 0 #ff7bc6, 22px 18px 0 0 #ff7bc6, 24px 18px 0 0 #ff7bc6, 26px 18px 0 0 #2a1a4a, 6px 20px 0 0 #2a1a4a, 8px 20px 0 0 #ff7bc6, 10px 20px 0 0 #ff7bc6, 12px 20px 0 0 #ff7bc6, 14px 20px 0 0 #ff7bc6, 16px 20px 0 0 #ff7bc6, 18px 20px 0 0 #ff7bc6, 20px 20px 0 0 #ff7bc6, 22px 20px 0 0 #ff7bc6, 24px 20px 0 0 #2a1a4a, 8px 22px 0 0 #2a1a4a, 10px 22px 0 0 #ff7bc6, 12px 22px 0 0 #ff7bc6, 14px 22px 0 0 #ff7bc6, 16px 22px 0 0 #ff7bc6, 18px 22px 0 0 #ff7bc6, 20px 22px 0 0 #ff7bc6, 22px 22px 0 0 #2a1a4a, 10px 24px 0 0 #2a1a4a, 12px 24px 0 0 #ff7bc6, 14px 24px 0 0 #ff7bc6, 16px 24px 0 0 #ff7bc6, 18px 24px 0 0 #ff7bc6, 20px 24px 0 0 #2a1a4a, 12px 26px 0 0 #2a1a4a, 14px 26px 0 0 #2a1a4a, 16px 26px 0 0 #2a1a4a, 18px 26px 0 0 #2a1a4a;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-cmd::before {
+  box-shadow: 12px 0px 0 0 #1a1a3a, 14px 0px 0 0 #1a1a3a, 10px 2px 0 0 #1a1a3a, 12px 2px 0 0 #ffffff, 14px 2px 0 0 #1a1a3a, 10px 4px 0 0 #1a1a3a, 12px 4px 0 0 #ffffff, 14px 4px 0 0 #1a1a3a, 16px 4px 0 0 #1a1a3a, 18px 4px 0 0 #1a1a3a, 20px 4px 0 0 #1a1a3a, 2px 6px 0 0 #1a1a3a, 4px 6px 0 0 #1a1a3a, 8px 6px 0 0 #1a1a3a, 10px 6px 0 0 #ffffff, 12px 6px 0 0 #ffffff, 14px 6px 0 0 #ffffff, 16px 6px 0 0 #ffffff, 18px 6px 0 0 #ffffff, 20px 6px 0 0 #ffffff, 22px 6px 0 0 #1a1a3a, 0px 8px 0 0 #1a1a3a, 2px 8px 0 0 #ffffff, 4px 8px 0 0 #ffffff, 6px 8px 0 0 #1a1a3a, 8px 8px 0 0 #ffffff, 10px 8px 0 0 #ffffff, 12px 8px 0 0 #ffffff, 14px 8px 0 0 #ffffff, 16px 8px 0 0 #ffffff, 18px 8px 0 0 #ffffff, 20px 8px 0 0 #ffffff, 22px 8px 0 0 #1a1a3a, 0px 10px 0 0 #1a1a3a, 2px 10px 0 0 #ffffff, 4px 10px 0 0 #ffffff, 6px 10px 0 0 #ffffff, 8px 10px 0 0 #ffffff, 10px 10px 0 0 #ffffff, 12px 10px 0 0 #ffffff, 14px 10px 0 0 #ffffff, 16px 10px 0 0 #ffffff, 18px 10px 0 0 #ffffff, 20px 10px 0 0 #ffffff, 22px 10px 0 0 #1a1a3a, 2px 12px 0 0 #1a1a3a, 4px 12px 0 0 #ffffff, 6px 12px 0 0 #ffffff, 8px 12px 0 0 #ffffff, 10px 12px 0 0 #ffffff, 12px 12px 0 0 #ffffff, 14px 12px 0 0 #ffffff, 16px 12px 0 0 #ffffff, 18px 12px 0 0 #1a1a3a, 20px 12px 0 0 #1a1a3a, 4px 14px 0 0 #1a1a3a, 6px 14px 0 0 #ffffff, 8px 14px 0 0 #ffffff, 10px 14px 0 0 #ffffff, 12px 14px 0 0 #ffffff, 14px 14px 0 0 #ffffff, 16px 14px 0 0 #ffffff, 18px 14px 0 0 #1a1a3a, 6px 16px 0 0 #1a1a3a, 8px 16px 0 0 #1a1a3a, 10px 16px 0 0 #1a1a3a, 12px 16px 0 0 #1a1a3a, 14px 16px 0 0 #1a1a3a, 16px 16px 0 0 #1a1a3a;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-down::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 6px 0px 0 0 currentColor, 8px 0px 0 0 currentColor, 10px 0px 0 0 currentColor, 12px 0px 0 0 currentColor, 2px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 6px 2px 0 0 currentColor, 8px 2px 0 0 currentColor, 10px 2px 0 0 currentColor, 4px 4px 0 0 currentColor, 6px 4px 0 0 currentColor, 8px 4px 0 0 currentColor, 6px 6px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px-end::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 6px 0px 0 0 currentColor, 8px 0px 0 0 currentColor, 10px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 10px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 6px 4px 0 0 currentColor, 10px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 6px 6px 0 0 currentColor, 10px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 10px 8px 0 0 currentColor, 0px 10px 0 0 currentColor, 2px 10px 0 0 currentColor, 4px 10px 0 0 currentColor, 6px 10px 0 0 currentColor, 8px 10px 0 0 currentColor, 10px 10px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="0"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="1"]::before {
+  box-shadow: 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 2px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 2px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="2"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="3"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="4"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="5"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="6"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="7"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="8"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="9"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="A"]::before {
+  box-shadow: 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="B"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="C"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="D"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="E"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="F"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="G"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="H"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="I"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 2px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 2px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="J"]::before {
+  box-shadow: 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="K"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="L"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="M"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 2px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="N"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="O"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="P"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="Q"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 2px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="R"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="S"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="T"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 2px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 2px 6px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="U"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="V"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="W"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 2px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="X"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="Y"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 2px 6px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="Z"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="/"]::before {
+  box-shadow: 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="["]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 2px 0px 0 0 currentColor, 0px 2px 0 0 currentColor, 0px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="]"]::before {
+  box-shadow: 2px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 4px 4px 0 0 currentColor, 4px 6px 0 0 currentColor, 2px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="-"]::before {
+  box-shadow: 0px 4px 0 0 currentColor, 2px 4px 0 0 currentColor, 4px 4px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="."]::before {
+  box-shadow: 2px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch=":"]::before {
+  box-shadow: 2px 2px 0 0 currentColor, 2px 6px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="%"]::before {
+  box-shadow: 0px 0px 0 0 currentColor, 4px 0px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 0px 8px 0 0 currentColor, 4px 8px 0 0 currentColor;
+}
+
+:host([data-hoshidicts-theme="rpg-dialogue"]) .rpg-px[data-ch="×"]::before {
+  box-shadow: 0px 2px 0 0 currentColor, 4px 2px 0 0 currentColor, 2px 4px 0 0 currentColor, 0px 6px 0 0 currentColor, 4px 6px 0 0 currentColor;
+}
