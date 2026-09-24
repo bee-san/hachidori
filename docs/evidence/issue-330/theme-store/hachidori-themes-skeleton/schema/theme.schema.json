@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bee-san/hachidori-themes/main/schema/theme.schema.json",
+  "title": "Hachidori theme manifest (theme.yaml), schema 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "slug", "name", "version", "author", "description", "tags", "license", "minHachidoriVersion", "mode", "palette"],
+  "properties": {
+    "schema": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$", "description": "Equals the folder name; unique; becomes data-hoshidicts-theme and options.popupTheme." },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[\\x20-\\x7e]+$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$", "description": "Semver; bump to publish an update." },
+    "author": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "link": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "description": { "type": "string", "minLength": 10, "maxLength": 280 },
+    "tags": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/tag" } },
+    "license": { "type": "string", "pattern": "^[A-Za-z0-9.+-]+$", "description": "SPDX identifier." },
+    "minHachidoriVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "mode": { "enum": ["dark", "light"] },
+    "extends": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$", "description": "Bundled palette the css layer sits on." },
+    "palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color-scheme", "base-100", "base-200", "base-300", "base-content", "primary", "primary-content",
+                   "secondary", "secondary-content", "accent", "accent-content", "neutral", "neutral-content",
+                   "info", "info-content", "success", "warning", "error"],
+      "properties": { "color-scheme": { "enum": ["dark", "light"] } },
+      "patternProperties": { "^(?!color-scheme$)[a-z0-9-]+$": { "$ref": "#/$defs/color" } }
+    },
+    "css": { "const": "theme.css" },
+    "js": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "hooks", "summary"],
+      "description": "Bundled-only JavaScript: shipped inside a Hachidori release, never fetched at runtime.",
+      "properties": {
+        "file": { "const": "theme.js" },
+        "hooks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["onActivate", "onRender", "onDeactivate"] } },
+        "summary": { "type": "string", "minLength": 10, "maxLength": 200, "description": "Shown in the store's JavaScript notice: what the script changes." }
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One-shot suggestions applied on activation, with Undo. Bounds mirror reader-options.js NUMBER_RANGES.",
+      "properties": {
+        "popupOpacityPercent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "popupWidthPx": { "type": "integer", "minimum": 280, "maximum": 1200 },
+        "popupHeightPx": { "type": "integer", "minimum": 200, "maximum": 900 },
+        "popupColumns": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "popupToolbarPosition": { "enum": ["auto", "top", "bottom"] },
+        "showCompactDefinitionSummary": { "type": "boolean" },
+        "compactDefinitionSummaryCount": { "type": "integer", "minimum": 1, "maximum": 6 },
+        "showFrequencyDictionaryNames": { "type": "boolean" },
+        "averageFrequency": { "type": "boolean" },
+        "showPitchAccentFurigana": { "type": "boolean" },
+        "showPitchAccentBadge": { "type": "boolean" },
+        "hidePopupGrammarTags": { "type": "boolean" },
+        "showPopupAudioButton": { "type": "boolean" }
+      }
+    },
+    "screenshot": { "const": "screenshot.png" },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "swatches": { "type": "array", "minItems": 2, "maxItems": 6, "items": { "$ref": "#/$defs/color" } } }
+    }
+  },
+  "allOf": [
+    { "if": { "anyOf": [{ "required": ["css"] }, { "required": ["js"] }] }, "then": { "required": ["screenshot"] } }
+  ],
+  "$defs": {
+    "tag": { "enum": ["dark", "light", "high-contrast", "compact", "spacious", "classic", "pastel", "monochrome",
+                      "nazeka", "rikaikun", "yomitan", "vn", "manga", "colourblind-safe", "seasonal", "js"] },
+    "color": { "type": "string",
+      "pattern": "^(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|oklch\\([^()]{1,60}\\)|rgb\\([^()]{1,40}\\)|hsl\\([^()]{1,40}\\))$" }
+  }
+}

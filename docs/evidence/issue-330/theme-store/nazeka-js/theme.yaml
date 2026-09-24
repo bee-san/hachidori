@@ -1,0 +1,43 @@
+# themes/nazeka/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: nazeka
+name: Nazeka
+version: 1.0.0
+author: bee-san
+link: https://github.com/wareya/nazeka
+description: Nazeka's dense popup — #111111 background, cyan headword with the reading beside it, 13 px glosses, and nothing else. The JS removes the top bar and flattens the cards.
+tags: [dark, compact, classic, nazeka]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: dark
+extends: default
+palette:                 # wareya/nazeka texthook.js:31-35 defaults
+  color-scheme: dark
+  base-100: "#111111"    # bgcolor
+  base-200: "#111111"
+  base-300: "#1c1c1c"
+  base-content: "#cccccc"  # fgcolor
+  primary: "#99ddff"     # hlcolor  (main keb/reb)
+  primary-content: "#111111"
+  secondary: "#99ff99"   # hlcolor2 (sub reb)
+  secondary-content: "#111111"
+  accent: "#d8a888"      # titlecolor
+  accent-content: "#111111"
+  neutral: "#606060"     # info_bgcolor_pos
+  neutral-content: "#cccccc"
+  info: "#406080"        # info_bgcolor_num
+  info-content: "#cccccc"
+  success: "#608040"     # info_bgcolor_etc
+  warning: "#d8a888"
+  error: "#ff7070"
+css: theme.css
+js:                      # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: Moves the headword and reading into the body, removes the top bar, hides tags, frequency, pitch, images and dictionary titles.
+options:                 # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100
+  popupColumns: 1
+screenshot: screenshot.png
+preview:
+  swatches: ["#111111", "#cccccc", "#99ddff", "#99ff99"]
