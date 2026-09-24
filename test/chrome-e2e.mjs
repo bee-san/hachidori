@@ -7072,7 +7072,10 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     check("a cold Anki duplicate index leaves the popup responsive while its first refresh is held",
       coldDefinition?.plain.includes("食べる") && popup.visible(coldDefinition)
         && releaseIndex !== null && cold?.state === "revealed" && cold.audioAttempted
-        && !coldIndex?.snapshot && refreshCalls() === 1,
+        // A snapshot for a previous Anki configuration is not a warm cache
+        // for this source; its refresh is still the first one for this key.
+        && (!coldIndex?.snapshot || coldIndex.snapshot.sourceKey !== coldIndex.attempt?.sourceKey)
+        && refreshCalls() === 1,
       JSON.stringify({ cold, coldIndex, calls }));
     releaseRefresh();
     const initialIndex = await waitForSnapshot(true);
