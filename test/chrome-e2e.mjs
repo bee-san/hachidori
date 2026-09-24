@@ -12236,7 +12236,6 @@ async function main() {
   });
   check("the content script attached its open-shadow host to the page", hostPresent,
     "no connected <hachidori-host> with an open shadow root");
-  await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
 
   // Read through a default rather than under an `if`: a popup that never appeared
   // must fail these three as well, not quietly remove them from the total.
@@ -12265,6 +12264,7 @@ async function main() {
   });
   await checkDefinitionBlur({ settings: page, tab, popup });
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
+  await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
