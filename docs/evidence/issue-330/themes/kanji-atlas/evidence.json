@@ -1,0 +1,1001 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "archives": [
+    {
+      "path": "/tmp/kanji-atlas-dicts/KANJIDIC_english.zip",
+      "bytes": 721032
+    },
+    {
+      "path": "/tmp/kanji-atlas-dicts/JMdict_english.zip",
+      "bytes": 15599095
+    },
+    {
+      "path": "/tmp/kanji-atlas-dicts/bees-ultimate-kanji-dictionary.zip",
+      "bytes": 14332924
+    }
+  ],
+  "shots": {
+    "default-term": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "light",
+      "sheets": 1,
+      "chromeHidden": false,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "fontSize": "16px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": null,
+      "glossSize": "16px",
+      "textSample": "Looked up 1 timeJMdict1v1vtto eat2v1vtto live on (e.g. a salary)to live offto subsist on食しょくfoodfoodstuff77JMdict1nfoodfoodstuff2neatingappetite3nctrmealportionforms食しょく★じき⛬し⛬1nastroneclipse (solar, l"
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "showMore": false,
+      "theme": "light",
+      "sheets": 1,
+      "chromeHidden": false,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "fontSize": "16px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": null,
+      "glossSize": null,
+      "textSample": "KANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269grade2halpern_kkd2578halpern_kkld1316halpern_kkld_"
+    },
+    "default-long": {
+      "rect": {
+        "x": 261,
+        "y": 178,
+        "width": 560,
+        "height": 420
+      },
+      "term": 7,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "light",
+      "sheets": 1,
+      "chromeHidden": false,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "fontSize": "16px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": null,
+      "glossSize": "16px",
+      "textSample": "Looked up 1 timeJMdict1v1vtukto hang up (e.g. a coat, a picture on the wall)to let hangto suspend (from)to hoist (e.g. sail)to raise (e.g. flag)see: 壁にかける to hang (something) on the wall2v1vtukto put "
+    },
+    "atlas-term": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [
+        "食Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "screenshot": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [
+        "食Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "atlas-term-hover": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [
+        "食Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "atlas-term-focus": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [
+        "食Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "atlas-term-drawer": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [
+        "食Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "atlas-kanji": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": {
+        "char": "食",
+        "strokes": "9",
+        "keyword": "eat",
+        "meanings": "food",
+        "on": [
+          "ショク",
+          "ジキ"
+        ],
+        "kun": [
+          "くう",
+          "くらう",
+          "たべる",
+          "はむ"
+        ],
+        "here": [
+          "たべる"
+        ],
+        "badges": [
+          "JLPT N4",
+          "Grade 2",
+          "常用",
+          "9 strokes",
+          "#328 in use",
+          "RTK 1472"
+        ],
+        "met": [
+          "食しょくfood; foodstuff",
+          "食べるたべるto eat"
+        ],
+        "diagram": false,
+        "diagramLoaded": null,
+        "source": "KANJIDIC [2026-267]"
+      },
+      "glossSize": null,
+      "textSample": "Back食eatfood音ショクジキ訓くうくらうたべるはむJLPT N4Grade 2常用9 strokes#328 in useRTK 1472KANJIDIC [2026-267]Met on this page食しょくfood; foodstuff食べるたべるto eatKANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.む"
+    },
+    "atlas-term-back": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    },
+    "atlas-toshokan-before": {
+      "rect": {
+        "x": 434,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "図書館",
+      "titleReading": "としょかん",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "図",
+          "reading": "と",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "7",
+          "meta": "JLPT N3 · G2 · 7画",
+          "gloss": "map · drawing"
+        },
+        {
+          "char": "書",
+          "reading": "しょ",
+          "kind": "",
+          "known": "false",
+          "inferred": "true",
+          "strokes": null,
+          "meta": "",
+          "gloss": ""
+        },
+        {
+          "char": "館",
+          "reading": "かん",
+          "kind": "",
+          "known": "false",
+          "inferred": "true",
+          "strokes": null,
+          "meta": "",
+          "gloss": ""
+        }
+      ],
+      "drawers": [
+        "図Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "図書館としょかん図書館としょかんlibrary図書館図音とJLPT N3 · G2 · 7画map · drawing書しょ館かんLooked up 1 timeJMdictnlibraryforms図書館としょかん★ずしょかん⛬図書館ずしょかんlibrary図書館JMdictnlibraryforms図書館としょかん★ずしょかん⛬図書としょbooks図書JMdictnbooksforms図書とし"
+    },
+    "atlas-kanji-sho": {
+      "rect": {
+        "x": 434,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": {
+        "char": "書",
+        "strokes": "10",
+        "keyword": "write",
+        "meanings": null,
+        "on": [
+          "ショ"
+        ],
+        "kun": [
+          "かく",
+          "がき",
+          "がき"
+        ],
+        "here": [
+          "ショ"
+        ],
+        "badges": [
+          "JLPT 4 (old scale)",
+          "Grade 2",
+          "常用",
+          "10 strokes",
+          "#169 in use",
+          "RTK 327"
+        ],
+        "met": [
+          "図書としょbooks",
+          "図書館としょかんlibrary"
+        ],
+        "diagram": false,
+        "diagramLoaded": null,
+        "source": "KANJIDIC [2026-267]"
+      },
+      "glossSize": null,
+      "textSample": "Back書write音ショ訓かくがきがきJLPT 4 (old scale)Grade 2常用10 strokes#169 in useRTK 327KANJIDIC [2026-267]Met on this page図書としょbooks図書館としょかんlibraryKANJIDIC [2026-267]jouyouOnショKunか.く · -が.き · -がきMeaningswriteDeta"
+    },
+    "atlas-toshokan-after": {
+      "rect": {
+        "x": 434,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "図書館",
+      "titleReading": "としょかん",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "図",
+          "reading": "と",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "7",
+          "meta": "JLPT N3 · G2 · 7画",
+          "gloss": "map · drawing"
+        },
+        {
+          "char": "書",
+          "reading": "しょ",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "10",
+          "meta": "JLPT 4 · G2 · 10画",
+          "gloss": "write"
+        },
+        {
+          "char": "館",
+          "reading": "かん",
+          "kind": "",
+          "known": "false",
+          "inferred": "true",
+          "strokes": null,
+          "meta": "",
+          "gloss": ""
+        }
+      ],
+      "drawers": [],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "図書館としょかん図書館としょかんlibrary図書館図音とJLPT N3 · G2 · 7画map · drawing書音しょJLPT 4 · G2 · 10画write館かんLooked up 1 timeJMdictnlibraryforms図書館としょかん★ずしょかん⛬図書館ずしょかんlibrary図書館JMdictnlibraryforms図書館としょかん★ずしょかん⛬図書としょbooks"
+    },
+    "atlas-benkyou-before": {
+      "rect": {
+        "x": 434,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "勉強",
+      "titleReading": "べんきょう",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "勉",
+          "reading": "べん",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "10",
+          "meta": "JLPT N3 · G3 · 10画",
+          "gloss": "exertion"
+        },
+        {
+          "char": "強",
+          "reading": "きょう",
+          "kind": "",
+          "known": "false",
+          "inferred": "true",
+          "strokes": null,
+          "meta": "",
+          "gloss": ""
+        }
+      ],
+      "drawers": [
+        "勉Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "勉強べんきょう勉強べんきょうstudydiligence勉音べんJLPT N3 · G3 · 10画exertion強きょうLooked up 1 timeJMdict1nvsvtstudy2nvsvidiligenceworking hard3nexperienceknowledgelesson (for the future)4nvsvtvidiscountprice reduction勉Be"
+    },
+    "atlas-benkyou-after": {
+      "rect": {
+        "x": 434,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "勉強",
+      "titleReading": "べんきょう",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "勉",
+          "reading": "べん",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "10",
+          "meta": "JLPT N3 · G3 · 10画",
+          "gloss": "exertion"
+        },
+        {
+          "char": "強",
+          "reading": "きょう",
+          "kind": "on",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "11",
+          "meta": "JLPT 3 · G2 · 11画",
+          "gloss": "strong"
+        }
+      ],
+      "drawers": [],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "勉強べんきょう勉強べんきょうstudydiligence勉音べんJLPT N3 · G3 · 10画exertion強音きょうJLPT 3 · G2 · 11画strongLooked up 1 timeJMdict1nvsvtstudy2nvsvidiligenceworking hard3nexperienceknowledgelesson (for the future)4nvsvtvidi"
+    },
+    "atlas-long": {
+      "rect": {
+        "x": 261,
+        "y": 178,
+        "width": 560,
+        "height": 420
+      },
+      "term": 7,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "掛ける",
+      "titleReading": "かける",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "掛",
+          "reading": "か",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "11",
+          "meta": "JLPT N1 · G8 · 11画",
+          "gloss": "hang · suspend"
+        }
+      ],
+      "drawers": [
+        "掛Bee's Ultimate Kanji Dictionary — full card"
+      ],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "掛けるかける掛かけるto hang up (e.g. a coat, a picture on the wall)to let hang掛訓かけるJLPT N1 · G8 · 11画hang · suspendけるLooked up 2 timesJMdict1v1vtukto hang up (e.g. a coat, a picture on the wall)to let hangto su"
+    },
+    "atlas-kanji-bees": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 1,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "color(srgb 0.956863 0.92549 0.847059)",
+      "fontSize": "15px",
+      "title": "食",
+      "titleReading": null,
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [],
+      "drawers": [],
+      "card": {
+        "char": "食",
+        "strokes": "9",
+        "keyword": "eat",
+        "meanings": "food",
+        "on": [
+          "ショク",
+          "ジキ"
+        ],
+        "kun": [
+          "くう",
+          "くらう",
+          "たべる",
+          "はむ"
+        ],
+        "here": [
+          "たべる"
+        ],
+        "badges": [
+          "JLPT N4",
+          "Grade 2",
+          "常用",
+          "9 strokes",
+          "#77 in use",
+          "RTK 1472"
+        ],
+        "met": [
+          "食しょくfood; foodstuff",
+          "食べるたべるto eat"
+        ],
+        "diagram": true,
+        "diagramLoaded": "loaded",
+        "source": "Bee's Ultimate Kanji Dictionary"
+      },
+      "glossSize": "15px",
+      "textSample": "食食■しょく: 49%■く: 31%Back食Imageeatfood音ショクジキ訓くうくらうたべるはむJLPT N4Grade 2常用9 strokes#77 in useRTK 1472Bee's Ultimate Kanji DictionaryMet on this page食しょくfood; foodstuff食べるたべるto eatLooked up 1 time77Bee's Ult"
+    },
+    "atlas-kanji-forced-colors": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "rgb(0, 0, 0)",
+      "fontSize": "15px",
+      "title": null,
+      "titleReading": null,
+      "titleFont": null,
+      "tiles": [],
+      "drawers": [],
+      "card": {
+        "char": "食",
+        "strokes": "9",
+        "keyword": "eat",
+        "meanings": "food",
+        "on": [
+          "ショク",
+          "ジキ"
+        ],
+        "kun": [
+          "くう",
+          "くらう",
+          "たべる",
+          "はむ"
+        ],
+        "here": [
+          "たべる"
+        ],
+        "badges": [
+          "JLPT N4",
+          "Grade 2",
+          "常用",
+          "9 strokes",
+          "#328 in use",
+          "RTK 1472"
+        ],
+        "met": [
+          "食しょくfood; foodstuff",
+          "食べるたべるto eat"
+        ],
+        "diagram": false,
+        "diagramLoaded": null,
+        "source": "KANJIDIC [2026-267]"
+      },
+      "glossSize": null,
+      "textSample": "Back食eatfood音ショクジキ訓くうくらうたべるはむJLPT N4Grade 2常用9 strokes#328 in useRTK 1472KANJIDIC [2026-267]Met on this page食しょくfood; foodstuff食べるたべるto eatKANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.む"
+    },
+    "atlas-term-forced-colors": {
+      "rect": {
+        "x": 231,
+        "y": 121,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "showMore": false,
+      "theme": "kanji-atlas",
+      "sheets": 2,
+      "chromeHidden": false,
+      "background": "rgb(0, 0, 0)",
+      "fontSize": "15px",
+      "title": "食べる",
+      "titleReading": "たべる",
+      "titleFont": "\"Noto Serif CJK JP\", \"Noto Serif JP\", \"Hiragino Mincho ProN\", \"Yu Mincho\", \"MS PMincho\", serif",
+      "tiles": [
+        {
+          "char": "食",
+          "reading": "た",
+          "kind": "kun",
+          "known": "true",
+          "inferred": "false",
+          "strokes": "9",
+          "meta": "JLPT N4 · G2 · 9画",
+          "gloss": "eat · food"
+        }
+      ],
+      "drawers": [],
+      "card": null,
+      "glossSize": "15px",
+      "textSample": "食べるたべる食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence tha"
+    }
+  },
+  "console": [],
+  "contrast": {
+    "term": {
+      "title ink / plate": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(233.999985, 223.00005000000002, 195.99988499999998)",
+        "ratio": 11.52,
+        "fontSize": "26px"
+      },
+      "reading kana / plate": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(233.999985, 223.00005000000002, 195.99988499999998)",
+        "ratio": 4.67,
+        "fontSize": "15px"
+      },
+      "kun reading (indigo) / plate": {
+        "fg": "rgb(39, 74, 109)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 7.8,
+        "fontSize": "14px"
+      },
+      "on reading (vermilion) / plate": null,
+      "tile meta (gold) / plate": {
+        "fg": "rgb(122, 92, 18)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.3,
+        "fontSize": "11px"
+      },
+      "tile gloss / plate": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 12.96,
+        "fontSize": "12px"
+      },
+      "glyph / plate": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244, 236, 216)",
+        "ratio": 12.96,
+        "fontSize": "36px"
+      },
+      "gloss text / paper": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 12.96,
+        "fontSize": "15px"
+      },
+      "dictionary label (gold) / paper": {
+        "fg": "rgb(122, 92, 18)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.3,
+        "fontSize": "11px"
+      },
+      "definition tag / paper": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.26,
+        "fontSize": "10.5px"
+      },
+      "selected tab (vermilion) / paper": null,
+      "drawer summary / paper": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.26,
+        "fontSize": "12px"
+      },
+      "deinflection / plate": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(233.999985, 223.00005000000002, 195.99988499999998)",
+        "ratio": 4.67,
+        "fontSize": "12px"
+      }
+    },
+    "kanji": {
+      "keyword / paper": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 12.96,
+        "fontSize": "24px"
+      },
+      "meanings (faint) / paper": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.26,
+        "fontSize": "14px"
+      },
+      "音 label text / vermilion": {
+        "fg": "rgb(255, 248, 234)",
+        "bg": "rgb(163, 50, 31)",
+        "ratio": 6.55,
+        "fontSize": "14px"
+      },
+      "訓 label text / indigo": {
+        "fg": "rgb(244, 236, 216)",
+        "bg": "rgb(39, 74, 109)",
+        "ratio": 7.8,
+        "fontSize": "14px"
+      },
+      "on chip (vermilion) / paper": {
+        "fg": "rgb(163, 50, 31)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.88,
+        "fontSize": "15px"
+      },
+      "kun chip (indigo) / paper": {
+        "fg": "rgb(39, 74, 109)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 7.8,
+        "fontSize": "15px"
+      },
+      "arrived-from chip text / filled chip": {
+        "fg": "rgb(255, 248, 234)",
+        "bg": "rgb(39, 74, 109)",
+        "ratio": 8.69,
+        "fontSize": "15px"
+      },
+      "badge (gold) / badge fill": {
+        "fg": "rgb(122, 92, 18)",
+        "bg": "rgb(234.23994, 224.48007, 200.159955)",
+        "ratio": 4.77,
+        "fontSize": "12px"
+      },
+      "source (faint) / paper": {
+        "fg": "color(srgb 0.405098 0.376471 0.341961)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.26,
+        "fontSize": "11px"
+      },
+      "met heading (gold) / paper": {
+        "fg": "rgb(122, 92, 18)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.3,
+        "fontSize": "11px"
+      },
+      "met word / paper": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 12.96,
+        "fontSize": "17px"
+      },
+      "met gloss / paper": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 12.96,
+        "fontSize": "13px"
+      },
+      "Back button / plate": {
+        "fg": "rgb(43, 36, 32)",
+        "bg": "rgb(233.999985, 223.00005000000002, 195.99988499999998)",
+        "ratio": 11.52,
+        "fontSize": "13px"
+      },
+      "Details summary (gold) / paper": {
+        "fg": "rgb(122, 92, 18)",
+        "bg": "rgb(244.000065, 235.99995, 216.000045)",
+        "ratio": 5.3,
+        "fontSize": "12px"
+      },
+      "ring ticks (ink) / paper": {
+        "fg": "repeating-conic-gradient(from -88.25deg, rgb(43, 36, 32) 0de",
+        "bg": "color(srgb 0.956863 0.92549 0.847059)",
+        "ratio": 12.96
+      }
+    }
+  },
+  "reducedMotion": {
+    "tileTransition": "0s",
+    "ringTransition": "0s"
+  },
+  "forcedColors": {
+    "popupBackground": "rgb(0, 0, 0)",
+    "popupColor": "rgb(255, 255, 255)",
+    "ringBackgroundImage": "repeating-conic-gradient(from -88.25deg, rgb(255, 255, 255) 0deg, rgb(255, 255, 255) 36.5deg, rgba(0, 0, 0, 0) 36.5deg, ",
+    "ringForcedColorAdjust": "none",
+    "glyphColor": "rgb(255, 255, 255)"
+  },
+  "importState": "Finished 3 of 3 archives — 3 imported, 0 failed.",
+  "importMs": 3524,
+  "importDetail": [
+    "KANJIDIC_english.zip :: Imported KANJIDIC [2026-267] in 0.4 seconds: 10,384 kanji.",
+    "JMdict_english.zip :: Imported JMdict [2026-09-24] in 1.0 seconds: 527,159 terms.",
+    "bees-ultimate-kanji-dictionary.zip :: Imported Bee's Ultimate Kanji Dictionary in 1.3 seconds: 12,634 terms, 3,897 frequency entries, 10,255 media files."
+  ],
+  "keyboardFocus": "kanji-link",
+  "drawerPoint": {
+    "x": 512,
+    "y": 430.65625
+  }
+}

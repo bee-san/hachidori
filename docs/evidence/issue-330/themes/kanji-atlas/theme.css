@@ -1,0 +1,880 @@
+/* themes/kanji-atlas/theme.css — Kanji Atlas: ink on parchment, a page from a
+ * kanji reference book. 朱 vermilion marks 音 (on-yomi) and the headword, 藍
+ * indigo marks 訓 (kun-yomi), 金茶 gold marks badges and dictionary labels.
+ *
+ * The palette block is what build-index.mjs generates from theme.yaml; the rest
+ * is this theme's own CSS. Structure (the kanji rail, the atlas card, the
+ * drawers) is theme.js's job; whatever it hides carries data-theme-hidden.
+ * Every selector starts at the popup host, as the sanitiser requires; there is
+ * no url(), no @keyframes, no @font-face. */
+
+:host([data-hoshidicts-theme="kanji-atlas"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #f4ecd8;
+  --hoshidicts-palette-base-200: #eadfc4;
+  --hoshidicts-palette-base-300: #dccfae;
+  --hoshidicts-palette-base-content: #2b2420;
+  --hoshidicts-palette-primary: #a3321f;
+  --hoshidicts-palette-primary-content: #fff8ea;
+  --hoshidicts-palette-secondary: #274a6d;
+  --hoshidicts-palette-secondary-content: #f4ecd8;
+  --hoshidicts-palette-accent: #7a5c12;
+  --hoshidicts-palette-accent-content: #fff8ea;
+  --hoshidicts-palette-neutral: #6b5f52;
+  --hoshidicts-palette-neutral-content: #f4ecd8;
+  --hoshidicts-palette-info: #274a6d;
+  --hoshidicts-palette-info-content: #f4ecd8;
+  --hoshidicts-palette-success: #3f6b3a;
+  --hoshidicts-palette-warning: #b8771a;
+  --hoshidicts-palette-error: #9e2a2a;
+}
+
+/* ---- the page ------------------------------------------------------------ */
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-popup {
+  --atlas-ink: var(--hoshidicts-palette-base-content);
+  --atlas-vermilion: var(--hoshidicts-palette-primary);
+  --atlas-indigo: var(--hoshidicts-palette-secondary);
+  --atlas-gold: var(--hoshidicts-palette-accent);
+  --atlas-paper: var(--hoshidicts-palette-base-100);
+  --atlas-plate: var(--hoshidicts-palette-base-200);
+  --atlas-rule: color-mix(in srgb, var(--atlas-ink) 22%, var(--atlas-paper));
+  --atlas-faint: color-mix(in srgb, var(--atlas-ink) 70%, var(--atlas-paper));
+  --atlas-serif: "Noto Serif CJK JP", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", serif;
+  --hoshidicts-border: var(--atlas-rule);
+  --hoshidicts-border-strong: color-mix(in srgb, var(--atlas-ink) 40%, var(--atlas-paper));
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-text-muted: var(--atlas-faint);
+  --hoshidicts-link: var(--atlas-vermilion);
+  --hoshidicts-link-hover: var(--atlas-indigo);
+  --hoshidicts-pitch: var(--atlas-indigo);
+  --hoshidicts-scrollbar: color-mix(in srgb, var(--atlas-ink) 35%, var(--atlas-paper));
+  border: 1px solid var(--hoshidicts-border-strong);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--atlas-vermilion) 55%, transparent) 0 3px, transparent 3px),
+    var(--hoshidicts-popup-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 1px 0 rgba(255, 250, 236, 0.8) inset, 0 14px 36px rgba(60, 40, 20, 0.28), 0 2px 6px rgba(60, 40, 20, 0.18);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-content-scroll {
+  padding: 8px 12px 12px 14px;
+}
+
+/* ---- the top bar: title, actions, rail, tabs ----------------------------- */
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-result-chrome {
+  max-height: 62%;
+  border-bottom: 3px double color-mix(in srgb, var(--atlas-gold) 70%, var(--atlas-paper));
+  background: var(--hoshidicts-chrome-background);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-primary-header {
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 0;
+  padding: 8px 12px 6px 14px;
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-primary-header > .gsm-hoshidicts-entry-actions {
+  flex: 0 1 auto;
+  margin-left: auto;
+  align-self: center;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-title {
+  display: flex;
+  flex: 1 1 12em;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-word {
+  font-family: var(--atlas-serif);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--atlas-ink);
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-word-reading {
+  font-size: 15px;
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-title .gsm-hoshidicts-deinflection {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+}
+
+/* The rail: one tile per kanji, the kana of the word threaded between them. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-rail {
+  --atlas-glyph: clamp(26px, calc(210px / var(--theme-atlas-tiles, 1)), 36px);
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 4px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-group-reading {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--atlas-faint);
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-kana {
+  align-self: flex-start;
+  margin: 18px 2px 0;
+  font-family: var(--atlas-serif);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: center;
+  width: 96px;
+  min-width: 0;
+  padding: 4px 4px 6px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--atlas-paper) 60%, transparent);
+  text-align: center;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile[data-atlas-known="false"] {
+  border-style: dashed;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:hover,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:has(:focus-visible) {
+  border-color: var(--atlas-vermilion);
+  box-shadow: 0 2px 8px rgba(60, 40, 20, 0.18);
+}
+
+/* The stroke ring: one tick per stroke, drawn by a repeating conic gradient
+ * whose segment count comes from data-strokes (the mapping is at the end); the
+ * glyph's paper disc covers the centre so only the rim shows. Unknown stroke
+ * count: a dashed circle, the tile's "no card yet" mark. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring {
+  --atlas-n: 0;
+  --atlas-gap: 4.5deg;
+  --atlas-ring-size: 60px;
+  --atlas-ring-width: 5px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--atlas-ring-size);
+  height: var(--atlas-ring-size);
+  border-radius: 50%;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed var(--atlas-rule);
+  box-sizing: border-box;
+  transition: transform 260ms ease-out;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes]::before {
+  border: 0;
+  background: repeating-conic-gradient(
+    from calc(-90deg + var(--atlas-gap) / 2),
+    var(--atlas-ring-ink, var(--atlas-ink)) 0 calc(360deg / var(--atlas-n) - var(--atlas-gap)),
+    transparent calc(360deg / var(--atlas-n) - var(--atlas-gap)) calc(360deg / var(--atlas-n))
+  );
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:hover .atlas-ring::before,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:has(:focus-visible) .atlas-ring::before {
+  --atlas-ring-ink: var(--atlas-vermilion);
+  transform: rotate(calc(360deg / var(--atlas-n, 12) / 2));
+}
+
+/* The renderer's kanji button is the tile's glyph and its only control. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring > .gsm-hoshidicts-kanji-link,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring > .gsm-hoshidicts-kanji-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: calc(var(--atlas-ring-size) - var(--atlas-ring-width) * 2);
+  height: calc(var(--atlas-ring-size) - var(--atlas-ring-width) * 2);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--atlas-paper);
+  font-family: var(--atlas-serif);
+  font-size: var(--atlas-glyph, 36px);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--atlas-ink);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring > .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring > .gsm-hoshidicts-kanji-link:focus-visible {
+  color: var(--atlas-vermilion);
+  outline: 2px solid var(--atlas-vermilion);
+  outline-offset: 3px;
+}
+
+/* What this word does with the kanji: the reading it uses, coloured by kind. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-used {
+  display: block;
+  min-height: 1.3em;
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-used-stem {
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-used-kind {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border-radius: 2px;
+  vertical-align: 2px;
+  font-family: var(--atlas-serif);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--hoshidicts-palette-primary-content);
+  background: var(--atlas-vermilion);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile[data-atlas-kind="kun"] .atlas-used-kind {
+  background: var(--atlas-indigo);
+  color: var(--hoshidicts-palette-secondary-content);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile[data-atlas-kind="on"] .atlas-used-stem {
+  color: var(--atlas-vermilion);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile[data-atlas-kind="kun"] .atlas-used-stem {
+  color: var(--atlas-indigo);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile[data-atlas-inferred="true"] .atlas-used-stem {
+  font-weight: 500;
+  font-style: italic;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-used-okurigana {
+  color: var(--atlas-faint);
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-used-okurigana::before {
+  content: "·";
+  margin: 0 1px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-meta {
+  display: block;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  color: var(--atlas-gold);
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-gloss {
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--atlas-ink);
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-meta:empty,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-gloss:empty {
+  display: none;
+}
+
+/* Dictionary tabs as the index tabs on a book's edge. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-metadata-strip {
+  border-top: 1px solid var(--atlas-rule);
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-tab {
+  border-radius: 3px 3px 0 0;
+  font-size: 12px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  background: var(--atlas-paper);
+  color: var(--atlas-vermilion);
+  border-color: var(--atlas-rule);
+  border-bottom-color: var(--atlas-paper);
+}
+
+/* ---- the glosses: flat, numbered, dictionary named in the margin ---------- */
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-primary-metadata-row,
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-metadata {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-tag {
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-lookup-stats {
+  padding: 1px 8px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--atlas-faint);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--atlas-rule);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-glossary-card-title {
+  font-size: 11px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--atlas-gold);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-definitions {
+  margin: 2px 0 0;
+  padding-left: 22px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-definitions > li {
+  margin: 2px 0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-definitions > li::marker {
+  color: var(--atlas-vermilion);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-glossary-content {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-definition-tags {
+  margin-bottom: 1px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-tag-definition {
+  padding: 1px 4px;
+  border: 1px solid var(--atlas-rule);
+  background: transparent;
+  color: var(--atlas-faint);
+  font-size: 10.5px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-show-more {
+  font-size: 12px;
+  border-color: var(--atlas-rule);
+  background: transparent;
+}
+
+/* Further matches (shorter headwords) as compact entries under a thin rule. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer + .gsm-hoshidicts-entry,
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-entry + .atlas-drawer,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer + .atlas-drawer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--atlas-rule);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
+  font-family: var(--atlas-serif);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-expression rt {
+  font-size: 11px;
+}
+
+/* A kanji dictionary's full card, folded under the tile it fed. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer > .atlas-drawer-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  cursor: pointer;
+  list-style: none;
+  color: var(--atlas-faint);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer > .atlas-drawer-summary::before {
+  content: "▸";
+  color: var(--atlas-gold);
+  transition: transform 160ms ease-out;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer[open] > .atlas-drawer-summary::before {
+  transform: rotate(90deg);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer > .atlas-drawer-summary:focus-visible {
+  outline: 2px solid var(--atlas-vermilion);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer-char {
+  font-family: var(--atlas-serif);
+  font-size: 18px;
+  color: var(--atlas-ink);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer-label {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.05em;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer > .gsm-hoshidicts-entry {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* ---- the kanji view: one atlas card -------------------------------------- */
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-primary-header[data-atlas="kanji"] {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-back {
+  min-height: 30px;
+  padding: 2px 10px;
+  border-color: var(--atlas-rule);
+  background: transparent;
+  font-size: 13px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.05em;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--atlas-rule);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-figure {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring-large {
+  --atlas-ring-size: 116px;
+  --atlas-ring-width: 6px;
+  --atlas-gap: 3.5deg;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring-large > .gsm-hoshidicts-kanji-glyph {
+  font-size: 64px;
+}
+
+/* The dictionary's own stroke diagram, when it ships one, on a paper plate so
+ * dark ink stays visible whatever the palette. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-diagram {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 6px;
+  background: #fffaf0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-diagram .gloss-image-link {
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-diagram .gloss-image-container {
+  width: 98px !important;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-card-body {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-keyword {
+  font-family: var(--atlas-serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--atlas-ink);
+  text-transform: lowercase;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-meanings {
+  margin-top: -3px;
+  font-size: 14px;
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi-label {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  font-family: var(--atlas-serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--hoshidicts-palette-primary-content);
+  background: var(--atlas-vermilion);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi[data-kind="kun"] .atlas-yomi-label {
+  background: var(--atlas-indigo);
+  color: var(--hoshidicts-palette-secondary-content);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip {
+  padding: 1px 7px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 999px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--atlas-ink);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi[data-kind="on"] .atlas-chip-stem {
+  color: var(--atlas-vermilion);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi[data-kind="kun"] .atlas-chip-stem {
+  color: var(--atlas-indigo);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip-okurigana {
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip-okurigana::before {
+  content: "·";
+  margin: 0 1px;
+}
+
+/* The reading of the word you came from: a filled chip. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip[data-atlas-here="true"] {
+  border-color: transparent;
+  background: var(--atlas-vermilion);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi[data-kind="kun"] .atlas-chip[data-atlas-here="true"] {
+  background: var(--atlas-indigo);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip[data-atlas-here="true"] .atlas-chip-stem,
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip[data-atlas-here="true"] .atlas-chip-okurigana {
+  color: var(--hoshidicts-palette-primary-content);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 2px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-badge {
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--atlas-gold) 55%, var(--atlas-paper));
+  border-radius: 3px;
+  font-size: 12px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.05em;
+  color: var(--atlas-gold);
+  background: color-mix(in srgb, var(--atlas-gold) 8%, var(--atlas-paper));
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-badge[data-kind="jouyou"] {
+  font-variant-caps: normal;
+  font-family: var(--atlas-serif);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-source {
+  font-size: 11px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met {
+  flex: 1 1 100%;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--atlas-rule);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-heading {
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+  color: var(--atlas-gold);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-word {
+  font-family: var(--atlas-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--atlas-ink);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-reading {
+  color: var(--atlas-faint);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-gloss {
+  color: var(--atlas-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-met-gloss::before {
+  content: "— ";
+  color: var(--atlas-faint);
+}
+
+/* The native entry under the card keeps only its Details index, restyled. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-entry {
+  padding: 6px 0;
+  border-top: 0;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  border-top: 1px solid var(--atlas-rule);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-stats > summary {
+  font-size: 12px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--atlas-gold);
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-stats dl {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-stats dt {
+  display: inline;
+  font-variant-caps: all-small-caps;
+}
+
+:host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-kanji-stats dt::after {
+  content: " ";
+}
+
+/* ---- dictionary images: every image sits on a paper plate ---------------- */
+/* Untagged black-ink diagrams stay visible; a monochrome-tagged image paints the
+ * ink colour through its own mask (reader.css), which on parchment is dark. */
+:host([data-hoshidicts-theme="kanji-atlas"]) .gloss-image-link[data-background="true"] > .gloss-image-container {
+  background: #fffaf0;
+  border-radius: 4px;
+}
+
+/* ---- accessibility modes ------------------------------------------------- */
+
+@media (forced-colors: active) {
+  /* Forced colours replace author backgrounds with Canvas: the ring's gradient
+   * and the monochrome mask layer would vanish (#336). Paint them in CanvasText. */
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring::before {
+    forced-color-adjust: none;
+    --atlas-ring-ink: CanvasText;
+    border-color: CanvasText;
+  }
+  :host([data-hoshidicts-theme="kanji-atlas"]) .gloss-image-link[data-appearance="monochrome"] .gloss-image-background {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-yomi-label {
+    border: 1px solid CanvasText;
+  }
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip[data-atlas-here="true"] {
+    border: 2px solid CanvasText;
+    font-weight: 700;
+    text-decoration: underline;
+  }
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile,
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-badge,
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-chip {
+    border-color: CanvasText;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :host([data-hoshidicts-theme="kanji-atlas"]) .gsm-hoshidicts-popup {
+    --atlas-gold: #5a430b;
+    --atlas-faint: color-mix(in srgb, var(--atlas-ink) 80%, var(--atlas-paper));
+    --atlas-rule: color-mix(in srgb, var(--atlas-ink) 45%, var(--atlas-paper));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile,
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring::before,
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-drawer > .atlas-drawer-summary::before {
+    transition: none;
+  }
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:hover .atlas-ring::before,
+  :host([data-hoshidicts-theme="kanji-atlas"]) .atlas-tile:has(:focus-visible) .atlas-ring::before {
+    transform: none;
+  }
+}
+
+/* ---- stroke count → ring segments ---------------------------------------- */
+/* attr() is rejected by the sanitiser and api.setVariable() reaches the popup
+ * only, so the count travels as data-strokes and is mapped here (KANJIDIC's
+ * largest count is 34). */
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="1"] { --atlas-n: 1; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="2"] { --atlas-n: 2; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="3"] { --atlas-n: 3; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="4"] { --atlas-n: 4; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="5"] { --atlas-n: 5; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="6"] { --atlas-n: 6; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="7"] { --atlas-n: 7; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="8"] { --atlas-n: 8; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="9"] { --atlas-n: 9; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="10"] { --atlas-n: 10; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="11"] { --atlas-n: 11; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="12"] { --atlas-n: 12; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="13"] { --atlas-n: 13; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="14"] { --atlas-n: 14; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="15"] { --atlas-n: 15; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="16"] { --atlas-n: 16; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="17"] { --atlas-n: 17; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="18"] { --atlas-n: 18; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="19"] { --atlas-n: 19; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="20"] { --atlas-n: 20; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="21"] { --atlas-n: 21; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="22"] { --atlas-n: 22; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="23"] { --atlas-n: 23; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="24"] { --atlas-n: 24; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="25"] { --atlas-n: 25; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="26"] { --atlas-n: 26; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="27"] { --atlas-n: 27; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="28"] { --atlas-n: 28; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="29"] { --atlas-n: 29; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="30"] { --atlas-n: 30; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="31"] { --atlas-n: 31; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="32"] { --atlas-n: 32; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="33"] { --atlas-n: 33; }
+:host([data-hoshidicts-theme="kanji-atlas"]) .atlas-ring[data-strokes="34"] { --atlas-n: 34; }

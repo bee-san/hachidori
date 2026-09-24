@@ -1,0 +1,44 @@
+# themes/kanji-atlas/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: kanji-atlas
+name: Kanji Atlas
+version: 1.0.0
+author: bee-san
+link: https://github.com/bee-san/hachidori/issues/334
+description: A page from a kanji reference book. The headword's kanji become a rail of tiles (glyph in a stroke ring, the reading this word uses, JLPT · grade · strokes, top meanings); the kanji view is one atlas card that remembers the words you met on this page.
+tags: [light, spacious, vn, manga, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                    # ink on parchment; 朱 vermilion for 音, 藍 indigo for 訓, 金茶 gold for badges
+  color-scheme: light
+  base-100: "#f4ecd8"       # parchment page
+  base-200: "#eadfc4"       # plate / top bar
+  base-300: "#dccfae"       # raised paper
+  base-content: "#2b2420"   # ink
+  primary: "#a3321f"        # 朱 vermilion: on-yomi, headword, links
+  primary-content: "#fff8ea"
+  secondary: "#274a6d"      # 藍 indigo: kun-yomi
+  secondary-content: "#f4ecd8"
+  accent: "#7a5c12"         # 金茶 gold: badges, dictionary labels
+  accent-content: "#fff8ea"
+  neutral: "#6b5f52"        # definition tags
+  neutral-content: "#f4ecd8"
+  info: "#274a6d"           # frequency capsule
+  info-content: "#f4ecd8"
+  success: "#3f6b3a"
+  warning: "#b8771a"
+  error: "#9e2a2a"
+css: theme.css
+js:                         # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender, onDeactivate]
+  summary: Rebuilds the headword as a rail of kanji tiles with readings, JLPT, grade, strokes and meanings; turns the kanji view into an atlas card; remembers kanji facts and words met on this page (memory only, nothing stored).
+options:                    # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100
+  popupColumns: 1
+  popupToolbarPosition: top
+screenshot: screenshot.png
+preview:
+  swatches: ["#f4ecd8", "#2b2420", "#a3321f", "#274a6d", "#7a5c12"]
