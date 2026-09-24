@@ -1,0 +1,1058 @@
+/* themes/learner-focus/theme.css — Learner Focus: progressive disclosure on warm paper.
+ *
+ * The palette block is what build-index.mjs generates from theme.yaml; the rest
+ * is this theme's own CSS. Structure — layers, the reading line with its pitch,
+ * the prompt, the kanji table, the known-word line — is theme.js's job; this
+ * file lays out what the script builds (lf-*) and collapses what it hides
+ * (data-theme-hidden, lf-collapsed).
+ *
+ * Sizes: headword 42 px, reading 20 px, gloss 20 px, body 17 px. Every text
+ * colour on every background it sits on measures >= 4.5:1 (see the proposal).
+ * No @keyframes (the sanitiser drops them): motion is transitions only, and
+ * none under prefers-reduced-motion. */
+
+:host([data-hoshidicts-theme="learner-focus"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #FAF7F0;
+  --hoshidicts-palette-base-200: #F2EDE2;
+  --hoshidicts-palette-base-300: #E6DFD0;
+  --hoshidicts-palette-base-content: #1E2A33;
+  --hoshidicts-palette-primary: #0E6B66;
+  --hoshidicts-palette-primary-content: #FFFFFF;
+  --hoshidicts-palette-secondary: #9E4520;
+  --hoshidicts-palette-secondary-content: #FFFFFF;
+  --hoshidicts-palette-accent: #B7562A;
+  --hoshidicts-palette-accent-content: #FFFFFF;
+  --hoshidicts-palette-neutral: #DDD6C8;
+  --hoshidicts-palette-neutral-content: #2B3640;
+  --hoshidicts-palette-info: #D7E6E4;
+  --hoshidicts-palette-info-content: #0E4F4B;
+  --hoshidicts-palette-success: #1F6B3A;
+  --hoshidicts-palette-warning: #8A5A12;
+  --hoshidicts-palette-error: #B3261E;
+}
+
+/* ---------------------------------------------------------------------------
+ * The frame. The popup box keeps the Design width/height the reader positions
+ * with, but is invisible and lets the pointer through; the header and the body
+ * form a card that is only as tall as the open layers need, hugging the word
+ * from below (toolbar top) or from above (toolbar bottom). */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup {
+  --lf-paper: var(--hoshidicts-palette-base-100);
+  --lf-band: var(--hoshidicts-palette-base-200);
+  --lf-raised: var(--hoshidicts-palette-base-300);
+  --lf-ink: var(--hoshidicts-palette-base-content);
+  --lf-muted: #535B60;                         /* 6.5:1 on paper */
+  --lf-teal: var(--hoshidicts-palette-primary);
+  --lf-terra: var(--hoshidicts-palette-secondary);
+  --lf-green: var(--hoshidicts-palette-success);
+  --lf-line: #D9D1C2;
+  --lf-line-strong: #B9AF9C;
+  --lf-pitch-low: #74808A;                     /* 3.2:1 on paper, a graphic not text */
+  --lf-radius: 16px;
+  --lf-ease: 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  --hoshidicts-pitch: var(--lf-teal);
+  --hoshidicts-text-faint: #646C6F;            /* 5.0:1 on paper */
+  --hoshidicts-border: var(--lf-line);
+  --hoshidicts-border-strong: var(--lf-line-strong);
+  --hoshidicts-card-background: transparent;
+  justify-content: flex-start;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  color: var(--lf-ink);
+  font-size: 17px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] {
+  justify-content: flex-end;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup > * {
+  pointer-events: auto;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) [data-theme-hidden],
+:host([data-hoshidicts-theme="learner-focus"]) .lf-collapsed {
+  display: none !important;
+}
+
+/* The card: header band + paper body, one rounded shape, one soft shadow. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-result-chrome {
+  position: relative;
+  flex: 0 0 auto;
+  max-height: 60%;
+  border: 1px solid var(--lf-line-strong);
+  border-bottom: 0;
+  border-radius: var(--lf-radius) var(--lf-radius) 0 0;
+  background: color-mix(in srgb, var(--lf-band) var(--hoshidicts-background-opacity), transparent);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-content-scroll {
+  flex: 0 1 auto;
+  padding: 0;
+  border: 1px solid var(--lf-line-strong);
+  border-top: 0;
+  border-radius: 0 0 var(--lf-radius) var(--lf-radius);
+  background: color-mix(in srgb, var(--lf-paper) var(--hoshidicts-background-opacity), transparent);
+  box-shadow: 0 14px 34px rgba(60, 44, 20, 0.16), 0 2px 6px rgba(60, 44, 20, 0.1);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-result-chrome {
+  border-top: 0;
+  border-bottom: 1px solid var(--lf-line-strong);
+  border-radius: 0 0 var(--lf-radius) var(--lf-radius);
+  box-shadow: 0 14px 34px rgba(60, 44, 20, 0.16), 0 2px 6px rgba(60, 44, 20, 0.1);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-content-scroll {
+  border-top: 1px solid var(--lf-line-strong);
+  border-bottom: 0;
+  border-radius: var(--lf-radius) var(--lf-radius) 0 0;
+  box-shadow: none;
+}
+
+/* Elements the reader places between header and body keep the card's sides. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-mining-feedback:not([hidden]),
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-lookup-failure {
+  border-left: 1px solid var(--lf-line-strong);
+  border-right: 1px solid var(--lf-line-strong);
+  background: color-mix(in srgb, var(--lf-paper) var(--hoshidicts-background-opacity), transparent);
+}
+
+/* Known-word state: the body alone is the card. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-result-chrome.lf-collapsed ~ .gsm-hoshidicts-content-scroll {
+  border-top: 1px solid var(--lf-line-strong);
+  border-radius: var(--lf-radius);
+}
+
+/* ---------------------------------------------------------------------------
+ * Header: the word, then the reading line the script builds, then "why this
+ * matched". Actions (audio, note, mine, custom) sit at the top right. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-header {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  min-height: 0;
+  padding: 12px 16px 10px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-header > .gsm-hoshidicts-headword {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-expression {
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: var(--lf-ink);
+}
+
+/* The reading has its own line under the word; furigana would say it twice. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-header .gsm-hoshidicts-expression rt {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-header .gsm-hoshidicts-pitch-ruby {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-link {
+  border-bottom: 2px solid color-mix(in srgb, var(--lf-teal) 35%, transparent);
+  border-radius: 4px 4px 0 0;
+  transition: background-color var(--lf-ease), border-color var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  color: var(--lf-teal);
+  border-bottom-color: var(--lf-teal);
+  background: color-mix(in srgb, var(--lf-teal) 10%, transparent);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  outline: 2px solid var(--lf-teal);
+  outline-offset: 2px;
+}
+
+/* Reading line: one span per mora. High morae carry the line above, low morae
+ * the line below, the drop a tick — the textbook notation, in colour. */
+:host([data-hoshidicts-theme="learner-focus"]) .lf-reading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: 100%;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-morae {
+  display: inline-flex;
+  align-items: stretch;
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--lf-ink);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora {
+  position: relative;
+  padding: 5px 2px 4px;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-level="high"] {
+  border-top-color: var(--lf-teal);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-level="low"] {
+  border-bottom-color: var(--lf-pitch-low);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-transition="drop"]::after,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-transition="rise"]::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  right: -2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--lf-teal);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-transition="rise"]::after {
+  background: var(--lf-pitch-low);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-mora[data-transition="rise"] {
+  margin-right: 2px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-morae-small {
+  font-size: 17px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-morae-small .lf-mora {
+  padding: 3px 1px 2px;
+  border-width: 2px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-accent,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-pos-chip,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-reading .gsm-hoshidicts-lookup-stats {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-accent {
+  border: 1px solid color-mix(in srgb, var(--lf-teal) 40%, transparent);
+  color: var(--lf-teal);
+  cursor: help;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-pos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-pos-chip {
+  background: var(--hoshidicts-palette-neutral);
+  color: var(--hoshidicts-palette-neutral-content);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-reading .gsm-hoshidicts-lookup-stats {
+  margin: 0;
+  color: var(--lf-muted);
+  font-weight: 500;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-reading .gsm-hoshidicts-lookup-stats[hidden] {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-deinflection {
+  margin: 0;
+  color: var(--lf-muted);
+  font-size: 13.5px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-deinflection-endpoint {
+  color: var(--lf-ink);
+  font-weight: 500;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry-actions {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  gap: 6px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup-close {
+  border: 1px solid var(--lf-line-strong);
+  border-radius: 10px;
+  background: var(--lf-paper);
+  color: var(--lf-ink);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-audio-button:hover:not(:disabled),
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-mine-button:hover:not(:disabled),
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-note-button:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-back:hover {
+  border-color: var(--lf-teal);
+  background: color-mix(in srgb, var(--lf-teal) 10%, var(--lf-paper));
+}
+
+/* Dictionary tabs (layer 3) */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-metadata-strip {
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--lf-line);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-tab {
+  border-radius: 999px;
+  background: var(--lf-paper);
+  color: var(--lf-muted);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  border-color: var(--lf-teal);
+  background: var(--lf-teal);
+  color: var(--hoshidicts-palette-primary-content);
+}
+
+/* ---------------------------------------------------------------------------
+ * Body */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-tab-panel {
+  padding: 12px 16px 6px;
+}
+
+/* Layer 0: one gloss, large. */
+:host([data-hoshidicts-theme="learner-focus"]) .lf-focus {
+  padding: 16px 16px 10px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-gloss {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--lf-ink);
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-gloss-meta {
+  margin: 6px 0 0;
+  color: var(--lf-muted);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+/* Layers 1–3: flat sense lists, no cards. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: opacity var(--lf-ease), transform var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--lf-line-strong);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-card-title {
+  margin: 0 0 4px;
+  color: var(--lf-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-definitions {
+  margin: 0;
+  padding-left: 22px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-definitions-single {
+  padding-left: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content {
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+/* Jitendex/JMdict structure: numbered senses, quiet part-of-speech notes. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="sense-groups"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="sense-group"] + [data-sc-content="sense-group"] {
+  margin-top: 10px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="part-of-speech-info"],
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="misc-info"] {
+  display: inline-block;
+  margin: 0 4px 4px 0;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--hoshidicts-palette-neutral);
+  color: var(--hoshidicts-palette-neutral-content);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="sense"] {
+  margin: 2px 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="sense"]::marker {
+  color: var(--lf-teal);
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="glossary"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="glossary"] > li {
+  display: inline;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="glossary"] > li + li::before {
+  content: "; ";
+  color: var(--lf-muted);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="extra-info"] {
+  margin: 4px 0 6px;
+  font-size: 15px;
+  color: var(--lf-muted);
+  transition: opacity var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="example-sentence"] {
+  padding: 4px 0 4px 12px;
+  border-left: 3px solid var(--lf-line-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="example-sentence-a"] {
+  color: var(--lf-ink);
+  font-size: 16px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-glossary-content [data-sc-content="example-keyword"] {
+  color: var(--lf-teal);
+  font-weight: 600;
+}
+
+/* Metadata rows (layer 2) come after the senses, not before them: the entry is
+ * a flex column and they take order 1. The pitch badge repeats the header. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-metadata-row,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-metadata,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-tags {
+  order: 1;
+  margin: 10px 0 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-pitch-metadata {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-primary-metadata-capsule {
+  border-color: var(--lf-line);
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-tag {
+  border-radius: 999px;
+}
+
+/* Shorter matches and other readings (layer 3) */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry {
+  transition: opacity var(--lf-ease), transform var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lf-line-strong);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  margin-bottom: 4px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
+  font-size: 26px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression rt {
+  display: block;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-show-more {
+  margin: 10px 0 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--lf-line-strong);
+  border-radius: 999px;
+  background: var(--lf-paper);
+  color: var(--lf-teal);
+  font-weight: 600;
+}
+
+/* Layer 4: kanji table */
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji {
+  padding: 12px 16px 4px;
+  transition: opacity var(--lf-ease), transform var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-section-title {
+  margin: 0 0 6px;
+  color: var(--lf-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-rows {
+  display: grid;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-row {
+  display: grid;
+  grid-template-columns: 44px auto 1fr auto;
+  align-items: center;
+  gap: 0 12px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--lf-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--lf-ease), border-color var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-row:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-row:focus-visible {
+  border-color: var(--lf-teal);
+  background: color-mix(in srgb, var(--lf-teal) 8%, transparent);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--lf-band);
+  font-size: 28px;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-reading {
+  color: var(--lf-teal);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-meaning {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-meaning-empty {
+  color: var(--lf-muted);
+  font-style: italic;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-source {
+  color: var(--lf-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Footer: the layer rail, "1 Knew it" / "2 Next", the prompt and the session
+ * counter. Sticks to the bottom of the body while long layers scroll. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-footer {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin-top: 6px;
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--lf-line);
+  border-radius: 0 0 var(--lf-radius) var(--lf-radius);
+  background: color-mix(in srgb, var(--lf-paper) var(--hoshidicts-background-opacity), transparent);
+}
+
+/* Above the word (toolbar bottom) the card is mirrored: header nearest the
+ * word, then the body, then the footer at the top. */
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .lf-footer {
+  order: -1;
+  top: 0;
+  bottom: auto;
+  margin: 0 0 6px;
+  border-top: 0;
+  border-bottom: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius) var(--lf-radius) 0 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-content-scroll {
+  display: flex;
+  flex-direction: column;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  margin: 0;
+  padding: 0 6px 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--lf-teal);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step:not([aria-current]) {
+  width: 18px;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border: 1.5px solid var(--lf-pitch-low);
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color var(--lf-ease), border-color var(--lf-ease), transform var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step-open::before {
+  border-color: var(--lf-teal);
+  background: color-mix(in srgb, var(--lf-teal) 45%, var(--lf-paper));
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step[aria-current="true"]::before {
+  border-color: var(--lf-teal);
+  background: var(--lf-teal);
+  transform: scale(1.25);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step:focus-visible {
+  background: var(--lf-band);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-controls {
+  display: flex;
+  gap: 8px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--lf-line-strong);
+  border-radius: 999px;
+  background: var(--lf-paper);
+  color: var(--lf-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background-color var(--lf-ease), border-color var(--lf-ease), color var(--lf-ease);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-knew {
+  border-color: color-mix(in srgb, var(--lf-green) 55%, transparent);
+  color: var(--lf-green);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-knew:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-knew:focus-visible {
+  border-color: var(--lf-green);
+  background: var(--lf-green);
+  color: #FFFFFF;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-more {
+  border-color: var(--lf-teal);
+  background: var(--lf-teal);
+  color: var(--hoshidicts-palette-primary-content);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-more:hover,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-more:focus-visible {
+  background: color-mix(in srgb, var(--lf-teal) 82%, #000000);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn:focus-visible,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-link:focus-visible,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-rail-step:focus-visible,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-row:focus-visible {
+  outline: 2px solid var(--lf-terra);
+  outline-offset: 2px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-knew .lf-kbd {
+  background: color-mix(in srgb, var(--lf-green) 14%, transparent);
+}
+
+/* On a filled button the key chip goes darker, not lighter: white on the
+ * lightened teal measured 3.9:1, on the darkened teal 8.9:1. */
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-knew:hover .lf-kbd,
+:host([data-hoshidicts-theme="learner-focus"]) .lf-btn-more .lf-kbd {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-prompt {
+  margin: 12px 0 0;
+  color: var(--lf-terra);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-session {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  color: var(--lf-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Known word: one line. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-known {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  font-size: 17px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-known-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--lf-green);
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-known-word {
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-known-gloss {
+  color: var(--lf-ink);
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-link {
+  margin: 0 0 0 auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lf-teal);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-link + .lf-link {
+  margin-left: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-link-muted {
+  color: var(--lf-muted);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-link:hover {
+  background: var(--lf-band);
+}
+
+/* ---------------------------------------------------------------------------
+ * Definition blur (Settings → Reading): the theme's copies of the gloss and the
+ * reading blur with the renderer's definitions and clear when they clear. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-definition-blur-state] .lf-gloss,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-definition-blur-state] .lf-known-gloss,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-definition-blur-state] .lf-morae,
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup[data-definition-blur-state] .lf-kanji-meaning {
+  filter: blur(7px);
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Kanji view */
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-navigation {
+  align-items: baseline;
+  gap: 14px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-glyph {
+  font-size: 64px;
+  line-height: 1.05;
+  color: var(--lf-ink);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-crumb {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--lf-muted);
+  font-size: 14px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-crumb-word {
+  color: var(--lf-ink);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-crumb-reading {
+  color: var(--lf-teal);
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-entry {
+  padding: 14px 16px 12px;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  border-top: 1px solid var(--lf-line-strong);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-dictionary {
+  margin: 0 0 8px;
+  color: var(--lf-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-entry > .gsm-hoshidicts-tags {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-kanji-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-stat {
+  padding: 2px 10px;
+  border: 1px solid var(--lf-line-strong);
+  border-radius: 999px;
+  background: var(--lf-band);
+  color: var(--lf-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-readings {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 0 0 12px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-reading-group {
+  display: contents;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-reading-group strong {
+  color: var(--lf-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 26px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-reading-group span {
+  color: var(--lf-teal);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-entry h4 {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-meanings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-meanings > li {
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--lf-band);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-meanings > li:first-child {
+  background: var(--lf-teal);
+  color: var(--hoshidicts-palette-primary-content);
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-stats {
+  color: var(--lf-muted);
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-kanji-stats > summary {
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion: newly revealed blocks slide in; nothing moves for people who asked
+ * for less motion. */
+
+:host([data-hoshidicts-theme="learner-focus"]) .lf-enter {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="learner-focus"]) .gsm-hoshidicts-popup * {
+    transition: none !important;
+  }
+
+  :host([data-hoshidicts-theme="learner-focus"]) .lf-enter {
+    opacity: 1;
+    transform: none;
+  }
+}

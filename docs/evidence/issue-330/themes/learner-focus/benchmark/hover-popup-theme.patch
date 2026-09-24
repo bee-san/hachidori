@@ -1,0 +1,49 @@
+--- benchmark/hover-popup.mjs	2026-09-24 10:49:52.101617688 +0000
++++ benchmark/hover-popup-theme.mjs	2026-09-24 13:11:40.213900566 +0000
+@@ -15,12 +15,33 @@
+ assert.ok(archives.length);
+ mkdirSync(output, { recursive: true });
+ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+-const probe = readFileSync(new URL('./hover-popup-probe.js', import.meta.url), 'utf8');
++const probe = readFileSync(new URL('./hover-popup-probe.js', import.meta.url), 'utf8') + `
++(() => {
++  // Theme JS host cost (issue #334 evidence): wall time of each runThemeHook call.
++  const durations = [];
++  const original = runThemeHook;
++  runThemeHook = (level, kind) => {
++    const started = performance.now();
++    original(level, kind);
++    durations.push({ kind, ms: performance.now() - started, ran: Boolean(themeModule && !themeModule.disabled) });
++  };
++  globalThis.__hoverProbe.hookDurations = () => durations;
++  // A theme that collapses the definitions (Learner Focus layer 0) leaves no
++  // visible glossary text to hover: report "no point" instead of (0, 0).
++  const originalPoint = globalThis.__hoverProbe.point;
++  globalThis.__hoverProbe.point = (query, depth = 0) => {
++    const popup = levels[depth].popup;
++    const definitions = popup.querySelector('.gsm-hoshidicts-definitions');
++    if (!definitions || definitions.getBoundingClientRect().height === 0) return null;
++    return originalPoint(query, depth);
++  };
++})();`;
+ const samples = Number(process.env.HACHIDORI_HOVER_SAMPLES ?? 3);
+ assert.ok(Number.isSafeInteger(samples) && samples > 0);
+ const settings = { hoverEnabled: true, lookupMode: 'hover', hoverDelayMs: 0, popupNestingMaxDepth: 2,
+   popupWidthPx: 520, popupHeightPx: 500, popupColumns: 1, maxResults: 32,
+-  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 };
++  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3,
++  popupTheme: process.env.HACHIDORI_HOVER_THEME ?? 'default' };
+ const words = ['食べる', '漢字', '深層'];
+ const manifest = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(), settings, words,
+@@ -221,6 +242,10 @@
+         longParagraph: { characters: longParagraph.length, matchOffset: longParagraph.indexOf('食べる') },
+       }, null, 2));
+       console.log(JSON.stringify({ session, hitTesting, sentenceCost }));
++      const hookDurations = await evaluate('__hoverProbe.hookDurations()');
++      writeFileSync(resolve(output, `session-${session}-theme-hook.json`), JSON.stringify(hookDurations, null, 2));
++      console.log(JSON.stringify({ session, themeHookCalls: hookDurations.length,
++        themeHookRan: hookDurations.filter(d => d.ran).length }));
+     } finally {
+       await browser?.close();
+       rmSync(directory, { recursive: true, force: true });

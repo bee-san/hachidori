@@ -1,0 +1,931 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "dictionaries": [
+    "jitendex.zip",
+    "bees-kanji.zip",
+    "jiten-freq.zip",
+    "kanjium-pitch.zip",
+    "kanjidic.zip"
+  ],
+  "shots": {
+    "default-term": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 433,
+        "y": 106,
+        "width": 558,
+        "height": 418
+      },
+      "theme": "default",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": null,
+      "focusGloss": null,
+      "reading": null,
+      "morae": [],
+      "accent": null,
+      "pos": [],
+      "lookupCount": "Looked up 1 time",
+      "session": null,
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 1,
+      "background": "color(srgb 0.152941 0.14902 0.188235)",
+      "cardBackground": "rgba(0, 0, 0, 0)",
+      "headwordSize": "32px",
+      "glossSize": "16px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 607,
+        "height": 524
+      }
+    },
+    "default-kanji": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 433,
+        "y": 106,
+        "width": 558,
+        "height": 418
+      },
+      "theme": "default",
+      "toolbar": "top",
+      "term": 0,
+      "kanji": 1,
+      "layer": null,
+      "focusGloss": null,
+      "reading": null,
+      "morae": [],
+      "accent": null,
+      "pos": [],
+      "lookupCount": null,
+      "session": null,
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 1,
+      "background": "color(srgb 0.152941 0.14902 0.188235)",
+      "cardBackground": "rgba(0, 0, 0, 0)",
+      "headwordSize": null,
+      "glossSize": "16px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.gsm-hoshidicts-kanji-back",
+      "textSample": "食BackKANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269grade2halpern_kkd2578halpern_kkld1316halpern_",
+      "clip": {
+        "x": 409,
+        "y": 82,
+        "width": 606,
+        "height": 466
+      }
+    },
+    "lf-blur": {
+      "frame": {
+        "x": 492,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 492,
+        "y": 180,
+        "width": 560,
+        "height": 297.6875
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "calmly; quietly; gently …",
+      "reading": "Reading しずかに",
+      "morae": [
+        "し:-",
+        "ず:-",
+        "か:-",
+        "に:-"
+      ],
+      "accent": null,
+      "pos": [
+        "adverb"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "1 new · 0 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": "blurred",
+      "activeInPopup": null,
+      "textSample": "静しずかにしずかにadverbLooked up 1 timecalmlyquietly1 new · 0 knowncalmly; quietly; gently …Jitendex · sense 1 of 2Did you know it?41.6k㋕ · 1.2kJitendexadverbcalmlyquietlygentlypeacefully静しずかに、子こ供どもたちが眠ねむっていま",
+      "clip": {
+        "x": 468,
+        "y": 99,
+        "width": 608,
+        "height": 402.6875
+      }
+    },
+    "lf-0-focus": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 356.578125
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "to eat",
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [
+        "た:low/rise",
+        "べ:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "2 new · 0 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "食たべるべるたべる中高 [2]1-dantransitiveLooked up 2 timesto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicate",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 461.578125
+      }
+    },
+    "lf-1-senses": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 321.875
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Senses",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [
+        "た:low/rise",
+        "べ:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "2 new · 0 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "食たべるべるたべる中高 [2]1-dantransitiveLooked up 2 timesto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicate",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 426.875
+      }
+    },
+    "lf-2-details": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Details",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [
+        "た:low/rise",
+        "べ:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "2 new · 0 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "食たべるべるたべる中高 [2]1-dantransitiveLooked up 2 timesto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicate",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 525
+      }
+    },
+    "lf-3-dictionaries": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Dictionaries",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [
+        "た:low/rise",
+        "べ:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "2 new · 0 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "食たべるべるたべる中高 [2]1-dantransitiveLooked up 2 timesto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicate",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 525
+      }
+    },
+    "lf-4-kanji": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Kanji",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [
+        "た:low/rise",
+        "べ:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "2 new · 0 known",
+      "kanjiRows": [
+        "食 | た | eat; food | Bee's Ultimate Kanji Dictionary"
+      ],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "食たべるべるたべる中高 [2]1-dantransitiveLooked up 2 timesto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicate",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 525
+      }
+    },
+    "lf-kanji-view": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 317.25
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 0,
+      "kanji": 1,
+      "layer": null,
+      "focusGloss": null,
+      "reading": null,
+      "morae": [],
+      "accent": null,
+      "pos": [],
+      "lookupCount": null,
+      "session": null,
+      "kanjiRows": [],
+      "kanjiStats": [
+        "9 strokes",
+        "Grade 2 (elementary)",
+        "#328 most used",
+        "JLPT N4"
+      ],
+      "crumb": "in食べるたべる",
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": null,
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.gsm-hoshidicts-kanji-back",
+      "textSample": "食in食べるたべるBackKANJIDIC [2026-267]jouyou9 strokesGrade 2 (elementary)#328 most usedJLPT N4Onショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2fre",
+      "clip": {
+        "x": 408,
+        "y": 81,
+        "width": 608,
+        "height": 365.25
+      }
+    },
+    "lf-back-keeps-layer": {
+      "layer": "Kanji",
+      "kanjiRows": [
+        "食 | た | tap to look up | "
+      ]
+    },
+    "lf-keys": {
+      "after0": "Focus",
+      "after2": "Senses",
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more"
+    },
+    "lf-known-just-marked": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 51.390625
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "known",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [],
+      "accent": null,
+      "pos": [],
+      "lookupCount": "Looked up 2 times",
+      "session": null,
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": true,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-link",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 156.390625
+      }
+    },
+    "lf-known-again": {
+      "frame": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 432,
+        "y": 105,
+        "width": 560,
+        "height": 51.390625
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "known",
+      "focusGloss": null,
+      "reading": "Reading たべる, pitch accent 2, nakadaka",
+      "morae": [],
+      "accent": null,
+      "pos": [],
+      "lookupCount": "Looked up 3 times",
+      "session": null,
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": true,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica",
+      "clip": {
+        "x": 408,
+        "y": 24,
+        "width": 608,
+        "height": 156.390625
+      }
+    },
+    "lf-long-0-focus": {
+      "frame": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 355.96875
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 7,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "to hang up (e.g. a coat, a picture on the wall); to let hang; to suspend (from) …",
+      "reading": "Reading かける, pitch accent 2, nakadaka",
+      "morae": [
+        "か:low/rise",
+        "け:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "2 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "掛かけるけるかける中高 [2]1-dantransitiveLooked up 1 timeto hang up (e.g. a coat, a picture on the wall)to let hang掛けて → 掛ける-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that con",
+      "clip": {
+        "x": 348,
+        "y": 99,
+        "width": 608,
+        "height": 460.96875
+      }
+    },
+    "lf-long-1-senses": {
+      "frame": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 7,
+      "kanji": 0,
+      "layer": "Senses",
+      "focusGloss": null,
+      "reading": "Reading かける, pitch accent 2, nakadaka",
+      "morae": [
+        "か:low/rise",
+        "け:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "2 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "掛かけるけるかける中高 [2]1-dantransitiveLooked up 1 timeto hang up (e.g. a coat, a picture on the wall)to let hang掛けて → 掛ける-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that con",
+      "clip": {
+        "x": 348,
+        "y": 99,
+        "width": 608,
+        "height": 525
+      },
+      "senseCount": 25
+    },
+    "lf-long-2-details": {
+      "frame": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 372,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 7,
+      "kanji": 0,
+      "layer": "Details",
+      "focusGloss": null,
+      "reading": "Reading かける, pitch accent 2, nakadaka",
+      "morae": [
+        "か:low/rise",
+        "け:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "1-dan",
+        "transitive"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "2 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "掛かけるけるかける中高 [2]1-dantransitiveLooked up 1 timeto hang up (e.g. a coat, a picture on the wall)to let hang掛けて → 掛ける-てて-form. It has a myriad of meanings. Primarily, it is a conjunctive particle that con",
+      "clip": {
+        "x": 348,
+        "y": 99,
+        "width": 608,
+        "height": 525
+      }
+    },
+    "lf-library-0-focus": {
+      "frame": {
+        "x": 162,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 162,
+        "y": 105,
+        "width": 560,
+        "height": 297.6875
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 6,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "library",
+      "reading": "Reading としょかん, pitch accent 2, nakadaka",
+      "morae": [
+        "と:low/rise",
+        "しょ:high/drop",
+        "か:low",
+        "ん:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "noun"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "3 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "図書館としょかんとしょかん中高 [2]nounLooked up 1 timelibrary3 new · 1 knownlibraryJitendexDid you know it?108.3k㋕ · 5.3kとしょかん[2]Jitendex★priorityformnounlibrary私わたしたちの学がっ校こうには立りっ派ぱな図と書しょ館かんがあります。We have a nice scho",
+      "clip": {
+        "x": 138,
+        "y": 24,
+        "width": 608,
+        "height": 402.6875
+      }
+    },
+    "lf-library-4-kanji": {
+      "frame": {
+        "x": 162,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 162,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 6,
+      "kanji": 0,
+      "layer": "Kanji",
+      "focusGloss": null,
+      "reading": "Reading としょかん, pitch accent 2, nakadaka",
+      "morae": [
+        "と:low/rise",
+        "しょ:high/drop",
+        "か:low",
+        "ん:low"
+      ],
+      "accent": "中高 [2]",
+      "pos": [
+        "noun"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "3 new · 1 known",
+      "kanjiRows": [
+        "図 |  | map; drawing; plan; extraordinary; audacious | Bee's Ultimate Kanji Dictionary",
+        "書 |  | tap to look up | ",
+        "館 |  | tap to look up | "
+      ],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "17px",
+      "blurState": null,
+      "activeInPopup": "BUTTON.lf-btn lf-btn-more",
+      "textSample": "図書館としょかんとしょかん中高 [2]nounLooked up 1 timelibrary3 new · 1 knownKanji in this word図map; drawing; plan; extraordinary; audaciousBee's Ultimate Kanji Dictionary書tap to look up館tap to look up108.3k㋕ · 5.3kと",
+      "clip": {
+        "x": 138,
+        "y": 24,
+        "width": 608,
+        "height": 525
+      }
+    },
+    "lf-above-word": {
+      "frame": {
+        "x": 252,
+        "y": 285,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 252,
+        "y": 348.421875,
+        "width": 560,
+        "height": 356.578125
+      },
+      "theme": "learner-focus",
+      "toolbar": "bottom",
+      "term": 8,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "to begin to fall (of rain, snow, etc.)",
+      "reading": "Reading ふりはじめる, pitch accent 5, nakadaka",
+      "morae": [
+        "ふ:low/rise",
+        "り:high",
+        "は:high",
+        "じ:high",
+        "め:high/drop",
+        "る:low"
+      ],
+      "accent": "中高 [5]",
+      "pos": [
+        "1-dan",
+        "intransitive"
+      ],
+      "lookupCount": "Looked up 1 time",
+      "session": "4 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "to begin to fall (of rain, snow, etc.)JitendexDid you know it?131.8k㋕ · 20.2kふりはじめる[5]ふりはじめる[0]Jitendex1-danintransitiveto begin to fall (of rain, snow, etc.)雨あめが土ど砂しゃ降ぶりに降ふり始はじめた。It began to rain cat",
+      "clip": {
+        "x": 228,
+        "y": 324.421875,
+        "width": 608,
+        "height": 462.578125
+      }
+    },
+    "lf-session-counter": {
+      "frame": {
+        "x": 492,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "card": {
+        "x": 492,
+        "y": 180,
+        "width": 560,
+        "height": 297.6875
+      },
+      "theme": "learner-focus",
+      "toolbar": "top",
+      "term": 5,
+      "kanji": 0,
+      "layer": "Focus",
+      "focusGloss": "calmly; quietly; gently …",
+      "reading": "Reading しずかに",
+      "morae": [
+        "し:-",
+        "ず:-",
+        "か:-",
+        "に:-"
+      ],
+      "accent": null,
+      "pos": [
+        "adverb"
+      ],
+      "lookupCount": "Looked up 2 times",
+      "session": "4 new · 1 known",
+      "kanjiRows": [],
+      "kanjiStats": [],
+      "crumb": null,
+      "chromeCollapsed": false,
+      "sheets": 2,
+      "background": "rgba(0, 0, 0, 0)",
+      "cardBackground": "color(srgb 0.980392 0.968627 0.941176)",
+      "headwordSize": "42px",
+      "glossSize": "21px",
+      "blurState": null,
+      "activeInPopup": null,
+      "textSample": "静しずかにしずかにadverbLooked up 2 timescalmlyquietly4 new · 1 knowncalmly; quietly; gently …Jitendex · sense 1 of 2Did you know it?41.6k㋕ · 1.2kJitendexadverbcalmlyquietlygentlypeacefully静しずかに、子こ供どもたちが眠ねむってい",
+      "clip": {
+        "x": 468,
+        "y": 99,
+        "width": 608,
+        "height": 402.6875
+      }
+    }
+  },
+  "importState": "Finished 5 of 5 archives — 5 imported, 0 failed.",
+  "importSeconds": 3.57,
+  "importDetail": [
+    "jitendex.zip :: Imported Jitendex.org [2026-08-11] in 1.2 seconds: 435,448 terms, 250 media files.",
+    "bees-kanji.zip :: Imported Bee's Ultimate Kanji Dictionary in 0.8 seconds: 12,634 terms, 3,897 frequency entries, 10,255 media files.",
+    "jiten-freq.zip :: Imported Jiten in 0.6 seconds: 583,416 frequency entries.",
+    "kanjium-pitch.zip :: Imported Kanjium Pitch Accents in 0.2 seconds: 124,137 pitch entries.",
+    "kanjidic.zip :: Imported KANJIDIC [2026-267] in 0.2 seconds: 10,384 kanji."
+  ]
+}

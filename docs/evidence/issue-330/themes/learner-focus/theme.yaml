@@ -1,0 +1,46 @@
+# themes/learner-focus/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: learner-focus
+name: Learner Focus
+version: 1.0.0
+author: Hachidori theme designers (issue #334)
+link: https://github.com/bee-san/hachidori/issues/334
+description: Progressive disclosure for learners. The first screen is only the word, its reading with the pitch drawn on it, one gloss and "Did you know it?"; every layer after that (senses, details, dictionaries, kanji) is one key away. Warm paper, large glyphs.
+tags: [light, spacious, vn, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                    # every text/background pair below measures >= 4.5:1 (see the proposal comment)
+  color-scheme: light
+  base-100: "#FAF7F0"       # paper
+  base-200: "#F2EDE2"       # header band
+  base-300: "#E6DFD0"       # raised surfaces
+  base-content: "#1E2A33"   # ink (13.7:1 on paper)
+  primary: "#0E6B66"        # teal: pitch line, buttons, links (5.9:1 on paper)
+  primary-content: "#FFFFFF"
+  secondary: "#9E4520"      # terracotta: the "did you know it?" prompt (5.9:1 on paper)
+  secondary-content: "#FFFFFF"
+  accent: "#B7562A"
+  accent-content: "#FFFFFF"
+  neutral: "#DDD6C8"        # tag background
+  neutral-content: "#2B3640"
+  info: "#D7E6E4"           # frequency badge
+  info-content: "#0E4F4B"
+  success: "#1F6B3A"        # "known" green (6.1:1 on paper)
+  warning: "#8A5A12"
+  error: "#B3261E"
+css: theme.css
+js:                          # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: Reorders the popup into layers (focus, senses, details, dictionaries, kanji), draws the reading with its pitch pattern, adds a "did you know it?" prompt and a session counter.
+options:                     # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100
+  popupColumns: 1
+  showPitchAccentFurigana: true
+  showPitchAccentBadge: true
+  showCompactDefinitionSummary: false
+screenshot: screenshot.png
+preview:
+  swatches: ["#FAF7F0", "#1E2A33", "#0E6B66", "#9E4520", "#1F6B3A"]

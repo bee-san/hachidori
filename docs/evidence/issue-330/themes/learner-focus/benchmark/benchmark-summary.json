@@ -1,0 +1,276 @@
+{
+  "harness": "benchmark/hover-popup.mjs + hover-popup-theme.patch, HACHIDORI_HOVER_SAMPLES=2, benchmark/hover-popup-fixture.mjs fixture (3 terms)",
+  "boundary": "firstMs/completeMs: real pointer move to first correct frame / to a complete, 2-frame-stable popup, page clock; theme_hook: wall time of runThemeHook (host view/api construction + onRender)",
+  "default": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "load_average_at_start": [
+      22.99,
+      248.37,
+      869.02
+    ],
+    "sessions": [
+      0,
+      1
+    ],
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3,
+      "popupTheme": "default"
+    },
+    "hover": {
+      "cold": {
+        "firstMs": {
+          "n": 2,
+          "median": 98.7,
+          "p95": 101.7,
+          "min": 95.4,
+          "max": 102
+        },
+        "completeMs": {
+          "n": 2,
+          "median": 101.1,
+          "p95": 104.8,
+          "min": 97,
+          "max": 105.2
+        },
+        "blankMs": {
+          "n": 2,
+          "median": 97.8,
+          "p95": 100.9,
+          "min": 94.3,
+          "max": 101.2
+        }
+      },
+      "root": {
+        "firstMs": {
+          "n": 16,
+          "median": 16.8,
+          "p95": 16.9,
+          "min": 16.6,
+          "max": 17
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.3,
+          "p95": 33.4,
+          "min": 33.1,
+          "max": 33.5
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      },
+      "deep-nesting": {
+        "firstMs": {
+          "n": 16,
+          "median": 16.8,
+          "p95": 17.7,
+          "min": 16.7,
+          "max": 19.9
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.3,
+          "p95": 33.4,
+          "min": 33.2,
+          "max": 33.4
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      },
+      "deep-nesting-flat": {
+        "firstMs": {
+          "n": 16,
+          "median": 16.8,
+          "p95": 17.4,
+          "min": 16.7,
+          "max": 18.3
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.3,
+          "p95": 33.5,
+          "min": 33.2,
+          "max": 33.6
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      }
+    },
+    "theme_hook": {
+      "calls": 64,
+      "ran": 0,
+      "skipped_before_module_loaded": 64,
+      "ran_ms": null,
+      "steady_ms": null,
+      "first_call_ms": []
+    }
+  },
+  "theme": {
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "chrome": "Chrome/152.0.7977.75",
+    "load_average_at_start": [
+      19.09,
+      87.7,
+      600.85
+    ],
+    "sessions": [
+      0,
+      1
+    ],
+    "settings": {
+      "hoverEnabled": true,
+      "lookupMode": "hover",
+      "hoverDelayMs": 0,
+      "popupNestingMaxDepth": 2,
+      "popupWidthPx": 520,
+      "popupHeightPx": 500,
+      "popupColumns": 1,
+      "maxResults": 32,
+      "definitionBlurEnabled": false,
+      "showCompactDefinitionSummary": true,
+      "compactDefinitionSummaryCount": 3,
+      "popupTheme": "learner-focus"
+    },
+    "hover": {
+      "cold": {
+        "firstMs": {
+          "n": 2,
+          "median": 196.2,
+          "p95": 249.6,
+          "min": 137,
+          "max": 255.5
+        },
+        "completeMs": {
+          "n": 2,
+          "median": 438.2,
+          "p95": 478.9,
+          "min": 393,
+          "max": 483.4
+        },
+        "blankMs": {
+          "n": 2,
+          "median": 189.9,
+          "p95": 246.8,
+          "min": 126.6,
+          "max": 253.1
+        }
+      },
+      "root": {
+        "firstMs": {
+          "n": 16,
+          "median": 16.8,
+          "p95": 17.6,
+          "min": 13.6,
+          "max": 18.5
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.2,
+          "p95": 47.3,
+          "min": 32.3,
+          "max": 49.6
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      },
+      "deep-nesting": {
+        "firstMs": {
+          "n": 16,
+          "median": 16.9,
+          "p95": 18.4,
+          "min": 16.8,
+          "max": 19.8
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.3,
+          "p95": 52.0,
+          "min": 33,
+          "max": 58.8
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      },
+      "deep-nesting-flat": {
+        "firstMs": {
+          "n": 16,
+          "median": 17.0,
+          "p95": 20.0,
+          "min": 16.7,
+          "max": 20
+        },
+        "completeMs": {
+          "n": 16,
+          "median": 33.3,
+          "p95": 39.7,
+          "min": 33,
+          "max": 49.8
+        },
+        "blankMs": {
+          "n": 16,
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0,
+          "max": 0
+        }
+      }
+    },
+    "theme_hook": {
+      "calls": 62,
+      "ran": 60,
+      "skipped_before_module_loaded": 2,
+      "ran_ms": {
+        "n": 60,
+        "median": 0.3,
+        "p95": 1.3,
+        "min": 0.1,
+        "max": 45.3
+      },
+      "steady_ms": {
+        "n": 59,
+        "median": 0.3,
+        "p95": 0.9,
+        "min": 0.1,
+        "max": 45.3
+      },
+      "first_call_ms": [
+        2.8
+      ]
+    }
+  }
+}

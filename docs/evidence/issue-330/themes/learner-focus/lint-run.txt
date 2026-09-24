@@ -1,0 +1,18 @@
+# ESLint v9.39.1 with hachidori-themes-skeleton/scripts/theme-js.eslint.config.mjs (evidence/issue-330-theme-store @ e1b3c68)
+# themes/learner-focus/theme.js (24494 bytes, limit 65536)
+$ eslint themes/learner-focus/theme.js
+exit 0
+
+# control: a hostile module (document, setTimeout, innerHTML) must fail
+$ eslint themes/hostile/theme.js
+
+/tmp/lf-lint/themes/hostile/theme.js
+  1:68   error  Unexpected use of 'document'              no-restricted-globals
+  1:68   error  'document' is not defined                 no-undef
+  1:84   error  Unexpected use of 'setTimeout'            no-restricted-globals
+  1:84   error  'setTimeout' is not defined               no-undef
+  1:109  error  build DOM with api.el(); no HTML strings  no-restricted-syntax
+
+✖ 5 problems (5 errors, 0 warnings)
+
+exit 1
