@@ -1,0 +1,66 @@
+{
+  "paper": {
+    "samples": 37620,
+    "darkest": [
+      216,
+      204,
+      180
+    ],
+    "lightest": [
+      250,
+      246,
+      237
+    ],
+    "median": [
+      243,
+      234,
+      214
+    ]
+  },
+  "text": {
+    "sumi ink (headword, glosses)": {
+      "hex": "#221c18",
+      "vs_nominal_paper_#f3ead6": 14.07,
+      "vs_darkest_paper_pixel": 10.6,
+      "vs_lightest_paper_pixel": 15.61
+    },
+    "sumi soft (furigana, muted)": {
+      "hex": "#4d423a",
+      "vs_nominal_paper_#f3ead6": 8.14,
+      "vs_darkest_paper_pixel": 6.13,
+      "vs_lightest_paper_pixel": 9.03
+    },
+    "faint (rank source line, kanji tags)": {
+      "hex": "#55483f",
+      "vs_nominal_paper_#f3ead6": 7.36,
+      "vs_darkest_paper_pixel": 5.54,
+      "vs_lightest_paper_pixel": 8.16
+    },
+    "vermilion (grade 46px, seal, mini stamps 13px bold)": {
+      "hex": "#b0261c",
+      "vs_nominal_paper_#f3ead6": 5.59,
+      "vs_darkest_paper_pixel": 4.21,
+      "vs_lightest_paper_pixel": 6.2
+    },
+    "deep vermilion (11px labels: shrine title, dictionary names, Meanings)": {
+      "hex": "#8e1c14",
+      "vs_nominal_paper_#f3ead6": 7.54,
+      "vs_darkest_paper_pixel": 5.68,
+      "vs_lightest_paper_pixel": 8.37
+    },
+    "indigo (Kun ribbon text is paper-on-indigo; links)": {
+      "hex": "#2f4b6b",
+      "vs_nominal_paper_#f3ead6": 7.5,
+      "vs_darkest_paper_pixel": 5.65,
+      "vs_lightest_paper_pixel": 8.32
+    }
+  },
+  "surfaces": {
+    "paper text on vermilion (On ribbon, selected tab, seal kanji) #fff6e6 on #b0261c": 6.23,
+    "paper text on indigo (Kun ribbon) #fff6e6 on #2f4b6b": 8.37,
+    "plaque caption/icon #3a2614 on wood #c99a5e": 5.63,
+    "plaque caption/icon #3a2614 on the plaque's darkest wood #b07a45": 3.9,
+    "lid label #f0d9a8 on lacquer #2a1712": 12.36,
+    "kanji glyph #221c18 on ema wood #d5aa6e": 7.86
+  }
+}

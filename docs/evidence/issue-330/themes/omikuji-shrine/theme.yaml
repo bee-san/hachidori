@@ -1,0 +1,54 @@
+# themes/omikuji-shrine/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: omikuji-shrine
+name: Omikuji Shrine
+version: 1.0.0
+author: hachidori theme designers (wave 2)
+link: https://github.com/bee-san/hachidori/issues/334
+description: >-
+  Every lookup is a fortune slip pulled from a shrine box. The word's frequency rank
+  becomes its fortune grade — 大吉 for the words you meet every day, down to 凶 for the
+  ones you may never see again — printed in vermilion brush kanji above the headword,
+  a hanko seal, glosses set as verses, and the buttons hung as ema plaques.
+tags: [light, playful, japanese, frequency, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                       # unbleached washi, vermilion (朱), sumi (墨), indigo (藍)
+  color-scheme: light
+  base-100: "#f3ead6"          # paper
+  base-200: "#eadfc6"
+  base-300: "#dfd0b0"
+  base-content: "#221c18"      # sumi ink
+  primary: "#b0261c"           # vermilion — grade, seal, rules
+  primary-content: "#fff6e6"
+  secondary: "#2f4b6b"         # indigo — kun readings, links
+  secondary-content: "#fff6e6"
+  accent: "#7a5a2c"            # aged gold — pitch accent lines, tags
+  accent-content: "#fff6e6"
+  neutral: "#d9cba7"
+  neutral-content: "#2a221b"
+  info: "#5b6d86"
+  info-content: "#fff6e6"
+  success: "#3d7a4a"
+  warning: "#b5832a"
+  error: "#a3231b"
+css: theme.css
+js:                            # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender]
+  summary: >-
+    Reads each entry's frequency rank and prints a fortune grade (大吉 … 大凶) with the
+    rank and one line of learner advice above the headword; stamps a hanko seal with
+    the first kanji; hangs the Note, Anki, audio and custom buttons as ema plaques under
+    the glosses; turns the kanji view into an ema board with the readings on ribbons;
+    slides a fresh slip out of the box only when the looked-up word changes.
+options:                       # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100
+  popupWidthPx: 400
+  popupHeightPx: 640
+  popupColumns: 1
+screenshot: screenshot.png
+preview:
+  swatches: ["#f3ead6", "#221c18", "#b0261c", "#2f4b6b"]

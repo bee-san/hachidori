@@ -1,0 +1,1097 @@
+/* themes/omikuji-shrine/theme.css — a shrine fortune slip (御神籤) for Hachidori.
+ *
+ * Colours: unbleached washi (#f3ead6), vermilion 朱 (#b0261c), sumi 墨 (#221c18),
+ * indigo 藍 (#2f4b6b). Everything drawn here — the paper, its torn edges, the
+ * fold creases, the lacquered box lid, the hanko seal, the ema plaques, the rope
+ * and the torii — is CSS gradients and clip-path polygons: no images, no fonts
+ * fetched, no @keyframes (theme CSS keeps only @media/@supports/@container):
+ * hover motion is a transition and the slide out of the box is a Web
+ * Animations call in theme.js; under prefers-reduced-motion the rules at the
+ * end pin transform and opacity with !important, which no animation can
+ * override, so the slip appears in place.
+ *
+ * The palette block is what `build-index.mjs` generates from theme.yaml; the
+ * rest is this theme's own CSS. theme.js builds the fortune header, the box
+ * lid, the seal, the ema shelf and the kanji board; whatever it hides carries
+ * data-theme-hidden, which this file collapses. */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #f3ead6;
+  --hoshidicts-palette-base-200: #eadfc6;
+  --hoshidicts-palette-base-300: #dfd0b0;
+  --hoshidicts-palette-base-content: #221c18;
+  --hoshidicts-palette-primary: #b0261c;
+  --hoshidicts-palette-primary-content: #fff6e6;
+  --hoshidicts-palette-secondary: #2f4b6b;
+  --hoshidicts-palette-secondary-content: #fff6e6;
+  --hoshidicts-palette-accent: #7a5a2c;
+  --hoshidicts-palette-accent-content: #fff6e6;
+  --hoshidicts-palette-neutral: #d9cba7;
+  --hoshidicts-palette-neutral-content: #2a221b;
+  --hoshidicts-palette-info: #5b6d86;
+  --hoshidicts-palette-info-content: #fff6e6;
+  --hoshidicts-palette-success: #3d7a4a;
+  --hoshidicts-palette-warning: #b5832a;
+  --hoshidicts-palette-error: #a3231b;
+}
+
+/* ---------------------------------------------------------------- the slip */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-popup {
+  --omikuji-paper: #f3ead6;
+  --omikuji-paper-deep: #e6d9bb;
+  --omikuji-fibre: rgba(112, 82, 40, 0.06);
+  --omikuji-vermilion: #b0261c;
+  --omikuji-vermilion-deep: #8e1c14;
+  --omikuji-sumi: #221c18;
+  --omikuji-sumi-soft: #4d423a;
+  --omikuji-indigo: #2f4b6b;
+  --omikuji-wood: #c99a5e;
+  --omikuji-wood-deep: #8b5e2c;
+  --omikuji-lacquer: #2a1712;
+  --omikuji-serif: "Noto Serif CJK JP", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "BIZ UDPMincho", "MS PMincho", serif;
+  --omikuji-brush: "Yuji Syuku", "Yuji Boku", "HGGyoshotai", "HGSeikaishotaiPRO", "Klee One", "Klee", "Toppan Bunkyu Midashi Mincho", "Hiragino Mincho ProN", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  --hoshidicts-border: color-mix(in srgb, var(--omikuji-vermilion) 35%, transparent);
+  --hoshidicts-border-strong: var(--omikuji-vermilion);
+  --hoshidicts-text-muted: var(--omikuji-sumi-soft);
+  --hoshidicts-text-faint: #55483f;
+  --hoshidicts-link: var(--omikuji-indigo);
+  --hoshidicts-link-hover: var(--omikuji-vermilion);
+  --hoshidicts-scrollbar: color-mix(in srgb, var(--omikuji-vermilion) 55%, var(--omikuji-paper));
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-accent-soft: color-mix(in srgb, var(--omikuji-vermilion) 12%, var(--omikuji-paper));
+  --hoshidicts-pitch: var(--omikuji-vermilion);
+  height: auto !important;                                 /* the slip is as long as its verses … */
+  max-height: var(--gsm-hoshidicts-popup-height, 420px);   /* … up to the Design height, then it scrolls */
+  padding: 0 30px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  color: var(--omikuji-sumi);
+  font-family: var(--omikuji-serif);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+/* Washi: a real element behind everything (so it can slide with the print).
+ * Base tone, uneven blotches, two sparse fibre directions, a few specks and
+ * three fold creases (a slip is folded in thirds); torn top and bottom edges
+ * come from the clip-path. Its ::after is the printed vermilion double frame. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-paper {
+  position: absolute;
+  z-index: 0;
+  top: 28px;
+  right: 14px;
+  bottom: 2px;
+  left: 14px;
+  background:
+    radial-gradient(circle at 9% 14%, rgba(255, 255, 255, 0.6) 0 1px, transparent 2px),
+    radial-gradient(circle at 71% 9%, rgba(112, 82, 40, 0.16) 0 1px, transparent 2px),
+    radial-gradient(circle at 36% 31%, rgba(112, 82, 40, 0.14) 0 1px, transparent 2px),
+    radial-gradient(circle at 88% 42%, rgba(255, 255, 255, 0.55) 0 1px, transparent 2px),
+    radial-gradient(circle at 17% 58%, rgba(112, 82, 40, 0.13) 0 1px, transparent 2px),
+    radial-gradient(circle at 62% 66%, rgba(255, 255, 255, 0.55) 0 1px, transparent 2px),
+    radial-gradient(circle at 44% 83%, rgba(112, 82, 40, 0.15) 0 1px, transparent 2px),
+    radial-gradient(circle at 81% 91%, rgba(112, 82, 40, 0.12) 0 1px, transparent 2px),
+    radial-gradient(ellipse 42% 26% at 24% 38%, rgba(112, 82, 40, 0.05), transparent),
+    radial-gradient(ellipse 36% 22% at 78% 22%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(ellipse 48% 20% at 60% 74%, rgba(112, 82, 40, 0.045), transparent),
+    radial-gradient(ellipse 30% 18% at 15% 88%, rgba(255, 255, 255, 0.25), transparent),
+    linear-gradient(180deg, transparent 33%, rgba(112, 82, 40, 0.09) 33.2%, rgba(255, 255, 255, 0.5) 33.5%, transparent 33.9%),
+    linear-gradient(180deg, transparent 66%, rgba(112, 82, 40, 0.09) 66.2%, rgba(255, 255, 255, 0.5) 66.5%, transparent 66.9%),
+    repeating-linear-gradient(93deg, rgba(112, 82, 40, 0.05) 0 1px, transparent 1px 23px),
+    repeating-linear-gradient(-16deg, rgba(112, 82, 40, 0.04) 0 1px, transparent 1px 31px),
+    linear-gradient(180deg, #f6eedc 0%, var(--omikuji-paper) 30%, var(--omikuji-paper) 70%, #ede2c8 100%);
+  clip-path: polygon(
+    0 9px, 3% 3px, 6% 8px, 10% 1px, 14% 7px, 18% 2px, 22% 9px, 27% 3px, 31% 6px, 35% 0, 40% 7px,
+    44% 2px, 48% 8px, 53% 1px, 57% 6px, 61% 2px, 66% 9px, 70% 3px, 74% 7px, 79% 0, 83% 8px,
+    87% 2px, 91% 6px, 95% 1px, 100% 7px,
+    100% calc(100% - 8px), 96% calc(100% - 2px), 92% calc(100% - 9px), 88% calc(100% - 3px),
+    83% calc(100% - 7px), 78% 100%, 73% calc(100% - 6px), 69% calc(100% - 1px), 64% calc(100% - 8px),
+    59% calc(100% - 2px), 55% calc(100% - 7px), 50% calc(100% - 3px), 45% calc(100% - 9px),
+    41% calc(100% - 1px), 36% calc(100% - 6px), 31% calc(100% - 2px), 27% 100%, 22% calc(100% - 5px),
+    18% calc(100% - 1px), 13% calc(100% - 8px), 9% calc(100% - 3px), 4% calc(100% - 7px), 0 calc(100% - 2px)
+  );
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-paper::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  right: 10px;
+  bottom: 12px;
+  left: 10px;
+  border: 1px solid color-mix(in srgb, var(--omikuji-vermilion) 70%, transparent);
+  box-shadow: 0 0 0 3px var(--omikuji-paper), 0 0 0 4px color-mix(in srgb, var(--omikuji-vermilion) 70%, transparent);
+}
+
+/* Everything printed on the paper sits above it. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-popup > :not(.omikuji-box, .omikuji-paper) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Popup children in reading order: lid, fortune (or kanji board), headword bar,
+ * note form and Anki feedback, verses, ema shelf. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-box { order: 0; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune { order: 1; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema { order: 1; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-kind="kanji"] { order: 2; padding-top: 0; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-result-chrome { order: 3; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-mining-feedback { order: 4; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-content-scroll { order: 5; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-lookup-failure,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-lookup-notice { order: 6; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf { order: 7; }
+
+/* ---------------------------------------------------------- the box lid */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-box {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  margin: 0 -30px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 40%, rgba(0, 0, 0, 0.25)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 3px, transparent 3px 9px),
+    linear-gradient(180deg, #3a2019, var(--omikuji-lacquer) 60%, #1a0e0b);
+  border-radius: 6px 6px 3px 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 170, 0.18),
+    0 4px 10px rgba(30, 15, 8, 0.45);
+  color: #f0d9a8;
+  user-select: none;
+}
+
+/* The slot the slip comes out of. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-box::after {
+  content: "";
+  position: absolute;
+  right: 22px;
+  bottom: -3px;
+  left: 22px;
+  height: 6px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(180deg, #120907, #2a1712);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.7);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-box-label {
+  padding: 1px 12px;
+  border: 1px solid rgba(240, 217, 168, 0.55);
+  border-radius: 2px;
+  font: 700 12px/1.5 var(--omikuji-serif);
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+}
+
+/* ----------------------------------------------------------- the fortune */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  padding: 18px 8px 8px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shrine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--omikuji-vermilion-deep);
+  font: 700 11px/1.4 var(--omikuji-serif);
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shrine::before,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shrine::after {
+  content: "";
+  width: 34px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--omikuji-vermilion));
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shrine::after {
+  background: linear-gradient(270deg, transparent, var(--omikuji-vermilion));
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-number {
+  margin-top: 6px;
+  color: var(--omikuji-sumi);
+  font: 600 14px/1.4 var(--omikuji-serif);
+  letter-spacing: 0.12em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-number-value {
+  margin: 0 5px;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The grade: vermilion brush kanji, two layered shadows to thicken the strokes
+ * and let the ink bleed a little into the paper. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-grade {
+  margin-top: 2px;
+  color: var(--omikuji-vermilion);
+  font: 900 46px/1.15 var(--omikuji-brush);
+  letter-spacing: 0.06em;
+  text-shadow:
+    0 0 0.6px var(--omikuji-vermilion),
+    0.4px 0.6px 0 var(--omikuji-vermilion-deep),
+    0 0 6px rgba(176, 38, 28, 0.22);
+  transform: rotate(-1.5deg);
+  cursor: help;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-grade="kyo"] .omikuji-grade,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-grade="daikyo"] .omikuji-grade {
+  color: var(--omikuji-sumi);
+  text-shadow: 0 0 0.6px var(--omikuji-sumi), 0.4px 0.6px 0 #000, 0 0 6px rgba(0, 0, 0, 0.18);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-grade="unranked"] .omikuji-grade {
+  color: var(--omikuji-sumi-soft);
+  font-size: 30px;
+  text-shadow: none;
+  transform: none;
+}
+
+/* In the kanji view the board comes first, so the fortune is the smaller print under it. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-kind="kanji"] .omikuji-shrine {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-kind="kanji"] .omikuji-number {
+  margin-top: 0;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune[data-omikuji-kind="kanji"] .omikuji-grade {
+  font-size: 34px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-verse {
+  max-width: 34ch;
+  margin: 4px 0 0;
+  color: var(--omikuji-sumi);
+  font: italic 500 12.5px/1.5 var(--omikuji-serif);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-source {
+  margin-top: 3px;
+  color: var(--hoshidicts-text-faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-fortune .gsm-hoshidicts-lookup-stats {
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hoshidicts-text-faint);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------ headword bar (chrome) */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-result-chrome {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-primary-header {
+  order: 0;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-primary-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: 4px 6px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--omikuji-vermilion) 45%, transparent);
+  margin: 0 22px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-primary-header .gsm-hoshidicts-headword {
+  flex: 0 1 auto;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 12px;
+  padding-top: 8px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-expression {
+  font-family: var(--omikuji-serif);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-expression rt {
+  color: var(--omikuji-sumi-soft);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-link {
+  border-bottom: 1px dotted color-mix(in srgb, var(--omikuji-vermilion) 60%, transparent);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  color: var(--omikuji-vermilion);
+  outline: 2px solid var(--omikuji-vermilion);
+  outline-offset: 2px;
+}
+
+/* Hanko: a vermilion square with an inner rule, the first kanji in paper
+ * colour, slightly turned, ink thinning at the corners. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-seal {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: 2px;
+  border-radius: 5px 6px 4px 7px;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(243, 234, 214, 0.5) 0 2px, transparent 3px),
+    radial-gradient(circle at 86% 22%, rgba(243, 234, 214, 0.45) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 80% 88%, rgba(243, 234, 214, 0.55) 0 2px, transparent 3px),
+    radial-gradient(circle at 14% 82%, rgba(243, 234, 214, 0.4) 0 1.5px, transparent 2.5px),
+    linear-gradient(160deg, #c53125, var(--omikuji-vermilion) 55%, var(--omikuji-vermilion-deep));
+  box-shadow:
+    inset 0 0 0 1.5px var(--omikuji-paper),
+    inset 0 0 0 3px var(--omikuji-vermilion),
+    0 1px 0 rgba(142, 28, 20, 0.35);
+  color: var(--omikuji-paper);
+  font: 900 20px/1 var(--omikuji-brush);
+  transform: rotate(-8deg);
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-headword:hover .omikuji-seal {
+  transform: rotate(-3deg) scale(1.06);
+}
+
+/* Why this matched: 食べたかった → 食べる, as a small vermilion path. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-deinflection {
+  flex: 1 1 100%;
+  margin-top: 2px;
+  text-align: center;
+  color: var(--omikuji-sumi-soft);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-deinflection-endpoint {
+  color: var(--omikuji-vermilion-deep);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-deinflection-steps {
+  text-align: left;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-compact-definition-summary {
+  flex: 1 1 100%;
+  text-align: center;
+  color: var(--omikuji-sumi-soft);
+  font-size: 13px;
+}
+
+/* Dictionary tabs as paper tags hanging from the frame. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-metadata-strip {
+  padding: 4px 24px 0;
+  border: 0;
+  justify-content: center;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-tab-list {
+  flex: 0 1 auto;
+  gap: 8px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-tab {
+  min-height: 0;
+  padding: 3px 11px 4px;
+  border: 1px solid color-mix(in srgb, var(--omikuji-vermilion) 55%, transparent);
+  border-radius: 0 0 6px 6px;
+  border-top: 0;
+  background: transparent;
+  color: var(--omikuji-sumi-soft);
+  font-family: var(--omikuji-serif);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  border-color: var(--omikuji-vermilion);
+  background: var(--omikuji-vermilion);
+  color: var(--hoshidicts-palette-primary-content);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-tab:focus-visible {
+  outline: 2px solid var(--omikuji-vermilion);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- verses */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-content-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0 22px;
+  padding: 6px 4px 8px 6px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-primary-metadata-row {
+  justify-content: center;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-primary-metadata-capsule {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  justify-content: center;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-primary-grammar {
+  color: var(--omikuji-sumi-soft);
+  letter-spacing: 0.03em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 0;
+}
+
+/* One verse per dictionary: the dictionary's name runs down the left margin
+ * in vermilion, like the 願望・待人・失物 headings on a real slip. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-glossary-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+  padding: 7px 0 7px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  border-top: 1px dashed color-mix(in srgb, var(--omikuji-vermilion) 40%, transparent);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-glossary-card-title {
+  max-height: 11em;
+  padding: 3px 2px 3px 3px;
+  overflow: hidden;
+  border-left: 2px solid var(--omikuji-vermilion);
+  color: var(--omikuji-vermilion-deep);
+  font-family: var(--omikuji-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-definitions {
+  margin: 0;
+  padding-left: 2em;
+  list-style-type: cjk-ideographic;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-definitions-single {
+  padding-left: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-definitions > li {
+  margin: 3px 0;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-definitions > li::marker {
+  color: var(--omikuji-vermilion-deep);
+  font-family: var(--omikuji-serif);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-glossary-content {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-definition-tags .gsm-hoshidicts-tag,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-tags .gsm-hoshidicts-tag {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--omikuji-sumi) 35%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--omikuji-sumi-soft);
+  font-family: var(--omikuji-serif);
+  font-size: 11px;
+}
+
+/* Further entries are torn off below the first: a dashed cut line. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--omikuji-sumi) 45%, transparent);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-height: 0;
+  gap: 4px 10px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-expression {
+  font-size: 22px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-expression rt {
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-entry-actions {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/* Miniature fortune beside a secondary headword. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-mini {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 2px 6px 3px;
+  border: 1.5px solid var(--omikuji-vermilion-deep);
+  border-radius: 2px;
+  color: var(--omikuji-vermilion-deep);
+  font: 900 13px/1 var(--omikuji-brush);
+  letter-spacing: 0.08em;
+  transform: rotate(-4deg);
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-mini[data-omikuji-grade="kyo"],
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-mini[data-omikuji-grade="daikyo"] {
+  border-color: var(--omikuji-sumi);
+  color: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-mini[data-omikuji-grade="unranked"] {
+  border-style: dashed;
+  border-color: var(--hoshidicts-text-faint);
+  color: var(--hoshidicts-text-faint);
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-show-more {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--omikuji-vermilion) 55%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--omikuji-vermilion-deep);
+  font: 600 12.5px/1.5 var(--omikuji-serif);
+  letter-spacing: 0.08em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-show-more:hover,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-show-more:focus-visible {
+  border-color: var(--omikuji-vermilion);
+  background: var(--hoshidicts-accent-soft);
+  outline-color: var(--omikuji-vermilion);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-metadata .gsm-hoshidicts-tag-pitch {
+  border-color: color-mix(in srgb, var(--omikuji-vermilion) 45%, transparent);
+  background: transparent;
+  color: var(--omikuji-sumi);
+}
+
+/* -------------------------------------------------------- the ema shelf */
+
+/* A twisted rope across the bottom of the slip; the plaques hang from it,
+ * the torii stands at its left end. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 22px 0;
+  padding: 10px 6px 4px;
+  background:
+    repeating-linear-gradient(90deg, #7a4a20 0 5px, #b98a52 5px 10px, #8f5f2c 10px 13px) 0 0 / 100% 4px no-repeat,
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent) 0 4px / 100% 2px no-repeat;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-entry-actions {
+  flex: 0 1 auto;
+  align-self: flex-start;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0 0 0 auto;
+  padding: 0 2px;
+  overflow: visible;
+}
+
+/* Each button is an ema: a house-shaped wooden board drawn with gradients (so
+ * the focus ring is never clipped), a hole and cord at the apex, the icon in
+ * the middle and a one-kanji caption at the foot. It swings on hover. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-popup-close,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-text-action-button {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 48px;
+  min-width: 48px;
+  height: 58px;
+  min-height: 58px;
+  margin: 0;
+  padding: 0 3px 5px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 13px, #2a1712 0 1.6px, transparent 2.4px),
+    linear-gradient(180deg, transparent 0 8px, var(--omikuji-vermilion) 8px 9.5px, transparent 9.5px) 50% 0 / 2px 14px no-repeat,
+    linear-gradient(to bottom right, transparent 49.5%, var(--omikuji-wood) 50%) 0 0 / 50% 30% no-repeat,
+    linear-gradient(to bottom left, transparent 49.5%, var(--omikuji-wood) 50%) 100% 0 / 50% 30% no-repeat,
+    repeating-linear-gradient(180deg, rgba(90, 55, 20, 0.12) 0 1px, transparent 1px 5px) 0 100% / 100% 70% no-repeat,
+    linear-gradient(180deg, var(--omikuji-wood), #c2915a 78%, #b07a45) 0 100% / 100% 70% no-repeat;
+  color: #3a2614;
+  font: 700 11px/1 var(--omikuji-serif);
+  letter-spacing: 0.04em;
+  text-align: center;
+  cursor: pointer;
+  filter: drop-shadow(0 2px 2px rgba(60, 35, 10, 0.35));
+  transform-origin: 50% 8px;
+  transition: transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 200ms ease-out;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-text-action-button {
+  width: auto;
+  min-width: 52px;
+  padding: 0 7px 6px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-text-action-label {
+  max-width: 9ch;
+  overflow: hidden;
+  color: #3a2614;
+  font: 700 11px/1.2 var(--omikuji-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:hover:not(:disabled),
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:focus-visible {
+  transform: rotate(-7deg);
+  filter: drop-shadow(0 4px 4px rgba(60, 35, 10, 0.4));
+  background-color: transparent;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:focus-visible {
+  outline: 2px solid var(--omikuji-vermilion);
+  outline-offset: 3px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-audio-button::before,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-popup-close::before,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .hd-icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 6px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-audio-button::after { content: "音"; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mine-button::after { content: "暗記"; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-note-button::after { content: "筆"; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-popup-close::after { content: "閉"; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-kanji-back { gap: 1px; font-size: 9.5px; letter-spacing: 0; }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-kanji-back::before { content: "戻"; margin-top: 7px; font-size: 15px; line-height: 1; }
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-audio-button[data-state="playing"] { color: var(--hoshidicts-palette-success); }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-audio-button[data-state="error"],
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mine-button[data-state="error"] { color: var(--hoshidicts-palette-error); }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mine-button[data-state="view-existing"],
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mine-button[data-state="success"] { color: var(--hoshidicts-palette-success); }
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:disabled { color: #7d6a55; cursor: default; }
+
+/* Torii: two pillars, the kasagi with its upturned ends and the black shimaki
+ * under it, the nuki tie beam with the gakuzuka tablet above it. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 42px;
+  margin: 8px 6px 0 2px;
+  background:
+    linear-gradient(var(--omikuji-vermilion), var(--omikuji-vermilion)) 9px 9px / 4px 33px no-repeat,
+    linear-gradient(var(--omikuji-vermilion), var(--omikuji-vermilion)) 33px 9px / 4px 33px no-repeat;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  left: 4px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii-kasagi {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 46px;
+  height: 8px;
+  background: var(--omikuji-vermilion);
+  clip-path: polygon(0 100%, 3% 40%, 50% 0, 97% 40%, 100% 100%);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii-kasagi::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 3px;
+  width: 40px;
+  height: 3px;
+  background: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii-nuki {
+  position: absolute;
+  top: 20px;
+  left: 4px;
+  width: 38px;
+  height: 4px;
+  background: var(--omikuji-vermilion);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-torii-nuki::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 16px;
+  width: 6px;
+  height: 9px;
+  background: var(--omikuji-vermilion);
+}
+
+/* Anki feedback lands inside the shelf, beside the plaques. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf .gsm-hoshidicts-mining-feedback {
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+/* A further entry's own audio button: the same ema, smaller, hanging by its headword. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-audio-button {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 34px;
+  min-width: 34px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 9px, #2a1712 0 1.2px, transparent 1.8px),
+    linear-gradient(to bottom right, transparent 49.5%, var(--omikuji-wood) 50%) 0 0 / 50% 30% no-repeat,
+    linear-gradient(to bottom left, transparent 49.5%, var(--omikuji-wood) 50%) 100% 0 / 50% 30% no-repeat,
+    linear-gradient(180deg, var(--omikuji-wood), #c2915a 78%, #b07a45) 0 100% / 100% 70% no-repeat;
+  color: #3a2614;
+  filter: drop-shadow(0 1px 1px rgba(60, 35, 10, 0.35));
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-audio-button::before {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry .gsm-hoshidicts-audio-button:focus-visible {
+  outline: 2px solid var(--omikuji-vermilion);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ kanji view */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 2px 8px 10px;
+}
+
+/* The board: a large ema, the kanji brushed on wood grain, its cord looped
+ * over a nail, the fortune stamp in the corner. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-board {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 176px;
+  height: 190px;
+  padding-top: 54px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 50% 22px, #2a1712 0 2.4px, transparent 3.4px),
+    linear-gradient(to bottom right, transparent 49.5%, #d5aa6e 50%) 0 0 / 50% 32% no-repeat,
+    linear-gradient(to bottom left, transparent 49.5%, #d5aa6e 50%) 100% 0 / 50% 32% no-repeat,
+    repeating-linear-gradient(178deg, rgba(90, 55, 20, 0.1) 0 1px, transparent 1px 6px, rgba(90, 55, 20, 0.05) 6px 7px, transparent 7px 13px) 0 100% / 100% 68% no-repeat,
+    linear-gradient(180deg, #d5aa6e, #c79a5f 60%, #a9773f) 0 100% / 100% 68% no-repeat;
+  filter: drop-shadow(0 3px 3px rgba(60, 35, 10, 0.35));
+}
+
+/* The cord: a red loop above the hole. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-string {
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 9px);
+  width: 18px;
+  height: 22px;
+  border: 2px solid var(--omikuji-vermilion);
+  border-radius: 50% 50% 40% 40%;
+  border-bottom-color: transparent;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-glyph {
+  color: var(--omikuji-sumi);
+  font: 900 84px/1 var(--omikuji-brush);
+  text-shadow: 0 0 0.6px var(--omikuji-sumi), 0.5px 0.8px 0 #000;
+  transform: rotate(-2deg);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-stamp {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 2px 4px 3px;
+  border: 1.5px solid var(--omikuji-vermilion-deep);
+  border-radius: 2px;
+  color: var(--omikuji-vermilion-deep);
+  font: 900 12px/1 var(--omikuji-brush);
+  letter-spacing: 0.06em;
+  transform: rotate(-6deg);
+  cursor: help;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-stamp[data-omikuji-grade="kyo"] {
+  border-color: var(--omikuji-sumi);
+  color: var(--omikuji-sumi);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ema-stamp[data-omikuji-grade="unranked"] {
+  border-style: dashed;
+  border-color: var(--hoshidicts-text-faint);
+  color: var(--hoshidicts-text-faint);
+}
+
+/* Readings on ribbons: On in vermilion, Kun in indigo, forked tails. */
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ribbons {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ribbon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 3px 18px 4px 6px;
+  box-sizing: border-box;
+  background: var(--omikuji-vermilion);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 50%, 100% 100%, 0 100%);
+  color: var(--hoshidicts-palette-primary-content);
+  font: 600 13.5px/1.35 var(--omikuji-serif);
+  letter-spacing: 0.06em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ribbon-kun {
+  background: var(--omikuji-indigo);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ribbon-label {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 246, 230, 0.7);
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-ribbon-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-kanji-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-kanji-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 8px 2px;
+  border: 1px solid color-mix(in srgb, var(--omikuji-sumi) 40%, transparent);
+  border-radius: 2px;
+  color: var(--omikuji-sumi-soft);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-kanji-tag-value {
+  color: var(--omikuji-sumi);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-entry {
+  padding: 4px 0 6px;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  border-top: 1px dashed color-mix(in srgb, var(--omikuji-vermilion) 40%, transparent);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-entry h4 {
+  margin: 0 0 2px;
+  color: var(--omikuji-vermilion-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-meanings {
+  margin: 0 0 6px;
+  padding-left: 2em;
+  list-style-type: cjk-ideographic;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-meanings > li::marker {
+  color: var(--omikuji-vermilion-deep);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-readings {
+  margin: 4px 0 6px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-stats > summary {
+  color: var(--omikuji-sumi-soft);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-kanji-stats dl {
+  font-size: 12.5px;
+}
+
+/* -------------------------------------------- note form, notices, failures */
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-note-form {
+  margin: 0 22px;
+  border: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--omikuji-vermilion) 45%, transparent);
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-note-form textarea {
+  border: 1px solid color-mix(in srgb, var(--omikuji-sumi) 35%, transparent);
+  border-radius: 2px;
+  background: rgba(255, 252, 244, 0.6);
+  color: var(--omikuji-sumi);
+  font-family: var(--omikuji-serif);
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-lookup-notice,
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-lookup-failure {
+  margin: 0 22px;
+}
+
+:host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-content-scroll::-webkit-scrollbar-thumb {
+  background: var(--hoshidicts-scrollbar);
+}
+
+/* --------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  /* No slide out of the box: the animated parts are pinned in place. */
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-popup > :not(.omikuji-box) {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-seal,
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button {
+    transition: none;
+  }
+
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:hover:not(:disabled),
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .omikuji-shelf button:focus-visible {
+    transform: none;
+  }
+
+  :host([data-hoshidicts-theme="omikuji-shrine"]) .gsm-hoshidicts-headword:hover .omikuji-seal {
+    transform: rotate(-8deg);
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+  "node": "v22.23.1",
+  "cpu": "Intel(R) Xeon(R) Platinum 8488C",
+  "logicalCpus": 16,
+  "load": [
+    13.87,
+    59.57,
+    463.06
+  ],
+  "settings": {
+    "hoverEnabled": true,
+    "lookupMode": "hover",
+    "hoverDelayMs": 0,
+    "popupNestingMaxDepth": 2,
+    "popupWidthPx": 520,
+    "popupHeightPx": 500,
+    "popupColumns": 1,
+    "maxResults": 32,
+    "definitionBlurEnabled": false,
+    "showCompactDefinitionSummary": true,
+    "compactDefinitionSummaryCount": 3,
+    "popupTheme": "default"
+  },
+  "words": [
+    "食べる",
+    "漢字",
+    "深層"
+  ],
+  "extensionSha256": "aafa7e64716ea982a3e06da4f629f2136267447ae1de4f22b237792e34172141",
+  "samples": 1,
+  "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+  "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+  "probeSha256": "bea62cc4ac10fdd927603f7c4120a3af522ff85b2c3f50c7c3b0e0cd601d9719",
+  "harnessSha256": "5e6c82a6b76474103b52b2b7d397dad5098d83d24b772839a5a5c5fe60b77bc7",
+  "archives": [
+    {
+      "path": "/tmp/omikuji-dicts/jitendex-yomitan.zip",
+      "bytes": 38698313,
+      "sha256": "8364e69e7bd0881c42011e96af921a7399d7fe06e2bf4fff4da6d18affff74fc"
+    },
+    {
+      "path": "/tmp/omikuji-dicts/jiten-frequency.zip",
+      "bytes": 7817828,
+      "sha256": "e8a0da7e53bcff3fef897543f15054728a3a37a2d9d7d18fa698ccacfe9c48c5"
+    },
+    {
+      "path": "/tmp/omikuji-dicts/KANJIDIC_english.zip",
+      "bytes": 721032,
+      "sha256": "f63c28322abfdbffa6fae1c49ff7a97436ec87d7d077697342f7a4e9643dc837"
+    }
+  ]
+}
