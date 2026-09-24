@@ -1,0 +1,464 @@
+[
+  {
+    "mode": "normal",
+    "case": "A current #329 rule: background var(--text-color) + mask",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "11.97",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "B + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "11.97",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "C forced-color-adjust:none + @media(forced-colors:active){background:CanvasText}",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "11.97",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "D background:currentColor + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "11.97",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "E raw <img> black-on-transparent (untagged)",
+    "centre": [
+      0,
+      0,
+      0
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "1.41",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "F raw <img> with filter: invert(1) (a filter-based approach)",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "14.93",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "auto",
+      "filter": "invert(1)"
+    }
+  },
+  {
+    "mode": "normal",
+    "case": "G Yomitan filter chain on <img>",
+    "centre": [
+      242,
+      242,
+      243
+    ],
+    "cardPixel": [
+      39,
+      38,
+      48
+    ],
+    "contrast": "13.35",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(232, 229, 235)",
+      "cardBackground": "rgb(39, 38, 48)",
+      "adjust": "auto",
+      "filter": "grayscale(1) opacity(0.5) drop-shadow(rg"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "A current #329 rule: background var(--text-color) + mask",
+    "centre": [
+      0,
+      0,
+      0
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "1.00",
+    "computed": {
+      "background": "rgb(0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "B + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "16.84",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "C forced-color-adjust:none + @media(forced-colors:active){background:CanvasText}",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "21.00",
+    "computed": {
+      "background": "rgb(255, 255, 255)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "D background:currentColor + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "16.84",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "E raw <img> black-on-transparent (untagged)",
+    "centre": [
+      0,
+      0,
+      0
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "1.00",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "F raw <img> with filter: invert(1) (a filter-based approach)",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "21.00",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "auto",
+      "filter": "invert(1)"
+    }
+  },
+  {
+    "mode": "forced-colors:active (dark: Canvas #000 / CanvasText #fff)",
+    "case": "G Yomitan filter chain on <img>",
+    "centre": [
+      240,
+      240,
+      240
+    ],
+    "cardPixel": [
+      0,
+      0,
+      0
+    ],
+    "contrast": "18.43",
+    "computed": {
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "cardBackground": "rgb(0, 0, 0)",
+      "adjust": "auto",
+      "filter": "grayscale(1) opacity(0.5) drop-shadow(rg"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "A current #329 rule: background var(--text-color) + mask",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "1.00",
+    "computed": {
+      "background": "rgb(255, 255, 255)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "B + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "1.25",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "C forced-color-adjust:none + @media(forced-colors:active){background:CanvasText}",
+    "centre": [
+      0,
+      0,
+      0
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "21.00",
+    "computed": {
+      "background": "rgb(0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "D background:currentColor + forced-color-adjust:none",
+    "centre": [
+      232,
+      229,
+      235
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "1.25",
+    "computed": {
+      "background": "rgb(232, 229, 235)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "none",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "E raw <img> black-on-transparent (untagged)",
+    "centre": [
+      0,
+      0,
+      0
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "21.00",
+    "computed": {
+      "background": "rgba(255, 255, 255, 0)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "auto",
+      "filter": "none"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "F raw <img> with filter: invert(1) (a filter-based approach)",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "1.00",
+    "computed": {
+      "background": "rgba(255, 255, 255, 0)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "auto",
+      "filter": "invert(1)"
+    }
+  },
+  {
+    "mode": "forced-colors:active (light: Canvas #fff / CanvasText #000)",
+    "case": "G Yomitan filter chain on <img>",
+    "centre": [
+      255,
+      255,
+      255
+    ],
+    "cardPixel": [
+      255,
+      255,
+      255
+    ],
+    "contrast": "1.00",
+    "computed": {
+      "background": "rgba(255, 255, 255, 0)",
+      "color": "rgb(0, 0, 0)",
+      "cardBackground": "rgb(255, 255, 255)",
+      "adjust": "auto",
+      "filter": "grayscale(1) opacity(0.5) drop-shadow(rg"
+    }
+  }
+]

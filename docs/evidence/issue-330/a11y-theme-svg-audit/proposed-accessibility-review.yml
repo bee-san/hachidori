@@ -1,0 +1,37 @@
+name: Accessibility review
+
+# An accessibility-affecting pull request (colour, contrast, focus order,
+# keyboard navigation, screen-reader semantics, motion, font sizing, themes)
+# must be reviewed and merged by the maintainer, never by the agent's
+# self-merge protocol. This workflow labels such pull requests `accessibility`
+# and keeps the "Accessibility review" check red until the maintainer has
+# approved the exact head commit (or, while the agent still shares the
+# maintainer's GitHub identity, until the `human-reviewed` label is present).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: accessibility-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Accessibility review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { accessibilityReview } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/accessibility-review.mjs`);
+            await accessibilityReview({ github, context, core });
