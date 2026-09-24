@@ -1,0 +1,776 @@
+/* themes/retro-terminal/theme.css — an amber phosphor terminal (issue #334).
+ *
+ * One phosphor, three intensities: bright #ffd166 (headword), normal #ffb000
+ * (text, inverse-video selection), dim #d09a1e (readings, rules, hints) on
+ * #0b0a06. Contrast, plain / through the darkest CRT scanline row: text 10.8 /
+ * 8.1, bright 13.7 / 10.1, dim 7.9 / 5.9, inverse video 10.8 / 8.1 (measured).
+ *
+ * Structure is theme.js's job (candidate list, inline reading, trace, status
+ * line, j/k selection). This file gives the popup its text-mode look, restyles
+ * the reader's controls as key caps, and draws the optional CRT overlay, which
+ * is off under prefers-reduced-motion together with the blinking cursor.
+ * The palette block is what `build-index.mjs` generates from theme.yaml. */
+
+:host([data-hoshidicts-theme="retro-terminal"]) {
+  --hoshidicts-palette-color-scheme: dark;
+  --hoshidicts-palette-base-100: #0b0a06;
+  --hoshidicts-palette-base-200: #12100a;
+  --hoshidicts-palette-base-300: #1a170e;
+  --hoshidicts-palette-base-content: #ffb000;
+  --hoshidicts-palette-primary: #ffb000;
+  --hoshidicts-palette-primary-content: #0b0a06;
+  --hoshidicts-palette-secondary: #ffd166;
+  --hoshidicts-palette-secondary-content: #0b0a06;
+  --hoshidicts-palette-accent: #d09a1e;
+  --hoshidicts-palette-accent-content: #0b0a06;
+  --hoshidicts-palette-neutral: #2a2412;
+  --hoshidicts-palette-neutral-content: #ffb000;
+  --hoshidicts-palette-info: #2a2412;
+  --hoshidicts-palette-info-content: #ffb000;
+  --hoshidicts-palette-success: #ffd166;
+  --hoshidicts-palette-warning: #ffb000;
+  --hoshidicts-palette-error: #ff9f1c;
+}
+
+/* -- the screen -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup {
+  --rt-bg: var(--hoshidicts-palette-base-100);
+  --rt-fg: var(--hoshidicts-palette-base-content);
+  --rt-bright: var(--hoshidicts-palette-secondary);
+  --rt-dim: var(--hoshidicts-palette-accent);
+  --rt-line: #5c4409;                 /* rules and key-cap borders: decorative, never text */
+  --rt-soft: #241c08;                 /* hovered row */
+  --rt-glow: rgba(255, 209, 102, 0.35);
+  --hoshidicts-border: var(--rt-line);
+  --hoshidicts-border-strong: var(--rt-fg);
+  --hoshidicts-text-muted: var(--rt-dim);
+  --hoshidicts-text-faint: var(--rt-dim);
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-accent-soft: var(--rt-soft);
+  --hoshidicts-scrollbar: var(--rt-dim);
+  --hoshidicts-link: var(--rt-bright);
+  --hoshidicts-link-hover: var(--rt-bright);
+  height: auto !important;                                 /* the screen hugs its text … */
+  max-height: var(--gsm-hoshidicts-popup-height, 420px);   /* … up to the Design height */
+  border: 1px solid var(--rt-fg);
+  border-radius: 3px;
+  -webkit-backdrop-filter: none;                           /* no 16 px blur: cheaper to paint than the default */
+  backdrop-filter: none;
+  box-shadow: 0 0 0 3px #171208, 0 0 22px rgba(255, 176, 0, 0.14);   /* bezel + faint phosphor bloom */
+  color: var(--rt-fg);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Optional CRT: a 3 px scanline raster; text through the dark line keeps ≥ 5.9:1
+ * (measured). Off entirely under reduced motion. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.14) 2px 3px);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.35);           /* bezel shadow, inside the 8 px padding */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup::after {
+    display: none;
+  }
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup ::-webkit-scrollbar-thumb {
+  border: 0;
+  border-radius: 0;
+  background: var(--rt-dim);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup ::-webkit-scrollbar-track {
+  background: var(--rt-soft);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-resize-handle {
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--rt-bg) 3px 4px);
+}
+
+/* -- title bar: > 食べる たべ＼る  ← 食べたかった · たい › 過去   [♪][✎][×] -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-result-chrome {
+  flex-shrink: 0;                    /* the body scrolls, the title bar never does */
+  max-height: none;
+  border-bottom: 1px solid var(--rt-line);
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-primary-header {
+  min-height: 0;
+  padding: 4px 8px 3px;
+  gap: 2px 12px;
+  align-items: baseline;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-headword {
+  gap: 0 10px;
+  align-items: baseline;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-expression {
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--rt-bright);
+  text-shadow: 0 0 6px var(--rt-glow);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-primary-header .gsm-hoshidicts-expression::before {
+  content: "> ";
+  color: var(--rt-dim);
+  font-size: 13px;
+  text-shadow: none;
+}
+
+/* The reading is shown inline (theme.js), in the NHK ＼ notation when a pitch exists. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-expression rt {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-reading {
+  color: var(--rt-dim);
+  font-size: 14px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-trace {
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--rt-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-trace > b {
+  color: var(--rt-fg);
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-compact-definition-summary {
+  display: none;                     /* the glosses are one line below anyway */
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-link {
+  border-bottom: 1px dotted var(--rt-dim);
+}
+
+/* Action buttons become key caps; their currentColor icon masks stay. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-actions {
+  margin: 0;
+  padding: 0;
+  gap: 3px;
+  align-self: baseline;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-actions > button,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-audio-control > button,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup-close {
+  flex: 0 0 auto;
+  width: auto;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--rt-line);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--rt-dim);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-actions button:hover:not(:disabled),
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-actions button:focus-visible {
+  border-color: var(--rt-fg);
+  background: var(--rt-fg);
+  color: var(--rt-bg);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-actions .hd-icon,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-audio-button::before,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-popup-close::before {
+  width: 16px;
+  height: 16px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-back::before {
+  content: "← ";
+}
+
+/* Dictionary tabs: [All] [JMdict] — the selected one in inverse video. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-metadata-strip {
+  padding: 0 8px 3px;
+  border-top: 0;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab-list {
+  gap: 2px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab {
+  min-height: 0;
+  max-width: 24ch;
+  padding: 0 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rt-dim);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab::before { content: "["; }
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab::after { content: "]"; }
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab:hover:not(:disabled):not([aria-selected="true"]) {
+  background: var(--rt-soft);
+  color: var(--rt-fg);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  background: var(--rt-fg);
+  color: var(--rt-bg);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab:focus-visible {
+  outline: 1px dashed var(--rt-bright);
+  outline-offset: 0;
+}
+
+/* -- candidate list (theme.js): idx | word▮ | reading | LHL[2] | #rank | senses · dicts -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-list {
+  position: relative;                /* row.offsetTop is then relative to the list (theme.js) */
+  display: grid;
+  grid-template-columns: 2ch minmax(6ch, max-content) minmax(5ch, max-content) minmax(4ch, max-content) minmax(3ch, max-content) minmax(0, 1fr);
+  column-gap: 1.5ch;
+  flex: 0 0 auto;
+  max-height: calc(6 * 20px + 4px);          /* six candidates, then the list scrolls */
+  margin: 0;
+  padding: 2px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--rt-line);
+  line-height: 20px;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row:hover:not([aria-selected="true"]) {
+  background: var(--rt-soft);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row[aria-selected="true"] {
+  background: var(--rt-fg);
+  color: var(--rt-bg);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row:focus-visible {
+  outline: 1px dashed var(--rt-bright);
+  outline-offset: -1px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row[aria-selected="true"]:focus-visible {
+  outline-color: var(--rt-bg);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-idx {
+  text-align: right;
+  color: var(--rt-dim);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-word {
+  color: var(--rt-bright);
+  font-size: 14px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-read,
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-dict {
+  color: var(--rt-dim);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-pitch {
+  letter-spacing: 0.04em;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-freq {
+  text-align: right;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row[aria-selected="true"] > span {
+  color: inherit;
+}
+
+/* The block cursor after the selected headword blinks; a static bar under
+ * reduced motion. (@keyframes: see the proposal's note on the sanitiser.) */
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-cur::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: -0.1em;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-row[aria-selected="true"] .rt-cur::after {
+  background: currentColor;
+  animation: rt-blink 1.06s steps(1, end) infinite;
+}
+
+@keyframes rt-blink {
+  50% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="retro-terminal"]) .rt-row[aria-selected="true"] .rt-cur::after {
+    width: 0.2em;
+    animation: none;
+  }
+}
+
+/* -- body: the reader's entries as flat terminal records -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-content-scroll {
+  position: relative;                /* entry.offsetTop is then the scroll target (theme.js) */
+  flex: 0 1 auto;
+  padding: 0 8px 4px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tab-panel {
+  counter-reset: rt-entry;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry {
+  counter-increment: rt-entry;
+  margin: 0;
+  padding: 0 0 3px 6px;
+  border: 0;
+  border-left: 2px solid transparent;   /* the gutter marks the current record */
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry[data-rt-selected],
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry[data-rt-selected] {
+  border-left-color: var(--rt-fg);
+}
+
+/* The primary entry's headword lives in the title bar, so its record rule is a
+ * counter; the others restyle their own header. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry:first-child::before {
+  content: "── " counter(rt-entry) " ──";
+  display: block;
+  margin-top: 3px;
+  color: var(--rt-dim);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  margin-top: 3px;
+  gap: 0 8px;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  line-height: 20px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-header:not(.gsm-hoshidicts-primary-header) > .gsm-hoshidicts-headword::before {
+  content: "── " counter(rt-entry) " ";
+  color: var(--rt-dim);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-header:not(.gsm-hoshidicts-primary-header) .gsm-hoshidicts-expression {
+  font-size: 15px;
+  text-shadow: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-header:not(.gsm-hoshidicts-primary-header) .rt-reading {
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-entry-header > .gsm-hoshidicts-entry-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Glosses: one flat numbered list per dictionary, the dictionary as a dashed rule. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-card-title,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-dictionary,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry h4 {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  margin: 2px 0 0;
+  color: var(--rt-dim);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-card-title::after,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-dictionary::after,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry h4::after {
+  content: "";
+  flex: 1 1 auto;
+  border-top: 1px dashed var(--rt-line);
+}
+
+/* One flat numbered list per dictionary; the number is a counter so the sense's
+ * tags and gloss share its line. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definitions,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definitions-single {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rt-sense;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definitions > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0 1ch;
+  margin: 0;
+  padding: 0;
+  counter-increment: rt-sense;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definitions > li::before {
+  content: counter(rt-sense) ".";
+  flex: 0 0 3ch;
+  color: var(--rt-dim);
+  text-align: right;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-meanings {
+  margin: 0;
+  padding-left: 4ch;
+  list-style: decimal;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-meanings > li {
+  margin: 0;
+  padding: 0;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-meanings > li::marker {
+  color: var(--rt-dim);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* One phosphor: dictionary-authored colours and boxes flatten to amber; images
+ * are tinted. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-content * {
+  color: inherit !important;
+  background: transparent !important;
+  border-color: var(--rt-line) !important;
+  box-shadow: none !important;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-glossary-content img,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-image-hover-preview img {
+  filter: grayscale(1) sepia(1) saturate(3) hue-rotate(-8deg) brightness(0.9) contrast(1.1);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definition-tags {
+  flex: 0 1 auto;
+  max-width: 22ch;                   /* long JMdict tag lists wrap here rather than push the gloss */
+}
+
+/* Tags are [bracketed] dim text, no pills. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tags,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-definition-tags {
+  gap: 0 0.5ch;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tag {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: var(--rt-dim);
+  font: inherit;
+  font-size: 11px;
+  line-height: inherit;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tag::before { content: "["; }
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-tag::after { content: "]"; }
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-show-more {
+  margin: 4px 0 0;
+  padding: 0 1ch;
+  border: 1px dashed var(--rt-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--rt-dim);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: left;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-show-more::before {
+  content: "+ ";
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-show-more:hover,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-show-more:focus-visible {
+  border-color: var(--rt-fg);
+  background: var(--rt-soft);
+  color: var(--rt-fg);
+}
+
+/* -- status line (theme.js): inverse video, pinned to the bottom -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1.5ch;
+  min-height: 20px;
+  padding: 0 18px 0 8px;             /* room for the resize handle */
+  background: var(--rt-fg);
+  color: var(--rt-bg);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-mode {
+  flex: 0 0 auto;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The key hint gives way first (flex-shrink 1000 vs the info's 1). */
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-keys {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-status .gsm-hoshidicts-lookup-stats {
+  display: inline;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-status .gsm-hoshidicts-lookup-stats[hidden] {
+  display: none;
+}
+
+/* -- messages, note form, audio menu -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-lookup-notice {
+  margin: 0;
+  padding: 1px 8px;
+  border: 0;
+  border-top: 1px solid var(--rt-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--rt-fg);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-mining-feedback::before,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-lookup-notice::before {
+  content: "! ";
+  color: var(--rt-dim);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-note-form {
+  margin: 4px 8px;
+  border: 1px solid var(--rt-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-note-form textarea,
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-note-actions button {
+  border-radius: 0;
+  font-family: inherit;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-audio-menu {
+  border: 1px solid var(--rt-fg);
+  border-radius: 0;
+  background: var(--rt-bg);
+  font-family: inherit;
+}
+
+/* -- kanji view: a double-ruled glyph, readings in columns, stats as a line -- */
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-navigation {
+  gap: 0 12px;
+  align-items: center;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-navigation::before {
+  content: "> kanji";
+  color: var(--rt-dim);
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-glyph {
+  padding: 2px 8px;
+  border: 3px double var(--rt-fg);
+  color: var(--rt-bright);
+  font-size: 40px;
+  line-height: 1.1;
+  text-shadow: 0 0 8px var(--rt-glow);
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry {
+  margin-top: 3px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-dictionary {
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-readings {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  gap: 0 1ch;
+  margin: 2px 0 0;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-reading-group {
+  display: contents;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-reading-group > strong {
+  color: var(--rt-dim);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-entry h4 {
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-stats {
+  margin-top: 3px;
+  color: var(--rt-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .rt-stats > b {
+  color: var(--rt-fg);
+  font-weight: 400;
+}
+
+/* The remaining indexes (KANJIDIC has ~34) stay behind the reader's disclosure. */
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats > summary {
+  color: var(--rt-dim);
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats > summary::before {
+  content: "+ ";
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats[open] > summary::before {
+  content: "- ";
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats > summary:focus-visible {
+  outline: 1px dashed var(--rt-bright);
+  outline-offset: 0;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats dl {
+  grid-template-columns: minmax(12ch, auto) 1fr;
+  gap: 0 1ch;
+  margin: 2px 0 0 2ch;
+}
+
+:host([data-hoshidicts-theme="retro-terminal"]) .gsm-hoshidicts-kanji-stats dt {
+  color: var(--rt-dim);
+}

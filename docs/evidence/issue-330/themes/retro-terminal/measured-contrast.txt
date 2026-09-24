@@ -1,0 +1,39 @@
+retro-term.png 2 band(s) of 7 background colours
+  scanline rows (x0.86): background rgb(9, 8, 5), 177 rows
+    rgb(178, 132, 25) (#d09a1e dim) x 1430 px -> 5.92:1
+    rgb(219, 151, 0) (#ffb000 text) x 1205 px -> 8.05:1
+    rgb(219, 179, 87) (#ffd166 bright) x 259 px -> 10.11:1
+  clear rows: background rgb(11, 10, 6), 339 rows
+    rgb(255, 176, 0) (#ffb000 text) x 4667 px -> 10.81:1
+    rgb(208, 154, 30) (#d09a1e dim) x 2321 px -> 7.85:1
+    rgb(255, 209, 102) (#ffd166 bright) x 629 px -> 13.74:1
+    rgb(252, 173, 0) (#ffb000 text) x 81 px -> 10.48:1
+    rgb(254, 175, 0) (#ffb000 text) x 56 px -> 10.70:1
+retro-term-reduced-motion.png 1 band(s) of 2 background colours
+  clear rows: background rgb(11, 10, 6), 524 rows
+    rgb(255, 176, 0) (#ffb000 text) x 6604 px -> 10.81:1
+    rgb(208, 154, 30) (#d09a1e dim) x 3774 px -> 7.85:1
+    rgb(255, 209, 102) (#ffd166 bright) x 888 px -> 13.74:1
+    rgb(252, 173, 0) (#ffb000 text) x 118 px -> 10.48:1
+    rgb(254, 175, 0) (#ffb000 text) x 66 px -> 10.70:1
+    rgb(207, 153, 29) (#d09a1e dim) x 63 px -> 7.76:1
+    rgb(205, 152, 29) (#d09a1e dim) x 52 px -> 7.64:1
+    rgb(253, 174, 0) (#ffb000 text) x 46 px -> 10.59:1
+    rgb(206, 152, 29) (#d09a1e dim) x 42 px -> 7.67:1
+retro-long.png 2 band(s) of 7 background colours
+  scanline rows (x0.86): background rgb(9, 8, 5), 251 rows
+    rgb(219, 151, 0) (#ffb000 text) x 3753 px -> 8.05:1
+    rgb(178, 132, 25) (#d09a1e dim) x 2582 px -> 5.92:1
+    rgb(219, 179, 87) (#ffd166 bright) x 600 px -> 10.11:1
+    rgb(216, 148, 0) (#ffb000 text) x 55 px -> 7.78:1
+    rgb(176, 130, 24) (#d09a1e dim) x 54 px -> 5.77:1
+    rgb(218, 150, 0) (#ffb000 text) x 46 px -> 7.96:1
+    rgb(177, 130, 24) (#d09a1e dim) x 42 px -> 5.79:1
+  clear rows: background rgb(11, 10, 6), 489 rows
+    rgb(255, 176, 0) (#ffb000 text) x 8820 px -> 10.81:1
+    rgb(208, 154, 30) (#d09a1e dim) x 3059 px -> 7.85:1
+    rgb(255, 209, 102) (#ffd166 bright) x 984 px -> 13.74:1
+    rgb(252, 173, 0) (#ffb000 text) x 134 px -> 10.48:1
+    rgb(254, 175, 0) (#ffb000 text) x 88 px -> 10.70:1
+    rgb(205, 152, 29) (#d09a1e dim) x 84 px -> 7.64:1
+    rgb(253, 174, 0) (#ffb000 text) x 74 px -> 10.59:1

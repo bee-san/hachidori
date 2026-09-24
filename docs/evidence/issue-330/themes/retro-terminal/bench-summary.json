@@ -1,0 +1,3951 @@
+{
+  "summary": {
+    "rounds": [
+      0,
+      1,
+      2
+    ],
+    "failed": [],
+    "harness": "benchmark/hover-popup.mjs (unchanged), HACHIDORI_HOVER_SAMPLES=1 per round, variants interleaved per round; each variant = one fresh Chrome profile with the hover-popup fixture imported through Settings",
+    "variants": {
+      "default": {
+        "loadAtStart": [
+          "[24,399,908]",
+          "[22,352,871]",
+          "[42,690,1101]"
+        ],
+        "cold": {
+          "n": 3,
+          "firstMs": {
+            "median": 333.2,
+            "p95": 448.6
+          },
+          "completeMs": {
+            "median": 396.9,
+            "p95": 451.1
+          }
+        },
+        "root": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 19.9
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 34.6
+          }
+        },
+        "deep": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.9,
+            "p95": 23.1
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 49.8
+          }
+        },
+        "flat": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 19
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 36.5
+          }
+        },
+        "child": {
+          "n": 6,
+          "firstMs": {
+            "median": 18.8,
+            "p95": 45.4
+          },
+          "completeMs": {
+            "median": 42.3,
+            "p95": 77.8
+          }
+        }
+      },
+      "nazeka": {
+        "loadAtStart": [
+          "[25,363,880]",
+          "[22,336,857]",
+          "[39,668,1090]"
+        ],
+        "cold": {
+          "n": 3,
+          "firstMs": {
+            "median": 90.9,
+            "p95": 367.7
+          },
+          "completeMs": {
+            "median": 118.4,
+            "p95": 914.6
+          }
+        },
+        "root": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 26.9
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 53.8
+          }
+        },
+        "deep": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.9,
+            "p95": 17.1
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 35.6
+          }
+        },
+        "flat": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 16.9
+          },
+          "completeMs": {
+            "median": 33.2,
+            "p95": 33.4
+          }
+        },
+        "child": {
+          "n": 6,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 33.4
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 35.1
+          }
+        }
+      },
+      "retro-terminal": {
+        "loadAtStart": [
+          "[24,375,889]",
+          "[22,341,861]",
+          "[40,678,1096]"
+        ],
+        "cold": {
+          "n": 3,
+          "firstMs": {
+            "median": 132.2,
+            "p95": 428.6
+          },
+          "completeMs": {
+            "median": 158.5,
+            "p95": 739.1
+          }
+        },
+        "root": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 27.8
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 50.7
+          }
+        },
+        "deep": {
+          "n": 24,
+          "firstMs": {
+            "median": 17,
+            "p95": 57.4
+          },
+          "completeMs": {
+            "median": 33.4,
+            "p95": 60.5
+          }
+        },
+        "flat": {
+          "n": 24,
+          "firstMs": {
+            "median": 16.8,
+            "p95": 19.1
+          },
+          "completeMs": {
+            "median": 33.3,
+            "p95": 47.5
+          }
+        },
+        "child": {
+          "n": 6,
+          "firstMs": {
+            "median": 17.9,
+            "p95": 51.1
+          },
+          "completeMs": {
+            "median": 34.8,
+            "p95": 77.8
+          }
+        }
+      }
+    }
+  },
+  "results": {
+    "default": [
+      {
+        "round": 0,
+        "label": "cold",
+        "firstMs": 448.59999990463257,
+        "completeMs": 451.09999990463257,
+        "blankMs": 444.2999999523163,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-0",
+        "firstMs": 17.699999809265137,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-1",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-0",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-1",
+        "firstMs": 19.90000009536743,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-2",
+        "firstMs": 17.200000047683716,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-3",
+        "firstMs": 16.90000009536743,
+        "completeMs": 32.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-4",
+        "firstMs": 16,
+        "completeMs": 32.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-5",
+        "firstMs": 17.200000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-6",
+        "firstMs": 16.59999990463257,
+        "completeMs": 34.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-0",
+        "firstMs": 17.299999952316284,
+        "completeMs": 45.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 15.400000095367432,
+        "completeMs": 32.30000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-1",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16,
+        "completeMs": 32.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-2",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 17.399999856948853,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-3",
+        "firstMs": 16.299999952316284,
+        "completeMs": 31.899999856948853,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 19,
+        "completeMs": 34.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-4",
+        "firstMs": 18.90000009536743,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 17.300000190734863,
+        "completeMs": 34.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-5",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.59999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 15.099999904632568,
+        "completeMs": 31.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-6",
+        "firstMs": 23.100000143051147,
+        "completeMs": 49.80000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 17.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-7",
+        "firstMs": 13.299999952316284,
+        "completeMs": 30.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 14.200000047683716,
+        "completeMs": 30.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-0",
+        "firstMs": 80.59999990463257,
+        "completeMs": 111.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-1",
+        "firstMs": 17.5,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "rapid-final",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-first",
+        "firstMs": 45.40000009536743,
+        "completeMs": 77.80000019073486,
+        "blankMs": 35.5,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-replace",
+        "firstMs": 18.799999952316284,
+        "completeMs": 45.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          23.71,
+          399.08,
+          907.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "cold",
+        "firstMs": 333.19999980926514,
+        "completeMs": 396.89999985694885,
+        "blankMs": 332.5,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-0",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 35.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-0",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-2",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-6",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-7",
+        "firstMs": 16.699999809265137,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-0",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-2",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 17,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-3",
+        "firstMs": 16.899999856948853,
+        "completeMs": 35,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-4",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-5",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-6",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-7",
+        "firstMs": 17,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-0",
+        "firstMs": 66.80000019073486,
+        "completeMs": 83.30000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-1",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "rapid-final",
+        "firstMs": 16.5,
+        "completeMs": 34.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-first",
+        "firstMs": 16.600000143051147,
+        "completeMs": 33.10000014305115,
+        "blankMs": 8.5,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-replace",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.01,
+          351.65,
+          870.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "cold",
+        "firstMs": 58.700000047683716,
+        "completeMs": 117,
+        "blankMs": 57.5,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-0",
+        "firstMs": 12.700000047683716,
+        "completeMs": 29.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-1",
+        "firstMs": 17,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-0",
+        "firstMs": 16,
+        "completeMs": 34.59999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-1",
+        "firstMs": 21.799999952316284,
+        "completeMs": 36.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-2",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-6",
+        "firstMs": 17.399999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-7",
+        "firstMs": 17,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-0",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-1",
+        "firstMs": 17,
+        "completeMs": 35.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-2",
+        "firstMs": 16.5,
+        "completeMs": 32.60000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 21.600000143051147,
+        "completeMs": 33,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-3",
+        "firstMs": 17,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 17.200000047683716,
+        "completeMs": 33.60000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 15.299999952316284,
+        "completeMs": 36.5,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-5",
+        "firstMs": 28.600000143051147,
+        "completeMs": 43.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 34.90000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-6",
+        "firstMs": 20.90000009536743,
+        "completeMs": 49.90000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.600000143051147,
+        "completeMs": 32.90000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-7",
+        "firstMs": 16.90000009536743,
+        "completeMs": 38.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 18.09999990463257,
+        "completeMs": 36.700000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-0",
+        "firstMs": 101.70000004768372,
+        "completeMs": 131.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-1",
+        "firstMs": 17.09999990463257,
+        "completeMs": 34.39999985694885,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "rapid-final",
+        "firstMs": 16.399999856948853,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-first",
+        "firstMs": 27.700000047683716,
+        "completeMs": 42.30000019073486,
+        "blankMs": 11.800000190734863,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-replace",
+        "firstMs": 16.799999952316284,
+        "completeMs": 32.799999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          42.24,
+          689.55,
+          1101.41
+        ]
+      }
+    ],
+    "nazeka": [
+      {
+        "round": 0,
+        "label": "cold",
+        "firstMs": 43.30000019073486,
+        "completeMs": 44.40000009536743,
+        "blankMs": 42.40000009536743,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-0",
+        "firstMs": 15.400000095367432,
+        "completeMs": 31.90000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-1",
+        "firstMs": 17.200000047683716,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-0",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-2",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-4",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-6",
+        "firstMs": 19.299999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-7",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-0",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-2",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-3",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-5",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-6",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-7",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-0",
+        "firstMs": 64.19999980926514,
+        "completeMs": 80.59999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "rapid-final",
+        "firstMs": 13.399999856948853,
+        "completeMs": 29.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-first",
+        "firstMs": 33.39999985694885,
+        "completeMs": 35.09999990463257,
+        "blankMs": 32.60000014305115,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-replace",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          24.64,
+          363.37,
+          879.9
+        ]
+      },
+      {
+        "round": 1,
+        "label": "cold",
+        "firstMs": 367.69999980926514,
+        "completeMs": 914.5999999046326,
+        "blankMs": 366.5,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-0",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-1",
+        "firstMs": 16.699999809265137,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-0",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-1",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-2",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.39999985694885,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-6",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-0",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.60000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-1",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-2",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-3",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-4",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-5",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-6",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-7",
+        "firstMs": 17.100000143051147,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-0",
+        "firstMs": 64.20000004768372,
+        "completeMs": 91.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-1",
+        "firstMs": 21.600000143051147,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "rapid-final",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-first",
+        "firstMs": 16.59999990463257,
+        "completeMs": 33.09999990463257,
+        "blankMs": 6.5,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-replace",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          22.3,
+          335.55,
+          856.96
+        ]
+      },
+      {
+        "round": 2,
+        "label": "cold",
+        "firstMs": 90.90000009536743,
+        "completeMs": 118.40000009536743,
+        "blankMs": 87.70000004768372,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-0",
+        "firstMs": 25.200000047683716,
+        "completeMs": 41.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-1",
+        "firstMs": 14.799999952316284,
+        "completeMs": 48.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-0",
+        "firstMs": 20.600000143051147,
+        "completeMs": 34,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-1",
+        "firstMs": 25.09999990463257,
+        "completeMs": 50.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-2",
+        "firstMs": 14.200000047683716,
+        "completeMs": 53.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-3",
+        "firstMs": 26.90000009536743,
+        "completeMs": 60.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-4",
+        "firstMs": 12.800000190734863,
+        "completeMs": 47,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-5",
+        "firstMs": 17.299999952316284,
+        "completeMs": 31.59999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-6",
+        "firstMs": 22.700000047683716,
+        "completeMs": 48.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-7",
+        "firstMs": 30,
+        "completeMs": 51,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-0",
+        "firstMs": 15.100000143051147,
+        "completeMs": 48.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-1",
+        "firstMs": 13.5,
+        "completeMs": 29.700000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-2",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-3",
+        "firstMs": 16.90000009536743,
+        "completeMs": 35.59999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-4",
+        "firstMs": 19.5,
+        "completeMs": 34.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.40000009536743,
+        "completeMs": 32.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-6",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-7",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-0",
+        "firstMs": 66.59999990463257,
+        "completeMs": 83.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "rapid-final",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.700000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-first",
+        "firstMs": 16.5,
+        "completeMs": 32.89999985694885,
+        "blankMs": 10,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-replace",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.44,
+          667.62,
+          1089.86
+        ]
+      }
+    ],
+    "retro-terminal": [
+      {
+        "round": 0,
+        "label": "cold",
+        "firstMs": 428.60000014305115,
+        "completeMs": 739.1000001430511,
+        "blankMs": 427.7999999523163,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-0",
+        "firstMs": 15.299999952316284,
+        "completeMs": 48.40000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "warmup-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-0",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-1",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-2",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-5",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-6",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "root-7",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-0",
+        "firstMs": 327.39999985694885,
+        "completeMs": 328.69999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.10000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-1",
+        "firstMs": 33.40000009536743,
+        "completeMs": 49.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 50.200000047683716,
+        "completeMs": 66.59999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-2",
+        "firstMs": 16.800000190734863,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 16.699999809265137,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-4",
+        "firstMs": 17,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-5",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.59999990463257,
+        "completeMs": 33,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-6",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 19.09999990463257,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-0",
+        "firstMs": 66.30000019073486,
+        "completeMs": 99.20000004768372,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "trace-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "rapid-final",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-first",
+        "firstMs": 51.10000014305115,
+        "completeMs": 77.79999995231628,
+        "blankMs": 50.299999952316284,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 0,
+        "label": "child-replace",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          24.42,
+          374.87,
+          889.15
+        ]
+      },
+      {
+        "round": 1,
+        "label": "cold",
+        "firstMs": 70.59999990463257,
+        "completeMs": 72.70000004768372,
+        "blankMs": 69,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-0",
+        "firstMs": 36.299999952316284,
+        "completeMs": 66.40000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "warmup-1",
+        "firstMs": 22.59999990463257,
+        "completeMs": 33,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-0",
+        "firstMs": 21.299999952316284,
+        "completeMs": 48.89999985694885,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-1",
+        "firstMs": 15.5,
+        "completeMs": 31.100000143051147,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-2",
+        "firstMs": 17.200000047683716,
+        "completeMs": 33.700000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-3",
+        "firstMs": 16.5,
+        "completeMs": 32.89999985694885,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-4",
+        "firstMs": 17.90000009536743,
+        "completeMs": 33.5,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-5",
+        "firstMs": 16.699999809265137,
+        "completeMs": 33,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-6",
+        "firstMs": 16.399999856948853,
+        "completeMs": 34.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "root-7",
+        "firstMs": 34.200000047683716,
+        "completeMs": 50,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-0",
+        "firstMs": 57.40000009536743,
+        "completeMs": 60.5,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.100000143051147,
+        "completeMs": 32.700000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-1",
+        "firstMs": 17.399999856948853,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.5,
+        "completeMs": 32.89999985694885,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-2",
+        "firstMs": 20,
+        "completeMs": 50,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 14.400000095367432,
+        "completeMs": 47.5,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-3",
+        "firstMs": 32.60000014305115,
+        "completeMs": 43.60000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16,
+        "completeMs": 34.10000014305115,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-5",
+        "firstMs": 21.09999990463257,
+        "completeMs": 54.39999985694885,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 17.299999952316284,
+        "completeMs": 47,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-6",
+        "firstMs": 17.90000009536743,
+        "completeMs": 33.90000009536743,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.200000047683716,
+        "completeMs": 32.59999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-7",
+        "firstMs": 18,
+        "completeMs": 33.59999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-0",
+        "firstMs": 105.59999990463257,
+        "completeMs": 116.5,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "trace-1",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "rapid-final",
+        "firstMs": 17,
+        "completeMs": 40.299999952316284,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-first",
+        "firstMs": 32.89999985694885,
+        "completeMs": 36.799999952316284,
+        "blankMs": 30.40000009536743,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 1,
+        "label": "child-replace",
+        "firstMs": 12.200000047683716,
+        "completeMs": 26.09999990463257,
+        "blankMs": 0,
+        "longTasks": 0,
+        "loadAtStart": [
+          21.63,
+          340.7,
+          861.43
+        ]
+      },
+      {
+        "round": 2,
+        "label": "cold",
+        "firstMs": 132.20000004768372,
+        "completeMs": 158.5,
+        "blankMs": 130.60000014305115,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-0",
+        "firstMs": 15,
+        "completeMs": 43,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "warmup-1",
+        "firstMs": 16.399999856948853,
+        "completeMs": 37.799999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-0",
+        "firstMs": 16.600000143051147,
+        "completeMs": 33.30000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-1",
+        "firstMs": 19.200000047683716,
+        "completeMs": 50.700000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-2",
+        "firstMs": 16,
+        "completeMs": 32.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-3",
+        "firstMs": 18.299999952316284,
+        "completeMs": 33.60000014305115,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-4",
+        "firstMs": 18.200000047683716,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-5",
+        "firstMs": 18.40000009536743,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-6",
+        "firstMs": 16.600000143051147,
+        "completeMs": 49.700000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "root-7",
+        "firstMs": 27.800000190734863,
+        "completeMs": 52.80000019073486,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-0",
+        "firstMs": 14.799999952316284,
+        "completeMs": 34.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-0",
+        "firstMs": 16.40000009536743,
+        "completeMs": 31.700000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-1",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-1",
+        "firstMs": 16.5,
+        "completeMs": 32.90000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-2",
+        "firstMs": 19.200000047683716,
+        "completeMs": 50,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-2",
+        "firstMs": 17,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-3",
+        "firstMs": 16.699999809265137,
+        "completeMs": 33.19999980926514,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-3",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-4",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.39999985694885,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-4",
+        "firstMs": 16.700000047683716,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-5",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-5",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.39999985694885,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-6",
+        "firstMs": 17,
+        "completeMs": 33.200000047683716,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-6",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "deep-nesting-flat-7",
+        "firstMs": 16.899999856948853,
+        "completeMs": 33.5,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-0",
+        "firstMs": 83.60000014305115,
+        "completeMs": 99.90000009536743,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "trace-1",
+        "firstMs": 16.90000009536743,
+        "completeMs": 33,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "rapid-final",
+        "firstMs": 16.799999952316284,
+        "completeMs": 33.299999952316284,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-first",
+        "firstMs": 17.90000009536743,
+        "completeMs": 34.799999952316284,
+        "blankMs": 8.799999952316284,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      },
+      {
+        "round": 2,
+        "label": "child-replace",
+        "firstMs": 15.799999952316284,
+        "completeMs": 32.09999990463257,
+        "blankMs": 0,
+        "longTasks": 1,
+        "loadAtStart": [
+          39.74,
+          678.29,
+          1095.55
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,977 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Platinum 8488C",
+    "logicalCpus": 16,
+    "node": "v22.23.1"
+  },
+  "extensionVersion": "0.1.6",
+  "theme": {
+    "css": 24604,
+    "js": 21963
+  },
+  "sessions": {
+    "fixture": {
+      "archives": [
+        "hachidori-fixture.zip"
+      ],
+      "loadAtStart": [
+        118.43,
+        1057.24,
+        1247.44
+      ],
+      "shots": {
+        "default-term": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 420
+          },
+          "term": 2,
+          "kanji": 0,
+          "themed": false,
+          "theme": "default",
+          "sheets": 1,
+          "background": "color(srgb 0.152941 0.14902 0.188235)",
+          "fontFamily": "\"Noto Sans CJK JP\", \"Noto Sans JP\", \"Yu Gothic UI\", \"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", Meiryo, sans-serif",
+          "fontSize": "16px",
+          "headwordSize": "32px",
+          "headwordColor": "rgb(232, 229, 235)",
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": null,
+          "selectedEntry": -1,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "16px",
+          "hookMs": [],
+          "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the events t"
+        },
+        "default-kanji": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 420
+          },
+          "term": 0,
+          "kanji": 1,
+          "themed": false,
+          "theme": "default",
+          "sheets": 1,
+          "background": "color(srgb 0.152941 0.14902 0.188235)",
+          "fontFamily": "\"Noto Sans CJK JP\", \"Noto Sans JP\", \"Yu Gothic UI\", \"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", Meiryo, sans-serif",
+          "fontSize": "16px",
+          "headwordSize": null,
+          "headwordColor": null,
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": null,
+          "selectedEntry": -1,
+          "contentScrollTop": 0,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "16px",
+          "hookMs": [],
+          "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
+        },
+        "retro-term": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 306.765625
+          },
+          "term": 2,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "たべ＼る",
+          "trace": "← 食べたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1食べるたべるLHL[2]#1422 senses · hachidori-fixture",
+              "selected": true
+            },
+            {
+              "text": "2食たべもの——1 sense · hachidori-fixture",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM1/2 │ 食べる たべ＼る │ LHL[2] LHH[0] +1 │ #142 │ tabeɾɯLooked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            1.3,
+            0.3
+          ],
+          "textSample": "食たべるべるたべ＼るto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the even"
+        },
+        "retro-term-keyboard": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 306.765625
+          },
+          "term": 2,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "たべ＼る",
+          "trace": "← 食べたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1食べるたべるLHL[2]#1422 senses · hachidori-fixture",
+              "selected": false
+            },
+            {
+              "text": "2食たべもの——1 sense · hachidori-fixture",
+              "selected": true
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM2/2 │ 食 たべものLooked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 1,
+          "contentScrollTop": 0,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            1.3,
+            0.3
+          ],
+          "textSample": "食たべるべるたべ＼るto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the even"
+        },
+        "retro-kanji": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 265.609375
+          },
+          "term": 0,
+          "kanji": 1,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": null,
+          "headwordColor": null,
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": "KANJI1/1 │ 食 │ hachidori-fixture │ ON ショク · ジキ │ KUN く.う · た.べる │ strokes 9 · grade 2 · freq 382Alt+B back · Esc",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": true,
+          "stats": "strokes 9 · grade 2 · freq 382",
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            1.3,
+            0.3,
+            0.4
+          ],
+          "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealstrokes 9 · grade 2 · freq 382Detailsfreq382grade2strokes9KANJI1/1 │ 食 │ hachidori-fixture │ ON ショク · ジキ │ KUN く.う · た.べる │ strokes 9 · grade 2 · freq 382Alt+B back · Esc"
+        },
+        "retro-term-reduced-motion": {
+          "rect": {
+            "x": 248,
+            "y": 155,
+            "width": 560,
+            "height": 306.765625
+          },
+          "term": 2,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "たべ＼る",
+          "trace": "← 食べたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1食べるたべるLHL[2]#1422 senses · hachidori-fixture",
+              "selected": true
+            },
+            {
+              "text": "2食たべもの——1 sense · hachidori-fixture",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM1/2 │ 食べる たべ＼る │ LHL[2] LHH[0] +1 │ #142 │ tabeɾɯLooked up 3 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            1.3,
+            0.3,
+            0.4,
+            0.4,
+            0.3,
+            0.1
+          ],
+          "textSample": "食たべるべるたべ＼るto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the even"
+        }
+      },
+      "hookMs": {
+        "default-term": [],
+        "default-kanji": [],
+        "retro-term": [
+          1.3,
+          0.3
+        ],
+        "retro-term-keyboard": [
+          1.3,
+          0.3
+        ],
+        "retro-kanji": [
+          1.3,
+          0.3,
+          0.4
+        ],
+        "retro-term-reduced-motion": [
+          0.4,
+          0.3,
+          0.1
+        ]
+      },
+      "console": [],
+      "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
+      "importMs": 530,
+      "importDetail": [
+        "hachidori-fixture.zip :: Imported hachidori-fixture in 0.3 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+      ],
+      "keyboardBack": "TERM1/2 │ 食べる たべ＼る │ LHL[2] LHH[0] +1 │ #142 │ tabeɾɯLooked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+      "afterBack": {
+        "rect": {
+          "x": 248,
+          "y": 155,
+          "width": 560,
+          "height": 306.765625
+        },
+        "term": 2,
+        "kanji": 0,
+        "themed": true,
+        "theme": "retro-terminal",
+        "sheets": 2,
+        "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+        "fontFamily": "ui-monospace, monospace",
+        "fontSize": "13px",
+        "headwordSize": "18px",
+        "headwordColor": "rgb(255, 209, 102)",
+        "reading": "たべ＼る",
+        "trace": "← 食べたかった · -た › -たい",
+        "rows": [
+          {
+            "text": "1食べるたべるLHL[2]#1422 senses · hachidori-fixture",
+            "selected": true
+          },
+          {
+            "text": "2食たべもの——1 sense · hachidori-fixture",
+            "selected": false
+          }
+        ],
+        "listScrollTop": 0,
+        "status": "TERM1/2 │ 食べる たべ＼る │ LHL[2] LHH[0] +1 │ #142 │ tabeɾɯLooked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+        "selectedEntry": 0,
+        "contentScrollTop": 0,
+        "focusInPopup": true,
+        "stats": null,
+        "showMore": false,
+        "glossSize": "13px",
+        "hookMs": [
+          1.3,
+          0.3,
+          0.4,
+          0.4
+        ],
+        "textSample": "食たべるべるたべ＼るto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the even"
+      },
+      "reducedMotion": {
+        "overlayDisplay": "none",
+        "cursorAnimation": "none",
+        "cursorWidth": "2.79688px"
+      },
+      "hookCost": {
+        "renders": 59,
+        "medianMs": 0.2,
+        "p95Ms": 0.5,
+        "maxMs": 0.7,
+        "samples": [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.3,
+          0.3,
+          0.2,
+          0.3,
+          0.5,
+          0.3,
+          0.2,
+          0.2,
+          0.2,
+          0.1,
+          0.2,
+          0.4,
+          0.1,
+          0.6,
+          0.2,
+          0.1,
+          0.3,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.1,
+          0.3,
+          0.2,
+          0.2,
+          0.4,
+          0.1,
+          0.2,
+          0.3,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.2,
+          0.3,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.1,
+          0.1,
+          0.1,
+          0.3,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.7
+        ],
+        "loadBefore": [
+          95.19,
+          1006.14,
+          1227.68
+        ],
+        "loadAfter": [
+          61.72,
+          897.27,
+          1183.07
+        ],
+        "note": "onRender wall time inside the host's try/finally, real page, fixture dictionary, 2-entry popup; first themed render of the page excluded (see hookMs of retro-term)"
+      },
+      "loadAtEnd": [
+        61.72,
+        897.27,
+        1183.07
+      ]
+    },
+    "real": {
+      "archives": [
+        "JMdict_english.zip",
+        "kanjium_pitch_accents.zip",
+        "JPDB_v2.2_Frequency_Kana_2024-10-13.zip",
+        "KANJIDIC_english.zip"
+      ],
+      "loadAtStart": [
+        61.72,
+        897.27,
+        1183.07
+      ],
+      "shots": {
+        "default-long": {
+          "rect": {
+            "x": 260,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 6,
+          "kanji": 0,
+          "themed": false,
+          "theme": "default",
+          "sheets": 1,
+          "background": "color(srgb 0.152941 0.14902 0.188235)",
+          "fontFamily": "\"Noto Sans CJK JP\", \"Noto Sans JP\", \"Yu Gothic UI\", \"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", Meiryo, sans-serif",
+          "fontSize": "16px",
+          "headwordSize": "32px",
+          "headwordColor": "rgb(232, 229, 235)",
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": null,
+          "selectedEntry": -1,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "16px",
+          "hookMs": [],
+          "textSample": "掛かけるけるto hang up (e.g. a coat, a picture on the wall)to let hang掛けたかった → 掛ける-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled."
+        },
+        "retro-long": {
+          "rect": {
+            "x": 260,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 6,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "かけ＼る",
+          "trace": "← 掛けたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1掛けるかけるLHL[2]#202㋕26 senses · JMdict",
+              "selected": true
+            },
+            {
+              "text": "2掛けがけLH[0]#27.7k6 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3掛けかけLH[2]#197k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "4掛かけLH[2]#197k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "5掛がかり—#35.5k2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "6掛がけLH[0]#68.9k6 senses · JMdict",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM1/6 │ 掛ける かけ＼る │ LHL[2] │ #202㋕Looked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7
+          ],
+          "textSample": "掛かけるけるかけ＼るto hang up (e.g. a coat, a picture on the wall)to let hang掛けたかった → 掛ける-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfil"
+        },
+        "retro-long-keyboard": {
+          "rect": {
+            "x": 260,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 6,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "かけ＼る",
+          "trace": "← 掛けたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1掛けるかけるLHL[2]#202㋕26 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "2掛けがけLH[0]#27.7k6 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3掛けかけLH[2]#197k㋕8 senses · JMdict",
+              "selected": true
+            },
+            {
+              "text": "4掛かけLH[2]#197k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "5掛がかり—#35.5k2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "6掛がけLH[0]#68.9k6 senses · JMdict",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM3/6 │ 掛け かけ＼ │ LH[2] │ #197k㋕Looked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 2,
+          "contentScrollTop": 2176,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7
+          ],
+          "textSample": "掛かけるけるかけ＼るto hang up (e.g. a coat, a picture on the wall)to let hang掛けたかった → 掛ける-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfil"
+        },
+        "retro-long-last": {
+          "rect": {
+            "x": 260,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 6,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "かけ＼る",
+          "trace": "← 掛けたかった · -た › -たい",
+          "rows": [
+            {
+              "text": "1掛けるかけるLHL[2]#202㋕26 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "2掛けがけLH[0]#27.7k6 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3掛けかけLH[2]#197k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "4掛かけLH[2]#197k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "5掛がかり—#35.5k2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "6掛がけLH[0]#68.9k6 senses · JMdict",
+              "selected": true
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM6/6 │ 掛 がけ │ LH[0] │ #68.9kLooked up 2 timesj/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 5,
+          "contentScrollTop": 3710,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7
+          ],
+          "textSample": "掛かけるけるかけ＼るto hang up (e.g. a coat, a picture on the wall)to let hang掛けたかった → 掛ける-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfil"
+        },
+        "retro-list": {
+          "rect": {
+            "x": 434,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 9,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "にほんご",
+          "trace": null,
+          "rows": [
+            {
+              "text": "1日本語にほんごLHHH[0]#140.8k㋕2 senses · JMdict",
+              "selected": true
+            },
+            {
+              "text": "2日本語にっぽんごLHHHH[0]—2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3日本にほんLHL[2]#49.1k㋕2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "4日本にっぽんLHHL[3]—2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "5日ひL[0]#2236 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "6日にちHL[1]#30.9k㋕4 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "7日か—#21.1k2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "8日んち——3 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "9日ち——3 senses · JMdict",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM1/9 │ 日本語 にほんご │ LHHH[0] │ #140.8k㋕Looked up 1 timej/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7,
+            0.3,
+            0.6
+          ],
+          "textSample": "日本語にほんごにほんごJapanese (language)日本語1日本語にほんごLHHH[0]#140.8k㋕2 senses · JMdict2日本語にっぽんごLHHHH[0]—2 senses · JMdict3日本にほんLHL[2]#49.1k㋕2 senses · JMdict4日本にっぽんLHHL[3]—2 senses · JMdict5日ひL[0]#2236 senses · JMdict6日にちHL[1]#30.9k㋕4 senses · JMdict7日か—#21.1k2 senses · JMdict8日んち——3 senses · JMdict9日ち——3 senses"
+        },
+        "retro-list-keyboard": {
+          "rect": {
+            "x": 434,
+            "y": 145,
+            "width": 560,
+            "height": 420
+          },
+          "term": 9,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "にほんご",
+          "trace": null,
+          "rows": [
+            {
+              "text": "1日本語にほんごLHHH[0]#140.8k㋕2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "2日本語にっぽんごLHHHH[0]—2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3日本にほんLHL[2]#49.1k㋕2 senses · JMdict",
+              "selected": true
+            },
+            {
+              "text": "4日本にっぽんLHHL[3]—2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "5日ひL[0]#2236 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "6日にちHL[1]#30.9k㋕4 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "7日か—#21.1k2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "8日んち——3 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "9日ち——3 senses · JMdict",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM3/9 │ 日本 にほ＼ん │ LHL[2] │ #49.1k㋕Looked up 1 timej/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 2,
+          "contentScrollTop": 292,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7,
+            0.3,
+            0.6
+          ],
+          "textSample": "日本語にほんごにほんごJapanese (language)日本語1日本語にほんごLHHH[0]#140.8k㋕2 senses · JMdict2日本語にっぽんごLHHHH[0]—2 senses · JMdict3日本にほんLHL[2]#49.1k㋕2 senses · JMdict4日本にっぽんLHHL[3]—2 senses · JMdict5日ひL[0]#2236 senses · JMdict6日にちHL[1]#30.9k㋕4 senses · JMdict7日か—#21.1k2 senses · JMdict8日んち——3 senses · JMdict9日ち——3 senses"
+        },
+        "retro-wakaru": {
+          "rect": {
+            "x": 80,
+            "y": 211,
+            "width": 560,
+            "height": 420
+          },
+          "term": 4,
+          "kanji": 0,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": "18px",
+          "headwordColor": "rgb(255, 209, 102)",
+          "reading": "わか＼る",
+          "trace": "← 分からなかった · -た › negative",
+          "rows": [
+            {
+              "text": "1分かるわかるLHL[2]#455㋕4 senses · JMdict",
+              "selected": true
+            },
+            {
+              "text": "2分ぶんHL[1]#6k㋕8 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "3分ふんHL[1]#43.1k㋕2 senses · JMdict",
+              "selected": false
+            },
+            {
+              "text": "4分ぶL[0]#56.7k5 senses · JMdict",
+              "selected": false
+            }
+          ],
+          "listScrollTop": 0,
+          "status": "TERM1/4 │ 分かる わか＼る │ LHL[2] │ #455㋕Looked up 1 timej/k · 1-9 · ⏎ anki · m more",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": false,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7,
+            0.3,
+            0.6,
+            0.1,
+            0.3
+          ],
+          "textSample": "分わかるかるわか＼るto understandto comprehend分からなかった → 分かる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's confidence that the action will definitely be fulfilled. 5. Indicates the events th"
+        },
+        "retro-kanji-real": {
+          "rect": {
+            "x": 80,
+            "y": 211,
+            "width": 560,
+            "height": 420
+          },
+          "term": 0,
+          "kanji": 1,
+          "themed": true,
+          "theme": "retro-terminal",
+          "sheets": 2,
+          "background": "color(srgb 0.0431373 0.0392157 0.0235294)",
+          "fontFamily": "ui-monospace, monospace",
+          "fontSize": "13px",
+          "headwordSize": null,
+          "headwordColor": null,
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": "KANJI1/1 │ 分 │ KANJIDIC [2026-261] │ ON ブン · フン · ブ │ KUN わ.ける · わ.け · わ.かれる · わ.かる · わ.かつ │ strokes 4 · grade 2 · jlpt 4 · freq 24Alt+B back · Esc",
+          "selectedEntry": 0,
+          "contentScrollTop": 0,
+          "focusInPopup": true,
+          "stats": "strokes 4 · grade 2 · jlpt 4 · freq 24",
+          "showMore": false,
+          "glossSize": "13px",
+          "hookMs": [
+            3.6,
+            0.7,
+            0.3,
+            0.6,
+            0.1,
+            0.3,
+            0.4
+          ],
+          "textSample": "分BackKANJIDIC [2026-261]jouyouOnブン · フン · ブKunわ.ける · わ.け · わ.かれる · わ.かる · わ.かつMeaningspartminute of timesegmentsharedegreeone's lotdutyunderstandknowrate1%chancesshaku/100strokes 4 · grade 2 · jlpt 4 · freq 24Detailsbusy_people2.2crowley28deroo2045four_corner8022.7freq24gakken35grade2halpern_kkd2466"
+        },
+        "default-kanji-real": {
+          "rect": {
+            "x": 80,
+            "y": 211,
+            "width": 560,
+            "height": 420
+          },
+          "term": 0,
+          "kanji": 1,
+          "themed": false,
+          "theme": "default",
+          "sheets": 1,
+          "background": "color(srgb 0.152941 0.14902 0.188235)",
+          "fontFamily": "\"Noto Sans CJK JP\", \"Noto Sans JP\", \"Yu Gothic UI\", \"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", Meiryo, sans-serif",
+          "fontSize": "16px",
+          "headwordSize": null,
+          "headwordColor": null,
+          "reading": null,
+          "trace": null,
+          "rows": [],
+          "listScrollTop": null,
+          "status": null,
+          "selectedEntry": -1,
+          "contentScrollTop": 0,
+          "focusInPopup": true,
+          "stats": null,
+          "showMore": false,
+          "glossSize": "16px",
+          "hookMs": [
+            3.6,
+            0.7,
+            0.3,
+            0.6,
+            0.1,
+            0.3,
+            0.4
+          ],
+          "textSample": "分BackKANJIDIC [2026-261]jouyouOnブン · フン · ブKunわ.ける · わ.け · わ.かれる · わ.かる · わ.かつMeaningspartminute of timesegmentsharedegreeone's lotdutyunderstandknowrate1%chancesshaku/100Detailsbusy_people2.2crowley28deroo2045four_corner8022.7freq24gakken35grade2halpern_kkd2466halpern_kkld1247halpern_kkld_2ed1713ha"
+        }
+      },
+      "hookMs": {
+        "default-long": [],
+        "retro-long": [
+          3.6,
+          0.7
+        ],
+        "retro-long-keyboard": [
+          3.6,
+          0.7
+        ],
+        "retro-long-last": [
+          3.6,
+          0.7
+        ],
+        "retro-list": [
+          0.7,
+          0.3,
+          0.6
+        ],
+        "retro-list-keyboard": [
+          0.7,
+          0.3,
+          0.6
+        ],
+        "retro-wakaru": [
+          0.6,
+          0.1,
+          0.3
+        ],
+        "retro-kanji-real": [
+          0.1,
+          0.3,
+          0.4
+        ],
+        "default-kanji-real": [
+          0.1,
+          0.3,
+          0.4
+        ]
+      },
+      "console": [],
+      "importState": "Finished 4 of 4 archives — 4 imported, 0 failed.",
+      "importMs": 5069,
+      "importDetail": [
+        "JMdict_english.zip :: Imported JMdict [2026-09-18] in 2.0 seconds: 527,095 terms.",
+        "kanjium_pitch_accents.zip :: Imported Kanjium Pitch Accents in 0.7 seconds: 124,137 pitch entries.",
+        "JPDB_v2.2_Frequency_Kana_2024-10-13.zip :: Imported JPDBv2㋕ in 1.6 seconds: 338,814 frequency entries.",
+        "KANJIDIC_english.zip :: Imported KANJIDIC [2026-261] in 0.5 seconds: 10,384 kanji."
+      ],
+      "rowsBeforeMore": 6,
+      "rowsAfterMore": 6,
+      "loadAtEnd": [
+        48.04,
+        827.07,
+        1152.25
+      ]
+    }
+  }
+}

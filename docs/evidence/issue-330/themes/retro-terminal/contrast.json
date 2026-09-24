@@ -1,0 +1,70 @@
+{
+  "alpha": 0.14,
+  "palette": {
+    "bg": "#0b0a06",
+    "fg": "#ffb000",
+    "bright": "#ffd166",
+    "dim": "#d09a1e",
+    "line": "#5c4409",
+    "error": "#ff9f1c",
+    "soft": "#241c08"
+  },
+  "rows": [
+    {
+      "pair": "fg on bg (glosses, list rows)",
+      "fg": "#ffb000",
+      "bg": "#0b0a06",
+      "plain": 10.81,
+      "through scanline band (alpha 0.14)": 8.05
+    },
+    {
+      "pair": "bright on bg (headword, kanji glyph)",
+      "fg": "#ffd166",
+      "bg": "#0b0a06",
+      "plain": 13.74,
+      "through scanline band (alpha 0.14)": 10.14
+    },
+    {
+      "pair": "dim on bg (readings, rules, key hints, tags)",
+      "fg": "#d09a1e",
+      "bg": "#0b0a06",
+      "plain": 7.85,
+      "through scanline band (alpha 0.14)": 5.95
+    },
+    {
+      "pair": "error on bg (audio/anki error state)",
+      "fg": "#ff9f1c",
+      "bg": "#0b0a06",
+      "plain": 9.65,
+      "through scanline band (alpha 0.14)": 7.22
+    },
+    {
+      "pair": "bg on fg (inverse video: selected row, status line)",
+      "fg": "#0b0a06",
+      "bg": "#ffb000",
+      "plain": 10.81,
+      "through scanline band (alpha 0.14)": 8.05
+    },
+    {
+      "pair": "dim on soft (hovered row)",
+      "fg": "#d09a1e",
+      "bg": "#241c08",
+      "plain": 6.69,
+      "through scanline band (alpha 0.14)": 5.24
+    },
+    {
+      "pair": "fg on soft (hovered row)",
+      "fg": "#ffb000",
+      "bg": "#241c08",
+      "plain": 9.21,
+      "through scanline band (alpha 0.14)": 7.1
+    },
+    {
+      "pair": "line on bg (decorative rules only, not text)",
+      "fg": "#5c4409",
+      "bg": "#0b0a06",
+      "plain": 2.16,
+      "through scanline band (alpha 0.14)": 1.86
+    }
+  ]
+}

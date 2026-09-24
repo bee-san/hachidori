@@ -1,0 +1,4 @@
+theme.css: 24235 bytes
+theme.js: 20892 bytes (limit 65536)
+description: 280 chars (≤280); js.summary: 196 chars (≤200)
+retro-terminal: theme.yaml valid, theme.js lint clean, hooks ["onRender","onDeactivate"]
