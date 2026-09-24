@@ -698,7 +698,12 @@ Hachidori has:
 
 The worker toggles `hoverEnabled` inside its storage queue with the same
 revisioned options write as the toolbar switch. A popup-action command goes to
-the active tab as `hd_reader_command`. Every frame's reader runs the matching
+the active tab as `hd_reader_command`. The manifest starts a reader in every
+web page frame. Each frame scans and renders its own popup within that frame's
+viewport; [asbplayer](asbplayer.md) uses this for video subtitles. When a page
+element enters fullscreen, its reader mounts the popup host inside that element
+so the browser's fullscreen layer can paint it; on exit the host returns to the
+document body. Every frame's reader runs the matching
 keybind action, with a count of one for entry moves. Only a frame with an open
 popup, or a selection for the scans, acts on it. Chrome alone can change these
 shortcuts, as with Yomitan on Chrome. The Keybinds section lists

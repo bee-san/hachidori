@@ -19,6 +19,7 @@
   <a href="benchmark/README.md">Benchmarks</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="extension/README.md">Extension</a> ·
+  <a href="docs/asbplayer.md">asbplayer</a> ·
   <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/memory.md">Memory</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
