@@ -1,0 +1,694 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "archives": [
+    "hachidori-fixture.zip",
+    "jitendex-yomitan.zip",
+    "KANJIDIC_english.zip",
+    "kanjium_pitch_accents.zip"
+  ],
+  "shots": {
+    "default-term": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": false,
+      "chromeHidden": false,
+      "theme": "light",
+      "sheets": 1,
+      "popupBackground": "color(srgb 0.999871 1.00005 1.00007)",
+      "windowBackground": "none",
+      "textColor": "oklch(0.21 0.006 285.885)",
+      "textSize": "16px",
+      "name": null,
+      "nameColor": null,
+      "reading": null,
+      "pitch": null,
+      "counter": null,
+      "footerState": null,
+      "location": null,
+      "typedChars": 0,
+      "visibleChars": 0,
+      "commands": [],
+      "focused": null,
+      "focusedText": null,
+      "pageText": null,
+      "stats": [],
+      "lookups": "Looked up 1 time",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 2,
+      "rpg": false,
+      "chromeHidden": false,
+      "theme": "light",
+      "sheets": 1,
+      "popupBackground": "color(srgb 0.999871 1.00005 1.00007)",
+      "windowBackground": "none",
+      "textColor": "oklch(0.21 0.006 285.885)",
+      "textSize": "16px",
+      "name": null,
+      "nameColor": null,
+      "reading": null,
+      "pitch": null,
+      "counter": null,
+      "footerState": null,
+      "location": null,
+      "typedChars": 0,
+      "visibleChars": 0,
+      "commands": [],
+      "focused": "gsm-hoshidicts-kanji-back",
+      "focusedText": "Back",
+      "pageText": null,
+      "stats": [],
+      "lookups": null,
+      "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9KANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2."
+    },
+    "default-long": {
+      "rect": {
+        "x": 402,
+        "y": 180,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "rpg": false,
+      "chromeHidden": false,
+      "theme": "light",
+      "sheets": 1,
+      "popupBackground": "color(srgb 0.999871 1.00005 1.00007)",
+      "windowBackground": "none",
+      "textColor": "oklch(0.21 0.006 285.885)",
+      "textSize": "16px",
+      "name": null,
+      "nameColor": null,
+      "reading": null,
+      "pitch": null,
+      "counter": null,
+      "footerState": null,
+      "location": null,
+      "typedChars": 0,
+      "visibleChars": 0,
+      "commands": [],
+      "focused": null,
+      "focusedText": null,
+      "pageText": null,
+      "stats": [],
+      "lookups": "Looked up 1 time",
+      "textSample": "上あげるげるto raiseto elevateLooked up 1 timeあげる[0]Jitendex★1-dantransitiveto raiseto elevate質しつ問もんがあれば右みぎ手てを挙あげて下ください。If you have a question, please raise your right hand.[1]Antonym下さげる② to lower; to redu"
+    },
+    "rpg-term": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 416.015625
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 1 of 8",
+      "footerState": "ready",
+      "location": "hachidori-fixture",
+      "typedChars": 32,
+      "visibleChars": 32,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "vtto eatto live on (e.g. a salary)",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "rpg-term-page2": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 387.671875
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 2 of 8",
+      "footerState": "ready",
+      "location": "hachidori-fixture",
+      "typedChars": 61,
+      "visibleChars": 61,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "col(colloquial) to make a living",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "rpg-term-page3": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 475.796875
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 3 of 8",
+      "footerState": "ready",
+      "location": "Jitendex",
+      "typedChars": 205,
+      "visibleChars": 205,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": "rpg-next",
+      "focusedText": "",
+      "pageText": "★1-dantransitiveto eatもっと果くだ物ものを食たべるべきです。You should eat more fruit.[1]to live on (e.g. a salary)to live offto subsist on僕ぼくは脚きゃく本ほん家かで食たべていく決けっ心しんをした。I am determined to make a living as a playwright.[",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "rpg-nested": {
+      "child": {
+        "x": 339,
+        "y": 334,
+        "width": 560,
+        "height": 500.984375,
+        "name": "もっと"
+      },
+      "parent": {
+        "rect": {
+          "x": 252,
+          "y": 105,
+          "width": 560,
+          "height": 475.796875
+        },
+        "term": 5,
+        "kanji": 0,
+        "rpg": true,
+        "chromeHidden": true,
+        "theme": "rpg-dialogue",
+        "sheets": 2,
+        "popupBackground": "rgba(0, 0, 0, 0)",
+        "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+        "textColor": "rgb(248, 248, 255)",
+        "textSize": "17px",
+        "name": "食べる",
+        "nameColor": "rgb(255, 224, 102)",
+        "reading": "たべる",
+        "pitch": "Pitch accent [2]: た low, べ high, る low",
+        "counter": "Page 3 of 8",
+        "footerState": "ready",
+        "location": "Jitendex",
+        "typedChars": 205,
+        "visibleChars": 205,
+        "commands": [
+          "おぼえる (disabled)",
+          "きく",
+          "メモ",
+          "つぎ"
+        ],
+        "focused": null,
+        "focusedText": null,
+        "pageText": "★1-dantransitiveto eatもっと果くだ物ものを食たべるべきです。You should eat more fruit.[1]to live on (e.g. a salary)to live offto subsist on僕ぼくは脚きゃく本ほん家かで食たべていく決けっ心しんをした。I am determined to make a living as a playwright.[",
+        "stats": [],
+        "lookups": "Looked up 2 times",
+        "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+      }
+    },
+    "rpg-menu": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 475.796875
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 3 of 8",
+      "footerState": "ready",
+      "location": "Jitendex",
+      "typedChars": 205,
+      "visibleChars": 205,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": "rpg-cmd",
+      "focusedText": "きく",
+      "pageText": "★1-dantransitiveto eatもっと果くだ物ものを食たべるべきです。You should eat more fruit.[1]to live on (e.g. a salary)to live offto subsist on僕ぼくは脚きゃく本ほん家かで食たべていく決けっ心しんをした。I am determined to make a living as a playwright.[",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica",
+      "hookTimingsSoFar": 5
+    },
+    "rpg-kanji": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 474.59375
+      },
+      "term": 0,
+      "kanji": 2,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": null,
+      "pitch": null,
+      "counter": "Page 1 of 2",
+      "footerState": "ready",
+      "location": "hachidori-fixture",
+      "typedChars": 11,
+      "visibleChars": 11,
+      "commands": [
+        "もどる",
+        "おぼえる (disabled)",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": "rpg-cmd",
+      "focusedText": "もどる",
+      "pageText": "hachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9",
+      "stats": [
+        "freq 382",
+        "grade 2",
+        "strokes 9",
+        "freq 328",
+        "grade 2",
+        "jlpt 4",
+        "strokes 9",
+        null
+      ],
+      "lookups": null,
+      "textSample": "食Back食hachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9KANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2"
+    },
+    "rpg-kanji-page2": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 474.59375
+      },
+      "term": 0,
+      "kanji": 2,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": null,
+      "pitch": null,
+      "counter": "Page 2 of 2",
+      "footerState": "end",
+      "location": "KANJIDIC [2026-267]",
+      "typedChars": 7,
+      "visibleChars": 7,
+      "commands": [
+        "もどる",
+        "おぼえる (disabled)",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": "rpg-next",
+      "focusedText": "",
+      "pageText": "KANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269grade2halpern_kkd2578halpern_kkld1316halpern_kkld_",
+      "stats": [
+        "freq 382",
+        "grade 2",
+        "strokes 9",
+        "freq 328",
+        "grade 2",
+        "jlpt 4",
+        "strokes 9",
+        null
+      ],
+      "lookups": null,
+      "textSample": "食Back食hachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9KANJIDIC [2026-267]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2"
+    },
+    "rpg-back": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 416.015625
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 1 of 8",
+      "footerState": "typing",
+      "location": "hachidori-fixture",
+      "typedChars": 32,
+      "visibleChars": 0,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "vtto eatto live on (e.g. a salary)",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "rpg-long": {
+      "rect": {
+        "x": 402,
+        "y": 180,
+        "width": 560,
+        "height": 475.796875
+      },
+      "term": 6,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "上げる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "あげる",
+      "pitch": "Pitch accent [0]: あ low, げ high, る high",
+      "counter": "Page 1 of 6",
+      "footerState": "ready",
+      "location": "Jitendex",
+      "typedChars": 358,
+      "visibleChars": 358,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "★1-dantransitiveto raiseto elevate質しつ問もんがあれば右みぎ手てを挙あげて下ください。If you have a question, please raise your right hand.[1]Antonym下さげる② to lower; to reduce; to bring downSee also手てを上あげる① to raise one's handS",
+      "stats": [],
+      "lookups": "Looked up 2 times",
+      "textSample": "上あげるげるto raiseto elevate上げるあげるあげるLooked up 2 timesあげる[0]Jitendex★1-dantransitiveto raiseto elevate質しつ問もんがあれば右みぎ手てを挙あげて下ください。If you have a question, please raise your right hand.[1]Antonym下さげる② to lowe"
+    },
+    "rpg-typing": {
+      "rect": {
+        "x": 402,
+        "y": 180,
+        "width": 560,
+        "height": 475.796875
+      },
+      "term": 6,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 3,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "上げる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "あげる",
+      "pitch": "Pitch accent [0]: あ low, げ high, る high",
+      "counter": "Page 1 of 6",
+      "footerState": "typing",
+      "location": "Jitendex",
+      "typedChars": 358,
+      "visibleChars": 14,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "★1-dantransitiveto raiseto elevate質しつ問もんがあれば右みぎ手てを挙あげて下ください。If you have a question, please raise your right hand.[1]Antonym下さげる② to lower; to reduce; to bring downSee also手てを上あげる① to raise one's handS",
+      "stats": [],
+      "lookups": "Looked up 3 times",
+      "textSample": "上あげるげるto raiseto elevate上げるあげるあげるLooked up 3 timesあげる[0]Jitendex★1-dantransitiveto raiseto elevate質しつ問もんがあれば右みぎ手てを挙あげて下ください。If you have a question, please raise your right hand.[1]Antonym下さげる② to lowe"
+    },
+    "rpg-reduced-motion": {
+      "rect": {
+        "x": 252,
+        "y": 105,
+        "width": 560,
+        "height": 416.015625
+      },
+      "term": 5,
+      "kanji": 0,
+      "rpg": true,
+      "chromeHidden": true,
+      "theme": "rpg-dialogue",
+      "sheets": 2,
+      "popupBackground": "rgba(0, 0, 0, 0)",
+      "windowBackground": "linear-gradient(rgb(42, 58, 212) 0%, rgb(26, 36, 174) 30%, r",
+      "textColor": "rgb(248, 248, 255)",
+      "textSize": "17px",
+      "name": "食べる",
+      "nameColor": "rgb(255, 224, 102)",
+      "reading": "たべる",
+      "pitch": "Pitch accent [2]: た low, べ high, る low",
+      "counter": "Page 1 of 8",
+      "footerState": "typing",
+      "location": "hachidori-fixture",
+      "typedChars": 32,
+      "visibleChars": 32,
+      "commands": [
+        "おぼえる (disabled)",
+        "きく",
+        "メモ",
+        "つぎ"
+      ],
+      "focused": null,
+      "focusedText": null,
+      "pageText": "vtto eatto live on (e.g. a salary)",
+      "stats": [],
+      "lookups": "Looked up 3 times",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    }
+  },
+  "hookTimings": [
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 2
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.10000014305114746
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 1.2999999523162842
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.19999980926513672
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.20000004768371582
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "kanji",
+      "elapsed": 6.599999904632568
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.6000001430511475
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 2.700000047683716
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.09999990463256836
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 2.9000000953674316
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.20000004768371582
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.5
+    },
+    {
+      "slug": "rpg-dialogue",
+      "kind": "term",
+      "elapsed": 0.09999990463256836
+    }
+  ],
+  "importState": "Finished 4 of 4 archives — 4 imported, 0 failed.",
+  "importSeconds": 1.518,
+  "importDetail": [
+    "hachidori-fixture.zip :: Imported hachidori-fixture in 0.2 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file.",
+    "jitendex-yomitan.zip :: Imported Jitendex.org [2026-08-11] in 0.8 seconds: 435,448 terms, 250 media files.",
+    "KANJIDIC_english.zip :: Imported KANJIDIC [2026-267] in 0.2 seconds: 10,384 kanji.",
+    "kanjium_pitch_accents.zip :: Imported Kanjium Pitch Accents in 0.1 seconds: 124,137 pitch entries."
+  ],
+  "typingPace": [
+    {
+      "ms": 252,
+      "visible": 16,
+      "total": 358,
+      "state": "typing"
+    },
+    {
+      "ms": 504,
+      "visible": 28,
+      "total": 358,
+      "state": "typing"
+    },
+    {
+      "ms": 757,
+      "visible": 39,
+      "total": 358,
+      "state": "typing"
+    },
+    {
+      "ms": 1017,
+      "visible": 51,
+      "total": 358,
+      "state": "typing"
+    },
+    {
+      "ms": 1270,
+      "visible": 63,
+      "total": 358,
+      "state": "typing"
+    },
+    {
+      "ms": 1524,
+      "visible": 74,
+      "total": 358,
+      "state": "typing"
+    }
+  ],
+  "hookSummary": {
+    "calls": 13,
+    "medianMs": 0.5,
+    "p95Ms": 6.599999904632568,
+    "maxMs": 6.599999904632568,
+    "byKind": {
+      "term": 12,
+      "kanji": 1
+    }
+  }
+}
