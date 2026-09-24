@@ -2,29 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Tategaki: the popup is a vertical margin note beside a manga speech bubble.
-// theme.css turns the popup into `writing-mode: vertical-rl`; this module does
-// what CSS cannot:
-//   1. puts furigana on the word *as it appears in the bubble* (食べたかった,
-//      not only the dictionary form 食べる) by reusing the renderer's ruby
-//      segments, and lists the inflection steps beside it;
-//   2. moves the frequency/pitch/grammar capsule into the headword column, the
-//      renderer's compact summary to the head of the glosses as a numbered
-//      gist, and the audio / note / custom-link buttons into a vertical
-//      toolbar strip;
-//   3. rewrites the kanji view into a 漢和辞典 colophon: 音/訓 readings with the
-//      okurigana marked, 画数・学年・頻度・旧JLPT with kanji numerals and
-//      tate-chū-yoko digits, built from the renderer's stats <dl>;
-//   4. points the bubble's tail at the hovered word and pops the bubble out of
-//      it (from `view.anchor`, a proposed API addition — no anchor, no tail);
-//   5. remembers the words looked up on this page and shows the last five in
-//      the toolbar strip, with a ×n mark for a word looked up again.
+// theme.css sets `writing-mode: vertical-rl`; this module does what CSS cannot:
+//   1. furigana on the word *as it appears in the bubble* (食べたかった, not only
+//      食べる), reusing the renderer's ruby segments, with the inflection steps;
+//   2. the frequency/pitch/grammar capsule into the headword column, the
+//      renderer's compact summary to the head of the glosses as a numbered gist,
+//      the audio / note / custom-link buttons into a vertical toolbar strip;
+//   3. the kanji view as a 漢和辞典 colophon: 音/訓 with the okurigana marked,
+//      画数・学年・頻度・旧JLPT in kanji numerals and tate-chū-yoko digits, from
+//      the renderer's stats <dl>;
+//   4. the bubble's tail pointed at the hovered word, and the pop-in from it
+//      (`view.anchor`, a proposed API addition — no anchor, no tail);
+//   5. the last five words looked up on this page, in the strip, ×n on repeats.
 //
-// Contract (hachidori-themes CI lint + the reader's host): one default export,
+// Contract (hachidori-themes lint + the reader's host): one default export,
 // synchronous hooks, no imports, no globals beyond `view` and `api`, no HTML
-// strings, no network, no timers. A hook that throws switches this module off
-// for the page and the CSS layer keeps working — nothing below relies on
-// throwing. Every step is idempotent: the host runs onRender again after tab
-// switches, Show more and Back.
+// strings, no network, no timers. A hook that throws is switched off for the
+// page; nothing below relies on throwing. Every step is idempotent: the host
+// runs onRender again after tab switches, Show more and Back.
 
 const HISTORY_LIMIT = 5;
 const TAIL_SIZE = 18;                 // the rotated square; the visible tail is ~12 px deep
@@ -70,8 +65,8 @@ function splitLabel(expression) {
 }
 
 // The renderer's ruby segments, in order: [{ text, reading }]. A <ruby> per
-// kanji run (or per segment when pitch furigana is on); kana between runs is
-// plain text or, with pitch furigana, a ruby whose reading equals its base.
+// kanji run (per segment with pitch furigana, where kana rubies read as their
+// own base).
 function readSegments(expression) {
   const segments = [];
   const push = (text, reading) => {
@@ -93,12 +88,11 @@ function readSegments(expression) {
   return segments;
 }
 
-// Furigana for the surface form: each dictionary-form segment that still
-// begins the surface form keeps its reading. Conjugation only rewrites the
-// trailing kana, so 食(た)べる carries 食(た) over to 食べたかった. The one
-// verb whose kanji itself changes reading is 来る (く→き/こ): its 来 stays bare
-// when the kana after it changed. Whatever no longer matches is appended as it
-// is — whole-word fallback, no invented reading.
+// Furigana for the surface form: a dictionary-form segment keeps its reading
+// while it still begins the surface form — conjugation only rewrites trailing
+// kana, so 食(た)べる carries 食(た) over to 食べたかった. The one verb whose
+// kanji itself changes reading is 来る (く→き/こ): its 来 stays bare when the
+// kana after it changed. Whatever no longer matches is appended as it is.
 function buildSurfaceWord(api, surface, segments) {
   const word = api.el("span", "mv-surface-word");
   let index = 0;
@@ -172,10 +166,9 @@ function pointTail(view, api) {
 }
 
 // ---------------------------------------------------------------------------
-// Page memory: the last few words looked up on this page, shown at the foot
-// of the toolbar strip. Only root popups count as reading; a child popup opened
-// from a definition does not. Re-renders of the same word (tabs, Show more,
-// Back) are not new lookups.
+// Page memory: the last few words looked up on this page, at the foot of the
+// toolbar strip. Only root popups count as reading; re-renders of the same
+// word (tabs, Show more, Back) are not new lookups.
 function rememberAndList(view, api, toolbar, expression) {
   const { expression: text, reading } = splitLabel(expression);
   if (view.depth === 0 && text && history[0]?.expression !== text) {

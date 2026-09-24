@@ -1,14 +1,10 @@
 /* themes/manga-vertical/theme.css — Tategaki: a vertical margin note beside a
- * manga speech bubble. Paper-white page stock, ink-black text, one spot colour
- * (朱, the vermilion of a hanko seal) for the reading and the kanji you can click.
- *
- * The palette block is what `build-index.mjs` generates from theme.yaml; the
- * rest is this theme's own CSS. Everything is set in `writing-mode: vertical-rl`,
- * so "column" below means a vertical line of text and the popup's block axis
- * runs right to left: headword column on the right, glosses flowing left, the
- * toolbar strip on the far left. Physical properties are used on purpose.
- * Structure (surface-form furigana, the toolbar strip, the kanji colophon, the
- * tail, page memory) is theme.js's job; anything it hides carries
+ * manga speech bubble. Paper stock, ink text, one spot of 朱 (hanko vermilion).
+ * Everything is `writing-mode: vertical-rl`: a "column" is a vertical line of
+ * text and the block axis runs right to left — headword column on the right,
+ * glosses flowing left, toolbar strip at the far left. Physical properties are
+ * used on purpose. The palette block is what build-index.mjs generates from
+ * theme.yaml; structure is theme.js's job and what it hides carries
  * data-theme-hidden, which this file collapses. */
 
 :host([data-hoshidicts-theme="manga-vertical"]) {
@@ -57,9 +53,8 @@
   transition: transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 120ms ease-out;
 }
 
-/* The bubble pops out of the word it explains. @starting-style needs the
- * sanitiser to allowlist it (see the proposal's "Open questions"); without it
- * the popup simply appears, as today. */
+/* The bubble pops out of the word. @starting-style needs the sanitiser's
+ * allowlist; without it the popup simply appears, as today. */
 @starting-style {
   :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup {
     transform: scale(0.9);
@@ -74,7 +69,7 @@
 }
 
 /* The tail: a rotated square on the edge facing the word, clipped to its outer
- * half. theme.js sets the five --theme-tail-* variables from view.anchor. */
+ * half; theme.js sets the --theme-tail-* variables from view.anchor. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-popup::before {
   content: "";
   position: absolute;
@@ -143,8 +138,8 @@
   font-feature-settings: "vert", "vrt2";
 }
 
-/* Kanji in the headword open the kanji view. Ruby already owns the right-hand
- * side, so the marker sits on the left, as a 傍線 does when ruby is present. */
+/* Clickable kanji: ruby owns the right side, so the marker sits on the left,
+ * as a 傍線 does when ruby is present. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-link {
   border-bottom: 0;
   border-left: 1px dotted var(--mv-rule);
@@ -160,8 +155,8 @@
   outline: none;
 }
 
-/* Pitch furigana: the accent line moves from over the reading to beside it —
- * high on the right, low on the left, the drop marked under the mora. */
+/* Pitch furigana: the accent line moves beside the reading — high right, low
+ * left, the drop under the mora. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-pitch-ruby {
   vertical-align: baseline;
 }
@@ -196,8 +191,7 @@
   border-bottom: 2px solid var(--hoshidicts-pitch);
 }
 
-/* The word as it stands in the bubble (theme.js), with inherited furigana and
- * the inflection steps: 食(た)べたかった ｜ たい・た */
+/* The word as it stands in the bubble (theme.js): 食(た)べたかった ｜ 活用 た・たい */
 :host([data-hoshidicts-theme="manga-vertical"]) .mv-surface {
   display: block;
   margin-top: 10px;
@@ -266,8 +260,7 @@
   font-size: 11px;
 }
 
-/* Tags and badges become small vertical seals: an outlined box with the text
- * running down it, digits and Latin rotated like a book spine. */
+/* Tags and badges: small outlined seals, text running down them. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-tag,
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-primary-grammar-tag {
   display: inline-block;
@@ -302,10 +295,8 @@
   display: inline-flex;
 }
 
-/* The gist: the renderer's compact summary (Settings → Design → Compact
- * summary, suggested on by theme.yaml), moved by theme.js to the head of the
- * scrolling glosses — one sense per column, numbered 一二三, right next to the
- * headword; the full dictionary cards continue to its left. */
+/* The gist: the renderer's compact summary, moved by theme.js to the head of
+ * the scrolling glosses; the full dictionary cards continue to its left. */
 :host([data-hoshidicts-theme="manga-vertical"]) .mv-gist {
   margin: 0 0 0 12px;
   padding: 0 0 0 12px;
@@ -327,8 +318,7 @@
   display: none;
 }
 
-/* The senses run on in one column, 一、二、三 in 朱, and wrap into the next
- * column when it is full — as a 国語辞典 sets them, not one sense per line. */
+/* Senses run on in one column, 一、二、三 in 朱, as a 国語辞典 sets them. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-compact-definition-items {
   counter-reset: mv-gist;
 }
@@ -346,7 +336,7 @@
   color: var(--hoshidicts-palette-primary);
 }
 
-/* Dictionary tabs read as the thumb index cut into a paper dictionary's edge. */
+/* Dictionary tabs as a paper dictionary's thumb index. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-metadata-strip {
   display: block;
   width: auto;
@@ -408,7 +398,7 @@
   border-right: 3px double var(--mv-rule);
 }
 
-/* Secondary entries (inside the scrolling glosses) get a smaller headword. */
+/* Secondary entries get a smaller headword. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header .gsm-hoshidicts-expression {
   font-size: 22px;
 }
@@ -452,7 +442,7 @@
   color: var(--text-color-light1);
 }
 
-/* Senses numbered 一、二、三 in the top margin, the way a 国語辞典 sets them. */
+/* Senses numbered 一、二、三 in the top margin. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-definitions {
   margin: 0;
   padding: 1.7em 0 0;
@@ -609,8 +599,7 @@
   color: var(--hoshidicts-palette-primary);
 }
 
-/* Page memory: the last five words looked up on this page, faint, at the foot
- * of the strip; ×n when a word came back. */
+/* Page memory: the last five words looked up on this page; ×n when one came back. */
 :host([data-hoshidicts-theme="manga-vertical"]) .mv-history {
   flex: 0 1 auto;
   min-height: 0;
@@ -642,7 +631,7 @@
 
 /* ------------------------------------------------------------ kanji view */
 
-/* The glyph sits in a 漢字練習帳 square: dashed cross-lines, ink glyph. */
+/* The glyph in a 漢字練習帳 square. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-navigation {
   display: flex;
   flex-direction: row;                       /* row = downwards: glyph, then the facts under it */
@@ -651,8 +640,8 @@
   margin: 0;
 }
 
-/* 画数・学年・頻度・旧JLPT (theme.js, from the stats <dl>) wrap under the glyph:
- * column = the block axis (leftwards), wrapping down when the square is full. */
+/* 画数・学年・頻度・旧JLPT (theme.js) wrap under the glyph: column = the block
+ * axis (leftwards), wrapping down when the square is full. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-navigation .mv-facts {
   display: flex;
   flex-direction: column;
@@ -712,7 +701,7 @@
   color: var(--text-color-light1);
 }
 
-/* 音・訓 rows built by theme.js; the okurigana after KANJIDIC's dot is lighter. */
+/* 音・訓 rows (theme.js); the okurigana after KANJIDIC's dot is lighter. */
 :host([data-hoshidicts-theme="manga-vertical"]) .mv-yomi,
 :host([data-hoshidicts-theme="manga-vertical"]) .mv-fact {
   display: block;
@@ -756,7 +745,7 @@
   margin: 0 0 0 4px;
 }
 
-/* Meanings run on after the 意味 seal in the same column: 一、eat 二、food. */
+/* Meanings run on after the 意味 seal: 一、eat 二、food. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-kanji-meanings {
   display: inline;
   margin: 0;
@@ -811,9 +800,7 @@
 
 /* ------------------------------------------- horizontal islands, notices */
 
-/* Forms and menus stay horizontal panels: the Note form slides in as a column
- * between the headword and the glosses; the audio-source menu and any failure
- * notice read left to right. */
+/* Forms, menus and notices read left to right. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form,
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-audio-menu,
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-lookup-failure,
@@ -823,8 +810,8 @@
   text-orientation: mixed;
 }
 
-/* The Note form is a 付箋 — a sticky slip laid over the foot of the bubble —
- * rather than one more vertical column: a horizontal form needs the width. */
+/* The Note form is a 付箋, a slip laid over the foot of the bubble: a
+ * horizontal form needs the width. */
 :host([data-hoshidicts-theme="manga-vertical"]) .gsm-hoshidicts-note-form {
   position: absolute;
   z-index: 5;
