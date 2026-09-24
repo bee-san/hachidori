@@ -1,0 +1,189 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "previews": {
+    "02-preview-default-today": {
+      "rect": {
+        "x": 62,
+        "y": 114,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "default",
+      "skin": null,
+      "adoptedSheets": 0,
+      "popup": {
+        "backgroundColor": "color(srgb 0.152941 0.14902 0.188235)",
+        "color": "rgb(232, 229, 235)",
+        "borderRadius": "14px",
+        "fontFamily": "\"Noto Sans CJK JP\", \"Noto Sans JP\", \"Yu Gothic UI\", \"Hiragino Sans\", \"Hiragino Kaku Gothic ProN\", Meiryo, sans-serif",
+        "fontSize": "16px",
+        "boxShadow": "rgba(255, 255, 255, 0.07) 0px 1px 0px 0px inset, rgba(0, 0, 0, 0.6) 0px 18px 48px 0px, rgba(0, 0, 0, 0.36) 0px 2px 8px 0px",
+        "borderTopColor": "color(srgb 0.38 0.373726 0.408235)"
+      },
+      "expression": {
+        "fontSize": "32px",
+        "color": "rgb(232, 229, 235)"
+      },
+      "reading": {
+        "fontSize": "15px",
+        "color": "color(srgb 0.728157 0.718275 0.745569)"
+      },
+      "card": {
+        "backgroundColor": "color(srgb 0.162824 0.158902 0.200314)",
+        "borderTopWidth": "1px",
+        "borderRadius": "10px",
+        "padding": "11px 12px"
+      },
+      "cardTitle": {
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "color": "color(srgb 0.728157 0.718275 0.745569)",
+        "fontSize": "13px"
+      },
+      "content": {
+        "fontSize": "16px"
+      },
+      "paletteBase100": "#272630"
+    },
+    "03-preview-nazeka-draft": {
+      "rect": {
+        "x": 62,
+        "y": 114,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "default",
+      "skin": "nazeka",
+      "adoptedSheets": 1,
+      "popup": {
+        "backgroundColor": "color(srgb 0.0666667 0.0666667 0.0666667)",
+        "color": "rgb(204, 204, 204)",
+        "borderRadius": "2px",
+        "fontFamily": "IPAGothic, TakaoGothic, \"Noto Sans CJK JP\", Meiryo, sans-serif",
+        "fontSize": "13px",
+        "boxShadow": "none",
+        "borderTopColor": "rgb(204, 204, 204)"
+      },
+      "expression": {
+        "fontSize": "18px",
+        "color": "rgb(153, 221, 255)"
+      },
+      "reading": {
+        "fontSize": "15px",
+        "color": "rgb(153, 255, 153)"
+      },
+      "card": {
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "borderTopWidth": "0px",
+        "borderRadius": "0px",
+        "padding": "3px 4px"
+      },
+      "cardTitle": {
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "color": "rgb(216, 168, 136)",
+        "fontSize": "11px"
+      },
+      "content": {
+        "fontSize": "13px"
+      },
+      "paletteBase100": "#111111"
+    },
+    "04-preview-rikaikun-draft": {
+      "rect": {
+        "x": 62,
+        "y": 114,
+        "width": 560,
+        "height": 420
+      },
+      "theme": "default",
+      "skin": "rikaikun",
+      "adoptedSheets": 1,
+      "popup": {
+        "backgroundColor": "color(srgb 0.360784 0.45098 0.721569)",
+        "color": "rgb(255, 255, 255)",
+        "borderRadius": "5px",
+        "fontFamily": "sans-serif",
+        "fontSize": "14px",
+        "boxShadow": "none",
+        "borderTopColor": "rgb(208, 208, 208)"
+      },
+      "expression": {
+        "fontSize": "18px",
+        "color": "rgb(183, 231, 255)"
+      },
+      "reading": {
+        "fontSize": "13px",
+        "color": "rgb(192, 255, 192)"
+      },
+      "card": {
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "borderTopWidth": "0px",
+        "borderRadius": "0px",
+        "padding": "0px"
+      },
+      "cardTitle": {
+        "backgroundColor": "rgb(76, 99, 168)",
+        "color": "rgb(255, 255, 255)",
+        "fontSize": "10px"
+      },
+      "content": {
+        "fontSize": "13px"
+      },
+      "paletteBase100": "#5c73b8"
+    }
+  },
+  "exfiltration": {
+    "constructedImportRules": 0,
+    "popupOutline": "rgb(255, 0, 0)",
+    "requestsReceived": [
+      "/remote.css?via=style-element",
+      "/leak?expression-starts-with=%E9%A3%9F",
+      "/favicon.ico"
+    ]
+  },
+  "settingsThemeOptions": [
+    "auto",
+    "default",
+    "miku",
+    "catppuccin-mocha",
+    "solarized-dark",
+    "dark",
+    "synthwave",
+    "halloween",
+    "forest",
+    "aqua",
+    "black",
+    "luxury",
+    "dracula",
+    "business",
+    "night",
+    "coffee",
+    "dim",
+    "sunset",
+    "abyss",
+    "girlypop",
+    "solarized-light",
+    "light",
+    "cupcake",
+    "bumblebee",
+    "emerald",
+    "corporate",
+    "retro",
+    "cyberpunk",
+    "valentine",
+    "garden",
+    "lofi",
+    "pastel",
+    "fantasy",
+    "wireframe",
+    "cmyk",
+    "autumn",
+    "acid",
+    "lemonade",
+    "winter",
+    "nord",
+    "caramellatte",
+    "silk",
+    "high-contrast"
+  ]
+}

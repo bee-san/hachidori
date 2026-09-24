@@ -1,0 +1,115 @@
+/* Nazeka — after wareya/nazeka texthook.js defaults (8b220fb):
+ * bgcolor #111111, fgcolor #CCCCCC, hlcolor #99DDFF, hlcolor2 #99FF99,
+ * titlecolor #D8A888, dict_item_fontsize 18, reading_fontsize 15,
+ * definition_fontsize 13, padding 2, border 1px solid fgcolor, radius 2px,
+ * no drop shadow, <hr> separators at 25% opacity.
+ * Selectors follow reader.css: palette on the host, semantics on the popup. */
+
+:host([data-hoshidicts-skin="nazeka"]) {
+  --hoshidicts-palette-color-scheme: dark;
+  --hoshidicts-palette-base-100: #111111;
+  --hoshidicts-palette-base-200: #111111;
+  --hoshidicts-palette-base-300: #1c1c1c;
+  --hoshidicts-palette-base-content: #cccccc;
+  --hoshidicts-palette-primary: #99ddff;
+  --hoshidicts-palette-primary-content: #111111;
+  --hoshidicts-palette-secondary: #99ff99;
+  --hoshidicts-palette-secondary-content: #111111;
+  --hoshidicts-palette-accent: #d8a888;
+  --hoshidicts-palette-accent-content: #111111;
+  --hoshidicts-palette-neutral: #606060;
+  --hoshidicts-palette-neutral-content: #cccccc;
+  --hoshidicts-palette-info: #406080;
+  --hoshidicts-palette-info-content: #cccccc;
+  --hoshidicts-palette-success: #608040;
+  --hoshidicts-palette-warning: #d8a888;
+  --hoshidicts-palette-error: #ff7070;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-popup {
+  --hoshidicts-border: color-mix(in srgb, var(--hoshidicts-palette-base-content) 25%, transparent);
+  --hoshidicts-border-strong: var(--hoshidicts-palette-base-content);
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-chrome-background: var(--hoshidicts-popup-background);
+  border-radius: 2px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: "IPAGothic", "TakaoGothic", "Noto Sans CJK JP", "Meiryo", sans-serif;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-primary-header,
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-content-scroll {
+  padding: 2px 4px;
+  min-height: 0;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-metadata-strip {
+  padding: 2px 4px 3px;
+}
+
+/* Headword 18px in hlcolor; reading 15px in hlcolor2. */
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-expression {
+  font-size: 18px;
+  color: var(--hoshidicts-palette-primary);
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-expression rt {
+  font-size: 15px;
+  color: var(--hoshidicts-palette-secondary);
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-deinflection {
+  font-size: 12px;
+}
+
+/* Nazeka draws no cards: definitions flow under the headword, separated by a
+ * 1px rule at 25% of the text colour. */
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-glossary-grid {
+  gap: 0;
+  margin-top: 2px;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-glossary-card {
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  border-top: 1px solid var(--hoshidicts-border);
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-glossary-card-title {
+  color: var(--hoshidicts-palette-accent);
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-glossary-content {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-definitions {
+  margin-top: 2px;
+  padding-left: 18px;
+}
+
+/* info_styling badges: 80% size, 3px radius, pos/num/etc backgrounds. */
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-tag {
+  padding: 1px 3px 2px;
+  border-radius: 3px;
+  font-size: 80%;
+}
+
+:host([data-hoshidicts-skin="nazeka"]) .gsm-hoshidicts-tab {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 400;
+}

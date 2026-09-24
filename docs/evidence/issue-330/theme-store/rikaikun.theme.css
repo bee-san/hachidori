@@ -1,0 +1,115 @@
+/* Rikaikun — after melink14/rikaikun extension/css/popup.css (dd50b08),
+ * theme "blue" (the default in configuration.ts:12):
+ * --primary-color #fff, --primary-background-color #5c73b8,
+ * --kanji-color #b7e7ff, --kana-color #c0ffc0, --conjugation-color #ffe0a0,
+ * --title-background-color #4c63a8, --data-background-color #5a70b5,
+ * --kanji-readings-highlight-color #a0d0ff; box: 1px solid #d0d0d0, radius
+ * 5px, padding 4px, font normal 14px sans-serif; .w-kanji/.w-kana 18px,
+ * .w-conj 12px, .w-def 13px, .w-title 10px on the title background. */
+
+:host([data-hoshidicts-skin="rikaikun"]) {
+  --hoshidicts-palette-color-scheme: dark;
+  --hoshidicts-palette-base-100: #5c73b8;
+  --hoshidicts-palette-base-200: #4c63a8;
+  --hoshidicts-palette-base-300: #5a70b5;
+  --hoshidicts-palette-base-content: #ffffff;
+  --hoshidicts-palette-primary: #b7e7ff;
+  --hoshidicts-palette-primary-content: #1f2f5f;
+  --hoshidicts-palette-secondary: #c0ffc0;
+  --hoshidicts-palette-secondary-content: #1f2f5f;
+  --hoshidicts-palette-accent: #ffe0a0;
+  --hoshidicts-palette-accent-content: #1f2f5f;
+  --hoshidicts-palette-neutral: #4c63a8;
+  --hoshidicts-palette-neutral-content: #ffffff;
+  --hoshidicts-palette-info: #a0d0ff;
+  --hoshidicts-palette-info-content: #1f2f5f;
+  --hoshidicts-palette-success: #c0ffc0;
+  --hoshidicts-palette-warning: #ffe0a0;
+  --hoshidicts-palette-error: #ffb3b3;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-popup {
+  --hoshidicts-border: #d0d0d0;
+  --hoshidicts-border-strong: #d0d0d0;
+  --hoshidicts-text-muted: #ffffff;
+  --hoshidicts-card-background: transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-primary-header,
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-content-scroll {
+  padding: 4px;
+  min-height: 0;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-metadata-strip {
+  padding: 3px 4px 4px;
+}
+
+/* .w-kanji: 18px in --kanji-color; .w-kana: 18px in --kana-color. */
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-expression {
+  font-size: 18px;
+  color: var(--hoshidicts-palette-primary);
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-expression rt {
+  font-size: 13px;
+  color: var(--hoshidicts-palette-secondary);
+}
+
+/* .w-conj: the deinflection reason, 12px in --conjugation-color. */
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-deinflection {
+  color: var(--hoshidicts-palette-accent);
+  font-size: 12px;
+}
+
+/* Rikaikun lists definitions as plain 13px text under a 10px title bar. */
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-glossary-grid {
+  gap: 4px;
+  margin-top: 4px;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-glossary-card-title {
+  display: block;
+  padding: 2px;
+  background: var(--hoshidicts-palette-base-200);
+  color: var(--hoshidicts-palette-base-content);
+  font-size: 10px;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-glossary-content {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-definitions {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
+/* Data boxes (.k-abox-*): alternating #5a70b5 / #4c63a8 rows. */
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-tag {
+  border-radius: 0;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-skin="rikaikun"]) .gsm-hoshidicts-tab {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
