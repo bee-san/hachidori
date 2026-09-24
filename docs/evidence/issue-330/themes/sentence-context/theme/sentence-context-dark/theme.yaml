@@ -1,0 +1,46 @@
+# themes/sentence-context-dark/theme.yaml — Hachidori theme manifest, schema 1
+# A palette-only variant: `extends` inherits sentence-context's theme.css and
+# theme.js; only the 17 colours change (see "API gaps" in the proposal for the
+# proposed `extends` semantics).
+schema: 1
+slug: sentence-context-dark
+name: Sentence Context (文脈) — Night
+version: 1.0.0
+author: bee-san
+link: https://github.com/bee-san/hachidori/issues/334
+description: >-
+  The Sentence Context reader on dark newsprint: the same sentence masthead,
+  chip trail, tools row and tight serif gloss block, with soft vermilion on
+  near-black paper for reading at night.
+tags: [dark, reader, serif, sentence, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: dark
+extends: sentence-context
+palette:
+  color-scheme: dark
+  base-100: "#16130f"        # night paper
+  base-200: "#1e1a15"        # masthead band
+  base-300: "#2a241d"
+  base-content: "#e8e0d2"    # warm ink
+  primary: "#e39a80"         # soft vermilion
+  primary-content: "#16130f"
+  secondary: "#9fc4b3"
+  secondary-content: "#16130f"
+  accent: "#cbb18f"
+  accent-content: "#16130f"
+  neutral: "#6b6257"
+  neutral-content: "#f1ebe1"
+  info: "#7c9cc0"
+  info-content: "#16130f"
+  success: "#8fc49f"
+  warning: "#e0b46a"
+  error: "#f08a7a"
+css: theme.css               # palette block only; structure comes from `extends`
+options:
+  popupOpacityPercent: 100
+  popupToolbarPosition: top
+  popupColumns: 1
+screenshot: screenshot.png
+preview:
+  swatches: ["#16130f", "#e8e0d2", "#e39a80", "#9fc4b3"]

@@ -1,0 +1,96 @@
+{
+ "default": {
+  "root (warm, 8/session)": {
+   "n": 64,
+   "first_med": 16.799999952316284,
+   "first_p95": 24.200000047683716,
+   "complete_med": 33.299999952316284,
+   "complete_p95": 54.700000047683716,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "deep-nesting (depth-40 gloss)": {
+   "n": 64,
+   "first_med": 16.90000009536743,
+   "first_p95": 22.90000009536743,
+   "complete_med": 33.300000071525574,
+   "complete_p95": 50.700000047683716,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "deep-nesting-flat": {
+   "n": 64,
+   "first_med": 16.850000023841858,
+   "first_p95": 21.09999990463257,
+   "complete_med": 33.30000019073486,
+   "complete_p95": 49.799999952316284,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "child (nested popup)": {
+   "n": 14,
+   "first_med": 17.299999952316284,
+   "first_p95": 163.70000004768372,
+   "complete_med": 36.35000002384186,
+   "complete_p95": 197.80000019073486,
+   "blank_med": 3.0,
+   "blank_p95": 162.70000004768372
+  },
+  "cold (first open)": {
+   "n": 8,
+   "first_med": 178.80000007152557,
+   "first_p95": 410.7000000476837,
+   "complete_med": 315.35000002384186,
+   "complete_p95": 4204,
+   "blank_med": 169.10000002384186,
+   "blank_p95": 409.40000009536743
+  }
+ },
+ "sentence-context": {
+  "root (warm, 8/session)": {
+   "n": 64,
+   "first_med": 16.90000009536743,
+   "first_p95": 32.5,
+   "complete_med": 33.40000009536743,
+   "complete_p95": 52.700000047683716,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "deep-nesting (depth-40 gloss)": {
+   "n": 64,
+   "first_med": 17.0,
+   "first_p95": 56.5,
+   "complete_med": 33.40000009536743,
+   "complete_p95": 58,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "deep-nesting-flat": {
+   "n": 64,
+   "first_med": 16.800000190734863,
+   "first_p95": 27.299999952316284,
+   "complete_med": 33.299999952316284,
+   "complete_p95": 57.299999952316284,
+   "blank_med": 0.0,
+   "blank_p95": 0
+  },
+  "child (nested popup)": {
+   "n": 16,
+   "first_med": 24.950000047683716,
+   "first_p95": 456,
+   "complete_med": 43.75000011920929,
+   "complete_p95": 485,
+   "blank_med": 3.5500000715255737,
+   "blank_p95": 455.30000019073486
+  },
+  "cold (first open)": {
+   "n": 8,
+   "first_med": 119.05000007152557,
+   "first_p95": 210.40000009536743,
+   "complete_med": 234.10000002384186,
+   "complete_p95": 516.5999999046326,
+   "blank_med": 117.85000002384186,
+   "blank_p95": 196.90000009536743
+  }
+ }
+}

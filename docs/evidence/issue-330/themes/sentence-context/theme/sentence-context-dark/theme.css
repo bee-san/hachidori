@@ -1,0 +1,30 @@
+/* themes/sentence-context-dark/theme.css — palette block only. Everything else
+ * (masthead, chips, tools row, gloss block, kanji view) is inherited from
+ * sentence-context/theme.css through `extends`, re-scoped to this slug. */
+
+:host([data-hoshidicts-theme="sentence-context-dark"]) {
+  --hoshidicts-palette-color-scheme: dark;
+  --hoshidicts-palette-base-100: #16130f;
+  --hoshidicts-palette-base-200: #1e1a15;
+  --hoshidicts-palette-base-300: #2a241d;
+  --hoshidicts-palette-base-content: #e8e0d2;
+  --hoshidicts-palette-primary: #e39a80;
+  --hoshidicts-palette-primary-content: #16130f;
+  --hoshidicts-palette-secondary: #9fc4b3;
+  --hoshidicts-palette-secondary-content: #16130f;
+  --hoshidicts-palette-accent: #cbb18f;
+  --hoshidicts-palette-accent-content: #16130f;
+  --hoshidicts-palette-neutral: #6b6257;
+  --hoshidicts-palette-neutral-content: #f1ebe1;
+  --hoshidicts-palette-info: #7c9cc0;
+  --hoshidicts-palette-info-content: #16130f;
+  --hoshidicts-palette-success: #8fc49f;
+  --hoshidicts-palette-warning: #e0b46a;
+  --hoshidicts-palette-error: #f08a7a;
+}
+
+/* Night paper needs a deeper shadow and a lighter rule to read as an edge. */
+:host([data-hoshidicts-theme="sentence-context-dark"]) .gsm-hoshidicts-popup {
+  --theme-vermilion-soft: color-mix(in srgb, var(--hoshidicts-palette-primary) 22%, var(--hoshidicts-palette-base-100));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 40px rgba(0, 0, 0, 0.6);
+}

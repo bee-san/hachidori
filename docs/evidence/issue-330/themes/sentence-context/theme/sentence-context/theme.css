@@ -1,0 +1,717 @@
+/* themes/sentence-context/theme.css — "Sentence Context (文脈)": newspaper reader
+ * mode. Warm newsprint, ink, vermilion (朱) for the looked-up word, a serif
+ * Japanese stack. The masthead (sentence, chip trail, tools row) and the moved
+ * capsule are built by theme.js; this file lays them out and flattens the
+ * renderer's cards into a tight gloss block. Anything theme.js hides carries
+ * data-theme-hidden, which this file collapses.
+ *
+ * The palette block is what `build-index.mjs` generates from theme.yaml. The
+ * dark variant (sentence-context-dark) ships only its own palette block and
+ * inherits everything below through `extends`. */
+
+:host([data-hoshidicts-theme="sentence-context"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #f7f2e8;
+  --hoshidicts-palette-base-200: #efe8da;
+  --hoshidicts-palette-base-300: #e3dac8;
+  --hoshidicts-palette-base-content: #1f1b17;
+  --hoshidicts-palette-primary: #a8321f;
+  --hoshidicts-palette-primary-content: #fbf7f0;
+  --hoshidicts-palette-secondary: #3b5d4f;
+  --hoshidicts-palette-secondary-content: #f7f2e8;
+  --hoshidicts-palette-accent: #6d5a3f;
+  --hoshidicts-palette-accent-content: #f7f2e8;
+  --hoshidicts-palette-neutral: #5a544b;
+  --hoshidicts-palette-neutral-content: #f7f2e8;
+  --hoshidicts-palette-info: #3f5a78;
+  --hoshidicts-palette-info-content: #f7f2e8;
+  --hoshidicts-palette-success: #2f6b45;
+  --hoshidicts-palette-warning: #8a5a12;
+  --hoshidicts-palette-error: #9b2c1e;
+}
+
+/* ---- the sheet of paper ---------------------------------------------------- */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-popup {
+  /* Theme-level knobs. A --theme-* variable is the only style theme.js may set. */
+  --theme-serif: "Noto Serif CJK JP", "Noto Serif JP", "Source Han Serif JP", "Hiragino Mincho ProN",
+    "Yu Mincho", "YuMincho", "BIZ UDPMincho", "MS PMincho", "Georgia", serif;
+  --theme-ink: var(--hoshidicts-palette-base-content);
+  --theme-vermilion: var(--hoshidicts-palette-primary);
+  --theme-vermilion-soft: color-mix(in srgb, var(--hoshidicts-palette-primary) 14%, var(--hoshidicts-palette-base-100));
+  --theme-rule: color-mix(in srgb, var(--hoshidicts-palette-base-content) 22%, var(--hoshidicts-palette-base-100));
+  --theme-rule-strong: color-mix(in srgb, var(--hoshidicts-palette-base-content) 55%, var(--hoshidicts-palette-base-100));
+  --hoshidicts-border: var(--theme-rule);
+  --hoshidicts-border-strong: var(--theme-rule-strong);
+  --hoshidicts-card-background: transparent;
+  height: auto !important;                                   /* hug the text … */
+  max-height: var(--gsm-hoshidicts-popup-height, 420px);     /* … up to the Design height */
+  border: 1px solid var(--theme-rule-strong);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 14px 34px rgba(30, 20, 10, 0.22);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--theme-ink);
+  font-family: var(--theme-serif);
+  font-size: 15px;
+  line-height: 1.55;
+  font-feature-settings: "palt" 1;                            /* proportional kana/kanji, as set type */
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-popup :focus-visible {
+  outline: 2px solid var(--theme-vermilion);
+  outline-offset: 1px;
+}
+
+/* ---- top band: masthead + headword ---------------------------------------- */
+/* A masthead is the top of the page: the band stays above the glosses even when
+ * the Design "toolbar position" puts the renderer's bar at the bottom (the popup
+ * is a flex column, so `order` is enough; theme.yaml also suggests `top`). */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-result-chrome {
+  flex: 0 0 auto;                 /* the masthead is bounded by theme.js's window; never squeeze it */
+  order: -1;
+  max-height: none;
+  overflow: visible;
+  border-top: 0;
+  border-bottom: 3px double var(--theme-rule-strong);   /* the newspaper's double rule */
+  background: var(--hoshidicts-chrome-background);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-result-chrome {
+  display: block;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-metadata-strip {
+  border-top: 1px solid var(--theme-rule);
+  border-bottom: 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--theme-rule);
+}
+
+/* The sentence: set like body copy, the word carried by sesame dots (傍点). */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-masthead .sc-sentence {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.85;
+  white-space: normal;
+  text-align: justify;
+  text-autospace: normal;
+  overflow-wrap: anywhere;
+  color: var(--theme-ink);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-ellipsis {
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-match {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--theme-vermilion-soft);
+  color: var(--theme-ink);
+  font-weight: 700;
+  text-emphasis: filled sesame var(--theme-vermilion);
+  text-emphasis-position: over right;
+  text-decoration: underline;
+  text-decoration-color: var(--theme-vermilion);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-kanji {
+  color: var(--theme-vermilion);
+  font-weight: 700;
+}
+
+/* "Mark words": the other likely words, as faint dotted underlines. */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-word {
+  text-decoration-color: transparent;
+  transition: text-decoration-color 160ms ease-out;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-marked .sc-word {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--theme-ink) 45%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-marked .sc-word:hover {
+  text-decoration-color: var(--theme-vermilion);
+}
+
+/* Trail on the left, tools on the right; wraps on narrow popups. */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-trail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-trail-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-trail-item + .sc-trail-item::before {
+  margin: 0 5px;
+  color: var(--theme-rule-strong);   /* decorative separator, not text */
+  font-size: 13px;
+  content: "›";
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip {
+  display: inline-block;
+  box-sizing: border-box;
+  min-height: 22px;
+  margin: 0;
+  padding: 0 7px;
+  border: 1px solid var(--theme-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--theme-ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip-form {
+  border-style: dashed;
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip-step {
+  border-color: color-mix(in srgb, var(--theme-vermilion) 45%, transparent);
+  color: var(--theme-vermilion);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) button.sc-chip-step {
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) button.sc-chip-step:hover,
+:host([data-hoshidicts-theme="sentence-context"]) button.sc-chip-step[aria-expanded="true"] {
+  background: var(--theme-vermilion-soft);
+  border-color: var(--theme-vermilion);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip-lemma,
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip-kanji {
+  border-color: var(--theme-rule-strong);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-chip-kanji {
+  color: var(--theme-vermilion);
+  font-size: 15px;
+}
+
+/* The grammar note a step chip reveals. */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-trail-note {
+  margin: 0;
+  padding: 5px 9px;
+  border-left: 3px solid var(--theme-vermilion);
+  background: color-mix(in srgb, var(--hoshidicts-palette-base-300) 60%, transparent);
+  color: var(--hoshidicts-text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-trail-note-name {
+  color: var(--theme-vermilion);
+  font-weight: 700;
+}
+
+/* ---- sentence tools --------------------------------------------------------- */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-tools-own {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-tools .gsm-hoshidicts-entry-actions {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--theme-rule);
+  gap: 4px;
+  overflow: visible;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-tools .gsm-hoshidicts-entry-actions:empty {
+  display: none;
+}
+
+/* Text buttons in the running-head style. */
+:host([data-hoshidicts-theme="sentence-context"]) .sc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--theme-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--hoshidicts-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-button:hover {
+  border-color: var(--theme-rule-strong);
+  color: var(--theme-ink);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-button[aria-pressed="true"] {
+  border-color: var(--theme-vermilion);
+  background: var(--theme-vermilion-soft);
+  color: var(--theme-vermilion);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-copy[data-state="copied"] {
+  border-color: var(--hoshidicts-success);
+  color: var(--hoshidicts-success);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .sc-copy[data-state="failed"] {
+  border-color: var(--hoshidicts-danger);
+  color: var(--hoshidicts-danger);
+}
+
+/* The renderer's own buttons, resized to the row. */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-audio-button,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-mine-button,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-note-button,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-popup-close {
+  flex-basis: 28px;
+  width: 28px;
+  height: 26px;
+  min-width: 28px;
+  min-height: 26px;
+  border-radius: 3px;
+  border-color: var(--theme-rule);
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-mine-button {
+  border-color: color-mix(in srgb, var(--theme-vermilion) 55%, transparent);
+  color: var(--theme-vermilion);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-mine-button .hd-icon,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-note-button .hd-icon,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-audio-button::before {
+  width: 16px;
+  height: 16px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-back,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-text-action-button {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 3px;
+  border-color: var(--theme-rule);
+  background: transparent;
+  color: var(--hoshidicts-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- headword row ----------------------------------------------------------- */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-primary-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  min-height: 0;
+  padding: 8px 12px 9px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-headword {
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-expression {
+  font-size: 27px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-expression rt {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-link {
+  border-bottom-color: var(--theme-rule-strong);
+}
+
+/* Frequency and grammar come up from the first entry and sit beside the headword. */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-primary-header > .gsm-hoshidicts-primary-metadata-row {
+  flex: 1 1 200px;
+  align-items: baseline;
+  margin: 0;
+  column-gap: 10px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-primary-metadata-capsule {
+  margin: 0;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-lookup-stats {
+  color: var(--hoshidicts-text-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-compact-definition-summary {
+  font-size: 13px;
+  color: var(--hoshidicts-text-muted);
+}
+
+/* Tabs as a section line: text with an underline for the selected dictionary. */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-metadata-strip {
+  padding: 0 12px;
+  border-top: 1px solid var(--theme-rule);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tab-list {
+  gap: 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tab {
+  min-height: 28px;
+  padding: 5px 10px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hoshidicts-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tab:hover:not(:disabled):not([aria-selected="true"]) {
+  background: transparent;
+  color: var(--theme-ink);
+  border-bottom-color: var(--theme-rule-strong);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tab[aria-selected="true"] {
+  background: transparent;
+  color: var(--theme-vermilion);
+  border-bottom-color: var(--theme-vermilion);
+}
+
+/* ---- the gloss block --------------------------------------------------------- */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-content-scroll {
+  flex: 0 1 auto;
+  padding: 6px 12px 10px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-grid {
+  gap: 6px;
+  margin-top: 2px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin-top: 4px;
+}
+
+/* Dictionary name as a running head over a hairline. */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-card-title {
+  margin: 4px 0 2px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--theme-rule);
+  color: var(--hoshidicts-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-definitions {
+  margin: 2px 0 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: sc-sense;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-definitions > li {
+  position: relative;
+  margin: 1px 0;
+  padding-left: 22px;
+}
+
+/* Sense numbers as small vermilion numerals in the gutter (single glosses have none). */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-definitions:not(.gsm-hoshidicts-definitions-single) > li::before {
+  position: absolute;
+  top: 0.15em;
+  left: 0;
+  width: 18px;
+  color: var(--theme-vermilion);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  counter-increment: sc-sense;
+  content: counter(sc-sense);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-definitions-single > li {
+  padding-left: 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-content {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-content ul,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-glossary-content ol {
+  margin: 1px 0;
+  padding-left: 18px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-definition-tags {
+  margin-bottom: 1px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tag {
+  border-radius: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-structured-link {
+  color: var(--theme-ink);
+  font-weight: 600;
+  text-decoration-color: var(--theme-rule-strong);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-structured-link:hover {
+  color: var(--theme-vermilion);
+}
+
+/* Further entries: a hairline and a smaller headline. */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--theme-rule);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-header {
+  min-height: 0;
+  gap: 2px 10px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-entry .gsm-hoshidicts-expression {
+  font-size: 20px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-entry .gsm-hoshidicts-entry-actions {
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-metadata,
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-tags {
+  margin-top: 2px;
+  gap: 4px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-show-more {
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--theme-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--hoshidicts-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- kanji view -------------------------------------------------------------- */
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-navigation {
+  gap: 10px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-glyph {
+  font-size: 54px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--theme-vermilion);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-entry {
+  margin: 0;
+  padding: 4px 0 6px;
+  border: 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-entry + .gsm-hoshidicts-kanji-entry {
+  border-top: 1px solid var(--theme-rule);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-dictionary {
+  margin: 4px 0 4px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--theme-rule);
+  color: var(--hoshidicts-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-readings {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 4px 0 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-reading-group {
+  display: contents;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-reading-group strong {
+  color: var(--theme-vermilion);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.7;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-entry h4 {
+  margin: 8px 0 2px;
+  color: var(--hoshidicts-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-meanings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-meanings > li + li::before {
+  margin-right: 4px;
+  color: var(--theme-rule-strong);   /* decorative separator, not text */
+  content: "·";
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats summary {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 4px 0 0;
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats dt {
+  display: inline;
+  color: var(--hoshidicts-text-muted);
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats dt::after {
+  content: " ";
+}
+
+:host([data-hoshidicts-theme="sentence-context"]) .gsm-hoshidicts-kanji-stats dd {
+  display: inline;
+  margin: 0 0 0 4px;
+}
+
+/* ---- motion ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="sentence-context"]) .sc-word,
+  :host([data-hoshidicts-theme="sentence-context"]) .sc-button {
+    transition: none;
+  }
+}

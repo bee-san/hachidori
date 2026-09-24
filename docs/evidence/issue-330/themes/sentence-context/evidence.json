@@ -1,0 +1,746 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "extensionVersion": "0.1.6",
+  "archives": [
+    "/tmp/hd-dicts/jitendex-yomitan.zip",
+    "/tmp/hd-dicts/KANJIDIC_english.zip",
+    "/tmp/hd-dicts/bees-ultimate-kanji-dictionary.zip",
+    "/tmp/hd-dicts/jiten-frequency.zip",
+    "/tmp/hd-dicts/kanjium_pitch_accents.zip"
+  ],
+  "shots": {
+    "default-term": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": false,
+      "sentence": null,
+      "match": null,
+      "chips": [],
+      "tools": [],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": null,
+      "wordsMarked": 0,
+      "theme": "light",
+      "sheets": 1,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "font": "\"Noto Sans CJK JP\"",
+      "headwordSize": "32px",
+      "sentenceSize": null,
+      "glossSize": "16px",
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "masthead": false,
+      "sentence": null,
+      "match": null,
+      "chips": [],
+      "tools": [],
+      "mineState": null,
+      "copyState": null,
+      "noteOpen": false,
+      "marked": null,
+      "wordsMarked": 0,
+      "theme": "light",
+      "sheets": 1,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "font": "\"Noto Sans CJK JP\"",
+      "headwordSize": null,
+      "sentenceSize": null,
+      "glossSize": null,
+      "textSample": "食BackKANJIDIC [2026-266]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269grade2halpern_kkd2578halpern_kkld1316halpern_"
+    },
+    "sc-term": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. "
+    },
+    "sc-term-step-note": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": true,
+      "marked": false,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words-た 1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "sc-term-marked": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": true,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. "
+    },
+    "sc-term-copied": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copied",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": "copied",
+      "noteOpen": false,
+      "marked": true,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopiedMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicat"
+    },
+    "sc-term-nested": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": true,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. "
+    },
+    "sc-kanji": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 379.578125
+      },
+      "term": 0,
+      "kanji": 1,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "食べる",
+        "食"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Back to previous results",
+        "Edit personal dictionary"
+      ],
+      "mineState": null,
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": null,
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった食べる食Copy sentenceMark wordsBack食KANJIDIC [2026-266]jouyouOnショク · ジキKunく.う · く.らう · た.べる · は.むMeaningseatfoodDetailsbusy_people2.13crowley207deroo2865four_corner8073.2freq328gakken269"
+    },
+    "sc-back": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Checking Anki card status",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "checking",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. "
+    },
+    "sc-term-focus": {
+      "rect": {
+        "x": 238,
+        "y": 150,
+        "width": 560,
+        "height": 420
+      },
+      "term": 5,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "朝ごはんを食べたかった。",
+      "match": "食べたかった",
+      "chips": [
+        "食べたかった",
+        "-た",
+        "-たい",
+        "食べる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 食べる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 1,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "朝ごはんを食べたかった。食べたかった-た-たい食べるCopy sentenceMark words食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. "
+    },
+    "sc-dark-hooker-full": {
+      "rect": {
+        "x": 453,
+        "y": 309,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "本当は、ずっと前から君に伝えたかったことがある",
+      "match": "伝えたかった",
+      "chips": [
+        "伝えたかった",
+        "-た",
+        "-たい",
+        "伝える"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 伝える",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 5,
+      "theme": "sentence-context-dark",
+      "sheets": 2,
+      "background": "color(srgb 0.0862745 0.0745098 0.0588235)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "本当は、ずっと前から君に伝えたかったことがある伝えたかった-た-たい伝えるCopy sentenceMark words伝つたえるえるto conveyto report伝えたかった → 伝える-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. In"
+    },
+    "sc-dark-term": {
+      "rect": {
+        "x": 453,
+        "y": 309,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "本当は、ずっと前から君に伝えたかったことがある",
+      "match": "伝えたかった",
+      "chips": [
+        "伝えたかった",
+        "-た",
+        "-たい",
+        "伝える"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 伝える",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 5,
+      "theme": "sentence-context-dark",
+      "sheets": 2,
+      "background": "color(srgb 0.0862745 0.0745098 0.0588235)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "本当は、ずっと前から君に伝えたかったことがある伝えたかった-た-たい伝えるCopy sentenceMark words伝つたえるえるto conveyto report伝えたかった → 伝える-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. In"
+    },
+    "sc-dark-term-marked": {
+      "rect": {
+        "x": 453,
+        "y": 309,
+        "width": 560,
+        "height": 420
+      },
+      "term": 6,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "本当は、ずっと前から君に伝えたかったことがある",
+      "match": "伝えたかった",
+      "chips": [
+        "伝えたかった",
+        "-た",
+        "-たい",
+        "伝える"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 伝える",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": true,
+      "wordsMarked": 5,
+      "theme": "sentence-context-dark",
+      "sheets": 2,
+      "background": "color(srgb 0.0862745 0.0745098 0.0588235)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "本当は、ずっと前から君に伝えたかったことがある伝えたかった-た-たい伝えるCopy sentenceMark words伝つたえるえるto conveyto report伝えたかった → 伝える-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. In"
+    },
+    "sc-dark-long": {
+      "rect": {
+        "x": 534,
+        "y": 6,
+        "width": 560,
+        "height": 420
+      },
+      "term": 4,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "何も答えられなくて、ただ黙って彼の顔を見つめていた。",
+      "match": "見つめていた",
+      "chips": [
+        "見つめていた",
+        "-た",
+        "-いる",
+        "-て",
+        "見つめる"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 見つめる",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 6,
+      "theme": "sentence-context-dark",
+      "sheets": 2,
+      "background": "color(srgb 0.0862745 0.0745098 0.0588235)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "20px",
+      "sentenceSize": "17px",
+      "glossSize": "15px",
+      "textSample": "みつめる[0]みつめる[3]Jitendex★priorityform1-dantransitiveto stare (at)to gaze (at)to look hard (at)to watch intentlyto fix one's eyes (on)いい加か減げんに現げん実じつをみつめろ。Open your eyes to reality.forms見つめる見詰めるみつめるJMdict"
+    },
+    "sc-light-hooker": {
+      "rect": {
+        "x": 534,
+        "y": 238,
+        "width": 560,
+        "height": 420
+      },
+      "term": 4,
+      "kanji": 0,
+      "masthead": true,
+      "sentence": "昨日の夜、駅前の喫茶店で偶然あの人に会ったんだ。",
+      "match": "会った",
+      "chips": [
+        "会った",
+        "-た",
+        "会う"
+      ],
+      "tools": [
+        "Copy sentence",
+        "Mark words",
+        "Mine to Anki",
+        "Play pronunciation for 会う",
+        "Edit personal dictionary"
+      ],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": false,
+      "wordsMarked": 7,
+      "theme": "sentence-context",
+      "sheets": 2,
+      "background": "color(srgb 0.968627 0.94902 0.909804)",
+      "font": "\"Noto Serif CJK JP\"",
+      "headwordSize": "27px",
+      "sentenceSize": "17px",
+      "glossSize": "17px",
+      "textSample": "昨日の夜、駅前の喫茶店で偶然あの人に会ったんだ。会った-た会うCopy sentenceMark words会あううto meetto encounter会った → 会う-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the "
+    },
+    "default-hooker": {
+      "rect": {
+        "x": 534,
+        "y": 238,
+        "width": 560,
+        "height": 420
+      },
+      "term": 4,
+      "kanji": 0,
+      "masthead": false,
+      "sentence": null,
+      "match": null,
+      "chips": [],
+      "tools": [],
+      "mineState": "ready",
+      "copyState": null,
+      "noteOpen": false,
+      "marked": null,
+      "wordsMarked": 0,
+      "theme": "default",
+      "sheets": 1,
+      "background": "color(srgb 0.152941 0.14902 0.188235)",
+      "font": "\"Noto Sans CJK JP\"",
+      "headwordSize": "32px",
+      "sentenceSize": null,
+      "glossSize": "16px",
+      "textSample": "会あううto meetto encounter会った → 会う-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indicates the speaker's c"
+    }
+  },
+  "importState": "Finished 5 of 5 archives — 5 imported, 0 failed.",
+  "clipboard": "朝ごはんを食べたかった。",
+  "hookTimesPlain": [
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 1
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.1
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.4
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 1,
+      "elapsedMs": 0.3
+    },
+    {
+      "kind": "term",
+      "depth": 1,
+      "elapsedMs": 0.1
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.3
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "kanji",
+      "depth": 0,
+      "elapsedMs": 0.3
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    }
+  ],
+  "ankiCalls": [
+    "findNotes",
+    "deckNames",
+    "modelNames",
+    "modelFieldNames",
+    "canAddNotesWithErrorDetail"
+  ],
+  "hookTimesHooker": [
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.7
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.2
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0.3
+    },
+    {
+      "kind": "term",
+      "depth": 0,
+      "elapsedMs": 0
+    }
+  ],
+  "hookSummary": {
+    "renders": 25,
+    "medianMs": 0.2,
+    "p95Ms": 0.7,
+    "maxMs": 1
+  }
+}
