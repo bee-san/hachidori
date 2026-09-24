@@ -1,0 +1,140 @@
+# guide test 2026-09-24T11:37:41Z on Linux 6.12.103-127.188.amzn2023.x86_64 x86_64; PATH=/local/home/skerraut/.local/share/mise/installs/node/22.23.1/bin:/usr/bin:/bin; HOME=/tmp/guide-test/home
++ cd /tmp/guide-test
++ git clone -q --depth 1 https://github.com/bee-san/hachidori.git
++ cd hachidori
++ git rev-parse HEAD
+1a12326aaa1b3f4a791e1934f02539956fe8292d
++ node --version
+v22.23.1
++ cat .node-version
+22.23.1
++ npm ci --prefix test/tooling
+npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+npm warn deprecated eslint@9.39.4: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+
+added 402 packages, and audited 403 packages in 6s
+
+113 packages are looking for funding
+  run `npm fund` for details
+
+3 high severity vulnerabilities
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.9.8 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
++ npm --prefix test/tooling run install:chrome
+
+> hachidori-test-tooling@1.0.0 install:chrome
+> node ../run.mjs install-chrome
+
+Chrome 152.0.7977.75: /tmp/guide-test/hachidori/test/tmp/browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome
++ RAW=https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store
++ curl -fsSLO https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/host-prototype.patch
++ curl -fsSLO https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/benchmark/harness-benchmark.patch
++ git apply host-prototype.patch harness-benchmark.patch
++ mkdir -p extension/vendor/themes/nazeka bench-scripts
++ for f in theme.yaml theme.css theme.js
++ curl -fsSL -o extension/vendor/themes/nazeka/theme.yaml https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/theme.yaml
++ for f in theme.yaml theme.css theme.js
++ curl -fsSL -o extension/vendor/themes/nazeka/theme.css https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/theme.css
++ for f in theme.yaml theme.css theme.js
++ curl -fsSL -o extension/vendor/themes/nazeka/theme.js https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/theme.js
++ for f in theme-bench-fixture.mjs summarise.mjs
++ curl -fsSL -o bench-scripts/theme-bench-fixture.mjs https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/benchmark/theme-bench-fixture.mjs
++ for f in theme-bench-fixture.mjs summarise.mjs
++ curl -fsSL -o bench-scripts/summarise.mjs https://raw.githubusercontent.com/bee-san/hachidori/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/benchmark/summarise.mjs
++ export HACHIDORI_CHROME=/tmp/guide-test/hachidori/test/tmp/browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome
++ HACHIDORI_CHROME=/tmp/guide-test/hachidori/test/tmp/browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome
++ export HACHIDORI_PUPPETEER=/tmp/guide-test/hachidori/test/tooling/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js
++ HACHIDORI_PUPPETEER=/tmp/guide-test/hachidori/test/tooling/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js
++ export HACHIDORI_HOVER_SAMPLES=5
++ HACHIDORI_HOVER_SAMPLES=5
++ B=bench-scripts
++ mkdir -p /tmp/bench
++ rm -rf '/tmp/bench/*'
++ node benchmark/hover-popup-fixture.mjs /tmp/bench/hover-popup-fixture.zip
++ HACHIDORI_ROOT=/tmp/guide-test/hachidori
++ node bench-scripts/theme-bench-fixture.mjs /tmp/bench
+{"out":"/tmp/bench","senses":24,"archives":["theme-bench-senses.zip","theme-bench-kanji.zip"]}
++ A='/tmp/bench/hover-popup-fixture.zip /tmp/bench/theme-bench-senses.zip /tmp/bench/theme-bench-kanji.zip'
++ node benchmark/hover-popup.mjs /tmp/bench/default /tmp/bench/hover-popup-fixture.zip /tmp/bench/theme-bench-senses.zip /tmp/bench/theme-bench-kanji.zip
++ tail -2
+{"session":4,"label":"kanji-view-7","renderMs":5.700000047683716,"frameMs":6.799999952316284}
+{"session":4,"hitTesting":[{"name":"glyph","iterations":1000,"hits":1000,"totalMs":72},{"name":"padding","iterations":1000,"hits":0,"totalMs":12.600000143051147},{"name":"long","iterations":1000,"hits":1000,"totalMs":117.70000004768372}],"sentenceCost":{"iterations":1000,"sentence":403,"extents":[{"extent":50,"perCallUs":11.700000047683716},{"extent":100,"perCallUs":21.899999856948853},{"extent":200,"perCallUs":47.200000047683716},{"extent":400,"perCallUs":83.20000004768372},{"extent":800,"perCallUs":162.20000004768372}],"lengths":[{"length":1003,"perCallUs":37.10000014305115},{"length":5003,"perCallUs":24.799999952316284},{"length":50003,"perCallUs":21.100000143051147}]}}
+
+real	0m47.967s
+user	0m14.780s
+sys	0m6.057s
++ HACHIDORI_HOVER_OPTIONS='{"popupTheme":"nazeka"}'
++ node benchmark/hover-popup.mjs /tmp/bench/nazeka /tmp/bench/hover-popup-fixture.zip /tmp/bench/theme-bench-senses.zip /tmp/bench/theme-bench-kanji.zip
++ tail -2
+{"session":4,"label":"kanji-view-7","renderMs":7.3999998569488525,"frameMs":13.199999809265137}
+{"session":4,"hitTesting":[{"name":"glyph","iterations":1000,"hits":1000,"totalMs":90.60000014305115},{"name":"padding","iterations":1000,"hits":0,"totalMs":13.399999856948853},{"name":"long","iterations":1000,"hits":1000,"totalMs":120.5}],"sentenceCost":{"iterations":1000,"sentence":403,"extents":[{"extent":50,"perCallUs":13.299999952316284},{"extent":100,"perCallUs":24.899999856948853},{"extent":200,"perCallUs":56.10000014305115},{"extent":400,"perCallUs":84.80000019073486},{"extent":800,"perCallUs":168.70000004768372}],"lengths":[{"length":1003,"perCallUs":42.5},{"length":5003,"perCallUs":32.5},{"length":50003,"perCallUs":41}]}}
+
+real	0m44.389s
+user	0m14.419s
+sys	0m6.027s
++ node bench-scripts/summarise.mjs /tmp/bench/default /tmp/bench/nazeka /tmp/bench/summary
+Chrome Chrome/152.0.7977.75, Node v22.23.1, 5 fresh profiles per side, Intel(R) Xeon(R) Platinum 8488C. Times in ms (median / p95).
+
+| Input | Measure | Default | Nazeka (JS) | Δ median |
+|---|---|---|---|---|
+| short | hover → first correct frame | 16.8 / 25.1 | 16.8 / 18.3 | 0 |
+|  | hover → complete result | 33.2 / 49.5 | 33.3 / 50 | +0.1 |
+|  | layout time per scan | 0.78 / 1.3 | 0.5 / 0.78 | -0.28 |
+|  | style recalc per scan | 0.78 / 1.57 | 0.73 / 1.13 | -0.05 |
+|  | script time per scan | 1.46 / 3.93 | 1.36 / 2.72 | -0.1 |
+|  | popup DOM nodes | 32 / 32 | 37 / 37 | +5 |
+| long | hover → first correct frame | 17.4 / 54.9 | 17.3 / 66.4 | -0.1 |
+|  | hover → complete result | 33.3 / 80.7 | 33.5 / 93.3 | +0.2 |
+|  | layout time per scan | 2.53 / 3.35 | 2.32 / 4.59 | -0.21 |
+|  | style recalc per scan | 1.99 / 3.76 | 2.4 / 3.83 | +0.41 |
+|  | script time per scan | 1.73 / 5.84 | 1.81 / 4.65 | +0.08 |
+|  | popup DOM nodes | 228 / 228 | 233 / 233 | +5 |
+| deep | hover → first correct frame | 17 / 91.4 | 16.9 / 86 | -0.1 |
+|  | hover → complete result | 33.3 / 107.9 | 33.3 / 116.2 | 0 |
+|  | layout time per scan | 1.03 / 2.53 | 0.82 / 1.63 | -0.21 |
+|  | style recalc per scan | 0.98 / 1.41 | 0.96 / 3.4 | -0.02 |
+|  | script time per scan | 1.4 / 4.17 | 1.4 / 3.06 | 0 |
+|  | popup DOM nodes | 73 / 73 | 78 / 78 | +5 |
+| kanji | click → kanji view in DOM | 6 / 22.3 | 8.6 / 15.4 | +2.6 |
+|  | click → next frame | 16 / 30.8 | 12.3 / 22.3 | -3.7 |
+|  | layout time per open | 0.58 / 9.1 | 0.88 / 3.55 | +0.3 |
+| cold | first hover of a fresh profile | 56.4 / 69 | 39.8 / 76.7 | -16.6 |
+|  | complete | 65.8 / 73.8 | 49.9 / 79 | -15.9 |
+
+theme.js `onRender` (Nazeka, all 280 calls): median 0.1 ms, p95 0.5 ms, max 6.1 ms; per kind — term 0.2 ms p95 (short), 0.2 ms p95 (24 senses), 0.2 ms p95 (deep), kanji 0.71 ms p95.
+Reading-tab JS heap at session end: default 4.27 MiB, Nazeka 4.57 MiB (Δ 0.3 MiB).
+
+Budget verdict: onRender p95 0.5 ms ≤ 2 ms → pass; hover regressions (> 5 ms and > 10 %): 0 of 6; kanji open regression: none; heap Δ 0.3 MiB ≤ 2 MiB → pass. Overall: PASS.
+
+theme.yaml block written to /tmp/bench/summary.yaml:
+benchmark:               # benchmark/hover-popup.mjs, this theme vs default, same Chrome and archives
+  harness: hover-popup.mjs
+  harnessCommit: 1a12326aaa1b3f4a791e1934f02539956fe8292d
+  chrome: 152.0.7977.75
+  sessions: 5
+  measuredAt: 2026-09-24
+  onRenderP95Ms: 0.5
+  onRenderMaxMs: 6.1
+  hoverCompleteMedianMs: { default: 33.2, theme: 33.3 }
+  longEntryCompleteMedianMs: { default: 33.3, theme: 33.5 }
+  deepEntryCompleteMedianMs: { default: 33.3, theme: 33.3 }
+  kanjiOpenMedianMs: { default: 6, theme: 8.6 }
+  coldFirstMedianMs: { default: 56.4, theme: 39.8 }
+  heapDeltaMiB: 0.3
+  results: <URL of raw.json/summary.md for this run>
++ ls -la /tmp/bench/summary.json /tmp/bench/summary.md /tmp/bench/summary.yaml
+-rw-r--r--. 1 skerraut amazon 15153 Sep 24 11:39 /tmp/bench/summary.json
+-rw-r--r--. 1 skerraut amazon  2122 Sep 24 11:39 /tmp/bench/summary.md
+-rw-r--r--. 1 skerraut amazon   641 Sep 24 11:39 /tmp/bench/summary.yaml
+
+real	1m53.399s
+user	0m39.803s
+sys	0m14.792s

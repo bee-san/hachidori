@@ -3,7 +3,7 @@
 # a fresh clone of main, `env -i` with only Node 22.23.1 and the system binaries
 # on PATH, the two evidence patches and the theme fetched from the evidence
 # branch with curl, then the guide's commands as written. Everything it prints
-# is the guide-test.log next to this script.
+# is guide-test.txt next to this script (*.log is gitignored).
 #
 #   bash guide-test.sh [work-dir]      (default /tmp/guide-test; removed first)
 set -euo pipefail
