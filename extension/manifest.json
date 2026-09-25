@@ -88,6 +88,7 @@
         "<all_urls>"
       ],
       "run_at": "document_idle",
+      "all_frames": true,
       "js": [
         "reader-options.js",
         "dictionary-group-state.js",

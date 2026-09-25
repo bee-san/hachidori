@@ -1351,6 +1351,7 @@
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
     document.removeEventListener("selectionchange", onSelectionChange);
+    document.removeEventListener("fullscreenchange", onFullscreenChange);
     document.removeEventListener("focusin", onPageFocusIn, true);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("keyup", onKeyUp, true);
@@ -2066,6 +2067,25 @@
     }
   }
 
+  function hostParent() {
+    const fullscreen = document.fullscreenElement;
+    if (!fullscreen || fullscreen === document.documentElement || fullscreen === document.body
+        || fullscreen.shadowRoot
+        || ["iframe", "frame", "video", "canvas", "img", "object", "embed", "svg"]
+          .includes(fullscreen.localName)) return document.body;
+    return fullscreen;
+  }
+
+  function mountHost() {
+    const parent = hostParent();
+    if (host && parent && host.parentNode !== parent) parent.appendChild(host);
+  }
+
+  function onFullscreenChange() {
+    mountHost();
+    positionPopup();
+  }
+
   function buildUi(styles) {
     host = document.createElement(HOST_TAG);
     // Inline !important is the only declaration a page cannot override, and the
@@ -2092,7 +2112,7 @@
       shadow.appendChild(fallback);
     }
 
-    document.body.appendChild(host);
+    mountHost();
     appearance = window.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = window.HDPopup.createCustomPopupStyle(shadow);
@@ -2538,10 +2558,8 @@
   function show(candidate, level = rootLevel) {
     level.activeCandidate = candidate;
     level.activeSignature = candidateSignature(candidate);
-    if (!host.isConnected && document.body) {
-      // A single-page app that swapped out document.body took the host with it.
-      document.body.appendChild(host);
-    }
+    // The body may have been replaced, or the player may have entered fullscreen.
+    mountHost();
     level.popup.hidden = false;
     level.popup.inert = false;
     level.view.scrollElement.scrollTop = 0;
@@ -4267,6 +4285,7 @@
     document.addEventListener("mousedown", onMouseDown, { capture: true });
     document.addEventListener("mouseup", onMouseUp, observe);
     document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("focusin", onPageFocusIn, observe);
     document.addEventListener("mouseout", onMouseOut, observe);
     document.addEventListener("keydown", onKeyDown, true);
