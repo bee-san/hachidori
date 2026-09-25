@@ -701,12 +701,13 @@ revisioned options write as the toolbar switch. A popup-action command goes to
 the active tab as `hd_reader_command`. The manifest starts a reader in every
 web page frame. Each frame scans and renders its own popup within that frame's
 viewport; [asbplayer](asbplayer.md) uses this for video subtitles. When a page
-element enters fullscreen, its reader mounts the popup host inside that element
+wrapper enters fullscreen, its reader mounts the popup host inside that wrapper
 so the browser's fullscreen layer can paint it; on exit the host returns to the
-document body. Every frame's reader runs the matching
-keybind action, with a count of one for entry moves. Only a frame with an open
-popup, or a selection for the scans, acts on it. Chrome alone can change these
-shortcuts, as with Yomitan on Chrome. The Keybinds section lists
+document body. Replaced elements and open shadow-root hosts use the body fallback,
+where the fullscreen layer may obscure the popup. Every frame's reader runs the
+matching keybind action, with a count of one for entry moves. Only a frame with
+an open popup, or a selection for the scans, acts on it. Chrome alone can change
+these shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
 and opens `chrome://extensions/shortcuts` (Firefox: `commands.openShortcutSettings()`,
 since `tabs.create` refuses `about:addons`).

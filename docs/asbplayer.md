@@ -4,10 +4,13 @@
 
 Hachidori looks up Japanese text in the [asbplayer](https://github.com/asbplayer/asbplayer)
 web app's subtitle list and on subtitles over its video, including the default
-in-window player. It also works in the web app's **Pop Out** player and on
-subtitles drawn by the asbplayer extension over a video, including fullscreen
-players. A popup inside a small video frame stays within that frame, so a larger
-player or Pop Out window gives it more room.
+in-window player and its fullscreen mode. It also works in the web app's
+**Pop Out** player and on subtitles drawn by the asbplayer extension over a
+video. A popup inside a small video frame stays within that frame, so a larger
+player or Pop Out window gives it more room. On streaming sites, fullscreen
+support depends on the player: some players hide their subtitles or the popup
+from other extensions. If a popup disappears in fullscreen, exit fullscreen or
+use the web app's subtitle list.
 
 By default, hold **Shift** while hovering a subtitle. To look up words without
 holding a key, choose **Hover** under Hachidori **Settings → Reading → Lookup
