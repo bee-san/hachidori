@@ -1,0 +1,42 @@
+{
+  "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+  "node": "v22.23.1",
+  "cpu": "Intel(R) Xeon(R) Platinum 8488C",
+  "logicalCpus": 16,
+  "load": [
+    3.1,
+    17.64,
+    359.59
+  ],
+  "settings": {
+    "hoverEnabled": true,
+    "lookupMode": "hover",
+    "hoverDelayMs": 0,
+    "popupNestingMaxDepth": 2,
+    "popupWidthPx": 520,
+    "popupHeightPx": 500,
+    "popupColumns": 1,
+    "maxResults": 32,
+    "definitionBlurEnabled": false,
+    "showCompactDefinitionSummary": true,
+    "compactDefinitionSummaryCount": 3
+  },
+  "words": [
+    "食べる",
+    "漢字",
+    "深層"
+  ],
+  "extensionSha256": "d1a866609e029bc9d2bedfcbce653be78e49445b6d4b0e9822e69f8fdc9efddd",
+  "samples": 3,
+  "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+  "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+  "probeSha256": "bea62cc4ac10fdd927603f7c4120a3af522ff85b2c3f50c7c3b0e0cd601d9719",
+  "harnessSha256": "588b8ead9f8e78fc7ffa6990f57c30bd2d7e40b7b61bca45367473b020181e3a",
+  "archives": [
+    {
+      "path": "/tmp/hover-fixture.zip",
+      "bytes": 631,
+      "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
+    }
+  ]
+}

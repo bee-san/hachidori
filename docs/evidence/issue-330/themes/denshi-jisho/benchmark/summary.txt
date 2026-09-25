@@ -1,0 +1,181 @@
+{
+  "/tmp/hover-default": {
+    "theme": "default",
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "samples": 3,
+    "chrome": "Chrome/152.0.7977.75",
+    "groups": {
+      "cold (first open, 1 per session)": {
+        "n": 3,
+        "firstMs": {
+          "median": 38.2,
+          "p95": 103.6
+        },
+        "completeMs": {
+          "median": 55.2,
+          "p95": 181.9
+        },
+        "blankMs": {
+          "median": 37.2,
+          "p95": 102.8
+        }
+      },
+      "warm root (root-*, 8 per session)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.8,
+          "p95": 17
+        },
+        "completeMs": {
+          "median": 33.3,
+          "p95": 33.6
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "deep nesting (deep-nesting-N, 8 per session)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.9,
+          "p95": 16.9
+        },
+        "completeMs": {
+          "median": 33.2,
+          "p95": 33.4
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "deep nesting flat (deep-nesting-flat-N)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.8,
+          "p95": 16.9
+        },
+        "completeMs": {
+          "median": 33.3,
+          "p95": 33.5
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "child popup (child-first, child-replace)": {
+        "n": 6,
+        "firstMs": {
+          "median": 16.8,
+          "p95": 16.9
+        },
+        "completeMs": {
+          "median": 33.2,
+          "p95": 33.5
+        },
+        "blankMs": {
+          "median": 3,
+          "p95": 6.3
+        }
+      }
+    }
+  },
+  "/tmp/hover-dj": {
+    "theme": "denshi-jisho",
+    "revision": "1a12326aaa1b3f4a791e1934f02539956fe8292d",
+    "samples": 3,
+    "chrome": "Chrome/152.0.7977.75",
+    "groups": {
+      "cold (first open, 1 per session)": {
+        "n": 3,
+        "firstMs": {
+          "median": 279.4,
+          "p95": 516.7
+        },
+        "completeMs": {
+          "median": 504.5,
+          "p95": 730.1
+        },
+        "blankMs": {
+          "median": 276.7,
+          "p95": 515.7
+        }
+      },
+      "warm root (root-*, 8 per session)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.9,
+          "p95": 17
+        },
+        "completeMs": {
+          "median": 33.3,
+          "p95": 33.7
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "deep nesting (deep-nesting-N, 8 per session)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.9,
+          "p95": 17
+        },
+        "completeMs": {
+          "median": 33.3,
+          "p95": 33.4
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "deep nesting flat (deep-nesting-flat-N)": {
+        "n": 24,
+        "firstMs": {
+          "median": 16.9,
+          "p95": 17.2
+        },
+        "completeMs": {
+          "median": 33.3,
+          "p95": 33.7
+        },
+        "blankMs": {
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "child popup (child-first, child-replace)": {
+        "n": 6,
+        "firstMs": {
+          "median": 18.9,
+          "p95": 29.7
+        },
+        "completeMs": {
+          "median": 41.6,
+          "p95": 50.2
+        },
+        "blankMs": {
+          "median": 3.3,
+          "p95": 28.7
+        }
+      }
+    }
+  }
+}
+
+| Scan | metric | default median / p95 | denshi-jisho median / p95 | Δ median |
+| --- | --- | --- | --- | --- |
+| cold (first open, 1 per session) | firstMs | 38.2 / 103.6 | 279.4 / 516.7 | 241.2 ms |
+| cold (first open, 1 per session) | completeMs | 55.2 / 181.9 | 504.5 / 730.1 | 449.3 ms |
+| warm root (root-*, 8 per session) | firstMs | 16.8 / 17 | 16.9 / 17 | 0.1 ms |
+| warm root (root-*, 8 per session) | completeMs | 33.3 / 33.6 | 33.3 / 33.7 | 0 ms |
+| deep nesting (deep-nesting-N, 8 per session) | firstMs | 16.9 / 16.9 | 16.9 / 17 | 0 ms |
+| deep nesting (deep-nesting-N, 8 per session) | completeMs | 33.2 / 33.4 | 33.3 / 33.4 | 0.1 ms |
+| deep nesting flat (deep-nesting-flat-N) | firstMs | 16.8 / 16.9 | 16.9 / 17.2 | 0.1 ms |
+| deep nesting flat (deep-nesting-flat-N) | completeMs | 33.3 / 33.5 | 33.3 / 33.7 | 0 ms |
+| child popup (child-first, child-replace) | firstMs | 16.8 / 16.9 | 18.9 / 29.7 | 2.1 ms |
+| child popup (child-first, child-replace) | completeMs | 33.2 / 33.5 | 41.6 / 50.2 | 8.4 ms |

@@ -1,0 +1,1326 @@
+/* themes/denshi-jisho/theme.css — 電子辞書: a handheld electronic dictionary.
+ *
+ * Three layers, all drawn here with gradients, borders and Unicode (no images):
+ *   1. the plastic clamshell — grey bezel, model badge, speaker grille;
+ *   2. the monochrome backlit LCD — yellow-green glass with a faint 3 px pixel
+ *      grid, an inverted title band, a soft-key guide line;
+ *   3. the key row — six real key caps and a cursor pad.
+ *
+ * The palette block is what `build-index.mjs` generates from theme.yaml. Every
+ * rule that depends on theme.js having rebuilt the DOM is gated on
+ * `.gsm-hoshidicts-popup:has(> .dj-keys)`: clear() removes the keys before each
+ * render and only the hook puts them back, so if the module is switched off
+ * the CSS layer alone still shows a readable (plain-layout) LCD popup. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) {
+  --hoshidicts-palette-color-scheme: light;
+  --hoshidicts-palette-base-100: #cbdc9d;
+  --hoshidicts-palette-base-200: #c1d392;
+  --hoshidicts-palette-base-300: #b4c784;
+  --hoshidicts-palette-base-content: #1a2414;
+  --hoshidicts-palette-primary: #1a2414;
+  --hoshidicts-palette-primary-content: #cbdc9d;
+  --hoshidicts-palette-secondary: #33402c;
+  --hoshidicts-palette-secondary-content: #cbdc9d;
+  --hoshidicts-palette-accent: #1a2414;
+  --hoshidicts-palette-accent-content: #cbdc9d;
+  --hoshidicts-palette-neutral: #33402c;
+  --hoshidicts-palette-neutral-content: #cbdc9d;
+  --hoshidicts-palette-info: #33402c;
+  --hoshidicts-palette-info-content: #cbdc9d;
+  --hoshidicts-palette-success: #1a2414;
+  --hoshidicts-palette-warning: #33402c;
+  --hoshidicts-palette-error: #1a2414;
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. The device: variables, bezel, badge, grille. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup {
+  /* LCD, backlight on (the default) */
+  --theme-dj-lcd: #cbdc9d;
+  --theme-dj-lcd-deep: #bccf8a;
+  --theme-dj-ink: #1a2414;
+  --theme-dj-ink-muted: #33402c;
+  --theme-dj-grid: rgba(26, 36, 20, 0.07);
+  --theme-dj-frame: #3b4037;
+  /* plastic */
+  --theme-dj-bezel: #d4d6d0;
+  --theme-dj-bezel-dark: #b7bab3;
+  --theme-dj-bezel-edge: #5f645c;
+  --theme-dj-emboss: #6f736c;
+  --theme-dj-key: #eceee9;
+  --theme-dj-key-dark: #cfd2cb;
+  --theme-dj-key-edge: #7a7e77;
+  --theme-dj-key-shadow: #8f928b;
+  --theme-dj-key-ink: #1f2320;
+  --theme-dj-key-sub: #4a4f4b;
+  --theme-dj-font: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", "Noto Sans Mono CJK JP", "Osaka-Mono",
+    "MS Gothic", "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", "Segoe UI Symbol",
+    "Noto Sans Symbols2", monospace, sans-serif;
+  --theme-dj-grid-image:
+    repeating-linear-gradient(0deg, var(--theme-dj-grid) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, var(--theme-dj-grid) 0 1px, transparent 1px 3px);
+  /* the reader's own colours, mapped onto the one ink of a monochrome screen */
+  --hoshidicts-popup-background: var(--theme-dj-lcd);
+  --hoshidicts-chrome-background: var(--theme-dj-lcd-deep);
+  --hoshidicts-surface: var(--theme-dj-lcd-deep);
+  --hoshidicts-surface-raised: var(--theme-dj-lcd-deep);
+  --hoshidicts-card-background: transparent;
+  --hoshidicts-text: var(--theme-dj-ink);
+  --hoshidicts-text-muted: var(--theme-dj-ink-muted);
+  --hoshidicts-text-faint: var(--theme-dj-ink-muted);
+  --hoshidicts-border: var(--theme-dj-ink-muted);
+  --hoshidicts-border-strong: var(--theme-dj-ink);
+  --hoshidicts-accent: var(--theme-dj-ink);
+  --hoshidicts-accent-contrast: var(--theme-dj-lcd);
+  --hoshidicts-accent-soft: var(--theme-dj-lcd-deep);
+  --hoshidicts-link: var(--theme-dj-ink);
+  --hoshidicts-link-hover: var(--theme-dj-ink-muted);
+  --hoshidicts-scrollbar: var(--theme-dj-ink-muted);
+  --hoshidicts-frequency: var(--theme-dj-ink);
+  --hoshidicts-frequency-text: var(--theme-dj-lcd);
+  --hoshidicts-pitch: var(--theme-dj-ink);
+  --hoshidicts-success: var(--theme-dj-ink);
+  --hoshidicts-warning: var(--theme-dj-ink-muted);
+  --hoshidicts-danger: var(--theme-dj-ink);
+  --background-color: var(--theme-dj-lcd);
+  --text-color: var(--theme-dj-ink);
+  --text-color-light1: var(--theme-dj-ink-muted);
+  --text-color-light2: var(--theme-dj-ink-muted);
+  --accent-color: var(--theme-dj-ink);
+
+  padding: 17px 10px 10px;
+  border: 1px solid var(--theme-dj-bezel-edge);
+  border-radius: 10px;
+  background: linear-gradient(165deg, #e2e4df 0%, var(--theme-dj-bezel) 35%, var(--theme-dj-bezel-dark) 100%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.16),
+    0 16px 32px rgba(0, 0, 0, 0.42),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  color: var(--theme-dj-ink);
+  color-scheme: light;
+  font-family: var(--theme-dj-font);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-backlight="off"] {
+  --theme-dj-lcd: #adb59a;
+  --theme-dj-lcd-deep: #a3ab90;
+  --theme-dj-grid: rgba(26, 36, 20, 0.1);
+}
+
+/* Model badge (embossed) and speaker grille on the top bezel. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup::after {
+  content: "DENSHI JISHO · DJ-334";
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  color: var(--theme-dj-emboss);
+  font: 700 7.5px/1 var(--theme-dj-font);
+  letter-spacing: 0.16em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 14px;
+  width: 44px;
+  height: 8px;
+  background: radial-gradient(circle, var(--theme-dj-emboss) 0 0.9px, transparent 1.3px) 0 0 / 5px 4px;
+  pointer-events: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) [data-theme-hidden] {
+  display: none !important;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-resize-handle {
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--theme-dj-emboss) 3px 4px);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. The LCD: title band, glass, soft-key guide. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .dj-title {
+  order: -1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 2px 8px 0;
+  border: 2px solid var(--theme-dj-frame);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background-color: var(--theme-dj-lcd);
+  background-image:
+    linear-gradient(var(--theme-dj-ink), var(--theme-dj-ink)),
+    var(--theme-dj-grid-image);
+  background-repeat: no-repeat, repeat, repeat;
+  background-size: calc(100% - 4px) calc(100% - 2px), auto, auto;
+  background-position: 2px 2px, 0 0, 0 0;
+  color: var(--theme-dj-lcd);
+  font-size: 12px;
+  line-height: 20px;
+  user-select: none;
+  transition: background-color 350ms ease-out;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title:focus-visible {
+  outline: 2px dotted var(--theme-dj-lcd);
+  outline-offset: -5px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-dict {
+  flex: 0 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-dict::before { content: "「"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-dict::after { content: "」"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-mode {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 1px solid var(--theme-dj-lcd);
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-mode:empty { display: none; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-count,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title-clock {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Battery gauge: outline, nub, three bars. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-battery {
+  position: relative;
+  flex: none;
+  width: 17px;
+  height: 9px;
+  box-sizing: border-box;
+  margin-right: 3px;
+  border: 1px solid var(--theme-dj-lcd);
+  border-radius: 1px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-battery::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: -4px;
+  width: 2px;
+  height: 5px;
+  background: var(--theme-dj-lcd);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-battery::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: repeating-linear-gradient(90deg, var(--theme-dj-lcd) 0 3px, transparent 3px 4px);
+}
+
+/* Dictionary tabs live in the title band as LCD toggles. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title > .gsm-hoshidicts-tab-list {
+  flex: 1 1 auto;
+  gap: 3px;
+  scrollbar-width: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title > .gsm-hoshidicts-tab-list::-webkit-scrollbar { display: none; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title .gsm-hoshidicts-tab {
+  min-height: 0;
+  height: 15px;
+  max-width: 11em;
+  padding: 0 5px;
+  border: 1px solid var(--theme-dj-lcd);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-dj-lcd);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 13px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title .gsm-hoshidicts-tab:hover:not(:disabled):not([aria-selected="true"]) {
+  background: var(--theme-dj-ink-muted);
+  color: var(--theme-dj-lcd);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title .gsm-hoshidicts-tab[aria-selected="true"] {
+  background: var(--theme-dj-lcd);
+  color: var(--theme-dj-ink);
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-title .gsm-hoshidicts-tab:focus-visible {
+  outline: 1px dotted var(--theme-dj-lcd);
+  outline-offset: 1px;
+}
+
+/* The glass. Background stays put while the content scrolls (scroll attachment). */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-content-scroll {
+  padding: 3px 6px 4px;
+  border-left: 2px solid var(--theme-dj-frame);
+  border-right: 2px solid var(--theme-dj-frame);
+  background-color: var(--theme-dj-lcd);
+  background-image: var(--theme-dj-grid-image);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.09);
+  color: var(--theme-dj-ink);
+  scrollbar-width: thin;
+  transition: background-color 350ms ease-out;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-content-scroll::-webkit-scrollbar { width: 6px; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-content-scroll::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: var(--theme-dj-ink-muted);
+  background-clip: padding-box;
+}
+
+/* Soft-key guide: the last LCD line. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .dj-softkeys {
+  order: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 6px 1px;
+  overflow: hidden;
+  border: 2px solid var(--theme-dj-frame);
+  border-top: 1px solid var(--theme-dj-ink-muted);
+  border-radius: 0 0 4px 4px;
+  background-color: var(--theme-dj-lcd);
+  background-image: var(--theme-dj-grid-image);
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+  user-select: none;
+  transition: background-color 350ms ease-out;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-hint {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-hint[hidden] { display: none; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-hint-pair { flex: none; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-hint-key {
+  margin-right: 2px;
+  padding: 0 3px;
+  border: 1px solid var(--theme-dj-ink);
+  border-radius: 2px;
+  color: var(--theme-dj-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-status {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--theme-dj-ink);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-status:empty { display: none; }
+
+/* ---------------------------------------------------------------------------
+ * 3. The keys. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .dj-keys {
+  order: 2;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  margin-top: 9px;
+  container-type: inline-size;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key {
+  box-sizing: border-box;
+  border: 1px solid var(--theme-dj-key-edge);
+  border-radius: 6px;
+  background: linear-gradient(var(--theme-dj-key), var(--theme-dj-key-dark));
+  box-shadow: 0 2px 0 var(--theme-dj-key-shadow), 0 3px 3px rgba(0, 0, 0, 0.28), inset 0 1px 0 #ffffff;
+  color: var(--theme-dj-key-ink);
+  font-family: var(--theme-dj-font);
+  cursor: pointer;
+  transition: transform 40ms, box-shadow 40ms;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  height: 46px;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key:active,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--theme-dj-key-shadow), 0 1px 1px rgba(0, 0, 0, 0.28), inset 0 1px 0 #ffffff;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key:focus-visible,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key:focus-visible {
+  outline: 2px solid var(--theme-dj-ink);
+  outline-offset: 2px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[disabled] {
+  color: var(--theme-dj-key-sub);
+  opacity: 0.55;
+  cursor: default;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key-jp {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key-en {
+  color: var(--theme-dj-key-sub);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+/* 決定 is the blue key, メニュー the charcoal one, as on the real thing. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="enter"] {
+  border-color: #2f3d52;
+  background: linear-gradient(#5b7090, #445872);
+  box-shadow: 0 2px 0 #26334a, 0 3px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #f4f6f8;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="enter"]:active {
+  box-shadow: 0 0 0 #26334a, 0 1px 1px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="enter"] .dj-key-en { color: #d8e0ea; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="menu"] {
+  border-color: #232624;
+  background: linear-gradient(#4a4e4b, #343735);
+  box-shadow: 0 2px 0 #1c1e1d, 0 3px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: #f0f1ee;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="menu"]:active {
+  box-shadow: 0 0 0 #1c1e1d, 0 1px 1px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[data-key="menu"] .dj-key-en { color: #c9ccc7; }
+
+/* Toggle keys carry a small LED: 訳 lit while definitions show, 決定 lit in detail view. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[aria-pressed] { position: relative; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[aria-pressed]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8a8f88;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-key[aria-pressed="true"]::after {
+  background: #6ee36a;
+  box-shadow: 0 0 4px #6ee36a, inset 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Cursor pad: a 3 × 3 cross of small keys. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad {
+  flex: none;
+  display: grid;
+  grid-template: 15px 15px 15px / 17px 17px 17px;
+  gap: 1px 1px;
+  align-self: center;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--theme-dj-key-shadow), inset 0 1px 0 #ffffff;
+  font-size: 7px;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 var(--theme-dj-key-shadow), inset 0 1px 0 #ffffff;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key[data-dir="up"] { grid-area: 1 / 2; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key[data-dir="left"] { grid-area: 2 / 1; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key[data-dir="right"] { grid-area: 2 / 3; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pad-key[data-dir="down"] { grid-area: 3 / 2; }
+
+@container (max-width: 430px) {
+  :host([data-hoshidicts-theme="denshi-jisho"]) .dj-key-en { display: none; }
+  :host([data-hoshidicts-theme="denshi-jisho"]) .dj-key { height: 38px; font-size: 11px; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Reader nodes without the hook (CSS-only fallback): plain layout, LCD colours. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-result-chrome {
+  border: 2px solid var(--theme-dj-frame);
+  border-bottom: 1px solid var(--theme-dj-ink);
+  border-radius: 4px 4px 0 0;
+  background-color: var(--theme-dj-lcd-deep);
+  background-image: var(--theme-dj-grid-image);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-primary-header {
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-expression {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-glossary-card {
+  border-color: var(--theme-dj-ink-muted);
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * With the hook: candidate list + preview pane.
+ *
+ * Every entry becomes `display: contents`, so its children are flex items of
+ * the panel; headers (and Show more) get order 0 — the list — and everything
+ * else order 1 — the preview. Only the cursor entry's preview is shown. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) > .gsm-hoshidicts-result-chrome {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-tab-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry {
+  display: contents;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry > * {
+  order: 1;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry > .gsm-hoshidicts-entry-header,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-show-more {
+  order: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry:not([data-dj-cursor]) > :not(.gsm-hoshidicts-entry-header),
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry[data-dj-window="out"] > .gsm-hoshidicts-entry-header {
+  display: none;
+}
+
+/* One candidate line: ▶ 食べる【たべる】 … 142位 */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry-header {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-height: 0;
+  margin: 0;
+  padding: 1px 4px 1px 2px;
+  border: 0;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1.35;
+  transition: background-color 60ms, color 60ms;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry-header::before {
+  content: "　";
+  flex: none;
+  width: 1em;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry[data-dj-cursor] > .gsm-hoshidicts-entry-header {
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry[data-dj-cursor] > .gsm-hoshidicts-entry-header::before {
+  content: "▶";
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry-header > .gsm-hoshidicts-entry-actions,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-headword > .gsm-hoshidicts-deinflection,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-primary-metadata-capsule,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry[data-dj-index] > .gsm-hoshidicts-metadata,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-entry[data-dj-index] > .gsm-hoshidicts-tags {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-headword {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-expression {
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-expression rt {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-reading {
+  flex: none;
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-reading::before { content: "【"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-reading::after { content: "】"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-compact-definition-summary {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-compact-definition-image {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-freq {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+/* Kanji of the headword stay clickable; ジャンプ boxes the current one. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-link {
+  color: inherit;
+  border-bottom: 1px dotted currentColor;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-link:hover,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-link:focus-visible {
+  color: inherit;
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-entry[data-dj-cursor] .gsm-hoshidicts-kanji-link[data-dj-jump] {
+  border-bottom-color: transparent;
+  background: var(--theme-dj-lcd);
+  color: var(--theme-dj-ink);
+  outline: 1px solid var(--theme-dj-lcd);
+  outline-offset: 0;
+}
+
+/* Show more is one more list line. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-show-more {
+  width: 100%;
+  margin: 0;
+  padding: 1px 4px 1px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--theme-dj-ink-muted);
+  font: inherit;
+  text-align: left;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-show-more::before {
+  content: "▽ ";
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-show-more:hover,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-show-more:focus-visible {
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+  outline: none;
+}
+
+/* The preview pane: たべる【食べる】 〘他動詞〙 ⌈pitch⌉ 頻度 … then the senses. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1px 10px;
+  margin-top: 4px;
+  padding: 3px 2px 1px;
+  border-top: 1px solid var(--theme-dj-ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-kanji::before { content: "【"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-kanji::after { content: "】"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-pos {
+  color: var(--theme-dj-ink-muted);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-pos::before { content: "〘"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-pos::after { content: "〙"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-item {
+  color: var(--theme-dj-ink-muted);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-head-label,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-label {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  vertical-align: 1px;
+}
+
+/* The pitch contour, redrawn in ink like the reader's badge. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pitch {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pitch .dj-mora {
+  position: relative;
+  margin-right: -1px;
+  padding: 2px 1px 1px;
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  line-height: 1;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-mora[data-pitch-level="high"] { border-top-color: var(--theme-dj-ink); }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-mora[data-pitch-level="low"] { border-bottom-color: var(--theme-dj-ink); }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-mora[data-pitch-transition]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -1px;
+  bottom: 0;
+  border-right: 2px solid var(--theme-dj-ink);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-pitch-position {
+  color: var(--theme-dj-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-primary-metadata-row {
+  display: block;
+  margin: 1px 0 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-lookup-stats {
+  display: inline-block;
+  margin: 1px 0 0;
+  padding: 0 4px;
+  border: 1px solid var(--theme-dj-ink-muted);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+}
+
+/* Senses: flat, numbered with drawn ① badges. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-glossary-grid {
+  display: block;
+  margin: 3px 0 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-glossary-card {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-glossary-card + .gsm-hoshidicts-glossary-card {
+  margin-top: 5px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-glossary-card-title {
+  margin: 1px 0;
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-glossary-card-title::before { content: "「"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-glossary-card-title::after { content: "」"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-definitions {
+  margin: 0;
+  padding: 0;
+  counter-reset: dj-sense;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-definitions > li {
+  position: relative;
+  margin: 1px 0;
+  padding-left: 19px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-definitions-single > li {
+  padding-left: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-definitions:not(.gsm-hoshidicts-definitions-single) > li::before {
+  counter-increment: dj-sense;
+  content: counter(dj-sense);
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-glossary-content {
+  font-size: 13px;
+  line-height: 1.4;
+  transition: color 150ms;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup:has(> .dj-keys) .gsm-hoshidicts-definition-tags {
+  float: left;
+  margin: 2px 4px 0 0;
+  gap: 3px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-tag {
+  padding: 0 3px;
+  border: 1px solid var(--theme-dj-ink-muted);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-dj-ink-muted);
+  font-size: 10px;
+  line-height: 13px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-structured-link {
+  color: var(--theme-dj-ink);
+  text-decoration-color: var(--theme-dj-ink-muted);
+}
+
+/* 訳 off: the senses are blanked but keep their shape, so the learner sees how
+ * many there are and how long — a recall prompt, revealed by the same key. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-glossary-content,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-glossary-content *,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-compact-definition-summary,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-kanji-meanings > li,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .dj-h-gloss {
+  color: transparent !important;
+  text-shadow: none !important;
+  user-select: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-glossary-content,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-kanji-meanings > li,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .dj-h-gloss {
+  background: repeating-linear-gradient(90deg, var(--theme-dj-ink-muted) 0 3px, transparent 3px 6px) 0 62% / 100% 2px repeat-x;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gloss-image-link,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-gloss="off"] .gsm-hoshidicts-glossary-content img {
+  visibility: hidden;
+}
+
+/* 詳細 (決定): the list folds away, the entry gets the whole screen. */
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"]:has(> .dj-keys) .gsm-hoshidicts-entry > .gsm-hoshidicts-entry-header,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"]:has(> .dj-keys) .gsm-hoshidicts-show-more {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"] .dj-detail-head {
+  margin-top: 0;
+  padding: 1px 2px 3px;
+  border-top: 0;
+  border-bottom: 1px solid var(--theme-dj-ink);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"] .dj-head-title {
+  font-size: 18px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"] .gsm-hoshidicts-glossary-content {
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 漢字辞典 screen. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-kanji-head {
+  float: left;
+  margin: 2px 10px 4px 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-glyph {
+  min-width: 72px;
+  padding: 4px 8px 2px;
+  border: 2px solid var(--theme-dj-ink);
+  border-radius: 3px;
+  background: var(--theme-dj-lcd-deep);
+  font-family: "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif;
+  font-size: 60px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry {
+  padding: 2px 0 4px;
+  border-top: 1px dashed var(--theme-dj-ink-muted);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry:first-of-type {
+  border-top: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-dictionary {
+  margin: 0 0 3px;
+  padding: 0 3px;
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-dictionary::before { content: "「"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-dictionary::after { content: "」"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry:not(:only-of-type)[data-dj-cursor] > .gsm-hoshidicts-kanji-dictionary {
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry[data-dj-table] > .gsm-hoshidicts-kanji-readings,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry[data-dj-table] > h4,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry[data-dj-table] > .gsm-hoshidicts-kanji-stats,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-kanji-entry[data-dj-table] > .gsm-hoshidicts-tags {
+  display: none;
+}
+
+/* The readings table: 音 | ショク・ジキ  /  訓 | く.う・た.べる  /  意味 | ① food ② eat … */
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 6px;
+  margin: 0;
+  font-size: 13px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-label {
+  align-self: start;
+  min-width: 2.6em;
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value {
+  min-width: 0;
+  margin: 0;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-extra,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"] .dj-table-more {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="detail"] .dj-table-extra {
+  display: grid;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--theme-dj-ink-muted);
+  font-size: 12px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-extra > .dj-table-label {
+  min-width: 0;
+  background: transparent;
+  color: var(--theme-dj-ink-muted);
+  font-weight: 400;
+  text-align: left;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-more {
+  color: var(--theme-dj-ink-muted);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) dt.dj-table-more {
+  background: transparent;
+  color: var(--theme-dj-ink-muted);
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value > dd {
+  display: inline;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value > .gsm-hoshidicts-kanji-meanings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  margin: 0;
+  padding: 0;
+  counter-reset: dj-sense;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value > .gsm-hoshidicts-kanji-meanings > li::before {
+  counter-increment: dj-sense;
+  content: counter(dj-sense);
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  vertical-align: 1px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value > .gsm-hoshidicts-tags {
+  display: inline;
+  margin: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-table-value > .gsm-hoshidicts-tags > .gsm-hoshidicts-tag {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+ * メニュー screen. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu {
+  display: none;
+  padding: 1px 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="menu"] .dj-menu {
+  display: block;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="menu"] .gsm-hoshidicts-tab-panel,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="menu"] .dj-kanji-head,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup[data-dj-mode="menu"] .gsm-hoshidicts-kanji-entry {
+  display: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-heading {
+  margin: 3px 0 2px;
+  padding: 0 2px;
+  border-bottom: 1px dashed var(--theme-dj-ink-muted);
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 1px 6px 1px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item::before {
+  content: "　";
+  flex: none;
+  width: 1em;
+  font-size: 11px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item:focus,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item:hover:not([disabled]) {
+  background: var(--theme-dj-ink);
+  color: var(--theme-dj-lcd);
+  outline: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item:focus::before {
+  content: "▶";
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-item[disabled] {
+  color: var(--theme-dj-ink-muted);
+  cursor: default;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-state {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-state:empty { display: none; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-history-item,
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-empty {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 6px 1px calc(1em + 10px);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-menu-empty { color: var(--theme-dj-ink-muted); }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-word {
+  flex: none;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-reading { font-size: 12px; font-weight: 400; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-reading::before { content: "【"; }
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-reading::after { content: "】"; }
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-kind {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  vertical-align: 2px;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-gloss {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-dj-ink-muted);
+  text-overflow: ellipsis;
+  transition: color 150ms;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .dj-h-time {
+  flex: none;
+  color: var(--theme-dj-ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * The reader's other panels, on the LCD. */
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-note-form,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-mining-feedback,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-lookup-failure {
+  order: 1;
+  margin: 6px 0 0;
+  border: 2px solid var(--theme-dj-frame);
+  border-radius: 3px;
+  background: var(--theme-dj-lcd);
+  color: var(--theme-dj-ink);
+  font-family: inherit;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-note-form input,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-note-form textarea {
+  border: 1px solid var(--theme-dj-ink-muted);
+  border-radius: 2px;
+  background: var(--theme-dj-lcd);
+  color: var(--theme-dj-ink);
+  font: 400 13px/1.4 var(--theme-dj-font);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-note-field {
+  color: var(--theme-dj-ink-muted);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-note-actions button {
+  border: 1px solid var(--theme-dj-key-edge);
+  border-radius: 4px;
+  background: linear-gradient(var(--theme-dj-key), var(--theme-dj-key-dark));
+  box-shadow: 0 1px 0 var(--theme-dj-key-shadow);
+  color: var(--theme-dj-key-ink);
+  font: 700 11px/1.2 var(--theme-dj-font);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-note-actions .gsm-hoshidicts-note-save {
+  border-color: #2f3d52;
+  background: linear-gradient(#5b7090, #445872);
+  color: #f4f6f8;
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-audio-menu {
+  --hoshidicts-menu-background: var(--theme-dj-lcd);
+  --hoshidicts-menu-border: var(--theme-dj-frame);
+  --hoshidicts-menu-text: var(--theme-dj-ink);
+  --hoshidicts-menu-muted: var(--theme-dj-ink-muted);
+  --hoshidicts-menu-hover: var(--theme-dj-ink);
+  border-width: 2px;
+  border-radius: 3px;
+  box-shadow: none;
+  font-family: var(--theme-dj-font);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-audio-menu-item:hover,
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-audio-menu-item:focus-visible {
+  color: var(--theme-dj-lcd);
+}
+
+:host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-lookup-notice {
+  margin: 2px 0;
+  border: 1px dashed var(--theme-dj-ink-muted);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-dj-ink);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion: an LCD has slow pixels, so the cursor and the backlight fade — unless
+ * the reader prefers none. */
+
+@media (prefers-reduced-motion: no-preference) {
+  :host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup > .gsm-hoshidicts-content-scroll {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup,
+  :host([data-hoshidicts-theme="denshi-jisho"]) .gsm-hoshidicts-popup * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

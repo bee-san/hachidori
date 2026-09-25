@@ -1,0 +1,58 @@
+# themes/denshi-jisho/theme.yaml — Hachidori theme manifest, schema 1
+schema: 1
+slug: denshi-jisho
+name: 電子辞書 (Denshi Jisho)
+version: 1.0.0
+author: hachidori theme wave 2
+link: https://github.com/bee-san/hachidori/issues/334
+description: >-
+  A grey plastic handheld electronic dictionary drawn in CSS: bezel, a monochrome
+  backlit LCD with a faint pixel grid, an inverted title bar naming the dictionary,
+  and a row of real keys along the bottom (訳 / 決定 / 戻る / 音声 / ジャンプ /
+  メニュー) that are the actual controls. The JS turns the result list into a
+  device screen (candidate list + preview pane), models the keyboard of a real
+  device (↑↓ cursor, Enter = 決定, Backspace = 戻る, ←→ = dictionary / kanji
+  cursor), draws the 漢字辞典 table view and keeps a 5-entry lookup history on
+  the メニュー screen. Every asset is CSS, Unicode or text — nothing is fetched.
+tags: [light, compact, retro, js]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.1.7
+mode: light
+extends: default
+palette:                    # one monochrome LCD: ink on a yellow-green backlight
+  color-scheme: light
+  base-100: "#cbdc9d"       # LCD backlight
+  base-200: "#c1d392"
+  base-300: "#b4c784"
+  base-content: "#1a2414"   # LCD ink            (10.6:1 on base-100)
+  primary: "#1a2414"        # a monochrome screen has no accent colour
+  primary-content: "#cbdc9d"
+  secondary: "#33402c"      # muted ink          (7.5:1 on base-100)
+  secondary-content: "#cbdc9d"
+  accent: "#1a2414"
+  accent-content: "#cbdc9d"
+  neutral: "#33402c"
+  neutral-content: "#cbdc9d"
+  info: "#33402c"
+  info-content: "#cbdc9d"
+  success: "#1a2414"
+  warning: "#33402c"
+  error: "#1a2414"
+css: theme.css
+js:                         # bundled-only: shipped inside the Hachidori release, never fetched at runtime
+  file: theme.js
+  hooks: [onRender, onDeactivate]
+  summary: >-
+    Rebuilds the popup as a device: moves the headword out of the top bar into a
+    candidate list, adds a title bar, soft-key hints and six keys that click the
+    reader's own buttons (audio, Back, kanji links, Anki, Note), models a keyboard
+    cursor (arrows / Enter / Backspace), draws the kanji view as a table and keeps
+    the last five lookups on a menu screen. Reads the popup DOM only.
+options:                    # one-shot suggestions applied on activation, with Undo
+  popupOpacityPercent: 100  # a plastic device is opaque
+  popupColumns: 1           # the LCD is one column
+  popupToolbarPosition: top
+  hidePopupGrammarTags: false  # the device prints the part of speech on its 〘…〙 line
+screenshot: screenshot.png
+preview:
+  swatches: ["#cbdc9d", "#1a2414", "#d4d6d0", "#4a5d78"]

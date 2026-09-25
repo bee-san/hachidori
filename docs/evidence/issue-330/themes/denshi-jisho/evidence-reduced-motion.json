@@ -1,0 +1,950 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "reducedMotion": true,
+  "extensionVersion": "0.1.6",
+  "dictionaries": [
+    "hachidori-fixture.zip"
+  ],
+  "shots": {
+    "default-term": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "light",
+      "sheets": 1,
+      "device": false,
+      "mode": null,
+      "gloss": null,
+      "backlight": null,
+      "cursorIndex": null,
+      "cursorText": null,
+      "title": null,
+      "status": null,
+      "hint": "",
+      "chromeHidden": false,
+      "focusIn": null,
+      "jump": null,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "lcd": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.21 0.006 285.885)",
+        "font": "\"Noto Sans CJK JP\""
+      },
+      "headword": {
+        "size": "32px",
+        "color": "oklch(0.21 0.006 285.885)"
+      },
+      "gloss1": {
+        "size": "16px",
+        "color": "oklch(0.21 0.006 285.885)",
+        "visible": true
+      },
+      "keys": [],
+      "menuItems": [],
+      "history": [],
+      "table": [],
+      "motion": null,
+      "textSample": "食たべるべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality that has happened in the past. 2. Indicates the completion of an action. 3. Indicates the confirmation of a matter. 4. Indica"
+    },
+    "default-kanji": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "theme": "light",
+      "sheets": 1,
+      "device": false,
+      "mode": null,
+      "gloss": null,
+      "backlight": null,
+      "cursorIndex": null,
+      "cursorText": null,
+      "title": null,
+      "status": null,
+      "hint": "",
+      "chromeHidden": false,
+      "focusIn": "gsm-hoshidicts-kanji-back",
+      "jump": null,
+      "background": "color(srgb 0.999871 1.00005 1.00007)",
+      "lcd": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.21 0.006 285.885)",
+        "font": "\"Noto Sans CJK JP\""
+      },
+      "headword": null,
+      "gloss1": null,
+      "keys": [],
+      "menuItems": [],
+      "history": [],
+      "table": [],
+      "motion": null,
+      "textSample": "食Backhachidori-fixturejouyougrade2Onショク · ジキKunく.う · た.べるMeaningsfoodeatmealDetailsfreq382grade2strokes9"
+    },
+    "dj-term-list": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixture一覧1/220:12",
+      "status": "",
+      "hint": "↑↓候補←→辞書決定詳細ジャンプ漢字訳表示切替",
+      "chromeHidden": true,
+      "focusIn": null,
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImage"
+    },
+    "dj-term-down": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "1",
+      "cursorText": "食たべものたべものunrelated term-dictionary definition",
+      "title": "hachidori-fixture一覧2/220:12",
+      "status": "食【たべもの】 2/2",
+      "hint": "↑↓候補←→辞書決定詳細ジャンプ漢字訳表示切替",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(26, 36, 20)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImage",
+      "keyboard": "ArrowDown"
+    },
+    "dj-term-detail": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "detail",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "1",
+      "cursorText": "食たべものたべものunrelated term-dictionary definition",
+      "title": "hachidori-fixture詳細2/220:12",
+      "status": "詳細",
+      "hint": "↑↓前後の語PgUp/Dnスクロール戻る一覧へ音声発音",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(26, 36, 20)"
+      },
+      "gloss1": {
+        "size": "14px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[true]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImage",
+      "keyboard": "Enter"
+    },
+    "dj-term-yaku-off": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "off",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixture一覧1/220:12",
+      "status": "訳を隠しました",
+      "hint": "↑↓候補←→辞書決定詳細ジャンプ漢字訳表示切替",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgba(0, 0, 0, 0)",
+        "visible": false
+      },
+      "keys": [
+        "yaku[false]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示OFF",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示OFFバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImag",
+      "key": "訳"
+    },
+    "dj-term-jump": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "jump",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixtureジャンプ1/220:12",
+      "status": "漢字 食 1/1",
+      "hint": "←→漢字を選ぶ決定その漢字を調べる戻る中止",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": "食",
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImage",
+      "key": "ジャンプ"
+    },
+    "dj-term-jump-right": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "jump",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixtureジャンプ1/220:12",
+      "status": "漢字 食 1/1",
+      "hint": "←→漢字を選ぶ決定その漢字を調べる戻る中止",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": "食",
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan charactersonカンkunあざImage"
+    },
+    "dj-kanji": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "hachidori-fixture",
+      "title": "漢字辞典一覧1/120:12",
+      "status": "",
+      "hint": "↑↓辞書決定全索引戻る前の画面メニュー登録・履歴",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": null,
+      "gloss1": null,
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio(disabled)",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食漢food, eat, meal20:12",
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [
+        "音",
+        "訓",
+        "意味",
+        "頻度",
+        "学年",
+        "画数",
+        "区分"
+      ],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "食BackメニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食漢food, eat, meal20:12食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiH",
+      "keyboard": "Enter in ジャンプ"
+    },
+    "dj-menu": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "menu",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "hachidori-fixture",
+      "title": "漢字辞典メニュー1/120:12",
+      "status": "索引はありません",
+      "hint": "↑↓項目決定実行戻る閉じる",
+      "chromeHidden": true,
+      "focusIn": "dj-menu-item",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": null,
+      "gloss1": null,
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio(disabled)",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食漢food, eat, meal20:12",
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [
+        "音",
+        "訓",
+        "意味",
+        "頻度",
+        "学年",
+        "画数",
+        "区分"
+      ],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "食BackメニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食漢food, eat, meal20:12食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiH",
+      "key": "メニュー"
+    },
+    "dj-kanji-backlight-off": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 0,
+      "kanji": 1,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "off",
+      "cursorIndex": "0",
+      "cursorText": "hachidori-fixture",
+      "title": "漢字辞典一覧1/120:12",
+      "status": "索引はありません",
+      "hint": "↑↓辞書決定全索引戻る前の画面メニュー登録・履歴",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(173, 181, 154)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": null,
+      "gloss1": null,
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio(disabled)",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトOFF"
+      ],
+      "history": [
+        "食漢food, eat, meal20:12",
+        "食べるたべるto eat; to live on (e.g. a salary)20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [
+        "音",
+        "訓",
+        "意味",
+        "頻度",
+        "学年",
+        "画数",
+        "区分"
+      ],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "食BackメニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトOFF履歴（このページで最近5件）食漢food, eat, meal20:12食べるたべるto eat; to live on (e.g. a salary)20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanji",
+      "menu": "バックライト OFF"
+    },
+    "dj-term-back": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 2,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixture一覧1/220:15",
+      "status": "",
+      "hint": "↑↓候補←→辞書決定詳細ジャンプ漢字訳表示切替",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:15",
+        "食漢food, eat, meal20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:15食漢food, eat, meal20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan ch",
+      "key": "戻る"
+    },
+    "dj-audio": {
+      "rect": {
+        "x": 230,
+        "y": 143,
+        "width": 560,
+        "height": 420
+      },
+      "term": 1,
+      "kanji": 0,
+      "theme": "denshi-jisho",
+      "sheets": 2,
+      "device": true,
+      "mode": "list",
+      "gloss": "on",
+      "backlight": "on",
+      "cursorIndex": "0",
+      "cursorText": "食たべるべるたべるto eatto live on (e.g. a salary)食べたかった → 食べる-た1. Indicates a reality th",
+      "title": "hachidori-fixture一覧1/120:15",
+      "status": "♪ 音声",
+      "hint": "↑↓候補←→辞書決定詳細ジャンプ漢字訳表示切替",
+      "chromeHidden": true,
+      "focusIn": "dj-title",
+      "jump": null,
+      "background": "rgba(0, 0, 0, 0)",
+      "lcd": {
+        "background": "rgb(203, 220, 157)",
+        "color": "rgb(26, 36, 20)",
+        "font": "ui-monospace"
+      },
+      "headword": {
+        "size": "15px",
+        "color": "rgb(203, 220, 157)"
+      },
+      "gloss1": {
+        "size": "13px",
+        "color": "rgb(26, 36, 20)",
+        "visible": true
+      },
+      "keys": [
+        "yaku[true]",
+        "enter[false]",
+        "back",
+        "audio",
+        "jump",
+        "menu"
+      ],
+      "menuItems": [
+        "Anki に登録未設定",
+        "ノート（自分の辞書に追加）",
+        "訳の表示ON",
+        "バックライトON"
+      ],
+      "history": [
+        "食べるたべるto eat; to live on (e.g. a salary)20:15",
+        "食漢food, eat, meal20:12",
+        "ありがとうthank you; thanks20:12",
+        "読むよむto read20:11",
+        "漢字かんじChinese characterskanjiHan charactersonカンkunあざImage; kanji; 20:11"
+      ],
+      "table": [],
+      "motion": {
+        "titleTransition": "0s",
+        "contentTransition": "0s",
+        "scrollBehavior": "auto",
+        "lineTransition": "0s"
+      },
+      "textSample": "メニューAnki に登録未設定ノート（自分の辞書に追加）訳の表示ONバックライトON履歴（このページで最近5件）食べるたべるto eat; to live on (e.g. a salary)20:15食漢food, eat, meal20:12ありがとうthank you; thanks20:12読むよむto read20:11漢字かんじChinese characterskanjiHan ch"
+    }
+  },
+  "console": [
+    "[tab debug] hachidori theme denshi-jisho: onRender took 23.9 ms",
+    "[tab debug] hachidori theme denshi-jisho: onRender took 74.9 ms",
+    "[tab debug] hachidori theme denshi-jisho: onRender took 78.0 ms"
+  ],
+  "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
+  "kanjiWatch": [
+    {
+      "t": 0,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 250,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 500,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 750,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 1000,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 1250,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 1500,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 1750,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 2000,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 2250,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 2500,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    },
+    {
+      "t": 2750,
+      "alive": true,
+      "mode": "list",
+      "page": "HACHIDORI-HOST",
+      "shadow": "DIV.dj-title",
+      "popupHidden": false
+    }
+  ]
+}
