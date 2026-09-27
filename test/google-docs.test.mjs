@@ -24,13 +24,11 @@ test("the flag script sets exactly the allow-listed Docs value in the page's mai
   assert.equal(GOOGLE_DOCS_SCRIPT.js[0], "google-docs-flag.js");
 });
 
-test("both manifests grant scripting so the flag script can be registered", async () => {
-  for (const name of ["manifest.json", "manifest.firefox.json"]) {
-    const manifest = JSON.parse(await readFile(new URL(name, extension), "utf8"));
-    assert.ok(manifest.permissions.includes("scripting"), name);
-    assert.equal(JSON.stringify(manifest).includes("google-docs-flag.js"), false,
-      `${name} neither injects nor exposes the flag script statically`);
-  }
+test("the manifest grants scripting so the flag script can be registered", async () => {
+  const manifest = JSON.parse(await readFile(new URL("manifest.json", extension), "utf8"));
+  assert.ok(manifest.permissions.includes("scripting"));
+  assert.equal(JSON.stringify(manifest).includes("google-docs-flag.js"), false,
+    "the manifest neither injects nor exposes the flag script statically");
 });
 
 test("turning the flag on registers one document_start MAIN-world script for Docs", async () => {

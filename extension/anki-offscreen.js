@@ -22,7 +22,7 @@ async function refreshAnkiIndex(window, source) {
 
 async function recordSpeechAudio(...args) {
   if (!MINING_CAPABILITIES.browserSpeech) {
-    throw new Error("Browser text-to-speech recording is unavailable in Firefox.");
+    throw new Error("Browser text-to-speech recording is unavailable in this overlay.");
   }
   const capture = await import("./capture-host.js");
   return capture.recordSpeechAudio(...args);

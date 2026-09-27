@@ -5,7 +5,7 @@ let application = Promise.resolve();
 
 // The one script Settings → Advanced → Experimental features → Google Docs
 // registers: google-docs-flag.js in the page's main world before Docs' bundle
-// runs, on every Docs frame. Chrome and Firefox 128+ both accept `world`.
+// runs, on every Docs frame. Chrome accepts `world`.
 export const GOOGLE_DOCS_SCRIPT = Object.freeze({
   id: SCRIPT_ID,
   matches: ["*://docs.google.com/*"],

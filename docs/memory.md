@@ -26,11 +26,11 @@ bytes in. Four things follow:
   indexes and, on the threaded engine, runs an eight-thread worker group. On
   direct OPFS that work happens in a separate import worker that is terminated
   afterwards, so its peak is returned to the browser and the engine's heap grows
-  only by the new dictionary's mapped files; on IDBFS (Electron, Firefox) the
+  only by the new dictionary's mapped files; on IDBFS (Electron) the
   import runs inside the engine and the memory that peak needs is kept for the
   life of the engine worker. Disabling or removing a dictionary frees its
   mapping inside the heap, but the heap itself stays at its high-water mark.
-- **IDBFS hosts hold a second copy.** Electron (GameSentenceMiner), Firefox, and
+- **IDBFS hosts hold a second copy.** Electron (GameSentenceMiner) and
   Chrome without OPFS sync access handles keep the dictionary files in
   IndexedDB and mirror them into the WebAssembly filesystem, so the same bytes
   exist twice in JavaScript memory.
@@ -90,8 +90,7 @@ dictionaries…* for the reload's duration (about 1 ms per MB of dictionary
 files). Turning the mode on or off also recycles the worker once, so the pool
 size and the import threading always match the option.
 
-The mode needs the dedicated engine worker. It is not offered on Firefox, where
-the engine runs in the background page's iframe, nor when the offscreen
+The mode needs the dedicated engine worker. It is not offered when the offscreen
 document has fallen back to the single-thread engine (`hd_status` reports
 `threaded: false`); the readout stays available there.
 
