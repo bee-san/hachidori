@@ -1,0 +1,18 @@
+{
+  "chrome": "Chrome/152.0.7977.82",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "promo": {
+    "width": 440,
+    "height": 280
+  },
+  "dictionarySource": "# Original examples for store screenshots\n食べる, たべる, to eat\\n朝ごはんを食べる。 — I eat breakfast.\n光, ひかり, light; sunlight\n鳥, とり, bird\n",
+  "readerOptions": {
+    "popupTheme": "light",
+    "popupHeightPx": 320,
+    "popupOpacityPercent": 100
+  },
+  "blockedRequests": []
+}

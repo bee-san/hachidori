@@ -1,5 +1,7 @@
 # Firefox Desktop Port Without Media Capture
 
+This document records the Firefox port plan. Media recording and its settings have since been removed from both Firefox and Chrome.
+
 ## Product boundary
 
 - Ship a Firefox 153+ desktop edition for Windows, macOS, and Linux without changing Chrome behavior.
