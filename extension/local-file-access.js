@@ -4,41 +4,13 @@
 export function createLocalFileAccessController({
   document,
   container,
-  chromeApi = globalThis.browser ?? globalThis.chrome,
+  chromeApi = globalThis.chrome,
   onDismiss = null,
 }) {
   const window = document.defaultView;
-  const firefox = (() => {
-    try {
-      return new URL(chromeApi.runtime.getURL("")).protocol === "moz-extension:";
-    } catch {
-      return false;
-    }
-  })();
   // Setup shows this section with a dismiss action; Settings shows it without.
   const surface = onDismiss ? "setup" : "Settings";
-  // Firefox refuses tabs.create for about:addons and has no API that opens the
-  // Add-ons Manager for a full-tab options page, so it gets the exact manual
-  // path instead of an Open button.
-  const COPY = {
-    firefox: {
-      browserName: "Firefox",
-      description: "allow Hachidori to access local files in Firefox’s Add-ons Manager.",
-      instruction: "Open about:addons, choose Hachidori, open the Permissions and data tab,"
-        + " turn on “Access local files on your computer”, then return to this tab.",
-      reopen: null,
-      settingsUrl: null,
-    },
-    chrome: {
-      browserName: "Chrome",
-      description: "enable “Allow access to file URLs” in Hachidori’s extension settings.",
-      instruction: "Turn on “Allow access to file URLs”, then return to this tab.",
-      reopen: "On the extension details page, open Extension options",
-      settingsUrl: () => `chrome://extensions/?id=${chromeApi.runtime.id}`,
-    },
-  }[firefox ? "firefox" : "chrome"];
-  const { browserName } = COPY;
-  const canOpenSettings = COPY.settingsUrl !== null;
+  const browserName = "Chrome";
   const make = (tag, id, text, className = "") => {
     const node = document.createElement(tag);
     node.id = id;
@@ -48,24 +20,18 @@ export function createLocalFileAccessController({
   };
   const heading = make("h2", "local-file-heading", "Read saved pages too");
   const description = make("p", "local-file-description",
-    `To look up Japanese in HTML files opened from your computer, ${COPY.description}`);
-  const instruction = make("p", "local-file-instruction", COPY.instruction);
-  let recovery = null;
-  if (canOpenSettings) {
-    const returnPath = onDismiss ? ", then choose Resume setup." : " to return.";
-    recovery = make("p", "local-file-recovery",
-      `${browserName} may close ${surface} when it reloads Hachidori. ${COPY.reopen}${returnPath}`);
-  }
+    "To look up Japanese in HTML files opened from your computer, enable “Allow access to file URLs” in Hachidori’s extension settings.");
+  const instruction = make("p", "local-file-instruction", "Turn on “Allow access to file URLs”, then return to this tab.");
+  const returnPath = onDismiss ? ", then choose Resume setup." : " to return.";
+  const recovery = make("p", "local-file-recovery",
+    `${browserName} may close ${surface} when it reloads Hachidori. On the extension details page, open Extension options${returnPath}`);
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
   const actions = make("div", "local-file-actions", "", "local-file-actions");
-  let open;
-  if (canOpenSettings) {
-    open = make("button", "local-file-open", "Open extension settings", "ghost");
-    open.type = "button";
-    actions.append(open);
-  }
+  const open = make("button", "local-file-open", "Open extension settings", "ghost");
+  open.type = "button";
+  actions.append(open);
   let skip;
   if (onDismiss) {
     skip = make("button", "local-file-skip", "Not now", "ghost");
@@ -87,9 +53,8 @@ export function createLocalFileAccessController({
     container.hidden = dismissed;
     heading.hidden = enabled;
     description.hidden = enabled;
-    // Without an Open button the manual path is the only path, so it shows at once.
-    instruction.hidden = (canOpenSettings && !opened) || enabled;
-    if (recovery) recovery.hidden = instruction.hidden;
+    instruction.hidden = !opened || enabled;
+    recovery.hidden = instruction.hidden;
     actions.hidden = hideActions;
     container.classList.toggle("is-enabled", enabled);
     const message = enabled ? "Local-file lookups enabled" : error;
@@ -117,7 +82,7 @@ export function createLocalFileAccessController({
     render();
     try {
       await chromeApi.tabs.create({
-        url: COPY.settingsUrl(),
+        url: `chrome://extensions/?id=${chromeApi.runtime.id}`,
       });
     }
     catch {
@@ -136,7 +101,7 @@ export function createLocalFileAccessController({
   function visible() {
     if (document.visibilityState === "visible") void refresh();
   }
-  open?.addEventListener("click", openSettings);
+  open.addEventListener("click", openSettings);
   skip?.addEventListener("click", dismiss);
   document.addEventListener("visibilitychange", visible);
   window.addEventListener("pageshow", visible);
@@ -146,7 +111,7 @@ export function createLocalFileAccessController({
     refresh,
     destroy() {
       disposed = true;
-      open?.removeEventListener("click", openSettings);
+      open.removeEventListener("click", openSettings);
       skip?.removeEventListener("click", dismiss);
       document.removeEventListener("visibilitychange", visible);
       window.removeEventListener("pageshow", visible);

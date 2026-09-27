@@ -117,7 +117,6 @@ export function browserName(navigator) {
   const brands = (navigator?.userAgentData?.brands ?? []).map(entry => String(entry?.brand ?? "")).filter(brand => brand !== "" && !/not.?a.?brand/iu.test(brand));
   const brand = brands.find(name => name !== "Chromium") ?? brands[0];
   if (brand) return brand;
-  if (/\bFirefox\//u.test(String(navigator?.userAgent ?? ""))) return "Firefox";
   return "another browser";
 }
 

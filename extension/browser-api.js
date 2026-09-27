@@ -8,32 +8,12 @@ export function selectExtensionApi(scope = globalThis) {
 
 export const extensionApi = selectExtensionApi();
 
-export function extensionProtocol(api = extensionApi) {
-  const url = api?.runtime?.getURL?.("");
-  if (typeof url !== "string" || url === "") return "";
-  try {
-    return new URL(url).protocol;
-  } catch {
-    return "";
-  }
-}
-
-export function browserKind(api = extensionApi) {
-  return extensionProtocol(api) === "moz-extension:" ? "firefox" : "chrome";
-}
-
-export const BROWSER_KIND = browserKind();
-export const IS_FIREFOX = BROWSER_KIND === "firefox";
-
 export function extensionDocumentUrl(path, api = extensionApi) {
   return api?.runtime?.getURL?.(path) ?? path;
 }
 
 export function expectedBackgroundUrl(api = extensionApi) {
-  return extensionDocumentUrl(
-    browserKind(api) === "firefox" ? "firefox-background.html" : "background.js",
-    api,
-  );
+  return extensionDocumentUrl("background.js", api);
 }
 
 export function isExactExtensionSender(sender, path, api = extensionApi, { tab = null } = {}) {

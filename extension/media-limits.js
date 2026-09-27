@@ -1,5 +1,4 @@
-// Shared media payload limits. Firefox keeps these validators without shipping
-// the Chrome-only recording and encoding implementation.
+// Shared media payload limits.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const MAX_LIVE_FRAME_BYTES = 64 * 1024 * 1024;

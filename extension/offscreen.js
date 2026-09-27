@@ -11,7 +11,6 @@
 
 import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js";
 import { ENGINE_WORKER_NAME, LOW_MEMORY_WORKER_NAME, createEngineRecycler } from "./engine-recycler.js";
-import { announceFirefoxOffscreen } from "./firefox-host.js";
 import { boundResponseFailure } from "./response-limits.js";
 
 const TARGET = "hoshidicts-offscreen";
@@ -508,9 +507,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   );
   return true;
 });
-
-try {
-  await announceFirefoxOffscreen();
-} catch (error) {
-  failEngine(error);
-}

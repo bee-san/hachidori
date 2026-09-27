@@ -2,21 +2,13 @@
 
 # The Hachidori extension
 
-This folder is the shared extension source and the Manifest V3 package exactly
+This folder is the extension source and the Manifest V3 package exactly
 as Chrome 128 or newer loads it, with no build step. The JavaScript is plain ES
 modules and classic scripts, the dictionary engine is committed WebAssembly
 under `vendor/`, and everything runs inside the browser. To run it in Chrome
 from a checkout, open `chrome://extensions`, turn on **Developer mode**, choose
 **Load unpacked** and select this folder. `scripts/package-store.py` zips this
 same folder, with the licence files, for the Chrome Web Store.
-
-`manifest.firefox.json` is the reviewed Firefox MV2 manifest. The same
-packager writes the Firefox XPI from these sources minus the Chrome-only files
-listed in `scripts/firefox-package.json`, with that manifest in place of
-`manifest.json`; `scripts/prepare-firefox.mjs` stages the same layout in an
-ignored directory for lint and the Firefox smoke test. See the
-[Firefox guide](../docs/firefox.md) to build and temporarily install the
-unsigned XPI.
 
 [The architecture guide](../docs/architecture.md) explains how the pieces
 work together and lists every runtime message and stored key. This page says
@@ -44,15 +36,14 @@ validated URL in the system browser.
 | File | Runs as | Role |
 | --- | --- | --- |
 | `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
-| `firefox-background.html`, `firefox-background.js` | Firefox’s persistent MV2 background page | Loads the shared background module and hosts `offscreen.html` in one authenticated hidden iframe so the engine remains warm. |
-| `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). Chrome also injects `capture-content.js`; Firefox does not. `content.css` is the only style the page itself receives: the source highlight. |
-| `offscreen.html`, `offscreen.js` | Chrome’s offscreen document or Firefox’s hidden background iframe | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, and imports each archive in a short-lived second instance, `import-worker.js`, so lookups keep working; `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), both through `engine-worker-runtime.js`; `engine-service.js` is also the single-thread IDBFS fallback. `engine-recycler.js` decides when Low memory mode replaces the worker ([docs/memory.md](../docs/memory.md)). Pronunciation, Anki and the first-run installer load here on demand. Chrome also hosts media capture here. |
+| `content.js`, with the classic scripts listed under `content_scripts` | every web page | Scans the Japanese text near the pointer, renders the popup in a closed shadow root through `render/popup.js` and `render/glossary.js`, and adds the popup's Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). `capture-content.js` is also injected for media capture. `content.css` is the only style the page itself receives: the source highlight. |
+| `offscreen.html`, `offscreen.js` | Chrome’s offscreen document | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, and imports each archive in a short-lived second instance, `import-worker.js`, so lookups keep working; `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), both through `engine-worker-runtime.js`; `engine-service.js` is also the single-thread IDBFS fallback. `engine-recycler.js` decides when Low memory mode replaces the worker ([docs/memory.md](../docs/memory.md)). Pronunciation, Anki, first-run installation and media capture load here on demand. |
 | `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, backup and sharing, with media capture where supported and global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
 | `startup.html`, `startup.js` | a tab opened once after install | First-run setup: recommended dictionaries, Anki detection, a practice lookup, and the offer to use a Hachidori that another browser on this computer already shares. Overlay mode skips it. |
-| `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state and opens Settings. Chrome also exposes the recording action here. |
-| `capture.html`, `capture.js` | a Chrome-only tab opened from the toolbar or Settings | Controls media capture. The recorder itself, `capture-host.js`, runs in the offscreen document and keeps going when this tab closes. Firefox does not expose this entry point. |
+| `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state, opens Settings and exposes the recording action. |
+| `capture.html`, `capture.js` | a tab opened from the toolbar or Settings | Controls media capture. The recorder itself, `capture-host.js`, runs in the offscreen document and keeps going when this tab closes. |
 
-`overlay-mode.js`, its `browser-api.js` dependency, `render/reader.css` and
+`overlay-mode.js`, `browser-api.js`, `render/reader.css` and
 `icons.css` are the only files web pages may fetch
 (`web_accessible_resources`). The popup and its Anki controls load the two
 stylesheets; overlay hosts use the shared mode contract.

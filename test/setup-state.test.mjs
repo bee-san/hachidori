@@ -31,7 +31,7 @@ test("overlay mining never takes a screenshot or records browser speech or captu
   assert.equal(stored.audioSources.length, 3);
 });
 
-test("Firefox mining projection preserves saved Chrome media settings", () => {
+test("capability projection preserves saved media settings for a host without recording", () => {
   const stored = globalThis.HDReaderOptions.normaliseOptions({
     anki: { captureScreenshot: true },
     mediaCapture: { enabled: true },
@@ -40,14 +40,14 @@ test("Firefox mining projection preserves saved Chrome media settings", () => {
       { id: "remote", type: "custom", enabled: true, url: "https://audio.test/%w", voice: "" },
     ],
   });
-  const firefox = capabilityAnkiOptions(stored, {
+  const projected = capabilityAnkiOptions(stored, {
     screenshot: true,
     browserSpeech: false,
     mediaCapture: false,
   });
-  assert.equal(firefox.anki.captureScreenshot, true);
-  assert.equal(firefox.mediaCapture.enabled, false);
-  assert.deepEqual(firefox.audioSources.map(source => source.id), ["remote"]);
+  assert.equal(projected.anki.captureScreenshot, true);
+  assert.equal(projected.mediaCapture.enabled, false);
+  assert.deepEqual(projected.audioSources.map(source => source.id), ["remote"]);
   assert.equal(stored.mediaCapture.enabled, true);
   assert.deepEqual(stored.audioSources.map(source => source.id), ["tts", "remote"]);
 });
