@@ -12,7 +12,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
 
 const MARKUP = `<ul id="experimental-features"></ul><p id="experimental-empty" hidden>None</p>`;
 const FEATURES = [
-  { id: "mediaMining", label: "Media mining", section: "media", description: "Record clips." },
+  { id: "sectionFeature", label: "Section feature", section: "secondary", description: "A setting with its own section." },
   { id: "sample", label: "Sample", description: "No section of its own." },
 ];
 
@@ -28,19 +28,19 @@ function fixture(t, features) {
 
 test("each registered feature renders one labelled switch that reports changes", () => {
   const { window, document, controller, toggles } = fixture(test, FEATURES);
-  controller.render({ mediaMining: true, sample: false });
+  controller.render({ sectionFeature: true, sample: false });
   const rows = document.querySelectorAll("#experimental-features > li");
   assert.equal(rows.length, 2);
   assert.equal(document.getElementById("experimental-empty").hidden, true);
 
-  const media = document.getElementById("opt-experimental-mediaMining");
-  assert.equal(media.type, "checkbox");
-  assert.equal(media.checked, true);
-  assert.equal(media.closest("label").querySelector("span").textContent, "Media mining");
-  const hint = document.getElementById(media.getAttribute("aria-describedby"));
-  assert.match(hint.textContent, /Record clips\./);
+  const section = document.getElementById("opt-experimental-sectionFeature");
+  assert.equal(section.type, "checkbox");
+  assert.equal(section.checked, true);
+  assert.equal(section.closest("label").querySelector("span").textContent, "Section feature");
+  const hint = document.getElementById(section.getAttribute("aria-describedby"));
+  assert.match(hint.textContent, /A setting with its own section\./);
   const link = hint.querySelector("a");
-  assert.equal(link.getAttribute("href"), "#media");
+  assert.equal(link.getAttribute("href"), "#secondary");
   assert.equal(link.hidden, false, "an enabled feature links to its own section");
 
   const sample = document.getElementById("opt-experimental-sample");
@@ -49,12 +49,12 @@ test("each registered feature renders one labelled switch that reports changes",
 
   sample.checked = true;
   sample.dispatchEvent(new window.Event("change", { bubbles: true }));
-  media.checked = false;
-  media.dispatchEvent(new window.Event("change", { bubbles: true }));
-  assert.deepEqual(toggles, [["sample", true], ["mediaMining", false]]);
+  section.checked = false;
+  section.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.deepEqual(toggles, [["sample", true], ["sectionFeature", false]]);
 
-  controller.render({ mediaMining: false, sample: true });
-  assert.equal(media.checked, false);
+  controller.render({ sectionFeature: false, sample: true });
+  assert.equal(section.checked, false);
   assert.equal(link.hidden, true, "a disabled feature hides the section link");
   assert.equal(sample.checked, true);
   assert.equal(document.querySelectorAll("#experimental-features > li").length, 2, "render reuses the rows");

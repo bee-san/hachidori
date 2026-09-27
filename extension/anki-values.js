@@ -243,13 +243,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "pitch-accent-graphs": () => ankiPitchGraphs(term),
     "pitch-accent-graphs-jj": () => ankiPitchGraphs(term, true),
     "pitch-accent-categories": () => pitchCategories(term), audio: () => audio,
-    "capture-animation": () => request.capturePin?.animationFilename
-      && !request.captureUnavailable?.includes("animation")
-      ? `<img src="${escape(request.capturePin.animationFilename)}">` : "",
-    "capture-audio": () => request.capturePin?.audioFilename
-      && !request.captureUnavailable?.includes("audio")
-      ? `[sound:${request.capturePin.audioFilename}]` : "",
-    // The viewport screenshot this mining request was made from. A capture or
+    // The viewport screenshot this mining request was made from.
     // upload that failed marks itself unavailable, and the field stays empty
     // rather than referring to a picture Anki does not have.
     screenshot: () => request.screenshot?.filename && !request.captureUnavailable?.includes("screenshot")

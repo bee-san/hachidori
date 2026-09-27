@@ -7,11 +7,10 @@ export const OVERLAY_MODE = false;
 export const HOST_BROWSER = OVERLAY_MODE ? "electron" : BROWSER_KIND;
 
 // Electron's extension host deliberately exposes less of Chrome than a normal
-// browser window, and Firefox deliberately omits Chrome's recording stack.
+// browser window, and Firefox lacks some Chrome extension APIs.
 // Keep every host-owned capability in one place so shared settings cannot make
 // an unavailable control live again.
 export const HOST_CAPABILITIES = Object.freeze({
-
   browserShortcuts: !OVERLAY_MODE,
   // `customLinks` is the pre-Custom-buttons host contract. Keep the alias so
   // an embedding host can update its reader before updating its capability
@@ -22,7 +21,6 @@ export const HOST_CAPABILITIES = Object.freeze({
   linkButtons: true,
   externalLinkHost: OVERLAY_MODE,
   localFileAccessPrompt: !OVERLAY_MODE,
-  mediaCapture: !OVERLAY_MODE && !IS_FIREFOX,
   // Recycling the engine worker needs the dedicated worker path; Firefox runs
   // the engine in the background page's iframe.
   lowMemoryMode: !IS_FIREFOX,
@@ -30,5 +28,5 @@ export const HOST_CAPABILITIES = Object.freeze({
 
 export const MINING_CAPABILITIES = Object.freeze({
   screenshot: !OVERLAY_MODE,
-  browserSpeech: !OVERLAY_MODE && !IS_FIREFOX,
+  browserSpeech: false,
 });

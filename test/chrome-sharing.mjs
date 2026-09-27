@@ -88,7 +88,7 @@ const CHECKS = [
   "the second browser's startup page offers the shared Hachidori, and one click links it and completes setup",
   "an options edit made on the linked browser is committed by the host and pushed back",
   "a personal dictionary save made on the linked browser lands in the host's source and answers lookups",
-  "the linked browser discovers and mines through the host while capture stays local, stale results fail, and local Anki stays unused",
+  "the linked browser discovers and mines through the host, stale results fail, and local Anki stays unused",
   "closing the host fails linked lookups, and relaunching it reconnects the linked browser by itself",
   "unlinking restores the linked browser's own empty state",
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",
@@ -522,15 +522,11 @@ async function checkOverlaySharing(hostPage) {
       HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options));
     await writeOptions(page, { popupWidthPx: 440, popupTheme: "sunset",
       anki: { ...initial.anki, captureScreenshot: true },
-      mediaCapture: { ...initial.mediaCapture, enabled: true },
       customButtons: [{
         id: "local-link", type: "link", label: "Local link", url: "https://local.example/%w",
       }] });
-    const hostInitial = await hostPage.evaluate(async () =>
-      HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options));
     await writeOptions(hostPage, { lookupMode: "activationSticky", activationKey: "Control", sourceHighlightEnabled: true,
       popupWidthPx: 1000, popupTheme: "dracula",
-      mediaCapture: { ...hostInitial.mediaCapture, enabled: true },
       customButtons: [{
         id: "host-link", type: "link", label: "Host link", url: "https://host.example/%w",
       }] });
@@ -591,26 +587,9 @@ async function checkOverlaySharing(hostPage) {
       help: document.getElementById("audio-mining-help").textContent,
       captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
     await showSection(page, "advanced");
-    // This profile enabled capture before the flag existed, so the stored
-    // record inherits media mining; only turn the switch on if it is off.
-    const mediaMiningInherited = await page.$eval("#opt-experimental-mediaMining", input => {
-      const inherited = input.checked;
-      if (!inherited) input.click();
-      return inherited;
-    });
-    await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden,
-      { timeout: 10_000, polling: 100 });
-    await showSection(page, "media");
-    const media = await page.evaluate(() => ({
-      allDisabled: [...document.querySelectorAll("#media button, #media input, #media select")]
-        .every(control => control.disabled),
-      checked: document.getElementById("opt-media-enabled").checked,
-      helpVisible: !document.getElementById("media-overlay-help").hidden,
-      status: document.getElementById("media-runtime-status").textContent,
-    }));
+    const removedMedia = await page.evaluate(() => document.getElementById("media") === null);
     if (process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT) {
       await page.setViewport({ width: 1280, height: 1200 });
-      await page.$eval("#media-heading", heading => heading.scrollIntoView({ block: "start" }));
       await page.screenshot({ path: process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT });
     }
     await showSection(page, "keybinds");
@@ -628,17 +607,14 @@ async function checkOverlaySharing(hostPage) {
       exportDisabled: document.getElementById("backup-export").disabled,
       restoreEnabled: !document.getElementById("backup-file").disabled,
     }));
-    const guarded = await page.evaluate(() => Promise.all([
-      chrome.runtime.sendMessage({ target: "hachidori-capture", type: "hd_capture_open", requestId: "linked-overlay-capture" }),
-      chrome.runtime.sendMessage({
-        target: "hoshidicts-worker", type: "hd_open_external", requestId: "linked-overlay-link",
-        url: "https://example.test/", active: true,
-      }),
-    ]));
+    const guarded = await page.evaluate(() => chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_open_external", requestId: "linked-overlay-link",
+      url: "https://example.test/", active: true,
+    }));
     await cdp.detach();
     check(CHECKS.at(-1),
       afterLink.lookupMode === "hover" && afterLink.sourceHighlightEnabled === false && afterLink.popupWidthPx === 440
-        && afterLink.popupTheme === "dracula" && afterLink.mediaCapture.enabled
+        && afterLink.popupTheme === "dracula"
         && afterLink.customButtons[0]?.id === "host-link" && afterLink.customLinks[0]?.label === "Host link"
         && sharedLookup.ok && notice
         && afterLocal.popupWidthPx === 480 && hostAfterLocal.popupWidthPx === 1000
@@ -648,17 +624,16 @@ async function checkOverlaySharing(hostPage) {
         && afterRestart.popupWidthPx === 680 && unlinked.ok && afterUnlink.options.popupWidthPx === 680
         && afterUnlink.options.popupTheme === "sunset" && afterUnlink.dictionaryState.dictionaries.length === 0
         && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
-        && afterUnlink.options.mediaCapture.enabled && afterUnlink.options.customButtons[0]?.id === "local-link"
+        && afterUnlink.options.customButtons[0]?.id === "local-link"
         && afterUnlink.options.customLinks[0]?.label === "Local link"
         && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
         && speech.help.includes("cannot be recorded into Anki")
-        && mediaMiningInherited && media.allDisabled && !media.checked && media.helpVisible && media.status.includes("unavailable in this overlay")
+        && removedMedia
         && shortcuts.browserDisabled && shortcuts.pageEnabled && !buttons.disabled && buttons.helpVisible
         && !backup.exportDisabled && backup.restoreEnabled
-        && guarded[0]?.ok === false && guarded[0].error.includes("unavailable in this overlay")
-        && guarded[1]?.ok === false && guarded[1].error.includes("only from lookup popups"),
+        && guarded?.ok === false && guarded.error.includes("only from lookup popups"),
       JSON.stringify({ afterLink, afterLocal, hostAfterLocal, afterHost, mixed, hostAfterMixed, stale, offline, afterRestart,
-        afterUnlink, screenshot, speech, mediaMiningInherited, media, shortcuts, buttons, backup, guarded, notice }));
+        afterUnlink, screenshot, speech, removedMedia, shortcuts, buttons, backup, guarded, notice }));
   } finally { await overlayBrowser?.close().catch(() => {}); }
 }
 

@@ -334,36 +334,19 @@ async function main() {
     assert.equal(engine.threaded, engine.storageBackend === "opfs");
 
     const settings = await execute(`
-      const mediaOption = document.querySelector('#settings-section option[value="media"]');
-      const mediaNavigation = document.querySelector('.settings-nav a[href="#media"]').closest(".nav-item");
       return {
-        mediaSectionUnavailable: document.getElementById("media").dataset.settingsUnavailable,
-        mediaSectionHidden: document.getElementById("media").hidden,
-        mediaNavigationHidden: mediaNavigation.hidden,
-        mediaOptionHidden: mediaOption.hidden,
-        mediaOptionDisabled: mediaOption.disabled,
+        mediaAbsent: document.getElementById("media") === null,
+        mediaNavigationAbsent: document.querySelector('.settings-nav a[href="#media"]') === null,
         audioHelpVisible: !document.getElementById("audio-mining-help").hidden,
         audioHelp: document.getElementById("audio-mining-help").textContent.trim(),
       };
     `);
     assert.deepEqual(settings, {
-      mediaSectionUnavailable: "true",
-      mediaSectionHidden: true,
-      mediaNavigationHidden: true,
-      mediaOptionHidden: true,
-      mediaOptionDisabled: true,
+      mediaAbsent: true,
+      mediaNavigationAbsent: true,
       audioHelpVisible: true,
-      audioHelp:
-        "Firefox can play browser speech, but Hachidori does not record it into Anki. Add a downloadable pronunciation source to fill {audio} fields.",
+      audioHelp: "Firefox can play browser speech, but Hachidori does not record it into Anki. Add a downloadable pronunciation source to fill {audio} fields.",
     });
-
-    const capture = await sendRuntime({
-      target: "hachidori-capture",
-      type: "hd_capture_status",
-      requestId: "firefox-capture-closed",
-    });
-    assert.equal(capture.ok, false);
-    assert.match(capture.error, /unavailable in Firefox/u);
 
     // Chrome-only surfaces are hidden, not merely disabled, and Chrome-only
     // APIs are absent from the package rather than failing at call time.
@@ -555,25 +538,21 @@ async function main() {
     assert.equal(typeof sharing.sharing?.enabled, "boolean", JSON.stringify(sharing));
     assert.equal(sharing.sharing.client.address, null, "a fresh install is not linked");
 
-    // Content scripts on an ordinary page: the shared Anki script answers the
-    // screenshot document probe, and the Chrome-only capture script is absent.
+    // The shared Anki content script answers the screenshot document probe.
     const contentScripts = await execute(`
       const done = arguments[arguments.length - 1];
       (async () => {
         const tab = await browser.tabs.create({ url: arguments[0], active: false });
-        const ask = target => browser.tabs.sendMessage(tab.id, { target, type: target === "hachidori-anki-content" ? "hd_anki_document" : "hd_capture_recover" });
         let anki = null;
         for (let attempt = 0; attempt < 100 && anki?.present !== true; attempt += 1) {
-          anki = await ask("hachidori-anki-content").catch(() => null);
+          anki = await browser.tabs.sendMessage(tab.id, { target: "hachidori-anki-content", type: "hd_anki_document" }).catch(() => null);
           if (anki?.present !== true) await new Promise(resolveWait => setTimeout(resolveWait, 100));
         }
-        const capture = await ask("hachidori-capture-content").then(reply => ({ reply }), error => ({ error: String(error) }));
         await browser.tabs.remove(tab.id);
-        return { anki, capture };
+        return { anki };
       })().then(done, error => done({ error: String(error) }));
     `, [`${fixtureServer.origin}/page`], true);
     assert.deepEqual(contentScripts.anki, { present: true }, JSON.stringify(contentScripts));
-    assert.equal(contentScripts.capture.reply ?? null, null, `the capture content script must not be injected in Firefox: ${JSON.stringify(contentScripts.capture)}`);
 
     // Screenshots: the packaged startup reader is the one extension page that
     // may capture itself; Firefox resolves its tab from the sender instead of
@@ -605,16 +584,13 @@ async function main() {
     assert.equal(afterIdle.storageBackend, beforeIdle.storageBackend);
 
     const toolbarUrl = await navigate("toolbar.html");
-    const toolbar = await execute(`
-      const record = document.getElementById("record-screen");
-      return { hidden: record.hidden, disabled: record.disabled };
-    `);
-    assert.deepEqual(toolbar, { hidden: true, disabled: true });
+    const toolbar = await execute(`return document.getElementById("record-screen");`);
+    assert.equal(toolbar, null);
 
     console.log(
       `Firefox ${session.capabilities.browserVersion}: temporary install from ${extension}, first-run setup,`
         + ` ${engine.storageBackend} import/lookup,`
-        + ` ${IDLE_MS} ms idle continuity, capture fail-closed, hidden media and custom-JavaScript UI, Google Docs flag script registration,`
+        + ` ${IDLE_MS} ms idle continuity, hidden custom-JavaScript UI, Google Docs flag script registration,`
         + ` shortcuts manager, local-file instructions,`
         + ` Anki status, pronunciation fetched and ${audioOutcome}, backup round-trip, sharing status and screenshot passed.`
         + ` Settings: ${settingsUrl}; toolbar: ${toolbarUrl}`,

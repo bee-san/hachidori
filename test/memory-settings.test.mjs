@@ -33,7 +33,7 @@ function fixture(t, { hash = "#advanced", stored = {}, firefox = false, threaded
   window.OVERLAY_MODE = false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: true, linkButtons: true, externalLinkHost: false, customJavaScript: !firefox,
-    localFileAccessPrompt: true, mediaCapture: !firefox, lowMemoryMode: !firefox,
+    localFileAccessPrompt: true, lowMemoryMode: !firefox,
   };
   window.MINING_CAPABILITIES = { screenshot: true, browserSpeech: !firefox };
   window.replies = {

@@ -8,11 +8,11 @@ const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).an
 
 test("basic mappings preserve disabled values and combine shared fields in semantic order", () => {
   const value = config({ fields: { ...config().fields, expression: "Front", reading: "front", pitch: "PitchPosition",
-    captureAnimation: "Media", captureAudio: "Media" } });
+    screenshot: "Media" } });
   const resolved = resolveAnkiTemplates(value, ["Front", "Back", "PitchPosition", "Media"]);
   assert.deepEqual(resolved.templates, { Front: { value: "{expression}<br>{reading}", overwriteMode: "coalesce" },
     Back: { value: "", overwriteMode: "coalesce" }, PitchPosition: { value: "{pitch-position}", overwriteMode: "coalesce" },
-    Media: { value: "{capture-animation}<br>{capture-audio}", overwriteMode: "coalesce" } });
+    Media: { value: "{screenshot}", overwriteMode: "coalesce" } });
   assert.deepEqual(resolved.errors, []);
   assert.deepEqual(resolveAnkiTemplates(config({ fieldTemplates: {} }), ["Front"]).templates,
     { Front: { value: "", overwriteMode: "coalesce" } });
@@ -79,22 +79,13 @@ test("resolved saved templates never migrate a blank SentenceAudio field", () =>
 
 test("marker validation retains unknown tokens as errors and recognizes nonempty dictionary-specific markers", () => {
   assert.deepEqual(ankiTemplateErrors("{Expression}<br>{single-glossary-辞典-plain}{single-frequency-number-辞典}"), []);
-  assert.deepEqual(ankiTemplateErrors("{capture-animation}{capture-audio}"), []);
+  assert.deepEqual(ankiTemplateErrors("{capture-animation}{capture-audio}"),
+    ["Unknown marker: {capture-animation}", "Unknown marker: {capture-audio}"]);
   const source = "literal {unknown} {single-glossary-} {screenshot} {unknown}";
   // {screenshot} is a real marker; the other two are not.
   assert.deepEqual(ankiTemplateErrors(source), ["Unknown marker: {unknown}", "Unknown marker: {single-glossary-}"]);
   assert.equal(source, "literal {unknown} {single-glossary-} {screenshot} {unknown}");
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
-});
-
-test("Automatic capture aliases produce valid hyphenated markers even before capture is enabled", () => {
-  for (const [animation, audio] of [["Capture Animation", "SentenceAudio"], ["SentenceAnimation", "Capture Audio"]]) {
-    const fields = ["Front", animation, audio];
-    const applied = applyAnkiPreset(config(), fields, "automatic");
-    assert.equal(applied.fieldTemplates[animation].value, "{capture-animation}");
-    assert.equal(applied.fieldTemplates[audio].value, "{capture-audio}");
-    assert.deepEqual(resolveAnkiTemplates(applied, fields).errors, []);
-  }
 });
 
 test("template rendering substitutes once, preserves literal HTML and removes only empty marker-only breaks", () => {

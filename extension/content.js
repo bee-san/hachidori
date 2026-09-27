@@ -157,8 +157,6 @@
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
-      capturePin: null,
-      capturePinPromise: null,
     };
   }
 
@@ -198,7 +196,7 @@
   // A drag the reader selects itself, glyph by glyph, in an overlay host.
   let dragSelection = null;
   let overlayMode = false;
-  let hostCapabilities = { linkButtons: true, externalLinkHost: false, mediaCapture: true };
+  let hostCapabilities = { linkButtons: true, externalLinkHost: false };
   let hostAttentionPublished = false;
   let hostAttentionHold = 0;
 
@@ -254,8 +252,7 @@
       }
       const next = applyHostCapabilities(options);
       const customButtonsChanged = JSON.stringify(next.customButtons) !== JSON.stringify(options.customButtons);
-      const miningChanged = customButtonsChanged
-        || JSON.stringify(next.mediaCapture) !== JSON.stringify(options.mediaCapture);
+      const miningChanged = customButtonsChanged;
       options = next;
       if (customButtonsChanged) {
         for (const level of levels) level.view?.setCustomButtons(options.customButtons);
@@ -267,9 +264,6 @@
   }
 
   function applyHostCapabilities(projected) {
-    if (!hostCapabilities.mediaCapture) {
-      projected = { ...projected, mediaCapture: { ...projected.mediaCapture, enabled: false } };
-    }
     if (!hostCapabilities.linkButtons) projected = {
       ...projected,
       customLinks: [],
@@ -1308,32 +1302,10 @@
     return matched;
   }
 
-  function releaseCapture(value) {
-    if (!value) return;
-    void Promise.resolve(value).then(pin => window.HDCapture?.release(pin)).catch(() => {});
-  }
-
-  function releaseProvisionalCapture(value, level) {
-    // Child requests borrow the root pin. A root replay also borrows the pin
-    // already adopted by the visible popup, even if that replay becomes stale.
-    if (level !== rootLevel) return;
-    void Promise.resolve(value).then(pin => {
-      if (pin !== rootLevel.capturePin) releaseCapture(pin);
-    }).catch(() => {});
-  }
-
-  function releaseRootCapture() {
-    const capture = rootLevel.capturePinPromise ?? rootLevel.capturePin;
-    rootLevel.capturePin = null;
-    rootLevel.capturePinPromise = null;
-    releaseCapture(capture);
-  }
-
   function teardown(reason) {
     if (disposed) {
       return;
     }
-    releaseRootCapture();
     audio?.dispose();
     mining?.retire();
     disposed = true;
@@ -1392,7 +1364,6 @@
   }
 
   function discardUi() {
-    releaseRootCapture();
     audio?.retire();
     mining?.retire();
     cancelPopupLayout();
@@ -2110,7 +2081,6 @@
   function buildLevelUi(level) {
     mining ??= window.HDAnki.createAnkiController({
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
-      capture: (type, fields) => sendRequest(type, fields, "hachidori-capture"),
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
     });
@@ -2250,7 +2220,6 @@
         searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
-        capturePin: rootLevel.capturePin ?? undefined,
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
@@ -2601,7 +2570,6 @@
     clearTransferTimer();
     pointerLevel = null;
     pruneLevels(1, false);
-    releaseRootCapture();
     rootLevel.activeCandidate = null;
     rootLevel.activeSignature = null;
     rootLevel.activeHighlightText = "";
@@ -2953,28 +2921,22 @@
       level.noteEditing = false;
     }
     level.view?.hideImagePreview();
-    let reply, capturePin;
-    const capturePinPromise = request.capturePinPromise ?? Promise.resolve(rootLevel.capturePin);
+    let reply;
     try {
       // The first hover pays for the popup host and the stylesheet fetch; run
       // them alongside the lookup instead of ahead of it.
-      [, reply, capturePin] = await Promise.all([
+      [, reply] = await Promise.all([
         ensureUi(),
         sendRequest("hd_lookup", request.payload),
-        capturePinPromise,
       ]);
     } catch (error) {
-      releaseProvisionalCapture(capturePinPromise, level);
       return handleRequestFailure(request, token, error, level, replayOptions);
     }
-    request.capturePin = capturePin;
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
     if (!requestCanRender(token, request.candidate, level)) {
-      releaseProvisionalCapture(capturePin, level);
       return;
     }
-    if (level === rootLevel) rootLevel.capturePin = capturePin;
     noteGeneration(reply.generation, level);
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term
@@ -3025,7 +2987,6 @@
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
       selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
-      capturePinPromise: level === rootLevel ? level.capturePinPromise : rootLevel.capturePinPromise,
     }, level);
   }
 
@@ -3366,8 +3327,6 @@
   }
 
   function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
-    rootLevel.capturePin = null;
-    rootLevel.capturePinPromise = Promise.resolve(window.HDCapture?.rootLookup(candidate) ?? null);
     const lookup = runLookup(candidate);
     const pending = { token: rootLevel.lookupToken, candidate, signature };
     pendingCandidateLookup = pending;

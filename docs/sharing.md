@@ -122,7 +122,7 @@ After linking, the page reloads, and from then on:
   client that did not advertise v2;
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
-  sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
+  sends the final JPEG bytes to the host, which validates and uploads
   them as part of its ordinary queued Anki transaction;
 - browser text-to-speech is planned by the host but verified and recorded with
   the linked browser's own voice and capture session. Only that final WAV is

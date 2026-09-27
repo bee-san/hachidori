@@ -42,7 +42,6 @@ export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
 export function capabilityAnkiOptions(options, {
   screenshot = true,
   browserSpeech = true,
-  mediaCapture = true,
 } = {}) {
   return {
     ...options,
@@ -56,14 +55,13 @@ export function capabilityAnkiOptions(options, {
     audioSources: browserSpeech
       ? options.audioSources
       : options.audioSources.filter(source => !source.type.startsWith("text-to-speech")),
-    mediaCapture: { ...options.mediaCapture, enabled: mediaCapture && options.mediaCapture.enabled },
   };
 }
 
-// Electron has no chrome.tabs.captureVisibleTab, and no capture host can record
-// browser text-to-speech, so only downloadable pronunciations reach Anki.
+// An overlay cannot capture a reading tab. Browser speech remains playback-only,
+// so only downloadable pronunciations reach Anki.
 export function overlayAnkiOptions(options) {
-  return capabilityAnkiOptions(options, { screenshot: false, browserSpeech: false, mediaCapture: false });
+  return capabilityAnkiOptions(options, { screenshot: false, browserSpeech: false });
 }
 
 // How each first-install option's value is built from a committed title.

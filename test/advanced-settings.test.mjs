@@ -23,7 +23,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, fire
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: !firefox,
-    localFileAccessPrompt: !overlayMode, mediaCapture: !overlayMode && !firefox, lowMemoryMode: !firefox,
+    localFileAccessPrompt: !overlayMode, lowMemoryMode: !firefox,
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode && !firefox };
   window.chrome = {
@@ -58,98 +58,33 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, fire
   `));
   const el = id => window.document.getElementById(id);
   const visible = () => [...window.document.querySelectorAll("main > section")].filter(node => !node.hidden).map(node => node.id);
-  return { window, el, visible,
-    mediaNav: () => window.document.querySelector('.settings-nav a[href="#media"]').parentElement,
-    mediaOption: () => el("settings-section").querySelector('option[value="media"]') };
+  return { window, el, visible };
 }
 
-test("Advanced lists the media mining switch and reveals Media capture only while it is on", async t => {
-  const { window, el, visible, mediaNav, mediaOption } = fixture(t);
-  assert.deepEqual(visible(), ["advanced"]);
-  assert.equal(el("settings-section").value, "advanced");
-  assert.equal(window.document.querySelector('.settings-nav a[href="#advanced"]').getAttribute("aria-current"), "page");
-  assert.equal(el("options-feedback").closest("section").id, "advanced", "save feedback mounts in the section");
-  assert.equal(el("experimental-empty").hidden, true);
-
-  const toggle = el("opt-experimental-mediaMining");
-  assert.equal(toggle.checked, false);
-  assert.equal(mediaNav().hidden, true);
-  assert.equal(mediaOption().hidden, true);
-  const link = window.document.getElementById(toggle.getAttribute("aria-describedby")).querySelector("a");
-  assert.equal(link.hidden, true);
-
-  toggle.click();
-  await tick();
-  assert.equal(window.readOptions().experimental.mediaMining, true);
-  assert.equal(JSON.stringify(window.readPending()),
-    JSON.stringify({ experimental: { ...window.HDReaderOptions.DEFAULT_OPTIONS.experimental, mediaMining: true } }));
-  assert.equal(window.readOptions().mediaCapture.enabled, false, "turning the flag on does not start capturing");
-  assert.equal(mediaNav().hidden, false);
-  assert.equal(mediaOption().hidden, false);
-  assert.equal(link.hidden, false);
-
-  window.location.hash = link.getAttribute("href");
-  window.dispatchEvent(new window.Event("hashchange"));
-  assert.deepEqual(visible(), ["media"]);
-});
-
-test("a hidden Media capture request lands on Advanced until the stored flag reveals it", async t => {
-  const off = fixture(t, { hash: "#media" });
-  assert.deepEqual(off.visible(), ["advanced"]);
-  assert.equal(off.window.location.hash, "#media", "the requested fragment is kept for when the flag turns on");
-
-  const on = fixture(t, { hash: "#media", stored: { experimental: { mediaMining: true } } });
-  assert.deepEqual(on.visible(), ["media"]);
-  assert.equal(on.mediaNav().hidden, false);
-
-  const legacy = fixture(t, { hash: "#media", stored: { mediaCapture: { enabled: true } } });
-  assert.deepEqual(legacy.visible(), ["media"], "a profile that enabled capture before the flag keeps its section");
-  assert.equal(legacy.el("opt-experimental-mediaMining").checked, true);
-});
-
-test("turning media mining off also stops the recorder switch in the same save", async t => {
-  const { window, el, visible } = fixture(t, { stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } } });
-  const toggle = el("opt-experimental-mediaMining");
-  assert.equal(toggle.checked, true);
-  toggle.click();
-  await tick();
-  await tick();
-  const options = window.readOptions();
-  assert.equal(options.experimental.mediaMining, false);
-  assert.equal(options.mediaCapture.enabled, false);
-  assert.deepEqual(Object.keys(window.readPending()).sort(), ["experimental", "mediaCapture"]);
-  assert.deepEqual(visible(), ["advanced"]);
-
-  window.location.hash = "#media";
-  window.dispatchEvent(new window.Event("hashchange"));
-  assert.deepEqual(visible(), ["advanced"], "the hidden section redirects to its switch");
-});
-
-test("overlay Settings toggles the flag without touching the browser's saved recorder switch", async t => {
-  const { window, el } = fixture(t, { overlayMode: true,
-    stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } } });
-  el("opt-experimental-mediaMining").click();
-  await tick();
-  assert.equal(window.readOptions().experimental.mediaMining, false);
-  assert.equal(window.readOptions().mediaCapture.enabled, true, "the overlay cannot edit recorder settings");
-  assert.deepEqual(Object.keys(window.readPending()), ["experimental"]);
-});
-
-test("Firefox does not list the media mining switch and a stored flag cannot reveal Media capture", async t => {
-  // A backup restored from Chrome may carry mediaMining: true; Firefox has no
-  // media capture, so the section, its navigation, and the switch stay away.
-  const { window, el, visible, mediaNav, mediaOption } = fixture(t, {
-    hash: "#media", firefox: true, stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } },
+test("Advanced keeps dictionary experiments and discards removed media settings", async t => {
+  const { window, el, visible } = fixture(t, {
+    hash: "#media", stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } },
   });
-  assert.deepEqual(visible(), ["dictionaries"], "an unavailable section falls back rather than landing on Advanced");
+  assert.deepEqual(visible(), ["dictionaries"]);
+  assert.equal(el("media"), null);
   assert.equal(el("opt-experimental-mediaMining"), null);
-  // Flags without a section are browser-independent and stay listed.
-  const others = window.HDReaderOptions.EXPERIMENTAL_FEATURES.filter(feature => !feature.section);
-  for (const feature of others) assert.notEqual(el(`opt-experimental-${feature.id}`), null, feature.id);
-  assert.equal(el("experimental-empty").hidden, others.length > 0);
-  assert.equal(mediaNav().hidden, true);
-  assert.equal(mediaOption().hidden, true);
-  assert.equal(el("media").hidden, true);
+  assert.equal(window.document.querySelector('.settings-nav a[href="#media"]'), null);
+  assert.equal(Object.hasOwn(window.readOptions(), "mediaCapture"), false);
+  assert.equal(Object.hasOwn(window.readOptions().experimental, "mediaMining"), false);
+  window.location.hash = "#advanced";
+  window.dispatchEvent(new window.Event("hashchange"));
+  assert.deepEqual(visible(), ["advanced"]);
+  assert.equal(el("experimental-empty").hidden, true);
+});
+
+test("Firefox lists supported experimental features without a media section", t => {
+  const { window, el, visible } = fixture(t, { hash: "#media", firefox: true,
+    stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } } });
+  assert.deepEqual(visible(), ["dictionaries"]);
+  for (const feature of window.HDReaderOptions.EXPERIMENTAL_FEATURES) {
+    assert.notEqual(el(`opt-experimental-${feature.id}`), null, feature.id);
+  }
+  assert.equal(el("media"), null);
 });
 
 test("the MDX dictionaries switch widens the import picker to .mdx and .mdd files", async t => {

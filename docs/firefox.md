@@ -5,12 +5,8 @@ and Linux with every GitHub release. It uses the same dictionaries, popup,
 settings, Anki integration, pronunciation, sharing, backup format, and
 WebAssembly engine as Chrome. It is not on addons.mozilla.org yet.
 
-Media recording is intentionally unavailable. Firefox does not show the Media
-capture settings or toolbar recording action, does not inject the capture
-content script, and rejects capture messages. Browser text-to-speech plays but
-is not recorded into Anki. Ordinary page screenshots and pronunciation playback
-remain available. Saved capture settings and custom template markers are
-preserved for backup compatibility with Chrome.
+Browser text-to-speech plays but is not recorded into Anki. Ordinary page
+screenshots and downloadable pronunciation remain available.
 
 Custom JavaScript is also unavailable. Chrome registers it through the MV3
 `userScripts` API, which Firefox's MV2 extensions do not offer; Settings hides
@@ -51,8 +47,7 @@ python3 scripts/package-store.py --output-dir /tmp/hachidori-release
 
 The one packager writes the Chrome ZIP, the Firefox XPI, the matching source
 archive, and `SHA256SUMS.txt` from the committed tree. The XPI is the Chrome
-upload minus the files in `scripts/firefox-package.json` (the capture
-controls, recorder, WAV and speech capture, and animated-AVIF encoder), with
+upload with
 `manifest.firefox.json` in place of `manifest.json`. The packager refuses a
 Firefox manifest whose version differs from Chrome's or that references an
 excluded file, and `scripts/verify-firefox-package.mjs` re-checks the written

@@ -2,7 +2,7 @@
 
 Each release's `hachidori-<version>-<commit>-source.zip` includes Hachidori's
 tracked files, the complete recursive Hoshidicts submodules, and the pinned
-libavif, libaom and unminified zip.js sources. It contains no Git metadata and
+unminified zip.js source. It contains no Git metadata and
 does not require access to a private repository. `SOURCE_REVISIONS.json`
 records the repository commits and downloaded dependency checksums.
 
@@ -40,29 +40,6 @@ cp wasm/build-fallback/hoshidicts.mjs wasm/build-fallback/hoshidicts.wasm extens
 
 The source archive already includes each CMake dependency under
 `third_party/hoshidicts/external/`; no submodule checkout is needed.
-
-## Rebuild the AVIF encoder
-
-Use the source archive's bundled dependencies to avoid fetching them during
-configuration:
-
-```sh
-emcmake cmake -S wasm/avif -B wasm/avif/build -DCMAKE_BUILD_TYPE=MinSizeRel \
-  -DFETCHCONTENT_SOURCE_DIR_LIBAVIF="$PWD/third_party/store-sources/libavif" \
-  -DFETCHCONTENT_SOURCE_DIR_LIBAOM="$PWD/third_party/store-sources/libaom"
-cmake --build wasm/avif/build --parallel
-cp wasm/avif/build/avif-encoder.mjs wasm/avif/build/avif-encoder.wasm extension/vendor/
-```
-
-The sources are libavif 1.3.0 at
-`1aadfad932c98c069a1204261b1856f81f3bc199` and libaom 3.12.1 at
-`10aece4157eb79315da205f39e19bf6ab3ee30d0`. Both libavif's small libyuv subset
-and libaom's internal dependencies are present in those archives. Other AVIF
-codecs and external libyuv are disabled by `wasm/avif/CMakeLists.txt`.
-
-Packaging pins libaom's official release archive. Its source files and executable
-modes match that commit, while the Gitiles archive endpoint rewrites timestamps
-on each request and cannot provide a stable download checksum.
 
 ## zip.js and validation
 

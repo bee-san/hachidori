@@ -58,14 +58,12 @@ const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
-const CAPTURE_TARGET = "hachidori-capture";
 const SHARING_TARGET = "hachidori-sharing";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
 const OPTION_SECTIONS = {
   lookup: "Reading",
   design: "Design",
   audio: "Audio",
-  ...(!IS_FIREFOX ? { media: "Media capture" } : {}),
   anki: "Anki",
   keybinds: "Keybinds",
   advanced: "Advanced",
@@ -75,7 +73,7 @@ const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
-  clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
+  clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -190,8 +188,6 @@ let customButtonController;
 let experimentalController;
 let memoryController;
 let backingUp = false;
-let mediaStatusEpoch = 0;
-let mediaRuntimeState = "unavailable";
 let settingsSearch;
 let importProgress;
 let importDragDepth = 0;
@@ -219,14 +215,6 @@ function configureBrowserUi() {
     customJavascript.hidden = true;
   }
   if (!IS_FIREFOX) return;
-  const media = element("media");
-  media.dataset.settingsUnavailable = "true";
-  media.hidden = true;
-  const mediaOption = element("settings-section").querySelector('option[value="media"]');
-  mediaOption.hidden = true;
-  mediaOption.disabled = true;
-  document.querySelector('.settings-nav a[href="#media"]').closest(".nav-item").hidden = true;
-
   element("audio-mining-help").textContent =
     "Firefox can play browser speech, but Hachidori does not record it into Anki. Add a downloadable pronunciation source to fill {audio} fields.";
   const shortcutHelp = element("browser-shortcuts").querySelector(".field-hint");
@@ -343,7 +331,6 @@ function showSettingsSection(focus = false) {
   renderThemeChoices();
   updateDesignPreview();
   updateAudioSettings();
-  updateMediaSettings();
   updateAnkiSettings();
   updateKeybindSettings();
   updateBackupSettings();
@@ -458,124 +445,13 @@ function updateSharingSettings() {
   sharingController.start();
 }
 
-function renderMediaSettings() {
-  const capture = options.mediaCapture;
-  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
-  element("media-heading-help").textContent = HOST_CAPABILITIES.mediaCapture
-    ? "Optional local recording for Anki notes. Changes save automatically."
-    : "Saved Chrome recorder settings, inactive in this overlay.";
-  element("media-browser-help").hidden = !HOST_CAPABILITIES.mediaCapture;
-  element("media-template-help").hidden = !HOST_CAPABILITIES.mediaCapture;
-  const values = {
-    "opt-media-enabled": HOST_CAPABILITIES.mediaCapture && capture.enabled,
-    "opt-media-animation": capture.includeAnimation,
-    "opt-media-audio": capture.includeCapturedAudio,
-    "opt-media-native-cues": capture.page.nativeCues,
-    "opt-media-dom-text": capture.page.domText,
-    "opt-media-auto-area": capture.page.autoLearnArea,
-    "opt-media-texthooker": capture.texthooker.enabled,
-  };
-  for (const [id, checked] of Object.entries(values)) element(id).checked = checked;
-  const choices = {
-    "opt-media-history": capture.historySeconds,
-    "opt-media-clip": capture.clipSeconds,
-    "opt-media-preset": capture.videoPreset,
-    "opt-media-timing": capture.timingMode,
-    "opt-media-offset": capture.estimatedOffsetMs,
-    "opt-media-texthooker-url": capture.texthooker.url,
-    "opt-media-texthooker-format": capture.texthooker.format,
-  };
-  for (const [id, value] of Object.entries(choices)) {
-    const input = element(id);
-    if (input !== document.activeElement) input.value = String(value);
-  }
-  if (!HOST_CAPABILITIES.mediaCapture) {
-    for (const control of document.querySelectorAll("#media button, #media input, #media select")) {
-      control.disabled = true;
-    }
-  } else {
-    element("opt-media-auto-area").disabled = !capture.page.domText;
-    element("opt-media-texthooker-format").disabled = !capture.texthooker.enabled;
-  }
-}
-
-async function updateMediaSettings() {
-  if (activeSection !== "media") return;
-  renderMediaSettings();
-  const epoch = ++mediaStatusEpoch;
-  if (!HOST_CAPABILITIES.mediaCapture) {
-    mediaRuntimeState = "unavailable";
-    setStatusOutput(element("media-runtime-status"), "Media capture is unavailable in this overlay.");
-    return;
-  }
-  try {
-    const reply = await send("hd_capture_status", {}, CAPTURE_TARGET);
-    if (epoch !== mediaStatusEpoch) return;
-    if (!reply.ok) throw new Error(reply.error || "Capture page unavailable.");
-    const state = { recording: "Recording", disabled: "Disabled" }[reply.state] ?? "Stopped";
-    mediaRuntimeState = reply.state;
-    const source = reply.mediaSource?.name ? ` · ${reply.mediaSource.name}` : "";
-    const linked = reply.linkedPage?.title ? ` · linked to ${reply.linkedPage.title}` : "";
-    setStatusOutput(element("media-runtime-status"), `${state}${source}${linked}`,
-      reply.state === "recording" ? "ready" : undefined);
-  } catch {
-    if (epoch === mediaStatusEpoch) {
-      mediaRuntimeState = "unavailable";
-      setStatusOutput(element("media-runtime-status"),
-        "Capture page closed. Open it before starting a reading session.");
-    }
-  }
-}
-
-async function editMediaCapture(mutator, { immediate = false } = {}) {
-  if (!HOST_CAPABILITIES.mediaCapture) {
-    renderMediaSettings();
-    return false;
-  }
-  let recording = mediaRuntimeState === "recording";
-  if (!immediate) {
-    try {
-      const status = await send("hd_capture_status", {}, CAPTURE_TARGET);
-      recording = status.ok && status.state === "recording";
-      mediaRuntimeState = status.ok ? status.state : "unavailable";
-    } catch {
-      recording = false;
-      mediaRuntimeState = "unavailable";
-    }
-  }
-  const next = {
-    ...options.mediaCapture,
-    texthooker: { ...options.mediaCapture.texthooker },
-    page: { ...options.mediaCapture.page },
-  };
-  mutator(next);
-  if (!immediate && recording
-      && !window.confirm("Changing media capture settings stops the current capture and clears unsubmitted clips. Apply this change?")) {
-    renderMediaSettings();
-    return false;
-  }
-  options.mediaCapture = next;
-  renderMediaSettings();
-  writeOptions();
-  return true;
-}
-
 async function toggleExperimental(id, enabled) {
-  // Media capture keeps its own switch and settings; only the recorder itself
-  // must not stay active behind a hidden section.
-  if (id === "mediaMining" && !enabled && HOST_CAPABILITIES.mediaCapture && options.mediaCapture.enabled
-      && !await editMediaCapture(capture => { capture.enabled = false; })) {
-    renderExperimentalSettings();
-    return;
-  }
   options.experimental = { ...options.experimental, [id]: enabled };
   renderExperimentalSettings();
   writeOptions();
 }
 
 function renderExperimentalSettings() {
-  // A flag whose section this browser cannot offer (Firefox has no media
-  // capture) is not listed, and a stored value cannot reveal that section.
   const features = EXPERIMENTAL_FEATURES.filter(feature => !feature.section || sectionAvailable(feature.section));
   experimentalController ??= createExperimentalSettings({
     document, features, onToggle: (id, enabled) => { void toggleExperimental(id, enabled); },
@@ -1852,7 +1728,6 @@ function renderOptions() {
   renderLowMemoryMode();
   updateDesignPreview();
   updateAudioSettings();
-  updateMediaSettings();
   updateAnkiSettings();
   updateKeybindSettings();
 }
@@ -3494,73 +3369,6 @@ function attachHandlers() {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
-  element("media-open-capture").addEventListener("click", async () => {
-    if (!HOST_CAPABILITIES.mediaCapture) return;
-    try {
-      const reply = await send("hd_capture_open", {}, CAPTURE_TARGET);
-      if (!reply.ok) throw new Error(reply.error || "The capture page could not be opened.");
-      setStatusOutput(element("media-runtime-status"), "Capture controls opened in a separate tab.");
-    } catch (error) {
-      setStatusOutput(element("media-runtime-status"),
-        `Could not open capture controls: ${describe(error)}`, "error");
-    }
-  });
-  element("opt-media-enabled").addEventListener("change", event => {
-    void editMediaCapture(capture => { capture.enabled = event.target.checked; }, {
-      immediate: !event.target.checked,
-    });
-  });
-  for (const [id, key] of [["opt-media-animation", "includeAnimation"], ["opt-media-audio", "includeCapturedAudio"]]) {
-    element(id).addEventListener("change", event => {
-      const other = key === "includeAnimation" ? options.mediaCapture.includeCapturedAudio : options.mediaCapture.includeAnimation;
-      if (!event.target.checked && !other) {
-        event.target.checked = true;
-        setOptionsStatus("Keep at least one captured-media output enabled.");
-        return;
-      }
-      void editMediaCapture(capture => { capture[key] = event.target.checked; });
-    });
-  }
-  for (const [id, key] of [["opt-media-history", "historySeconds"], ["opt-media-clip", "clipSeconds"]]) {
-    element(id).addEventListener("change", event => {
-      void editMediaCapture(capture => { capture[key] = Number(event.target.value); });
-    });
-  }
-  for (const [id, key] of [["opt-media-preset", "videoPreset"], ["opt-media-timing", "timingMode"]]) {
-    element(id).addEventListener("change", event => {
-      void editMediaCapture(capture => { capture[key] = event.target.value; });
-    });
-  }
-  element("opt-media-offset").addEventListener("change", event => {
-    const value = Math.max(-2000, Math.min(2000, Math.trunc(Number(event.target.value))));
-    void editMediaCapture(capture => { capture.estimatedOffsetMs = Number.isFinite(value) ? value : -500; });
-  });
-  for (const [id, key] of [["opt-media-native-cues", "nativeCues"], ["opt-media-dom-text", "domText"],
-    ["opt-media-auto-area", "autoLearnArea"]]) {
-    element(id).addEventListener("change", event => {
-      void editMediaCapture(capture => { capture.page[key] = event.target.checked; });
-    });
-  }
-  element("opt-media-texthooker").addEventListener("change", event => {
-    if (event.target.checked && !options.mediaCapture.texthooker.url) {
-      event.target.checked = false;
-      setOptionsStatus("Enter a loopback WebSocket URL before enabling texthooker timing.");
-      return;
-    }
-    void editMediaCapture(capture => { capture.texthooker.enabled = event.target.checked; });
-  });
-  element("opt-media-texthooker-url").addEventListener("change", event => {
-    const value = normaliseTexthookerUrl(event.target.value);
-    if (value === null || (options.mediaCapture.texthooker.enabled && value === "")) {
-      event.target.value = options.mediaCapture.texthooker.url;
-      setOptionsStatus("Texthooker must use a loopback ws or wss URL without credentials or fragments.");
-      return;
-    }
-    void editMediaCapture(capture => { capture.texthooker.url = value; });
-  });
-  element("opt-media-texthooker-format").addEventListener("change", event => {
-    void editMediaCapture(capture => { capture.texthooker.format = event.target.value; });
-  });
   const optionSections = Object.keys(OPTION_SECTIONS).map(element);
   for (const section of optionSections) {
     section.addEventListener("input", (event) => {
@@ -3824,8 +3632,6 @@ async function flushOptionsUntilIdle() {
 
 function renderMiningCapabilityHelp() {
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
-  element("audio-speech-capture-help").hidden = !MINING_CAPABILITIES.browserSpeech;
-  element("media-overlay-help").hidden = HOST_CAPABILITIES.mediaCapture;
 }
 
 async function start() {

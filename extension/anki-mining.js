@@ -2,36 +2,11 @@
 import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
-import { ankiSetupFamily } from "./anki-setup.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiDuplicateNotes,
   isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
-const AUTOMATIC_CAPTURE_FIELDS = {
-  kiku: { picture: "Picture", audio: "SentenceAudio" },
-  lapis: { picture: "Picture", audio: "SentenceAudio" },
-  senren: { picture: "picture", audio: "sentenceAudio" },
-};
-
-function requestConfiguration(current, request) {
-  const fields = AUTOMATIC_CAPTURE_FIELDS[ankiSetupFamily(current.config.model)];
-  if (!fields) return current;
-  const templates = Object.fromEntries(Object.entries(current.resolved.templates)
-    .map(([field, template]) => [field, { ...template }]));
-  const routed = { ...current, resolved: { ...current.resolved, templates } };
-  const capture = current.config.mediaCapture;
-  if (!request.capturePin || capture?.enabled !== true) return routed;
-  if (capture.includeAnimation === true && templates[fields.picture]) {
-    templates[fields.picture].value = templates[fields.picture].value
-      .replaceAll("{screenshot}", "{capture-animation}");
-  }
-  if (capture.includeCapturedAudio === true && templates[fields.audio]?.value.trim() === "") {
-    templates[fields.audio].value = "{capture-audio}";
-  }
-  return routed;
-}
-
 export async function readAnkiNoteFields(invoke, noteId) {
   const infos = await invoke("notesInfo", { notes: [noteId] });
   const info = Array.isArray(infos) ? infos.find(value => value.noteId === noteId) : null;
@@ -148,21 +123,6 @@ function fieldsForDecision(prepared, checked) {
   };
 }
 
-function captureForApplication(request, templates) {
-  const requirements = ankiCaptureRequirements(templates);
-  const unavailable = new Set(Array.isArray(request.captureUnavailable) ? request.captureUnavailable : []);
-  requirements.includeAnimation &&= !unavailable.has("animation");
-  requirements.includeAudio &&= !unavailable.has("audio");
-  if (!requirements.includeAnimation && !requirements.includeAudio) return null;
-  const pin = request.capturePin;
-  return {
-    requirements,
-    sourceLabel: pin?.sourceLabel,
-    partial: pin?.partial === true,
-    readyAtMs: pin?.readyAtMs,
-  };
-}
-
 // Names the looked-up word in an error, so a reader mining several results
 // can tell which one Anki refused.
 function describeRequestTerm(request) {
@@ -213,7 +173,6 @@ export function createAnkiMiningService({
   afterConfirmed = async () => {},
   afterRejected = async () => {},
   preflightExtra = async () => ({}),
-  validateCapture = async () => {},
   enrich,
   duplicateIndex,
   now = Date.now,
@@ -284,7 +243,7 @@ export function createAnkiMiningService({
 
   async function prepare(request, fresh) {
     const configured = await configuration(request?.templateId, fresh);
-    const current = requestConfiguration(configured, request);
+    const current = configured;
     if (request.configKey !== current.configKey) throw new Error(CONFIG_CHANGED);
     if (current.errors.length) throw new Error(current.errors.join("\n"));
     const resources = await buildFields(request, current, { preflight: !fresh });
@@ -303,15 +262,12 @@ export function createAnkiMiningService({
   async function preflight(request) {
     const prepared = await prepare(request, false);
     if (prepared.resources.deferDuplicateCheck === true) {
-      const capture = captureForApplication(request, prepared.resolved.templates);
-      if (capture) await validateCapture({ request, prepared, capture });
       const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
       return {
         state: "addable",
         canAdd: true,
         error: null,
         deferred: true,
-        capture,
         screenshot: prepared.config.captureScreenshot === true
           && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
         ...(extra ?? {}),
@@ -319,8 +275,6 @@ export function createAnkiMiningService({
     }
     const result = await decision(prepared, request, duplicateIndex);
     const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
-    const capture = applied ? captureForApplication(request, applied.templates) : null;
-    if (capture) await validateCapture({ request, prepared, capture });
     const extra = await preflightExtra({ request, prepared, applied, deferred: false });
     return {
       state: result.state,
@@ -328,7 +282,6 @@ export function createAnkiMiningService({
       error: result.error,
       action: result.action,
       noteIds: result.noteIds,
-      capture,
       // A mapped {screenshot} that the user has left switched on: the reader
       // takes the viewport picture itself, when it submits. The whole
       // request-specific mapping decides, not the subset this preflight would
@@ -347,15 +300,12 @@ export function createAnkiMiningService({
       action: checked.action, noteIds: checked.noteIds };
     const { config, configJson, firstField, note, invoke } = prepared;
     const { fields, target, templates } = fieldsForDecision(prepared, checked);
-    const capture = captureForApplication(request, templates);
-    if (capture) await validateCapture({ request, prepared, capture });
     if (JSON.stringify(await readConfig(request?.templateId)) !== configJson) throw new Error(CONFIG_CHANGED);
     const writeResources = await beforeWrite({
       request,
       ...prepared,
       target,
       appliedFields: fields,
-      capture,
     });
     // Failed media can restore a field's original value after preparation.
     // Leave it untouched instead of overwriting an intervening Anki edit.
@@ -368,10 +318,9 @@ export function createAnkiMiningService({
       await releaseRejected();
       throw new Error(CONFIG_CHANGED);
     }
-    // Uploads and configuration reads can outlive Stop. Validate the remaining
-    // write ownership last, with no unrelated await before sending the mutation.
+    // Validate the remaining write ownership before sending the mutation.
     try {
-      await beforeMutation({ request, capture, writeResources });
+      await beforeMutation({ request, writeResources });
     } catch (error) {
       await releaseRejected();
       throw error;
@@ -432,12 +381,11 @@ export function createAnkiMiningService({
         noteId,
         existingFields: target?.fields,
         appliedFields: fields,
-        capture,
         writeResources,
         verified,
       });
     } catch (error) {
-      warnings.push(`Captured media cleanup: ${error.message}`);
+      warnings.push(error.message);
     }
     if (verified) {
       try {

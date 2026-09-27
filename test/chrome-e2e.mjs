@@ -11164,8 +11164,6 @@ async function main() {
     JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, pickerKeepsFocus, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
   const themeLayouts = [];
-  // Media capture is experimental: its section joins the navigation only after
-  // the Advanced switch is on, so the layout sweep turns it on first.
   await showSettingsSection(page, "advanced");
   // The Google Docs switch registers a MAIN-world script for docs.google.com
   // from the service worker; the extension page can read the registry itself.
@@ -11194,28 +11192,25 @@ async function main() {
       && docsScript.js.length === 1 && docsScript.js[0].endsWith("google-docs-flag.js"),
     JSON.stringify({ docsBefore, docsOn, docsOff }),
   );
-  await page.click("#opt-experimental-mediaMining");
-  await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden
-    && document.getElementById("options-status").textContent.trim() === "Saved.", { timeout: 10_000, polling: 100 });
   for (const width of [320, 1280]) {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "default"]) {
       await setSettingsTheme(theme);
-      for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "keybinds", "custom-dictionary",
+      for (const section of ["dictionaries", "lookup", "design", "audio", "anki", "keybinds", "custom-dictionary",
         "add-dictionaries", "updates", "dictionary-groups", "backup", "advanced"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const panel = document.getElementById(section);
           const primary = {
             dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns",
-            audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh", keybinds: "keybind-add",
+            audio: "audio-source-add", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
-            advanced: "opt-experimental-mediaMining",
+            advanced: "opt-experimental-longKeyScan",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
-          const statusId = { media: "media-runtime-status", anki: "anki-status" }[section];
+          const statusId = { anki: "anki-status" }[section];
           const status = statusId ? document.getElementById(statusId) : null;
           const statusRect = status?.getBoundingClientRect();
           const statusStyle = status ? getComputedStyle(status) : null;

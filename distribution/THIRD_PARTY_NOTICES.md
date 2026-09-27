@@ -18,9 +18,6 @@ submodules and the pinned source distributions listed below.
 | UTF8-CPP | `utfcpp-LICENSE` | UTF-8 handling |
 | xxHash | `xxHash-LICENSE` | Dictionary hashing |
 | kanji-processor | `kanji-processor-LICENSE` | Kanji-variant source data |
-| libavif 1.3.0 | `libavif/LICENSE` | AVIF encoder; complete upstream notice includes dav1d-derived code and its bundled libyuv subset |
-| libaom 3.12.1 | `libaom/LICENSE`, `libaom/PATENTS` | AV1 encoding and upstream patent license |
-| libaom's bundled libyuv, fastfeat and vector | `libaom/third_party/{libyuv,fastfeat,vector}/LICENSE` | Encoder dependencies |
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
 | Emscripten | `emscripten-LICENSE` | Generated JavaScript runtime, including its Node.js-derived path code |
 | musl | `musl-COPYRIGHT` | C runtime, including its upstream attribution list |
@@ -33,7 +30,7 @@ The Emscripten and runtime notices are copied from Emscripten
 Trailing whitespace is normalized. This identifies the notice sources; the historical committed Wasm binaries
 did not record an exact Emscripten compiler version.
 
-The AVIF and zip.js source archive URLs and checksums are recorded in
+The zip.js source archive URL and checksum are recorded in
 `scripts/store-sources.json` in the matching source archive. The zip.js
 `dist/zip-core-external.min.js` file is byte-checked against the shipped
 `vendor/zip.js` when packaging.
