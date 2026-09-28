@@ -71,7 +71,9 @@ HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
 
 `node --test test/anki-pitch.test.mjs test/anki-values.test.mjs test/anki-templates.test.mjs`
 checks pitch contours, kana, escaping, variants and existing text markers using
-the jsdom override above. The Chrome suite mines the fixture dictionary and
+the jsdom override above. Graph levels come from the popup's Yomitan pitch
+helpers, including a string pattern's particle as each Yomitan graph style reads
+it. The Chrome suite mines the fixture dictionary and
 renders both graph styles offline in light, dark and styled cards, including
 the hollow-particle regression for card CSS that colors mora dots by radius.
 
@@ -108,13 +110,14 @@ dictionary's tag hidden in the DOM outside the pitch-badge budget through live t
 explicit display choices, source details, and live grammar/name/abbreviation controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
-`node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's
-badge draws its own mora contour with the `[n]` position, starts with its
-dictionary's name by default, keeps `reading [n]` in its tooltip and
-accessibility label, renames both in place through alias changes, and falls back
-to the text badge, still named, when the position lies outside the reading's
-morae. Turning the name off restores the unlabelled badge live without replacing
-definitions.
+`node --test test/pitch-badges.test.mjs` checks Yomitan's pronunciation markup
+in the real popup view: one `li.pronunciation-group` per pitch dictionary with
+its `pronunciation-dictionary` tag, each accent's mora levels, `[n]` notation and
+`reading [n]` tooltip and accessibility label; the engine's `{position: 0,
+pattern: "LHL"}` reading as `[2]` in the badge and the furigana contour; the
+text, position and graph switches updating an open popup without replacing
+definitions; the nasal and devoice marks; and alias renames and the dictionary
+name switch applied live.
 
 `node --test test/yomitan-parity.test.mjs` checks the renderer against
 Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
@@ -127,7 +130,9 @@ for plain and Pixiv-style multiline strings, several senses, form-of data, the
 JMdict redirect, a Jitendex gaiji, an image with its description, a table, an
 external link and dictionary-set `lang`, after removing a short documented list
 of Hachidori's own hooks. A popup-view case pins `li.definition-item[data-dictionary]`,
-`.definition-tag-list`, `data-count` and the headword's `lang`. It uses the same
+`.definition-tag-list`, `data-count` and the headword's `lang`. The pronunciation
+case compares `PronunciationGenerator`'s text, `[n]` notation and SVG graph for
+はし as `"LHL"` and as `2`, and がくせい with nasal and devoiced morae. It uses the same
 external jsdom dependency.
 
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary

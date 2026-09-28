@@ -144,6 +144,10 @@
     showPitchAccentBadge: true,
     // Yomitan labels every pronunciation group with its dictionary.
     showPitchAccentDictionaryNames: true,
+    // Yomitan's downstep text, position and graph notations, with its defaults.
+    showPitchAccentText: true,
+    showPitchAccentPosition: true,
+    showPitchAccentGraph: false,
     hidePopupGrammarTags: true,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
@@ -202,7 +206,8 @@
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
-    "showPitchAccentDictionaryNames", "hidePopupGrammarTags",
+    "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
+    "hidePopupGrammarTags",
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation", "activationSticky"];

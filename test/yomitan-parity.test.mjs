@@ -188,7 +188,7 @@ test("each term-bank row is a definition-item that carries its dictionary and ta
   const popup = document.getElementById("popup");
   const view = HDPopup.createPopupView({ document, window, popup, positionPopup() {},
     appendExpressionRuby: HDGlossary.appendExpressionRuby, appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
-    parseTagList: HDGlossary.parseTagList, buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae });
+    parseTagList: HDGlossary.parseTagList, createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent });
   t.after(() => { view.destroy(); window.close(); });
   const source = document.querySelector("p");
   view.renderResults([{ matched: "直す", deinflected: "直す", trace: [], term: { expression: "直す", reading: "なおす",
@@ -206,4 +206,41 @@ test("each term-bank row is a definition-item that carries its dictionary and ta
   assert.equal(items[1].querySelector(".definition-tag-list"), null);
   assert.deepEqual(items.map(item => item.querySelector(".gloss-list").dataset.count), ["1", "2"]);
   assert.equal(popup.querySelector(".gsm-hoshidicts-expression").lang, "ja");
+});
+
+// PronunciationGenerator.createPronunciationText / createPronunciationDownstepPosition /
+// createPronunciationGraph on getKanaMorae(reading). "LHL" and 2 are the same accent.
+const HASHI_TEXT = '<span class="pronunciation-text"><span class="pronunciation-mora" data-position="0" data-pitch="low" data-pitch-next="high"><span class="pronunciation-character">は</span><span class="pronunciation-mora-line"></span></span><span class="pronunciation-mora" data-position="1" data-pitch="high" data-pitch-next="low"><span class="pronunciation-character">し</span><span class="pronunciation-mora-line"></span></span></span>';
+const HASHI_POSITION = '<span class="pronunciation-downstep-notation" data-downstep-position="2"><span class="pronunciation-downstep-notation-prefix">[</span><span class="pronunciation-downstep-notation-number">2</span><span class="pronunciation-downstep-notation-suffix">]</span></span>';
+const HASHI_GRAPH = '<svg xmlns="http://www.w3.org/2000/svg" class="pronunciation-graph" focusable="false" viewBox="0 0 150 100"><path class="pronunciation-graph-line" d="M25 75 L75 25"></path><path class="pronunciation-graph-line-tail" d="M75 25 L125 75"></path><circle class="pronunciation-graph-dot" cx="25" cy="75" r="15"></circle><circle class="pronunciation-graph-dot-downstep1" cx="75" cy="25" r="15"></circle><circle class="pronunciation-graph-dot-downstep2" cx="75" cy="25" r="5"></circle><path class="pronunciation-graph-triangle" d="M0 13 L15 -13 L-15 -13 Z" transform="translate(125,75)"></path></svg>';
+const YOMITAN_PRONUNCIATIONS = [
+  ["はし", "LHL", [], [], HASHI_TEXT, HASHI_POSITION, HASHI_GRAPH],
+  ["はし", 2, [], [], HASHI_TEXT, HASHI_POSITION, HASHI_GRAPH],
+  ["がくせい", 0, [1], [2],
+    '<span class="pronunciation-text"><span class="pronunciation-mora" data-position="0" data-pitch="low" data-pitch-next="high" data-nasal="true" data-original-text="が"><span class="pronunciation-character-group"><span class="pronunciation-character" data-original-text="が">か</span><span class="pronunciation-nasal-diacritic">゚</span><span class="pronunciation-nasal-indicator"></span></span><span class="pronunciation-mora-line"></span></span><span class="pronunciation-mora" data-position="1" data-pitch="high" data-pitch-next="high" data-devoice="true"><span class="pronunciation-character">く</span><span class="pronunciation-devoice-indicator"></span><span class="pronunciation-mora-line"></span></span><span class="pronunciation-mora" data-position="2" data-pitch="high" data-pitch-next="high"><span class="pronunciation-character">せ</span><span class="pronunciation-mora-line"></span></span><span class="pronunciation-mora" data-position="3" data-pitch="high" data-pitch-next="high"><span class="pronunciation-character">い</span><span class="pronunciation-mora-line"></span></span></span>',
+    '<span class="pronunciation-downstep-notation" data-downstep-position="0"><span class="pronunciation-downstep-notation-prefix">[</span><span class="pronunciation-downstep-notation-number">0</span><span class="pronunciation-downstep-notation-suffix">]</span></span>',
+    '<svg xmlns="http://www.w3.org/2000/svg" class="pronunciation-graph" focusable="false" viewBox="0 0 250 100"><path class="pronunciation-graph-line" d="M25 75 L75 25 L125 25 L175 25"></path><path class="pronunciation-graph-line-tail" d="M175 25 L225 25"></path><circle class="pronunciation-graph-dot" cx="25" cy="75" r="15"></circle><circle class="pronunciation-graph-dot" cx="75" cy="25" r="15"></circle><circle class="pronunciation-graph-dot" cx="125" cy="25" r="15"></circle><circle class="pronunciation-graph-dot" cx="175" cy="25" r="15"></circle><path class="pronunciation-graph-triangle" d="M0 13 L15 -13 L-15 -13 Z" transform="translate(225,25)"></path></svg>'],
+];
+
+test("pitch accents are drawn with Yomitan's PronunciationGenerator markup", t => {
+  const { window } = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" });
+  for (const file of ["external-links.js", "render/glossary.js"]) {
+    window.eval(readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8"));
+  }
+  t.after(() => window.close());
+  const { document, HDGlossary } = window;
+  for (const [reading, positions, nasal, devoice, text, position, graph] of YOMITAN_PRONUNCIATIONS) {
+    const morae = HDGlossary.splitPitchAccentMorae(reading);
+    const name = `${reading} ${positions}`;
+    assert.equal(HDGlossary.createPronunciationText(document, morae, positions, nasal, devoice).outerHTML, text, name);
+    assert.equal(HDGlossary.createPronunciationDownstepPosition(document, positions).outerHTML, position, name);
+    assert.equal(HDGlossary.createPronunciationGraph(document, morae, positions).outerHTML, graph, name);
+  }
+  // The engine's shape for "LHL" is { position: 0, pattern: "LHL" }.
+  const item = HDGlossary.createPronunciationPitchAccent(document, "はし",
+    { position: 0, pattern: "LHL", nasal: [], devoice: [] }, { graph: true });
+  assert.equal(item.dataset.pitchAccentDownstepPosition, "LHL");
+  assert.equal(item.querySelector(".pronunciation-text-container").innerHTML, HASHI_TEXT);
+  assert.equal(item.querySelector(".pronunciation-downstep-notation-container").innerHTML, HASHI_POSITION);
+  assert.equal(item.querySelector(".pronunciation-graph-container").innerHTML, HASHI_GRAPH);
 });

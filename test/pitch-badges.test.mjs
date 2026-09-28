@@ -10,10 +10,13 @@ const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 
-const pitch = (dictionary, position) => ({ dictionary, pitches: [{ position, pattern: "", nasal: [], devoice: [] }], transcriptions: [] });
-const RESULT = { matched: "昭和", deinflected: "昭和", trace: [], term: { expression: "昭和", reading: "しょうわ", rules: "",
-  glossaries: [{ dictionary: "Jitendex", glossary: JSON.stringify(["Shōwa era"]), termTags: "" }],
-  frequencies: [], pitches: [pitch("NHK", 0), pitch("Daijirin", 1)] } };
+const entry = (position, pattern = "", nasal = [], devoice = []) => ({ position, pattern, nasal, devoice });
+const pitch = (dictionary, ...pitches) => ({ dictionary, pitches: pitches.map(value =>
+  typeof value === "object" ? value : entry(value)), transcriptions: [] });
+const result = (expression, reading, pitches) => ({ matched: expression, deinflected: expression, trace: [],
+  term: { expression, reading, rules: "", frequencies: [], pitches,
+    glossaries: [{ dictionary: "Jitendex", glossary: JSON.stringify(["gloss"]), termTags: "" }] } });
+const RESULT = result("昭和", "しょうわ", [pitch("NHK", 0), pitch("Daijirin", 1)]);
 
 function fixture(t) {
   const dom = new JSDOM('<p>昭和の映画</p><div id="popup"></div>',
@@ -29,68 +32,112 @@ function fixture(t) {
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     positionPopup() {},
   });
   const source = document.querySelector("p");
   const candidate = { anchor: source, query: "昭和", sentence: source.textContent, sourceElements: [source], matchOffset: 0 };
   t.after(() => { view.destroy(); window.close(); });
-  return { popup, view, HDGlossary, render: (result = RESULT, options = {}) => {
-    view.renderResults([result], candidate, { ...HDReaderOptions.normaliseOptions({}), ...options });
-    return [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch")];
+  return { popup, view, render: (value = RESULT, options = {}) => {
+    view.renderResults([value], candidate, { ...HDReaderOptions.normaliseOptions({}), ...options });
+    return [...popup.querySelectorAll(".pronunciation-group")];
   } };
 }
 
-const morae = tag => [...tag.querySelectorAll(".gsm-hoshidicts-pitch-mora")]
-  .map(node => ({ text: node.textContent, level: node.dataset.pitchLevel, transition: node.dataset.pitchTransition ?? null }));
+const levels = pronunciation => [...pronunciation.querySelectorAll(".pronunciation-mora")]
+  .map(mora => `${mora.textContent}:${mora.dataset.pitch}>${mora.dataset.pitchNext}`);
+const representations = pronunciation => [...pronunciation.querySelector(".pronunciation-representation-list").children]
+  .map(node => node.className);
 
-test("every pitch badge draws its own mora contour and keeps the reading [n] label", t => {
+test("each pitch dictionary is a Yomitan pronunciation group named by its dictionary tag", t => {
   const f = fixture(t);
-  const tags = f.render();
-  assert.equal(tags.length, 2, "one badge per pitch dictionary");
-  tags.forEach((tag, index) => {
-    const body = tag.querySelector(".gsm-hoshidicts-pitch-body");
-    const contour = body.querySelector(".gsm-hoshidicts-pitch-contour");
-    assert.ok(contour, "badge body holds a contour");
-    assert.equal(JSON.stringify(morae(contour)), JSON.stringify(f.HDGlossary.buildPitchAccentMorae("しょうわ", index)));
-    assert.equal(morae(contour).length, 3);
-    assert.equal(body.querySelector(".gsm-hoshidicts-pitch-position").textContent, `[${index}]`);
-    assert.equal(tag.title, `${["NHK", "Daijirin"][index]}: しょうわ [${index}]`);
-    assert.equal(tag.getAttribute("aria-label"), tag.title);
-    // Like Yomitan, each badge names its dictionary by default.
-    assert.deepEqual([...tag.children].map(node => [node.className, node === body ? "" : node.textContent]),
-      [["gsm-hoshidicts-pitch-source", ["NHK", "Daijirin"][index]], ["gsm-hoshidicts-pitch-body", ""]]);
+  const groups = f.render();
+  assert.deepEqual(groups.map(group => group.dataset.dictionary), ["NHK", "Daijirin"]);
+  groups.forEach((group, index) => {
+    const tag = group.querySelector(".pronunciation-group-tag-list > .tag");
+    assert.equal(tag.dataset.category, "pronunciation-dictionary");
+    assert.equal(tag.dataset.details, group.dataset.dictionary);
+    assert.equal(tag.textContent, group.dataset.dictionary);
+    const [pronunciation] = group.querySelectorAll(".pronunciation-list > .pronunciation");
+    assert.equal(pronunciation.dataset.pronunciationType, "pitch-accent");
+    assert.equal(pronunciation.dataset.pitchAccentDownstepPosition, String(index));
+    // Yomitan's defaults: text and [n] notation on, graph off.
+    assert.deepEqual(representations(pronunciation),
+      ["pronunciation-text-container", "pronunciation-downstep-notation-container"]);
+    assert.equal(pronunciation.querySelector(".pronunciation-text-container").lang, "ja");
+    assert.equal(pronunciation.querySelector(".pronunciation-downstep-notation").textContent, `[${index}]`);
+    assert.equal(pronunciation.title, `${group.dataset.dictionary}: しょうわ [${index}]`);
+    assert.equal(pronunciation.getAttribute("aria-label"), pronunciation.title);
   });
+  assert.deepEqual(levels(groups[0].querySelector(".pronunciation")),
+    ["しょ:low>high", "う:high>high", "わ:high>high"]);
+  assert.deepEqual(levels(groups[1].querySelector(".pronunciation")),
+    ["しょ:high>low", "う:low>low", "わ:low>low"]);
 });
 
-test("a pitch position beyond the morae falls back to the text badge and aliases relabel graph badges", t => {
+test("a dictionary's accents share one group and a string pattern reads as its downstep", t => {
   const f = fixture(t);
-  const [text] = f.render({ ...RESULT, term: { ...RESULT.term, pitches: [pitch("NHK", 9)] } });
-  assert.equal(text.querySelector(".gsm-hoshidicts-pitch-contour"), null);
-  assert.equal(text.querySelector(".gsm-hoshidicts-pitch-body").textContent, "しょうわ [9]");
-  assert.equal(text.querySelector(".gsm-hoshidicts-pitch-source").textContent, "NHK");
-  assert.equal(text.title, "NHK: しょうわ [9]");
-  const [graph] = f.render(RESULT);
-  const source = graph.querySelector(".gsm-hoshidicts-pitch-source");
-  f.view.updateDictionaryPresentation({ dictionaryPresentation: [{ title: "NHK", displayName: "NHK 日本語発音アクセント辞典" }] });
-  assert.ok(graph.isConnected);
-  assert.equal(graph.title, "NHK 日本語発音アクセント辞典 (NHK): しょうわ [0]");
-  assert.equal(graph.querySelector(".gsm-hoshidicts-pitch-source"), source, "a rename keeps the label element");
-  assert.equal(source.textContent, "NHK 日本語発音アクセント辞典");
+  // hoshidicts hands Yomitan's "LHL" over as { position: 0, pattern: "LHL" }.
+  const [group] = f.render(result("橋", "はし", [pitch("Kanjium", entry(0, "LHL"), 2, 0)]));
+  const pronunciations = [...group.querySelectorAll(".pronunciation")];
+  assert.equal(group.querySelector(".pronunciation-list").dataset.count, "3");
+  assert.deepEqual(pronunciations.map(node => node.querySelector(".pronunciation-downstep-notation").textContent),
+    ["[2]", "[2]", "[0]"]);
+  assert.deepEqual(levels(pronunciations[0]), ["は:low>high", "し:high>low"]);
+  assert.deepEqual(levels(pronunciations[0]), levels(pronunciations[1]));
+  assert.equal(pronunciations[0].title, "Kanjium: はし [2]");
+  // The furigana contour reads the same pattern: a drop after し, not heiban.
+  const reading = f.popup.querySelector(".gsm-hoshidicts-pitch-reading");
+  assert.equal(reading.dataset.pitchPosition, "2");
+  assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-mora")]
+    .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`), ["low:rise", "high:drop"]);
 });
 
-test("turning pitch dictionary names off restores the unlabelled badge live without replacing definitions", t => {
+test("the text, position and graph toggles update an open popup without replacing definitions", t => {
   const f = fixture(t);
-  const [unlabelled] = f.render(RESULT, { showPitchAccentDictionaryNames: false });
-  assert.deepEqual([...unlabelled.children].map(node => node.className), ["gsm-hoshidicts-pitch-body"]);
-  assert.equal(unlabelled.title, "NHK: しょうわ [0]");
-  f.render();
+  f.render(RESULT);
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
-  const labels = () => [...f.popup.querySelectorAll(".gsm-hoshidicts-pitch-source")].map(node => node.textContent);
+  const first = () => f.popup.querySelector(".pronunciation");
+  f.view.updateDictionaryPresentation({ showPitchAccentGraph: true });
+  assert.deepEqual(representations(first()), ["pronunciation-text-container",
+    "pronunciation-downstep-notation-container", "pronunciation-graph-container"]);
+  const graph = first().querySelector("svg.pronunciation-graph");
+  assert.equal(graph.namespaceURI, "http://www.w3.org/2000/svg");
+  assert.equal(graph.getAttribute("viewBox"), "0 0 200 100");
+  f.view.updateDictionaryPresentation({ showPitchAccentText: false, showPitchAccentPosition: false });
+  assert.deepEqual(representations(first()), ["pronunciation-graph-container"]);
+  assert.equal(first().title, "NHK: しょうわ [0]", "the label outlives hidden notations");
+  assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card);
+});
+
+test("nasal and devoiced morae carry Yomitan's marks", t => {
+  const f = fixture(t);
+  const [group] = f.render(result("学生", "がくせい", [pitch("NHK", entry(0, "", [1], [2]))]));
+  const [nasal, devoiced] = group.querySelectorAll(".pronunciation-mora");
+  assert.equal(nasal.dataset.nasal, "true");
+  assert.equal(nasal.dataset.originalText, "が");
+  assert.equal(nasal.querySelector(".pronunciation-character").textContent, "か");
+  assert.ok(nasal.querySelector(".pronunciation-nasal-indicator"));
+  assert.equal(devoiced.dataset.devoice, "true");
+  assert.ok(devoiced.querySelector(".pronunciation-devoice-indicator"));
+});
+
+test("aliases relabel the dictionary tag in place and the names switch hides it live", t => {
+  const f = fixture(t);
+  const [group] = f.render();
+  const tag = group.querySelector(".pronunciation-group-tag-list > .tag");
+  const pronunciation = group.querySelector(".pronunciation");
+  f.view.updateDictionaryPresentation({ dictionaryPresentation: [{ title: "NHK", displayName: "NHK 日本語発音アクセント辞典" }] });
+  assert.ok(pronunciation.isConnected);
+  assert.equal(pronunciation.title, "NHK 日本語発音アクセント辞典 (NHK): しょうわ [0]");
+  assert.equal(group.querySelector(".pronunciation-group-tag-list > .tag"), tag, "a rename keeps the tag element");
+  assert.equal(tag.querySelector(".tag-label-content").textContent, "NHK 日本語発音アクセント辞典");
+  const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
+  const labels = () => [...f.popup.querySelectorAll(".pronunciation-group-tag-list")].map(node => node.textContent);
   f.view.updateDictionaryPresentation({ showPitchAccentDictionaryNames: false });
   assert.deepEqual(labels(), []);
-  assert.equal(f.popup.querySelectorAll(".gsm-hoshidicts-tag-pitch").length, 2);
+  assert.equal(f.popup.querySelectorAll(".pronunciation").length, 2);
   f.view.updateDictionaryPresentation({ showPitchAccentDictionaryNames: true });
-  assert.deepEqual(labels(), ["NHK", "Daijirin"]);
+  assert.deepEqual(labels(), ["NHK 日本語発音アクセント辞典", "Daijirin"]);
   assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card);
 });

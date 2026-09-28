@@ -6,20 +6,19 @@
 import "./render/glossary.js";
 import { escapeAnkiHtml as escape } from "./anki-templates.js";
 
-function pitchContour(reading, pitch) {
-  const { splitPitchAccentMorae, buildPitchAccentMorae } = globalThis.HDGlossary;
-  if (pitch.pattern) {
-    const morae = splitPitchAccentMorae(reading);
-    // The engine stores string positions in pattern, with a placeholder numeric
-    // position of zero. Never interpret an unsupported pattern as heiban.
-    if (!morae.length || !/^[HL]+$/u.test(pitch.pattern)
-      || pitch.pattern.length < morae.length || pitch.pattern.length > morae.length + 1) return null;
-    return { morae, levels: [...pitch.pattern.padEnd(morae.length + 1, pitch.pattern.at(-1))] };
-  }
-  const morae = buildPitchAccentMorae(reading, pitch.position);
+function pitchContour(reading, pitch, kana) {
+  const { buildPitchAccentMorae, isMoraPitchHigh, pitchAccentPositions } = globalThis.HDGlossary;
+  // The popup's levels. A pattern is the pitch whenever there is one: the
+  // engine keeps it beside a placeholder position of 0.
+  const positions = pitchAccentPositions(pitch);
+  const morae = buildPitchAccentMorae(reading, positions);
   if (!morae) return null;
-  return { morae: morae.map(mora => mora.text),
-    levels: [...morae.map(mora => mora.level === "high" ? "H" : "L"), pitch.position === 0 ? "H" : "L"] };
+  // Yomitan's graph reads the particle from the pitch; its Jidoujisho graph
+  // repeats a pattern's last level when the dictionary gives no particle.
+  const particle = kana && typeof positions === "string"
+    ? positions[morae.length] ?? positions.at(-1)
+    : isMoraPitchHigh(morae.length, positions) ? "H" : "L";
+  return { morae: morae.map(mora => mora.text), levels: [...morae.map(mora => mora.level === "high" ? "H" : "L"), particle] };
 }
 
 function graphLine(from, to, radius) {
@@ -31,7 +30,7 @@ function graphLine(from, to, radius) {
 }
 
 function pitchGraph(reading, pitch, kana) {
-  const contour = pitchContour(reading, pitch);
+  const contour = pitchContour(reading, pitch, kana);
   if (!contour) return "";
   const { morae, levels } = contour;
   const step = kana ? 35 : 50, height = kana ? 80 : 100, radius = kana ? 5 : 15;

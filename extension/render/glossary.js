@@ -222,27 +222,24 @@
     return morae;
   }
 
-  function buildPitchAccentMorae(reading, position) {
+  // A downstep within the word, or a pattern giving each mora's level and
+  // optionally the following particle's. moraCount null accepts any length.
+  function isPitchForMorae(positions, moraCount) {
+    if (typeof positions === "string") {
+      return /^[HL]+$/u.test(positions)
+        && (moraCount === null || (positions.length >= moraCount && positions.length <= moraCount + 1));
+    }
+    return Number.isInteger(positions) && positions >= 0 && (moraCount === null || positions <= moraCount);
+  }
+
+  function buildPitchAccentMorae(reading, positions) {
     const morae = splitPitchAccentMorae(reading);
-    if (
-      morae.length === 0 ||
-      !Number.isInteger(position) ||
-      position < 0 ||
-      position > morae.length
-    ) {
+    if (morae.length === 0 || !isPitchForMorae(positions, morae.length)) {
       return null;
     }
 
-    const levels = morae.map((_, index) => {
-      if (position === 0) {
-        return index === 0 ? "low" : "high";
-      }
-      if (position === 1) {
-        return index === 0 ? "high" : "low";
-      }
-      return index === 0 || index >= position ? "low" : "high";
-    });
-    const levelAfterWord = position === 0 ? "high" : "low";
+    const levels = morae.map((_, index) => isMoraPitchHigh(index, positions) ? "high" : "low");
+    const levelAfterWord = isMoraPitchHigh(morae.length, positions) ? "high" : "low";
     return morae.map((text, index) => {
       const level = levels[index];
       const nextLevel = levels[index + 1] || levelAfterWord;
@@ -254,6 +251,225 @@
           : level === "low" ? "rise" : "drop",
       };
     });
+  }
+
+  // Yomitan's japanese.js at 67db60d. A pitch is a downstep position or a
+  // string of H/L levels, one per mora and optionally the particle's.
+  function isMoraPitchHigh(moraIndex, pitchPositions) {
+    if (typeof pitchPositions === "string") {
+      return pitchPositions[moraIndex] === "H";
+    }
+    switch (pitchPositions) {
+      case 0: return moraIndex > 0;
+      case 1: return moraIndex < 1;
+      default: return moraIndex > 0 && moraIndex < pitchPositions;
+    }
+  }
+
+  function getDownstepPositions(pitchString) {
+    const downsteps = [];
+    for (let index = 1; index < pitchString.length; index += 1) {
+      if (pitchString[index - 1] === "H" && pitchString[index] === "L") {
+        downsteps.push(index);
+      }
+    }
+    if (downsteps.length === 0) {
+      downsteps.push(pitchString.startsWith("L") ? 0 : -1);
+    }
+    return downsteps;
+  }
+
+  // hoshidicts keeps Yomitan's string form in `pattern` beside a placeholder
+  // numeric position of 0, so any pattern is the pitch: an unsupported one is
+  // refused where it is drawn, never read as heiban.
+  function pitchAccentPositions(pitch) {
+    return typeof pitch?.pattern === "string" && pitch.pattern !== "" ? pitch.pattern : pitch?.position;
+  }
+
+  // The [n] a pitch shows: the downstep mora, or each one for a pattern.
+  function pitchAccentDownstep(pitch) {
+    const positions = pitchAccentPositions(pitch);
+    return String(typeof positions === "string" ? getDownstepPositions(positions) : positions);
+  }
+
+  // japanese.js DIACRITIC_MAPPING: the character a dakuten form is built on.
+  const DAKUTEN_BASES = new Map();
+  {
+    const kana = "うゔ-かが-きぎ-くぐ-けげ-こご-さざ-しじ-すず-せぜ-そぞ-ただ-ちぢ-つづ-てで-とど-はばぱひびぴふぶぷへべぺほぼぽワヷ-ヰヸ-ウヴ-ヱヹ-ヲヺ-カガ-キギ-クグ-ケゲ-コゴ-サザ-シジ-スズ-セゼ-ソゾ-タダ-チヂ-ツヅ-テデ-トド-ハバパヒビピフブプヘベペホボポ";
+    for (let index = 0; index < kana.length; index += 3) {
+      DAKUTEN_BASES.set(kana[index + 1], kana[index]);
+      if (kana[index + 2] !== "-") DAKUTEN_BASES.set(kana[index + 2], kana[index]);
+    }
+  }
+
+  // Yomitan's PronunciationGenerator (ext/js/display/pronunciation-generator.js
+  // at 67db60d): the overlined text with its downstep hook and nasal and
+  // devoice marks, the [n] notation and the SVG graph.
+  function createPronunciationText(documentRef, morae, pitchPositions, nasalPositions, devoicePositions) {
+    const nasalPositionsSet = nasalPositions.length > 0 ? new Set(nasalPositions) : null;
+    const devoicePositionsSet = devoicePositions.length > 0 ? new Set(devoicePositions) : null;
+    const container = documentRef.createElement("span");
+    container.className = "pronunciation-text";
+    for (let index = 0; index < morae.length; index += 1) {
+      const next = index + 1;
+      const mora = morae[index];
+      const mora1 = documentRef.createElement("span");
+      mora1.className = "pronunciation-mora";
+      mora1.dataset.position = `${index}`;
+      mora1.dataset.pitch = isMoraPitchHigh(index, pitchPositions) ? "high" : "low";
+      mora1.dataset.pitchNext = isMoraPitchHigh(next, pitchPositions) ? "high" : "low";
+
+      const characterNodes = [];
+      for (const character of mora) {
+        const characterNode = documentRef.createElement("span");
+        characterNode.className = "pronunciation-character";
+        characterNode.textContent = character;
+        mora1.appendChild(characterNode);
+        characterNodes.push(characterNode);
+      }
+
+      if (devoicePositionsSet !== null && devoicePositionsSet.has(next)) {
+        mora1.dataset.devoice = "true";
+        const indicator = documentRef.createElement("span");
+        indicator.className = "pronunciation-devoice-indicator";
+        mora1.appendChild(indicator);
+      }
+      if (nasalPositionsSet !== null && nasalPositionsSet.has(next) && characterNodes.length > 0) {
+        mora1.dataset.nasal = "true";
+        const group = documentRef.createElement("span");
+        group.className = "pronunciation-character-group";
+        const characterNode = characterNodes[0];
+        const character = characterNode.textContent;
+        const base = DAKUTEN_BASES.get(character);
+        if (base !== undefined) {
+          mora1.dataset.originalText = mora;
+          characterNode.dataset.originalText = character;
+          characterNode.textContent = base;
+        }
+        const diacritic = documentRef.createElement("span");
+        diacritic.className = "pronunciation-nasal-diacritic";
+        diacritic.textContent = "\u309a"; // Combining handakuten
+        group.appendChild(diacritic);
+        const indicator = documentRef.createElement("span");
+        indicator.className = "pronunciation-nasal-indicator";
+        group.appendChild(indicator);
+        characterNode.parentNode.replaceChild(group, characterNode);
+        group.insertBefore(characterNode, group.firstChild);
+      }
+
+      const line = documentRef.createElement("span");
+      line.className = "pronunciation-mora-line";
+      mora1.appendChild(line);
+      container.appendChild(mora1);
+    }
+    return container;
+  }
+
+  function createPronunciationGraph(documentRef, morae, pitchPositions) {
+    const count = morae.length;
+    const svgns = "http://www.w3.org/2000/svg";
+    const svg = documentRef.createElementNS(svgns, "svg");
+    svg.setAttribute("xmlns", svgns);
+    svg.setAttribute("class", "pronunciation-graph");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("viewBox", `0 0 ${50 * (count + 1)} 100`);
+    if (count <= 0) return svg;
+
+    const path1 = documentRef.createElementNS(svgns, "path");
+    svg.appendChild(path1);
+    const path2 = documentRef.createElementNS(svgns, "path");
+    svg.appendChild(path2);
+    const circle = (className, x, y, radius) => {
+      const node = documentRef.createElementNS(svgns, "circle");
+      node.setAttribute("class", className);
+      node.setAttribute("cx", `${x}`);
+      node.setAttribute("cy", `${y}`);
+      node.setAttribute("r", radius);
+      svg.appendChild(node);
+    };
+
+    const pathPoints = [];
+    for (let index = 0; index < count; index += 1) {
+      const highPitch = isMoraPitchHigh(index, pitchPositions);
+      const x = index * 50 + 25;
+      const y = highPitch ? 25 : 75;
+      if (highPitch && !isMoraPitchHigh(index + 1, pitchPositions)) {
+        circle("pronunciation-graph-dot-downstep1", x, y, "15");
+        circle("pronunciation-graph-dot-downstep2", x, y, "5");
+      } else {
+        circle("pronunciation-graph-dot", x, y, "15");
+      }
+      pathPoints.push(`${x} ${y}`);
+    }
+    path1.setAttribute("class", "pronunciation-graph-line");
+    path1.setAttribute("d", `M${pathPoints.join(" L")}`);
+
+    pathPoints.splice(0, count - 1);
+    const x = count * 50 + 25;
+    const y = isMoraPitchHigh(count, pitchPositions) ? 25 : 75;
+    const triangle = documentRef.createElementNS(svgns, "path");
+    triangle.setAttribute("class", "pronunciation-graph-triangle");
+    triangle.setAttribute("d", "M0 13 L15 -13 L-15 -13 Z");
+    triangle.setAttribute("transform", `translate(${x},${y})`);
+    svg.appendChild(triangle);
+    pathPoints.push(`${x} ${y}`);
+    path2.setAttribute("class", "pronunciation-graph-line-tail");
+    path2.setAttribute("d", `M${pathPoints.join(" L")}`);
+    return svg;
+  }
+
+  function createPronunciationDownstepPosition(documentRef, downstepPositions) {
+    const downsteps = typeof downstepPositions === "string" ? getDownstepPositions(downstepPositions) : downstepPositions;
+    const downstepPositionString = `${downsteps}`;
+    const notation = documentRef.createElement("span");
+    notation.className = "pronunciation-downstep-notation";
+    notation.dataset.downstepPosition = downstepPositionString;
+    for (const [className, text] of [["prefix", "["], ["number", downstepPositionString], ["suffix", "]"]]) {
+      const part = documentRef.createElement("span");
+      part.className = `pronunciation-downstep-notation-${className}`;
+      part.textContent = text;
+      notation.appendChild(part);
+    }
+    return notation;
+  }
+
+  // display-generator.js _createPronunciationPitchAccent with templates-display.html
+  // "pronunciation": one pitch accent's li.pronunciation. A notation the
+  // options hide is not built. data-pronunciation is its `reading [n]` label.
+  function createPronunciationPitchAccent(documentRef, reading, pitch, { text = true, position = true, graph = false } = {}) {
+    const positions = pitchAccentPositions(pitch);
+    const morae = splitPitchAccentMorae(reading);
+    const node = documentRef.createElement("li");
+    node.className = "pronunciation";
+    node.dataset.pitchAccentDownstepPosition = `${positions}`;
+    node.dataset.pronunciationType = "pitch-accent";
+    if (pitch.nasal.length > 0) node.dataset.nasalMoraPosition = pitch.nasal.join(" ");
+    if (pitch.devoice.length > 0) node.dataset.devoiceMoraPosition = pitch.devoice.join(" ");
+    node.dataset.tagCount = "0";
+    node.dataset.pronunciation = `${reading} [${pitchAccentDownstep(pitch)}]`;
+    const child = (className, parent = node) => {
+      const element = documentRef.createElement("span");
+      element.className = className;
+      parent.appendChild(element);
+      return element;
+    };
+    child("pronunciation-tag-list tag-list").dataset.count = "0";
+    Object.assign(child("pronunciation-disambiguation-list").dataset, { count: "0", termCount: "0", readingCount: "0" });
+    const representations = child("pronunciation-representation-list");
+    if (text) {
+      const container = child("pronunciation-text-container", representations);
+      container.lang = "ja";
+      container.appendChild(createPronunciationText(documentRef, morae, positions, pitch.nasal, pitch.devoice));
+    }
+    if (position) {
+      child("pronunciation-downstep-notation-container", representations)
+        .appendChild(createPronunciationDownstepPosition(documentRef, positions));
+    }
+    if (graph) {
+      child("pronunciation-graph-container", representations)
+        .appendChild(createPronunciationGraph(documentRef, morae, positions));
+    }
+    return node;
   }
 
   function selectPitchAccent(
@@ -279,12 +495,7 @@
         continue;
       }
       for (const pitch of group.pitches) {
-        if (
-          isRecord(pitch) &&
-          Number.isInteger(pitch.position) &&
-          pitch.position >= 0 &&
-          (maximumPosition === null || pitch.position <= maximumPosition)
-        ) {
+        if (isRecord(pitch) && isPitchForMorae(pitchAccentPositions(pitch), maximumPosition)) {
           return {
             dictionary: boundedString(group.dictionary, 4096),
             pitch,
@@ -443,9 +654,10 @@
           splitPitchAccentMorae(pitchReading).length
         );
     const pitchedMorae = selectedPitch
-      ? buildPitchAccentMorae(pitchReading, selectedPitch.pitch.position)
+      ? buildPitchAccentMorae(pitchReading, pitchAccentPositions(selectedPitch.pitch))
       : null;
     if (pitchedMorae) {
+      const downstep = pitchAccentDownstep(selectedPitch.pitch);
       // One column per furigana segment, so each reading sits over the text it
       // reads. Kana segments get a column too, keeping the contour unbroken.
       let segments = segmentFurigana(expression, reading).map((segment) => ({
@@ -460,7 +672,7 @@
       }
       const title = [
         selectedPitch.dictionary,
-        `Pitch accent ${selectedPitch.pitch.position}`,
+        `Pitch accent ${downstep}`,
       ].filter(Boolean).join(" · ");
       let moraIndex = 0;
       for (const segment of segments) {
@@ -473,7 +685,7 @@
 
         const rt = documentRef.createElement("rt");
         rt.className = "gsm-hoshidicts-pitch-reading";
-        rt.dataset.pitchPosition = String(selectedPitch.pitch.position);
+        rt.dataset.pitchPosition = downstep;
         if (selectedPitch.dictionary) {
           rt.dataset.pitchDictionary = selectedPitch.dictionary;
         }
@@ -1439,11 +1651,19 @@
     boundedString,
     buildPitchAccentMorae,
     createFuriganaSegment,
+    createPronunciationDownstepPosition,
+    createPronunciationGraph,
+    createPronunciationPitchAccent,
+    createPronunciationText,
+    getDownstepPositions,
     getFuriganaKanaSegments,
+    isMoraPitchHigh,
     isRecord,
     normalizeMediaPath,
     parseStructuredLink,
     parseTagList,
+    pitchAccentDownstep,
+    pitchAccentPositions,
     segmentFurigana,
     segmentizeFurigana,
     selectPitchAccent,

@@ -106,6 +106,9 @@ const METADATA_FIELDS = [
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
   { key: "showPitchAccentDictionaryNames", id: "opt-pitch-names" },
+  { key: "showPitchAccentText", id: "opt-pitch-text" },
+  { key: "showPitchAccentPosition", id: "opt-pitch-position" },
+  { key: "showPitchAccentGraph", id: "opt-pitch-graph" },
   { key: "hidePopupGrammarTags", id: "opt-grammar-tags", inverted: true },
 ];
 const APPEARANCE_CHOICES = [

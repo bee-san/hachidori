@@ -30,7 +30,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       let request;
       const view = HDPopup.createPopupView({ document, window, popup,
         appendExpressionRuby: HDGlossary.appendExpressionRuby,
-        buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+        createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
         appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
         parseTagList: HDGlossary.parseTagList, positionPopup() {},
         onResultsRendered({ miningActions }) {

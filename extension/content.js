@@ -2174,7 +2174,7 @@
     level.view = themeHost.createView({
       onRendererRetired() { audio.retire(level); mining.retire(level); level.noteEditing = false; },
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
-      buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
+      createPronunciationPitchAccent: window.HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
       appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,

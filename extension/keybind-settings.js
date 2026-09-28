@@ -22,6 +22,9 @@ export const KEYBIND_OPTION_LABELS = {
   showPitchAccentFurigana: "Show pitch in furigana",
   showPitchAccentBadge: "Show pitch badges",
   showPitchAccentDictionaryNames: "Show pitch dictionary names",
+  showPitchAccentText: "Show pitch accent text",
+  showPitchAccentPosition: "Show pitch accent position",
+  showPitchAccentGraph: "Show pitch accent graph",
   hidePopupGrammarTags: "Hide grammar tags",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };

@@ -1098,6 +1098,10 @@ html[data-hoshidicts-theme="girlypop"],
   --line-height: 1.5;
   --list-padding1: 1.4em;
   --list-padding2: var(--list-padding1);
+  --font-size-no-units: 14;
+  --danger-color: var(--hoshidicts-danger);
+  /* display-pronunciation.css: Yomitan draws pitch in the text colour. */
+  --pronunciation-annotation-color: var(--text-color);
   --tag-default-background-color: var(--hoshidicts-palette-neutral);
   --tag-expression-background-color: var(--hoshidicts-palette-secondary);
   --tag-part-of-speech-background-color: var(--hoshidicts-palette-accent);
@@ -2329,7 +2333,6 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-frequency-body,
-.gsm-hoshidicts-pitch-body,
 .gsm-hoshidicts-ipa-body {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2364,43 +2367,207 @@ html[data-hoshidicts-theme="girlypop"],
   cursor: pointer;
 }
 
-.gsm-hoshidicts-tag-pitch {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--hoshidicts-pitch);
-  background: transparent;
-  color: var(--text-color);
+/* Pitch accents follow Yomitan (yomidevs/yomitan@67db60d, GPL-3.0-or-later):
+ * the pronunciation layout from ext/css/display.css, then
+ * ext/css/display-pronunciation.css. */
+.pronunciation-group-list {
+  margin: 0;
+  padding: 0 0 0 var(--list-padding1);
+  list-style-type: decimal;
 }
 
-.gsm-hoshidicts-pitch-source,
-.gsm-hoshidicts-pitch-body {
-  padding: 3px 5px;
-  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
+.pronunciation-group-list[data-count="0"],
+.pronunciation-group-list[data-count="1"] {
+  padding-left: 0;
+  list-style-type: none;
 }
 
-.gsm-hoshidicts-pitch-body {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.pronunciation-list {
+  margin: 0;
+  padding: 0 0 0 var(--list-padding2);
+  list-style-type: circle;
+  display: block;
 }
 
-/* Unlike Yomitan's filled chip, the name keeps the theme foreground on the
-   body's tint, which stays readable in every palette. */
+.pronunciation-list[data-count="0"],
+.pronunciation-list[data-count="1"] {
+  padding-left: 0;
+  list-style-type: none;
+  display: inline;
+}
+
+.pronunciation-group::marker,
+.pronunciation::marker {
+  color: var(--text-color-light3);
+}
+
+.pronunciation {
+  display: list-item;
+  line-height: 1.5;
+}
+
+.pronunciation-list[data-count="0"] .pronunciation,
+.pronunciation-list[data-count="1"] .pronunciation {
+  display: inline;
+}
+
+.pronunciation-group-tag-list {
+  margin-right: 0.375em;
+}
+
+.pronunciation-disambiguation-list[data-count="0"] {
+  display: none;
+}
+
+.pronunciation-tag-list:not([data-count="0"]) {
+  margin-right: 0.375em;
+}
+
+.pronunciation-downstep-notation-container {
+  margin-left: 0.25em;
+}
+
+.pronunciation-graph-container {
+  margin-left: 0.25em;
+}
+
+/* Hachidori: the pronunciation-dictionary tag keeps the theme foreground on
+   the pitch tint (as the #361 label did), which stays readable in every
+   palette where Yomitan's filled chip would not. */
 .gsm-hoshidicts-pitch-source {
-  align-content: center;
-  border-right: 1px solid var(--hoshidicts-pitch);
+  display: inline-block;
+  vertical-align: middle;
+  padding: 1px 5px;
+  border: 1px solid var(--hoshidicts-pitch);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
+  color: var(--text-color);
+  font-size: 12px;
+  line-height: 1.2;
 }
 
-/* A badge draws the same mora contour as the header furigana at tag size. */
-.gsm-hoshidicts-pitch-body > .gsm-hoshidicts-pitch-contour {
-  color: inherit;
+.pronunciation-downstep-notation {
+  display: inline;
 }
 
-.gsm-hoshidicts-pitch-position {
-  color: var(--text-color-light1);
-  font-variant-numeric: tabular-nums;
+.pronunciation-text {
+  display: inline;
+}
+
+.pronunciation-mora {
+  display: inline-block;
+  position: relative;
+}
+
+.pronunciation-mora-line {
+  border-color: var(--pronunciation-annotation-color);
+}
+
+.pronunciation-mora[data-pitch="high"] > .pronunciation-mora-line {
+  display: block;
+  user-select: none;
+  pointer-events: none;
+  position: absolute;
+  top: 0.1em;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top-width: 0.1em;
+  border-top-style: solid;
+}
+
+.pronunciation-mora[data-pitch="high"][data-pitch-next="low"] > .pronunciation-mora-line {
+  right: -0.1em;
+  height: 0.4em;
+  border-right-width: 0.1em;
+  border-right-style: solid;
+}
+
+.pronunciation-mora[data-pitch="high"][data-pitch-next="low"] {
+  padding-right: 0.1em;
+  margin-right: 0.1em;
+}
+
+.pronunciation-devoice-indicator {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.125em;
+  height: 1.125em;
+  border: calc(1.5em / var(--font-size-no-units)) dotted var(--danger-color);
+  border-radius: 50%;
+  box-sizing: border-box;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+}
+
+.pronunciation-nasal-indicator {
+  display: block;
+  position: absolute;
+  right: -0.125em;
+  top: 0.125em;
+  width: 0.375em;
+  height: 0.375em;
+  border: calc(1.5em / var(--font-size-no-units)) solid var(--danger-color);
+  border-radius: 50%;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.pronunciation-nasal-diacritic {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.pronunciation-character {
+  display: inline;
+}
+
+.pronunciation-character-group {
+  display: inline-block;
+  position: relative;
+}
+
+.pronunciation-graph {
+  display: inline-block;
+  vertical-align: middle;
+  height: 1.5em;
+}
+
+.pronunciation-graph-line,
+.pronunciation-graph-line-tail {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+
+.pronunciation-graph-line-tail {
+  stroke-dasharray: 5 5;
+}
+
+.pronunciation-graph-dot {
+  fill: var(--pronunciation-annotation-color);
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+
+.pronunciation-graph-dot-downstep1 {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+
+.pronunciation-graph-dot-downstep2 {
+  fill: var(--pronunciation-annotation-color);
+}
+
+.pronunciation-graph-triangle {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
 }
 
 .gsm-hoshidicts-glossary-grid {
@@ -2437,7 +2604,6 @@ html[data-hoshidicts-theme="girlypop"],
   contain: paint;
   --fg: var(--text-color);
   --canvas: var(--background-color);
-  --font-size-no-units: 14;
   min-width: 0;
   margin: 0;
   padding: 11px 12px;
