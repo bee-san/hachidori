@@ -51,6 +51,12 @@ function createView(options) {
     const names = new Map((context.dictionaryPresentation ?? []).map(item => [item.title, item.displayName || item.title]));
     for (const label of labels) label.textContent = names.get(label.dataset.dictionary) || label.dataset.dictionary;
   }
+  function dictionaryLabel(dictionary) {
+    const label = node("span", "nazeka-dictionary", dictionary);
+    label.dataset.dictionary = dictionary;
+    labels.push(label);
+    return label;
+  }
   function renderResults(results, candidate, context = {}) {
     clear();
     const audioButtons = [], miningActions = [];
@@ -73,7 +79,7 @@ function createView(options) {
       const term = result.term;
       const entry = node("article", "gsm-hoshidicts-entry");
       entry.tabIndex = -1;
-      entry.addEventListener("focusin", () => { selected = index; });
+      entry.addEventListener("click", () => { selected = index; });
       const word = node("div", "nazeka-word");
       const expression = node("span", "gsm-hoshidicts-expression nazeka-main-keb");
       expression.setAttribute("aria-label", `${term.expression}, ${term.reading}`);
@@ -103,9 +109,7 @@ function createView(options) {
       const definitions = node("div", "gsm-hoshidicts-definitions");
       for (const glossary of term.glossaries) {
         const row = node("div", "nazeka-sense");
-        const label = node("span", "nazeka-dictionary", glossary.dictionary);
-        label.dataset.dictionary = glossary.dictionary;
-        labels.push(label);
+        const label = dictionaryLabel(glossary.dictionary);
         const tags = glossary.definitionTags ? `(${glossary.definitionTags}) ` : "";
         row.append(label, node("span", "gsm-hoshidicts-glossary-content", ` ${tags}${components.glossaryToPlainText(glossary.glossary)}`));
         definitions.append(row);
@@ -124,12 +128,13 @@ function createView(options) {
     scroll.append(node("div", "nazeka-word", kanji.character));
     for (const entry of kanji.entries) {
       const info = node("div", "nazeka-kanji-info");
-      info.append(node("div", "nazeka-dictionary", entry.dictionary),
+      info.append(dictionaryLabel(entry.dictionary),
         node("div", "nazeka-reading", [entry.onyomi, entry.kunyomi].flat().filter(Boolean).join(" · ")),
         node("div", "", components.glossaryToPlainText(entry.definitions)),
         node("div", "", (entry.stats ?? []).map(stat => `${stat.name}: ${stat.value}`).join(" · ")));
       scroll.append(info);
     }
+    updateDictionaryPresentation(context);
     finish(candidate, context.highlightText || kanji.character, context);
   }
   function renderNotice(message, candidate, context = {}) {
@@ -153,9 +158,23 @@ function createView(options) {
     currentEntryIndex: () => selected,
     focusEntry(target) {
       if (!entries.length) return false;
-      selected = Math.max(0, Math.min(entries.length - 1, target === "first" ? 0 : target === "last" ? entries.length - 1 : selected + (target.offset || Math.sign(target.dictionary))));
-      entries[selected].focus({ preventScroll: true });
-      entries[selected].scrollIntoView({ block: "nearest" });
+      let destination;
+      if (target.dictionary) {
+        const found = components.findDifferentDictionary(entries, selected, Math.sign(target.dictionary), scroll,
+          entry => [...entry.querySelectorAll(".nazeka-sense")],
+          row => row.querySelector(".nazeka-dictionary").dataset.dictionary);
+        if (!found) return false;
+        selected = found.index;
+        destination = found.target;
+      } else {
+        const next = target === "first" ? 0 : target === "last" ? entries.length - 1 : selected + target.offset;
+        selected = Math.max(0, Math.min(entries.length - 1, next));
+        destination = entries[selected];
+      }
+      const scale = components.popupCoordinateScale(options.getPageZoom?.() ?? 1, options.getPopupScalePercent?.() ?? 100);
+      const top = selected === 0 && destination === entries[0] ? 0
+        : (destination.getBoundingClientRect().top - scroll.getBoundingClientRect().top) * scale + scroll.scrollTop;
+      scroll.scrollTo({ top, behavior: "instant" });
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation,

@@ -28,6 +28,27 @@
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
     "hidePopupGrammarTags"];
 
+  // Shared keyboard semantics for rich cards and direct text definitions.
+  function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
+    const cards = cardsOf(entries[index]);
+    const view = scroll.getBoundingClientRect();
+    let visible = null, coverage = 0;
+    for (const card of sign > 0 ? cards : [...cards].reverse()) {
+      const { top, bottom } = card.getBoundingClientRect();
+      const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
+      if (shown > coverage) { visible = card; coverage = shown; }
+    }
+    if (!visible) return null;
+    const dictionary = dictionaryOf(visible);
+    for (let i = index; i >= 0 && i < entries.length; i += sign) {
+      const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
+      const start = i === index ? ordered.indexOf(visible) + 1 : 0;
+      const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
+      if (target) return { index: i, target };
+    }
+    return null;
+  }
+
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
   }
@@ -2324,24 +2345,9 @@
       const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
         ? [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")] : [];
       const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title")?.title ?? "";
-      const cards = cardsOf(nodes[index]);
-      const view = contentScroll.getBoundingClientRect();
-      let visible = null, coverage = 0;
-      for (const card of sign > 0 ? cards : [...cards].reverse()) {
-        const { top, bottom } = card.getBoundingClientRect();
-        const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
-        if (shown > coverage) { visible = card; coverage = shown; }
-      }
-      if (!visible) return false;
-      const dictionary = dictionaryOf(visible);
       const search = entries => {
-        for (let i = index; i >= 0 && i < entries.length; i += sign) {
-          const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
-          const start = i === index ? ordered.indexOf(visible) + 1 : 0;
-          const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
-          if (target) return scrollToEntry(entries, i, target);
-        }
-        return false;
+        const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf);
+        return found ? scrollToEntry(entries, found.index, found.target) : false;
       };
       return search(nodes) || (sign > 0 && expandEntries() && search(entryNodes()));
     }
@@ -4296,6 +4302,7 @@
   }
 
   return {
+    findDifferentDictionary,
     createPopupAppearance,
     createCustomPopupStyle,
     resolveToolbarPosition,

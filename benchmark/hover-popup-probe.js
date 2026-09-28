@@ -7,6 +7,7 @@
     owner[method] = (...args) => { rendererWork[key]++; return original(...args); };
   }
   const events = [];
+  const renderSamples = [];
   const ids = new WeakMap();
   let nextId = 0, active = null, observer = null;
   const identity = value => {
@@ -55,7 +56,9 @@
       popup: identity(level.popup), view: identity(level.view) });
     const originalRender = level.view.renderResults;
     level.view.renderResults = (...args) => {
+      const started = performance.now();
       const result = originalRender(...args);
+      renderSamples.push({ renderer: shadow.host.dataset.hoshidictsRenderer, method: "renderResults", ms: performance.now() - started });
       if (active?.depth === level.depth) active.rendered = true;
       return result;
     };
@@ -98,11 +101,11 @@
   requestAnimationFrame(frame);
   globalThis.__hoverProbe = {
     arm(expected, depth = 0, delay = 0) {
-      themeHost.resetStats();
+      renderSamples.length = 0;
       active = { expected, depth, delay, start: null, first: null, complete: null,
         states: [], replies: [], rendered: false, probeMs: 0, stableFrames: 0, before: state(), eventStart: events.length };
     },
-    read() { return { ...active, rendererWork: { ...rendererWork }, renderer: themeHost.stats(), now: performance.now(), events: events.slice(active?.eventStart), longTasks }; },
+    read() { return { ...active, rendererWork: { ...rendererWork }, renderer: { samples: renderSamples.slice() }, now: performance.now(), events: events.slice(active?.eventStart), longTasks }; },
     state,
     events: () => events,
     hitTesting(points, iterations = 1000) {

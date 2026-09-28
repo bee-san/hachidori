@@ -17,7 +17,7 @@ function environment() {
 }
 const results = [{ matched: "食べる", trace: [], term: { expression: "食べる", reading: "たべる", frequencies: [],
   glossaries: [{ dictionary: "test", glossary: JSON.stringify([{ type: "structured-content", content: [
-    { tag: "b", content: "eat" }, { tag: "a", href: "https://example.test", content: "food" },
+    { tag: "b", content: "eat " }, { tag: "a", href: "https://example.test", content: "food" },
     { tag: "img", path: "test.png" },
   ] }]) }] } }];
 test("Nazeka builds text directly, binds core actions, and never constructs Default or rich DOM", () => {
@@ -36,6 +36,24 @@ test("Nazeka builds text directly, binds core actions, and never constructs Defa
     assert.equal(bound.audioButtons[0].result, results[0]);
     assert.equal(bound.miningActions[0].result, results[0]);
     assert.equal(bound.lookupStats.hidden, true);
+    const second = { ...results[0], term: { ...results[0].term, glossaries: [
+      { dictionary: "second", glossary: "other definition" },
+    ] } };
+    view.renderResults([results[0], second], { query: "食べる" });
+    const entries = popup.querySelectorAll(".gsm-hoshidicts-entry");
+    entries[1].querySelector(".gsm-hoshidicts-glossary-content").click();
+    assert.equal(view.currentEntryIndex(), 1, "clicking text selects its entry for keyboard actions");
+    let scrolled;
+    view.scrollElement.scrollTo = value => { scrolled = value; };
+    view.scrollElement.getBoundingClientRect = () => ({ top: 0, bottom: 100 });
+    entries.forEach((entry, index) => {
+      entry.querySelector(".nazeka-sense").getBoundingClientRect = () => ({ top: index * 100, bottom: index * 100 + 50 });
+    });
+    entries[0].click();
+    assert.equal(view.focusEntry({ dictionary: 1 }), true);
+    assert.equal(view.currentEntryIndex(), 1);
+    assert.equal(scrolled.top, 100);
+    assert.equal(view.focusEntry({ dictionary: 1 }), false);
     view.destroy(); assert.equal(popup.children.length, 0);
   } finally { dom.window.close(); }
 });
@@ -45,6 +63,7 @@ test("text traversal retains deeply nested content without building DOM", () => 
     let data = "deep";
     for (let i = 0; i < 1000; i++) data = { tag: "div", content: data };
     assert.equal(dom.window.HDGlossary.glossaryToPlainText(data), "deep");
+    assert.equal(dom.window.HDGlossary.glossaryToPlainText([{ content: ["食", { tag: "b", content: "べる" }] }, "eat"]), "食べる\neat");
   } finally { dom.window.close(); }
 });
 test("renderer failure replays the current model with Default CSS and keeps the preference", async () => {

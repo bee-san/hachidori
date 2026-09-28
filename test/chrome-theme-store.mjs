@@ -52,7 +52,7 @@ try {
   await settings.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover" } });
+      baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover", popupTheme: "default" } });
     if (!reply.ok) throw new Error(reply.error);
     location.hash = "design";
   });
@@ -85,6 +85,7 @@ try {
   console.log("hover");
   await hover();
   await screenshot("default");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
   await settings.bringToFront();
   await settings.click(".theme-store-card:nth-child(2) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "nazeka");
@@ -107,6 +108,10 @@ try {
   assert.equal(evidence.dictionaryStyles, 0);
   assert.equal(evidence.richNodes, 0);
   assert.equal(evidence.background, "rgb(17, 17, 17)");
+  await tab.keyboard.press("Escape");
+  assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), true,
+    "switching away from Note releases editing so Escape can close Nazeka");
+  await hover();
   await screenshot("nazeka");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".nazeka-kanji-info"));

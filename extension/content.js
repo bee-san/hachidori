@@ -2142,7 +2142,7 @@
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
     level.view = themeHost.createView({
-      onRendererRetired() { audio.retire(level); mining.retire(level); },
+      onRendererRetired() { audio.retire(level); mining.retire(level); level.noteEditing = false; },
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,

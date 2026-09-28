@@ -1323,7 +1323,8 @@
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch { return value; }
     }
-    const stack = [value], parts = [];
+    const stack = Array.isArray(value) ? value.flatMap(item => [item, "\n"]).reverse() : [value];
+    const parts = [];
     while (stack.length) {
       const item = stack.pop();
       if (item == null) continue;
@@ -1333,10 +1334,13 @@
         if (item.tag === "img" || item.type === "image") {
           if (item.title) parts.push(String(item.title));
         } else if (item.tag === "br") parts.push("\n");
-        else stack.push(item.content);
+        else {
+          if (["div", "p", "li", "tr", "br"].includes(item.tag)) stack.push("\n");
+          stack.push(item.content);
+        }
       } else parts.push(String(item));
     }
-    return parts.join(" ").trim();
+    return parts.join("").trim();
   }
 
   return {

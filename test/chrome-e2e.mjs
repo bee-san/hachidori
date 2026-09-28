@@ -7586,7 +7586,7 @@ async function checkCustomCssPreview(page, frame) {
     popup.querySelector(".gsm-hoshidicts-note-button").click();
     const form = popup.querySelector("form");
     form.elements.definition.value = "Keep my draft";
-    window.cssProof = { base, form, card: popup.querySelector(".gsm-hoshidicts-glossary-card"),
+    window.cssProof = { base, baseSheets: [...root.adoptedStyleSheets], form, card: popup.querySelector(".gsm-hoshidicts-glossary-card"),
       pageBackground: getComputedStyle(document.body).backgroundColor };
   });
   try {
@@ -7603,7 +7603,8 @@ async function checkCustomCssPreview(page, frame) {
       const style = getComputedStyle(popup);
       return style.outlineColor === "rgb(12, 34, 56)" && style.fontSize === "17px"
         && getComputedStyle(document.body).backgroundColor === window.cssProof.pageBackground
-        && root.adoptedStyleSheets.length === 2 && root.adoptedStyleSheets[0] === window.cssProof.base
+        && root.adoptedStyleSheets.length === window.cssProof.baseSheets.length + 1
+        && window.cssProof.baseSheets.every((sheet, index) => root.adoptedStyleSheets[index] === sheet)
         && root.querySelector("form") === window.cssProof.form && window.cssProof.form.elements.definition.value === "Keep my draft"
         && root.querySelector(".gsm-hoshidicts-glossary-card") === window.cssProof.card;
     });
@@ -7633,7 +7634,8 @@ async function checkCustomCssPreview(page, frame) {
     }, beforeReset);
     const detached = await frame.evaluate(() => {
       const root = document.getElementById("preview-host").shadowRoot;
-      return root.adoptedStyleSheets.length === 1 && root.adoptedStyleSheets[0] === window.cssProof.base
+      return root.adoptedStyleSheets.length === window.cssProof.baseSheets.length
+        && window.cssProof.baseSheets.every((sheet, index) => root.adoptedStyleSheets[index] === sheet)
         && getComputedStyle(root.querySelector(".gsm-hoshidicts-popup")).outlineColor === "rgb(1, 2, 3)"
         && root.querySelector("form") === window.cssProof.form;
     });

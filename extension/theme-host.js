@@ -12,9 +12,7 @@
     const cache = new Map();
     const views = new Set();
     const disabled = new Set();
-    const samples = [];
     let current, shadow, sheet, fallbackStyle, pending;
-    let measuring = false;
     const selected = () => getOptions().popupTheme === "nazeka" && !disabled.has("nazeka") ? "nazeka" : "default";
     const asset = async path => {
       const response = await fetch(chrome.runtime.getURL(path));
@@ -87,7 +85,8 @@
       let destroyed = false;
       const settings = new Map();
       const components = { glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
-        createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps };
+        createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps,
+        findDifferentDictionary: window.HDPopup.findDifferentDictionary, popupCoordinateScale: window.HDPopup.popupCoordinateScale };
       const record = { rebuild() {
         if (destroyed || !current) return;
         const viewport = view?.captureTermView?.();
@@ -112,7 +111,7 @@
         if (["setDefinitionBlurState", "setSourceHighlightEnabled", "setCustomButtons", "setToolbarPosition"].includes(method)) {
           settings.set(method, args);
         }
-        if (method === "updateDictionaryPresentation" && lastRender?.[0] === "renderResults") {
+        if (method === "updateDictionaryPresentation" && ["renderResults", "renderKanji"].includes(lastRender?.[0])) {
           lastRender[1][2] = { ...lastRender[1][2], ...args[0] };
         }
         // Keep the latest model while the newly selected bundle loads. Never
@@ -121,12 +120,8 @@
           void sync();
           return;
         }
-        const started = measuring && RENDER_METHODS.has(method) ? performance.now() : null;
         try { return view?.[method]?.(...args); }
         catch (error) { void fail(error); }
-        finally {
-          if (started !== null) samples.push({ renderer: current.name, method, ms: performance.now() - started });
-        }
       }
       views.add(record);
       record.rebuild();
@@ -141,8 +136,6 @@
     return { sync, createView,
       attach(root) { shadow = root; applyCss(); },
       get dictionaryStyles() { return current?.dictionaryStyles === true; },
-      stats: () => ({ renderer: current?.name, samples: samples.slice() }),
-      resetStats() { measuring = true; samples.length = 0; },
     };
   }
   window.HDThemeHost = { createThemeHost };
