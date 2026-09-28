@@ -1886,9 +1886,10 @@
       return;
     }
     // Like Yomitan, a child opens beside the text that opened it: below that
-    // word when it fits, otherwise above, aligned with its left edge and
-    // clamped to the viewport. Only each pane's own source is measured, so no
-    // ancestor box is read for any descendant.
+    // word when it fits, otherwise above, aligned with its left edge, and
+    // shortened on the roomier side rather than covering the word when it fits
+    // on neither. Only each pane's own source is measured, so no ancestor box
+    // is read for any descendant.
     for (const level of levels.slice(Math.max(1, fromLevel.depth))) {
       if (level.popup.hidden) break;
       if (!anchorConnected(level.activeCandidate)) {
@@ -2646,10 +2647,15 @@
     scheduleDescendantPrune(level);
   }
 
+  // Every caller is pointer movement in an ancestor. Like the root's
+  // schedulePointerHide(), activationSticky keeps a rendered child through it,
+  // as Yomitan does unless "Hide popup on cursor exit" is on. An ancestor
+  // press, Escape, Close/Back and a replacement still dismiss the child, and
+  // cancelPendingHover() still drops one that has not rendered.
   function scheduleDescendantPrune(level) {
     clearDescendantTimer();
     const depth = level.depth + 1;
-    if (depth >= levels.length) return;
+    if (depth >= levels.length || options.lookupMode === "activationSticky") return;
     const prune = () => {
       descendantTimer = null;
       if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)

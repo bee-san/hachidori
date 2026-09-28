@@ -18,7 +18,9 @@ where things are.
 
 Drag a lookup popup's bottom-right corner to resize it. The size is shared by
 subsequent and nested lookups in that page, including after closing and reopening
-the popup. Reloading or navigating the page (or restarting the browser) starts a
+the popup. Like the saved Design size, it is a maximum: a popup that fits on
+neither side of its word is shortened to the room beside it. Reloading or
+navigating the page (or restarting the browser) starts a
 new reading session with the saved Design dimensions. Dragging does not change
 those saved settings or other tabs.
 
