@@ -6,13 +6,14 @@ import { createRequire } from "node:module";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import plain from "../extension/vendor/themes/plain/theme.js";
 import theme from "../extension/vendor/themes/nazeka/theme.js";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const extension = resolve(import.meta.dirname, "../extension");
 function environment() {
   const dom = new JSDOM("<div id='host'></div>", { runScripts: "outside-only", pretendToBeVisual: true });
-  for (const name of ["render/glossary.js", "render/popup.js", "theme-host.js"]) dom.window.eval(readFileSync(resolve(extension, name), "utf8"));
+  for (const name of ["reader-options.js", "render/glossary.js", "render/popup.js", "theme-host.js"]) dom.window.eval(readFileSync(resolve(extension, name), "utf8"));
   return dom;
 }
 const results = [{ matched: "食べる", trace: [], term: { expression: "食べる", reading: "たべる", frequencies: [],
@@ -97,4 +98,22 @@ test("renderer failure replays the current model with Default CSS and keeps the 
     assert.doesNotMatch(css, /nazeka-only/);
     view.destroy();
   } finally { theme.createView = original; dom.window.close(); }
+});
+
+test("Plain writes complete definitions directly with no action or metadata DOM", () => {
+  const dom = environment(), { window } = dom, { document } = window;
+  try {
+    const popup = document.createElement("div");
+    let bound;
+    const view = plain.createView({ document, popup, positionPopup() {},
+      components: { glossaryToPlainText: window.HDGlossary.glossaryToPlainText },
+      onResultsRendered(value) { bound = value; },
+    });
+    view.renderResults(results, { query: "食べる" });
+    assert.equal(popup.textContent, "eat food");
+    assert.equal(popup.querySelectorAll("*").length, 1);
+    assert.equal(popup.querySelectorAll("button,img,a,.gsm-hoshidicts-expression").length, 0);
+    assert.deepEqual(bound, { audioButtons: [], miningActions: [], lookupStats: null });
+    view.destroy();
+  } finally { dom.window.close(); }
 });

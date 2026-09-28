@@ -78,7 +78,7 @@ try {
     location.hash = "design";
   }, `http://127.0.0.1:${server.address().port}`);
   await settings.waitForSelector(".theme-store-card button", { visible: true });
-  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 2);
+  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 3);
   const tab = await browser.newPage();
   tab.on("pageerror", error => { errors.push(error.message); console.log("tab error", error.message); });
   tab.on("console", message => { if (["error", "warn"].includes(message.type())) console.log(message.type(), message.text()); });
@@ -173,6 +173,26 @@ try {
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "nazeka");
   assert.equal(await preview.evaluate(() => !!document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-mine-button")), true);
   await settings.screenshot({ path: resolve(output, "store.png") });
+  await settings.click(".theme-store-card:nth-child(3) button");
+  await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "plain");
+  await hover();
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".plain-scroll"));
+  const plain = await tab.evaluate(() => {
+    const shadow = document.querySelector("hachidori-host").shadowRoot;
+    const popup = shadow.querySelector(".gsm-hoshidicts-popup");
+    return { text: popup.textContent, controls: popup.querySelectorAll("button,img,a,.gsm-hoshidicts-expression,.nazeka-count").length,
+      children: popup.querySelectorAll("*").length, entries: popup.querySelectorAll(".gsm-hoshidicts-entry").length,
+      extraStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => /glossary-card|hd-icon/.test(rule.cssText))) };
+  });
+  assert.match(plain.text, /to eat/);
+  assert.doesNotMatch(plain.text, /Looked up|たべる|hachidori-fixture/);
+  assert.equal(plain.controls, 0);
+  assert.equal(plain.children, plain.entries);
+  assert.equal(plain.extraStyles, false);
+  await screenshot("plain");
+  await settings.bringToFront();
+  assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "plain");
+  await settings.screenshot({ path: resolve(output, "store-plain.png") });
   await settings.click(".theme-store-card:first-child button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "default");
   console.log("hover");
@@ -183,8 +203,8 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence,
-    checks: ["Store hidden by default", "experimental opt-in", "two bundled themes", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: Store opt-in, Nazeka hover, kanji/Back and Default restore. Evidence: ${output}`);
+    checks: ["Store hidden by default", "experimental opt-in", "three bundled themes", "Plain definitions only", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: Store opt-in, Nazeka actions, kanji/Back, Plain definitions and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

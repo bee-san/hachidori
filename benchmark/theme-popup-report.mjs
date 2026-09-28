@@ -12,7 +12,7 @@ const distribution = values => {
 const metricDelta = (row, name) => ((row.metricsAfter.find(item => item.name === name)?.value ?? 0)
   - (row.metricsBefore.find(item => item.name === name)?.value ?? 0)) * 1000;
 const summary = {};
-for (const theme of ["default", "nazeka"]) {
+for (const theme of ["default", "nazeka", "plain"]) {
   const rows = [];
   for (const [index, run] of runs.entries()) {
     const directory = resolve(run, theme);

@@ -18,7 +18,7 @@
   api.storage.local.get("options").then(({ options }) => {
     let theme = globalThis.HDReaderOptions.normaliseOptions(options).popupTheme;
     if (theme === "auto") theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    if (theme === "nazeka") theme = "default";
+    if (globalThis.HDReaderOptions.popupRenderer(theme) !== "default") theme = "default";
     root.dataset.hoshidictsTheme = theme;
   }).then(release, release);
 }());

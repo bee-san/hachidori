@@ -1,4 +1,4 @@
-// Select a bundled renderer before constructing popup content. Both renderers
+// Select a bundled renderer before constructing popup content. The renderers
 // implement the existing core view contract; only their DOM and CSS differ.
 // SPDX-License-Identifier: GPL-3.0-or-later
 (function () {
@@ -13,7 +13,10 @@
     const views = new Set();
     const disabled = new Set();
     let current, shadow, sheet, fallbackStyle, pending;
-    const selected = () => getOptions().popupTheme === "nazeka" && !disabled.has("nazeka") ? "nazeka" : "default";
+    const selected = () => {
+      const name = window.HDReaderOptions.popupRenderer(getOptions().popupTheme);
+      return disabled.has(name) ? "default" : name;
+    };
     const asset = async path => {
       const response = await fetch(chrome.runtime.getURL(path));
       if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
@@ -23,9 +26,9 @@
     function load(name) {
       if (!cache.has(name)) cache.set(name, (async () => {
         const [css, icons, module] = await Promise.all([
-          asset(name === "default" ? "render/reader.css" : "vendor/themes/nazeka/theme.css"),
-          asset("icons.css"),
-          name === "default" ? null : import(chrome.runtime.getURL("vendor/themes/nazeka/theme.js")),
+          asset(name === "default" ? "render/reader.css" : `vendor/themes/${name}/theme.css`),
+          name === "plain" ? "" : asset("icons.css"),
+          name === "default" ? null : import(chrome.runtime.getURL(`vendor/themes/${name}/theme.js`)),
         ]);
         if (module && (module.default?.schema !== 2 || module.default.slug !== name
             || typeof module.default.createView !== "function")) throw new Error("Unsupported renderer contract");
@@ -49,7 +52,7 @@
       }
       shadow.host.dataset.hoshidictsRenderer = current.name;
       let palette = getOptions().popupTheme;
-      if (current.name === "nazeka") palette = "nazeka";
+      if (current.name !== "default") palette = current.name;
       else if (disabled.has(palette)) palette = "default";
       else if (palette === "auto") {
         palette = shadow.ownerDocument.defaultView.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -60,8 +63,8 @@
 
     function fail(error) {
       if (selected() === "default") throw error;
-      disabled.add("nazeka");
-      console.warn("hachidori: Nazeka renderer failed; using Default for this page", error);
+      disabled.add(selected());
+      console.warn("hachidori: theme renderer failed; using Default for this page", error);
       return sync();
     }
 

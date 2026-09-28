@@ -16,6 +16,14 @@
       "contentMode": "text",
       "benchmark": "Render 2.20 ms · complete 33.1 ms (median)",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    },
+    {
+      "slug": "plain",
+      "name": "Plain",
+      "description": "Only dictionary definition text. No headings, metadata, counts, Anki or audio controls.",
+      "contentMode": "text",
+      "benchmark": "Benchmark pending",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     }
   ]
 }

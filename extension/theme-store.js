@@ -14,7 +14,7 @@ export function createThemeStore({ root, onSelect }) {
 
   function updateSelection() {
     for (const [slug, button] of cards) {
-      const selected = slug === (options.popupTheme === "nazeka" ? "nazeka" : "default");
+      const selected = slug === globalThis.HDReaderOptions.popupRenderer(options.popupTheme);
       button.textContent = selected ? "Current theme" : "Use";
       button.setAttribute("aria-pressed", String(selected));
     }

@@ -251,7 +251,7 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const themeChanged = (options.popupTheme === "nazeka") !== (nextOptions.popupTheme === "nazeka");
+    const themeChanged = HDReaderOptions.popupRenderer(options.popupTheme) !== HDReaderOptions.popupRenderer(nextOptions.popupTheme);
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx

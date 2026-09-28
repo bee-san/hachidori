@@ -23,6 +23,7 @@
       return clone.textContent.trim();
     });
     return { depth: level.depth, popup: identity(popup), view: identity(level.view),
+      ...(options.popupTheme === "plain" ? { definitions: [...(popup?.querySelectorAll(".gsm-hoshidicts-definitions") ?? [])].map(node => node.textContent) } : {}),
       connected: popup?.isConnected === true, hidden: popup?.hidden !== false, expressions,
       more: Boolean(popup?.querySelector('.gsm-hoshidicts-show-more')),
       text: popup?.textContent ?? '', nodes: popup?.querySelectorAll('*').length ?? 0 };
@@ -38,11 +39,12 @@
     }
     const current = snapshot[active.depth];
     const reply = active.replies.at(-1);
+    const actual = current?.definitions ?? current?.expressions;
+    const expected = current?.definitions ? reply?.definitions : reply?.results.map(result => result.term.expression);
     const correct = active.rendered && reply && current && !current.hidden && current.connected
-      && current.expressions[0] === active.expected;
+      && reply.results[0]?.term.expression === active.expected && actual?.[0] === expected?.[0];
     if (correct && kind === 'frame' && active.first === null) active.first = now;
-    if (correct && !current.more && JSON.stringify(current.expressions)
-        === JSON.stringify(reply.results.map(result => result.term.expression))) {
+    if (correct && !current.more && JSON.stringify(actual) === JSON.stringify(expected)) {
       if (signature === active.completeSignature) active.stableFrames += kind === 'frame' ? 1 : 0;
       else { active.completeSignature = signature; active.stableFrames = 0; }
       if (active.stableFrames >= 2 && active.complete === null) active.complete = now;
@@ -83,7 +85,9 @@
       const received = performance.now();
       if (owner?.delay) await new Promise(resolve => setTimeout(resolve, owner.delay));
       const record = { query: fields.text, sent, received, delivered: performance.now(),
-        count: reply.results?.length ?? 0, results: reply.results };
+        count: reply.results?.length ?? 0, results: reply.results,
+        ...(options.popupTheme === "plain" ? { definitions: reply.results.map(result => result.term.glossaries
+          .map(glossary => HDGlossary.glossaryToPlainText(glossary.glossary)).join("\n")) } : {}) };
       owner?.replies.push(record);
       events.push({ kind: 'reply', ...record });
     }

@@ -72,7 +72,7 @@ const OPTION_SECTIONS = {
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
-  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+  POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
@@ -1671,13 +1671,13 @@ function renderThemeChoices() {
     }
   }
   let storeGroup = [...theme.children].find(group => group.label === "Theme Store");
-  if (!storeGroup && (options.experimental.themeStore || options.popupTheme === "nazeka")) {
+  if (!storeGroup && (options.experimental.themeStore || popupRenderer(options.popupTheme) !== "default")) {
     storeGroup = document.createElement("optgroup");
     storeGroup.label = "Theme Store";
-    storeGroup.append(new Option("Nazeka", "nazeka"));
+    for (const slug of POPUP_RENDERER_IDS) storeGroup.append(new Option(slug[0].toUpperCase() + slug.slice(1), slug));
     theme.append(storeGroup);
   }
-  if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && options.popupTheme !== "nazeka";
+  if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && popupRenderer(options.popupTheme) === "default";
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
