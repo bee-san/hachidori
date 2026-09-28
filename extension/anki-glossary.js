@@ -55,12 +55,13 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     body.className = "gsm-hoshidicts-glossary-content";
     body.dataset.hoshidictsDictionary = glossary.dictionary;
     globalThis.HDGlossary.appendTextOnlyGlossary(inert, body, glossary.glossary, {
-      dictionary: glossary.dictionary, appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
+      dictionary: glossary.dictionary, layout: "anki",
+      appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
     });
     return body;
   }
 
-  // A note field has none of the popup's `white-space: pre-wrap`, so each line
+  // A note field has none of the popup's `white-space: pre-line`, so each line
   // break in rich dictionary text becomes a <br>, as in Yomitan's
   // AnkiTemplateRenderer._replaceNewlines (#359). Plain markers split lines themselves.
   function replaceNewlines(root) {

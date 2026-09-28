@@ -176,6 +176,11 @@ function equal(what, actual, expected) {
   check(what, a === b, `expected: ${b}\nactual:   ${a}`);
 }
 
+// A rendered glossary's text without Yomitan's hidden gloss separators.
+function glossaryText(parent) {
+  return [...parent.querySelectorAll(".gloss-content")].map((content) => content.textContent).join("");
+}
+
 function section(name) {
   console.log(`\n# ${name}`);
 }
@@ -20817,10 +20822,16 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   // them together with no separator ("to eatto live on (e.g. a salary)").
   const senses = JSON.parse(lookup.results[0].term.glossaries[0].glossary);
   check("the fixture's first glossary carries more than one sense", senses.length > 1, JSON.stringify(senses));
+  // Yomitan's gloss item leads with a hidden separator, so read its content.
   equal(
     "every element of the glossary array renders as its own item",
-    [...(glossaryContent?.querySelectorAll(".gloss-item") ?? [])].map((item) => item.textContent),
+    [...(glossaryContent?.querySelectorAll(".gloss-item > .gloss-content") ?? [])].map((item) => item.textContent),
     senses,
+  );
+  check(
+    "the gloss list counts its items as Yomitan's data-count does",
+    glossaryContent?.querySelector(":scope > ul.gloss-list")?.dataset.count === String(senses.length),
+    glossaryContent?.innerHTML.slice(0, 200),
   );
   check(
     "the glossary card is tagged with its dictionary for @scope",
@@ -20973,7 +20984,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const nativeContent = nativeCard?.querySelector(".gsm-hoshidicts-glossary-content");
   const nativeCardState = {
     cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map((title) => title.title),
-    structured: nativeContent?.classList.contains("structured-content"),
+    structured: nativeContent?.querySelector(".gloss-content")?.classList.contains("structured-content"),
     readings: [...nativeContent?.querySelectorAll("[data-sc-content=reading]") ?? []].map((node) => node.textContent),
     tags: nativeContent?.querySelector("[data-sc-content=tags]")?.textContent,
     meanings: [...nativeContent?.querySelectorAll("ol > li") ?? []].map((item) => item.textContent),
@@ -21167,9 +21178,9 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     image?.getAttribute("src") === media.dataUrl,
     JSON.stringify(image?.getAttribute("src")?.slice(0, 48)),
   );
-  // The class a dictionary's own CSS can target. It only fires if the array
-  // element, not the array, is what gets inspected.
-  const structuredContainer = popup.querySelector(".gsm-hoshidicts-glossary-content");
+  // The class a dictionary's own CSS can target, on the gloss content as in
+  // Yomitan. It only fires if the array element, not the array, is inspected.
+  const structuredContainer = popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-content");
   check(
     "a structured-content glossary tags its container",
     structuredContainer?.classList.contains("structured-content") === true,
@@ -22919,15 +22930,15 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   };
   const parent = document.createElement("div");
   HDGlossary.appendTextOnlyGlossary(document, parent, nested(24));
-  const exactDepth = parent.textContent === "leaf";
+  const exactDepth = glossaryText(parent) === "leaf";
   parent.replaceChildren();
   HDGlossary.appendTextOnlyGlossary(document, parent, nested(1000));
-  const deepContent = parent.textContent === "leaf";
+  const deepContent = glossaryText(parent) === "leaf";
   parent.replaceChildren();
   HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
   HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
   check("structured content renders beyond the former depth limit and preserves ordinary fallback text",
-    exactDepth && deepContent && parent.textContent === "kept<literal>", parent.textContent);
+    exactDepth && deepContent && glossaryText(parent) === "kept<literal>", parent.innerHTML);
 
   const limit = 1_048_576;
   const values = [
@@ -23125,7 +23136,7 @@ async function deepStructuredContentStage({ HDGlossary, HDPopup, document }) {
   const render = glossary => {
     const parent = document.createElement("div");
     HDGlossary.appendTextOnlyGlossary(document, parent, glossary);
-    return parent.textContent;
+    return glossaryText(parent);
   };
   const summary = glossary => HDPopup.extractCompactDefinitionSummary([{ dictionary: fixture.title, glossary }], null, 6)?.items;
   const ankiFields = async glossary => (await buildAnkiResourceFields({

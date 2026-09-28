@@ -113,8 +113,14 @@ Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
 Yomitan function that produced it, so no Yomitan checkout is needed. It covers
 structured-content inline styles (JMdict's `130%` redirect span, keywords,
 `calc()`, gradients, numeric em margins, shorthand order) and the values that
-stay refused: resource and custom functions, `var()` and CSS escapes. It uses
-the same external jsdom dependency.
+stay refused: resource and custom functions, `var()` and CSS escapes. The
+glossary cases compare `ul.gloss-list` from `DisplayGenerator._createTermDefinition`
+for plain and Pixiv-style multiline strings, several senses, form-of data, the
+JMdict redirect, a Jitendex gaiji, an image with its description, a table, an
+external link and dictionary-set `lang`, after removing a short documented list
+of Hachidori's own hooks. A popup-view case pins `li.definition-item[data-dictionary]`,
+`.definition-tag-list`, `data-count` and the headword's `lang`. It uses the same
+external jsdom dependency.
 
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
