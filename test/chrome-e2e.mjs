@@ -7837,7 +7837,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
 }
 
 async function checkPopupMetadata(browser, settings, tab, popup) {
-  const controls = ["opt-frequency-names", "opt-average-frequency", "opt-pitch-furigana",
+  const controls = ["opt-frequency-names", "opt-frequency-compact", "opt-average-frequency", "opt-pitch-furigana",
     "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags", "opt-popup-width",
     "opt-popup-toolbar"];
   const original = await readSettingsControls(settings, controls);
@@ -7860,6 +7860,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
   const expectMetadata = predicate => expectState(value => predicate(value.metadata));
   try {
     await editSettingsControls(settings, { "opt-frequency-names": true, "opt-average-frequency": false,
+      "opt-frequency-compact": false,
       "opt-pitch-furigana": true, "opt-pitch-dictionary": "", "opt-pitch-badge": true, "opt-grammar-tags": true,
       "opt-popup-width": "560", "opt-popup-toolbar": "top" });
     await tab.bringToFront();
@@ -7918,6 +7919,16 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && hidden.sameCards && hidden.samePanel && await popup.dictionaryTabs("matches", before.entries)
       && retained.sameForm && retained.mounted && retained.inputFocused && retained.draft === "Keep the metadata draft"
       && JSON.stringify(retained.selection) === "[2,7]");
+    // Without names, the fixture's 142位 shows verbatim until abbreviation drops its text.
+    await editSettingsControls(settings, { "opt-frequency-compact": true });
+    const abbreviated = await expectMetadata(value => value.frequencyText.includes("142")
+      && !value.frequencyText.includes("142位"));
+    await editSettingsControls(settings, { "opt-frequency-compact": false });
+    const unabbreviated = await expectMetadata(value => value.frequencyText.includes("142位"));
+    const kept = await popup.retainedControls();
+    evidence.push(hidden.metadata.frequencyText.includes("142位") && abbreviated.sameCards && unabbreviated.sameCards
+      && kept.sameForm && kept.mounted && kept.draft === "Keep the metadata draft"
+      && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-average-frequency": true });
     const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
@@ -7962,7 +7973,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await tab.keyboard.press("Escape");
   }
   check("Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
-    evidence.length === 6 && evidence.every(Boolean), JSON.stringify(evidence));
+    evidence.length === 7 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
 async function checkHoverHitTesting(tab, popup) {

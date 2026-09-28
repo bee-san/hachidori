@@ -127,6 +127,7 @@
     popupImageSource: null,
     averageFrequency: false,
     showFrequencyDictionaryNames: false,
+    compactFrequencyNumbers: false,
     showPitchAccentFurigana: true,
     pitchAccentFuriganaDictionary: "",
     showPitchAccentBadge: true,
@@ -183,7 +184,7 @@
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
-    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
+    "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation", "activationSticky"];

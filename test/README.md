@@ -93,10 +93,10 @@ plus the toolbar toggle and revision conflicts. Search uses
 the same external jsdom dependency described below. The toolbar tests do not
 start a recording session.
 
-`node --test test/frequency-presentation.test.mjs` checks compact numeric
-frequency defaults, the primary result's frequency tags sharing the later
+`node --test test/frequency-presentation.test.mjs` checks full Yomitan-style
+frequency values by default and opt-in abbreviated numbers, the primary result's frequency tags sharing the later
 entries' tag structure, visible kana markers, tabs-only lower chrome, concise typed harmonic averages, preserved
-explicit display choices, source details, and live grammar/name controls without
+explicit display choices, source details, and live grammar/name/abbreviation controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
 `node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's

@@ -24,8 +24,8 @@
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
-  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "showPitchAccentFurigana",
-    "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
+  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
 
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
@@ -417,7 +417,10 @@
       { minimum: 1_000_000, suffix: "m" },
       { minimum: 1_000, suffix: "k" },
     ];
-    const unit = units.find(({ minimum }) => absoluteValue >= minimum);
+    // Pick the unit after rounding, as Intl's compact notation does: a value
+    // that rounds to 1000.0 of the smaller unit moves up, so 999,949 is 999.9k
+    // but 999,950 is 1m, not 1000k.
+    const unit = units.find(({ minimum }) => Math.round((absoluteValue / minimum) * 10_000) >= 10_000);
     if (!unit) {
       return String(value);
     }
@@ -438,11 +441,17 @@
     }`;
   }
 
-  function formatFrequencyValue(frequency) {
+  // Like Yomitan's _populateFrequencyValueList: the dictionary's display value,
+  // else the number. Compact numbers abbreviate a display value that only
+  // restates the number, keeping any text of its own.
+  function formatFrequencyValue(frequency, compactFrequencyNumbers = false) {
     if (typeof frequency.displayValue === "string") {
       const displayValue = frequency.displayValue.trim();
       if (!displayValue) {
         return null;
+      }
+      if (!compactFrequencyNumbers) {
+        return displayValue;
       }
       const numericText = isKanaFrequency(frequency)
         ? displayValue.slice(0, -JITEN_KANA_FREQUENCY_MARKER.length)
@@ -455,7 +464,7 @@
         return formatCompactFrequencyValue(frequency);
       }
     }
-    return formatCompactFrequencyNumber(frequency.value);
+    return compactFrequencyNumbers ? formatCompactFrequencyNumber(frequency.value) : String(frequency.value);
   }
 
   function frequencyNumberForAverage(frequency) {
@@ -521,7 +530,8 @@
     dictionaryPresentation,
     maximumTags,
     averageFrequency = false,
-    showFrequencyDictionaryNames = false
+    showFrequencyDictionaryNames = false,
+    compactFrequencyNumbers = false
   ) {
     if (averageFrequency) {
       const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
@@ -549,12 +559,12 @@
         }
       }
       return Array.from(aggregates, ([label, { count, reciprocalSum, display }]) => {
-        const value = Math.floor(count / reciprocalSum);
+        const frequency = { value: Math.floor(count / reciprocalSum), displayValue: null };
         return createFrequencyTag(
           documentRef,
           { dictionary: label },
           display,
-          [{ display: formatCompactFrequencyNumber(value), frequency: { value, displayValue: null } }],
+          [{ display: formatFrequencyValue(frequency, compactFrequencyNumbers), frequency }],
           // These labels identify units, not a source dictionary.
           true
         );
@@ -570,11 +580,13 @@
       const frequencies = [];
       const seenFrequencies = new Set();
       for (const frequency of group.frequencies) {
-        const originalDisplay = formatFrequencyValue(frequency);
+        const originalDisplay = formatFrequencyValue(frequency, compactFrequencyNumbers);
         if (originalDisplay === null) {
           continue;
         }
-        const display = showFrequencyDictionaryNames ? originalDisplay : formatCompactFrequencyValue(frequency);
+        // Only abbreviated numbers without names drop a dictionary's own text.
+        const display = compactFrequencyNumbers && !showFrequencyDictionaryNames
+          ? formatCompactFrequencyValue(frequency) : originalDisplay;
         const key = JSON.stringify([frequency.value, originalDisplay]);
         if (!seenFrequencies.has(key)) {
           seenFrequencies.add(key);
@@ -2914,6 +2926,7 @@
         includePitch = true,
         averageFrequency = false,
         showFrequencyDictionaryNames = false,
+        compactFrequencyNumbers = false,
         imageContext,
         isCurrent,
         onLayoutChange,
@@ -2935,7 +2948,8 @@
           context.dictionaryPresentation || [],
           maxMetadataTags,
           context.averageFrequency === true,
-          context.showFrequencyDictionaryNames === true
+          context.showFrequencyDictionaryNames === true,
+          context.compactFrequencyNumbers === true
         ) : [];
         const countChanged = frequencyCount !== frequencyTags.length;
         frequencyCount = frequencyTags.length;
@@ -3006,7 +3020,7 @@
         ipaRow.appendChild(overflow);
       } else appendTranscriptions(ipaRow);
       const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
-        showPitchAccentBadge: includePitch };
+        compactFrequencyNumbers, showPitchAccentBadge: includePitch };
       updateFrequency(context);
       updatePitch(context);
       entry.append(frequencyRow, pitchRow, ipaRow);
@@ -3049,10 +3063,7 @@
     function renderPrimaryMetadataCapsule(
       capsule,
       result,
-      dictionaryPresentation,
-      hideGrammarTags,
-      averageFrequency,
-      showFrequencyDictionaryNames,
+      context,
       { frequencyChanged = true, grammarChanged = true } = {}
     ) {
       if (frequencyChanged) {
@@ -3060,10 +3071,11 @@
         const frequencyTags = createFrequencyTags(
           documentRef,
           result,
-          dictionaryPresentation,
+          Array.isArray(context.dictionaryPresentation) ? context.dictionaryPresentation : [],
           maxMetadataTags,
-          averageFrequency,
-          showFrequencyDictionaryNames
+          context.averageFrequency === true,
+          context.showFrequencyDictionaryNames === true,
+          context.compactFrequencyNumbers === true
         );
         if (frequencyTags.length > 0) {
           const frequencies = documentRef.createElement("span");
@@ -3074,7 +3086,7 @@
       }
       if (grammarChanged) {
         capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.remove();
-        if (!hideGrammarTags) {
+        if (context.hidePopupGrammarTags === false) {
           const grammarMetadata = collectGrammarMetadata(result);
           if (grammarMetadata.length > 0) {
             const grammar = documentRef.createElement("span");
@@ -3411,16 +3423,7 @@
         }
 
         if (resultIndex === 0 && primaryMetadataCapsule) {
-          renderPrimaryMetadataCapsule(
-            primaryMetadataCapsule,
-            result,
-            Array.isArray(renderContext.dictionaryPresentation)
-              ? renderContext.dictionaryPresentation
-              : [],
-            renderContext.hidePopupGrammarTags !== false,
-            renderContext.averageFrequency === true,
-            renderContext.showFrequencyDictionaryNames === true
-          );
+          renderPrimaryMetadataCapsule(primaryMetadataCapsule, result, renderContext);
           primaryMetadataRow.appendChild(primaryMetadataCapsule);
         }
 
@@ -3439,6 +3442,7 @@
             averageFrequency: renderContext.averageFrequency === true,
             showFrequencyDictionaryNames:
               renderContext.showFrequencyDictionaryNames === true,
+            compactFrequencyNumbers: renderContext.compactFrequencyNumbers === true,
           }
         );
 
@@ -3663,7 +3667,7 @@
         updateMetadata() {
           const nextModes = frequencyModes(imageContext);
           const labelsChanged = JSON.stringify(imageContext.dictionaryPresentation) !== JSON.stringify(appliedDictionaryPresentation);
-          const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames"]
+          const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers"]
             .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
           const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
           const pitchChanged = imageContext.showPitchAccentBadge !== appliedMetadata.showPitchAccentBadge;
@@ -3671,9 +3675,8 @@
           let deferred = false;
           if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
           if (frequencyChanged || grammarChanged) {
-            renderPrimaryMetadataCapsule(primaryMetadataCapsule, results[0], imageContext.dictionaryPresentation || [],
-              imageContext.hidePopupGrammarTags !== false, imageContext.averageFrequency === true,
-              imageContext.showFrequencyDictionaryNames === true, { frequencyChanged, grammarChanged });
+            renderPrimaryMetadataCapsule(primaryMetadataCapsule, results[0], imageContext,
+              { frequencyChanged, grammarChanged });
             changed = true;
           }
           entryMetadata.forEach(({ header, metadata, grammarRow }, index) => {

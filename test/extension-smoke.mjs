@@ -12027,6 +12027,7 @@ async function settingsFrequencyStage() {
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
       ["opt-frequency-names", "showFrequencyDictionaryNames", false],
+      ["opt-frequency-compact", "compactFrequencyNumbers", false],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
@@ -16095,7 +16096,7 @@ async function contentNoteStage() {
           const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
-            showFrequencyDictionaryNames: false, showPitchAccentFurigana: false,
+            showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
             pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false, hidePopupGrammarTags: true };
           const before = combined.sent.length;
           if (update === "options" || update === "metadata") combined.emitOptions(options);
