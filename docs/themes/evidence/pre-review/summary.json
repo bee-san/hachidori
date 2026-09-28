@@ -1,0 +1,224 @@
+{
+  "default": {
+    "profiles": 6,
+    "coldFirstMs": {
+      "n": 6,
+      "median": 34.84999999962747,
+      "p95": 41
+    },
+    "coldCompleteMs": {
+      "n": 6,
+      "median": 53.84999999962747,
+      "p95": 63.600000001490116
+    },
+    "warmFirstMs": {
+      "n": 144,
+      "median": 16.900000002235174,
+      "p95": 17.5
+    },
+    "warmCompleteMs": {
+      "n": 144,
+      "median": 33.30000000074506,
+      "p95": 33.400000002235174
+    },
+    "renderMs": {
+      "n": 144,
+      "median": 2.449999999254942,
+      "p95": 4.800000000745058
+    },
+    "nodes": {
+      "n": 144,
+      "median": 73,
+      "p95": 228
+    },
+    "scriptMs": {
+      "n": 144,
+      "median": 1.575,
+      "p95": 1.910000000000002
+    },
+    "styleMs": {
+      "n": 144,
+      "median": 0.8389999999999995,
+      "p95": 1.6350000000000011
+    },
+    "layoutMs": {
+      "n": 144,
+      "median": 0.8640000000000037,
+      "p95": 2.156999999999999
+    },
+    "heapBytes": {
+      "n": 144,
+      "median": 3407732,
+      "p95": 3832716
+    },
+    "rendererWork": [
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      }
+    ],
+    "coldSamples": [
+      {
+        "firstMs": 31.699999999254942,
+        "completeMs": 52.19999999925494
+      },
+      {
+        "firstMs": 32.30000000074506,
+        "completeMs": 51.19999999925494
+      },
+      {
+        "firstMs": 41,
+        "completeMs": 63.600000001490116
+      },
+      {
+        "firstMs": 36.69999999925494,
+        "completeMs": 55.5
+      },
+      {
+        "firstMs": 38.20000000298023,
+        "completeMs": 57.400000002235174
+      },
+      {
+        "firstMs": 33,
+        "completeMs": 34.29999999701977
+      }
+    ]
+  },
+  "nazeka": {
+    "profiles": 6,
+    "coldFirstMs": {
+      "n": 6,
+      "median": 30.34999999962747,
+      "p95": 34.100000001490116
+    },
+    "coldCompleteMs": {
+      "n": 6,
+      "median": 49.84999999962747,
+      "p95": 50.100000001490116
+    },
+    "warmFirstMs": {
+      "n": 144,
+      "median": 17,
+      "p95": 17.200000002980232
+    },
+    "warmCompleteMs": {
+      "n": 144,
+      "median": 33.30000000074506,
+      "p95": 33.400000002235174
+    },
+    "renderMs": {
+      "n": 144,
+      "median": 0.9000000022351742,
+      "p95": 1.699999999254942
+    },
+    "nodes": {
+      "n": 144,
+      "median": 19,
+      "p95": 91
+    },
+    "scriptMs": {
+      "n": 144,
+      "median": 0.8574999999999972,
+      "p95": 1.2120000000000013
+    },
+    "styleMs": {
+      "n": 144,
+      "median": 0.3064999999999995,
+      "p95": 0.40399999999999986
+    },
+    "layoutMs": {
+      "n": 144,
+      "median": 0.5299999999999992,
+      "p95": 0.9779999999999998
+    },
+    "heapBytes": {
+      "n": 144,
+      "median": 2800748,
+      "p95": 3233924
+    },
+    "rendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      }
+    ],
+    "coldSamples": [
+      {
+        "firstMs": 28.100000001490116,
+        "completeMs": 50
+      },
+      {
+        "firstMs": 34.100000001490116,
+        "completeMs": 34.70000000298023
+      },
+      {
+        "firstMs": 24.600000001490116,
+        "completeMs": 49.900000002235174
+      },
+      {
+        "firstMs": 29,
+        "completeMs": 49.79999999701977
+      },
+      {
+        "firstMs": 31.699999999254942,
+        "completeMs": 49.69999999925494
+      },
+      {
+        "firstMs": 31.800000000745058,
+        "completeMs": 50.100000001490116
+      }
+    ]
+  }
+}

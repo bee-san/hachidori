@@ -100,6 +100,7 @@
         "anki-content.js",
         "render/glossary.js",
         "render/popup.js",
+        "theme-host.js",
         "content.js"
       ],
       "css": [
@@ -122,7 +123,8 @@
         "overlay-mode.js",
         "browser-api.js",
         "render/reader.css",
-        "icons.css"
+        "icons.css",
+        "vendor/themes/*"
       ],
       "matches": [
         "<all_urls>"

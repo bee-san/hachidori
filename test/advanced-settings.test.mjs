@@ -35,6 +35,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
     ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],
+    ["theme-store.js", ["createThemeStore"]],
     ["activation-settings.js", ["createActivationSettings"]],
     ["dictionary-progress.js", ["formatBytes"]],
     ["memory-settings.js", ["createMemorySettings"]],

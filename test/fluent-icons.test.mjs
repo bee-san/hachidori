@@ -29,7 +29,7 @@ test("reader and status pseudo-icons use the same Fluent source as controls", ()
   const settings = readFileSync(new URL("settings.css", root), "utf8");
   assert.doesNotMatch(reader, /data:image\/svg/);
   assert.doesNotMatch(settings.match(/\.operational-status::before\s*\{[^}]*\}/u)?.[0] ?? "", /(?:width|height)\s*:/u);
-  assert.match(readFileSync(new URL("content.js", root), "utf8"), /getURL\("icons.css"\)/);
+  assert.match(readFileSync(new URL("theme-host.js", root), "utf8"), /asset\("icons.css"\)/);
 });
 
 test("the vendored subset has pinned provenance and no unlisted SVGs", () => {

@@ -28,6 +28,27 @@
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
     "hidePopupGrammarTags"];
 
+  // Shared keyboard semantics for rich cards and direct text definitions.
+  function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
+    const cards = cardsOf(entries[index]);
+    const view = scroll.getBoundingClientRect();
+    let visible = null, coverage = 0;
+    for (const card of sign > 0 ? cards : [...cards].reverse()) {
+      const { top, bottom } = card.getBoundingClientRect();
+      const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
+      if (shown > coverage) { visible = card; coverage = shown; }
+    }
+    if (!visible) return null;
+    const dictionary = dictionaryOf(visible);
+    for (let i = index; i >= 0 && i < entries.length; i += sign) {
+      const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
+      const start = i === index ? ordered.indexOf(visible) + 1 : 0;
+      const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
+      if (target) return { index: i, target };
+    }
+    return null;
+  }
+
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
   }
@@ -2100,6 +2121,20 @@
     };
   }
 
+  function createAudioControl(documentRef, expressionText) {
+    const audio = documentRef.createElement("div");
+    audio.className = "gsm-hoshidicts-audio-control";
+    const button = documentRef.createElement("button");
+    button.type = "button";
+    button.className = "gsm-hoshidicts-audio-button";
+    button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
+    button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+    audio.append(button);
+    return { element: audio, button };
+  }
+
   function createPopupView(options) {
     const documentRef = options.document;
     const windowRef = options.window;
@@ -2317,24 +2352,9 @@
       const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
         ? [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")] : [];
       const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title")?.title ?? "";
-      const cards = cardsOf(nodes[index]);
-      const view = contentScroll.getBoundingClientRect();
-      let visible = null, coverage = 0;
-      for (const card of sign > 0 ? cards : [...cards].reverse()) {
-        const { top, bottom } = card.getBoundingClientRect();
-        const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
-        if (shown > coverage) { visible = card; coverage = shown; }
-      }
-      if (!visible) return false;
-      const dictionary = dictionaryOf(visible);
       const search = entries => {
-        for (let i = index; i >= 0 && i < entries.length; i += sign) {
-          const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
-          const start = i === index ? ordered.indexOf(visible) + 1 : 0;
-          const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
-          if (target) return scrollToEntry(entries, i, target);
-        }
-        return false;
+        const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf);
+        return found ? scrollToEntry(entries, found.index, found.target) : false;
       };
       return search(nodes) || (sign > 0 && expandEntries() && search(entryNodes()));
     }
@@ -3273,16 +3293,7 @@
       for (const previous of actions.querySelectorAll(
         ":scope > .gsm-hoshidicts-popup-close, :scope > .gsm-hoshidicts-kanji-back"
       )) previous.remove();
-      const audio = documentRef.createElement("div");
-      audio.className = "gsm-hoshidicts-audio-control";
-      const button = documentRef.createElement("button");
-      button.type = "button";
-      button.className = "gsm-hoshidicts-audio-button";
-      button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
-      button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
-      button.setAttribute("aria-haspopup", "dialog");
-      button.setAttribute("aria-expanded", "false");
-      audio.append(button);
+      const { element: audio, button } = createAudioControl(documentRef, expressionText);
       actions.prepend(audio);
       const existingMiningAction = actions.querySelector(":scope > .gsm-hoshidicts-mine-button");
       if (existingMiningAction) actions.prepend(existingMiningAction);
@@ -4311,6 +4322,7 @@
   }
 
   return {
+    findDifferentDictionary,
     createPopupAppearance,
     createCustomPopupStyle,
     resolveToolbarPosition,
@@ -4321,6 +4333,8 @@
     createFrequencyTags,
     createPitchTag,
     createPopupView,
+    createAudioControl,
+    deinflectionSteps,
     createSourceHighlighter,
     createTag,
     normaliseDictionaryTab,

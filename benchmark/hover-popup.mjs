@@ -20,7 +20,8 @@ const samples = Number(process.env.HACHIDORI_HOVER_SAMPLES ?? 3);
 assert.ok(Number.isSafeInteger(samples) && samples > 0);
 const settings = { hoverEnabled: true, lookupMode: 'hover', hoverDelayMs: 0, popupNestingMaxDepth: 2,
   popupWidthPx: 520, popupHeightPx: 500, popupColumns: 1, maxResults: 32,
-  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 };
+  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3,
+  ...JSON.parse(process.env.HACHIDORI_HOVER_OPTIONS || "{}") };
 const words = ['食べる', '漢字', '深層'];
 const manifest = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(), settings, words,
@@ -135,7 +136,7 @@ try {
         for (let i = 0; i < row.states.length; i++) {
           const snapshot = row.states[i];
           const current = snapshot.levels[row.depth];
-          if (!current || current.hidden || !current.connected || !current.expressions.length) {
+          if (!current || current.hidden || !current.connected || !(current.definitions ?? current.expressions).length) {
             row.blankMs += Math.max(0, Math.min(row.first, row.states[i + 1]?.at ?? row.first) - snapshot.at);
           }
         }
@@ -189,7 +190,9 @@ try {
       assert.ok(late && latest && late.delivered > latest.delivered, 'genuine earlier lookup delivered out of order');
       await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
       const final = await evaluate('__hoverProbe.state()');
-      assert.equal(final[0].expressions[0], words[0], 'delayed genuine reply cannot repaint newer result');
+      if (settings.popupTheme === "plain") assert.deepEqual(final[0].definitions, latest.definitions,
+        'delayed genuine reply cannot repaint newer definitions');
+      else assert.equal(final[0].expressions[0], words[0], 'delayed genuine reply cannot repaint newer result');
       writeFileSync(resolve(output, `session-${session}-rapid.json`), JSON.stringify({ superseded, delivered, final, metrics }, null, 2));
       // Only the two flat entries name each other in their definitions.
       const points = await evaluate(`JSON.stringify(${JSON.stringify(words.slice(0, 2))}.map(word => __hoverProbe.point(word)))`);

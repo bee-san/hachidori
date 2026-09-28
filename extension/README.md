@@ -38,14 +38,14 @@ validated URL in the system browser.
 | File | Runs as | Role |
 | --- | --- | --- |
 | `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
-| `content.js`, with the classic scripts listed under `content_scripts` | every frame of a web page | Scans the Japanese text near the pointer and renders a popup in that frame, bounded by its viewport. The popup uses a shadow root through `render/popup.js` and `render/glossary.js`, with Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). `content.css` is the only style the page itself receives: the source highlight. |
+| `content.js`, with the classic scripts listed under `content_scripts` | every frame of a web page | Scans the Japanese text near the pointer and renders a popup in that frame, bounded by its viewport. The popup uses a shadow root through `theme-host.js` and the selected renderer (`render/popup.js` for Default), with Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). `content.css` is the only style the page itself receives: the source highlight. |
 | `offscreen.html`, `offscreen.js` | Chrome’s offscreen document | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, and imports each archive in a short-lived second instance, `import-worker.js`, so lookups keep working; `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), both through `engine-worker-runtime.js`; `engine-service.js` is also the single-thread IDBFS fallback. `engine-recycler.js` decides when Low memory mode replaces the worker ([docs/memory.md](../docs/memory.md)). Pronunciation, Anki and the first-run installer load here on demand. |
 | `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, backup and sharing, and global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
 | `startup.html`, `startup.js` | a tab opened once after install | First-run setup: recommended dictionaries, Anki detection, a practice lookup, and the offer to use a Hachidori that another browser on this computer already shares. Overlay mode skips it. |
 | `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state and opens Settings. |
 
 `overlay-mode.js`, its `browser-api.js` dependency, `render/reader.css` and
-`icons.css` are the only files web pages may fetch
+`icons.css` and bundled `vendor/themes/` assets are the files web pages may fetch
 (`web_accessible_resources`). The popup and its Anki controls load the two
 stylesheets; overlay hosts use the shared mode contract.
 
@@ -128,7 +128,10 @@ the service worker and both engine runtimes run the same code.
   the Design preview from the images in `assets/` (see
   `assets/ATTRIBUTION.md`); `design-preview.js` renders the preview from
   `sample-meal.svg` and local sample data.
-- **Renderer.** `render/` is the popup renderer ported from GameSentenceMiner,
+- **Theme Store.** `theme-store.js` renders the experimental Design carousel.
+  `theme-host.js` selects Default or the bundled Nazeka view before constructing
+  content and applies only its CSS. See the [renderer contract](../docs/themes/README.md).
+- **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
   came from where.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the

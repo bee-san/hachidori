@@ -4563,6 +4563,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
+  const themeStore = readFileSync(resolve(EXTENSION, "theme-store.js"), "utf8").replace(/^export\s+/gmu, "");
   const experimentalSettings = readFileSync(resolve(EXTENSION, "experimental-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const activationSettings = readFileSync(resolve(EXTENSION, "activation-settings.js"), "utf8")
@@ -4613,6 +4614,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/theme-store\.js";\s*/gmu, "")
     .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
     .replace(/import \{ createActivationSettings \} from "\.\/activation-settings\.js";\s*/u, "")
     .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
@@ -4642,7 +4644,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -8972,7 +8974,7 @@ async function main() {
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
-  check("preview stylesheet load before its first update is safe and CSS edits retain mounted Notes and cards",
+  check("preview initialization before its first update is safe and CSS edits retain mounted Notes and cards",
     preview?.earlyLoad === true && preview.cssPreview === true, JSON.stringify(preview));
   check("Design uses production term, kanji, media and metadata views without saving sample Notes",
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
@@ -11253,6 +11255,8 @@ async function sourceHighlightStage() {
   window.CSS = { highlights: new Map() };
   window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+  window.fetch = async () => ({ ok: true, text: async () => "" });
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
   const candidate = id => {
     const element = document.getElementById(id);
@@ -11590,17 +11594,19 @@ async function designPreviewStage() {
   });
   const { window } = dom;
   try {
-    window.fetch = async () => ({ blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }) });
+    window.chrome = { runtime: { getURL: path => `${EXTENSION_ORIGIN}/${path}` } };
+    window.fetch = async url => ({ ok: true,
+      text: async () => readFileSync(resolve(EXTENSION, new URL(url).pathname.slice(1)), "utf8"),
+      blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }),
+    });
     window.URL.createObjectURL = () => "blob:sample-meal";
     window.CSS = { highlights: new Map() };
     window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
-    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "visual-novel.js", "design-preview.js"]) {
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "theme-host.js", "visual-novel.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
     let earlyLoad = true;
     window.addEventListener("error", event => { earlyLoad = false; event.preventDefault(); });
-    window.document.getElementById("preview-host").shadowRoot.querySelector("link")
-      .dispatchEvent(new window.Event("load"));
     await new Promise(done => window.setTimeout(done, 60));
     // jsdom does not implement constructed sheets. The browser suite proves
     // CSS parsing/cascade; this double counts ownership and no-op work only.
@@ -11635,6 +11641,7 @@ async function designPreviewStage() {
     const settle = () => new Promise(done => window.setTimeout(done, 60));
     update();
     await settle();
+    parses = 0;
     const popup = window.document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const query = selector => popup.querySelector(selector);
     const card = query(".gsm-hoshidicts-glossary-card");
@@ -14455,6 +14462,8 @@ async function staleKanjiResponseStage(invalidation) {
   });
   const { window } = dom;
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+  window.fetch = async () => ({ ok: true, text: async () => "" });
   let storageListener = null;
   let initialStorageCallback = null;
   let pending = null;
@@ -14728,6 +14737,8 @@ async function contentNoteStage() {
       parseTagList() { return []; },
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+    window.fetch = async () => ({ ok: true, text: async () => "" });
     const createLayoutView = window.HDPopup.createPopupView;
     window.HDPopup = {
       ...window.HDPopup,
@@ -14807,8 +14818,9 @@ async function contentNoteStage() {
     const source = readFileSync(resolve(EXTENSION, "content.js"), "utf8");
     const instrumented = source.replace(marker, `
   globalThis.__hachidoriContentNoteSmoke = {
-    install() {
-      buildUi({ sheet: null, text: "" });
+    async install() {
+      await themeHost.sync();
+      buildUi();
       uiPromise = Promise.resolve();
       currentGeneration = 1;
       styleGeneration = 1;
@@ -14873,7 +14885,7 @@ async function contentNoteStage() {
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
-    const popup = driver.install();
+    const popup = await driver.install();
     const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
     const anchorRange = window.document.createRange();

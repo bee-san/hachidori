@@ -12,6 +12,7 @@ import { createAnkiTemplateSettingsController } from "./anki-settings.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createExperimentalSettings } from "./experimental-settings.js";
+import { createThemeStore } from "./theme-store.js";
 import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
@@ -72,7 +73,7 @@ const OPTION_SECTIONS = {
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
-  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+  POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
@@ -120,6 +121,11 @@ const numberFormat = new Intl.NumberFormat();
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = normaliseOptions({});
+const themeStore = createThemeStore({ root: document.getElementById("theme-store"), onSelect(slug) {
+  options.popupTheme = slug;
+  renderThemeChoices();
+  writeOptions();
+} });
 let savedOptions = normaliseOptions({});
 let optionsRevision = -1;
 let pendingOptions = {};
@@ -1663,6 +1669,7 @@ function renderKanjiChoices() {
 }
 
 function renderThemeChoices() {
+  themeStore.render(options);
   if (activeSection !== "design") return;
   const theme = element("opt-popup-theme");
   if (theme.options.length === 0) {
@@ -1673,6 +1680,14 @@ function renderThemeChoices() {
       theme.append(optgroup);
     }
   }
+  let storeGroup = [...theme.children].find(group => group.label === "Theme Store");
+  if (!storeGroup && (options.experimental.themeStore || popupRenderer(options.popupTheme) !== "default")) {
+    storeGroup = document.createElement("optgroup");
+    storeGroup.label = "Theme Store";
+    for (const slug of POPUP_RENDERER_IDS) storeGroup.append(new Option(slug[0].toUpperCase() + slug.slice(1), slug));
+    theme.append(storeGroup);
+  }
+  if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && popupRenderer(options.popupTheme) === "default";
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
@@ -3578,6 +3593,7 @@ function setOptionsStatus(message, completed = false) {
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
   applyPageTheme(document, options);
+  themeStore.render(options);
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

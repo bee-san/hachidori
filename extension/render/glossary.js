@@ -1401,7 +1401,34 @@
     return applied;
   }
 
+  // Walk dictionary data directly. Text mode never constructs rich DOM or media.
+  function glossaryToPlainText(glossary) {
+    let value = glossary;
+    if (typeof value === "string") {
+      try { value = JSON.parse(value); } catch { return value; }
+    }
+    const stack = Array.isArray(value) ? value.flatMap(item => [item, "\n"]).reverse() : [value];
+    const parts = [];
+    while (stack.length) {
+      const item = stack.pop();
+      if (item == null) continue;
+      if (Array.isArray(item)) {
+        for (let index = item.length - 1; index >= 0; index--) stack.push(item[index]);
+      } else if (typeof item === "object") {
+        if (item.tag === "img" || item.type === "image") {
+          if (item.title) parts.push(String(item.title), "\n");
+        } else if (item.tag === "br") parts.push("\n");
+        else {
+          if (["div", "p", "li", "tr", "td", "th", "details", "summary"].includes(item.tag)) stack.push("\n");
+          stack.push(item.content);
+        }
+      } else parts.push(String(item));
+    }
+    return parts.join("").trim();
+  }
+
   return {
+    glossaryToPlainText,
     appendExpressionRuby,
     appendStructuredImage,
     appendStructuredValue,

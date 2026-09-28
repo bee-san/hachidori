@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "themes": [
+    {
+      "slug": "default",
+      "name": "Default",
+      "description": "The original Hachidori popup, with dictionary tabs, frequency, pitch and all your reading tools.",
+      "contentMode": "rich",
+      "benchmark": "Render 5.60 ms · complete 49.9 ms (median)",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    },
+    {
+      "slug": "nazeka",
+      "name": "Nazeka",
+      "description": "A compact dark popup with inline readings and senses. Keeps audio and Anki actions beside the looked-up text.",
+      "contentMode": "text",
+      "benchmark": "Render 2.10 ms · complete 33.1 ms (median)",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    },
+    {
+      "slug": "plain",
+      "name": "Plain",
+      "description": "Only dictionary definition text. No headings, metadata, counts, Anki or audio controls.",
+      "contentMode": "text",
+      "benchmark": "Render 1.00 ms · complete 33.2 ms (median)",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    }
+  ]
+}
