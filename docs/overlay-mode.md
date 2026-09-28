@@ -34,7 +34,7 @@ normal first-install preferences plus:
 
 | Option | Value | Settings control |
 | --- | --- | --- |
-| `lookupMode` | `"hover"` | Reading → Activation → Activation key → No key |
+| `lookupMode` | `"hover"` | Reading → Activation → Activation key or button → No key |
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
 | every `anki.templates[].captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
@@ -130,14 +130,20 @@ in use. The content script dispatches two events on `window`:
 
 | Event | Meaning |
 | --- | --- |
-| `hachidori-popup-shown` | The reader needs the window's mouse events: a popup is open, a drag is selecting text, or the lookup for a selection is pending. |
+| `hachidori-popup-shown` | The reader needs the window's mouse events: a popup is open, a drag is selecting text, the lookup for a selection is pending, or a scan mouse button is held. |
 | `hachidori-popup-hidden` | None of that is true any more. |
 
 The events fire once per change, in order, and the shown one is dispatched
-from the `mousedown` that starts a drag, before the page's own listeners run.
-GameSentenceMiner turns click-through off on the first and back on after the
-second; a host that only did so for a visible popup would lose every drag
-that starts without one.
+from the `mousedown` that starts a drag or a scan button's hold, before the
+page's own listeners run. GameSentenceMiner turns click-through off on the first
+and back on after the second; a host that only did so for a visible popup would
+lose every drag that starts without one.
+
+A scan mouse button (Reading → Activation key or button) suits an overlay: the
+host leaves the game focused, so an activation key never reaches the reader,
+but a press over OCR text does. The claim lasts while the button is held and is
+released after the release when no popup is open. Without it, Electron would
+stop reporting the held button once click-through is back on.
 
 Selecting text in the overlay works whether or not a popup is open: press on
 a glyph and drag. The selection follows glyphs, not caret positions, so the
