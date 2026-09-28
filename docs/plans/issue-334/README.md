@@ -6,7 +6,7 @@ Download: [issue-334.zip](https://github.com/bee-san/hachidori/blob/plan/issue-3
 
 ## Milestones (read this first)
 
-- **MVP first.** At 18:23 UTC bee-san rewrote the issue body into an MVP brief (kept verbatim in [history/body-2026-09-28-mvp.md](history/body-2026-09-28-mvp.md)): an experimental Store with **Default and Nazeka**, direct renderers, text mode, clean switching and fallback, preview parity, focused checks and benchmark evidence.
+- **MVP first.** At 18:23 UTC bee-san rewrote the issue body into an MVP brief, then revised it at 18:27 and 18:31 (the 18:31 revision is kept verbatim in [history/body-2026-09-28-mvp.md](history/body-2026-09-28-mvp.md)). It asks for an experimental Store with **Default and Nazeka** as a horizontal carousel of cards: screenshot, name, description, benchmark, and an instant **Use** button. It also covers direct renderers, text mode, clean switching and fallback, preview parity, focused checks and benchmark evidence.
 - The owner's later update adds **Plain** next to Nazeka, names the repository **`bee-san/hachidori-theme-store`**, and makes delivery **straight into `main` behind `experimental.themeStore`**.
 - The MVP is 24 cards (marked *MVP* on the board). Everything else follows it: remote catalogue refresh, migrating all palettes, the full Store, Yomitan and Rikaikun, community renderers, and the full CI gates.
 

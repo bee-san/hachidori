@@ -14,7 +14,9 @@
 
 ## MVP acceptance (D29/D30; from the issue body of 2026-09-28 18:23 UTC, plus Plain)
 
-- [ ] An experimental Store with Default, Nazeka and Plain: screenshots, selection and a GitHub link (T-41).
+- [ ] The experimental Store presents Default, Nazeka and Plain as a horizontal carousel of cards, each showing screenshot, name, description and benchmark result (T-41).
+- [ ] Each card's Use button applies the theme immediately and updates the live preview, with no separate Save/Apply action and no restart (T-41, T-42).
+- [ ] The Store links to the themes GitHub repository (T-41).
 - [ ] Nazeka and Plain *are* the popup: no Default renderer call, no unused Default DOM, no Default layout stylesheet on their path (T-15, T-17, T-52).
 - [ ] Genuine data-level text definitions: no rich dictionary DOM, images, links or dictionary CSS (T-13, T-52).
 - [ ] Default and existing palette behaviour kept; the live popup and the preview agree (T-17, T-42).

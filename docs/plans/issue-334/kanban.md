@@ -48,7 +48,7 @@ Empty. A card moves here when its PR is ready for review with green CI on the ex
 | [T-26](tasks/T-26.md) | Benchmark harness: renderer-aware and end-to-end | perf agent | T-15 | L | Harness selects any theme; renderer-neutral readiness; c26/c27 metrics; Default unchanged |
 | [T-32](tasks/T-32.md) | Nazeka renderer: text only, its own popup | renderer agent | T-12, T-13, T-14, T-16, T-21 | L | Text-only Nazeka popup built from the model; gates green |
 | [T-36](tasks/T-36.md) | Plain renderer: dictionary content only, as fast as possible | renderer agent | T-12, T-13, T-14, T-16, T-21 | M | Dictionary content only, no buttons/chrome; fewest nodes; ⚡Lighter; keybinds still mine/play |
-| [T-41](tasks/T-41.md) | Theme Store grid and detail pane | UI agent | T-18, T-50 | L | Store UI per approved mock; a11y; zero network until Refresh |
+| [T-41](tasks/T-41.md) | Theme Store grid and detail pane | UI agent | T-18, T-50 | L | MVP: carousel cards (screenshot, name, description, benchmark) with instant Use; later the full grid |
 | [T-42](tasks/T-42.md) | Design preview renders the selected renderer | UI + core agent | T-15, T-20 | M | Preview uses the host and the selected renderer |
 | [T-50](tasks/T-50.md) | `scripts/vendor-themes.mjs` | infra agent | T-21 | M | Reproducible vendoring with SOURCE.json and licences |
 | [T-52](tasks/T-52.md) | MVP acceptance and comparative benchmark (Default, Nazeka, Plain) | QA + perf agent | T-15, T-17, T-18, T-20, T-26, T-32, T-36, T-41, T-42, T-50 | M | MVP boundary proven with screenshots and focused checks; Default/Nazeka/Plain comparison published |

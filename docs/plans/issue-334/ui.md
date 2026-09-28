@@ -2,6 +2,14 @@
 
 bee-san asked for a mock-up screenshot ([c08](https://github.com/bee-san/hachidori/issues/334#issuecomment-5814298846)). It has not been produced yet, so card **T-03** renders one from this spec before T-41 builds the real UI. After [c28](https://github.com/bee-san/hachidori/issues/334#issuecomment-5872606542) the Store has three kinds, *Palette*, *Layout* (its own popup) and *Variant* (a layout with other colours), and never offers CSS to download or a JavaScript switch.
 
+## MVP Store (bee-san's brief, 18:31 UTC revision)
+
+- A **horizontal carousel of cards**: Default, Nazeka and Plain in the MVP. Each card shows the theme's **screenshot, name, description and benchmark result** (hover → popup vs Default, from CI or T-26 runs).
+- Each card has one **Use** button. It **immediately** selects and applies the theme (one `hd_options_write`), and the live Design preview and any open popup switch at once. There is no separate Save/Apply action and no browser restart.
+- The Store links to the themes GitHub repository.
+- Accessibility: the carousel is a labelled region with a `role="list"` of cards. It scrolls horizontally with visible Previous/Next buttons, and each card is reachable with Tab. The Use button announces the change through an `aria-live` status.
+- The grid, filters and detail pane below are the full Store that follows the MVP (T-41 later scope, T-43, T-44).
+
 ## Placement
 
 Settings → Design ([settings.html:621-863](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L621-L863)):
