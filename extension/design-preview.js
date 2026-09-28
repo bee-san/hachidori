@@ -236,7 +236,7 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const themeChanged = options.popupTheme !== nextOptions.popupTheme;
+    const themeChanged = (options.popupTheme === "nazeka") !== (nextOptions.popupTheme === "nazeka");
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx

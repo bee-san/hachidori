@@ -57,7 +57,7 @@ function createView(options) {
     const lookupStats = node("span", "nazeka-count");
     lookupStats.hidden = true;
     // Adapted from Nazeka build_div_inner's original-text context.
-    const text = candidate?.query || "";
+    const text = results[0]?.matched || candidate?.query || "";
     const moreText = candidate?.sentence || text;
     const index = candidate?.matchOffset || 0;
     let before = moreText.substring(0, index);

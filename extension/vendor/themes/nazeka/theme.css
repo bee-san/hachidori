@@ -6,14 +6,14 @@
   position: fixed; z-index: 2147483647; pointer-events: auto;
   box-sizing: border-box; overflow: hidden; padding: 5px;
   color: #ccc; background: #111; border: 1px solid #ccc; border-radius: 3px;
-  font: 13px/1.45 Arial, sans-serif; text-align: left; white-space: normal;
+  font: 13px/1.45 "Noto Sans CJK JP", "Noto Sans JP", Meiryo, sans-serif; text-align: left; white-space: normal;
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
 }
 .gsm-hoshidicts-popup [hidden], .gsm-hoshidicts-popup[hidden] { display: none !important; }
 .nazeka-scroll { height: 100%; overflow: auto; overscroll-behavior: contain; }
 .nazeka-original { float: right; margin-right: 2px; margin-left: 4px; max-width: 70%; opacity: .7; font-size: 12px; }
 .nazeka-lookup { color: #99ddff; }
-.nazeka-main-keb { white-space: nowrap; font-family: IPAGothic, TakaoGothic, "Noto Sans CJK JP", Meiryo, sans-serif; }
+.nazeka-main-keb { white-space: nowrap; }
 .nazeka-count { margin-left: 8px; }
 .gsm-hoshidicts-entry { padding: 3px 0 7px; }
 .nazeka-word { color: #99ddff; font-size: 18px; }

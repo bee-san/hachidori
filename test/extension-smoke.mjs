@@ -8953,7 +8953,7 @@ async function main() {
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
-  check("preview stylesheet load before its first update is safe and CSS edits retain mounted Notes and cards",
+  check("preview initialization before its first update is safe and CSS edits retain mounted Notes and cards",
     preview?.earlyLoad === true && preview.cssPreview === true, JSON.stringify(preview));
   check("Design uses production term, kanji, media and metadata views without saving sample Notes",
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
@@ -11234,6 +11234,7 @@ async function sourceHighlightStage() {
   window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+  window.fetch = async () => ({ ok: true, text: async () => "" });
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
   const candidate = id => {
     const element = document.getElementById(id);
@@ -11584,8 +11585,6 @@ async function designPreviewStage() {
     }
     let earlyLoad = true;
     window.addEventListener("error", event => { earlyLoad = false; event.preventDefault(); });
-    window.document.getElementById("preview-host").shadowRoot.querySelector("link")
-      .dispatchEvent(new window.Event("load"));
     await new Promise(done => window.setTimeout(done, 60));
     // jsdom does not implement constructed sheets. The browser suite proves
     // CSS parsing/cascade; this double counts ownership and no-op work only.
@@ -11620,6 +11619,7 @@ async function designPreviewStage() {
     const settle = () => new Promise(done => window.setTimeout(done, 60));
     update();
     await settle();
+    parses = 0;
     const popup = window.document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const query = selector => popup.querySelector(selector);
     const card = query(".gsm-hoshidicts-glossary-card");
@@ -14441,6 +14441,7 @@ async function staleKanjiResponseStage(invalidation) {
   const { window } = dom;
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+  window.fetch = async () => ({ ok: true, text: async () => "" });
   let storageListener = null;
   let initialStorageCallback = null;
   let pending = null;
@@ -14715,6 +14716,7 @@ async function contentNoteStage() {
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
+    window.fetch = async () => ({ ok: true, text: async () => "" });
     const createLayoutView = window.HDPopup.createPopupView;
     window.HDPopup = {
       ...window.HDPopup,
@@ -14794,8 +14796,9 @@ async function contentNoteStage() {
     const source = readFileSync(resolve(EXTENSION, "content.js"), "utf8");
     const instrumented = source.replace(marker, `
   globalThis.__hachidoriContentNoteSmoke = {
-    install() {
-      buildUi({ sheet: null, text: "" });
+    async install() {
+      await themeHost.sync();
+      buildUi();
       uiPromise = Promise.resolve();
       currentGeneration = 1;
       styleGeneration = 1;
@@ -14859,7 +14862,7 @@ async function contentNoteStage() {
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
-    const popup = driver.install();
+    const popup = await driver.install();
     const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
     const anchorRange = window.document.createRange();
