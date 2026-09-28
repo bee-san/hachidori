@@ -335,6 +335,7 @@ const PLANNED = [
   "a Back scan press on a word looks it up without going back, while one on a field still does",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
+  "turning off the personal dictionary stops highlight lookups, the pencil and personal entries until it is on",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
   "ordinary selections follow hover and both activation modes for all four modifiers",
   "matching activation preserves exact selections, cross-inline highlights and personal definitions",
@@ -868,6 +869,10 @@ async function popupReader(page, depth = 0) {
           focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
             .indexOf(this.getRootNode().activeElement),
           noteOpen: noteForm !== null && !noteForm.hidden,
+          noteButtonDisplay: (() => {
+            const button = this.querySelector(".gsm-hoshidicts-note-button");
+            return button ? view.getComputedStyle(button).display : null;
+          })(),
           noteTerm: noteForm?.querySelector('[name="term"]')?.value ?? null,
           noteReading: noteForm?.querySelector('[name="reading"]')?.value ?? null,
           noteDefinition: noteForm?.querySelector('[name="definition"]')?.value ?? null,
@@ -8600,7 +8605,8 @@ async function checkReaderActivation(settings, tab, popup) {
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-activation-key", "opt-lookup-sticky", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
+    "opt-activation-key", "opt-lookup-sticky", "opt-scan-length", "opt-japanese-only", "opt-personal-dictionary",
+    "opt-no-result-notice",
   ]);
   // No key does not show the key it remembers, so the restore chooses it first.
   const rememberedKey = await settings.evaluate(async () =>
@@ -8710,6 +8716,59 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       englishIgnored && freshHit?.includes("食べる") && defaultNotice?.includes("No definition found.")
         && hiddenMiss && hit?.includes("食べる") && restoredNotice?.includes("No definition found."),
       JSON.stringify({ englishIgnored, freshHit, defaultNotice, hiddenMiss, hit, restoredNotice }));
+
+    // Issue #358: with the personal dictionary off a highlight is just a
+    // highlight, while hovering still looks up with the configured scan length.
+    // The personal entry saved in Settings (気になる) is left out until it is on.
+    const scanLength = Number((await readSettingsControls(settings, ["opt-scan-length"]))["opt-scan-length"]);
+    const stateRevision = () => settings.evaluate(async () =>
+      (await chrome.storage.local.get("dictionaryState")).dictionaryState?.revision);
+    const hoverPersonal = async (expectPopup) => {
+      await dismiss();
+      await tab.$eval("#verb", (element) => { element.textContent = "気になる"; });
+      const before = (await lookups()).length;
+      await moveTo("#verb");
+      if (expectPopup) return (await popup.waitForVisible())?.plain ?? "";
+      for (let attempt = 0; attempt < 50 && (await lookups()).length === before; attempt++) await pause();
+      await pause();
+      await pause();
+      const state = await popup.state();
+      return popup.visible(state) ? state.plain : "";
+    };
+    const revisionBefore = await stateRevision();
+    const personalOn = await hoverPersonal(true);
+    await editSettingsControls(settings, { "opt-personal-dictionary": false });
+    await tab.bringToFront();
+    const offStart = (await lookups()).length;
+    await selectVerb("ぬるぽがっ");
+    await pause();
+    await selectVerb("食べる");
+    await pause();
+    const offSelections = (await lookups()).slice(offStart).map(({ text }) => text);
+    const offSelectionHidden = !popup.visible(await popup.state());
+    await moveTo("#verb");
+    const offHover = await popup.waitForVisible();
+    const offHoverRequest = (await lookups()).slice(offStart)[0];
+    const offSelected = await tab.evaluate(() => window.getSelection().toString());
+    const personalOff = await hoverPersonal(false);
+    await editSettingsControls(settings, { "opt-personal-dictionary": true });
+    await tab.bringToFront();
+    const personalRestored = await hoverPersonal(true);
+    await selectVerb("ぬるぽがっ");
+    const noticeRestored = await popup.waitForVisible();
+    const revisionAfter = await stateRevision();
+    check("turning off the personal dictionary stops highlight lookups, the pencil and personal entries until it is on",
+      personalOn.includes("to catch one's attention") && offSelections.length === 0 && offSelectionHidden
+        && offHover?.plain.includes("食べる") && offHover.noteButtonDisplay === "none" && offSelected === "食べる"
+        && offHoverRequest?.text === "食べる" && offHoverRequest.scanLength === scanLength && scanLength !== 3
+        && offHoverRequest.options?.personalDictionary === false
+        && !personalOff.includes("to catch one's attention")
+        && personalRestored.includes("to catch one's attention")
+        && noticeRestored?.plain.includes("No definition found.")
+        && ![null, "none"].includes(noticeRestored.noteButtonDisplay)
+        && Number.isInteger(revisionBefore) && revisionAfter === revisionBefore,
+      JSON.stringify({ personalOn, offSelections, offSelectionHidden, offHover, offHoverRequest, offSelected,
+        scanLength, personalOff, personalRestored, noticeRestored, revisionBefore, revisionAfter }));
     await editSettingsControls(settings, {
       "opt-activation-key": "Shift", "opt-lookup-sticky": false,
       "opt-scan-length": "1", "opt-japanese-only": true,

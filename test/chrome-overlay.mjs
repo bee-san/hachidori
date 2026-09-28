@@ -865,6 +865,28 @@ try {
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true);
 
+  // With the personal dictionary off a drag only selects text to copy:
+  // releasing looks nothing up and hands the window straight back.
+  await editSettingsControls(settings, { "opt-personal-dictionary": false });
+  await tab.bringToFront();
+  await tab.evaluate(() => window.getSelection().removeAllRanges());
+  await tab.mouse.move(2, 2);
+  await tab.mouse.move(...trailing(boxes[0]));
+  await settle();
+  await events();
+  await tab.evaluate(() => { document.documentElement.dataset.hachidoriPhysicalClickRequests = "[]"; });
+  await tab.mouse.down();
+  await tab.mouse.move(...trailing(boxes[5]), { steps: 10 });
+  await tab.mouse.up();
+  await settle();
+  const lookups = await tab.evaluate(() => JSON.parse(document.documentElement.dataset.hachidoriPhysicalClickRequests
+    || "[]").filter(request => request.type === "hd_lookup").length);
+  assert.deepEqual({ selected: await selected(), events: await events(), popup: popup.visible(await popup.state()), lookups },
+    { selected: TEXT, events: ["shown", "hidden"], popup: false, lookups: 0 },
+    "with the personal dictionary off, a released drag keeps its selection without a lookup or the host claim");
+  await tab.evaluate(() => window.getSelection().removeAllRanges());
+  await editSettingsControls(settings, { "opt-personal-dictionary": true });
+
   // Issue #357: a scan mouse button's press claims the window before a host's
   // own document mousedown listener runs, as GSM's does, and holds the claim
   // until a release leaves no popup open.

@@ -852,7 +852,8 @@ only their host through browser focus/event APIs; their private editors cannot
 be inspected. The reader does not intercept shadow creation or block every
 focused component to guess at those internals.
 
-An automatic page selection takes priority over pointer scanning and follows
+While the personal dictionary is on (below), an automatic page selection takes
+priority over pointer scanning and follows
 the same lookup mode, activation key and `onlyScanJapaneseText` gate as a
 pointer lookup, so with that default a selected English word or URL neither
 looks up nor opens the popup. Hover mode accepts an ordinary selection. Activation and sticky
@@ -881,6 +882,25 @@ no-dictionaries notice stays because it reports that nothing is installed.
 Saving uses the managed
 Note append transaction and replays that exact request to show the new
 definition; publisher dictionaries remain unchanged.
+
+Automatic selection lookups are the personal dictionary's entry point, so
+Reading → Personal dictionary → **Use the personal dictionary**
+(`personalDictionaryEnabled`, default on) owns them. Switched off, the reader
+behaves like Yomitan: a selection change or drag release never looks anything
+up, in any lookup mode, and a live selection no longer outranks the pointer, so
+hover and activation-key lookups over highlighted text use the configured scan
+length. A changed selection only releases a popup that Scan selected text or
+Scan text at selection opened; those keybinds still look up the selection, and
+their miss hides the popup like any other. The pencil is hidden with a host
+attribute, as the audio button is, so a live toggle keeps an open Note draft;
+the selection notice never appears and the no-dictionaries notice drops its
+pencil sentence. Every term lookup carries `options.personalDictionary`, and
+with `false` the engine service removes Hachidori Custom Dictionary glossaries
+from `hd_lookup` and `hd_lookup_dictionary` replies, dropping a result that had
+no others. It filters after the engine's `maxResults` cut, so a personal-only
+term can use up one result slot. The option is a reader preference: it never
+disables, reorders, recompiles or removes the managed package, and turning it
+back on shows the entries again without an engine reload.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
@@ -2299,7 +2319,8 @@ state without merging a stale source revision. A lost reply is accepted only
 after an exact source/state-pair readback.
 
 The term, kanji and selected-word miss views share one fixed Note form, opened
-with the pencil and constructed only when opened. Its prefill comes from the
+with the pencil and constructed only when opened. The pencil is hidden while
+**Use the personal dictionary** is off. Its prefill comes from the
 currently projected primary result or the selected text, and a successful append refreshes only
 the exact still-current request descriptor and page anchor. Dictionary storage
 events adopt only newer revisions; editing defers popup invalidation until close

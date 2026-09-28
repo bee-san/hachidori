@@ -75,3 +75,24 @@ test("lookup and kanji results expose the same pencil editor with their own term
   assert.equal(f.popup.querySelector("form").elements.term.value, "食");
   assert.equal(f.popup.querySelector("form").elements.reading.value, "");
 });
+
+test("turning off the personal dictionary hides only the pencil, through the popup host", t => {
+  const f = fixture(t);
+  const host = f.window.document.createElement("div");
+  f.window.document.body.append(host);
+  const appearance = f.window.HDPopup.createPopupAppearance(host);
+  const update = personalDictionaryEnabled => appearance.update({ popupTheme: "default", popupWidthPx: 560,
+    popupHeightPx: 420, popupScalePercent: 100, popupOpacityPercent: 85, personalDictionaryEnabled });
+  t.after(() => appearance.destroy());
+  f.view.setCustomButtons([{ id: "lookup", type: "link", label: "Look up", url: "https://example.test/%w" }]);
+  f.view.renderNotice("No definition found. Add your own with the pencil.", f.candidate);
+  update(false);
+  assert.equal(host.dataset.hoshidictsNoteButton, "hidden");
+  assert.match(readFileSync(new URL("../extension/render/reader.css", import.meta.url), "utf8"),
+    /:host\(\[data-hoshidicts-note-button="hidden"\]\) \.gsm-hoshidicts-note-button \{ display: none; \}/u);
+  const button = f.popup.querySelector(".gsm-hoshidicts-note-button");
+  assert.ok(button && !button.hidden, "only the host attribute hides the pencil, so an open draft survives");
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-external-link-button")?.textContent, "Look up");
+  update(true);
+  assert.equal(host.dataset.hoshidictsNoteButton, undefined);
+});

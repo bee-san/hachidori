@@ -2967,7 +2967,8 @@
 
   function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
     if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-    if (dictionaryCount === 0 || (request.exactSelection && options.showNoResultNotice)) {
+    const pencil = options.personalDictionaryEnabled;
+    if (dictionaryCount === 0 || (request.exactSelection && pencil && options.showNoResultNotice)) {
       show(request.candidate, level);
       level.activeHighlightText = "";
       level.activeTermRender = null;
@@ -2977,7 +2978,8 @@
       level.currentViewRequest = request;
       level.view.renderNotice(
         dictionaryCount === 0
-          ? "No dictionaries loaded. Import a Yomitan .zip in Settings, or add your own definition with the pencil."
+          ? `No dictionaries loaded. Import a Yomitan .zip in Settings${pencil
+            ? ", or add your own definition with the pencil" : ""}.`
           : "No definition found. Add your own with the pencil.",
         request.candidate,
         { isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken },
@@ -2988,7 +2990,9 @@
     hide(level);
     // A hidden miss keeps the selection like a rendered notice does, so pointer
     // movement cannot repeat its lookup until the selection changes or Escape.
-    if (request.exactSelection) activeSelectionCandidate = request.candidate;
+    // Without the personal dictionary the pointer ignores selections, so a
+    // retained miss would only block hover lookups over the highlighted text.
+    if (request.exactSelection && pencil) activeSelectionCandidate = request.candidate;
     return false;
   }
 
@@ -3064,6 +3068,7 @@
         options: {
           frequencyDictionary: options.frequencyDictionary,
           frequencyOrder: options.frequencyOrder,
+          personalDictionary: options.personalDictionaryEnabled,
           primaryReading: typeof overrides.primaryReading === "string"
             ? overrides.primaryReading
             : "",
@@ -3302,6 +3307,7 @@
         options: {
           frequencyDictionary: options.frequencyDictionary,
           frequencyOrder: options.frequencyOrder,
+          personalDictionary: options.personalDictionaryEnabled,
           primaryReading: "",
         },
         scanLength: 1,
@@ -3585,7 +3591,9 @@
       clearHideTimer();
       return;
     }
-    const selection = window.getSelection();
+    // A live selection outranks the pointer only while the personal dictionary
+    // owns automatic selection lookups.
+    const selection = options.personalDictionaryEnabled ? window.getSelection() : null;
     if (selection && !selection.isCollapsed) {
       if (!activationAllowed()) {
         cancelCandidateScan();
@@ -3881,6 +3889,12 @@
     const selection = window.getSelection();
     if ([selection?.anchorNode, selection?.focusNode].some((node) =>
       node && (node === host || node.getRootNode() === shadow))) return;
+    // Automatic selection lookups are the personal dictionary's entry point.
+    // Off, as in Yomitan, a changed selection only releases one a keybind scanned.
+    if (!options.personalDictionaryEnabled) {
+      if (activeSelectionCandidate) hide();
+      return;
+    }
     const candidate = resolveSelectedLookupCandidate(selection);
     if (!candidate && !activeSelectionCandidate) return;
     if (candidate && !activationAllowed()) hide();
@@ -4249,13 +4263,15 @@
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
     const next = projectHostOptions(stored);
+    const personalChanged = next.personalDictionaryEnabled !== options.personalDictionaryEnabled;
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
+      || personalChanged
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey
       || next.definitionLookupMode !== options.definitionLookupMode;
     const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
-      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
+      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText || personalChanged;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const cursorExitChanged = next.hidePopupOnCursorExit !== options.hidePopupOnCursorExit

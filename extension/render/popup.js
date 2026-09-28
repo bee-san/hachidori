@@ -120,6 +120,9 @@
         // Only CSS hides the button: it stays bound, so autoplay and keybinds still play.
         if (options.showPopupAudioButton === false) host.dataset.hoshidictsAudioButton = "hidden";
         else delete host.dataset.hoshidictsAudioButton;
+        // Hiding the pencil the same way keeps an open Note draft through a toggle.
+        if (options.personalDictionaryEnabled === false) host.dataset.hoshidictsNoteButton = "hidden";
+        else delete host.dataset.hoshidictsNoteButton;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
           ["popupScalePercent", "scale", "%"],

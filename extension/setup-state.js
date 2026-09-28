@@ -44,7 +44,8 @@ export function withOverlayLookupDefault(record) {
 
 // These describe the local reading surface, even while its library is shared.
 export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
-  "hoverEnabled", "onlyScanJapaneseText", "showNoResultNotice", "lookupMode", "activationKey", "definitionLookupMode", "popupHideDelayMs",
+  "hoverEnabled", "onlyScanJapaneseText", "personalDictionaryEnabled", "showNoResultNotice", "lookupMode", "activationKey",
+  "definitionLookupMode", "popupHideDelayMs",
   "hidePopupOnCursorExit", "hidePopupOnCursorExitDelayMs",
   "sourceHighlightEnabled", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupColumns", "popupToolbarPosition", "popupNestingMaxDepth",
 ]);
