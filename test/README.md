@@ -1378,6 +1378,9 @@ its parent until a click there; a primary click in
 an ancestor pane dismisses focused, hovered and still-pending descendants at
 once while an open child draft stays until Escape closes its form, and a click
 on the root's link keeps its same-query child without another lookup.
+With Hide popup on cursor exit on in sticky mode, a mouse return from the child
+to its parent closes the child within the option's 300 ms delay while the Hide
+delay is raised to 5,000 ms.
 Reimports and held service-worker replies also prove top/bottom Note forms stay
 mounted, focused and reachable, and a still-focused tab survives same-view
 refresh. `HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
@@ -1451,7 +1454,11 @@ on release, and cancellation of a quick press/release. Choosing No key stores
 Hover, hides the keep-open switch and opens a popup on plain hover; choosing the
 key again restores it with the popup staying open, and the switch selects the
 closing mode. A non-default key is kept behind No key and checked with mode,
-enablement and hide delay after the full browser restart.
+enablement and hide delay after the full browser restart. With Hide popup on
+cursor exit on, a sticky popup outlasts its delay while the pointer never enters
+it, hides once the pointer has been inside and left even though a mouse click
+left its audio button focused, and stays for keyboard focus; the non-default
+cursor-exit delay is also checked after the restart.
 
 Exact-selection checks first use a plain cross-inline mouse drag with Shift
 configured and prove that it sends no worker lookup, paints no source highlight

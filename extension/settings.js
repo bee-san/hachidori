@@ -84,6 +84,7 @@ const NUMBER_FIELDS = [
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
+  { key: "hidePopupOnCursorExitDelayMs", id: "opt-hide-on-cursor-exit-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
@@ -1415,6 +1416,13 @@ function renderDefinitionBlurFrequencyChoices() {
   select.value = previous;
 }
 
+function renderCursorExitControls() {
+  element("opt-hide-on-cursor-exit").checked = options.hidePopupOnCursorExit;
+  const delay = element("opt-hide-on-cursor-exit-delay");
+  // Like the compact summary count: a focused draft keeps its field enabled.
+  if (delay !== document.activeElement) delay.disabled = !options.hidePopupOnCursorExit;
+}
+
 function renderCompactSummaryControls() {
   const enabled = options.showCompactDefinitionSummary;
   element("opt-compact-summary").checked = enabled;
@@ -1709,6 +1717,7 @@ function renderOptions() {
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-no-result-notice").checked = options.showNoResultNotice;
+  renderCursorExitControls();
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-audio-autoplay").checked = options.audioAutoplay;
@@ -3317,6 +3326,11 @@ function attachHandlers() {
     options.showNoResultNotice = event.target.checked;
     writeOptions();
   });
+  element("opt-hide-on-cursor-exit").addEventListener("change", (event) => {
+    options.hidePopupOnCursorExit = event.target.checked;
+    renderCursorExitControls();
+    writeOptions();
+  });
   element("opt-low-memory-mode").addEventListener("change", (event) => {
     options.lowMemoryMode = event.target.checked;
     writeOptions();
@@ -3404,6 +3418,7 @@ function attachHandlers() {
         renderDefinitionBlurControls();
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      if (event.target.id === "opt-hide-on-cursor-exit-delay") renderCursorExitControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];
       const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);

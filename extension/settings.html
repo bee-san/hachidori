@@ -472,6 +472,24 @@
               </label>
             </div>
           </fieldset>
+          <fieldset class="lookup-group" id="cursor-exit-settings">
+            <legend>Cursor exit</legend>
+            <label class="lookup-enable">
+              <span>Hide popup on cursor exit</span>
+              <input type="checkbox" id="opt-hide-on-cursor-exit" aria-describedby="cursor-exit-help" />
+            </label>
+            <p class="field-hint" id="cursor-exit-help">When the cursor exits the popup, the popup will be hidden. Child popups close when the cursor returns to their parent.</p>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Delay</span>
+                <span class="input-suffix">
+                  <input id="opt-hide-on-cursor-exit-delay" type="number" min="0" max="5000" step="10" />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Time outside the popup before it hides.</span>
+              </label>
+            </div>
+          </fieldset>
           <fieldset class="lookup-group">
             <legend>Results</legend>
             <div class="fields">
