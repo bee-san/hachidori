@@ -28,6 +28,7 @@
   let sampleLookupStats = null;
   let clickedKanjiIndex = 0;
   const themeHost = HDThemeHost.createThemeHost({ getOptions: () => options,
+    assetUrl: path => new URL(path, document.baseURI).href,
     onReady() { appearance.refreshHighlight(); positionPopup(); },
   });
   themeHost.attach(shadow);

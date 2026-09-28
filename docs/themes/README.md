@@ -19,10 +19,21 @@ control follows the reading and Anki follows the entry metadata, as in JL.
 The preview shows a disabled Anki sample; real Anki controls appear when mining
 is configured and available, using the existing core behaviour.
 
+## Plain
+
+Plain renders only complete dictionary definitions: one text element per result,
+inside the popup itself. It does not construct headwords, readings, dictionary
+labels, frequency/pitch metadata, counts, icons, audio or Anki controls. It loads
+no icon stylesheet, dictionary styles or rich dictionary DOM. No Anki checks or
+audio playback are initiated through empty action bindings. Definition blur,
+source highlighting, scrolling and nested lookups still use the core reader.
+It has no resize handle or dictionary navigation UI; size remains configurable
+in Design. Native kanji requests display their definitions only.
+
 ## Version 2 view contract
 
 `theme-host.js` chooses a bundled renderer before content construction. Default
-adapts `HDPopup.createPopupView`; Nazeka exports `{schema: 2, slug, contentMode,
+adapts `HDPopup.createPopupView`; Nazeka and Plain export `{schema: 2, slug, contentMode,
 createView(options)}`. Executable modules are maintainer-reviewed release assets;
 no remote theme code is fetched for execution. This is not a JavaScript sandbox.
 Sources and proposals live in [hachidori-themes](https://github.com/bee-san/hachidori-themes).
@@ -48,7 +59,7 @@ presentation updates are optional.
 - Switching retires action bindings, destroys the previous view and replaces its
   content/styles, then replays the latest model and view settings. Switching closes
   the Note editor; finish or cancel a draft before changing renderers. Obsolete request
-  contexts are not replayed. A throwing Nazeka renderer is disabled for that page
+  contexts are not replayed. A throwing alternative renderer is disabled for that page
   and the current model is rendered with Default's CSS. The saved choice remains.
 - `destroy` releases listeners/observers and owned DOM; core closes audio menus
   and retires mining state. Removed node listeners become collectible.
@@ -56,7 +67,7 @@ presentation updates are optional.
 ## Content and stylesheet ownership
 
 Default alone loads `render/reader.css` and scoped dictionary CSS. Nazeka loads
-its own CSS plus shared icon controls. Both still parse the shared `popup.js`
+its own CSS plus shared icon controls. Plain loads only its own CSS. Both still parse the shared `popup.js`
 script for existing geometry/action helpers; Nazeka never calls its Default
 view factory. Splitting that script could reduce startup parsing later, but is
 outside this MVP. Custom CSS remains last. Nazeka's

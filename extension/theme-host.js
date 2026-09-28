@@ -8,7 +8,7 @@
     "scheduleMasonry", "setDefinitionBlurState", "setLookupStats", "setToolbarPosition", "setCustomButtons",
     "setSourceHighlightEnabled", "updateDictionaryPresentation", "flushDictionaryPresentation", "closeNoteForm"];
 
-  function createThemeHost({ getOptions, onReady = () => {} }) {
+  function createThemeHost({ getOptions, onReady = () => {}, assetUrl = path => chrome.runtime.getURL(path) }) {
     const cache = new Map();
     const views = new Set();
     const disabled = new Set();
@@ -18,7 +18,7 @@
       return disabled.has(name) ? "default" : name;
     };
     const asset = async path => {
-      const response = await fetch(chrome.runtime.getURL(path));
+      const response = await fetch(assetUrl(path));
       if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
       return response.text();
     };
@@ -28,7 +28,7 @@
         const [css, icons, module] = await Promise.all([
           asset(name === "default" ? "render/reader.css" : `vendor/themes/${name}/theme.css`),
           name === "plain" ? "" : asset("icons.css"),
-          name === "default" ? null : import(chrome.runtime.getURL(`vendor/themes/${name}/theme.js`)),
+          name === "default" ? null : import(assetUrl(`vendor/themes/${name}/theme.js`)),
         ]);
         if (module && (module.default?.schema !== 2 || module.default.slug !== name
             || typeof module.default.createView !== "function")) throw new Error("Unsupported renderer contract");
