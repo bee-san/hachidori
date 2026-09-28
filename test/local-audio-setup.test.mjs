@@ -18,16 +18,19 @@ test("canonical local audio rows are exact, ordered option records", async () =>
   assert.equal(findLocalAudioSource([{ ...source, url: "http://localhost:5050/?term={term}&reading={reading}" }]), null);
 });
 
-test("detects the documented local audio service without sending Anki credentials or private terms", async () => {
+test("detects the AnkiWeb Local Audio Server with one term lookup, without Anki credentials or private terms", async () => {
   const { detectLocalAudioSource } = await import("../extension/local-audio-setup.js");
   const calls = [];
   const source = await detectLocalAudioSource({ fetch: async (url, options) => {
     calls.push({ url, options });
-    return Response.json(calls.length === 1 ? info : { type: "audioSourceList", audioSources: [] });
+    // AnkiWeb's 1.7.0 server.py raises on a path without a term or expression:
+    // the connection closes unanswered and Anki shows the traceback as an add-on error.
+    const { searchParams } = new URL(url);
+    if (!searchParams.has("term") && !searchParams.has("expression")) throw new TypeError("fetch failed");
+    return Response.json({ type: "audioSourceList", audioSources: [{ name: "JPod101", url: "http://localhost:5050/jpod/ねこ - 猫.mp3" }] });
   } });
   assert.equal(source, sourceUrl);
-  assert.deepEqual(calls.map(call => call.url), ["http://127.0.0.1:5050/v1/info",
-    "http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93"]);
+  assert.deepEqual(calls.map(call => call.url), ["http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93"]);
   for (const { options } of calls) {
     assert.equal(options.credentials, "omit");
     assert.equal(options.redirect, "error");
@@ -139,21 +142,16 @@ test("cancel and pagehide retire a check before late replies; retry stays usable
 
 test("discovery rejects unavailable, malformed and unsupported services and bounds response bodies", async () => {
   const { detectLocalAudioSource } = await import("../extension/local-audio-setup.js");
-  for (const response of [new Response("", { status: 503 }), new Response("not json"), Response.json({ status: "ok" }),
-    Response.json({ ...info, sources: [123] })]) {
+  // A plain-text version banner, health and diagnostics replies, and lists that
+  // break Yomitan's audioSourceList schema are not the Custom JSON contract.
+  for (const response of [new Response("", { status: 503 }), new Response("Local Audio Server v1.7.0"), Response.json({ status: "ok" }),
+    Response.json(info), Response.json({ unexpected: true }), Response.json({ type: "audioSourceList", audioSources: [{ url: 42 }] })]) {
     await assert.rejects(detectLocalAudioSource({ fetch: async () => response }), /No compatible/u);
   }
   await assert.rejects(detectLocalAudioSource({ fetch: async () => { throw new TypeError("connection refused"); } }), /No compatible/u);
-  let calls = 0;
-  await assert.rejects(detectLocalAudioSource({ fetch: async () => Response.json(++calls === 1 ? info : { unexpected: true }) }), /No compatible/u);
-  for (const stallAt of [1, 2]) {
-    let count = 0;
-    await assert.rejects(detectLocalAudioSource({ timeoutMs: 10, fetch: async (_url, { signal }) => {
-      if (++count !== stallAt) return Response.json(info);
-      return { ok: true, json: () => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })) };
-    } }), /No compatible/u);
-    assert.equal(count, stallAt);
-  }
+  await assert.rejects(detectLocalAudioSource({ timeoutMs: 10, fetch: async (_url, { signal }) => ({ ok: true,
+    json: () => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })) }) }),
+  /No compatible/u);
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(detectLocalAudioSource({ signal: controller.signal, fetch: async (_url, { signal }) => {

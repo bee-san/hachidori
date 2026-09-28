@@ -3324,9 +3324,7 @@ async function firstRunAnkiStage() {
         if (url.startsWith("http://127.0.0.1:5050/")) {
           audioRequests.push({ url, init });
           if (localAudio === false) return Promise.reject(new TypeError("Failed to fetch"));
-          const value = url.endsWith("/v1/info")
-            ? { lookupMode: "sqlite", sources: ["fixture"], audioPack: null }
-            : { type: "audioSourceList", audioSources: [] };
+          const value = { type: "audioSourceList", audioSources: [] };
           if (localAudio === "hold" && audioRequests.length === 1) {
             return new Promise(resolve => audioHeld.push(() => resolve({ ok: true, async json() { return value; } })));
           }
@@ -3439,7 +3437,6 @@ async function firstRunAnkiStage() {
       && savedOptions.audioSources[0].url === "http://127.0.0.1:5050/?term={term}&reading={reading}"
       && savedOptions.audioSources[1].id === "default-tts"
       && JSON.stringify(found.audioRequests.map(request => request.url)) === JSON.stringify([
-        "http://127.0.0.1:5050/v1/info",
         "http://127.0.0.1:5050/?term=%E7%8C%AB&reading=%E3%81%AD%E3%81%93",
       ])
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([[ANKI_INDEX_KEY, "options", "setupState"]])
@@ -3472,7 +3469,7 @@ async function firstRunAnkiStage() {
   await linked.send();
   check("first-run setup prepends detected local audio once and leaves existing, racing and linked sources alone",
     duplicate.audioRequests.length === 0 && JSON.stringify(duplicateSources) === JSON.stringify([speech, exact])
-      && audioRace.audioRequests.length === 2 && audioChoice?.ok === true
+      && audioRace.audioRequests.length === 1 && audioChoice?.ok === true
       && JSON.stringify(racedSources) === JSON.stringify([exact, speech])
       && racedSources.filter(source => source.url === exact.url).length === 1
       && linked.audioRequests.length === 0
