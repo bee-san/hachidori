@@ -70,7 +70,7 @@ const OPTION_SECTIONS = {
 };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
-  DEFAULT_OPTIONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
@@ -1704,6 +1704,10 @@ function renderActivationControls() {
   }
   element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
   element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
+  // Child popups name the remembered key, which No key keeps.
+  const childPopups = element("opt-definition-lookup-mode");
+  childPopups.querySelector('option[value="activation"]').textContent = `Hold ${options.activationKey}`;
+  if (childPopups !== document.activeElement) childPopups.value = options.definitionLookupMode;
 }
 
 function renderOptions() {
@@ -3368,6 +3372,10 @@ function attachHandlers() {
   };
   element("opt-activation-key").addEventListener("change", writeActivation);
   element("opt-lookup-sticky").addEventListener("change", writeActivation);
+  element("opt-definition-lookup-mode").addEventListener("change", (event) => {
+    options.definitionLookupMode = DEFINITION_LOOKUP_MODES.includes(event.target.value) ? event.target.value : "inherit";
+    writeOptions();
+  });
 
   element("opt-frequency-order").addEventListener("change", (event) => {
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";
