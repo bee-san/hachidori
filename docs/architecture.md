@@ -2006,7 +2006,10 @@ did not save as submitted does, and enrichment still refuses to update a
 pronunciation field whose current value changed.
 
 Only requested glossary variants are exported through the shared structured
-renderer into inert HTML. Dictionary CSS remains scoped, and image filenames
+renderer into inert HTML. As in Yomitan's default Anki field templates, each
+term-bank row becomes its own `li[data-dictionary]`, and every line break in
+dictionary text becomes a `<br>` because a note field has none of the popup's
+`white-space: pre-wrap`. Dictionary CSS remains scoped, and image filenames
 bind to committed generation paths. First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write
 queue, every dictionary image referenced by an applied field and any prepared
