@@ -75,7 +75,9 @@ the service worker and both engine runtimes run the same code.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
   `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note
-  fields and media; while the experimental Smaller Anki cards flag is on,
+  fields and media; `anki-structured-content-style.js` is Yomitan's
+  `structured-content-style.json`, the class rules the rich glossary fields
+  carry inline. While the experimental Smaller Anki cards flag is on,
   `anki-compact.js` rewrites the rich glossary fields as compact HTML.
   Stored Anki Templates group each destination, note type,
   field mapping and duplicate policy; the first powers the built-in action and

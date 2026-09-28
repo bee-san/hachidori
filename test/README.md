@@ -77,6 +77,17 @@ it. The Chrome suite mines the fixture dictionary and
 renders both graph styles offline in light, dark and styled cards, including
 the hollow-particle regression for card CSS that colors mora dots by radius.
 
+`node --test test/anki-glossary.test.mjs` checks the rich and plain glossary
+markers: ordered senses, aliases and safe media, line breaks as `<br>`, one
+`li[data-dictionary]` per term-bank row, image sizes, and style-element escaping.
+It also pins Yomitan's `structured-content-style.json` rules inline (table,
+header and cell styles ahead of a dictionary's own style, a hidden external-link
+icon) against the output of Yomitan's `CssStyleApplier` at 67db60d, and dictionary
+CSS scoped by selector prefix through the real `applyDictionaryStyles`: each
+member of a selector list prefixed, commas inside `:is()` and strings kept,
+rules inside `@media` prefixed, global rules dropped and no `@scope`. The Chrome
+suite checks the prefixed styles apply only inside their dictionary's item.
+
 `node --test test/sentence.test.mjs` is the table-driven contract of
 `extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
 end, enclosing quotes and brackets left out, nested and preceding pairs kept

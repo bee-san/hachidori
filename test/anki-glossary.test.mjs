@@ -162,3 +162,51 @@ test("serialized dictionary CSS cannot close its HTML style element and existing
   assert.match(holder.querySelector("style").textContent, /\.x\\<y/u);
   assert.match(holder.querySelector("style").textContent, /<\\\/StYlE>/u);
 });
+
+test("rich glossary markers carry Yomitan's structured-content inline styles", async t => {
+  const { document, request } = fixture(t);
+  request.term.glossaries = [{ dictionary: "B", definitionTags: "", termTags: "", glossary: JSON.stringify([{ type: "structured-content", content: [
+    { tag: "table", content: [{ tag: "tr", content: [{ tag: "th", content: "表記" }, { tag: "td", style: { textAlign: "center" }, content: "絶対" }] }] },
+    { tag: "span", style: { fontSize: "130%" }, content: "⟶" },
+    { tag: "a", href: "https://example.com/", content: "example" },
+  ] }]) }];
+  const holder = document.createElement("div");
+  holder.innerHTML = await createAnkiDefinitionRenderer(document, request)({});
+  const style = selector => holder.querySelector(selector).getAttribute("style");
+  // What Yomitan's AnkiTemplateRenderer writes for the same content at 67db60d
+  // (CssStyleApplier.applyClassStyles with structured-content-style.json): the
+  // class rules first, then the element's own inline style.
+  assert.equal(style(".gloss-sc-table-container"), "display:block;");
+  assert.equal(style(".gloss-sc-table"), "table-layout:auto;border-collapse:collapse;");
+  assert.equal(style(".gloss-sc-th"),
+    "font-weight:bold;border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;");
+  assert.equal(style(".gloss-sc-td"),
+    "border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;text-align: center;");
+  assert.equal(style(".gloss-sc-span"), "font-size: 130%;");
+  assert.equal(style(".gloss-link-external-icon"), "display:none;");
+  const plain = await createAnkiDefinitionRenderer(document, request)({ plain: true, noDictionary: true });
+  assert.doesNotMatch(plain, /style=/u, "plain markers stay unstyled");
+});
+
+test("Anki dictionary styles are scoped by selector prefix rather than @scope", async t => {
+  const { document, request } = fixture(t);
+  request.dictionaryStyles = [{ dictionary: "A \"quoted\"", styles: [
+    ".gloss-sc-strong, [data-sc-content=\"a,b\"] :is(.x, .y)::before { color: red }",
+    "@media (min-width: 1px) { .gloss-sc-span { color: blue } }",
+    "@font-face { font-family: page }",
+  ].join("\n") }];
+  request.term.glossaries = [{ dictionary: "A \"quoted\"", definitionTags: "", termTags: "", glossary: '["first"]' }];
+  const holder = document.createElement("div");
+  holder.innerHTML = await createAnkiDefinitionRenderer(document, request)({});
+  const css = holder.querySelector("style").textContent;
+  const scope = `.yomitan-glossary [data-dictionary=${document.defaultView.CSS.escape("A \"quoted\"")}]`;
+  assert.doesNotMatch(css, /@scope|@font-face/u);
+  const sheet = new document.defaultView.CSSStyleSheet();
+  sheet.replaceSync(css);
+  const selectors = [...sheet.cssRules].flatMap(rule => rule.selectorText ?? [...rule.cssRules].map(inner => inner.selectorText));
+  assert.deepEqual(selectors.map(selector => selector.replaceAll(scope, "SCOPE")), [
+    "SCOPE .gloss-sc-strong, SCOPE [data-sc-content=\"a,b\"] :is(.x, .y)::before",
+    "SCOPE .gloss-sc-span",
+  ]);
+  assert.ok(holder.querySelector("li[data-dictionary]").matches(scope), "the scope selects the dictionary's own list item");
+});

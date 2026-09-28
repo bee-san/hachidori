@@ -2,6 +2,49 @@
 import "./external-links.js";
 import "./render/glossary.js";
 import { compactAnkiGlossary } from "./anki-compact.js";
+import { STRUCTURED_CONTENT_STYLE } from "./anki-structured-content-style.js";
+
+// Yomitan's CssStyleApplier.applyClassStyles (dom/css-style-applier.js at
+// 67db60d) with structured-content-style.json, as its
+// AnkiTemplateRenderer._normalizeHtml applies them to exported structured
+// content: a note field has none of the popup's stylesheet, so each element's
+// matching class rules become its inline style, ahead of any style it already
+// has. Unlike Yomitan, the classes stay, so dictionary styles written against
+// them keep applying on the card.
+const STYLE_RULES = STRUCTURED_CONTENT_STYLE.map(({ selectors, styles }) => ({
+  selectors: selectors.join(","),
+  cssText: styles.map(([property, value]) => `${property}:${value};`).join(""),
+}));
+const candidateRules = new Map();
+function rulesForClass(className) {
+  let rules = candidateRules.get(className);
+  if (rules) return rules;
+  // _selectorMightMatch: a rule can only match if it names one of the classes.
+  const tokens = className.split(/[\t\n\f\r ]+/u).filter(Boolean);
+  rules = STYLE_RULES.filter(({ selectors }) => tokens.some(token => {
+    for (let start = selectors.indexOf(`.${token}`); start >= 0; start = selectors.indexOf(`.${token}`, start + 1)) {
+      if (!/[0-9a-zA-Z_-]/u.test(selectors[start + token.length + 1] ?? "")) return true;
+    }
+    return false;
+  }));
+  candidateRules.set(className, rules);
+  return rules;
+}
+function applyClassStyles(root) {
+  const styled = [];
+  for (const element of root.querySelectorAll("[class]")) {
+    let cssText = "";
+    for (const { selectors, cssText: rule } of rulesForClass(element.getAttribute("class"))) {
+      try {
+        if (element.matches(selectors)) cssText += rule;
+      } catch {
+        // As in Yomitan, a selector the engine cannot match (a pseudo-element) is skipped.
+      }
+    }
+    if (cssText) styled.push([element, cssText + element.style.cssText]);
+  }
+  for (const [element, cssText] of styled) element.setAttribute("style", cssText);
+}
 
 const BLOCKS = new Set(["BR", "DIV", "LI", "OL", "P", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL"]);
 function plainText(node) {
@@ -104,7 +147,11 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     const names = new Set(selected.map(([name]) => name));
     const styles = request.dictionaryStyles.filter(style => names.has(style.dictionary));
     if (!styles.length) return;
-    const applied = globalThis.HDGlossary.applyDictionaryStyles(document, root, request.generation, styles);
+    // Yomitan's dictScopedStyles: each dictionary's rules under its own
+    // li[data-dictionary] of this glossary, by selector prefix, because Anki
+    // still ships Chromium builds without @scope.
+    const applied = globalThis.HDGlossary.applyDictionaryStyles(document, root, request.generation, styles,
+      { scope: title => `.yomitan-glossary [data-dictionary=${document.defaultView.CSS.escape(title)}]` });
     // Escape a serialized closing style tag's slash without corrupting CSS
     // strings or pre-existing selector escapes.
     for (const style of applied) style.textContent = style.textContent.replace(/<\/style/giu, value => String.raw`<\/${value.slice(2)}`);
@@ -145,6 +192,8 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     appendStyles(root, selected);
     if (!brief) appendDetails(root);
     await Promise.all(pending);
-    return compact ? compactAnkiGlossary(document, root) : root.outerHTML;
+    if (compact) return compactAnkiGlossary(document, root);
+    applyClassStyles(list);
+    return root.outerHTML;
   };
 }

@@ -2159,7 +2159,20 @@ Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. As in Yomitan's default Anki field templates, each
 term-bank row becomes its own `li[data-dictionary]`, and every line break in
 dictionary text becomes a `<br>` because a note field has none of the popup's
-`.gloss-content { white-space: pre-line }`. Dictionary CSS remains scoped, and image filenames
+`.gloss-content { white-space: pre-line }`. For the same reason, as Yomitan's
+`AnkiTemplateRenderer` does with `structured-content-style.json`, the rich
+markers carry that file's class rules inline (`anki-structured-content-style.js`,
+unchanged from yomidevs/yomitan@67db60d): table borders, padding and header weight
+survive a note type that draws no grid, and the external-link icon is hidden.
+The rules come before an element's own dictionary style, so the dictionary's
+still wins. Yomitan then drops the classes; Hachidori keeps them, so dictionary
+CSS written against them applies on the card as in the popup. Dictionary CSS is
+filtered exactly as in the popup, then scoped by selector prefix,
+`.yomitan-glossary [data-dictionary=…] selector`, as Yomitan's
+`addScopeToCssLegacy` scopes it, because Anki still ships Chromium builds without
+`@scope`; a rule whose prefixed selector does not parse is dropped rather than
+left unscoped. Images keep Hachidori's sized `<img>` (#325), so the file's
+image-box rules have nothing to match. Image filenames
 bind to committed generation paths. While the experimental **Smaller Anki
 cards** flag (`options.experimental.smallerAnkiCards`) is on, the rich
 glossary markers are compacted instead, following the Compact HTML Cleanup

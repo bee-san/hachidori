@@ -1555,10 +1555,58 @@
     }
   }
 
+  // A selector list's top-level members; commas inside functions, attribute
+  // selectors and strings stay with their selector.
+  function splitSelectorList(selectorText) {
+    const selectors = [];
+    let depth = 0;
+    let quote = null;
+    let start = 0;
+    for (let index = 0; index < selectorText.length; index += 1) {
+      const character = selectorText[index];
+      if (character === "\\") {
+        index += 1;
+      } else if (quote !== null) {
+        if (character === quote) quote = null;
+      } else if (character === "\"" || character === "'") {
+        quote = character;
+      } else if (character === "(" || character === "[") {
+        depth += 1;
+      } else if (character === ")" || character === "]") {
+        depth -= 1;
+      } else if (character === "," && depth === 0) {
+        selectors.push(selectorText.slice(start, index).trim());
+        start = index + 1;
+      }
+    }
+    selectors.push(selectorText.slice(start).trim());
+    return selectors;
+  }
+
+  // Yomitan's addScopeToCssLegacy (core/utilities.js at 67db60d): every
+  // selector gains the scope as an ancestor, because Anki still ships
+  // Chromium builds without @scope. Nested rules stay relative to their
+  // prefixed parent. A rule the browser will not reparse is dropped rather
+  // than left unscoped.
+  function prefixDictionaryStyleRules(parent, scope) {
+    for (let index = parent.cssRules.length - 1; index >= 0; index -= 1) {
+      const rule = parent.cssRules[index];
+      if (rule.constructor.name === "CSSStyleRule") {
+        const previous = rule.selectorText;
+        rule.selectorText = splitSelectorList(previous).map((selector) => `${scope} ${selector}`).join(", ");
+        if (rule.selectorText === previous) parent.deleteRule(index);
+      } else if (rule.cssRules) {
+        prefixDictionaryStyleRules(rule, scope);
+      }
+    }
+  }
+
   // Replaces whatever styles a previous generation installed in `host` rather
   // than tracking the elements outside, so a caller can re-apply at any time.
-  // `host` is the shadow root (or document head) the popup lives in.
-  function applyDictionaryStyles(documentRef, host, generation, entries) {
+  // `host` is the shadow root (or document head) the popup lives in. With
+  // `scope`, each dictionary's rules are prefixed by `scope(title)` instead of
+  // wrapped in @scope.
+  function applyDictionaryStyles(documentRef, host, generation, entries, { scope = null } = {}) {
     for (const element of host.querySelectorAll(
       "style[data-hoshidicts-dictionary-style]"
     )) {
@@ -1602,11 +1650,16 @@
       const style = documentRef.createElement("style");
       style.dataset.hoshidictsDictionaryStyle = dictionary;
       style.dataset.hoshidictsGeneration = String(generation);
-      style.textContent = [
-        `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${documentRef.defaultView.CSS.escape(dictionary)}]) {`,
-        ...[...sheet.cssRules].map((rule) => rule.cssText),
-        "}",
-      ].join("\n");
+      if (scope) {
+        prefixDictionaryStyleRules(sheet, scope(dictionary));
+        style.textContent = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
+      } else {
+        style.textContent = [
+          `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${documentRef.defaultView.CSS.escape(dictionary)}]) {`,
+          ...[...sheet.cssRules].map((rule) => rule.cssText),
+          "}",
+        ].join("\n");
+      }
       host.appendChild(style);
       applied.push(style);
     }
