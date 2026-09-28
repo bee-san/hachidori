@@ -57,6 +57,9 @@ test("every pitch badge draws its own mora contour and keeps the reading [n] lab
     assert.equal(body.querySelector(".gsm-hoshidicts-pitch-position").textContent, `[${index}]`);
     assert.equal(tag.title, `${["NHK", "Daijirin"][index]}: しょうわ [${index}]`);
     assert.equal(tag.getAttribute("aria-label"), tag.title);
+    // Like Yomitan, each badge names its dictionary by default.
+    assert.deepEqual([...tag.children].map(node => [node.className, node === body ? "" : node.textContent]),
+      [["gsm-hoshidicts-pitch-source", ["NHK", "Daijirin"][index]], ["gsm-hoshidicts-pitch-body", ""]]);
   });
 });
 
@@ -65,9 +68,29 @@ test("a pitch position beyond the morae falls back to the text badge and aliases
   const [text] = f.render({ ...RESULT, term: { ...RESULT.term, pitches: [pitch("NHK", 9)] } });
   assert.equal(text.querySelector(".gsm-hoshidicts-pitch-contour"), null);
   assert.equal(text.querySelector(".gsm-hoshidicts-pitch-body").textContent, "しょうわ [9]");
+  assert.equal(text.querySelector(".gsm-hoshidicts-pitch-source").textContent, "NHK");
   assert.equal(text.title, "NHK: しょうわ [9]");
   const [graph] = f.render(RESULT);
+  const source = graph.querySelector(".gsm-hoshidicts-pitch-source");
   f.view.updateDictionaryPresentation({ dictionaryPresentation: [{ title: "NHK", displayName: "NHK 日本語発音アクセント辞典" }] });
   assert.ok(graph.isConnected);
   assert.equal(graph.title, "NHK 日本語発音アクセント辞典 (NHK): しょうわ [0]");
+  assert.equal(graph.querySelector(".gsm-hoshidicts-pitch-source"), source, "a rename keeps the label element");
+  assert.equal(source.textContent, "NHK 日本語発音アクセント辞典");
+});
+
+test("turning pitch dictionary names off restores the unlabelled badge live without replacing definitions", t => {
+  const f = fixture(t);
+  const [unlabelled] = f.render(RESULT, { showPitchAccentDictionaryNames: false });
+  assert.deepEqual([...unlabelled.children].map(node => node.className), ["gsm-hoshidicts-pitch-body"]);
+  assert.equal(unlabelled.title, "NHK: しょうわ [0]");
+  f.render();
+  const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
+  const labels = () => [...f.popup.querySelectorAll(".gsm-hoshidicts-pitch-source")].map(node => node.textContent);
+  f.view.updateDictionaryPresentation({ showPitchAccentDictionaryNames: false });
+  assert.deepEqual(labels(), []);
+  assert.equal(f.popup.querySelectorAll(".gsm-hoshidicts-tag-pitch").length, 2);
+  f.view.updateDictionaryPresentation({ showPitchAccentDictionaryNames: true });
+  assert.deepEqual(labels(), ["NHK", "Daijirin"]);
+  assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card);
 });
