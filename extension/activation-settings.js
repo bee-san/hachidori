@@ -11,6 +11,12 @@
 // dismisses popups, and the secondary press opens the browser's menu.
 const REFUSED_BUTTONS = new Map([[0, "The left mouse button"], [2, "The right mouse button"]]);
 
+// A captured input acts only as the recorder's.
+function consume(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 export function createActivationSettings({ document, report }) {
   const window = document.defaultView;
   const { ACTIVATION_BUTTONS, ACTIVATION_KEYS, normaliseActivationKey } = window.HDReaderOptions;
@@ -53,11 +59,6 @@ export function createActivationSettings({ document, report }) {
   function refuse(name) {
     arm(false);
     report(`${name} cannot be used to scan.`);
-  }
-
-  function consume(event) {
-    event.preventDefault();
-    event.stopPropagation();
   }
 
   // Escape cancels; it stays selectable from the list.
