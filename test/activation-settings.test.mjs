@@ -12,7 +12,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 
 const MARKUP = `<select id="opt-activation-key"></select>
-  <button id="opt-activation-record" type="button">Press to set</button>
+  <button id="opt-activation-record" type="button" aria-pressed="false">Press to set</button>
   <a id="elsewhere" href="https://example.test/">elsewhere</a>`;
 
 function fixture(t) {

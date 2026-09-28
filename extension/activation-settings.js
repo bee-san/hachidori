@@ -100,7 +100,6 @@ export function createActivationSettings({ document, report }) {
   window.addEventListener("mousedown", onMouseDown, true);
   for (const type of ["mouseup", "auxclick", "contextmenu"]) window.addEventListener(type, onConsumedEvent, true);
   window.addEventListener("blur", () => { if (armed) arm(false); });
-  recorder.setAttribute("aria-pressed", "false");
   recorder.addEventListener("click", () => {
     if (armed) refuse(REFUSED_BUTTONS.get(0));
     else arm(true);
