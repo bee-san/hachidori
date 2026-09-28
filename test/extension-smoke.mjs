@@ -4565,6 +4565,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const experimentalSettings = readFileSync(resolve(EXTENSION, "experimental-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const activationSettings = readFileSync(resolve(EXTENSION, "activation-settings.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const memorySettings = readFileSync(resolve(EXTENSION, "memory-settings.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
@@ -4612,6 +4614,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
+    .replace(/import \{ createActivationSettings \} from "\.\/activation-settings\.js";\s*/u, "")
     .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
@@ -4639,7 +4642,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -4791,19 +4794,28 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const legacyPatch = reader.validateOptionsPatch({ modifier: "shift" });
     const invalidActivation = [
       { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "not a key" },
+      { activationKey: "mouse2" }, { activationKey: "Mouse3" }, { activationKey: "mousemiddle" },
       { popupHideDelayMs: -1 }, { popupHideDelayMs: 5001 },
       { hidePopupOnCursorExit: 1 }, { hidePopupOnCursorExitDelayMs: -1 }, { hidePopupOnCursorExitDelayMs: 5001 },
     ].every((patch) => {
       try { reader.validateOptionsPatch(patch); return false; } catch { return true; }
     });
+    // Yomitan's bit-index names are not Hachidori's: `mouse2` does not become a button.
+    const buttons = ["MouseMiddle", "MouseBack", "MouseForward"];
+    const buttonActivation = buttons.every(key => reader.normaliseOptions({ activationKey: key }).activationKey === key
+        && reader.validateOptionsPatch({ activationKey: key }).activationKey === key)
+      && ["mouse2", "Mouse3", "Middle"].every(key => reader.normaliseOptions({ activationKey: key }).activationKey === "Shift")
+      && JSON.stringify(buttons.map(reader.activationLabel))
+        === JSON.stringify(["the middle mouse button", "the Back mouse button", "the Forward mouse button"])
+      && reader.activationLabel("Shift") === "Shift";
     check("reader activation options migrate legacy modes without competing policies and validate new fields",
       plain.hoverEnabled === true && plain.lookupMode === "hover" && plain.activationKey === "Shift"
         && plain.popupHideDelayMs === 160 && plain.hidePopupOnCursorExit === false
         && plain.hidePopupOnCursorExitDelayMs === 160 && held.lookupMode === "activation" && held.activationKey === "Control"
         && explicit.lookupMode === "hover" && explicit.activationKey === "K" && explicit.modifier === undefined
         && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
-        && legacyPatch.modifier === undefined && invalidActivation,
-      JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation }));
+        && legacyPatch.modifier === undefined && invalidActivation && buttonActivation,
+      JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation, buttonActivation }));
     const depths = [];
     for (const depth of [0, 2, Number.MAX_SAFE_INTEGER]) {
       await local.set({ options: saved.options });
@@ -10267,6 +10279,7 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
+    .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -19571,6 +19584,249 @@ async function contentNoteStage() {
     }
   }
 
+  // Issue #357: a held mouse button scans as a held key does. Its capture-phase
+  // press claims an overlay host's window, and it cancels only the native
+  // actions that would act on the same press.
+  async function activationButtonCase() {
+    const result = {};
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const { document } = window;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => {
+      const id = ++nextTimer;
+      timers.set(id, { callback, delay });
+      return id;
+    };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    // Real events through the reader's document listeners; the caller reads
+    // defaultPrevented from the returned event.
+    const mouse = (type, init = {}, target = harness.anchor) => {
+      const event = new window.MouseEvent(type, {
+        bubbles: true, cancelable: true, composed: true, clientX: 200, clientY: 200, ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const press = (button, buttons, target) => mouse("mousedown", { button, buttons }, target);
+    const release = (button, target) => mouse("mouseup", { button, buttons: 0 }, target);
+    const events = () => harness.popupEvents.splice(0);
+    const answer = async (query) => {
+      const lookup = harness.take("hd_lookup");
+      if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term(query)] });
+      await harness.settle();
+      return lookup;
+    };
+    const reset = (settings) => {
+      harness.emitOptions({ hoverDelayMs: 0, popupHideDelayMs: 250, ...settings });
+      harness.driver.onWindowBlur();
+      while (harness.take("hd_lookup")) { /* A reset drops unanswered lookups. */ }
+      harness.driver.setScanCandidate(harness.candidate);
+      events();
+    };
+    try {
+      let wordClick = null;
+      for (const lookupMode of ["activation", "activationSticky"]) {
+        reset({ lookupMode, activationKey: "MouseMiddle" });
+        mouse("mousemove", { buttons: 0 });
+        fire(0);
+        const gated = harness.take("hd_lookup") === null;
+        let atBubble = null;
+        const observe = (event) => { atBubble = { events: [...harness.popupEvents], prevented: event.defaultPrevented }; };
+        document.addEventListener("mousedown", observe);
+        press(1, 4);
+        document.removeEventListener("mousedown", observe);
+        fire(0);
+        const first = await answer("食べる");
+        const opened = !harness.driver.snapshot().popupHidden;
+        harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+        mouse("mousemove", { buttons: 4, clientX: 220 });
+        fire(0);
+        const moved = await answer("別の語");
+        const released = release(1);
+        wordClick = mouse("auxclick", { button: 1 });
+        const keptAtRelease = !harness.driver.snapshot().popupHidden;
+        const hidTimer = fire(250);
+        const closed = lookupMode === "activation"
+          ? hidTimer && harness.driver.snapshot().popupHidden
+          : !hidTimer && !harness.driver.snapshot().popupHidden;
+        const published = events();
+        result[`a held middle button scans in ${lookupMode} mode and its release follows the mode`] =
+          (gated && JSON.stringify(atBubble) === JSON.stringify({ events: ["shown"], prevented: true })
+            && first !== null && opened && moved !== null && !released.defaultPrevented && keptAtRelease && closed
+            && JSON.stringify(published) === JSON.stringify(lookupMode === "activation" ? ["shown", "hidden"] : ["shown"]))
+          || { gated, atBubble, first: first !== null, opened, moved: moved !== null,
+            releasePrevented: released.defaultPrevented, keptAtRelease, hidTimer, closed, published };
+      }
+
+      reset({ lookupMode: "activation", activationKey: "MouseMiddle" });
+      harness.driver.setScanCandidate(null);
+      const emptyPress = press(1, 4);
+      const claimed = events();
+      fire(0);
+      const noLookup = harness.take("hd_lookup") === null;
+      mouse("mousemove", { buttons: 0, clientX: 210 });
+      const unclaimed = events();
+      release(1);
+      const emptyClick = mouse("auxclick", { button: 1 });
+      result["a lost release ends a button's activation at the next move and releases the host window"] =
+        (JSON.stringify(claimed) === '["shown"]' && noLookup && JSON.stringify(unclaimed) === '["hidden"]'
+          && events().length === 0) || { claimed, noLookup, unclaimed };
+      result["a scan press cancels autoscroll over text and a new tab only for a word it looks up"] =
+        (emptyPress.defaultPrevented && !emptyClick.defaultPrevented && wordClick?.defaultPrevented === true)
+        || { emptyPress: emptyPress.defaultPrevented, emptyClick: emptyClick.defaultPrevented,
+          wordClick: wordClick?.defaultPrevented };
+
+      reset({ lookupMode: "activationSticky", activationKey: "MouseBack" });
+      const backPress = press(3, 8);
+      fire(0);
+      const backLookup = await answer("食べる");
+      const backRelease = release(3);
+      const field = document.createElement("textarea");
+      document.body.append(field);
+      field.focus();
+      harness.driver.setScanCandidate(null);
+      const fieldPress = press(3, 8, field);
+      const fieldRelease = release(3, field);
+      harness.driver.setScanCandidate(harness.candidate);
+      harness.driver.hide();
+      press(3, 8);
+      fire(0);
+      const besideEditor = await answer("食べた");
+      release(3);
+      field.remove();
+      result["a Back scan press looks up beside a focused editor without navigating over text"] =
+        (backPress.defaultPrevented && backLookup !== null && backRelease.defaultPrevented
+          && !fieldPress.defaultPrevented && !fieldRelease.defaultPrevented && besideEditor !== null)
+        || { backPress: backPress.defaultPrevented, backLookup: backLookup !== null,
+          backRelease: backRelease.defaultPrevented, fieldPress: fieldPress.defaultPrevented,
+          fieldRelease: fieldRelease.defaultPrevented, besideEditor: besideEditor !== null };
+
+      reset({ lookupMode: "activationSticky", activationKey: "MouseMiddle" });
+      press(1, 4);
+      fire(0);
+      await answer("食べた");
+      release(1);
+      mouse("auxclick", { button: 1 });
+      const glossary = document.createElement("div");
+      glossary.className = "gsm-hoshidicts-glossary-content";
+      const definition = document.createElement("span");
+      definition.textContent = "食用語";
+      const link = document.createElement("a");
+      link.href = "https://example.test/entry";
+      link.textContent = "entry";
+      glossary.append(definition, link);
+      harness.driver.popupAt(0).querySelector(".gsm-hoshidicts-definitions").append(glossary);
+      document.caretPositionFromPoint = () => ({ offsetNode: definition.firstChild, offset: 0 });
+      harness.driver.onPopupMouseMove({ clientX: 120, clientY: 80, target: definition });
+      fire(0);
+      const definitionGated = harness.take("hd_lookup") === null;
+      const definitionPress = press(1, 4, definition);
+      fire(0);
+      const child = await answer("食用語");
+      const childOpened = !harness.driver.snapshot(1).popupHidden;
+      release(1, definition);
+      const definitionClick = mouse("auxclick", { button: 1 }, definition);
+      harness.driver.onPopupMouseMove({ clientX: 120, clientY: 80, target: link });
+      const linkPress = press(1, 4, link);
+      const linkScan = fire(0);
+      release(1, link);
+      const linkClick = mouse("auxclick", { button: 1 }, link);
+      result["a held scan button looks up popup definitions and leaves a popup link its middle click"] =
+        (definitionGated && definitionPress.defaultPrevented && child?.request.text.startsWith("食用語")
+          && childOpened && definitionClick.defaultPrevented
+          && !linkPress.defaultPrevented && !linkScan && !linkClick.defaultPrevented)
+        || { definitionGated, definitionPress: definitionPress.defaultPrevented, child: child?.request.text,
+          childOpened, definitionClick: definitionClick.defaultPrevented, linkPress: linkPress.defaultPrevented,
+          linkScan, linkClick: linkClick.defaultPrevented };
+
+      const ordinary = [];
+      for (const settings of [{ lookupMode: "hover", activationKey: "MouseMiddle" },
+        { lookupMode: "activation", activationKey: "Shift" }]) {
+        reset(settings);
+        await harness.initialLookup();
+        events();
+        const middle = press(1, 4);
+        const up = release(1);
+        const click = mouse("auxclick", { button: 1 });
+        ordinary.push((!middle.defaultPrevented && !up.defaultPrevented && !click.defaultPrevented
+          && harness.driver.snapshot().popupHidden && JSON.stringify(events()) === '["hidden"]')
+          || { settings, middle: middle.defaultPrevented, up: up.defaultPrevented, click: click.defaultPrevented,
+            hidden: harness.driver.snapshot().popupHidden });
+      }
+      result["hover mode and keyboard activation keep a middle press closing the popup without cancelling it"] =
+        ordinary.every((value) => value === true) || ordinary;
+
+      // Issue #355's Child popups wait for the scan button as for a key: in No
+      // key mode only a press over a popup's definitions is a scan press, and
+      // with Click none is.
+      const addDefinition = () => {
+        const words = document.createElement("div");
+        words.className = "gsm-hoshidicts-glossary-content";
+        const word = document.createElement("span");
+        word.textContent = "食用語";
+        words.append(word);
+        harness.driver.popupAt(0).querySelector(".gsm-hoshidicts-definitions").append(words);
+        document.caretPositionFromPoint = () => ({ offsetNode: word.firstChild, offset: 0 });
+        harness.driver.onPopupMouseMove({ clientX: 120, clientY: 80, target: word });
+        return word;
+      };
+      reset({ lookupMode: "hover", activationKey: "MouseMiddle", definitionLookupMode: "activation" });
+      mouse("mousemove", { buttons: 0 });
+      fire(0);
+      const pageHover = await answer("食べた");
+      const heldWord = addDefinition();
+      fire(0);
+      const childGated = harness.take("hd_lookup") === null;
+      const childPress = press(1, 4, heldWord);
+      fire(0);
+      const heldChild = await answer("食用語");
+      release(1, heldWord);
+      const childClick = mouse("auxclick", { button: 1 }, heldWord);
+      const pagePress = press(1, 4);
+      release(1);
+      const pageClick = mouse("auxclick", { button: 1 });
+      const pageClosed = harness.driver.snapshot().popupHidden;
+      events();
+      const idlePress = press(1, 4);
+      release(1);
+      fire(0);
+      const idle = { prevented: idlePress.defaultPrevented, events: events(), lookup: harness.take("hd_lookup") };
+      reset({ lookupMode: "activationSticky", activationKey: "MouseMiddle", definitionLookupMode: "click" });
+      press(1, 4);
+      fire(0);
+      await answer("食べた");
+      release(1);
+      mouse("auxclick", { button: 1 });
+      const clickWord = addDefinition();
+      const clickPress = press(1, 4, clickWord);
+      fire(0);
+      const clickLookup = harness.take("hd_lookup");
+      release(1, clickWord);
+      result["child popups set to hold the key wait for a scan button in No key mode, and Click ignores it"] =
+        (pageHover !== null && childGated && childPress.defaultPrevented && heldChild?.request.text.startsWith("食用語")
+          && childClick.defaultPrevented && !pagePress.defaultPrevented && !pageClick.defaultPrevented && pageClosed
+          && !idle.prevented && idle.events.length === 0 && idle.lookup === null
+          && !clickPress.defaultPrevented && clickLookup === null)
+        || { pageHover: pageHover !== null, childGated, childPress: childPress.defaultPrevented,
+          heldChild: heldChild?.request.text, childClick: childClick.defaultPrevented,
+          pagePress: pagePress.defaultPrevented, pageClick: pageClick.defaultPrevented, pageClosed,
+          idle: { ...idle, lookup: idle.lookup !== null }, clickPress: clickPress.defaultPrevented,
+          clickLookup: clickLookup !== null };
+    } finally {
+      harness.close();
+    }
+    return result;
+  }
+
   async function deferredInvalidationCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -20371,7 +20627,7 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionLanguageCase(), ...await selectionNoticeCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
-    activation: { ...await activationCase(), ...await cursorExitCase() },
+    activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },

@@ -605,11 +605,32 @@ supported; browser/OS-reserved keys remain subject to their native behavior.
 
 Settings → Reading → Activation shows these stored fields the way Yomitan's
 Scanning settings do. **Enable lookups** is `hoverEnabled`, the same switch as
-the toolbar's Japanese lookups and the toggle shortcut. The **Activation key**
-picker lists **No key** first: it writes only `lookupMode: "hover"`, and a key
-writes `activationKey` with `activationSticky` or `activation` as **Keep the
-popup open after releasing the key** says. That switch is hidden for No key and
-on when a key is chosen again.
+the toolbar's Japanese lookups and the toggle shortcut. The **Activation key or
+button** picker lists **No key** first: it writes only `lookupMode: "hover"`,
+and a key writes `activationKey` with `activationSticky` or `activation` as
+**Keep the popup open after releasing the key or button** says. That switch is
+hidden for No key and on when a key is chosen again.
+
+The activation input can also be the middle, Back or Forward mouse button,
+stored as `MouseMiddle`, `MouseBack` or `MouseForward` in the same
+`activationKey` option; Yomitan's bit-index names such as `mouse2` are not
+accepted. The picker lists the buttons above the keys, and **Press to set**
+records the next key or supported button pressed anywhere on the page; the
+primary and secondary buttons and unlisted keys are reported by name and not
+saved. The reader derives a held button from `MouseEvent.buttons` on every
+mouse event, so a release the page never saw ends activation at the next move.
+A press scans at once, moving while the button is held keeps scanning, popup
+definition text opens nested lookups, and release follows the mode as a key's
+does. One fixed rule stands in for Yomitan's *Prevent secondary mouse button
+actions* switches: over content the reader scans (text a primary press could
+select, or popup definition text) the scan press is cancelled, so it starts no
+autoscroll, and a Back or Forward release is cancelled, so it does not
+navigate. Its `auxclick` is cancelled only when the press was on a word the
+reader looks up, so other links still open in new tabs. A press on a popup link
+is never a scan press. A scan button gates child popups exactly as a key does:
+with No key and Child popups set to hold it, only a press over a popup is a
+scan press, and page presses keep their ordinary meaning. Otherwise No key and
+keyboard keys are unchanged, including a middle press closing the popup.
 
 There is no open delay: `hoverDelayMs` always normalises to 0, so a scan runs
 on the next timer turn at the pointer's latest position, and a key pressed over
@@ -673,7 +694,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Enable lookups, the Activation key picker on No key and Child popups holding Shift in Settings](assets/reader-activation-settings.png)
+![Enable lookups, the Activation key or button picker with Press to set, the keep-open switch and Child popups in Settings](assets/reader-activation-settings.png)
 
 ![Hide popup on cursor exit and its Delay in Settings](assets/reader-cursor-exit-settings.png)
 
@@ -1744,8 +1765,8 @@ keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
-The Activation key picker stays editable in every lookup mode, and search finds
-it by "no key" or "hover".
+The Activation key or button picker stays editable in every lookup mode, and
+search finds it by "no key", "hover" or "mouse".
 All sections stay mounted, so navigation and browser history preserve reader
 and personal-dictionary drafts. Personal source loads on first entering its section.
 The rail becomes a compact section chooser in narrow windows. Settings applies

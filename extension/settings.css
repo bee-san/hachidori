@@ -2034,17 +2034,20 @@ textarea {
 .input-suffix input {
   flex: 0 0 auto;
 }
-.frequency-order-controls {
+.frequency-order-controls,
+.activation-input-controls {
   display: flex;
   gap: 8px;
   width: 100%;
   flex-wrap: wrap;
 }
-.frequency-order-controls select {
+.frequency-order-controls select,
+.activation-input-controls select {
   min-width: 0;
   flex: 1 1 180px;
 }
-.frequency-order-controls button {
+.frequency-order-controls button,
+.activation-input-controls button {
   white-space: nowrap;
 }
 [hidden] {

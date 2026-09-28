@@ -83,6 +83,9 @@ test("a passage-only result keeps the reader available without advertising an un
   f.update({ ...OPTIONS, lookupMode: "activation", activationKey: "Control" }, DICTIONARIES, "passage");
   assert.equal(f.el("setup-practice-instruction").textContent,
     "Try looking up a word below. Hold Control and hover over a word.");
+  f.update({ ...OPTIONS, lookupMode: "activationSticky", activationKey: "MouseMiddle" }, DICTIONARIES, "passage");
+  assert.equal(f.el("setup-practice-instruction").textContent,
+    "Try looking up a word below. Hold the middle mouse button and hover over a word.");
   f.update();
   f.el("setup-practice-lookup").focus();
   f.update(OPTIONS, DICTIONARIES, "passage");

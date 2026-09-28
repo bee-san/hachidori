@@ -865,6 +865,59 @@ try {
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true);
 
+  // Issue #357: a scan mouse button's press claims the window before a host's
+  // own document mousedown listener runs, as GSM's does, and holds the claim
+  // until a release leaves no popup open.
+  const writeOptions = patch => settings.evaluate(async (options) => {
+    const stored = (await chrome.storage.local.get("options")).options;
+    const baseRevision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      requestId: "overlay-scan-button", baseRevision, options });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  await writeOptions({ lookupMode: "activation", activationKey: "MouseMiddle" });
+  await tab.bringToFront();
+  await tab.evaluate(() => {
+    window.__pressEvents = [];
+    document.addEventListener("mousedown", () => window.__pressEvents.push([...window.__hostEvents]));
+  });
+  const pressEvents = () => tab.evaluate(() => window.__pressEvents.splice(0));
+  // Like a held key, a scan press looks up a selection first; the drags above left one.
+  await tab.evaluate(() => window.getSelection().removeAllRanges());
+  const away = [50, 400];
+  await tab.mouse.move(...away);
+  await settle();
+  await events();
+  await tab.mouse.down({ button: "middle" });
+  await settle();
+  await tab.mouse.up({ button: "middle" });
+  await settle();
+  assert.deepEqual({ atPress: await pressEvents(), events: await events(), popup: popup.visible(await popup.state()) },
+    { atPress: [["shown"]], events: ["shown", "hidden"], popup: false },
+    "a scan press away from text claims the window at once and its release gives it back");
+  await tab.mouse.move(...middle(boxes[0]));
+  await tab.mouse.down({ button: "middle" });
+  const scanned = await popup.waitForVisible();
+  await tab.mouse.up({ button: "middle" });
+  const closed = await popup.waitForHidden();
+  assert.ok(scanned?.plain.includes("食べる"), `holding the scan button reads the boxed word: ${JSON.stringify(scanned)}`);
+  assert.deepEqual({ atPress: await pressEvents(), events: await events(), closed },
+    { atPress: [["shown"]], events: ["shown", "hidden"], closed: true },
+    "a scan press on a glyph claims the window before the host hears it, and activation release closes the popup");
+  await writeOptions({ lookupMode: "activationSticky", activationKey: "MouseMiddle" });
+  await tab.mouse.move(...away);
+  await tab.mouse.move(...middle(boxes[0]));
+  await tab.mouse.down({ button: "middle" });
+  const sticky = await popup.waitForVisible();
+  await tab.mouse.up({ button: "middle" });
+  await settle(500);
+  assert.ok(sticky?.plain.includes("食べる") && popup.visible(await popup.state()),
+    `a sticky scan popup stays after release: ${JSON.stringify(sticky)}`);
+  assert.deepEqual(await events(), ["shown"], "the sticky popup keeps the claim after release");
+  await tab.keyboard.press("Escape");
+  assert.equal(await popup.waitForHidden(), true);
+  assert.deepEqual(await events(), ["hidden"]);
+
   passed = true;
   console.log("overlay mode selects boxed glyphs by drag, offers the pencil for unknown text and keeps the host window claimed");
 } finally {

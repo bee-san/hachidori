@@ -330,6 +330,9 @@ const PLANNED = [
   "configured activation keys open stationary lookups and release them using the saved delays",
   "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
   "hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
+  "Press to set records the middle button, which opens a stationary lookup and releases it like a key",
+  "a middle scan press on a Japanese link looks it up without a new tab while other links still open",
+  "a Back scan press on a word looks it up without going back, while one on a field still does",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
@@ -8468,8 +8471,121 @@ async function checkReaderActivation(settings, tab, popup) {
       stickyOpened !== null && neverEntered && clickFocus.includes("gsm-hoshidicts-audio-button") && clickedHidden
         && keyboardFocus !== "" && !keyboardFocus.includes("gsm-hoshidicts-audio-button") && keyboardKept,
       JSON.stringify({ stickyOpened: stickyOpened !== null, neverEntered, clickFocus, clickedHidden, keyboardFocus, keyboardKept }));
+
+    // The scan buttons below close on release, as the K key did above, and
+    // cursor exit stays off so only activation release hides their popups.
+    await edit({ "opt-lookup-sticky": false, "opt-hide-on-cursor-exit": false });
+    // Issue #357: set the middle button by pressing it, then scan by holding it.
+    await settings.bringToFront();
+    await settings.click("#opt-activation-record");
+    await settings.mouse.down({ button: "middle" });
+    await settings.mouse.up({ button: "middle" });
+    await settings.waitForFunction(() => document.getElementById("opt-activation-key").value === "MouseMiddle"
+      && document.getElementById("options-status").textContent === "Saved.", { polling: 100, timeout: 10_000 });
+    const recorded = await settings.evaluate(async () => ({
+      label: document.getElementById("opt-activation-record").textContent,
+      stored: (await chrome.storage.local.get("options")).options.activationKey,
+    }));
+    await tab.bringToFront();
+    await moveToWord();
+    await pause(250);
+    const buttonGated = !popup.visible(await popup.state());
+    await tab.mouse.down({ button: "middle" });
+    const buttonActivated = await popup.waitForVisible();
+    await tab.mouse.up({ button: "middle" });
+    const buttonReleased = await popup.waitForHidden();
+    check("Press to set records the middle button, which opens a stationary lookup and releases it like a key",
+      recorded.stored === "MouseMiddle" && recorded.label === "Press to set" && buttonGated
+        && buttonActivated?.plain.includes("食べる") === true && buttonReleased,
+      JSON.stringify({ recorded, buttonGated, buttonActivated: buttonActivated !== null, buttonReleased }));
+
+    await tab.evaluate(() => {
+      const links = document.createElement("div");
+      links.id = "scan-button-links";
+      for (const [id, text] of [["scan-button-ascii", "dictionary"], ["scan-button-japanese", "食べた"]]) {
+        const paragraph = document.createElement("p");
+        const link = document.createElement("a");
+        link.id = id;
+        link.href = `/${id}`;
+        link.textContent = text;
+        paragraph.append(link);
+        // The scan reads across elements, so blocks keep their whitespace.
+        links.append(paragraph, "\n");
+      }
+      document.body.prepend(links);
+    });
+    const middleClick = async (selector, whileHeld = async () => null) => {
+      const box = await (await tab.$(selector)).boundingBox();
+      await tab.mouse.move(2, 2);
+      await tab.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
+      await tab.mouse.down({ button: "middle" });
+      const held = await whileHeld();
+      await tab.mouse.up({ button: "middle" });
+      return held;
+    };
+    const openedTabs = [];
+    const onTarget = target => { if (target.type() === "page") openedTabs.push(target); };
+    tab.browser().on("targetcreated", onTarget);
+    try {
+      await Promise.all([
+        tab.browser().waitForTarget(target => target.url().endsWith("/scan-button-ascii"), { timeout: 10_000 }),
+        middleClick("#scan-button-ascii"),
+      ]);
+      // Activation mode drops a lookup released before it answers, as for a key.
+      const linkLookup = await middleClick("#scan-button-japanese", () => popup.waitForVisible());
+      await popup.waitForHidden();
+      await pause(500);
+      const urls = openedTabs.map(target => target.url());
+      check("a middle scan press on a Japanese link looks it up without a new tab while other links still open",
+        linkLookup !== null && urls.length === 1 && urls[0].endsWith("/scan-button-ascii"),
+        JSON.stringify({ linkLookup: linkLookup !== null, urls }));
+    } finally {
+      tab.browser().off("targetcreated", onTarget);
+      for (const target of openedTabs) {
+        const page = await target.page();
+        if (page && !page.isClosed()) await page.close();
+      }
+      await tab.evaluate(() => document.getElementById("scan-button-links").remove());
+    }
+
+    await edit({ "opt-activation-key": "MouseBack" });
+    await tab.evaluate(() => {
+      window.__scanButtonPops = 0;
+      window.addEventListener("popstate", () => { window.__scanButtonPops += 1; });
+      history.pushState({ scanButton: true }, "", location.href);
+    });
+    await moveToWord();
+    await tab.mouse.down({ button: "back" });
+    const backActivated = await popup.waitForVisible();
+    await tab.mouse.up({ button: "back" });
+    await popup.waitForHidden();
+    await pause(300);
+    const onWord = await tab.evaluate(() => ({ pops: window.__scanButtonPops, state: history.state }));
+    // Over an editing field the same press is not cancelled, so Chrome still
+    // goes back, which also drops the entry pushed above.
+    await tab.evaluate(() => {
+      const field = document.createElement("input");
+      field.id = "scan-button-field";
+      document.body.prepend(field);
+    });
+    const field = await (await tab.$("#scan-button-field")).boundingBox();
+    await tab.mouse.move(field.x + 5, field.y + field.height / 2);
+    await tab.mouse.down({ button: "back" });
+    await tab.mouse.up({ button: "back" });
+    const deadline = Date.now() + 5000;
+    let offText = await tab.evaluate(() => ({ pops: window.__scanButtonPops, state: history.state }));
+    while (offText.pops === 0 && Date.now() < deadline) {
+      await pause(100);
+      offText = await tab.evaluate(() => ({ pops: window.__scanButtonPops, state: history.state }));
+    }
+    await tab.evaluate(() => document.getElementById("scan-button-field").remove());
+    check("a Back scan press on a word looks it up without going back, while one on a field still does",
+      backActivated !== null && onWord.pops === 0 && onWord.state?.scanButton === true
+        && offText.pops === 1 && offText.state?.scanButton !== true,
+      JSON.stringify({ backActivated: backActivated !== null, onWord, offText }));
   } finally {
     await tab.keyboard.up("k");
+    for (const button of ["middle", "back"]) await tab.mouse.up({ button }).catch(() => {});
     // Keep a non-default key behind No key to prove that choosing No key
     // preserves it and that the exact setting survives the full browser restart.
     // The cursor-exit delay likewise stays at 300 ms with its switch off, and
