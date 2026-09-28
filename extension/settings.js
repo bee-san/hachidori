@@ -1681,6 +1681,22 @@ function renderCustomJavascript(force = false) {
   element("custom-javascript-count").textContent = `${numberFormat.format(editor.value.length)} characters`;
 }
 
+// Yomitan's "Scan modifier key" lists No key first. Its empty value is never
+// stored: it means lookupMode "hover" and keeps the remembered activationKey.
+// No key leaves the keep-open switch on for the next key, as a re-render would.
+function renderActivationControls() {
+  const activation = element("opt-activation-key");
+  if (activation.options.length === 0) {
+    activation.add(new Option("No key", ""));
+    for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
+  }
+  if (activation !== document.activeElement) {
+    activation.value = options.lookupMode === "hover" ? "" : options.activationKey;
+  }
+  element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
+  element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
+}
+
 function renderOptions() {
   applyPageTheme(document, options);
   for (const field of NUMBER_FIELDS) {
@@ -1701,18 +1717,7 @@ function renderOptions() {
   customButtonController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
-  // Yomitan's "Scan modifier key" lists No key first. Its empty value is never
-  // stored: it means lookupMode "hover" and keeps the remembered activationKey.
-  const activation = element("opt-activation-key");
-  if (activation.options.length === 0) {
-    activation.add(new Option("No key", ""));
-    for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
-  }
-  if (activation !== document.activeElement) {
-    activation.value = options.lookupMode === "hover" ? "" : options.activationKey;
-  }
-  element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
-  element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
+  renderActivationControls();
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
@@ -3343,7 +3348,7 @@ function attachHandlers() {
       options.activationKey = key;
       options.lookupMode = element("opt-lookup-sticky").checked ? "activationSticky" : "activation";
     }
-    element("opt-lookup-sticky-row").hidden = key === "";
+    renderActivationControls();
     writeOptions();
   };
   element("opt-activation-key").addEventListener("change", writeActivation);

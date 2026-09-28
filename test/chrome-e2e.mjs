@@ -8182,12 +8182,25 @@ async function checkReaderActivation(settings, tab, popup) {
     const keyAgain = await activationControls();
     await edit({ "opt-lookup-sticky": false });
     const closing = await activationControls();
+    // Arrowing through No key back to the key, before either save lands, still
+    // returns the key with the popup staying open.
+    await settings.evaluate(() => {
+      const picker = document.getElementById("opt-activation-key");
+      for (const value of ["", "K"]) {
+        picker.value = value;
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+      { polling: 100, timeout: 10_000 });
+    const arrowed = await activationControls();
     check("No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
-      JSON.stringify([noKey.stored, keyAgain.stored, closing.stored])
-        === JSON.stringify([["hover", "K"], ["activationSticky", "K"], ["activation", "K"]])
+      JSON.stringify([noKey.stored, keyAgain.stored, closing.stored, arrowed.stored]) === JSON.stringify(
+        [["hover", "K"], ["activationSticky", "K"], ["activation", "K"], ["activationSticky", "K"]])
         && noKey.key === "" && noKey.stickyHidden && hovered !== null
-        && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky,
-      JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing }));
+        && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky
+        && arrowed.key === "K" && arrowed.sticky && !arrowed.stickyHidden,
+      JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing, arrowed }));
   } finally {
     await tab.keyboard.up("k");
     // Keep a non-default key behind No key to prove that choosing No key
