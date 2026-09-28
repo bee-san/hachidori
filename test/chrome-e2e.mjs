@@ -795,7 +795,7 @@ async function popupReader(page, depth = 0) {
         // Pitch ruby is laid out as flex boxes, whose text geometry is real.
         const expression = this.querySelector(".gsm-hoshidicts-expression");
         const pitchRubies = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-ruby") ?? [])];
-        const textCentre = node => {
+        const textRects = node => {
           const range = this.ownerDocument.createRange();
           const walker = this.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
           const rects = [];
@@ -803,14 +803,24 @@ async function popupReader(page, depth = 0) {
             range.selectNodeContents(walker.currentNode);
             rects.push(range.getBoundingClientRect());
           }
+          return rects;
+        };
+        const textCentre = node => {
+          const rects = textRects(node);
           return (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2;
         };
+        const spread = values => values.length ? Math.max(...values) - Math.min(...values) : 0;
         const pitchCentring = pitchRubies.map(ruby => Math.abs(
           textCentre(ruby.querySelector("rt")) - textCentre(ruby.querySelector(".gsm-hoshidicts-pitch-base"))));
         const contourRects = pitchRubies
           .map(ruby => ruby.querySelector(".gsm-hoshidicts-pitch-contour").getBoundingClientRect());
         const contourGaps = contourRects.slice(1)
           .map((rect, index) => Math.abs(rect.left - contourRects[index].right));
+        // A kanji segment's base is taller than a kana one (its link has a
+        // dotted underline), yet every segment's contour and text must share
+        // one row. A rise or drop must also span the 2px lines it joins, or
+        // its outer corner is notched.
+        const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -869,6 +879,16 @@ async function popupReader(page, depth = 0) {
             pitchRubies: pitchRubies.length,
             pitchCentring: Math.max(0, ...pitchCentring),
             contourGap: Math.max(0, ...contourGaps),
+            contourTopSpread: spread(contourRects.map(rect => rect.top)),
+            baseTextSpread: spread(pitchRubies.flatMap(ruby =>
+              textRects(ruby.querySelector(".gsm-hoshidicts-pitch-base")).map(rect => rect.top))),
+            transitions: transitions.length,
+            transitionsCoverLines: transitions.every(mora => {
+              const stroke = view.getComputedStyle(mora, "::after");
+              const style = view.getComputedStyle(mora);
+              return Number.parseFloat(stroke.top) <= -Number.parseFloat(style.borderTopWidth)
+                && Number.parseFloat(stroke.bottom) <= -Number.parseFloat(style.borderBottomWidth);
+            }),
           },
         };
       }`,
@@ -7940,6 +7960,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
       && contourState?.furiganaAlignment?.pitchRubies === 2
       && contourState.furiganaAlignment.pitchCentring <= 1 && contourState.furiganaAlignment.contourGap <= 1
+      && contourState.furiganaAlignment.contourTopSpread < 0.5 && contourState.furiganaAlignment.baseTextSpread < 0.5
+      && contourState.furiganaAlignment.transitions === 2 && contourState.furiganaAlignment.transitionsCoverLines
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
