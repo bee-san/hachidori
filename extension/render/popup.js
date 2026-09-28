@@ -2046,10 +2046,12 @@
 
   // Roots prefer the space above the word; nested panes prefer below it, as
   // Yomitan places a child. Either falls back to the side that fits, then to
-  // the roomier side.
+  // the roomier side. Like Yomitan's _getConstrainedPositionBinary, a pane
+  // that fits on neither side is shortened to that side's room instead of
+  // covering the word, so the requested height is a maximum.
   function calculatePopupPosition(anchorRect, popupSize, viewport, { gap = 4, padding = 6, vertical = false, preferBelow = false } = {}) {
     const width = Math.min(popupSize.width, Math.max(1, viewport.width - padding * 2));
-    const height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
+    let height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
     const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(value, maximum));
     let left;
     let top;
@@ -2067,6 +2069,7 @@
       const spaceAbove = Math.max(0, anchorRect.top - gap - padding);
       const preferred = (space, other) => space >= height || (other < height && space >= other);
       const placeAbove = preferBelow ? !preferred(spaceBelow, spaceAbove) : preferred(spaceAbove, spaceBelow);
+      height = Math.max(1, Math.min(height, placeAbove ? spaceAbove : spaceBelow));
       top = placeAbove ? anchorRect.top - gap - height : anchorRect.bottom + gap;
       left = anchorRect.left;
       placement = placeAbove ? "above" : "below";

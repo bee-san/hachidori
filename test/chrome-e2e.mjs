@@ -420,6 +420,7 @@ const PLANNED = [
   "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports",
+  "a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click",
   "a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
@@ -2275,10 +2276,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       const { x, y, width, height } = back.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
     }
+    // The width follows Design live; the height is at most the Design value,
+    // because in this 240px window a child fits on neither side of its source
+    // link and is shortened beside it rather than covering it (issue #360).
+    const childBesideLink = async () => ({ ...await childState(), link: (await popup.nested())?.linkRect });
+    const sizedBesideLink = (width, height) => value => value.rect.width === Math.min(width, value.viewport.width - 12)
+      && value.rect.height <= Math.min(height, value.viewport.height - 12) && Boolean(value.link)
+      && (value.rect.top >= value.link.bottom || value.rect.bottom <= value.link.top);
     await optionsWrite({ popupWidthPx: 640, popupHeightPx: 480 });
-    const resizedChild = await until(childState, value => value.rect.width === Math.min(640, value.viewport.width - 12)
-      && value.rect.height === Math.min(480, value.viewport.height - 12),
-      "E15 live child dimensions");
+    const resizedChild = await until(childBesideLink, sizedBesideLink(640, 480), "E15 live child dimensions");
     evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
     await optionsWrite({ popupScalePercent: 75 });
     const scaledChild = await until(childState, value => value.rect.width === 480,
@@ -2292,10 +2298,10 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const automaticRoot = (await rootState()).toolbar;
     // Automatic follows the child's own placement: a pane hanging below its
     // source link keeps the toolbar at the top, one rising above it at the
-    // bottom; a pane the viewport clamped over its link may take either edge.
+    // bottom. No pane covers its link.
     const sourceLink = (await popup.nested()).linkRect;
     const automaticChild = value => value.rect.top >= sourceLink.bottom ? ["top"]
-      : value.rect.bottom <= sourceLink.top ? ["bottom"] : ["top", "bottom"];
+      : value.rect.bottom <= sourceLink.top ? ["bottom"] : [];
     evidence.toolbarChild = true;
     for (const edge of ["bottom", "top", "auto"]) {
       await optionsWrite({ popupToolbarPosition: edge });
@@ -2303,8 +2309,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       evidence.toolbarChild &&= (await rootState()).toolbar === (edge === "auto" ? automaticRoot : edge);
     }
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
-    await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
-      && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
+    await until(childBesideLink, sizedBesideLink(560, 420), "E15 restore child dimensions");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 close child lookup");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
@@ -3075,6 +3080,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
   let definitionEvidence;
   let evidence;
   let clickEvidence;
+  let stickyEvidence;
   const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
   async function until(read, predicate, label) {
     const deadline = Date.now() + 10_000;
@@ -3210,6 +3216,42 @@ async function checkNestedLinks(settings, tab, popup, browser) {
         onlyScanJapaneseText: originalOptions.onlyScanJapaneseText ?? true });
     }
   }
+  // Issue #360 with a real mouse, at the reported 800x900 panes in a 1920x945
+  // window: a child that fits on neither side of its link hangs from it,
+  // shortened, and the default activationSticky mode keeps it through the
+  // pointer's return to the parent until a primary click there. The pointer
+  // ends back at `restorePoint` before Hover mode resumes.
+  async function stickyLargeChildScenario(restorePoint) {
+    const evidence = {};
+    const viewport = tab.viewport();
+    await writeOptions({ lookupMode: "activationSticky", popupWidthPx: 800, popupHeightPx: 900 });
+    try {
+      await tab.setViewport({ width: 1920, height: 945 });
+      const root = evidence.root = await until(() => popup.nested(),
+        value => value?.rect.width === 800 && value.viewport.height === 945, "large sticky root");
+      if (!root?.linkPoint) return evidence;
+      await tab.mouse.click(root.linkPoint.x, root.linkPoint.y);
+      evidence.opened = Boolean(await waitForPopupState(child, value => value.plain.includes(fixture.child)));
+      const layout = evidence.layout = await child.nested();
+      const text = await popup.definitionTextRect("A linked definition.");
+      if (!layout || !text) return evidence;
+      const point = { x: text.rect.x + text.rect.width / 2, y: text.rect.y + text.rect.height / 2 };
+      evidence.point = { ...point, covered: inside(layout.rect, point) };
+      await tab.mouse.move(layout.rect.right - 8, layout.rect.bottom - 8);
+      await tab.mouse.move(point.x, point.y);
+      await settle(400);
+      evidence.kept = child.visible(await child.state());
+      await tab.mouse.click(point.x, point.y);
+      evidence.pressed = await child.waitForHidden();
+      evidence.rootKept = popup.visible(await popup.state());
+      return evidence;
+    } finally {
+      await writeOptions({ popupWidthPx: originalOptions.popupWidthPx ?? 560, popupHeightPx: originalOptions.popupHeightPx ?? 420 });
+      await tab.setViewport(viewport);
+      if (restorePoint) await tab.mouse.move(restorePoint.x, restorePoint.y);
+      await writeOptions({ lookupMode: originalOptions.lookupMode ?? "hover" });
+    }
+  }
   await installMediaArchive(settings, fixture.archive);
   try {
     await setDepth(2);
@@ -3318,6 +3360,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await tab.mouse.move(returnPoint.x, returnPoint.y);
     }
     const pointerReturn = await child.waitForHidden();
+    stickyEvidence = await stickyLargeChildScenario(returnPoint);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
@@ -3527,6 +3570,14 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       grandchildSource: definitionEvidence.definitionGrandchildSource, grandchild: definitionEvidence.definitionChain },
     mouse: { link: evidence.source.linkRect, child: evidence.mousePosition }, chain: clickEvidence.chain, scroll: clickEvidence.scroll,
     scaled: clickEvidence.scaled, narrow: { root: evidence.narrowRoot, child: evidence.narrowChild, grandchild: evidence.narrow } }));
+  const large = stickyEvidence ?? {};
+  const largeLink = large.root?.linkRect;
+  const largeAnchored = anchoredTo(large.layout?.rect, largeLink, large.layout?.viewport);
+  check("a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click",
+    large.opened && large.layout?.rect.width === 800 && large.layout.rect.height < 900 && bounded(large.layout)
+      && beside(largeAnchored) && (large.layout.rect.top >= largeLink.bottom || large.layout.rect.bottom <= largeLink.top)
+      && large.point && !large.point.covered && large.kept && large.pressed && large.rootKept,
+    JSON.stringify({ ...large, anchored: largeAnchored }));
   // A keyboard-opened child highlights its source link text, so the retained
   // set is the chain's first two highlights rather than the child's query.
   const highlightsOf = texts => JSON.stringify(texts);

@@ -619,8 +619,11 @@ cancel delayed or unfinished pointer work immediately; the hide delay only
 retains an already-rendered popup for transfer. In `activationSticky` a rendered
 popup ignores key release, pointer movement without the key, an empty scan and
 window departure; outside click, Escape, blur, scrolling its source away, a
-failed lookup or a new lookup still close it. Same-candidate hover, popup entry,
-keyboard focus and Note editing preserve the current view. Dispatching a different
+failed lookup or a new lookup still close it. Its rendered children likewise
+outlive pointer movement through the chain (see
+[Definition popup chains](#definition-popup-chains)). Same-candidate hover,
+popup entry, keyboard focus and Note editing preserve the current view.
+Dispatching a different
 valid pointer candidate retires the previous popup, matching the pinned reader's
 `queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
 or resume expired glossary/media callbacks. Interaction-only settings changes do
@@ -1142,9 +1145,15 @@ that child's term request; its next Back closes the child and returns focus to a
 connected source link when one initiated the lookup.
 
 Keyboard link activation focuses the child's Back control; mouse activation
-does not invent keyboard focus that would block pointer-return pruning. Returning
-to an ancestor prunes descendants after the normal hide delay, unless a draft,
-pending Note append, or deliberate keyboard focus still protects them. A primary
+does not invent keyboard focus that would block pointer-return pruning. In
+`hover` and `activation`, which auto-hide the root, returning to an ancestor
+prunes descendants after the normal hide delay, unless a draft, pending Note
+append, or deliberate keyboard focus still protects them. In `activationSticky`
+pointer movement never prunes a rendered child: entering or resting in an
+ancestor, an empty scan there and hovering a non-dictionary link there all leave
+it open, as Yomitan's children stay open without "Hide popup on cursor exit". An
+unfinished hover child is still cancelled when the pointer leaves its word. In
+every mode a primary
 press in an ancestor pane retires its descendants at once, focused or not, and
 drops a pending definition scan; only an open draft or pending append keeps
 them, and Escape still closes that form first. A press on an internal link keeps
@@ -1154,8 +1163,12 @@ transfer uses actual pane rectangles and narrow connecting gaps, with 80 ms grac
 before resuming the current page scan. No layout is read in raw mousemove before
 the existing throttle. Like Yomitan, each child is placed from its own source
 rectangle: below the word when that fits, otherwise above, aligned with the
-word's left edge and clamped to the viewport, so it overlaps its parent rather
-than sitting beside it. Layout callbacks start
+word's left edge and clamped horizontally to the viewport, so it overlaps its
+parent rather than sitting beside it. For horizontal text, a pane that fits on
+neither side takes the roomier one and is shortened to its room, keeping the
+gap and viewport padding, so it never covers the text that opened it; roots,
+which prefer the space above their page word, follow the same rule. The
+configured or session size is therefore a maximum. Layout callbacks start
 at their owning level and reposition descendants without redoing ancestor
 layout; no ancestor pane is measured for any descendant.
 Dirty panes share one animation-frame batch: each runs its own masonry before
