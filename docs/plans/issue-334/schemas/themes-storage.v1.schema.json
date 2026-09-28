@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bee-san/hachidori/blob/main/docs/themes/schemas/themes-storage.v1.schema.json",
   "title": "chrome.storage.local `themes` record, version 1",
-  "description": "Owned and written only by the service worker (hd_themes_cas with baseRevision, like hd_options_write at background.js:1250-1258 on main 7ff01b1). Read directly by the content script and Settings at start and on storage.onChanged. `installed` joins backups (backup-state.js:13-18); `catalogue` is a cache and is excluded. Sharing carries only options.popupTheme. Installed themes are colour data only: Hachidori compiles each palette into a CSS block locally; nothing downloaded is ever adopted as CSS or run as code.",
+  "description": "Owned and written only by the service worker (hd_themes_cas with baseRevision, like hd_options_write at background.js:1250-1258 on main 3c7e9df). Read directly by the content script and Settings at start and on storage.onChanged. `installed` joins backups (backup-state.js:13-18); `catalogue` is a cache and is excluded. Sharing carries only options.popupTheme. Installed themes are colour data only: Hachidori compiles each palette into a CSS block locally; nothing downloaded is ever adopted as CSS or run as code.",
   "type": "object",
   "additionalProperties": false,
   "required": [

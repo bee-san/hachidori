@@ -230,7 +230,7 @@
     "palette": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The 17 colours plus color-scheme that every reader.css palette block declares today (reader.css:32-959 on main 7ff01b1).",
+      "description": "The 17 colours plus color-scheme that every reader.css palette block declares today (reader.css:32-959 on main 3c7e9df).",
       "required": [
         "color-scheme",
         "base-100",
@@ -343,6 +343,7 @@
         "compactDefinitionSummaryDictionary",
         "averageFrequency",
         "showFrequencyDictionaryNames",
+        "compactFrequencyNumbers",
         "showPitchAccentFurigana",
         "pitchAccentFuriganaDictionary",
         "showPitchAccentBadge",
@@ -438,7 +439,7 @@
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
-      "description": "One-shot suggestions written together with the theme on 'Use this theme', with Undo; never locked or re-applied (#334 comment 5814181505). Bounds mirror reader-options.js NUMBER_RANGES (145-163 on main 7ff01b1).",
+      "description": "One-shot suggestions written together with the theme on 'Use this theme', with Undo; never locked or re-applied (#334 comment 5814181505). Bounds mirror reader-options.js NUMBER_RANGES (146-164 on main 3c7e9df).",
       "properties": {
         "popupOpacityPercent": {
           "type": "integer",
@@ -482,6 +483,9 @@
           "type": "boolean"
         },
         "showFrequencyDictionaryNames": {
+          "type": "boolean"
+        },
+        "compactFrequencyNumbers": {
           "type": "boolean"
         },
         "showPitchAccentFurigana": {

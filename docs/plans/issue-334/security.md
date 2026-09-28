@@ -44,8 +44,8 @@ Each item below stays for a reason that has nothing to do with trusting theme au
 
 Dictionaries are third-party data, not reviewed themes. c26: "Preserve dictionary-content sanitisation. Reviewed renderer code does not make dictionary-supplied HTML/CSS trusted."
 
-- Rich glossaries keep going through the structured-content renderer ([appendStructuredValue](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1060)).
-- Dictionary styles stay behind [isSafeDictionaryStyle](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1326-L1342) and [filterDictionaryStyleRules](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1371-L1389), scoped with `@scope` ([applyDictionaryStyles](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1394-L1447)).
+- Rich glossaries keep going through the structured-content renderer ([appendStructuredValue](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L933)).
+- Dictionary styles stay behind [isSafeDictionaryStyle](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1199-L1213) and [filterDictionaryStyleRules](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1242-L1260), scoped with `@scope` ([applyDictionaryStyles](https://github.com/bee-san/hachidori/blob/main/extension/render/glossary.js#L1265-L1318)).
 - Renderers receive glossaries only as opaque handles (`ctx.glossary`).
 - Text mode ([c27](https://github.com/bee-san/hachidori/issues/334#issuecomment-5871156145)) builds no dictionary DOM or CSS at all.
 
@@ -72,6 +72,6 @@ The themes workflows run on `pull_request` with `permissions: contents: read`, n
 
 | Finding | Detail |
 | --- | --- |
-| **The popup's shadow root is open** | [content.js:2077](https://github.com/bee-san/hachidori/blob/main/extension/content.js#L2060-L2099) is pinned by test/custom-javascript.test.mjs:82 so Custom JS can reach it. Page scripts can therefore read popup content. docs/architecture.md says "closed" (lines 12, 825, 1114, 1129, 1505, 1612) and relies on that for the dictionary CSS prefix secrecy. T-02 fixes the docs, and open question 13 asks whether to close the root when Custom JS is empty. |
-| **User Custom CSS can fetch** | `url()` rules in Custom CSS can request resources and learn looked-up words, as the body's leak probe showed. It is user-provided, and the hint at [settings.html:827](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L827) says so (open question 1). |
+| **The popup's shadow root is open** | [content.js:2078](https://github.com/bee-san/hachidori/blob/main/extension/content.js#L2061-L2100) is pinned by test/custom-javascript.test.mjs:82 so Custom JS can reach it. Page scripts can therefore read popup content. docs/architecture.md says "closed" (lines 12, 828, 1120, 1135, 1521, 1628) and relies on that for the dictionary CSS prefix secrecy. T-02 fixes the docs, and open question 13 asks whether to close the root when Custom JS is empty. |
+| **User Custom CSS can fetch** | `url()` rules in Custom CSS can request resources and learn looked-up words, as the body's leak probe showed. It is user-provided, and the hint at [settings.html:831](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L831) says so (open question 1). |
 | **Custom JS runs on every page** | `chrome.userScripts` with `<all_urls>` ([custom-javascript.js:18-24](https://github.com/bee-san/hachidori/blob/main/extension/custom-javascript.js#L8-L26)). docs/privacy.md has no paragraph on it yet (T-02). |

@@ -54,7 +54,7 @@ HDRenderers.register({
 | Member | Meaning |
 | --- | --- |
 | `root` | Renderer-owned `div[data-hd-renderer=<id>]` inside the level's `.gsm-hoshidicts-popup`. The host empties it between renderers. |
-| `depth`, `options` | Popup level. A frozen copy of the Design keys (`DESIGN_OPTION_KEYS`, reader-options.js:182-187) plus metadata keys. Read-only. |
+| `depth`, `options` | Popup level. A frozen copy of the Design keys (`DESIGN_OPTION_KEYS`, reader-options.js:183-188) plus metadata keys. Read-only. |
 | `env` | Frozen `{ reducedMotion, forcedColors, colorScheme, pageZoom, apiVersion }`. Changes arrive as `update({type:"env"})`. |
 | `el(tag, props?, ...children)`, `text(string)` | The only sanctioned way to create DOM. `props` sets properties, attributes, `data-*` and `aria-*`. `on*` and HTML strings are refused. |
 | `on(node, type, handler, options?)` | Listener on a node inside `root`. Wrapped in the failure guard and removed on destroy. |
@@ -74,7 +74,7 @@ HDRenderers.register({
 
 `playAudio(index, { source? })` · `openAudioMenu(index, anchorNode)` · `mine(index, "add" | "view")` · `openNote(index)` · `customButton(index, buttonId)` · `lookupKanji(character, sourceNode)` · `lookupText(text, sourceNode)` (nested popup) · `back()` · `close()` · `selectTab(tabId)` · `showMore()` · `revealDefinitions()` · `openExternal(url)` (through `hd_open_external`) · `retry()` · `state(index) → { audio: "idle"|"loading"|"playing"|"unavailable", mining: { state: "unknown"|"ready"|"adding"|"added"|"duplicate"|"error", canView } }`.
 
-Keybinds (`addNote`, `viewNotes`, `playAudio`, `playAudioFromSource`, `historyBackward`, entry navigation), autoplay and custom Anki buttons go through the same actions. So **omitting or moving a button never breaks them** (T-16, T-15). Today they are coupled to Default elements: `level.entryMining[entry].actions.querySelector(".gsm-hoshidicts-mine-button…")` and `level.entryAudio[entry].button` in `runKeybindAction` (content.js:3794-3835), `playButton(button)` in audio-content.js:286, and the mine button injected by anki-content.js `controls()` (465). `copyText` is backlog T-62.
+Keybinds (`addNote`, `viewNotes`, `playAudio`, `playAudioFromSource`, `historyBackward`, entry navigation), autoplay and custom Anki buttons go through the same actions. So **omitting or moving a button never breaks them** (T-16, T-15). Today they are coupled to Default elements: `level.entryMining[entry].actions.querySelector(".gsm-hoshidicts-mine-button…")` and `level.entryAudio[entry].button` in `runKeybindAction` (content.js:3800-3841), `playButton(button)` in audio-content.js:286, and the mine button injected by anki-content.js `controls()` (465). `copyText` is backlog T-62.
 
 ## 5. Update events (`view.update(event)`)
 
@@ -97,25 +97,25 @@ Each call returns a detached Node that already carries its roles (§7) and actio
 
 ## 7. Semantic roles (read by core; replace Default class selectors)
 
-| Attribute | Core behaviour that reads it | Default class it replaces (content.js line on main 7ff01b1) |
+| Attribute | Core behaviour that reads it | Default class it replaces (content.js line on main 3c7e9df) |
 | --- | --- | --- |
 | `data-hd-scan` | Hover over it starts a nested lookup | `.gsm-hoshidicts-glossary-content, .gsm-hoshidicts-compact-definition-summary` (1071) |
-| `data-hd-blur` | Blurred when blur is on, revealed on hover | `.gsm-hoshidicts-definitions, …compact-definition-summary` (2154) |
-| `data-hd-role="entry"` + `data-hd-entry="<index>"` | Entry navigation, current entry | `.gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry` (popup.js:2252-2259) |
-| `data-hd-role="kanji-link"` | Focus restore after Back | `.gsm-hoshidicts-kanji-link` (2771-2777) |
-| `data-hd-role="back"` / `"close"` | Focus, `historyBackward`, mine-button placement | `.gsm-hoshidicts-kanji-back`, `.gsm-hoshidicts-popup-close` (3825; popup.js:2494-2495; anki-content.js) |
-| `data-hd-role="tab"` | Retained focus on re-render | `[role="tab"]` (popup.js:2494) |
-| `data-hd-role="audio"`, `"mine"` | Painted state only. Actions are index-based. | `.gsm-hoshidicts-audio-control` (audio-content.js:40), `.gsm-hoshidicts-mine-button` (3828-3829) |
+| `data-hd-blur` | Blurred when blur is on, revealed on hover | `.gsm-hoshidicts-definitions, …compact-definition-summary` (2155) |
+| `data-hd-role="entry"` + `data-hd-entry="<index>"` | Entry navigation, current entry | `.gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry` (popup.js:2267-2274) |
+| `data-hd-role="kanji-link"` | Focus restore after Back | `.gsm-hoshidicts-kanji-link` (2777-2783) |
+| `data-hd-role="back"` / `"close"` | Focus, `historyBackward`, mine-button placement | `.gsm-hoshidicts-kanji-back`, `.gsm-hoshidicts-popup-close` (3831; popup.js:2509-2510; anki-content.js) |
+| `data-hd-role="tab"` | Retained focus on re-render | `[role="tab"]` (popup.js:2509) |
+| `data-hd-role="audio"`, `"mine"` | Painted state only. Actions are index-based. | `.gsm-hoshidicts-audio-control` (audio-content.js:40), `.gsm-hoshidicts-mine-button` (3834-3835) |
 | `a[data-hoshidicts-query]` | Internal links open child popups | unchanged (glossary.js structured links) |
 
 ## 8. Lifecycle, reasons, incremental results
 
 1. Selection is resolved **before** any result content is built. When Nazeka is selected, the Default renderer does not run.
 2. `createView` runs once per level and renderer. `renderTerms`/`renderKanji`/`renderState` run for every render. `model.reason` says why: `lookup | show-more | tab | back | presentation | options | replay | fallback`. This covers the "why did I run?" gap reported by five proposals.
-3. Show more, tabs and Back re-render with a new model. The renderer decides how much to draw. It can draw progressively with `ctx.schedule` and `reportRendered`, or use `components.showMore` (Default keeps its current 8 ms batches, popup.js:3612).
+3. Show more, tabs and Back re-render with a new model. The renderer decides how much to draw. It can draw progressively with `ctx.schedule` and `reportRendered`, or use `components.showMore` (Default keeps its current 8 ms batches, popup.js:3619).
 4. **Stale work is dropped**: the host passes `request.generation` and ignores renderer output for an older generation, including late `ctx.schedule` callbacks.
 5. Back: the host calls `snapshot()` before showing the kanji view and `restore()` after re-rendering the terms. Only renderer-owned disclosures are restored, which fixes the Tategaki report ([5817966878](https://github.com/bee-san/hachidori/issues/334#issuecomment-5817966878) gap 6).
-6. Focus: a focused popup pauses hover scanning (`popupHasFocus`, content.js:2664). Theme authors must know this. Escape stays a core keybind (close).
+6. Focus: a focused popup pauses hover scanning (`popupHasFocus`, content.js:2670). Theme authors must know this. Escape stays a core keybind (close).
 7. Switching theme calls `destroy()` on every level's view, releases `ctx.on`/`ctx.schedule`, removes the renderer's stylesheet, creates the new renderer's views, and re-renders visible levels from their last models (`reason: "options"`).
 
 ## 9. Failure and fallback

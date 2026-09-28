@@ -2,7 +2,7 @@
 
 The plan for [bee-san/hachidori#334](https://github.com/bee-san/hachidori/issues/334), "Theme Store: community themes repo, per-theme popup renderers and Design UI". The issue body carries the core plan and the kanban board. This folder carries the full detail: one file per card, the frozen contracts as JSON Schema, examples, and the history.
 
-Download: [issue-334.zip](https://github.com/bee-san/hachidori/blob/plan/issue-334/docs/plans/issue-334.zip) (this folder). Line links point at `main` and were verified at **7ff01b1** (2026-09-28).
+Download: [issue-334.zip](https://github.com/bee-san/hachidori/blob/plan/issue-334/docs/plans/issue-334.zip) (this folder). Line links point at `main` and were verified at **3c7e9df** (2026-09-28).
 
 ## The plan in one paragraph
 

@@ -287,7 +287,7 @@
         },
         "suggestedOptions": {
           "type": "object",
-          "maxProperties": 13
+          "maxProperties": 14
         },
         "preview": {
           "type": "object",

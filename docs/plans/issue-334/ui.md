@@ -4,11 +4,11 @@ bee-san asked for a mock-up screenshot ([c08](https://github.com/bee-san/hachido
 
 ## Placement
 
-Settings → Design ([settings.html:621-859](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L621-L859)):
+Settings → Design ([settings.html:621-863](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L621-L863)):
 
 - **Appearance**: the existing Theme `<select id="opt-popup-theme">` ([634](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L629-L686)). It is built from the vendored catalogue plus installed themes (T-40), in groups: *Automatic* · *Palettes: Dark / Light / High contrast* · *Layouts* (renderer themes, only with `experimental.themeStore`) · *Installed*. An unavailable stored slug shows as "<slug> (not installed)" and is kept.
 - **Theme Store**: a new `<section>` between Appearance and Definitions ([688](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L688)), shown only with `experimental.themeStore` (T-41).
-- **Custom CSS / Custom JavaScript**: unchanged. The hint now says "Applied on top of the theme" ([819](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L816-L839), T-02).
+- **Custom CSS / Custom JavaScript**: unchanged. The hint now says "Applied on top of the theme" ([819](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L820-L843), T-02).
 
 ## Wireframe
 
@@ -63,7 +63,7 @@ The speed line shows the onRender prototype's measured short-entry numbers (evid
 
 ## Accessibility
 
-- The grid is a `<ul role="list">` of `<li><article aria-labelledby=…>` cards with **one** primary button each. This reuses the recommended-dictionary list pattern ([settings.html:238-262](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L238-L262), [renderRecommendedCatalogue](https://github.com/bee-san/hachidori/blob/main/extension/settings.js#L1210)).
+- The grid is a `<ul role="list">` of `<li><article aria-labelledby=…>` cards with **one** primary button each. This reuses the recommended-dictionary list pattern ([settings.html:238-262](https://github.com/bee-san/hachidori/blob/main/extension/settings.html#L238-L262), [renderRecommendedCatalogue](https://github.com/bee-san/hachidori/blob/main/extension/settings.js#L1211)).
 - Search is a labelled `<input type="search">`. Kind and tag filters are toggle buttons with `aria-pressed`.
 - The detail pane is a region with a heading. Opening it moves focus to its heading, and closing it returns focus to the card that opened it.
 - State changes (installed, update failed, undo) are announced through one `aria-live="polite"` status.

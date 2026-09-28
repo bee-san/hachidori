@@ -230,7 +230,7 @@ GROUPS = [("1/3", "Phases 0–1 (decisions, contracts, spikes; core seams)", [0,
           ("3/3", "Phases 4–6 (Settings and Theme Store; vendoring, acceptance, release; backlog)", [4, 5, 6])]
 for tag, title, phases in GROUPS:
     body = [f"## #334 plan — task cards {tag}: {title}", "",
-            f"Overflow from the issue body, which has the core plan and the kanban board. Every card here is also a file in [{'docs/plans/issue-334/tasks/'}]({PLAN_TREE}/tasks) on branch `plan/issue-334` ([zip](https://github.com/bee-san/hachidori/blob/plan/issue-334/docs/plans/issue-334.zip)). Line links point at `main` and were verified at 7ff01b1. They drift as main moves, so resolve them by symbol name if they no longer match.",
+            f"Overflow from the issue body, which has the core plan and the kanban board. Every card here is also a file in [{'docs/plans/issue-334/tasks/'}]({PLAN_TREE}/tasks) on branch `plan/issue-334` ([zip](https://github.com/bee-san/hachidori/blob/plan/issue-334/docs/plans/issue-334.zip)). Line links point at `main` and were verified at 3c7e9df. They drift as main moves, so resolve them by symbol name if they no longer match.",
             ""]
     for c in CARDS:
         if c["phase"] in phases:

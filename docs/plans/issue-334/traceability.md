@@ -5,11 +5,11 @@ The original body is kept verbatim in [history/original-body.md](history/origina
 | Original section / item | Now |
 | --- | --- |
 | Problem: origin comment from #330 and the reading moment | Issue body *Problem* (kept). [#330 quote](evidence.md#4-external-checks-2026-09-28). |
-| Problem: "What exists today" (7 bullets) | [architecture.md §3](architecture.md#3-hachidori-today-what-the-plan-changes), re-verified at 7ff01b1 with corrections (18 properties, one constructed sheet, `<style>` dictionary CSS, Firefox gone, all_frames, open shadow root) |
+| Problem: "What exists today" (7 bullets) | [architecture.md §3](architecture.md#3-hachidori-today-what-the-plan-changes), re-verified at 3c7e9df with corrections (18 properties, one constructed sheet, `<style>` dictionary CSS, Firefox gone, all_frames, open shadow root) |
 | Problem: Design settings table ("Movable to a theme?") | Issue body *Problem* (kept, updated to suggestions + `ignores`). [data-model.md](data-model.md) |
 | Expected behavior 1–9 | Issue body *Expected behavior* (rewritten for renderers and c28; each item maps to cards) |
 | Yomitan's closest behaviour | [evidence.md §3](evidence.md#3-yomitan-checked-for-the-yomitan-theme-ask-and-for-comparison) (display.js lines updated to 67db60d) |
-| Environment | Issue body *Environment* (Hachidori 0.1.6 at main 7ff01b1; Firefox removed; Chrome for Testing 152.0.7977.75) |
+| Environment | Issue body *Environment* (Hachidori 0.1.6 at main 3c7e9df; Firefox removed; Chrome for Testing 152.0.7977.75) |
 | Evidence: Nazeka (JS) prototype, fidelity, fault isolation, lint gate, theme.yaml/js/css | [evidence.md §1](evidence.md) (verbatim). The fidelity list became T-32's steps. The manifest became [examples/themes/nazeka/theme.yaml](examples/themes/nazeka/theme.yaml) (schema 2). |
 | Evidence: benchmark table, run 1 vs run 2 | [evidence.md §1](evidence.md) (verbatim). The preload finding became T-05/T-20 and renderer-api.md §12. |
 | Evidence: CSS drafts and the Custom-CSS leak | [evidence.md §1](evidence.md) (verbatim). The leak now motivates only the Custom CSS hint (open question 1), because after c28 no theme CSS is downloaded (D24). |

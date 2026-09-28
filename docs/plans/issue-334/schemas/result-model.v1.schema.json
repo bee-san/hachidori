@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bee-san/hachidori/blob/main/docs/themes/schemas/result-model.v1.schema.json",
   "title": "Hachidori popup result model, modelVersion 1",
-  "description": "What a renderer receives (renderTerms / renderKanji / renderState). Frozen by T-01; built by extension/render/result-model.js (T-12) from the objects view.renderResults receives today (render/popup.js:3890). The live model is deep-frozen plain data except glossary handles, which are opaque: only ctx.glossary and components.glossary can read them, so dictionary HTML/CSS stays behind the existing sanitisation (#334 comment 5870917807). Fixture JSON may carry `raw` inside a handle so a test host can hydrate it; the live object never exposes it. Additive changes (new optional fields, new enum members in `reason`) keep modelVersion 1 and must be ignored by renderers that do not know them; anything else is modelVersion 2.",
+  "description": "What a renderer receives (renderTerms / renderKanji / renderState). Frozen by T-01; built by extension/render/result-model.js (T-12) from the objects view.renderResults receives today (render/popup.js:3896). The live model is deep-frozen plain data except glossary handles, which are opaque: only ctx.glossary and components.glossary can read them, so dictionary HTML/CSS stays behind the existing sanitisation (#334 comment 5870917807). Fixture JSON may carry `raw` inside a handle so a test host can hydrate it; the live object never exposes it. Additive changes (new optional fields, new enum members in `reason`) keep modelVersion 1 and must be ignored by renderers that do not know them; anything else is modelVersion 2.",
   "oneOf": [
     { "$ref": "#/$defs/termModel" },
     { "$ref": "#/$defs/kanjiModel" },
@@ -23,7 +23,7 @@
       }
     },
     "source": {
-      "description": "The looked-up page text and its sentence (content.js refineSentence, 690-695 on main 7ff01b1). Unifies the schema-1 `view.lookup` and the proposed `view.source`. null when the reader has no sentence.",
+      "description": "The looked-up page text and its sentence (content.js refineSentence, 690-695 on main 3c7e9df). Unifies the schema-1 `view.lookup` and the proposed `view.source`. null when the reader has no sentence.",
       "oneOf": [
         { "type": "null" },
         {
@@ -130,7 +130,7 @@
         "reading": { "type": "string" },
         "furigana": {
           "type": "array",
-          "description": "Data-level ruby segments (what appendExpressionRuby builds as DOM today, glossary.js:386).",
+          "description": "Data-level ruby segments (what appendExpressionRuby builds as DOM today, glossary.js:396).",
           "items": {
             "type": "object", "additionalProperties": false, "required": ["text", "reading"],
             "properties": { "text": { "type": "string" }, "reading": { "type": ["string", "null"] } }
@@ -149,7 +149,7 @@
         "frequencies": { "type": "array", "items": { "$ref": "#/$defs/frequency" } },
         "pitches": { "type": "array", "items": { "$ref": "#/$defs/pitch" } },
         "ipa": { "type": "array", "items": { "$ref": "#/$defs/ipa" } },
-        "summary": { "type": ["string", "null"], "description": "Compact definition summary text (extractCompactDefinitionSummary, popup.js:1963) when the option is on." }
+        "summary": { "type": ["string", "null"], "description": "Compact definition summary text (extractCompactDefinitionSummary, popup.js:1975) when the option is on." }
       }
     },
     "termModel": {
