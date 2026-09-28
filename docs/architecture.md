@@ -932,9 +932,17 @@ the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and rank, occurrence and unspecified dictionaries aggregate
 separately. Each dictionary contributes its first usable value once. Type labels
 remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
-with source names hidden; individual dictionary names are not shown for an
-aggregate. These display controls do not change native frequency sorting or
-lookup results.
+with source names hidden, and each aggregate carries `data-frequency-average`
+(`rank-based`, `occurrence-based` or `unspecified`). As in Yomitan, every tag
+that averages-off shows stays in the DOM after the aggregates, unchanged apart
+from the `hidden` attribute. Hidden tags take no layout or metadata display
+budget, stay out of the accessibility tree and still follow alias renames.
+Custom CSS can reveal them with
+`.gsm-hoshidicts-tag-frequency[hidden] { display: inline-flex; }`; a result with
+no value to average also hides its frequency group or row, which such a
+stylesheet must reveal too. Theme rules that want only the visible values can
+add `:not([hidden])`. These display controls do not change native frequency
+sorting or lookup results.
 
 The preferred pitch source is a soft canonical-title preference: unavailable or
 disabled sources fall back to another usable pitch source. A committed rename
