@@ -19764,6 +19764,63 @@ async function contentNoteStage() {
       }
       result["hover mode and keyboard activation keep a middle press closing the popup without cancelling it"] =
         ordinary.every((value) => value === true) || ordinary;
+
+      // Issue #355's Child popups wait for the scan button as for a key: in No
+      // key mode only a press over a popup's definitions is a scan press, and
+      // with Click none is.
+      const addDefinition = () => {
+        const words = document.createElement("div");
+        words.className = "gsm-hoshidicts-glossary-content";
+        const word = document.createElement("span");
+        word.textContent = "食用語";
+        words.append(word);
+        harness.driver.popupAt(0).querySelector(".gsm-hoshidicts-definitions").append(words);
+        document.caretPositionFromPoint = () => ({ offsetNode: word.firstChild, offset: 0 });
+        harness.driver.onPopupMouseMove({ clientX: 120, clientY: 80, target: word });
+        return word;
+      };
+      reset({ lookupMode: "hover", activationKey: "MouseMiddle", definitionLookupMode: "activation" });
+      mouse("mousemove", { buttons: 0 });
+      fire(0);
+      const pageHover = await answer("食べた");
+      const heldWord = addDefinition();
+      fire(0);
+      const childGated = harness.take("hd_lookup") === null;
+      const childPress = press(1, 4, heldWord);
+      fire(0);
+      const heldChild = await answer("食用語");
+      release(1, heldWord);
+      const childClick = mouse("auxclick", { button: 1 }, heldWord);
+      const pagePress = press(1, 4);
+      release(1);
+      const pageClick = mouse("auxclick", { button: 1 });
+      const pageClosed = harness.driver.snapshot().popupHidden;
+      events();
+      const idlePress = press(1, 4);
+      release(1);
+      fire(0);
+      const idle = { prevented: idlePress.defaultPrevented, events: events(), lookup: harness.take("hd_lookup") };
+      reset({ lookupMode: "activationSticky", activationKey: "MouseMiddle", definitionLookupMode: "click" });
+      press(1, 4);
+      fire(0);
+      await answer("食べた");
+      release(1);
+      mouse("auxclick", { button: 1 });
+      const clickWord = addDefinition();
+      const clickPress = press(1, 4, clickWord);
+      fire(0);
+      const clickLookup = harness.take("hd_lookup");
+      release(1, clickWord);
+      result["child popups set to hold the key wait for a scan button in No key mode, and Click ignores it"] =
+        (pageHover !== null && childGated && childPress.defaultPrevented && heldChild?.request.text.startsWith("食用語")
+          && childClick.defaultPrevented && !pagePress.defaultPrevented && !pageClick.defaultPrevented && pageClosed
+          && !idle.prevented && idle.events.length === 0 && idle.lookup === null
+          && !clickPress.defaultPrevented && clickLookup === null)
+        || { pageHover: pageHover !== null, childGated, childPress: childPress.defaultPrevented,
+          heldChild: heldChild?.request.text, childClick: childClick.defaultPrevented,
+          pagePress: pagePress.defaultPrevented, pageClick: pageClick.defaultPrevented, pageClosed,
+          idle: { ...idle, lookup: idle.lookup !== null }, clickPress: clickPress.defaultPrevented,
+          clickLookup: clickLookup !== null };
     } finally {
       harness.close();
     }

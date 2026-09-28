@@ -601,7 +601,9 @@ What it proves, in order:
    release. It cancels autoscroll over text, Back navigation and a middle click's
    new tab only on a looked-up word, opens nested lookups from definitions,
    leaves popup links and focused editors alone, and changes nothing in Hover
-   mode or with a keyboard key. Yomitan's `mouse2` names stay invalid.
+   mode or with a keyboard key. Child popups set to hold the key wait for the
+   button in No key mode, where only a press over definitions is a scan press,
+   and Click ignores it. Yomitan's `mouse2` names stay invalid.
    A successful hover expands its initial one-glyph placement range to the
    complete matched word before rendering. Text moved outside the source during
    a pending lookup retains the original glyph anchor.
