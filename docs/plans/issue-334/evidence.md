@@ -102,6 +102,8 @@ Round 1 ([folder root](https://github.com/bee-san/hachidori/tree/evidence/issue-
 
 ## 2. The ten theme proposals (comments 10–25)
 
+At 18:24 UTC on 2026-09-28 bee-san moved each proposal to an issue in the themes repository ([`bee-san/hachidori-themes` issues #1–#10](https://github.com/bee-san/hachidori-themes/issues), to be renamed `hachidori-theme-store`). The comments in #334 now link to those issues. The screenshots and files below stay on the evidence branches.
+
 Each proposal was built on the onRender prototype host (`host-prototype.patch`) and captured in the real popup in Chrome for Testing 152.0.7977.75. Its API gaps are summarised in [decisions.md](decisions.md) D9, D12, D13 and D16 and in the backlog cards. After c26/c28 each one becomes a renderer port (T-70–T-79), because their DOM scraping and hiding of Default is exactly what the renderer model removes.
 
 ### Kanji Atlas — `kanji-atlas` (T-70)
@@ -238,7 +240,7 @@ Clone `yomidevs/yomitan` @ `67db60ddc2cbd7b5172d777c117e3201d7ddff0f` (2026-09-2
 
 ## 4. External checks (2026-09-28)
 
-- `gh repo view bee-san/hachidori-theme-store` → "Could not resolve to a Repository" (T-04 creates it).
+- Themes repository: `bee-san/hachidori-themes` was created 18:23 UTC (README + proposal issues #1–#10). `bee-san/hachidori-theme-store` does not exist yet, so T-04 renames the existing repository.
 - Evidence branches (head · files under `docs/evidence/`):
   - store `5bfabe5` (67)
   - kanji-atlas `4f85713` (35)

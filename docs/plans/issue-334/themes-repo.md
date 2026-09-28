@@ -1,6 +1,6 @@
 # The `bee-san/hachidori-theme-store` repository
 
-`gh repo view bee-san/hachidori-theme-store` returns "Could not resolve to a Repository" (checked 2026-09-28), so the name is free. The maintainer creates it (T-04). The evidence skeleton lives on [`evidence/issue-330-theme-store`](https://github.com/bee-san/hachidori/tree/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/hachidori-themes-skeleton): schema, validate.mjs, lint config and PR template. It is the starting point, with the fixes listed in "Skeleton fixes" below.
+The repository was created at 18:23 UTC on 2026-09-28 as **`bee-san/hachidori-themes`**. It has a README and the ten proposal issues #1–#10 moved out of #334. The owner then named it `hachidori-theme-store`, which does not exist yet, so T-04 renames the existing repository and GitHub redirects the old links. The evidence skeleton lives on [`evidence/issue-330-theme-store`](https://github.com/bee-san/hachidori/tree/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/hachidori-themes-skeleton): schema, validate.mjs, lint config and PR template. It is the starting point, with the fixes listed in "Skeleton fixes" below.
 
 ## Layout
 

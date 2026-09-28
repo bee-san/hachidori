@@ -4,6 +4,12 @@ The plan for [bee-san/hachidori#334](https://github.com/bee-san/hachidori/issues
 
 Download: [issue-334.zip](https://github.com/bee-san/hachidori/blob/plan/issue-334/docs/plans/issue-334.zip) (this folder). Line links point at `main` and were verified at **3c7e9df** (2026-09-28).
 
+## Milestones (read this first)
+
+- **MVP first.** At 18:23 UTC bee-san rewrote the issue body into an MVP brief (kept verbatim in [history/body-2026-09-28-mvp.md](history/body-2026-09-28-mvp.md)): an experimental Store with **Default and Nazeka**, direct renderers, text mode, clean switching and fallback, preview parity, focused checks and benchmark evidence.
+- The owner's later update adds **Plain** next to Nazeka, names the repository **`bee-san/hachidori-theme-store`**, and makes delivery **straight into `main` behind `experimental.themeStore`**.
+- The MVP is 24 cards (marked *MVP* on the board). Everything else follows it: remote catalogue refresh, migrating all palettes, the full Store, Yomitan and Rikaikun, community renderers, and the full CI gates.
+
 ## The plan in one paragraph
 
 A theme is **its own popup**, not CSS or JS over the normal one ([c28](https://github.com/bee-san/hachidori/issues/334#issuecomment-5872606542)). It is either a **palette** (colours for the Default popup: the 42 today) or a **renderer**. A renderer is bundled JavaScript that builds the popup from a structured result model, with its own CSS, and Default does not run under it ([c26](https://github.com/bee-san/hachidori/issues/334#issuecomment-5870917807)). A **variant** is a renderer with another palette.
@@ -14,7 +20,7 @@ A theme is **its own popup**, not CSS or JS over the normal one ([c28](https://g
 - Hachidori vendors them at release time (renderer JS is never fetched: Chrome Web Store rule). Palettes and variants can also come from a refreshed catalogue as colour data.
 - Every theme is benchmarked end-to-end against Default in CI.
 - The Store lives in Settings → Design behind `experimental.themeStore`. Every Hachidori-side card merges straight into `main` behind that flag, with no long-lived feature branch. Theme cards are PRs to `bee-san/hachidori-theme-store`.
-- 56 cards, contract first, are built to run in parallel by several agents.
+- 57 cards, contract first, are built to run in parallel by several agents. The MVP comes first.
 
 ## Reading order
 
@@ -32,7 +38,7 @@ A theme is **its own popup**, not CSS or JS over the normal one ([c28](https://g
 | [parallel-plan.md](parallel-plan.md) | Contract freeze, lanes and hotspot locks, critical path and waves, agent protocol, GitHub setup |
 | [kanban.md](kanban.md) · [tasks/](tasks/) | The board and one file per card (T-00…T-79) |
 | [evidence.md](evidence.md) | The original evidence (verbatim), the ten proposals with all their screenshots, the Yomitan check, external checks |
-| [traceability.md](traceability.md) · [history/](history/) | Where every original section went; the original body verbatim; an index of all 29 comments |
+| [traceability.md](traceability.md) · [history/](history/) | Where every original section went; the original body and the 18:23 MVP body, both verbatim; an index of every comment |
 | [schemas/](schemas/) · [examples/](examples/) | theme-manifest v2, theme-index v1, result-model v1, themes-storage v1, theme-benchmark v1; valid examples, including an illustrative `nazeka.renderer.js` |
 | [scripts/](scripts/) | `validate-examples.mjs` (Ajv 2020 strict: schemas compile, examples pass, 14 negative cases fail) · `create-cards.sh` (dry-run GitHub bootstrap) · `cards/` (card data + renderer that regenerates tasks/, kanban.md and the issue fragments) |
 

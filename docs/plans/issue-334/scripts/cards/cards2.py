@@ -98,7 +98,7 @@ card(id="T-31", phase=3, title="Default as a v1 renderer module", owner="core ag
      accept=["popup.js shrinks by about 1,700 lines; Default is just another registered renderer; no behaviour change."],
      short="Default registered like any renderer; legacy adapter gone; no behaviour change", src=["c26"])
 
-card(id="T-32", phase=3, title="Nazeka renderer: text only, its own popup", owner="renderer agent", size="L", deps=["T-12", "T-13", "T-14", "T-16", "T-24"], repo="hachidori-theme-store",
+card(id="T-32", phase=3, title="Nazeka renderer: text only, its own popup", owner="renderer agent", size="L", deps=["T-12", "T-13", "T-14", "T-16", "T-21"], repo="hachidori-theme-store",
      goal="c28: \"I want the Nazeka theme to behave like Nazeka. No rendering / text only\". `themes/nazeka/` draws Nazeka's popup directly from the model, the way texthook.js `build_div` does, with glossary `text` mode and only the elements its rows need.",
      files=[("new", "`themes/nazeka/{theme.yaml,renderer.js,renderer.css,README.md,screenshot.png}`", "sketch: this package's examples/nazeka.renderer.js")],
      steps=["Fidelity (from the prototype, texthook.js 8b220fb): #111111 box, 1 px #CCCCCC frame, 2 px padding, 2–3 px radii, no shadow, Arial 13 px, content-sized ≤ 600 px; looked-up row at the right at 70 % with three characters of context and the match bold in #99DDFF (from `model.source`).",
@@ -106,7 +106,7 @@ card(id="T-32", phase=3, title="Nazeka renderer: text only, its own popup", owne
             "Kanji mode lines: `Currently in individual kanji mode. Press [Back] to cancel.`, Grade, Strokes, Jouyou readings, On'yomi, Kun'yomi (open question 3).",
             "Only audio and Anki: two 24 px borderless buttons calling `ctx.actions`; no top bar, no cards, no pitch graphs, no tags row, no images, no links, no dictionary CSS.",
             "README credits wareya/nazeka (the readme states Apache-2.0; GitHub detects no licence file)."],
-     tests=["themes CI: validate, lint, contract (text mode: zero glossary elements), render, benchmark"],
+     tests=["MVP: theme-store validate + a focused jsdom check that text mode creates no glossary elements; real-popup screenshots; T-26 benchmark evidence in the PR (the full contract/render gates, T-24/T-25, apply once they exist)"],
      accept=["Contract + render + benchmark gates green; screenshot close to Nazeka itself (the prototype's reference column); Hachidori-side proof in T-52 (no Default DOM or CSS, zero dictionary work, term/kanji/keyboard/audio/mining/nested/Back/cleanup e2e)."],
      short="Text-only Nazeka popup built from the model; gates green", src=["c28", "c26", "c27", "c05", "body"])
 
@@ -118,13 +118,13 @@ card(id="T-33", phase=6, title="Wicked — only if distinct from Plain (bee-san 
      accept=["Either closed as covered by Plain, or built as a distinct theme with gates green and added to T-52's comparison."],
      short="Built only if bee-san wants it distinct from Plain; otherwise closed as covered", src=["c05"])
 
-card(id="T-36", phase=3, title="Plain renderer: dictionary content only, as fast as possible", owner="renderer agent", size="M", deps=["T-12", "T-13", "T-14", "T-16", "T-24"], repo="hachidori-theme-store",
+card(id="T-36", phase=3, title="Plain renderer: dictionary content only, as fast as possible", owner="renderer agent", size="M", deps=["T-12", "T-13", "T-14", "T-16", "T-21"], repo="hachidori-theme-store",
      goal="Owner update (2026-09-28): a 'Plain' theme that renders only the dictionary content, with no buttons or chrome, built to be as fast as possible. It ships as a PR to `bee-san/hachidori-theme-store`, next to Nazeka. For each result it draws the headword and reading, then the dictionary's text (glossary `text` mode). There is no top bar, no buttons, no tags, pitch, frequency, tabs, images, links or dictionary CSS, and the kanji view is plain lines. Audio, Anki, Back and entry navigation stay available through the user's keybinds, because core actions work without buttons (T-16).",
      files=[("new", "`themes/plain/{theme.yaml,renderer.js,renderer.css,README.md,screenshot.png}`", "glossary [text]; components []; layout content-sized; system font")],
      steps=["DOM budget: one `article` per result with at most 3 elements (headword line, reading, text), and every result drawn in one pass. No `ctx.on` listeners at all.",
             "Mark the text `data-hd-scan` (nested lookups) and `data-hd-blur` (definition blur); entries carry `data-hd-entry`, so the host's default `focusEntry` and `setCurrentEntry` drive keybinds.",
             "manifest `ignores`: every Design control that adds chrome (toolbar position, audio button, columns, compact summary, frequency/pitch display, custom buttons/links)."],
-     tests=["theme-store CI gates (validate, lint, contract, render, benchmark)"],
+     tests=["MVP: theme-store validate + a focused jsdom check (no listeners, no glossary elements in text mode); real-popup screenshots; T-26 benchmark evidence in the PR"],
      accept=["The fewest nodes and lowest renderer build time of all bundled renderers, and the only one that must earn the ⚡Lighter label.",
              "Zero components, zero listeners, zero dictionary work.",
              "Hachidori-side proof in T-52: keyboard add-note and play-audio work with no buttons on screen."],
@@ -158,8 +158,8 @@ card(id="T-40", phase=4, title="Catalogue-driven Theme select", owner="UI agent"
      accept=["Select reflects the index; unavailable slug visible and kept."],
      short="Select from the index; not-installed state shown and kept")
 
-card(id="T-41", phase=4, title="Theme Store grid and detail pane", owner="UI agent", size="L", deps=["T-18", "T-19", "T-03"], locks=["settings.html", "settings.css"],
-     goal="Settings → Design → Theme Store per ui.md: header (source commit, count, search, kind and tag filters, Refresh), card grid (swatches or thumbnail, name, author, kind badge, state button), detail pane (screenshot, description, licence and credits, speed line and ⚡Lighter, layout note, Doesn't use, Suggests, Open on GitHub, Report a problem, Remove), zero network for the grid, behind the flag. No JavaScript switch, no Install of CSS (c28).",
+card(id="T-41", phase=4, title="Theme Store grid and detail pane", owner="UI agent", size="L", deps=["T-18", "T-50"], locks=["settings.html", "settings.css"],
+     goal="**MVP scope** (" + "issue body of 2026-09-28 18:23 UTC" + "): the experimental Store offers the bundled Default, Nazeka and Plain with names, descriptions, screenshots, activation and a link to the theme-store repository. Palettes stay in the Theme select. Hiding the Store (flag off) keeps the selected theme and settings. Use T-03's mock-up if it is ready, but it does not block. **Later** (after T-19/T-44): the full ui.md Store: header (source commit, count, search, kind and tag filters, Refresh), card grid (swatches or thumbnail, name, author, kind badge, state button), detail pane (screenshot, description, licence and credits, speed line and ⚡Lighter, layout note, Doesn't use, Suggests, Open on GitHub, Report a problem, Remove), zero network for the grid, behind the flag. No JavaScript switch, no Install of CSS (c28).",
      files=[("new", "`extension/theme-store-ui.js`", "ES module; settings.js calls one `mountThemeStore()`"),
             ("edit", L("extension/settings.html", 688, None, "settings.html (between Appearance and Definitions)"), "the Store section"),
             ("edit", "`extension/settings.css`", "Store styles (reuse the recommended-dictionary list pattern, " + L("extension/settings.html", 238, 262, "settings.html:238-262") + ")")],
@@ -197,8 +197,8 @@ card(id="T-44", phase=4, title="Catalogue Refresh and catalogue themes", owner="
      short="Refresh + use/update catalogue palettes & variants; zero automatic requests; no CSS/JS downloads", src=["body", "c28"])
 
 # ---------------------------------------------------------------- Phase 5
-card(id="T-50", phase=5, title="`scripts/vendor-themes.mjs`", owner="infra agent", size="M", deps=["T-21", "T-22", "T-23", "T-24"],
-     goal="Vendor `dist/index.json`, `palettes.css`, a tiny content-script `catalogue.js` (slug → renderer/files) and the bundled renderers from a pinned `hachidori-theme-store` commit into `extension/vendor/themes/`, with `SOURCE.json` and licences; `--local <path>` for development.",
+card(id="T-50", phase=5, title="`scripts/vendor-themes.mjs`", owner="infra agent", size="M", deps=["T-21"],
+     goal="MVP: vendor `dist/index.json`, a tiny content-script `catalogue.js` (slug → renderer/files) and the bundled renderers (Nazeka, Plain) from a pinned `hachidori-theme-store` commit into `extension/vendor/themes/`, with `SOURCE.json` and licences. Add `--local <path>` for development. Later: `palettes.css` once T-22/T-23 exist (T-51), and running T-24's lint/contract at vendoring.",
      files=[("new", "`scripts/vendor-themes.mjs`", "pattern: " + L("scripts/vendor-fluent-icons.py", None, None, "vendor-fluent-icons.py") + " (REVISION + sources.json)"),
             ("new", "`extension/vendor/themes/{index.json,catalogue.js,palettes.css,SOURCE.json,<slug>/renderer.js,<slug>/renderer.css}`", "generated, committed"),
             ("edit", "`distribution/THIRD_PARTY_NOTICES.md`, `distribution/licenses/`", "credits from theme manifests")],
@@ -207,7 +207,7 @@ card(id="T-50", phase=5, title="`scripts/vendor-themes.mjs`", owner="infra agent
      accept=["Re-running at the same commit changes nothing; hand edits fail CI."],
      short="Reproducible vendoring with SOURCE.json and licences")
 
-card(id="T-51", phase=5, title="Palettes and catalogue from the vendored themes", owner="core agent", size="S", deps=["T-50", "T-18", "T-17"],
+card(id="T-51", phase=5, title="Palettes and catalogue from the vendored themes", owner="core agent", size="S", deps=["T-50", "T-18", "T-17", "T-22", "T-23"],
      goal="Swap `render/palettes.css` for `vendor/themes/palettes.css` (byte-identical) and derive `POPUP_THEME_GROUPS` and all hard-coded catalogue counts from the vendored index.",
      files=[("edit", L("extension/reader-options.js", 170, 182, "POPUP_THEME_GROUPS"), "Settings-side from index; reader-options keeps slug-shape validation"),
             ("edit", L("test/extension-smoke.mjs", 4700, 4712, "extension-smoke catalogue") + ", `extension-smoke.mjs:10047, 12198`, " + L("test/chrome-e2e.mjs", 7490, None, "chrome-e2e.mjs:7490"), "read the index"),
@@ -216,19 +216,27 @@ card(id="T-51", phase=5, title="Palettes and catalogue from the vendored themes"
      accept=["No hard-coded 42/43/[1,18,23,1] left; screenshots identical."],
      short="Palettes and counts come from the vendored index")
 
-card(id="T-52", phase=5, title="Acceptance run and comparative benchmark", owner="QA + perf agent", size="M", deps=["T-31", "T-32", "T-36", "T-34", "T-35", "T-27", "T-42", "T-44", "T-40", "T-43", "T-51"],
-     goal="Prove every c26/c27/c28 acceptance item on main with the bundled renderers and publish the comparison Default · Nazeka onRender prototype · Nazeka direct · Plain · Yomitan · Rikaikun (+ Wicked if T-33 is built) on identical inputs. The Plain row answers c05's \"show how much faster\".",
+card(id="T-52", phase=5, title="MVP acceptance and comparative benchmark (Default, Nazeka, Plain)", owner="QA + perf agent", size="M", deps=["T-15", "T-17", "T-18", "T-20", "T-26", "T-32", "T-36", "T-41", "T-42", "T-50"],
+     goal="Prove the MVP acceptance list from the issue body on main. That covers the renderer boundary, text mode, clean switching and fallback, preview parity and the experimental Store with Default, Nazeka and Plain. Publish the comparison Default · Nazeka onRender prototype (historical, labelled) · Nazeka direct · Plain on identical inputs, which answers c05's \"show how much faster\". Keep the checks basic and focused (issue body of 2026-09-28 18:23 UTC): real-popup screenshots and checks that prove the boundary.",
      files=[("fill", "`test/theme-e2e/T-52-renderers.mjs`", "for each bundled renderer: no Default content DOM (`.gsm-hoshidicts-result-chrome`, `.gsm-hoshidicts-glossary-card`), no default.css adopted, text mode: zero `hd_styles`, zero `.structured-content`, zero `<img>`/`<a>`; none mode: no definition DOM; term, kanji, keyboard (add/view note, play audio, entry navigation, Back), audio, mining, nested popup, incremental Show more, tab switch, clean switch between renderers (listener count stable), fallback on throw"),
             ("new", "`docs/themes/benchmark-report.md`", "the table + raw links; posted to #334")],
      steps=["Measure with benchmark/hover-popup.mjs (T-26), 5 profiles per side, record load average.",
             "Claim only what the numbers show (c26: no guaranteed speedup)."],
      tests=["`node test/chrome-e2e.mjs`, extension-smoke, benchmarks"],
-     accept=["Every c26/c27/c28 checkbox in the issue links to a passing check or a measurement."],
-     short="All c26/c27/c28 checks proven; comparison table published", src=["c26", "c27", "c28", "c05"])
+     accept=["Every MVP acceptance checkbox in the issue links to a passing check, screenshot or measurement; the benchmark claims no speedup the numbers do not show."],
+     short="MVP boundary proven with screenshots and focused checks; Default/Nazeka/Plain comparison published", src=["c26", "c27", "c28", "c05"])
 
-card(id="T-53", phase=5, title="Release and flag decision", owner="maintainer (bee-san)", size="S", deps=["T-52"],
-     goal="Decide whether `experimental.themeStore` turns on by default; release notes; Chrome Web Store listing check (remote-content paragraph, permissions); tag.",
+card(id="T-53", phase=5, title="Release the MVP behind the flag", owner="maintainer (bee-san)", size="S", deps=["T-52"],
+     goal="Release with the MVP behind `experimental.themeStore` (off by default), with release notes and a Chrome Web Store listing check (remote-content paragraph, permissions), then tag. Turning the flag on by default is decided later, after T-55.",
      files=[("edit", "`.github/release-notes-header.md`, `extension/manifest.json` version", "")],
      steps=["Run the release checklist (scripts/check-release.mjs, package-store.py)."],
      tests=["release workflow"], accept=["Released; #334 closed or split into follow-ups."],
      short="Shipped; flag decision recorded")
+
+card(id="T-55", phase=5, title="Full acceptance after the follow-ups", owner="QA + perf agent", size="M",
+     deps=["T-19", "T-22", "T-23", "T-24", "T-25", "T-27", "T-30", "T-31", "T-34", "T-35", "T-40", "T-43", "T-44", "T-51"],
+     goal="After the follow-ups (remote catalogue refresh, palette migration, full Store, shared components, Default as a module, Yomitan and Rikaikun, CI gates for every theme), prove the full c26/c27/c28 list in testing.md on main. Then decide with bee-san whether `experimental.themeStore` turns on by default.",
+     files=[("fill", "`test/theme-e2e/T-52-renderers.mjs`", "extended to every bundled renderer"), ("edit", "`docs/themes/benchmark-report.md`", "all renderers")],
+     steps=[], tests=["`node test/chrome-e2e.mjs`, extension-smoke, benchmarks"],
+     accept=["Every item in testing.md's c26/c27/c28 table links to a passing check or a measurement."],
+     short="Full c26/c27/c28 list proven; flag default decided", src=["c26", "c27", "c28"])

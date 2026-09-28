@@ -12,6 +12,19 @@
 | Benchmark | `benchmark/hover-popup.mjs` (+ T-26 additions), before/after, 5 profiles per side | T-15, T-17, T-20, T-26, T-31, T-52 |
 | Themes CI | validate · lint · AST · jsdom contract · render · benchmark ([themes-repo.md](themes-repo.md)) | T-21–T-27, every renderer and palette PR |
 
+## MVP acceptance (D29/D30; from the issue body of 2026-09-28 18:23 UTC, plus Plain)
+
+- [ ] An experimental Store with Default, Nazeka and Plain: screenshots, selection and a GitHub link (T-41).
+- [ ] Nazeka and Plain *are* the popup: no Default renderer call, no unused Default DOM, no Default layout stylesheet on their path (T-15, T-17, T-52).
+- [ ] Genuine data-level text definitions: no rich dictionary DOM, images, links or dictionary CSS (T-13, T-52).
+- [ ] Default and existing palette behaviour kept; the live popup and the preview agree (T-17, T-42).
+- [ ] Shared core actions and navigation work, with a documented view/update/clean-up contract (T-01, T-11, T-16).
+- [ ] Switching and failures clean up the previous renderer and its stylesheets, and the fallback uses Default's own CSS (T-14, T-15).
+- [ ] Focused basic checks and real-popup screenshots make the MVP ready for manual testing (D30).
+- [ ] Pinned theme sources and comparable benchmark evidence, with no assumed speedup (T-50, T-26, T-52).
+
+The per-phase lists and the c26/c27/c28 table below are the full target, proven at T-55 after the follow-ups. For the MVP, keep the local validation basic and focused. The repository's required merge gates still apply.
+
 ## Acceptance per phase
 
 **Phase 0 (decisions, contracts, spikes)**

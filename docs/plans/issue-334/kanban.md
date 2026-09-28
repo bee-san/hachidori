@@ -2,7 +2,7 @@
 
 Columns follow GitHub Projects: **Backlog → Ready → In progress → Review → Done**. A card is *Ready* when everything in "Blocked by" is Done. Size: S ≈ 1 day, M ≈ 2–4 days, L ≈ 1–2 weeks. Full cards: [tasks/](tasks/). How agents claim and ship cards: [parallel-plan.md](parallel-plan.md#5-agent-protocol).
 
-Critical path (sizes as working days, unlimited agents): **T-01 → T-14 → T-15 → T-26 → T-27 → T-52 → T-53**, about 31 working days.
+Milestones: **MVP** (Default + Nazeka + Plain behind `experimental.themeStore`, the scope of the issue body of 2026-09-28 18:23 UTC plus the owner's Plain theme), then **after the MVP**. Critical path to the MVP release (sizes as working days, unlimited agents): **T-01 → T-14 → T-15 → T-26 → T-52 → T-53**, about 28 working days. To the full acceptance: **T-01 → T-14 → T-15 → T-26 → T-27 → T-55**, about 30 working days.
 
 #### Done (1)
 
@@ -17,7 +17,7 @@ Critical path (sizes as working days, unlimited agents): **T-01 → T-14 → T-1
 | [T-01](tasks/T-01.md) | Freeze the v1 contracts | architect agent + bee-san sign-off | — | M | Contract + schemas approved; `experimental.themeStore` flag (off); stubs/anchors; suites green |
 | [T-02](tasks/T-02.md) | Policy and documentation fixes | docs agent | — | S | AGENTS.md rules, CWS remote-content + permission rows, privacy, daisyUI credit, architecture drift fixed |
 | [T-03](tasks/T-03.md) | Theme Store mock-up screenshots | design agent | — | S | 3 PNGs posted to #334; owner feedback recorded in ui.md |
-| [T-04](tasks/T-04.md) | Create `bee-san/hachidori-theme-store` | maintainer (bee-san) | — | S | Repo exists, protected, labels created |
+| [T-04](tasks/T-04.md) | Rename the themes repository to `bee-san/hachidori-theme-store` | maintainer (bee-san) | — | S | Repo renamed to hachidori-theme-store, protected, labels created |
 | [T-05](tasks/T-05.md) | Spike: renderer loading and preload | perf agent | — | M | Decision record with numbers; chosen loader keeps cold first hover within budget; overlay answer |
 
 #### In progress (0)
@@ -28,7 +28,9 @@ Empty. A card moves here when an agent claims it (assignee + `in-progress` label
 
 Empty. A card moves here when its PR is ready for review with green CI on the exact head.
 
-#### Backlog (50)
+#### Backlog (51)
+
+**MVP: next up (Default + Nazeka + Plain)**
 
 | ID | Card | Owner | Blocked by | Size | Acceptance |
 | --- | --- | --- | --- | --- | --- |
@@ -41,30 +43,36 @@ Empty. A card moves here when its PR is ready for review with green CI on the ex
 | [T-16](tasks/T-16.md) | Button-less audio and Anki actions | core agent | T-01 | M | Audio/Anki work with no buttons; Default unchanged |
 | [T-17](tasks/T-17.md) | Split reader.css into layers | styles agent | T-01 | M | Four layer files; rule-by-rule equal; screenshots identical |
 | [T-18](tasks/T-18.md) | Options and compatibility for theme slugs | core agent | T-01 | M | Slug survives; strict write checks catalogue ∪ installed; renderer themes need the flag |
-| [T-19](tasks/T-19.md) | `themes` storage, messages and backup | core agent | T-18 | M | SW-owned record + CAS handlers + backup round-trip |
 | [T-20](tasks/T-20.md) | Renderer loading and preload | core + perf agent | T-05, T-15 | M | Renderer ready at start; cold parity; overlay capability |
 | [T-21](tasks/T-21.md) | `hachidori-theme-store` skeleton, schema 2 and CI | infra agent | T-01, T-04 | M | Repo skeleton + schema 2 + validator + deterministic dist + CI; negatives fail with named messages |
+| [T-26](tasks/T-26.md) | Benchmark harness: renderer-aware and end-to-end | perf agent | T-15 | L | Harness selects any theme; renderer-neutral readiness; c26/c27 metrics; Default unchanged |
+| [T-32](tasks/T-32.md) | Nazeka renderer: text only, its own popup | renderer agent | T-12, T-13, T-14, T-16, T-21 | L | Text-only Nazeka popup built from the model; gates green |
+| [T-36](tasks/T-36.md) | Plain renderer: dictionary content only, as fast as possible | renderer agent | T-12, T-13, T-14, T-16, T-21 | M | Dictionary content only, no buttons/chrome; fewest nodes; ⚡Lighter; keybinds still mine/play |
+| [T-41](tasks/T-41.md) | Theme Store grid and detail pane | UI agent | T-18, T-50 | L | Store UI per approved mock; a11y; zero network until Refresh |
+| [T-42](tasks/T-42.md) | Design preview renders the selected renderer | UI + core agent | T-15, T-20 | M | Preview uses the host and the selected renderer |
+| [T-50](tasks/T-50.md) | `scripts/vendor-themes.mjs` | infra agent | T-21 | M | Reproducible vendoring with SOURCE.json and licences |
+| [T-52](tasks/T-52.md) | MVP acceptance and comparative benchmark (Default, Nazeka, Plain) | QA + perf agent | T-15, T-17, T-18, T-20, T-26, T-32, T-36, T-41, T-42, T-50 | M | MVP boundary proven with screenshots and focused checks; Default/Nazeka/Plain comparison published |
+| [T-53](tasks/T-53.md) | Release the MVP behind the flag | maintainer (bee-san) | T-52 | S | Shipped; flag decision recorded |
+
+**After the MVP**
+
+| ID | Card | Owner | Blocked by | Size | Acceptance |
+| --- | --- | --- | --- | --- | --- |
+| [T-19](tasks/T-19.md) | `themes` storage, messages and backup | core agent | T-18 | M | SW-owned record + CAS handlers + backup round-trip |
 | [T-22](tasks/T-22.md) | Migrate the 42 palettes | infra agent | T-21, T-17, T-23 | M | 42 palette folders; compiled palettes.css byte-identical to Hachidori's |
 | [T-23](tasks/T-23.md) | Palette compiler (`palette-css.js`) | core agent | T-01 | S | Palette values → palette block, byte-identical to today; bad values rejected |
 | [T-24](tasks/T-24.md) | Renderer lint and contract runner (themes CI) | infra agent | T-21, T-12, T-14 | M | Lint + AST + jsdom contract run; hostile fixture fails; first-party renderers pass |
 | [T-25](tasks/T-25.md) | Render and screenshot CI | infra agent | T-21, T-42, T-50 | M | Pinned-Chrome renders for every changed theme; stale screenshots fail |
-| [T-26](tasks/T-26.md) | Benchmark harness: renderer-aware and end-to-end | perf agent | T-15 | L | Harness selects any theme; renderer-neutral readiness; c26/c27 metrics; Default unchanged |
 | [T-27](tasks/T-27.md) | Benchmark every theme: PR gate, weekly catalogue run, published numbers | perf agent | T-26, T-21, T-20 | M | All themes measured (PR + weekly); budgets enforced; numbers in the index |
 | [T-30](tasks/T-30.md) | Extract the shared components | core agent | T-10, T-13, T-16 | L | Shared components extracted; Default DOM byte-identical |
 | [T-31](tasks/T-31.md) | Default as a v1 renderer module | core agent | T-30, T-17, T-15 | L | Default registered like any renderer; legacy adapter gone; no behaviour change |
-| [T-32](tasks/T-32.md) | Nazeka renderer: text only, its own popup | renderer agent | T-12, T-13, T-14, T-16, T-24 | L | Text-only Nazeka popup built from the model; gates green |
-| [T-36](tasks/T-36.md) | Plain renderer: dictionary content only, as fast as possible | renderer agent | T-12, T-13, T-14, T-16, T-24 | M | Dictionary content only, no buttons/chrome; fewest nodes; ⚡Lighter; keybinds still mine/play |
 | [T-34](tasks/T-34.md) | Yomitan renderer (Yomitan DOM + display.css port) | renderer agent | T-30, T-12, T-24 | L | Yomitan-compatible popup; Yomitan CSS snippets work |
 | [T-35](tasks/T-35.md) | Rikaikun renderer (text, its own popup) | renderer agent | T-12, T-13, T-14, T-24 | M | Rikaikun look as a text renderer; gates green |
 | [T-40](tasks/T-40.md) | Catalogue-driven Theme select | UI agent | T-18, T-19, T-50 | S | Select from the index; not-installed state shown and kept |
-| [T-41](tasks/T-41.md) | Theme Store grid and detail pane | UI agent | T-18, T-19, T-03 | L | Store UI per approved mock; a11y; zero network until Refresh |
-| [T-42](tasks/T-42.md) | Design preview renders the selected renderer | UI + core agent | T-15, T-20 | M | Preview uses the host and the selected renderer |
 | [T-43](tasks/T-43.md) | Suggested options, Undo, and "doesn't use" | UI agent | T-41, T-18 | M | One-revision apply + exact Undo; ignored controls labelled |
 | [T-44](tasks/T-44.md) | Catalogue Refresh and catalogue themes | core agent | T-19, T-23, T-21, T-41 | M | Refresh + use/update catalogue palettes & variants; zero automatic requests; no CSS/JS downloads |
-| [T-50](tasks/T-50.md) | `scripts/vendor-themes.mjs` | infra agent | T-21, T-22, T-23, T-24 | M | Reproducible vendoring with SOURCE.json and licences |
-| [T-51](tasks/T-51.md) | Palettes and catalogue from the vendored themes | core agent | T-50, T-18, T-17 | S | Palettes and counts come from the vendored index |
-| [T-52](tasks/T-52.md) | Acceptance run and comparative benchmark | QA + perf agent | T-31, T-32, T-36, T-34, T-35, T-27, T-42, T-44, T-40, T-43, T-51 | M | All c26/c27/c28 checks proven; comparison table published |
-| [T-53](tasks/T-53.md) | Release and flag decision | maintainer (bee-san) | T-52 | S | Shipped; flag decision recorded |
+| [T-51](tasks/T-51.md) | Palettes and catalogue from the vendored themes | core agent | T-50, T-18, T-17, T-22, T-23 | S | Palettes and counts come from the vendored index |
+| [T-55](tasks/T-55.md) | Full acceptance after the follow-ups | QA + perf agent | T-19, T-22, T-23, T-24, T-25, T-27, T-30, T-31, T-34, T-35, T-40, T-43, T-44, T-51 | M | Full c26/c27/c28 list proven; flag default decided |
 
 Backlog: API extensions and the ten community proposals as renderers. Each follows the same contract and gates, and the proposals need bee-san's approval to be included.
 
@@ -97,7 +105,7 @@ flowchart LR
   T01["T-01 Freeze the v1 contracts"]
   T02["T-02 Policy and documentation fixes"]
   T03["T-03 Theme Store mock-up screenshots"]
-  T04["T-04 Create bee-san/hachidori-theme-st…"]
+  T04["T-04 Rename the themes repository to b…"]
   T05["T-05 Spike: renderer loading and prelo…"]
   T10["T-10 Semantic roles in the Default DOM"]
   T11["T-11 Core behaviour reads roles, not D…"]
@@ -130,8 +138,9 @@ flowchart LR
   T44["T-44 Catalogue Refresh and catalogue t…"]
   T50["T-50 scripts/vendor-themes.mjs"]
   T51["T-51 Palettes and catalogue from the v…"]
-  T52["T-52 Acceptance run and comparative be…"]
-  T53["T-53 Release and flag decision"]
+  T52["T-52 MVP acceptance and comparative be…"]
+  T53["T-53 Release the MVP behind the flag"]
+  T55["T-55 Full acceptance after the follow-…"]
   T01 --> T10
   T10 --> T11
   T01 --> T12
@@ -173,12 +182,12 @@ flowchart LR
   T13 --> T32
   T14 --> T32
   T16 --> T32
-  T24 --> T32
+  T21 --> T32
   T12 --> T36
   T13 --> T36
   T14 --> T36
   T16 --> T36
-  T24 --> T36
+  T21 --> T36
   T30 --> T34
   T12 --> T34
   T24 --> T34
@@ -190,8 +199,7 @@ flowchart LR
   T19 --> T40
   T50 --> T40
   T18 --> T41
-  T19 --> T41
-  T03 --> T41
+  T50 --> T41
   T15 --> T42
   T20 --> T42
   T41 --> T43
@@ -201,22 +209,34 @@ flowchart LR
   T21 --> T44
   T41 --> T44
   T21 --> T50
-  T22 --> T50
-  T23 --> T50
-  T24 --> T50
   T50 --> T51
   T18 --> T51
   T17 --> T51
-  T31 --> T52
+  T22 --> T51
+  T23 --> T51
+  T15 --> T52
+  T17 --> T52
+  T18 --> T52
+  T20 --> T52
+  T26 --> T52
   T32 --> T52
   T36 --> T52
-  T34 --> T52
-  T35 --> T52
-  T27 --> T52
+  T41 --> T52
   T42 --> T52
-  T44 --> T52
-  T40 --> T52
-  T43 --> T52
-  T51 --> T52
+  T50 --> T52
   T52 --> T53
+  T19 --> T55
+  T22 --> T55
+  T23 --> T55
+  T24 --> T55
+  T25 --> T55
+  T27 --> T55
+  T30 --> T55
+  T31 --> T55
+  T34 --> T55
+  T35 --> T55
+  T40 --> T55
+  T43 --> T55
+  T44 --> T55
+  T51 --> T55
 ```

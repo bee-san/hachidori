@@ -41,6 +41,9 @@ PHASES = [
 ]
 
 CARDS = []
+# MVP milestone (issue body of 2026-09-28 18:23 UTC + owner update: Default, Nazeka and Plain first).
+MVP = {"T-01", "T-02", "T-03", "T-04", "T-05", "T-10", "T-11", "T-12", "T-13", "T-14", "T-15", "T-16", "T-17", "T-18",
+       "T-20", "T-21", "T-26", "T-32", "T-36", "T-41", "T-42", "T-50", "T-52", "T-53"}
 
 
 def card(**kw):
@@ -49,6 +52,7 @@ def card(**kw):
     kw.setdefault("notes", [])
     kw.setdefault("src", [])
     kw.setdefault("repo", "hachidori")
+    kw.setdefault("ms", "MVP" if kw["id"] in MVP else ("Done" if kw.get("col") == "Done" else "Next"))
     CARDS.append(kw)
 
 
@@ -119,15 +123,15 @@ card(id="T-03", phase=0, col="Ready", title="Theme Store mock-up screenshots", o
      tests=["—"], accept=["Three PNGs posted; feedback captured."],
      short="3 PNGs posted to #334; owner feedback recorded in ui.md", src=["c08"])
 
-card(id="T-04", phase=0, col="Ready", title="Create `bee-san/hachidori-theme-store`", owner="maintainer (bee-san)", size="S", deps=[], repo="github",
-     goal="The repository does not exist yet (`gh repo view` → \"Could not resolve to a Repository\").",
-     files=[("github", "`bee-san/hachidori-theme-store`", "public, GPL-3.0-or-later, default branch `main`")],
-     steps=["`gh repo create bee-san/hachidori-theme-store --public --license gpl-3.0 --description \"Community themes for Hachidori\"`",
+card(id="T-04", phase=0, col="Ready", title="Rename the themes repository to `bee-san/hachidori-theme-store`", owner="maintainer (bee-san)", size="S", deps=[], repo="github",
+     goal="The owner named the repository `bee-san/hachidori-theme-store`. On 2026-09-28 at 18:23 UTC a repository was created as `bee-san/hachidori-themes`. It holds a README and the ten proposal issues #1–#10 moved out of #334. `hachidori-theme-store` does not exist yet. Rename the existing repository: GitHub keeps redirects for the old URLs and issues. If the rename is not wanted, tell the agents, because every plan link uses the new name.",
+     files=[("github", "`bee-san/hachidori-themes` → `bee-san/hachidori-theme-store`", "public, GPL-3.0-or-later, default branch `main`")],
+     steps=["Settings → General → Repository name → `hachidori-theme-store` (or `gh repo rename hachidori-theme-store -R bee-san/hachidori-themes`).",
             "Branch protection on `main`: PR required, green checks, 1 review; CODEOWNERS enforced.",
             "Actions: default `GITHUB_TOKEN` read-only; allow bot commits only from `benchmark-main.yml`.",
             "Labels: `new-theme`, `palette`, `style`, `renderer`, `agent-ready`, `blocked`."],
-     tests=["—"], accept=["Repo exists with protection; agents can open PRs (fork or branch)."],
-     short="Repo exists, protected, labels created", src=["body"])
+     tests=["—"], accept=["`gh repo view bee-san/hachidori-theme-store` resolves; old issue links redirect; protection and labels set; agents can open PRs."],
+     short="Repo renamed to hachidori-theme-store, protected, labels created", src=["body", "c28"])
 
 card(id="T-05", phase=0, col="Ready", title="Spike: renderer loading and preload", owner="perf agent", size="M", deps=[],
      goal="Decide how bundled renderer code reaches the content-script world with no Default-first render and no cold regression: `import(chrome.runtime.getURL(…))` via web_accessible_resources; `chrome.scripting.executeScript({files})` on request; `chrome.scripting.registerContentScripts` for the active renderer (+ executeScript into open tabs on change); or an always-listed content script. Measure with 30 KB and 120 KB dummy renderers.",

@@ -61,6 +61,7 @@ def task_md(c):
     lines = [f"# {c['id']} — {c['title']}", ""]
     rows = [
         ("Initial column", c["col"]),
+        ("Milestone", {"MVP": "**MVP** (Default + Nazeka + Plain first)", "Next": "after the MVP", "Done": "done"}[c["ms"]]),
         ("Phase", PHASE_NAME[c["phase"]]),
         ("Owner type", c["owner"]),
         ("Size", c["size"] + ("  (S ≈ 1 day · M ≈ 2–4 days · L ≈ 1–2 weeks)" if c["size"] != "—" else "")),
@@ -110,7 +111,15 @@ def board(link_prefix=None, compact_backlog=True, acceptance=True):
             continue
         core = [c for c in cards if c["phase"] < 6] if compact_backlog else cards
         back = [c for c in cards if c["phase"] == 6] if compact_backlog else []
-        if core:
+        groups = [(None, core)]
+        if col == "Backlog":
+            groups = [("MVP: next up (Default + Nazeka + Plain)", [c for c in core if c["ms"] == "MVP"]),
+                      ("After the MVP", [c for c in core if c["ms"] != "MVP"])]
+        for label, core in groups:
+          if label and core:
+            out.append(f"**{label}**")
+            out.append("")
+          if core:
             head = "| ID | Card | Owner | Blocked by | Size |" + (" Acceptance |" if acceptance else "")
             sep = "| --- | --- | --- | --- | --- |" + (" --- |" if acceptance else "")
             out += [head, sep]
@@ -150,31 +159,34 @@ def mermaid():
     return "\n".join(out)
 
 
-def critical_path():
+def critical_path(end=None):
     core = [c["id"] for c in CARDS if c["phase"] < 6]
-    end = max(core, key=finish)
+    end = end or max(core, key=finish)
     path = [end]
     while BY[path[-1]]["deps"]:
         path.append(max(BY[path[-1]]["deps"], key=finish))
     return list(reversed(path)), finish(end)
 
 
-def waves():
-    core = [c["id"] for c in CARDS if c["phase"] < 6 and c["col"] != "Done"]
+def waves(ms=None):
+    core = [c["id"] for c in CARDS if c["phase"] < 6 and c["col"] != "Done" and (ms is None or c["ms"] == ms)]
     w = {}
     for i in core:
         w.setdefault(start(i), []).append(i)
     return [(k, w[k]) for k in sorted(w)]
 
 
-path, days = critical_path()
-open(os.path.join(OUT, "critical-path.txt"), "w").write(" → ".join(path) + f"\n{days}\n")
+path, days = critical_path("T-53")
+fpath, fdays = critical_path("T-55")
+open(os.path.join(OUT, "critical-path.txt"), "w").write(" → ".join(path) + f"\n{days}\n" + " → ".join(fpath) + f"\n{fdays}\n")
 open(os.path.join(OUT, "waves.md"), "w", encoding="utf-8").write(
-    "\n".join(f"| day {k} | {', '.join(v)} |" for k, v in waves()) + "\n")
+    "\n".join(f"| day {k} | {', '.join(v)} |" for k, v in waves("MVP")) + "\n")
+open(os.path.join(OUT, "waves-next.md"), "w", encoding="utf-8").write(
+    "\n".join(f"| day {k} | {', '.join(v)} |" for k, v in waves("Next")) + "\n")
 
 kanban = ["# Kanban board", "",
           "Columns follow GitHub Projects: **Backlog → Ready → In progress → Review → Done**. A card is *Ready* when everything in \"Blocked by\" is Done. Size: S ≈ 1 day, M ≈ 2–4 days, L ≈ 1–2 weeks. Full cards: [tasks/](tasks/). How agents claim and ship cards: [parallel-plan.md](parallel-plan.md#5-agent-protocol).", "",
-          f"Critical path (sizes as working days, unlimited agents): **{' → '.join(path)}**, about {days} working days.", "",
+          f"Milestones: **MVP** (Default + Nazeka + Plain behind `experimental.themeStore`, the scope of the issue body of 2026-09-28 18:23 UTC plus the owner's Plain theme), then **after the MVP**. Critical path to the MVP release (sizes as working days, unlimited agents): **{' → '.join(path)}**, about {days} working days. To the full acceptance: **{' → '.join(fpath)}**, about {fdays} working days.", "",
           board(link_prefix="tasks"), "",
           "## Dependency graph (phases 0–5)", "", mermaid(), ""]
 open(os.path.join(PKG, "kanban.md"), "w", encoding="utf-8").write("\n".join(kanban))
@@ -194,11 +206,12 @@ def phase_checklists():
             out.append("")
             continue
         for c in cards:
-            links = [p for (_, p, _) in c["files"] if p.startswith("[")][:3]
-            if not links:
-                links = [p for (_, p, _) in c["files"]][:2]
             mark = "x" if c["col"] == "Done" else " "
-            out.append(f"- [{mark}] **{c['id']}** {c['title']} — " + ", ".join(links))
+            if c["ms"] == "MVP":
+                links = [p for (_, p, _) in c["files"] if p.startswith("[")][:2] or [p for (_, p, _) in c["files"]][:1]
+                out.append(f"- [{mark}] **{c['id']}** *(MVP)* {c['title']} — " + ", ".join(links))
+            else:
+                out.append(f"- [{mark}] **{c['id']}** {c['title']}")
         out.append("")
     return "\n".join(out)
 
@@ -209,7 +222,7 @@ open(os.path.join(OUT, "body-phases.md"), "w", encoding="utf-8").write(phase_che
 # ------------------------------------------------------------------ overflow comments (full cards)
 def comment_card(c):
     lines = [f"### {c['id']} — {c['title']}",
-             f"**Owner** {c['owner']} · **Size** {c['size']} · **Repo** {c['repo']} · **Blocked by** {deps_text(c)} · **Blocks** {', '.join(blocks(c['id'])) or '—'}"
+             f"**Milestone** {c['ms']} · **Owner** {c['owner']} · **Size** {c['size']} · **Repo** {c['repo']} · **Blocked by** {deps_text(c)} · **Blocks** {', '.join(blocks(c['id'])) or '—'}"
              + (f" · **Locks** {', '.join('`' + x + '`' for x in c['locks'])}" if c["locks"] else "")
              + (f" · **Branch** `{branch(c)}`" if c["col"] != "Done" else "")
              + (f" · **From** {src_links(c)}" if c["src"] else ""),
@@ -239,4 +252,4 @@ for tag, title, phases in GROUPS:
     fname = os.path.join(OUT, f"comment-cards-{tag.replace('/', 'of')}.md")
     open(fname, "w", encoding="utf-8").write(text)
     print(fname, len(text))
-print("tasks:", len(CARDS), "critical path:", " → ".join(path), days)
+print("tasks:", len(CARDS), "MVP path:", " → ".join(path), days, "| full:", " → ".join(fpath), fdays)
