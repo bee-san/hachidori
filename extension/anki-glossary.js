@@ -56,13 +56,12 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     globalThis.HDGlossary.appendTextOnlyGlossary(inert, body, glossary.glossary, {
       dictionary: glossary.dictionary, appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
     });
-    replaceNewlines(body);
     return body;
   }
 
   // A note field has none of the popup's `white-space: pre-wrap`, so each line
-  // break in dictionary text becomes a <br>, as in Yomitan's
-  // AnkiTemplateRenderer._replaceNewlines (#359). plainText() reads it back.
+  // break in rich dictionary text becomes a <br>, as in Yomitan's
+  // AnkiTemplateRenderer._replaceNewlines (#359). Plain markers split lines themselves.
   function replaceNewlines(root) {
     const walker = inert.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
     const texts = [];
@@ -71,6 +70,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
       const lines = text.nodeValue.split(/\r?\n|\r/u);
       if (lines.length > 1) text.replaceWith(...lines.flatMap((line, index) => index ? [inert.createElement("br"), line] : line));
     }
+    return root;
   }
 
   function plainDefinition(selected, noDictionary) {
@@ -94,7 +94,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
       meta.textContent = `(${labels.join(", ")})`;
       wrapper.append(meta, " ");
     }
-    wrapper.append(content(glossary, pending));
+    wrapper.append(replaceNewlines(content(glossary, pending)));
     return wrapper;
   }
 
