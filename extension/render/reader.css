@@ -1724,7 +1724,8 @@ html[data-hoshidicts-theme="girlypop"],
      turns is notched. Chrome rounds zoomed border widths down to whole
      device pixels, so a fixed -2px offset overshoots the lines at some
      display and popup scales. Instead the stroke is a border image extended
-     by its own 2px top and bottom borders, which round like the mora's. */
+     by its own 2px top and bottom borders, which round like the mora's. It
+     paints currentColor so that forced colours still recolour it. */
   border: 2px solid transparent;
   border-left-width: 0;
   border-image-source: linear-gradient(currentColor 0 0);
