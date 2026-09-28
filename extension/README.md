@@ -79,8 +79,9 @@ the service worker and both engine runtimes run the same code.
   field mapping and duplicate policy; the first powers the built-in action and
   custom Anki buttons select the others by stable ID. Settings edits every
   field mapping through an accessible marker combobox while retaining the
-  mapping string exactly. `anki-duplicates.js` and
-  `anki-enrichment.js` handle a
+  mapping string exactly. `anki-duplicates.js` runs Anki's add checks and
+  names the cloze rule behind a refusal AnkiConnect reports only as an
+  unknown reason; it and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
   `anki-client-media.js` validates final screenshot and browser-speech
   media crossing a linked-browser boundary. `anki-mining.js` and
