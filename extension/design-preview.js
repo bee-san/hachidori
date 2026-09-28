@@ -7,15 +7,9 @@
   const shadow = host.attachShadow({ mode: "open" });
   const appearance = HDPopup.createPopupAppearance(host);
   const customStyle = HDPopup.createCustomPopupStyle(shadow);
-  const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet";
-  stylesheet.href = "render/reader.css";
   const popup = document.createElement("div");
   popup.className = "gsm-hoshidicts-popup";
-  const iconStylesheet = document.createElement("link");
-  iconStylesheet.rel = "stylesheet";
-  iconStylesheet.href = "icons.css";
-  shadow.append(stylesheet, iconStylesheet, popup);
+  shadow.append(popup);
   const source = document.getElementById("preview-source");
   const sourceOffset = source.textContent.indexOf("食べる");
   const candidate = { query: "食べる", sentence: source.textContent, matchOffset: sourceOffset,
@@ -33,6 +27,11 @@
   let sampleMedia = null;
   let sampleLookupStats = null;
   let clickedKanjiIndex = 0;
+  const themeHost = HDThemeHost.createThemeHost({ getOptions: () => options,
+    onReady() { appearance.refreshHighlight(); positionPopup(); },
+  });
+  themeHost.attach(shadow);
+
   // Fixed mature word, count of 3 and native frequency samples; the shared
   // rules, real hover and real delay decide the preview's blur. Nothing is
   // recorded, looked up or sent to Anki.
@@ -88,7 +87,8 @@
     if (popup.dataset.toolbarPosition !== edge) view.setToolbarPosition(edge);
   }
 
-  const view = HDPopup.createPopupView({ document, window, popup,
+  const view = themeHost.createView({ document, window, popup,
+    sourceHighlighter: HDPopup.createSourceHighlighter(window, document, "gsm-hoshidicts-match", shadow),
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
@@ -236,6 +236,7 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
+    const themeChanged = options.popupTheme !== nextOptions.popupTheme;
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx
@@ -249,6 +250,7 @@
     // A blur edit restarts the sample decision so its effect is visible.
     const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
+    void themeHost.sync();
     view.setCustomButtons(options.customButtons);
     updateSampleAudio();
     if (geometryChanged) view.hideImagePreview();
@@ -263,6 +265,7 @@
       }
     }
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
+      nextOptions.popupTheme,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
     if (key === updateKey) return;
@@ -273,15 +276,14 @@
     const nextSample = createSample();
     const nextSampleKey = JSON.stringify(nextSample.results);
     sample = nextSample;
-    const changed = kanjiCharacter
+    const changed = themeChanged || (kanjiCharacter
       ? JSON.stringify(kanjiSource) !== JSON.stringify(HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries, state.groups))
-      : sampleKey !== nextSampleKey;
+      : sampleKey !== nextSampleKey);
     sampleKey = nextSampleKey;
     if (changed) {
       if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
       renderSample(true);
     } else view.updateDictionaryPresentation(context());
   } };
-  stylesheet.addEventListener("load", () => { appearance.refreshHighlight(); view.scheduleMasonry(); });
   window.addEventListener("pagehide", () => { clearSampleBlurTimer(); customStyle.destroy(); appearance.destroy(); view.destroy(); }, { once: true });
 }());

@@ -20,7 +20,8 @@ const samples = Number(process.env.HACHIDORI_HOVER_SAMPLES ?? 3);
 assert.ok(Number.isSafeInteger(samples) && samples > 0);
 const settings = { hoverEnabled: true, lookupMode: 'hover', hoverDelayMs: 0, popupNestingMaxDepth: 2,
   popupWidthPx: 520, popupHeightPx: 500, popupColumns: 1, maxResults: 32,
-  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 };
+  definitionBlurEnabled: false, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3,
+  ...JSON.parse(process.env.HACHIDORI_HOVER_OPTIONS || "{}") };
 const words = ['食べる', '漢字', '深層'];
 const manifest = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(), settings, words,

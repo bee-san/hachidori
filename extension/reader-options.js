@@ -29,6 +29,8 @@
   // under `options.experimental`; `section` names the Settings card the flag
   // reveals.
   const EXPERIMENTAL_FEATURES = [
+    { id: "themeStore", label: "Theme Store",
+      description: "Try bundled popup layouts in Design, starting with Default and Nazeka." },
     { id: "longKeyScan", label: "Long dictionary entries",
       description: "Find dictionary entries longer than the scan length. The reader collects more page text only when an installed dictionary lists such entries, and the engine reads further only when the text starts like one of them." },
     { id: "mdxImport", label: "MDX dictionaries",
@@ -180,6 +182,7 @@
       : id.replace(/(^|-)([a-z])/gu, (_, separator, letter) => `${separator ? " " : ""}${letter.toUpperCase()}`),
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
+  POPUP_THEME_IDS.add("nazeka");
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",

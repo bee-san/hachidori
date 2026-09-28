@@ -12,6 +12,7 @@ import { createAnkiTemplateSettingsController } from "./anki-settings.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createExperimentalSettings } from "./experimental-settings.js";
+import { createThemeStore } from "./theme-store.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
@@ -117,6 +118,11 @@ const numberFormat = new Intl.NumberFormat();
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = normaliseOptions({});
+const themeStore = createThemeStore({ root: document.getElementById("theme-store"), onSelect(slug) {
+  options.popupTheme = slug;
+  renderThemeChoices();
+  writeOptions();
+} });
 let savedOptions = normaliseOptions({});
 let optionsRevision = -1;
 let pendingOptions = {};
@@ -1652,6 +1658,7 @@ function renderKanjiChoices() {
 }
 
 function renderThemeChoices() {
+  themeStore.render(options);
   if (activeSection !== "design") return;
   const theme = element("opt-popup-theme");
   if (theme.options.length === 0) {
@@ -1662,6 +1669,14 @@ function renderThemeChoices() {
       theme.append(optgroup);
     }
   }
+  let storeGroup = [...theme.children].find(group => group.label === "Theme Store");
+  if (!storeGroup && (options.experimental.themeStore || options.popupTheme === "nazeka")) {
+    storeGroup = document.createElement("optgroup");
+    storeGroup.label = "Theme Store";
+    storeGroup.append(new Option("Nazeka", "nazeka"));
+    theme.append(storeGroup);
+  }
+  if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && options.popupTheme !== "nazeka";
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
@@ -3541,6 +3556,7 @@ function setOptionsStatus(message, completed = false) {
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
   applyPageTheme(document, options);
+  themeStore.render(options);
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

@@ -23,7 +23,6 @@
   const WORKER_TARGET = "hoshidicts-worker";
   const READER_TARGET = "hachidori-reader";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
-  const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
@@ -145,6 +144,14 @@
   const rootLevel = createLevelState(0);
   const levels = [rootLevel];
   let nextLevelId = 0;
+  const themeHost = window.HDThemeHost.createThemeHost({
+    getOptions: () => options,
+    onReady() {
+      styleGeneration = -1;
+      appearance?.refreshHighlight();
+      if (shadow) ensureDictionaryStyles(currentGeneration);
+    },
+  });
 
   function createLevelState(depth) {
     return {
@@ -1608,14 +1615,14 @@
   }
 
   function ensureDictionaryStyles(generation) {
-    if (!shadow || generation === styleGeneration) {
+    if (!shadow || !themeHost.dictionaryStyles || generation === styleGeneration) {
       return;
     }
     styleGeneration = generation;
     const request = {};
     styleRequest = request;
     sendRequest("hd_styles", {}).then((reply) => {
-      if (disposed || !shadow || styleRequest !== request) {
+      if (disposed || !shadow || !themeHost.dictionaryStyles || styleRequest !== request) {
         return;
       }
       if (reply.generation !== generation) throw new Error("obsolete dictionary styles");
@@ -2019,25 +2026,6 @@
     }
   }
 
-  async function readerStyleSheet() {
-    const response = await fetch(chrome.runtime.getURL(READER_STYLESHEET));
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const iconResponse = await fetch(chrome.runtime.getURL("icons.css"));
-    if (!iconResponse.ok) throw new Error(`HTTP ${iconResponse.status}`);
-    const text = `${await response.text()}\n${await iconResponse.text()}`;
-    try {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(text);
-      return { sheet, text };
-    } catch {
-      // A constructed sheet is preferred (one parse shared by every frame), but
-      // a plain <style> in the shadow root renders the same rules.
-      return { sheet: null, text };
-    }
-  }
-
   function hostParent() {
     const fullscreen = document.fullscreenElement;
     if (!fullscreen || fullscreen === document.documentElement || fullscreen === document.body
@@ -2057,7 +2045,7 @@
     positionPopup();
   }
 
-  function buildUi(styles) {
+  function buildUi() {
     host = document.createElement(HOST_TAG);
     // Inline !important is the only declaration a page cannot override, and the
     // host must stay a zero-sized, non-interactive fixed anchor whatever the
@@ -2075,19 +2063,13 @@
     ].join("; ");
     applyPageZoom();
     shadow = host.attachShadow({ mode: "open" });
-    if (styles.sheet) {
-      shadow.adoptedStyleSheets = [styles.sheet];
-    } else {
-      const fallback = document.createElement("style");
-      fallback.textContent = styles.text;
-      shadow.appendChild(fallback);
-    }
 
     mountHost();
     appearance = window.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = window.HDPopup.createCustomPopupStyle(shadow);
     customStyle.update(options.customPopupCss);
+    themeHost.attach(shadow);
 
     highlighter = window.HDPopup.createSourceHighlighter(
       window,
@@ -2158,7 +2140,8 @@
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
-    level.view = window.HDPopup.createPopupView({
+    level.view = themeHost.createView({
+      onRendererRetired() { audio.retire(level); mining.retire(level); },
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
@@ -2502,16 +2485,11 @@
         if (!document.body || !window.HDPopup || !window.HDGlossary) {
           throw new Error("render modules or document body unavailable");
         }
-        let styles;
-        try {
-          styles = await readerStyleSheet();
-        } catch (error) {
-          throw new Error(`could not load ${READER_STYLESHEET}: ${error.message}`);
-        }
+        await themeHost.sync();
         if (disposed) {
           throw new Error("torn down");
         }
-        buildUi(styles);
+        buildUi();
       })().catch((error) => {
         console.warn("hachidori: popup unavailable", error);
         // The next hover retries, so a half-built host must not stay in the page
@@ -4155,6 +4133,7 @@
     audio?.update(options);
     mining?.update(options);
     appearance?.update(options);
+    void themeHost.sync();
     if (sizeChanged) for (const level of levels) level.view?.hideImagePreview();
     const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {

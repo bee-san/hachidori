@@ -15,6 +15,7 @@ export function applyPageTheme(document, options) {
   state.theme = options.popupTheme;
   let resolvedTheme = state.theme;
   if (resolvedTheme === "auto") resolvedTheme = state.media.matches ? "dark" : "light";
+  if (resolvedTheme === "nazeka") resolvedTheme = "default";
   document.documentElement.dataset.hoshidictsTheme = resolvedTheme;
 }
 

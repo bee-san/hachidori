@@ -2080,6 +2080,20 @@
     };
   }
 
+  function createAudioControl(documentRef, expressionText) {
+    const audio = documentRef.createElement("div");
+    audio.className = "gsm-hoshidicts-audio-control";
+    const button = documentRef.createElement("button");
+    button.type = "button";
+    button.className = "gsm-hoshidicts-audio-button";
+    button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
+    button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+    audio.append(button);
+    return { element: audio, button };
+  }
+
   function createPopupView(options) {
     const documentRef = options.document;
     const windowRef = options.window;
@@ -3245,16 +3259,7 @@
       for (const previous of actions.querySelectorAll(
         ":scope > .gsm-hoshidicts-popup-close, :scope > .gsm-hoshidicts-kanji-back"
       )) previous.remove();
-      const audio = documentRef.createElement("div");
-      audio.className = "gsm-hoshidicts-audio-control";
-      const button = documentRef.createElement("button");
-      button.type = "button";
-      button.className = "gsm-hoshidicts-audio-button";
-      button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
-      button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
-      button.setAttribute("aria-haspopup", "dialog");
-      button.setAttribute("aria-expanded", "false");
-      audio.append(button);
+      const { element: audio, button } = createAudioControl(documentRef, expressionText);
       actions.prepend(audio);
       const existingMiningAction = actions.querySelector(":scope > .gsm-hoshidicts-mine-button");
       if (existingMiningAction) actions.prepend(existingMiningAction);
@@ -4284,6 +4289,8 @@
     createFrequencyTags,
     createPitchTag,
     createPopupView,
+    createAudioControl,
+    deinflectionSteps,
     createSourceHighlighter,
     createTag,
     normaliseDictionaryTab,

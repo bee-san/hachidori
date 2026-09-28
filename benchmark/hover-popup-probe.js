@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 (() => {
+  const rendererWork = { defaultViews: 0, richGlossaries: 0, dictionaryStyles: 0 };
+  for (const [owner, method, key] of [[HDPopup, 'createPopupView', 'defaultViews'],
+    [HDGlossary, 'appendTextOnlyGlossary', 'richGlossaries'], [HDGlossary, 'applyDictionaryStyles', 'dictionaryStyles']]) {
+    const original = owner[method];
+    owner[method] = (...args) => { rendererWork[key]++; return original(...args); };
+  }
   const events = [];
   const ids = new WeakMap();
   let nextId = 0, active = null, observer = null;
@@ -92,10 +98,11 @@
   requestAnimationFrame(frame);
   globalThis.__hoverProbe = {
     arm(expected, depth = 0, delay = 0) {
+      themeHost.resetStats();
       active = { expected, depth, delay, start: null, first: null, complete: null,
         states: [], replies: [], rendered: false, probeMs: 0, stableFrames: 0, before: state(), eventStart: events.length };
     },
-    read() { return { ...active, now: performance.now(), events: events.slice(active?.eventStart), longTasks }; },
+    read() { return { ...active, rendererWork: { ...rendererWork }, renderer: themeHost.stats(), now: performance.now(), events: events.slice(active?.eventStart), longTasks }; },
     state,
     events: () => events,
     hitTesting(points, iterations = 1000) {

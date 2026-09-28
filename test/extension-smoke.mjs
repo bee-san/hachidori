@@ -4536,6 +4536,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
+  const themeStore = readFileSync(resolve(EXTENSION, "theme-store.js"), "utf8").replace(/^export\s+/gmu, "");
   const experimentalSettings = readFileSync(resolve(EXTENSION, "experimental-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const memorySettings = readFileSync(resolve(EXTENSION, "memory-settings.js"), "utf8")
@@ -4584,6 +4585,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/theme-store\.js";\s*/gmu, "")
     .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
     .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
@@ -4612,7 +4614,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${memorySettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -11211,6 +11213,7 @@ async function sourceHighlightStage() {
   window.CSS = { highlights: new Map() };
   window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
   const candidate = id => {
     const element = document.getElementById(id);
@@ -11548,11 +11551,15 @@ async function designPreviewStage() {
   });
   const { window } = dom;
   try {
-    window.fetch = async () => ({ blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }) });
+    window.chrome = { runtime: { getURL: path => `${EXTENSION_ORIGIN}/${path}` } };
+    window.fetch = async url => ({ ok: true,
+      text: async () => readFileSync(resolve(EXTENSION, new URL(url).pathname.slice(1)), "utf8"),
+      blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }),
+    });
     window.URL.createObjectURL = () => "blob:sample-meal";
     window.CSS = { highlights: new Map() };
     window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
-    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "visual-novel.js", "design-preview.js"]) {
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "theme-host.js", "visual-novel.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
     let earlyLoad = true;
@@ -14407,6 +14414,7 @@ async function staleKanjiResponseStage(invalidation) {
   });
   const { window } = dom;
   window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
   let storageListener = null;
   let initialStorageCallback = null;
   let pending = null;
@@ -14680,6 +14688,7 @@ async function contentNoteStage() {
       parseTagList() { return []; },
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));
     const createLayoutView = window.HDPopup.createPopupView;
     window.HDPopup = {
       ...window.HDPopup,
