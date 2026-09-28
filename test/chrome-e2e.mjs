@@ -337,6 +337,7 @@ const PLANNED = [
   "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
+  "definition text can wait for the activation key or a click in Hover mode",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "fallback source paint tracks CSS transitions and animated ancestors",
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
@@ -3083,6 +3084,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     { x: rect.right - 8, y: rect.top + 8 }, { x: rect.right - 8, y: rect.bottom - 8 },
   ].find(point => !inside(cover, point)) ?? { x: rect.left + 8, y: rect.top + 8, covered: true };
   let definitionEvidence;
+  let triggerEvidence;
   let evidence;
   let clickEvidence;
   let stickyEvidence;
@@ -3326,6 +3328,76 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       activationKey: originalOptions.activationKey ?? "Shift",
       lookupMode: originalOptions.lookupMode ?? "hover",
     });
+    // Issue #355 with the real mouse and keyboard while the page stays on
+    // Hover: sweeping, resting and wheeling over definitions opens nothing
+    // until the key is held or, in Click mode, a word is clicked.
+    const centre = hit => ({ x: hit.rect.x + hit.rect.width / 2, y: hit.rect.y + hit.rect.height / 2 });
+    triggerEvidence = {};
+    await writeOptions({ lookupMode: "hover", activationKey: "Shift", definitionLookupMode: "activation" });
+    await popup.nested("blur");
+    const sweep = [await popup.definitionTextRect("A linked definition."), await popup.definitionTextRect(fixture.child),
+      await popup.definitionTextRect(fixture.missing)];
+    triggerEvidence.sweep = sweep.map(hit => hit?.text ?? null);
+    if (sweep.every(Boolean)) {
+      await tab.mouse.move(centre(sweep[0]).x, centre(sweep[0]).y);
+      for (const hit of sweep.slice(1)) await tab.mouse.move(centre(hit).x, centre(hit).y, { steps: 12 });
+      await tab.mouse.wheel({ deltaY: 240 });
+      await tab.mouse.wheel({ deltaY: -240 });
+      await moveToDefinition(await popup.definitionTextRect(fixture.child));
+      await settle(500);
+    }
+    triggerEvidence.keySwept = await child.state();
+    await tab.keyboard.down("Shift");
+    try {
+      triggerEvidence.keyChild = await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    } finally {
+      await tab.keyboard.up("Shift");
+    }
+    await settle(300);
+    triggerEvidence.keyReleased = await child.state();
+    if (child.visible(triggerEvidence.keyReleased)) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+    await writeOptions({ definitionLookupMode: "click" });
+    const clickSource = await popup.definitionTextRect(fixture.child);
+    await moveToDefinition(clickSource);
+    await tab.keyboard.down("Shift");
+    await settle(400);
+    await tab.keyboard.up("Shift");
+    triggerEvidence.clickHovered = await child.state();
+    if (clickSource) await tab.mouse.click(centre(clickSource).x, centre(clickSource).y);
+    triggerEvidence.clickChild = await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    const clickLayout = await child.nested();
+    triggerEvidence.clickPlacement = anchoredTo(clickLayout?.rect, clickSource?.rect, clickLayout?.viewport);
+    if (triggerEvidence.clickChild) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+    const dragStart = await popup.definitionTextRect("A linked definition.");
+    if (dragStart && clickSource) {
+      // Press near the glyph's edge, as the page drags do: a synthetic press
+      // at a glyph's midpoint did not start a selection in headless Chrome.
+      await tab.mouse.move(dragStart.rect.x + 1, centre(dragStart).y);
+      await tab.mouse.down();
+      try {
+        await tab.mouse.move(centre(clickSource).x, centre(clickSource).y, { steps: 8 });
+      } finally {
+        await tab.mouse.up();
+      }
+      await settle(500);
+    }
+    triggerEvidence.dragged = await child.state();
+    triggerEvidence.dragSelection = await tab.evaluate(() => {
+      const selection = document.querySelector("hachidori-host")?.shadowRoot?.getSelection?.();
+      const text = selection?.toString() ?? "";
+      selection?.removeAllRanges();
+      window.getSelection().removeAllRanges();
+      return text;
+    });
+    await popup.nested("focus-link");
+    await writeOptions({ definitionLookupMode: originalOptions.definitionLookupMode ?? "inherit",
+      lookupMode: originalOptions.lookupMode ?? "hover" });
     definitionEvidence = {
       activationChild,
       activationGated,
@@ -3496,6 +3568,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await writeOptions({
       activationKey: originalOptions.activationKey ?? "Shift",
       lookupMode: originalOptions.lookupMode ?? "hover",
+      definitionLookupMode: originalOptions.definitionLookupMode ?? "inherit",
       popupNestingMaxDepth: originalOptions.popupNestingMaxDepth ?? 10,
     });
     const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
@@ -3529,6 +3602,15 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && definitionEvidence.activationGated
       && definitionEvidence.activationChild?.plain.includes(fixture.child),
     JSON.stringify(definitionEvidence));
+  check("definition text can wait for the activation key or a click in Hover mode",
+    JSON.stringify(triggerEvidence.sweep) === JSON.stringify(["A", fixture.child[0], fixture.missing[0]])
+      && !child.visible(triggerEvidence.keySwept)
+      && triggerEvidence.keyChild?.plain.includes(fixture.child) && child.visible(triggerEvidence.keyReleased)
+      && !child.visible(triggerEvidence.clickHovered)
+      && triggerEvidence.clickChild?.plain.includes(fixture.child)
+      && triggerEvidence.clickPlacement.ok && (triggerEvidence.clickPlacement.below || triggerEvidence.clickPlacement.above)
+      && !child.visible(triggerEvidence.dragged) && triggerEvidence.dragSelection.length > 0,
+    JSON.stringify(triggerEvidence));
   check("nested definition lookups use an accessible close control that dismisses the child popup",
     definitionEvidence.definitionClose?.label === "Close lookup"
       && definitionEvidence.definitionClose.text === ""
@@ -8147,6 +8229,7 @@ async function checkHoverHitTesting(tab, popup) {
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
     "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay", "opt-hide-on-cursor-exit",
+    "opt-definition-lookup-mode",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -8171,7 +8254,8 @@ async function checkReaderActivation(settings, tab, popup) {
       opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
       JSON.stringify({ closed, disabled, reopened: reopened !== null }));
 
-    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400" });
+    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400",
+      "opt-definition-lookup-mode": "click" });
     await popup.waitForHidden();
     await moveToWord();
     await pause(250);
@@ -8187,20 +8271,25 @@ async function checkReaderActivation(settings, tab, popup) {
     await pause(300);
     const cancelled = !popup.visible(await popup.state());
     const activationControls = () => settings.evaluate(async () => {
-      const { lookupMode, activationKey } = HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
+      const { lookupMode, activationKey, definitionLookupMode } =
+        HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
       return {
         key: document.getElementById("opt-activation-key").value,
         disabled: document.getElementById("opt-activation-key").disabled,
         sticky: document.getElementById("opt-lookup-sticky").checked,
         stickyHidden: document.getElementById("opt-lookup-sticky-row").hidden,
         stored: [lookupMode, activationKey],
+        childPopups: document.getElementById("opt-definition-lookup-mode").value,
+        keyChoice: document.querySelector('#opt-definition-lookup-mode option[value="activation"]').textContent,
+        storedChildPopups: definitionLookupMode,
       };
     });
     const controls = await activationControls();
     check("configured activation keys open stationary lookups and release them using the saved delays",
       gated && activated !== null && retained && released && cancelled
         && JSON.stringify(controls.stored) === JSON.stringify(["activation", "K"])
-        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled,
+        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled
+        && controls.childPopups === "click" && controls.storedChildPopups === "click" && controls.keyChoice === "Hold K",
       JSON.stringify({ gated, activated: activated !== null, retained, released, cancelled, controls }));
 
     await edit({ "opt-activation-key": "" });
@@ -8270,9 +8359,10 @@ async function checkReaderActivation(settings, tab, popup) {
     await tab.keyboard.up("k");
     // Keep a non-default key behind No key to prove that choosing No key
     // preserves it and that the exact setting survives the full browser restart.
-    // The cursor-exit delay likewise stays at 300 ms with its switch off.
+    // The cursor-exit delay likewise stays at 300 ms with its switch off, and
+    // child popups keep a non-default Click trigger through the restart.
     await edit({ "opt-activation-key": "K" });
-    await edit(original);
+    await edit({ ...original, "opt-definition-lookup-mode": "click" });
     await tab.keyboard.press("Escape");
   }
 }
@@ -13751,6 +13841,7 @@ async function main() {
       && document.getElementById("opt-activation-key").value
         === (expected.lookupMode === "hover" ? "" : expected.activationKey)
       && document.getElementById("opt-lookup-sticky-row").hidden === (expected.lookupMode === "hover")
+      && document.getElementById("opt-definition-lookup-mode").value === (expected.definitionLookupMode ?? "inherit")
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
       && document.getElementById("opt-hide-on-cursor-exit").checked === expected.hidePopupOnCursorExit
       && document.getElementById("opt-hide-on-cursor-exit-delay").value === String(expected.hidePopupOnCursorExitDelayMs)
