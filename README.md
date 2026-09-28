@@ -19,6 +19,7 @@
   <a href="benchmark/README.md">Benchmarks</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="extension/README.md">Extension</a> ·
+  <a href="docs/asbplayer.md">asbplayer</a> ·
   <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/memory.md">Memory</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
@@ -31,10 +32,6 @@ Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature
 ## Install in 15 seconds
 
 Click <a href="https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe">here to install from Chrome store.</a> (note: this will always lag behind the repo and may have bugs fixed in the repo)
-
-Every GitHub release also ships an unsigned Firefox 153+ desktop package
-(`*-firefox-unsigned.xpi`) for temporary installation; it is not on
-addons.mozilla.org yet. See [the Firefox guide](docs/firefox.md).
 
 <p align="center">
   <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">

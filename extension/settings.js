@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { extensionApi as chrome, IS_FIREFOX } from "./browser-api.js";
+import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
@@ -19,7 +19,7 @@ import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { applyPageTheme, setStatusOutput } from "./settings-dom.js";
-import { HOST_BROWSER, HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomButtonSettings } from "./custom-button-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
@@ -214,13 +214,6 @@ function configureBrowserUi() {
     customJavascript.dataset.settingsUnavailable = "true";
     customJavascript.hidden = true;
   }
-  if (!IS_FIREFOX) return;
-  element("audio-mining-help").textContent =
-    "Firefox can play browser speech, but Hachidori does not record it into Anki. Add a downloadable pronunciation source to fill {audio} fields.";
-  const shortcutHelp = element("browser-shortcuts").querySelector(".field-hint");
-  shortcutHelp.textContent =
-    "Firefox runs these on any page. Popup actions need an open popup. Change them in Firefox’s Manage Extension Shortcuts page.";
-  element("browser-shortcuts-open").textContent = "Change in Firefox";
 }
 
 function sectionHasPendingWork(id) {
@@ -375,11 +368,7 @@ function updateKeybindSettings() {
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
     getBrowserCommands: () => chrome.commands.getAll(),
-    // Firefox refuses tabs.create for privileged about: URLs, so it exposes
-    // the Manage Extension Shortcuts view through commands instead.
-    openBrowserShortcuts: () => (IS_FIREFOX
-      ? chrome.commands.openShortcutSettings()
-      : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
+    openBrowserShortcuts: () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
   });
   keybindController.render();
@@ -470,8 +459,8 @@ function renderExperimentalSettings() {
 }
 
 // Low memory mode recycles the engine worker, so it needs the threaded engine:
-// not Firefox, and not a browser where the offscreen document runs the local
-// engine (hd_status.threaded false). The memory readout stays either way.
+// not when the offscreen document runs the local engine
+// (hd_status.threaded false). The memory readout stays either way.
 function renderLowMemoryMode() {
   const available = HOST_CAPABILITIES.lowMemoryMode && lastEngineStatus?.threaded !== false;
   element("low-memory-mode").hidden = !available;
@@ -510,7 +499,7 @@ function updateBackupSettings() {
     document, send,
     download: typeof chrome.downloads?.download === "function"
       ? () => send("hd_backup_download", {}, WORKER_TARGET) : null,
-    browserName: HOST_BROWSER === "firefox" ? "Firefox" : "Chrome",
+    browserName: "Chrome",
     listAutomatic: () => send("hd_backup_auto_list", {}, WORKER_TARGET),
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {

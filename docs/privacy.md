@@ -58,7 +58,7 @@ configured audio providers. Automatic playback does this when enabled.
 Provider responses may identify additional media hosts. HTTP localhost
 audio servers are supported; use HTTPS for services on other computers. Browser
 speech uses your selected browser/operating-system voice, which may be provided
-by an online service.. Pronunciation audio saved to Anki comes from configured downloadable sources.
+by an online service. Pronunciation audio saved to Anki comes from configured downloadable sources.
 
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another

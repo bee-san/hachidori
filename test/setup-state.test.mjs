@@ -36,12 +36,12 @@ test("mining capability projection filters browser speech sources", () => {
       { id: "remote", type: "custom", enabled: true, url: "https://audio.test/%w", voice: "" },
     ],
   });
-  const firefox = capabilityAnkiOptions(stored, {
+  const projected = capabilityAnkiOptions(stored, {
     screenshot: true,
     browserSpeech: false,
   });
-  assert.equal(firefox.anki.captureScreenshot, true);
-  assert.deepEqual(firefox.audioSources.map(source => source.id), ["remote"]);
+  assert.equal(projected.anki.captureScreenshot, true);
+  assert.deepEqual(projected.audioSources.map(source => source.id), ["remote"]);
   assert.deepEqual(stored.audioSources.map(source => source.id), ["tts", "remote"]);
 });
 

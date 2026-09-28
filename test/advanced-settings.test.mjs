@@ -14,18 +14,16 @@ const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").r
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 // Settings as a user opens it: navigation attached, then stored options adopted.
-function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, firefox = false } = {}) {
+function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
-  window.IS_FIREFOX = firefox;
-  window.HOST_BROWSER = firefox ? "firefox" : "chrome";
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
-    browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: !firefox,
-    localFileAccessPrompt: !overlayMode, lowMemoryMode: !firefox,
+    browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: true,
+    localFileAccessPrompt: !overlayMode, lowMemoryMode: true,
   };
-  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode && !firefox };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.chrome = {
     runtime: { sendMessage: () => Promise.resolve({ ok: true, state: "stopped" }) },
     storage: { onChanged: { addListener() {} }, local: { get: () => Promise.resolve({}) } },
@@ -75,16 +73,6 @@ test("Advanced keeps dictionary experiments and discards removed media settings"
   window.dispatchEvent(new window.Event("hashchange"));
   assert.deepEqual(visible(), ["advanced"]);
   assert.equal(el("experimental-empty").hidden, true);
-});
-
-test("Firefox lists supported experimental features without a media section", t => {
-  const { window, el, visible } = fixture(t, { hash: "#media", firefox: true,
-    stored: { experimental: { mediaMining: true }, mediaCapture: { enabled: true } } });
-  assert.deepEqual(visible(), ["dictionaries"]);
-  for (const feature of window.HDReaderOptions.EXPERIMENTAL_FEATURES) {
-    assert.notEqual(el(`opt-experimental-${feature.id}`), null, feature.id);
-  }
-  assert.equal(el("media"), null);
 });
 
 test("the MDX dictionaries switch widens the import picker to .mdx and .mdd files", async t => {

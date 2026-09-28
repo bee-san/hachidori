@@ -601,7 +601,6 @@
     };
   }
   // Mining screenshots address this exact document before and after capture.
-  // This script is present in every browser, including Firefox.
   globalThis.chrome?.runtime?.onMessage?.addListener((message, sender, sendResponse) => {
     if (message?.target === "hachidori-anki-content" && message.type === "hd_anki_document") sendResponse({ present: true });
   });

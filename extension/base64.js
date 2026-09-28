@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Base64 for media, captured audio and screenshots. Uint8Array.prototype.toBase64
-// and Uint8Array.fromBase64 (Chrome 143+, Firefox 133+) do in about 0.5 ms per
+// and Uint8Array.fromBase64 (Chrome 143+) do in about 0.5 ms per
 // megabyte what the String.fromCodePoint/btoa and atob/Uint8Array.from loops
 // take 40–55 ms for, with identical results; both remain as the fallback.
 

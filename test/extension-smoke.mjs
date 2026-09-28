@@ -796,7 +796,6 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^import .* from "\.\/(?:lookup-stats|backup-state)\.js";\s*/gmu, "")
     .replace(/^export\s+/gmu, "");
   const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
-    .replace(/import \{ BROWSER_KIND, IS_FIREFOX \} from "\.\/browser-api\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "")
     .replace("OVERLAY_MODE = false;", `OVERLAY_MODE = ${overlayMode};`);
   const chromeOffscreen = readFileSync(resolve(EXTENSION, "chrome-offscreen.js"), "utf8")
@@ -821,9 +820,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
-    .replace(/import \{ extensionApi as chrome, IS_FIREFOX \} from "\.\/browser-api\.js";\s*/u, "")
+    .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
     .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
-    .replace(/import \{ waitForFirefoxOffscreen \} from "\.\/firefox-host\.js";\s*/u, "")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
@@ -870,8 +868,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `const BROWSER_KIND = "chrome";\nconst IS_FIREFOX = false;\nasync function waitForFirefoxOffscreen() {}\n`
-      + `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
+    `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n`
       + background,
@@ -4506,10 +4503,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
-  window.IS_FIREFOX = false;
-  window.HOST_BROWSER = overlayMode ? "electron" : "chrome";
   window.extensionApi = window.chrome;
-  window.selectExtensionApi = scope => scope.browser ?? scope.chrome ?? null;
+  window.selectExtensionApi = scope => scope.chrome ?? null;
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
 
@@ -9184,6 +9179,9 @@ async function main() {
     noteContent?.popupVisibility === true,
     JSON.stringify(noteContent?.popupVisibility),
   );
+  for (const [name, passed] of Object.entries(noteContent?.fullscreenHost ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -17957,6 +17955,40 @@ async function contentNoteStage() {
       held && recovered?.request.text === harness.candidate.query && visible };
   }
 
+  async function fullscreenHostCase() {
+    const harness = await createHarness();
+    const document = harness.popup.ownerDocument;
+    const window = document.defaultView;
+    const host = harness.popup.getRootNode().host;
+    const player = document.createElement("div");
+    player.append(harness.anchor);
+    document.body.append(player);
+    await harness.initialLookup();
+    let fullscreen = player;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreen });
+    document.dispatchEvent(new window.Event("fullscreenchange"));
+    const mounted = host.parentElement === player && !harness.popup.hidden;
+    // Showing after a page moves the host must repair its fullscreen parent.
+    document.body.append(host);
+    harness.driver.show(harness.candidate);
+    const repaired = host.parentElement === player;
+    fullscreen = null;
+    document.dispatchEvent(new window.Event("fullscreenchange"));
+    const restored = host.parentElement === document.body;
+    const excluded = [document.documentElement, document.createElement("video"), document.createElement("iframe")];
+    const shadowPlayer = document.createElement("div");
+    shadowPlayer.attachShadow({ mode: "open" });
+    excluded.push(shadowPlayer);
+    const fallbacks = excluded.every(element => {
+      fullscreen = element;
+      document.dispatchEvent(new window.Event("fullscreenchange"));
+      return host.parentElement === document.body;
+    });
+    harness.close();
+    return { "fullscreen player hosts the visible popup and returns it to body on exit":
+      mounted && repaired && restored && fallbacks };
+  }
+
   // The engine finds dictionary keys longer than the scan length only if it is
   // handed enough text: each package row carries the longest key its long-key
   // index lists, and while the experimental Long dictionary entries flag is on
@@ -19897,6 +19929,7 @@ async function contentNoteStage() {
     callbacksWired,
     keybinds: await keybindCase(),
     popupVisibility: await popupVisibilityCase(),
+    fullscreenHost: await fullscreenHostCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
       ...await frequencyDefinitionBlurCase() },

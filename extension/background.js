@@ -1,6 +1,5 @@
-import { extensionApi as chrome, IS_FIREFOX } from "./browser-api.js";
+import { extensionApi as chrome } from "./browser-api.js";
 import { ensureChromeOffscreen } from "./chrome-offscreen.js";
-import { waitForFirefoxOffscreen } from "./firefox-host.js";
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
@@ -526,10 +525,6 @@ function sleep(ms) {
 // createDocument() rejects when called while another call is in flight, so every
 // caller waits on the same promise.
 async function ensureOffscreen() {
-  if (IS_FIREFOX) {
-    await waitForFirefoxOffscreen();
-    return;
-  }
   // Some extension hosts keep this page alive themselves instead of exposing
   // Chrome's offscreen-document lifecycle API.
   await ensureChromeOffscreen(OFFSCREEN_DOCUMENT);
@@ -1950,8 +1945,7 @@ const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_p
 const CAPTURE_VISIBLE_RETRY_MS = 600;
 
 // Startup messages can include or omit sender.tab. Chrome's live extension
-// contexts bind either shape to the same document; Firefox supplies the tab on
-// the extension-page sender and has no getContexts equivalent.
+// contexts bind either shape to the same document.
 async function screenshotOwnedTab(sender, startup) {
   let tabId = sender.tab?.id;
   if (startup && typeof chrome.runtime.getContexts === "function") {

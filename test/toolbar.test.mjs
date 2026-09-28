@@ -58,8 +58,7 @@ async function toolbar(stored = {}) {
   vm.runInContext(optionsSource, context);
   const script = source
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
-    .replace('import "./reader-options.js";', "")
-;
+    .replace('import "./reader-options.js";', "");
   await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,

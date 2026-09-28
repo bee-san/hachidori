@@ -1,5 +1,4 @@
 // Chrome MV3 lifecycle for the shared offscreen engine document.
-// Firefox imports this shared module but never calls its guarded Chrome path.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { extensionApi as chrome } from "./browser-api.js";

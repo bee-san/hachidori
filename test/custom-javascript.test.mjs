@@ -56,7 +56,7 @@ test("clearing JavaScript removes its registration and unavailable user scripts 
   } };
   assert.deepEqual(await applyCustomJavaScript(browser, ""), { supported: true, registered: false });
   assert.deepEqual(calls, [{ ids: ["hachidori-custom-javascript"] }]);
-  // Firefox MV2 and other hosts without `userScripts` report the gap instead of throwing.
+  // Hosts without `userScripts` report the gap instead of throwing.
   assert.deepEqual(await applyCustomJavaScript({}, "window.test = true;"), { supported: false, registered: false });
 });
 

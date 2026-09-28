@@ -34,8 +34,6 @@ function fixture(t, { failedDictionaries = [] } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example/#dictionaries" });
   t.after(() => dom.window.close());
   const { window } = dom;
-  window.IS_FIREFOX = false;
-  window.HOST_BROWSER = "chrome";
   window.OVERLAY_MODE = false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: true, linkButtons: true, externalLinkHost: false, customJavaScript: true,
