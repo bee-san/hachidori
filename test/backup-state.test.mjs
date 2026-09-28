@@ -27,6 +27,21 @@ test("complete restore advances each local revision and replaces absent/default 
   await assertBackupSnapshot(restored);
 });
 
+test("an overlay restore reads on hover only when the backup chose no lookup mode", async () => {
+  const archived = snapshot();
+  assert.deepEqual(restoredBackupSnapshot(snapshot(), archived, [], { overlay: true }).options,
+    { lookupMode: "hover", popupTheme: "dark", revision: 22 });
+  assert.deepEqual(restoredBackupSnapshot(snapshot(), archived, []).options, { popupTheme: "dark", revision: 22 });
+  for (const choice of [{ lookupMode: "activation" }, { modifier: "ctrl" }]) {
+    archived.options = { revision: 3, ...choice };
+    await assertBackupSnapshot(archived);
+    const overlay = restoredBackupSnapshot(snapshot(), archived, [], { overlay: true });
+    assert.deepEqual(overlay.options, restoredBackupSnapshot(snapshot(), archived, []).options);
+    assert.equal(overlay.options.lookupMode, "activation");
+    await assertBackupSnapshot(overlay);
+  }
+});
+
 test("a pre-Template backup validates and restores through the canonical Template and Custom-button model", async () => {
   const archived = snapshot();
   const defaults = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki;

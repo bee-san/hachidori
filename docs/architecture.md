@@ -230,7 +230,8 @@ only when it created the setup record. Chrome reports `install` again on every
 launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 [Overlay mode](overlay-mode.md) skips this path and only seeds the initial
-options on worker start.
+options on worker start, when an unlinked profile that never chose a lookup mode
+also gets the overlay's hover default.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
   dictionaries, anki }`, where `stage` is `welcome`, `dictionaries`, `anki`, `practice` or
@@ -598,9 +599,17 @@ key is released. `activation` instead closes the popup on release, and `hover`
 scans without a key. `reader-options.js` translates legacy
 `modifier` values into the canonical mode/key on read and accepts old Settings
 patches through the same revision CAS. Explicit modern fields win, and selecting
-Hover does not erase the remembered key. Canonical writes contain no competing
+No key does not erase the remembered key. Canonical writes contain no competing
 modifier policy. Letters, digits, punctuation, named browser keys and F1–F24 are
 supported; browser/OS-reserved keys remain subject to their native behavior.
+
+Settings → Reading → Activation shows these stored fields the way Yomitan's
+Scanning settings do. **Enable lookups** is `hoverEnabled`, the same switch as
+the toolbar's Japanese lookups and the toggle shortcut. The **Activation key**
+picker lists **No key** first: it writes only `lookupMode: "hover"`, and a key
+writes `activationKey` with `activationSticky` or `activation` as **Keep the
+popup open after releasing the key** says. That switch is hidden for No key and
+on when a key is chosen again.
 
 The existing 0–2,000 ms open delay defaults to 50 ms and also applies to a key
 pressed over a stationary pointer. Hide/transfer delay defaults to the existing
@@ -619,8 +628,11 @@ cancel delayed or unfinished pointer work immediately; the hide delay only
 retains an already-rendered popup for transfer. In `activationSticky` a rendered
 popup ignores key release, pointer movement without the key, an empty scan and
 window departure; outside click, Escape, blur, scrolling its source away, a
-failed lookup or a new lookup still close it. Same-candidate hover, popup entry,
-keyboard focus and Note editing preserve the current view. Dispatching a different
+failed lookup or a new lookup still close it. Its rendered children likewise
+outlive pointer movement through the chain (see
+[Definition popup chains](#definition-popup-chains)). Same-candidate hover,
+popup entry, keyboard focus and Note editing preserve the current view.
+Dispatching a different
 valid pointer candidate retires the previous popup, matching the pinned reader's
 `queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
 or resume expired glossary/media callbacks. Interaction-only settings changes do
@@ -633,7 +645,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Lookup mode and activation key in Settings](assets/reader-activation-settings.png)
+![Enable lookups, the Activation key picker and the keep-open switch in Settings](assets/reader-activation-settings.png)
 
 ### Keybinds
 
@@ -868,10 +880,11 @@ before the change event completes.
 
 Design has independent controls for frequency source names, number
 abbreviation and averages, pitch contour and its preferred dictionary, pitch
-badges, and grammar tags. Frequency metadata defaults to Yomitan's values
-without dictionary names: each dictionary's own display value, such as `51,499`
-or `142位`, otherwise the plain number, and averages as plain numbers.
-**Abbreviate large numbers** opts into compact values such as `51.5k`. The first
+badges and their dictionary names, and grammar tags. Frequency metadata defaults
+to Yomitan's values without dictionary names: each dictionary's own display
+value, such as `51,499` or `142位`, otherwise the plain number, and averages as
+plain numbers. **Abbreviate large numbers** opts into compact values such as
+`51.5k`. The first
 result's frequency tags are the same Yomitan-like two-tone tags as every later
 entry's metadata row; a filled source segment appears only when names or
 averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`
@@ -882,15 +895,20 @@ header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
-Contour and pitch badges remain on, and averages remain off. IPA transcriptions
-and definition tags remain visible independently. Every pitch badge draws its
-dictionary's accent as the same mora contour the header furigana uses, followed
-by the `[n]` position, so several pitch dictionaries compare at a glance; a
-position outside the reading's morae keeps the plain `reading [n]` text, and the
-text stays in every badge's tooltip and accessibility label. Pitch and IPA show
-pronunciation data without source-name labels; tooltips and accessibility labels retain source
-attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
-and frequency values use the theme's normal foreground, including light themes.
+Contour, pitch badges and pitch dictionary names remain on, and averages remain
+off. IPA transcriptions and definition tags remain visible independently. Every
+pitch badge draws its dictionary's accent as the same mora contour the header
+furigana uses, followed by the `[n]` position, so several pitch dictionaries
+compare at a glance; a position outside the reading's morae keeps the plain
+`reading [n]` text, and the text stays in every badge's tooltip and
+accessibility label. As in Yomitan, each pitch badge, including that text
+fallback, starts with its dictionary's display name, truncated with an ellipsis
+at the frequency source's width; turning the name off restores the unlabelled
+badge. IPA shows transcriptions without source-name labels. Tooltips and
+accessibility labels retain source attribution, and visible pitch names and
+labels follow dictionary aliases in place. Unfilled tags, pitch names and
+lightly tinted pitch and frequency values use the theme's normal foreground,
+including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
@@ -1142,9 +1160,15 @@ that child's term request; its next Back closes the child and returns focus to a
 connected source link when one initiated the lookup.
 
 Keyboard link activation focuses the child's Back control; mouse activation
-does not invent keyboard focus that would block pointer-return pruning. Returning
-to an ancestor prunes descendants after the normal hide delay, unless a draft,
-pending Note append, or deliberate keyboard focus still protects them. A primary
+does not invent keyboard focus that would block pointer-return pruning. In
+`hover` and `activation`, which auto-hide the root, returning to an ancestor
+prunes descendants after the normal hide delay, unless a draft, pending Note
+append, or deliberate keyboard focus still protects them. In `activationSticky`
+pointer movement never prunes a rendered child: entering or resting in an
+ancestor, an empty scan there and hovering a non-dictionary link there all leave
+it open, as Yomitan's children stay open without "Hide popup on cursor exit". An
+unfinished hover child is still cancelled when the pointer leaves its word. In
+every mode a primary
 press in an ancestor pane retires its descendants at once, focused or not, and
 drops a pending definition scan; only an open draft or pending append keeps
 them, and Escape still closes that form first. A press on an internal link keeps
@@ -1154,8 +1178,12 @@ transfer uses actual pane rectangles and narrow connecting gaps, with 80 ms grac
 before resuming the current page scan. No layout is read in raw mousemove before
 the existing throttle. Like Yomitan, each child is placed from its own source
 rectangle: below the word when that fits, otherwise above, aligned with the
-word's left edge and clamped to the viewport, so it overlaps its parent rather
-than sitting beside it. Layout callbacks start
+word's left edge and clamped horizontally to the viewport, so it overlaps its
+parent rather than sitting beside it. For horizontal text, a pane that fits on
+neither side takes the roomier one and is shortened to its room, keeping the
+gap and viewport padding, so it never covers the text that opened it; roots,
+which prefer the space above their page word, follow the same rule. The
+configured or session size is therefore a maximum. Layout callbacks start
 at their owning level and reposition descendants without redoing ancestor
 layout; no ancestor pane is measured for any descendant.
 Dirty panes share one animation-frame batch: each runs its own masonry before
@@ -1652,7 +1680,8 @@ keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
-The activation-key selector remains editable in either lookup mode.
+The Activation key picker stays editable in every lookup mode, and search finds
+it by "no key" or "hover".
 All sections stay mounted, so navigation and browser history preserve reader
 and personal-dictionary drafts. Personal source loads on first entering its section.
 The rail becomes a compact section chooser in narrow windows. Settings applies
@@ -1795,13 +1824,13 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
-dark, 23 light, one high-contrast), strict option validation, and the 19 Design
+dark, 23 light, one high-contrast), strict option validation, and the 26 Design
 reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,
-one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
-names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
-averages off. Reset writes those keys through the existing sparse revision CAS;
+one column, Automatic toolbar placement, summary off with three snippets and automatic sources, pitch
+contour/pitch badges/pitch dictionary names/source highlighting on, and frequency
+names/abbreviation/averages and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.

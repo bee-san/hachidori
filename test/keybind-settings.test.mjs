@@ -119,7 +119,7 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   assert.deepEqual([popupScope.hidden, webScope.hidden, f.keybinds[8].scopes.join()], [false, false, "popup,web"]);
   webScope.querySelector("input").click();
   assert.equal(f.keybinds[8].scopes.join(), "popup");
-  assert.equal([...f.control(8, "option").options].find(option => option.value === "hoverEnabled").textContent, "Enable hover lookups");
+  assert.equal([...f.control(8, "option").options].find(option => option.value === "hoverEnabled").textContent, "Enable lookups");
   f.choose(f.control(8, "option"), "hoverEnabled");
   assert.equal(f.keybinds[8].argument, "hoverEnabled");
 

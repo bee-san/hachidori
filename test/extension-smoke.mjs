@@ -1560,15 +1560,24 @@ async function overlayModeBackgroundStage() {
   const preserved = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(storage.raw.get("options")) === JSON.stringify(edited);
 
+  // A profile carried from before overlay mode never chose a lookup mode, so it
+  // reads on hover after one revisioned write. A legacy modifier is a choice.
   const carried = makeStorage();
   await carried.api().local.set({ options: { scanLength: 20, revision: 4 } });
   start("overlay-worker-carried", carried);
+  await settle(() => carried.raw.get("options")?.revision !== 4);
+  const legacy = makeStorage();
+  await legacy.api().local.set({ options: { modifier: "ctrl", revision: 3 } });
+  start("overlay-worker-legacy", legacy);
   await settle();
-  const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
+  const carriedHover = JSON.stringify(carried.raw.get("options"))
+      === JSON.stringify({ scanLength: 20, revision: 5, lookupMode: "hover" })
+    && JSON.stringify(legacy.raw.get("options")) === JSON.stringify({ modifier: "ctrl", revision: 3 });
 
   check("overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup",
-    seededOnce && preserved && carriedKept,
-    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+    seededOnce && preserved && carriedHover,
+    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"),
+      carried: [...carried.raw.entries()], legacy: [...legacy.raw.entries()] }));
 
   const unavailable = await chrome.__bus.sendMessage("overlay-reader", {
     target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
@@ -2986,6 +2995,7 @@ async function sharingTransitionStage() {
   const overlay = await fixture({ overlayMode: true });
   let restarted;
   let legacy;
+  let modeless;
   try {
     overlay.hello.capabilities = ["linked-anki-v1"];
     await overlay.finishLinks([overlay.link()]);
@@ -3072,6 +3082,16 @@ async function sharingTransitionStage() {
         && !legacy.storage.raw.get("options").sourceHighlightEnabled
         && legacy.storage.raw.get("options").revision > 15
         && legacy.storage.raw.get("options").popupTheme === "dark");
+    const modelessState = structuredClone(legacyState);
+    delete modelessState.sharingLocalState.options.lookupMode;
+    modeless = await fixture({ overlayMode: true, initial: modelessState });
+    const composed = structuredClone(modeless.storage.raw.get("options"));
+    const modelessUnlinked = await modeless.send("hd_sharing_client_unlink");
+    const modelessRestored = modeless.storage.raw.get("options");
+    check("a linked overlay whose local record chose no lookup mode composes and unlinks on hover",
+      legacyState.options.lookupMode === "activationSticky" && composed.lookupMode === "hover"
+        && modelessUnlinked.ok && modelessRestored.lookupMode === "hover" && modelessRestored.popupWidthPx === 640,
+      JSON.stringify({ composed, modelessUnlinked, modelessRestored }));
     restarted = await fixture({ overlayMode: true, initial: restartState });
     const offline = await restarted.send("hd_options_write", { baseRevision: restarted.storage.raw.get("options").revision,
       options: { popupWidthPx: 680 } }, "hoshidicts-worker");
@@ -3092,7 +3112,7 @@ async function sharingTransitionStage() {
       unlinked.ok && lateReply.ok === false && current().popupWidthPx === 640 && current().popupTheme === "sunset"
         && current().revision > restartState.options.revision && !overlay.storage.raw.has("sharingLocalState")
         && !overlay.storage.raw.has("sharingOptionsVersion"), JSON.stringify({ unlinked, lateReply, current: current() }));
-  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); }
+  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); modeless?.dispose(); }
 }
 
 async function firstRunBackgroundStage() {
@@ -4740,7 +4760,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
-      showPitchAccentBadge: true, hidePopupGrammarTags: true,
+      showPitchAccentBadge: true, showPitchAccentDictionaryNames: true, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -11610,7 +11630,7 @@ async function designPreviewStage() {
       && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
       && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
-      && !popup.textContent.includes("Sample pitch")
+      && query(".gsm-hoshidicts-tag-pitch > .gsm-hoshidicts-pitch-source")?.textContent === "Sample pitch"
       && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
@@ -11625,11 +11645,16 @@ async function designPreviewStage() {
     const cssPreview = parses === 1 && cssPlacements === 1 && query("form") === form
       && query(".gsm-hoshidicts-glossary-card") === card;
     source.getBoundingClientRect = sourceRect;
+    options = { ...options, showPitchAccentDictionaryNames: false };
+    update();
+    await settle();
+    const unlabelledPitch = Boolean(query(".gsm-hoshidicts-tag-pitch")) && !query(".gsm-hoshidicts-pitch-source")
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
     options = { ...options, showFrequencyDictionaryNames: false, showPitchAccentBadge: false,
       showCompactDefinitionSummary: true, popupColumns: 2 };
     update();
     await settle();
-    let incremental = query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
+    let incremental = unlabelledPitch && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
       && form.elements.definition.value === "A preview draft" && !query(".gsm-hoshidicts-tag-pitch")
       && !!query(".gsm-hoshidicts-compact-definition-summary");
     const audioControl = query(".gsm-hoshidicts-audio-control");
@@ -12037,6 +12062,7 @@ async function settingsFrequencyStage() {
       ["opt-frequency-compact", "compactFrequencyNumbers", false],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
+      ["opt-pitch-names", "showPitchAccentDictionaryNames", true],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
       ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
@@ -16106,7 +16132,8 @@ async function contentNoteStage() {
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
             showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
-            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false, hidePopupGrammarTags: true };
+            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false,
+            showPitchAccentDictionaryNames: false, hidePopupGrammarTags: true };
           const before = combined.sent.length;
           if (update === "options" || update === "metadata") combined.emitOptions(options);
           else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
@@ -16502,6 +16529,60 @@ async function contentNoteStage() {
       corridor && reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
   }
 
+  // Issue #360: in activationSticky, the default, pointer movement never prunes
+  // a rendered child, as in Yomitan without "Hide popup on cursor exit". Hover
+  // keeps the pointer-return prune above; a parent press still closes a child.
+  async function nestedStickyCase() {
+    const harness = await createHarness(undefined, { options: { lookupMode: "activationSticky" } });
+    const window = harness.anchor.ownerDocument.defaultView;
+    try {
+      await harness.initialLookup();
+      const child = harness.internalLink({ query: "child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+      await child;
+      const timers = new Map();
+      let nextTimer = 0;
+      window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+      window.clearTimeout = (id) => timers.delete(id);
+      const fire = (delay) => {
+        const entry = [...timers].find(([, value]) => value.delay === delay);
+        if (!entry) return false;
+        timers.delete(entry[0]);
+        entry[1].callback();
+        return true;
+      };
+      // Each step must leave no hide-delay prune behind and the child open.
+      const kept = [];
+      const keeps = (step) => kept.push(!fire(160) && Boolean(harness.driver.popupAt(1))
+        && !harness.driver.snapshot(1).popupHidden ? true : step);
+      harness.driver.popupAt(1).dispatchEvent(new window.MouseEvent("mouseenter"));
+      harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+      keeps("parent entry");
+      // Shift over non-text in the parent is an empty definition scan.
+      harness.driver.onPopupMouseMove({ target: harness.popup, clientX: 5, clientY: 5, shiftKey: true, buttons: 0 }, 0);
+      fire(0);
+      keeps("empty scan");
+      const plainLink = window.document.createElement("a");
+      plainLink.href = "https://example.test/";
+      harness.popup.append(plainLink);
+      harness.driver.onPopupMouseMove({ target: plainLink, clientX: 5, clientY: 5, buttons: 0 }, 0);
+      keeps("non-dictionary link");
+      harness.driver.onMouseMove({ target: harness.anchor, clientX: 900, clientY: 700, buttons: 0 });
+      fire(80);
+      keeps("page departure");
+      harness.popup.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      const pressed = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+      // Escape still closes the deepest pane first.
+      const reopened = harness.internalLink({ query: "child again" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child again")] });
+      await reopened;
+      harness.driver.onKeyDown({ key: "Escape", code: "Escape", repeat: false, preventDefault() {}, stopPropagation() {} });
+      const escaped = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+      return { "sticky lookups keep a rendered child through parent entry, empty scans, plain links and page departure until a parent press or Escape":
+        kept.every((value) => value === true) && pressed && escaped || { kept, pressed, escaped } };
+    } finally { harness.close(); }
+  }
+
   // Issue #299: a child opens beside its own source text, like Yomitan, not
   // beside its parent's box. The placement loop reads no pane rectangles.
   async function nestedPlacementCase() {
@@ -16543,8 +16624,9 @@ async function contentNoteStage() {
       harness.callbacks(1).positionPopup();
       const clamped = same(geometry(1), { left: 458, top: 224 });
       const noPaneReads = paneReads === 0;
-      // A pane whose word fits on neither side takes the roomier side, clamped
-      // to the viewport; a preferred edge overrides the automatic toolbar.
+      // A pane whose word fits on neither side takes the roomier side and is
+      // shortened to its room (issue #360); a preferred edge overrides the
+      // automatic toolbar.
       harness.emitOptions({ popupToolbarPosition: "bottom" });
       childLink.getBoundingClientRect = box(300, 200, 40, 20);
       harness.callbacks(1).positionPopup();
@@ -16553,15 +16635,27 @@ async function contentNoteStage() {
       window.innerHeight = 500;
       childLink.getBoundingClientRect = box(300, 260, 40, 20);
       harness.callbacks(1).positionPopup();
-      const roomier = same(geometry(1), { left: 300, top: 6, toolbar: "bottom" });
+      const roomier = same(geometry(1), { left: 300, top: 6, height: 250, toolbar: "bottom" });
       window.innerHeight = 768;
       // Scale and zoom convert the word's page rectangle into popup pixels.
       harness.emitOptions({ popupToolbarPosition: "auto", popupScalePercent: 50 });
       harness.callbacks(1).positionPopup();
       const scaled = same(geometry(1), { left: 600, top: 564, width: 560, height: 420 });
-      return { "child popups anchor to their own source text below or above it and read no pane rectangles":
-        below && above && clamped && noPaneReads && explicitToolbar && roomier && scaled
-        || { below, above, clamped, noPaneReads, explicitToolbar, roomier, scaled } };
+      // The reported 800x900 panes in a 1920x945 window fit on neither side of
+      // a definition line: each child hangs from its link, shortened, instead
+      // of being clamped over it at full height.
+      harness.emitOptions({ popupWidthPx: 800, popupHeightPx: 900 });
+      window.innerWidth = 1920;
+      window.innerHeight = 945;
+      childLink.getBoundingClientRect = box(760, 126, 36, 22);
+      harness.callbacks(1).positionPopup();
+      const largeBelow = same(geometry(1), { left: 760, top: 152, width: 800, height: 787, toolbar: "top" });
+      childLink.getBoundingClientRect = box(760, 700, 36, 22);
+      harness.callbacks(1).positionPopup();
+      const largeAbove = same(geometry(1), { left: 760, top: 6, width: 800, height: 690, toolbar: "bottom" });
+      return { "child popups anchor to their own source text below or above it, shortened rather than covering it, and read no pane rectangles":
+        below && above && clamped && noPaneReads && explicitToolbar && roomier && scaled && largeBelow && largeAbove
+        || { below, above, clamped, noPaneReads, explicitToolbar, roomier, scaled, largeBelow, largeAbove } };
     } finally { harness.close(); }
   }
 
@@ -19952,7 +20046,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
@@ -20000,23 +20094,29 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       ["auto", "beside", "bottom", "bottom"], ["auto", null, undefined, "top"],
       ["top", "above", "bottom", "top"], ["bottom", "below", "top", "bottom"],
     ].every(([preference, placement, current, expected]) => HDPopup.resolveToolbarPosition(preference, placement, current) === expected));
-  check("calculatePopupPosition prefers above for roots and below for nested panes, falling back to the roomier side", (() => {
+  {
     const viewport = { width: 1000, height: 600 };
     const place = (anchor, preferBelow, height = 200) =>
-      HDPopup.calculatePopupPosition(anchor, { width: 300, height }, viewport, { preferBelow });
+      [anchor, HDPopup.calculatePopupPosition(anchor, { width: 300, height }, viewport, { preferBelow })];
     const roomy = { left: 100, top: 250, right: 140, bottom: 270 };
     const low = { left: 100, top: 500, right: 140, bottom: 520 };
     const high = { left: 100, top: 40, right: 140, bottom: 60 };
-    const root = place(roomy), child = place(roomy, true);
-    // A 400px pane fits on neither side of a word 190px from the top: the
-    // roomier side wins and the viewport clamps the result.
-    const upper = place({ left: 100, top: 190, right: 140, bottom: 210 }, true, 400);
-    const lower = place({ left: 100, top: 400, right: 140, bottom: 420 }, true, 400);
-    return root.placement === "above" && root.top === 46 && child.placement === "below" && child.top === 274
-      && child.left === 100 && place(low, true).placement === "above" && place(low, true).top === 296
-      && place(high).placement === "below" && place(high).top === 64
-      && upper.placement === "below" && upper.top === 194 && lower.placement === "above" && lower.top === 6;
-  })());
+    const upper = { left: 100, top: 190, right: 140, bottom: 210 };
+    const lower = { left: 100, top: 400, right: 140, bottom: 420 };
+    // Issue #360: a 400px pane fits on neither side of the last three words.
+    // Like Yomitan, it takes the roomier side and is shortened to that side's
+    // room, keeping the 4px gap and 6px padding, instead of being clamped over
+    // the word; a root does the same. Panes that fit keep their full size.
+    const boxes = [place(roomy), place(roomy, true), place(low, true), place(high),
+      place(upper, true, 400), place(lower, true, 400), place(upper, false, 400)];
+    const summary = ([anchor, box]) => `${box.placement} ${box.left},${box.top} ${box.width}x${box.height}`
+      + (box.top >= anchor.bottom || box.top + box.height <= anchor.top ? "" : " covering its word");
+    equal("calculatePopupPosition prefers above for roots and below for nested panes, shortening a pane on the roomier side rather than covering its word",
+      boxes.map(summary), [
+        "above 100,46 300x200", "below 100,274 300x200", "above 100,296 300x200", "below 100,64 300x200",
+        "below 100,214 300x380", "above 100,6 300x390", "below 100,214 300x380",
+      ]);
+  }
   check("render/glossary.js publishes HDGlossary", Boolean(HDGlossary), "HDGlossary was undefined");
   check("render/popup.js publishes HDPopup", Boolean(HDPopup), "HDPopup was undefined");
   if (!HDGlossary || !HDPopup) {
@@ -21818,18 +21918,21 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     view.renderResults(metadataResults, candidate, { ...context, showFrequencyDictionaryNames: true, showPitchAccentBadge: true });
     const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
     const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
+    const pitchSource = popup.querySelector(".gsm-hoshidicts-pitch-source");
     view.updateDictionaryPresentation({ dictionaryPresentation: [
       { title: "Rank", displayName: "Rank alias" }, { title: "Pitch", displayName: "Pitch alias" },
       { title: "Second", displayName: "Second alias" },
     ], dictionaryTabGroups: [] });
     live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
       && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
+      && popup.querySelector(".gsm-hoshidicts-pitch-source") === pitchSource && pitchSource.textContent === "Pitch alias"
       && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
       && popup.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
     live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card-title").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
+      && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
       && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH"
       && JSON.stringify(metadataResults) === metadataBefore);
     const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };

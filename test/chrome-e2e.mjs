@@ -268,6 +268,7 @@ const PLANNED = [
   LIBRARY_TAB_GEOMETRY_CHECK,
   SETTINGS_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
+  "Design names pitch dictionaries at 4.5:1 text contrast in every popup theme",
   SETTINGS_FIRST_FRAME_THEME_CHECK,
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,
@@ -325,6 +326,7 @@ const PLANNED = [
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
+  "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
@@ -420,6 +422,7 @@ const PLANNED = [
   "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports",
+  "a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click",
   "a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
@@ -795,7 +798,7 @@ async function popupReader(page, depth = 0) {
         // Pitch ruby is laid out as flex boxes, whose text geometry is real.
         const expression = this.querySelector(".gsm-hoshidicts-expression");
         const pitchRubies = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-ruby") ?? [])];
-        const textCentre = node => {
+        const textRects = node => {
           const range = this.ownerDocument.createRange();
           const walker = this.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
           const rects = [];
@@ -803,14 +806,25 @@ async function popupReader(page, depth = 0) {
             range.selectNodeContents(walker.currentNode);
             rects.push(range.getBoundingClientRect());
           }
+          return rects;
+        };
+        const textCentre = node => {
+          const rects = textRects(node);
           return (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2;
         };
+        const spread = values => values.length ? Math.max(...values) - Math.min(...values) : 0;
         const pitchCentring = pitchRubies.map(ruby => Math.abs(
           textCentre(ruby.querySelector("rt")) - textCentre(ruby.querySelector(".gsm-hoshidicts-pitch-base"))));
         const contourRects = pitchRubies
           .map(ruby => ruby.querySelector(".gsm-hoshidicts-pitch-contour").getBoundingClientRect());
         const contourGaps = contourRects.slice(1)
           .map((rect, index) => Math.abs(rect.left - contourRects[index].right));
+        // A kanji segment's base is taller than a kana one (its link has a
+        // dotted underline), yet every segment's contour and text must share
+        // one row. A rise or drop must also span the 2px lines it joins, or
+        // its outer corner is notched: its border image fills the mora's
+        // padding box and reaches out by its own borders, the lines' width.
+        const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -869,6 +883,16 @@ async function popupReader(page, depth = 0) {
             pitchRubies: pitchRubies.length,
             pitchCentring: Math.max(0, ...pitchCentring),
             contourGap: Math.max(0, ...contourGaps),
+            contourTopSpread: spread(contourRects.map(rect => rect.top)),
+            baseTextSpread: spread(pitchRubies.flatMap(ruby =>
+              textRects(ruby.querySelector(".gsm-hoshidicts-pitch-base")).map(rect => rect.top))),
+            transitions: transitions.length,
+            transitionsCoverLines: transitions.every(mora => {
+              const stroke = view.getComputedStyle(mora, "::after");
+              const style = view.getComputedStyle(mora);
+              return stroke.top === "0px" && stroke.bottom === "0px" && stroke.borderImageOutset === "1 0"
+                && stroke.borderTopWidth === style.borderTopWidth && stroke.borderBottomWidth === style.borderBottomWidth;
+            }),
           },
         };
       }`,
@@ -2254,10 +2278,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       const { x, y, width, height } = back.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
     }
+    // The width follows Design live; the height is at most the Design value,
+    // because in this 240px window a child fits on neither side of its source
+    // link and is shortened beside it rather than covering it (issue #360).
+    const childBesideLink = async () => ({ ...await childState(), link: (await popup.nested())?.linkRect });
+    const sizedBesideLink = (width, height) => value => value.rect.width === Math.min(width, value.viewport.width - 12)
+      && value.rect.height <= Math.min(height, value.viewport.height - 12) && Boolean(value.link)
+      && (value.rect.top >= value.link.bottom || value.rect.bottom <= value.link.top);
     await optionsWrite({ popupWidthPx: 640, popupHeightPx: 480 });
-    const resizedChild = await until(childState, value => value.rect.width === Math.min(640, value.viewport.width - 12)
-      && value.rect.height === Math.min(480, value.viewport.height - 12),
-      "E15 live child dimensions");
+    const resizedChild = await until(childBesideLink, sizedBesideLink(640, 480), "E15 live child dimensions");
     evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
     await optionsWrite({ popupScalePercent: 75 });
     const scaledChild = await until(childState, value => value.rect.width === 480,
@@ -2271,10 +2300,10 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const automaticRoot = (await rootState()).toolbar;
     // Automatic follows the child's own placement: a pane hanging below its
     // source link keeps the toolbar at the top, one rising above it at the
-    // bottom; a pane the viewport clamped over its link may take either edge.
+    // bottom. No pane covers its link.
     const sourceLink = (await popup.nested()).linkRect;
     const automaticChild = value => value.rect.top >= sourceLink.bottom ? ["top"]
-      : value.rect.bottom <= sourceLink.top ? ["bottom"] : ["top", "bottom"];
+      : value.rect.bottom <= sourceLink.top ? ["bottom"] : [];
     evidence.toolbarChild = true;
     for (const edge of ["bottom", "top", "auto"]) {
       await optionsWrite({ popupToolbarPosition: edge });
@@ -2282,8 +2311,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       evidence.toolbarChild &&= (await rootState()).toolbar === (edge === "auto" ? automaticRoot : edge);
     }
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
-    await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
-      && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
+    await until(childBesideLink, sizedBesideLink(560, 420), "E15 restore child dimensions");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E8 close child lookup");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
@@ -3054,6 +3082,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
   let definitionEvidence;
   let evidence;
   let clickEvidence;
+  let stickyEvidence;
   const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
   async function until(read, predicate, label) {
     const deadline = Date.now() + 10_000;
@@ -3189,6 +3218,42 @@ async function checkNestedLinks(settings, tab, popup, browser) {
         onlyScanJapaneseText: originalOptions.onlyScanJapaneseText ?? true });
     }
   }
+  // Issue #360 with a real mouse, at the reported 800x900 panes in a 1920x945
+  // window: a child that fits on neither side of its link hangs from it,
+  // shortened, and the default activationSticky mode keeps it through the
+  // pointer's return to the parent until a primary click there. The pointer
+  // ends back at `restorePoint` before Hover mode resumes.
+  async function stickyLargeChildScenario(restorePoint) {
+    const evidence = {};
+    const viewport = tab.viewport();
+    await writeOptions({ lookupMode: "activationSticky", popupWidthPx: 800, popupHeightPx: 900 });
+    try {
+      await tab.setViewport({ width: 1920, height: 945 });
+      const root = evidence.root = await until(() => popup.nested(),
+        value => value?.rect.width === 800 && value.viewport.height === 945, "large sticky root");
+      if (!root?.linkPoint) return evidence;
+      await tab.mouse.click(root.linkPoint.x, root.linkPoint.y);
+      evidence.opened = Boolean(await waitForPopupState(child, value => value.plain.includes(fixture.child)));
+      const layout = evidence.layout = await child.nested();
+      const text = await popup.definitionTextRect("A linked definition.");
+      if (!layout || !text) return evidence;
+      const point = { x: text.rect.x + text.rect.width / 2, y: text.rect.y + text.rect.height / 2 };
+      evidence.point = { ...point, covered: inside(layout.rect, point) };
+      await tab.mouse.move(layout.rect.right - 8, layout.rect.bottom - 8);
+      await tab.mouse.move(point.x, point.y);
+      await settle(400);
+      evidence.kept = child.visible(await child.state());
+      await tab.mouse.click(point.x, point.y);
+      evidence.pressed = await child.waitForHidden();
+      evidence.rootKept = popup.visible(await popup.state());
+      return evidence;
+    } finally {
+      await writeOptions({ popupWidthPx: originalOptions.popupWidthPx ?? 560, popupHeightPx: originalOptions.popupHeightPx ?? 420 });
+      await tab.setViewport(viewport);
+      if (restorePoint) await tab.mouse.move(restorePoint.x, restorePoint.y);
+      await writeOptions({ lookupMode: originalOptions.lookupMode ?? "hover" });
+    }
+  }
   await installMediaArchive(settings, fixture.archive);
   try {
     await setDepth(2);
@@ -3297,6 +3362,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await tab.mouse.move(returnPoint.x, returnPoint.y);
     }
     const pointerReturn = await child.waitForHidden();
+    stickyEvidence = await stickyLargeChildScenario(returnPoint);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
@@ -3506,6 +3572,14 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       grandchildSource: definitionEvidence.definitionGrandchildSource, grandchild: definitionEvidence.definitionChain },
     mouse: { link: evidence.source.linkRect, child: evidence.mousePosition }, chain: clickEvidence.chain, scroll: clickEvidence.scroll,
     scaled: clickEvidence.scaled, narrow: { root: evidence.narrowRoot, child: evidence.narrowChild, grandchild: evidence.narrow } }));
+  const large = stickyEvidence ?? {};
+  const largeLink = large.root?.linkRect;
+  const largeAnchored = anchoredTo(large.layout?.rect, largeLink, large.layout?.viewport);
+  check("a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click",
+    large.opened && large.layout?.rect.width === 800 && large.layout.rect.height < 900 && bounded(large.layout)
+      && beside(largeAnchored) && (large.layout.rect.top >= largeLink.bottom || large.layout.rect.bottom <= largeLink.top)
+      && large.point && !large.point.covered && large.kept && large.pressed && large.rootKept,
+    JSON.stringify({ ...large, anchored: largeAnchored }));
   // A keyboard-opened child highlights its source link text, so the retained
   // set is the chain's first two highlights rather than the child's query.
   const highlightsOf = texts => JSON.stringify(texts);
@@ -7940,6 +8014,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
       && contourState?.furiganaAlignment?.pitchRubies === 2
       && contourState.furiganaAlignment.pitchCentring <= 1 && contourState.furiganaAlignment.contourGap <= 1
+      && contourState.furiganaAlignment.contourTopSpread < 0.5 && contourState.furiganaAlignment.baseTextSpread < 0.5
+      && contourState.furiganaAlignment.transitions === 2 && contourState.furiganaAlignment.transitionsCoverLines
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
@@ -8043,7 +8119,7 @@ async function checkHoverHitTesting(tab, popup) {
 
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hide-delay",
+    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -8068,7 +8144,7 @@ async function checkReaderActivation(settings, tab, popup) {
       opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
       JSON.stringify({ closed, disabled, reopened: reopened !== null }));
 
-    await edit({ "opt-lookup-mode": "activation", "opt-activation-key": "K", "opt-hide-delay": "400" });
+    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400" });
     await popup.waitForHidden();
     await moveToWord();
     await pause(250);
@@ -8083,28 +8159,66 @@ async function checkReaderActivation(settings, tab, popup) {
     await tab.keyboard.up("k");
     await pause(300);
     const cancelled = !popup.visible(await popup.state());
-    const controls = await settings.evaluate(() => ({
-      key: document.getElementById("opt-activation-key").value,
-      disabled: document.getElementById("opt-activation-key").disabled,
-      mode: document.getElementById("opt-lookup-mode").value,
-    }));
+    const activationControls = () => settings.evaluate(async () => {
+      const { lookupMode, activationKey } = HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
+      return {
+        key: document.getElementById("opt-activation-key").value,
+        disabled: document.getElementById("opt-activation-key").disabled,
+        sticky: document.getElementById("opt-lookup-sticky").checked,
+        stickyHidden: document.getElementById("opt-lookup-sticky-row").hidden,
+        stored: [lookupMode, activationKey],
+      };
+    });
+    const controls = await activationControls();
     check("configured activation keys open stationary lookups and release them using the saved delays",
       gated && activated !== null && retained && released && cancelled
-        && controls.key === "K" && controls.mode === "activation" && !controls.disabled,
+        && JSON.stringify(controls.stored) === JSON.stringify(["activation", "K"])
+        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled,
       JSON.stringify({ gated, activated: activated !== null, retained, released, cancelled, controls }));
+
+    await edit({ "opt-activation-key": "" });
+    const noKey = await activationControls();
+    const hovered = await hoverForPopup(tab, popup, "#verb");
+    await edit({ "opt-activation-key": "K" });
+    const keyAgain = await activationControls();
+    await edit({ "opt-lookup-sticky": false });
+    const closing = await activationControls();
+    // Arrowing through No key back to the key, before either save lands, still
+    // returns the key with the popup staying open.
+    await settings.evaluate(() => {
+      const picker = document.getElementById("opt-activation-key");
+      for (const value of ["", "K"]) {
+        picker.value = value;
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+      { polling: 100, timeout: 10_000 });
+    const arrowed = await activationControls();
+    check("No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
+      JSON.stringify([noKey.stored, keyAgain.stored, closing.stored, arrowed.stored]) === JSON.stringify(
+        [["hover", "K"], ["activationSticky", "K"], ["activation", "K"], ["activationSticky", "K"]])
+        && noKey.key === "" && noKey.stickyHidden && hovered !== null
+        && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky
+        && arrowed.key === "K" && arrowed.sticky && !arrowed.stickyHidden,
+      JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing, arrowed }));
   } finally {
     await tab.keyboard.up("k");
-    // Keep a non-default key in Hover mode to prove that mode changes preserve
-    // it and that the exact setting survives the suite's full browser restart.
-    await edit({ ...original, "opt-activation-key": "K" });
+    // Keep a non-default key behind No key to prove that choosing No key
+    // preserves it and that the exact setting survives the full browser restart.
+    await edit({ "opt-activation-key": "K" });
+    await edit(original);
     await tab.keyboard.press("Escape");
   }
 }
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
+    "opt-activation-key", "opt-lookup-sticky", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
   ]);
+  // No key does not show the key it remembers, so the restore chooses it first.
+  const rememberedKey = await settings.evaluate(async () =>
+    HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options).activationKey);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const worker = await installMediaReplyProbe(browser, settings);
   await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
@@ -8143,7 +8257,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   };
   try {
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "hover", "opt-japanese-only": true, "opt-no-result-notice": true,
+      "opt-activation-key": "", "opt-japanese-only": true, "opt-no-result-notice": true,
     });
     // A fresh page has no reader host until its first lookup, so an English
     // selection there proves the gate by leaving the DOM alone; a Japanese
@@ -8211,7 +8325,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         && hiddenMiss && hit?.includes("食べる") && restoredNotice?.includes("No definition found."),
       JSON.stringify({ englishIgnored, freshHit, defaultNotice, hiddenMiss, hit, restoredNotice }));
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
+      "opt-activation-key": "Shift", "opt-lookup-sticky": false,
       "opt-scan-length": "1", "opt-japanese-only": true,
     });
     await tab.bringToFront();
@@ -8285,7 +8399,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         requests: requests.map(({ text }) => text),
       };
     };
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     const hoverSelection = await probeSelection([], true, true);
     const modifiers = ["Shift", "Control", "Alt", "Meta"];
     const modifierResults = [];
@@ -8295,8 +8409,8 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         const mismatch = modifiers[(index + 1) % modifiers.length];
         const extra = modifiers[(index + 2) % modifiers.length];
         await editSettingsControls(settings, {
-          "opt-lookup-mode": lookupMode,
           "opt-activation-key": activationKey,
+          "opt-lookup-sticky": lookupMode === "activationSticky",
         });
         const plain = await probeSelection([], false);
         const mismatched = await probeSelection([mismatch], false);
@@ -8318,7 +8432,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       JSON.stringify({ hover: hoverSelection, modifiers: modifierResults }));
 
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-activation-key": "Shift", "opt-scan-length": "1",
+      "opt-activation-key": "Shift", "opt-lookup-sticky": false, "opt-scan-length": "1",
     });
     await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
@@ -8434,7 +8548,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
 
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    await editSettingsControls(settings, { "opt-activation-key": "", "opt-scan-length": "16" });
     // An overlay host turns click-through when the popup hides, so pressing on
     // text must keep it open until release decides between a drag and a click.
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
@@ -8502,7 +8616,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await moveTo("#verb .vn-next");
     await dismiss();
     for (const tag of ["input", "div"]) {
-      await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
+      await editSettingsControls(settings, { "opt-activation-key": "K", "opt-lookup-sticky": false });
       await tab.evaluate((name) => {
         const host = document.createElement("div");
         host.id = "shadow-editor";
@@ -8528,7 +8642,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       }));
       await dismiss();
     }
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     // Neither range endpoint is editable: the interior control still excludes it.
     for (const editor of [
       '<button>べ</button>',
@@ -8560,7 +8674,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         hiddenPointerAccepted: hiddenPointerAccepted !== null }));
 
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-activation-key": "Shift" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     await tab.$eval("#verb", (element) => {
       element.innerHTML = '<input id="jisho-search" autofocus aria-label="Search Japanese">'
         + '<span>Text reading assistance: <a href="/search/example">昨日すき焼きを'
@@ -8571,7 +8685,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const hoveredLink = await popup.waitForVisible();
     const hoverKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "activation" });
+    await editSettingsControls(settings, { "opt-activation-key": "Shift", "opt-lookup-sticky": false });
     await tab.focus("#jisho-search");
     const beforeModifier = (await lookups()).length;
     await moveTo("#jisho-example-word");
@@ -8590,7 +8704,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         modifierGated, hoverKeepsSearch, modifierKeepsSearch }));
 
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     const latinStart = (await lookups()).length;
     await moveTo("#latin");
     const japaneseOnly = (await lookups()).length === latinStart;
@@ -8651,13 +8765,14 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   } finally {
     await dismiss();
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, { "opt-activation-key": rememberedKey });
     await editSettingsControls(settings, original);
     await restoreMediaReplyProbe(worker);
   }
 }
 
 async function checkSourceFallback(settings, tab, popup) {
-  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length"]);
+  const original = await readSettingsControls(settings, ["opt-activation-key", "opt-lookup-sticky", "opt-scan-length"]);
   const sourceBefore = await tab.$eval("#verb", element => ({ html: element.innerHTML,
     style: element.getAttribute("style"), className: element.className }));
   const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
@@ -8674,7 +8789,7 @@ async function checkSourceFallback(settings, tab, popup) {
   let evidence;
   try {
     await tab.keyboard.press("Escape");
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    await editSettingsControls(settings, { "opt-activation-key": "", "opt-scan-length": "16" });
     await tab.$eval("#verb", element => {
       getSelection().removeAllRanges();
       element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';
@@ -11336,6 +11451,14 @@ async function main() {
   const themePalettes = [];
   await page.setViewport({ width: 1280, height: 900 });
   await showSettingsSection(page, "design");
+  // The Design preview is the production popup, themed in the same render as
+  // Settings. Its pitch dictionary name is measured once reader.css applies;
+  // a missing name fails that check below instead of ending the run here.
+  await page.waitForFunction(() => {
+    const source = document.getElementById("design-preview")?.contentDocument?.getElementById("preview-host")
+      ?.shadowRoot?.querySelector(".gsm-hoshidicts-pitch-source");
+    return source && getComputedStyle(source).fontWeight === "700";
+  }, { timeout: 10_000 }).catch(() => {});
   for (const theme of themes.filter(theme => theme !== "auto")) {
     await setSettingsTheme(theme);
     themePalettes.push(await page.evaluate(expectedTheme => {
@@ -11346,7 +11469,7 @@ async function main() {
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       const color = name => {
-        probe.style.color = `var(${name})`;
+        probe.style.color = name.startsWith("--") ? `var(${name})` : name;
         const value = getComputedStyle(probe).color;
         context.clearRect(0, 0, 1, 1);
         context.fillStyle = value;
@@ -11370,9 +11493,14 @@ async function main() {
       const textContrasts = Object.fromEntries(textPairs.map(([first, second]) =>
         [`${first}/${second}`, contrast(first, second)]));
       const root = getComputedStyle(document.documentElement);
+      const previewHost = document.getElementById("design-preview")?.contentDocument?.getElementById("preview-host");
+      const pitchSource = previewHost?.shadowRoot?.querySelector(".gsm-hoshidicts-pitch-source");
+      const pitchStyle = pitchSource && getComputedStyle(pitchSource);
       const result = {
         expectedTheme,
         selectedTheme: document.documentElement.dataset.hoshidictsTheme,
+        previewTheme: previewHost?.dataset.hoshidictsTheme,
+        pitchSourceContrast: pitchStyle ? contrast(pitchStyle.color, pitchStyle.backgroundColor) : 0,
         palette: root.getPropertyValue("--hoshidicts-palette-primary").trim(),
         scheme: root.colorScheme,
         paletteScheme: root.getPropertyValue("--hoshidicts-palette-color-scheme").trim(),
@@ -11410,6 +11538,11 @@ async function main() {
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
     JSON.stringify({ automaticSettingsThemes, narrowThemes, themeLayouts, themePalettes }));
+  check("Design names pitch dictionaries at 4.5:1 text contrast in every popup theme",
+    themePalettes.length === 42 && themePalettes.every(theme => theme.previewTheme === theme.expectedTheme
+      && theme.pitchSourceContrast >= 4.5),
+    JSON.stringify(themePalettes.map(({ expectedTheme, previewTheme, pitchSourceContrast }) =>
+      ({ expectedTheme, previewTheme, pitchSourceContrast }))));
   await checkSettingsFirstFrameTheme(browser, settingsUrl, check, process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP);
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
@@ -13550,8 +13683,9 @@ async function main() {
     return JSON.stringify(options) === JSON.stringify(expected)
       && document.getElementById("opt-max-results").value === String(expected.maxResults)
       && document.getElementById("opt-hover-enabled").checked === expected.hoverEnabled
-      && document.getElementById("opt-lookup-mode").value === expected.lookupMode
-      && document.getElementById("opt-activation-key").value === expected.activationKey
+      && document.getElementById("opt-activation-key").value
+        === (expected.lookupMode === "hover" ? "" : expected.activationKey)
+      && document.getElementById("opt-lookup-sticky-row").hidden === (expected.lookupMode === "hover")
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
       && document.getElementById("opt-popup-columns").value === String(expected.popupColumns)
       && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary

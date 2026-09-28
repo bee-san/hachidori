@@ -100,9 +100,12 @@ explicit display choices, source details, and live grammar/name/abbreviation con
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
 `node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's
-badge draws its own mora contour with the `[n]` position, keeps `reading [n]`
-in its tooltip and accessibility label through alias changes, and falls back to
-the text badge when the position lies outside the reading's morae.
+badge draws its own mora contour with the `[n]` position, starts with its
+dictionary's name by default, keeps `reading [n]` in its tooltip and
+accessibility label, renames both in place through alias changes, and falls back
+to the text badge, still named, when the position lies outside the reading's
+morae. Turning the name off restores the unlabelled badge live without replacing
+definitions.
 
 `node --test test/yomitan-parity.test.mjs` checks the renderer against
 Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
@@ -853,8 +856,9 @@ What it proves, in order:
    `declaredResponseLength` ignores encoded, zero, and header-less responses.
    With `OVERLAY_MODE` on, a worker instead seeds hover lookups without a page
    highlight on top of the first-install options when it starts. It creates no
-   setup record or tab, and leaves later edits and carried options alone (see
-   [overlay mode](../docs/overlay-mode.md)).
+   setup record or tab and leaves later edits and legacy `modifier` records
+   alone; a carried profile without a lookup mode gains hover in one revisioned
+   write (see [overlay mode](../docs/overlay-mode.md)).
 12. **Isolated import.** A separate engine-service instance is configured with
    an `isolatedImport` that runs the real `importDictionaryArchive` on the
    engine's own filesystem, which is what the direct-OPFS runtime's second
@@ -1287,6 +1291,8 @@ Three further appearance assertions cover AUTO plus all 42 grouped palette IDs,
 live browser light/dark changes and real high-contrast overrides, immediate
 unsaved opacity/dimension preview and scoped reset, and live reader/child
 geometry with exact highlight restoration and retained Note/cards/resources.
+Another measures the Design preview's pitch dictionary name in each of the 42
+palettes and requires 4.5:1 text contrast against its tinted background.
 Unit coverage checks strict option ranges and no-op CAS, first-layout width
 ordering, and native/term clicked-kanji preview switching without losing Note
 or Back state. Unrelated dictionary changes retain the current clicked-kanji
@@ -1362,10 +1368,13 @@ The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
 real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
 independent parent/child Note drafts and Escape, same-level kanji Back followed
-by child Back, live depth lowering/zero, and narrow-window geometry. Two further
+by child Back, live depth lowering/zero, and narrow-window geometry. Three further
 assertions drive the chain with a real mouse: linked and hovered children hang
 from their source text (below it, else above, left aligned) and follow the
-parent's content scroll, popup scale and a narrow viewport; a primary click in
+parent's content scroll, popup scale and a narrow viewport; at 800×900 panes in
+a 1920×945 window a child that fits on neither side of its link is shortened
+beside it, and in the default sticky mode it outlasts the pointer's return to
+its parent until a click there; a primary click in
 an ancestor pane dismisses focused, hovered and still-pending descendants at
 once while an open child draft stays until Escape closes its form, and a click
 on the root's link keeps its same-query child without another lookup.
@@ -1438,9 +1447,11 @@ supplementary Unicode characters when the caret lands after the glyph.
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
-on release, and cancellation of a quick press/release. A non-default key is kept
-when switching back to Hover and checked with mode, enablement and hide delay
-after the full browser restart.
+on release, and cancellation of a quick press/release. Choosing No key stores
+Hover, hides the keep-open switch and opens a popup on plain hover; choosing the
+key again restores it with the popup staying open, and the switch selects the
+closing mode. A non-default key is kept behind No key and checked with mode,
+enablement and hide delay after the full browser restart.
 
 Exact-selection checks first use a plain cross-inline mouse drag with Shift
 configured and prove that it sends no worker lookup, paints no source highlight

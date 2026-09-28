@@ -65,6 +65,7 @@ import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
   RECOMMENDED_SELECTIONS_KEY, OVERLAY_LOCAL_OPTION_KEYS,
   advanceSetupState, capabilityAnkiOptions, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
+  withOverlayLookupDefault,
 } from "./setup-state.js";
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
@@ -281,7 +282,7 @@ function stateStore(sender) {
 }
 
 function composeOverlayOptions(shared, local, revision) {
-  const preferences = normaliseOptions(local);
+  const preferences = normaliseOptions(withOverlayLookupDefault(local));
   return { ...projectStoredOptions(shared),
     ...Object.fromEntries(OVERLAY_LOCAL_OPTION_KEYS.map(key => [key, preferences[key]])), revision };
 }
@@ -2518,6 +2519,13 @@ function serialiseSharingTransition(job) {
   return run;
 }
 
+// Unlink restores each kept local value above the mirror's revision. A linked
+// overlay composed a mode-less local options record on hover; it stays there.
+function unlinkedLocalValue(key, local, mirrored) {
+  const value = OVERLAY_MODE && key === OPTIONS_KEY ? withOverlayLookupDefault(local) : local;
+  return { ...value, revision: Math.max(optionsRevision(local), optionsRevision(mirrored)) + 1 };
+}
+
 const SHARING_HANDLERS = {
   hd_sharing_status() {
     return { sharing: sharingStatus() };
@@ -2599,7 +2607,7 @@ const SHARING_HANDLERS = {
             if (stored[key] !== undefined) removals.push(key);
             continue;
           }
-          values[key] = { ...local, revision: Math.max(optionsRevision(local), optionsRevision(stored[key])) + 1 };
+          values[key] = unlinkedLocalValue(key, local, stored[key]);
         }
         const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
         removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));
@@ -2742,7 +2750,10 @@ async function beginFirstRunSetup() {
 
 // An overlay host has no tab to show setup in, so its first launch only seeds
 // the initial preferences. It runs on worker start because a host may never
-// report onInstalled.
+// report onInstalled. An unlinked profile that never chose a lookup mode, such
+// as one from before overlay mode, then gets the overlay's hover default in an
+// ordinary revisioned write that open Settings pages and readers adopt. A
+// linked overlay composes the same default instead (composeOverlayOptions).
 async function seedOverlayModeOptions() {
   await serialiseStorage(async () => {
     const stored = await chrome.storage.local.get(OPTIONS_KEY);
@@ -2753,6 +2764,13 @@ async function seedOverlayModeOptions() {
       anki: overlayAnkiOptions(DEFAULT_OPTIONS).anki,
     });
     await writeLocalState({ [OPTIONS_KEY]: { ...options, revision: 1 } });
+  });
+  await sharingReady;
+  await serialiseStorage(async () => {
+    const { options } = await readDictionaryStorage();
+    if (sharingLinked || withOverlayLookupDefault(options) === options) return;
+    await WORKER_HANDLERS.hd_options_write({ target: WORKER_TARGET, type: "hd_options_write", requestId: null,
+      baseRevision: optionsRevision(options), options: { lookupMode: OVERLAY_MODE_OPTIONS.lookupMode } });
   });
 }
 

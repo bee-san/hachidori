@@ -619,6 +619,28 @@ test("write-time refusals name the deck, note type and first field", async () =>
   assert.match(empty.error, /Anki refused the note for deck “Default”, note type “Basic” because its first field “Front” is empty once Anki stripped its formatting\. \(AnkiConnect: cannot create note because it is empty\)$/u);
 });
 
+test("preflight and submit name the cloze rule behind AnkiConnect's unknown-reason refusal", async () => {
+  const f = fixture();
+  const invoke = f.gateway.invoke;
+  f.gateway.invoke = async (action, params) => {
+    if (action === "canAddNotesWithErrorDetail") return [{ canAdd: false, error: "cannot create note for unknown reason" }];
+    if (action === "findModelsByName") return [{ type: 0, flds: [{ name: "Front" }, { name: "Back" }], tmpls: [{ qfmt: "{{Front}}" }] }];
+    return invoke(action, params);
+  };
+  const { configKey } = await f.service.status();
+  const error = "Anki refused the note for deck “Default”, note type “Basic”: field “Front” contains the cloze deletion “{{c1::猫}}”, "
+    + "but “Basic” is not a Cloze note type. Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.";
+  // With and without a word index, Anki's refusal reaches the reader explained.
+  for (const source of [f.dependencies.duplicateIndex.source, async () => null]) {
+    f.dependencies.duplicateIndex.source = source;
+    const checked = await f.service.preflight({ expression: "{{c1::猫}}", configKey });
+    assert.deepEqual([checked.state, checked.canAdd, checked.error], ["invalid", false, error]);
+    const written = await f.service.submit({ expression: "{{c1::猫}}", configKey });
+    assert.deepEqual([written.state, written.error], ["invalid", error]);
+  }
+  assert.equal(f.calls.includes("addNote"), false);
+});
+
 test("saved-field verification names the fields Anki lost or changed", async () => {
   const notes = { Front: "猫", Back: "dog" };
   const invoke = async () => [{ noteId: 5, fields: Object.fromEntries(Object.entries(notes).map(([field, value]) => [field, { value }])) }];

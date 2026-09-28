@@ -25,7 +25,8 @@
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
   const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
-    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
+    "hidePopupGrammarTags"];
 
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
@@ -625,11 +626,20 @@
     dictionaryDisplayName,
     pitch,
     reading,
-    buildPitchAccentMorae
+    buildPitchAccentMorae,
+    showDictionaryName = false
   ) {
     const positionText = [`[${pitch.position}]`, pitch.pattern].filter(Boolean).join(" ");
     const bodyText = reading ? `${reading} ${positionText}` : positionText;
     const tag = createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, "pitch");
+    if (showDictionaryName) {
+      // Yomitan labels each dictionary's pronunciations; like a frequency
+      // source, the name leads the badge and the body stays its last child.
+      const source = documentRef.createElement("span");
+      source.className = "gsm-hoshidicts-pitch-source";
+      source.textContent = dictionaryDisplayName;
+      tag.prepend(source);
+    }
     const morae = buildPitchAccentMorae(reading, pitch.position);
     if (morae === null) return tag;
     // The same contour the header furigana draws, so every dictionary's
@@ -647,7 +657,7 @@
     const position = documentRef.createElement("span");
     position.className = "gsm-hoshidicts-pitch-position";
     position.textContent = positionText;
-    tag.firstChild.replaceChildren(contour, position);
+    tag.lastChild.replaceChildren(contour, position);
     return tag;
   }
 
@@ -2046,10 +2056,12 @@
 
   // Roots prefer the space above the word; nested panes prefer below it, as
   // Yomitan places a child. Either falls back to the side that fits, then to
-  // the roomier side.
+  // the roomier side. Like Yomitan's _getConstrainedPositionBinary, a pane
+  // that fits on neither side is shortened to that side's room instead of
+  // covering the word, so the requested height is a maximum.
   function calculatePopupPosition(anchorRect, popupSize, viewport, { gap = 4, padding = 6, vertical = false, preferBelow = false } = {}) {
     const width = Math.min(popupSize.width, Math.max(1, viewport.width - padding * 2));
-    const height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
+    let height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
     const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(value, maximum));
     let left;
     let top;
@@ -2067,6 +2079,7 @@
       const spaceAbove = Math.max(0, anchorRect.top - gap - padding);
       const preferred = (space, other) => space >= height || (other < height && space >= other);
       const placeAbove = preferBelow ? !preferred(spaceBelow, spaceAbove) : preferred(spaceAbove, spaceBelow);
+      height = Math.max(1, Math.min(height, placeAbove ? spaceAbove : spaceBelow));
       top = placeAbove ? anchorRect.top - gap - height : anchorRect.bottom + gap;
       left = anchorRect.left;
       placement = placeAbove ? "above" : "below";
@@ -2941,6 +2954,7 @@
         averageFrequency = false,
         showFrequencyDictionaryNames = false,
         compactFrequencyNumbers = false,
+        showPitchAccentDictionaryNames = true,
         imageContext,
         isCurrent,
         onLayoutChange,
@@ -2996,7 +3010,8 @@
                 names.get(group.dictionary) || group.dictionary,
                 pitch,
                 reading,
-                buildPitchAccentMorae
+                buildPitchAccentMorae,
+                context.showPitchAccentDictionaryNames !== false
               ));
               count += 1;
             }
@@ -3034,7 +3049,7 @@
         ipaRow.appendChild(overflow);
       } else appendTranscriptions(ipaRow);
       const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
-        compactFrequencyNumbers, showPitchAccentBadge: includePitch };
+        compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames };
       updateFrequency(context);
       updatePitch(context);
       entry.append(frequencyRow, pitchRow, ipaRow);
@@ -3448,6 +3463,8 @@
             showFrequencyDictionaryNames:
               renderContext.showFrequencyDictionaryNames === true,
             compactFrequencyNumbers: renderContext.compactFrequencyNumbers === true,
+            showPitchAccentDictionaryNames:
+              renderContext.showPitchAccentDictionaryNames !== false,
           }
         );
 
@@ -3657,7 +3674,6 @@
             for (const tag of container.querySelectorAll(`.gsm-hoshidicts-tag-${kind}`)) {
               changed = updatePronunciationLabel(tag, names.get(tag.dataset.dictionary) || tag.dataset.dictionary) || changed;
             }
-            continue;
           }
           for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
             const dictionary = source.parentNode.dataset.dictionary;
@@ -3675,7 +3691,8 @@
           const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers"]
             .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
           const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
-          const pitchChanged = imageContext.showPitchAccentBadge !== appliedMetadata.showPitchAccentBadge;
+          const pitchChanged = ["showPitchAccentBadge", "showPitchAccentDictionaryNames"]
+            .some(key => imageContext[key] !== appliedMetadata[key]);
           let changed = false;
           let deferred = false;
           if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);

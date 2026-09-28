@@ -488,6 +488,8 @@ try {
   await showSection(settings, "lookup");
   const readingSettings = await settings.evaluate(() => ({
     readingEnabled: !document.getElementById("opt-hover-enabled").disabled,
+    activationKey: document.getElementById("opt-activation-key").value,
+    keepOpenHidden: document.getElementById("opt-lookup-sticky-row").hidden,
     localFilePromptHidden: document.getElementById("settings-local-file-access").hidden,
     localFilePromptEmpty: document.getElementById("settings-local-file-access").childElementCount === 0,
   }));
@@ -507,7 +509,8 @@ try {
   assert.equal(ankiSettings.screenshotDisabled, true);
   assert.equal(ankiSettings.screenshotEnabled, false);
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
-  assert.deepEqual(readingSettings, { readingEnabled: true, localFilePromptHidden: true, localFilePromptEmpty: true });
+  assert.deepEqual(readingSettings, { readingEnabled: true, activationKey: "", keepOpenHidden: true,
+    localFilePromptHidden: true, localFilePromptEmpty: true }, "a seeded overlay shows No key");
   assert.ok(guardedRequests.ok === false && guardedRequests.error.includes("only from lookup popups"),
   JSON.stringify(guardedRequests));
   // Setup never opens in an overlay: the host has no tab to show it in.

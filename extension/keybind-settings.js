@@ -3,7 +3,7 @@ import { reorderSettingsRows } from "./settings-dom.js";
 
 // Labels of the Settings controls that own each toggleable option.
 export const KEYBIND_OPTION_LABELS = {
-  hoverEnabled: "Enable hover lookups",
+  hoverEnabled: "Enable lookups",
   onlyScanJapaneseText: "Japanese text only",
   showNoResultNotice: "Show a popup when a selection has no definition",
   audioAutoplay: "Automatically play the first lookup result",
@@ -19,6 +19,7 @@ export const KEYBIND_OPTION_LABELS = {
   compactFrequencyNumbers: "Abbreviate large frequency numbers",
   showPitchAccentFurigana: "Show pitch in furigana",
   showPitchAccentBadge: "Show pitch badges",
+  showPitchAccentDictionaryNames: "Show pitch dictionary names",
   hidePopupGrammarTags: "Hide grammar tags",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };

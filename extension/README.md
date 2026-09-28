@@ -18,7 +18,9 @@ where things are.
 
 Drag a lookup popup's bottom-right corner to resize it. The size is shared by
 subsequent and nested lookups in that page, including after closing and reopening
-the popup. Reloading or navigating the page (or restarting the browser) starts a
+the popup. Like the saved Design size, it is a maximum: a popup that fits on
+neither side of its word is shortened to the room beside it. Reloading or
+navigating the page (or restarting the browser) starts a
 new reading session with the saved Design dimensions. Dragging does not change
 those saved settings or other tabs.
 
@@ -77,8 +79,9 @@ the service worker and both engine runtimes run the same code.
   field mapping and duplicate policy; the first powers the built-in action and
   custom Anki buttons select the others by stable ID. Settings edits every
   field mapping through an accessible marker combobox while retaining the
-  mapping string exactly. `anki-duplicates.js` and
-  `anki-enrichment.js` handle a
+  mapping string exactly. `anki-duplicates.js` runs Anki's add checks and
+  names the cloze rule behind a refusal AnkiConnect reports only as an
+  unknown reason; it and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
   `anki-client-media.js` validates final screenshot and browser-speech
   media crossing a linked-browser boundary. `anki-mining.js` and

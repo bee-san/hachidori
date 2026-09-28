@@ -3,8 +3,8 @@ import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
-import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiDuplicateNotes,
-  isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote } from "./anki-duplicates.js";
+import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
+  findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
 export async function readAnkiNoteFields(invoke, noteId) {
@@ -35,17 +35,22 @@ export async function verifyAnkiFields(invoke, noteId, expected) {
   if (difference !== null) throw new Error(difference.message);
 }
 
+// A check result becomes the reader's decision here. Its per-note error skips
+// the gateway's translation, so it is explained before the reader sees it.
+async function checkedDecision(prepared, addable, error) {
+  return { state: addable ? "addable" : "invalid", canAdd: addable,
+    error: error === null ? null : await explainAnkiRefusal(prepared.invoke, prepared.note, error) };
+}
+
 async function addableDecision(prepared) {
   const check = await validateAnkiNote(prepared.invoke, prepared.note);
-  return { state: check.addable ? "addable" : "invalid", canAdd: check.addable, error: check.error };
+  return checkedDecision(prepared, check.addable, check.error);
 }
 
 async function unindexedDecision(prepared) {
   const { invoke, note, config, firstField } = prepared;
   const checked = await checkAnkiDuplicate(invoke, note, config);
-  if (!checked.duplicate) {
-    return { state: checked.addable ? "addable" : "invalid", canAdd: checked.addable, error: checked.error };
-  }
+  if (!checked.duplicate) return checkedDecision(prepared, checked.addable, checked.error);
   // A non-direct destination field cannot be keyed by the word index. Keep
   // Anki's exact first-field identity as a compatibility path, restricted to
   // the configured destination type so unrelated custom models never block.
