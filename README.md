@@ -92,6 +92,12 @@ changing and may be removed:
 - **Google Docs** — look up words while reading a Google Doc. Docs paints its
   text to a canvas; Hachidori asks it to expose the text as well, which Google
   may change or remove without notice. The sentence is the hovered run of text.
+- **Smaller Anki cards** — write compact definitions to new Anki notes. The
+  dictionary stylesheets, classes and wrappers are left out; the text, line
+  breaks, lists, tables, furigana, images and the markers note types such as
+  Lapis, Kiku and Senren rely on are kept. A Jitendex note shrinks to about a
+  quarter of its size. Notes already in Anki are not changed. The behaviour
+  follows the Compact HTML Cleanup Anki add-on.
 
 
 # Opinionated

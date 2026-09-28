@@ -2093,7 +2093,25 @@ renderer into inert HTML. As in Yomitan's default Anki field templates, each
 term-bank row becomes its own `li[data-dictionary]`, and every line break in
 dictionary text becomes a `<br>` because a note field has none of the popup's
 `white-space: pre-wrap`. Dictionary CSS remains scoped, and image filenames
-bind to committed generation paths. First-field audio is resolved before the
+bind to committed generation paths. While the experimental **Smaller Anki
+cards** flag (`options.experimental.smallerAnkiCards`) is on, the rich
+glossary markers are compacted instead, following the Compact HTML Cleanup
+Anki add-on. The flag is part of the checked Anki configuration, so toggling it
+between preflight and Add fails with the existing configuration-changed error.
+`anki-compact.js` mounts a source-less copy of the export in a hidden, closed
+shadow root of the offscreen document, where `getComputedStyle` resolves the
+scoped dictionary CSS exactly as the popup does, and builds new inert markup
+from it: generated `::before`/`::after` text becomes text, `display: none` and
+hidden content is left out, a positive inline margin becomes one space, a
+list marker is written only where it differs from HTML's default, style-only
+bold, italics, underline and strike-through become tags, newlines become `<br>`
+and block-level elements that directly hold content become `<div>`. Stylesheets,
+internal classes, `data-hoshidicts-*`, titles and link targets are dropped;
+`lang`, `rowspan`/`colspan`, `data-sc-content`, ruby, tables, image sizes and
+the outer Yomitan-compatible glossary structure are kept. Plain glossary
+markers and the relay's `ankiFields` API are unchanged.
+
+First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write
 queue, every dictionary image referenced by an applied field and any prepared
 first-field pronunciation is checked against Anki's live media inventory.
