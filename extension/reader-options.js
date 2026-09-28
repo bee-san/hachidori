@@ -30,7 +30,7 @@
   // reveals.
   const EXPERIMENTAL_FEATURES = [
     { id: "themeStore", label: "Theme Store",
-      description: "Try bundled popup layouts in Design, starting with Default and Nazeka." },
+      description: "Try Default, Nazeka and Plain popup layouts in Design." },
     { id: "longKeyScan", label: "Long dictionary entries",
       description: "Find dictionary entries longer than the scan length. The reader collects more page text only when an installed dictionary lists such entries, and the engine reads further only when the text starts like one of them." },
     { id: "mdxImport", label: "MDX dictionaries",

@@ -1,12 +1,12 @@
 {
-  "revision": "e4af9457acde9fa625805ba0bfb01219dc4e5813",
+  "revision": "89e07c6f5b66599dda0b7bcd303a0b287b01f03d",
   "node": "v26.8.2",
   "cpu": "Intel(R) Core(TM) Ultra 7 165U",
   "logicalCpus": 14,
   "load": [
-    3.12,
-    2.36,
-    1.84
+    3.16,
+    3.32,
+    2.66
   ],
   "settings": {
     "hoverEnabled": true,
@@ -27,12 +27,12 @@
     "漢字",
     "深層"
   ],
-  "extensionSha256": "6593e76646bd27250176cc20aa32770d2a6efe075790a558a6267016682d7010",
+  "extensionSha256": "9705d04cbfc561464e75a042abc33999370c8ff72fbe5e0089ab0fceb2888862",
   "samples": 3,
   "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
   "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
-  "probeSha256": "7da944ce67dcc685c7e360c29ff5e9bba43a3998713ee9700a8622ea87016590",
-  "harnessSha256": "8de9506db4a931173cb88076c948a43527b4a2f00148fde8b99c23bee1f06718",
+  "probeSha256": "42c1fed34b7f948544605e5d23f082a5fc370e88fcab17d08a27a64b960f38e6",
+  "harnessSha256": "cdbde4cfcf9ef8579df969e455901cf7be9f51319ed364732b9f0258050a3e2e",
   "archives": [
     {
       "path": "/tmp/theme-hover-fixture.zip",

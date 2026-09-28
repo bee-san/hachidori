@@ -4,9 +4,9 @@
   "cpu": "Intel(R) Core(TM) Ultra 7 165U",
   "logicalCpus": 14,
   "load": [
-    2.95,
-    3.27,
-    2.66
+    3.1,
+    3.32,
+    2.63
   ],
   "settings": {
     "hoverEnabled": true,
@@ -20,7 +20,7 @@
     "definitionBlurEnabled": false,
     "showCompactDefinitionSummary": true,
     "compactDefinitionSummaryCount": 3,
-    "popupTheme": "default"
+    "popupTheme": "plain"
   },
   "words": [
     "食べる",
