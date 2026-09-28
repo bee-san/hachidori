@@ -102,6 +102,7 @@ const METADATA_FIELDS = [
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
+  { key: "showPitchAccentDictionaryNames", id: "opt-pitch-names" },
   { key: "hidePopupGrammarTags", id: "opt-grammar-tags", inverted: true },
 ];
 const APPEARANCE_CHOICES = [

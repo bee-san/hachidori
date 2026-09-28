@@ -25,7 +25,8 @@
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
   const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
-    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
+    "hidePopupGrammarTags"];
 
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
@@ -625,11 +626,20 @@
     dictionaryDisplayName,
     pitch,
     reading,
-    buildPitchAccentMorae
+    buildPitchAccentMorae,
+    showDictionaryName = false
   ) {
     const positionText = [`[${pitch.position}]`, pitch.pattern].filter(Boolean).join(" ");
     const bodyText = reading ? `${reading} ${positionText}` : positionText;
     const tag = createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, "pitch");
+    if (showDictionaryName) {
+      // Yomitan labels each dictionary's pronunciations; like a frequency
+      // source, the name leads the badge and the body stays its last child.
+      const source = documentRef.createElement("span");
+      source.className = "gsm-hoshidicts-pitch-source";
+      source.textContent = dictionaryDisplayName;
+      tag.prepend(source);
+    }
     const morae = buildPitchAccentMorae(reading, pitch.position);
     if (morae === null) return tag;
     // The same contour the header furigana draws, so every dictionary's
@@ -647,7 +657,7 @@
     const position = documentRef.createElement("span");
     position.className = "gsm-hoshidicts-pitch-position";
     position.textContent = positionText;
-    tag.firstChild.replaceChildren(contour, position);
+    tag.lastChild.replaceChildren(contour, position);
     return tag;
   }
 
@@ -2930,6 +2940,7 @@
         averageFrequency = false,
         showFrequencyDictionaryNames = false,
         compactFrequencyNumbers = false,
+        showPitchAccentDictionaryNames = true,
         imageContext,
         isCurrent,
         onLayoutChange,
@@ -2985,7 +2996,8 @@
                 names.get(group.dictionary) || group.dictionary,
                 pitch,
                 reading,
-                buildPitchAccentMorae
+                buildPitchAccentMorae,
+                context.showPitchAccentDictionaryNames !== false
               ));
               count += 1;
             }
@@ -3023,7 +3035,7 @@
         ipaRow.appendChild(overflow);
       } else appendTranscriptions(ipaRow);
       const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
-        compactFrequencyNumbers, showPitchAccentBadge: includePitch };
+        compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames };
       updateFrequency(context);
       updatePitch(context);
       entry.append(frequencyRow, pitchRow, ipaRow);
@@ -3446,6 +3458,8 @@
             showFrequencyDictionaryNames:
               renderContext.showFrequencyDictionaryNames === true,
             compactFrequencyNumbers: renderContext.compactFrequencyNumbers === true,
+            showPitchAccentDictionaryNames:
+              renderContext.showPitchAccentDictionaryNames !== false,
           }
         );
 
@@ -3655,7 +3669,6 @@
             for (const tag of container.querySelectorAll(`.gsm-hoshidicts-tag-${kind}`)) {
               changed = updatePronunciationLabel(tag, names.get(tag.dataset.dictionary) || tag.dataset.dictionary) || changed;
             }
-            continue;
           }
           for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
             const dictionary = source.parentNode.dataset.dictionary;
@@ -3673,7 +3686,8 @@
           const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers"]
             .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
           const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
-          const pitchChanged = imageContext.showPitchAccentBadge !== appliedMetadata.showPitchAccentBadge;
+          const pitchChanged = ["showPitchAccentBadge", "showPitchAccentDictionaryNames"]
+            .some(key => imageContext[key] !== appliedMetadata[key]);
           let changed = false;
           let deferred = false;
           if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);

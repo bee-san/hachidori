@@ -19,6 +19,7 @@ export const KEYBIND_OPTION_LABELS = {
   compactFrequencyNumbers: "Abbreviate large frequency numbers",
   showPitchAccentFurigana: "Show pitch in furigana",
   showPitchAccentBadge: "Show pitch badges",
+  showPitchAccentDictionaryNames: "Show pitch dictionary names",
   hidePopupGrammarTags: "Hide grammar tags",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };

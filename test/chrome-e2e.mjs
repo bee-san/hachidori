@@ -268,6 +268,7 @@ const PLANNED = [
   LIBRARY_TAB_GEOMETRY_CHECK,
   SETTINGS_NAVIGATION_CHECK,
   "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
+  "Design names pitch dictionaries at 4.5:1 text contrast in every popup theme",
   SETTINGS_FIRST_FRAME_THEME_CHECK,
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   SETTINGS_FEEDBACK_CHECK,
@@ -11450,6 +11451,14 @@ async function main() {
   const themePalettes = [];
   await page.setViewport({ width: 1280, height: 900 });
   await showSettingsSection(page, "design");
+  // The Design preview is the production popup, themed in the same render as
+  // Settings. Its pitch dictionary name is measured once reader.css applies;
+  // a missing name fails that check below instead of ending the run here.
+  await page.waitForFunction(() => {
+    const source = document.getElementById("design-preview")?.contentDocument?.getElementById("preview-host")
+      ?.shadowRoot?.querySelector(".gsm-hoshidicts-pitch-source");
+    return source && getComputedStyle(source).fontWeight === "700";
+  }, { timeout: 10_000 }).catch(() => {});
   for (const theme of themes.filter(theme => theme !== "auto")) {
     await setSettingsTheme(theme);
     themePalettes.push(await page.evaluate(expectedTheme => {
@@ -11460,7 +11469,7 @@ async function main() {
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       const color = name => {
-        probe.style.color = `var(${name})`;
+        probe.style.color = name.startsWith("--") ? `var(${name})` : name;
         const value = getComputedStyle(probe).color;
         context.clearRect(0, 0, 1, 1);
         context.fillStyle = value;
@@ -11484,9 +11493,14 @@ async function main() {
       const textContrasts = Object.fromEntries(textPairs.map(([first, second]) =>
         [`${first}/${second}`, contrast(first, second)]));
       const root = getComputedStyle(document.documentElement);
+      const previewHost = document.getElementById("design-preview")?.contentDocument?.getElementById("preview-host");
+      const pitchSource = previewHost?.shadowRoot?.querySelector(".gsm-hoshidicts-pitch-source");
+      const pitchStyle = pitchSource && getComputedStyle(pitchSource);
       const result = {
         expectedTheme,
         selectedTheme: document.documentElement.dataset.hoshidictsTheme,
+        previewTheme: previewHost?.dataset.hoshidictsTheme,
+        pitchSourceContrast: pitchStyle ? contrast(pitchStyle.color, pitchStyle.backgroundColor) : 0,
         palette: root.getPropertyValue("--hoshidicts-palette-primary").trim(),
         scheme: root.colorScheme,
         paletteScheme: root.getPropertyValue("--hoshidicts-palette-color-scheme").trim(),
@@ -11524,6 +11538,11 @@ async function main() {
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
     JSON.stringify({ automaticSettingsThemes, narrowThemes, themeLayouts, themePalettes }));
+  check("Design names pitch dictionaries at 4.5:1 text contrast in every popup theme",
+    themePalettes.length === 42 && themePalettes.every(theme => theme.previewTheme === theme.expectedTheme
+      && theme.pitchSourceContrast >= 4.5),
+    JSON.stringify(themePalettes.map(({ expectedTheme, previewTheme, pitchSourceContrast }) =>
+      ({ expectedTheme, previewTheme, pitchSourceContrast }))));
   await checkSettingsFirstFrameTheme(browser, settingsUrl, check, process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP);
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
