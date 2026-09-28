@@ -880,10 +880,11 @@ before the change event completes.
 
 Design has independent controls for frequency source names, number
 abbreviation and averages, pitch contour and its preferred dictionary, pitch
-badges, and grammar tags. Frequency metadata defaults to Yomitan's values
-without dictionary names: each dictionary's own display value, such as `51,499`
-or `142位`, otherwise the plain number, and averages as plain numbers.
-**Abbreviate large numbers** opts into compact values such as `51.5k`. The first
+badges and their dictionary names, and grammar tags. Frequency metadata defaults
+to Yomitan's values without dictionary names: each dictionary's own display
+value, such as `51,499` or `142位`, otherwise the plain number, and averages as
+plain numbers. **Abbreviate large numbers** opts into compact values such as
+`51.5k`. The first
 result's frequency tags are the same Yomitan-like two-tone tags as every later
 entry's metadata row; a filled source segment appears only when names or
 averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`
@@ -894,15 +895,20 @@ header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
-Contour and pitch badges remain on, and averages remain off. IPA transcriptions
-and definition tags remain visible independently. Every pitch badge draws its
-dictionary's accent as the same mora contour the header furigana uses, followed
-by the `[n]` position, so several pitch dictionaries compare at a glance; a
-position outside the reading's morae keeps the plain `reading [n]` text, and the
-text stays in every badge's tooltip and accessibility label. Pitch and IPA show
-pronunciation data without source-name labels; tooltips and accessibility labels retain source
-attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
-and frequency values use the theme's normal foreground, including light themes.
+Contour, pitch badges and pitch dictionary names remain on, and averages remain
+off. IPA transcriptions and definition tags remain visible independently. Every
+pitch badge draws its dictionary's accent as the same mora contour the header
+furigana uses, followed by the `[n]` position, so several pitch dictionaries
+compare at a glance; a position outside the reading's morae keeps the plain
+`reading [n]` text, and the text stays in every badge's tooltip and
+accessibility label. As in Yomitan, each pitch badge, including that text
+fallback, starts with its dictionary's display name, truncated with an ellipsis
+at the frequency source's width; turning the name off restores the unlabelled
+badge. IPA shows transcriptions without source-name labels. Tooltips and
+accessibility labels retain source attribution, and visible pitch names and
+labels follow dictionary aliases in place. Unfilled tags, pitch names and
+lightly tinted pitch and frequency values use the theme's normal foreground,
+including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
@@ -1818,13 +1824,13 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
-dark, 23 light, one high-contrast), strict option validation, and the 19 Design
+dark, 23 light, one high-contrast), strict option validation, and the 26 Design
 reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,
-one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
-names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
-averages off. Reset writes those keys through the existing sparse revision CAS;
+one column, Automatic toolbar placement, summary off with three snippets and automatic sources, pitch
+contour/pitch badges/pitch dictionary names/source highlighting on, and frequency
+names/abbreviation/averages and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.

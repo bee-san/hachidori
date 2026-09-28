@@ -4758,7 +4758,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
-      showPitchAccentBadge: true, hidePopupGrammarTags: true,
+      showPitchAccentBadge: true, showPitchAccentDictionaryNames: true, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -11623,7 +11623,7 @@ async function designPreviewStage() {
       && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
       && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
-      && !popup.textContent.includes("Sample pitch")
+      && query(".gsm-hoshidicts-tag-pitch > .gsm-hoshidicts-pitch-source")?.textContent === "Sample pitch"
       && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
@@ -11638,11 +11638,16 @@ async function designPreviewStage() {
     const cssPreview = parses === 1 && cssPlacements === 1 && query("form") === form
       && query(".gsm-hoshidicts-glossary-card") === card;
     source.getBoundingClientRect = sourceRect;
+    options = { ...options, showPitchAccentDictionaryNames: false };
+    update();
+    await settle();
+    const unlabelledPitch = Boolean(query(".gsm-hoshidicts-tag-pitch")) && !query(".gsm-hoshidicts-pitch-source")
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
     options = { ...options, showFrequencyDictionaryNames: false, showPitchAccentBadge: false,
       showCompactDefinitionSummary: true, popupColumns: 2 };
     update();
     await settle();
-    let incremental = query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
+    let incremental = unlabelledPitch && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
       && form.elements.definition.value === "A preview draft" && !query(".gsm-hoshidicts-tag-pitch")
       && !!query(".gsm-hoshidicts-compact-definition-summary");
     const audioControl = query(".gsm-hoshidicts-audio-control");
@@ -12050,6 +12055,7 @@ async function settingsFrequencyStage() {
       ["opt-frequency-compact", "compactFrequencyNumbers", false],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
+      ["opt-pitch-names", "showPitchAccentDictionaryNames", true],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
       ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
@@ -16117,7 +16123,8 @@ async function contentNoteStage() {
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
             showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
-            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false, hidePopupGrammarTags: true };
+            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false,
+            showPitchAccentDictionaryNames: false, hidePopupGrammarTags: true };
           const before = combined.sent.length;
           if (update === "options" || update === "metadata") combined.emitOptions(options);
           else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
@@ -21902,18 +21909,21 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     view.renderResults(metadataResults, candidate, { ...context, showFrequencyDictionaryNames: true, showPitchAccentBadge: true });
     const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
     const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
+    const pitchSource = popup.querySelector(".gsm-hoshidicts-pitch-source");
     view.updateDictionaryPresentation({ dictionaryPresentation: [
       { title: "Rank", displayName: "Rank alias" }, { title: "Pitch", displayName: "Pitch alias" },
       { title: "Second", displayName: "Second alias" },
     ], dictionaryTabGroups: [] });
     live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
       && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
+      && popup.querySelector(".gsm-hoshidicts-pitch-source") === pitchSource && pitchSource.textContent === "Pitch alias"
       && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
       && popup.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
     live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card-title").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
+      && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
       && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH"
       && JSON.stringify(metadataResults) === metadataBefore);
     const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };

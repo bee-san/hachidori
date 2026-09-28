@@ -100,9 +100,12 @@ explicit display choices, source details, and live grammar/name/abbreviation con
 replacing definitions or Note drafts. It uses the same external jsdom dependency.
 
 `node --test test/pitch-badges.test.mjs` checks that each pitch dictionary's
-badge draws its own mora contour with the `[n]` position, keeps `reading [n]`
-in its tooltip and accessibility label through alias changes, and falls back to
-the text badge when the position lies outside the reading's morae.
+badge draws its own mora contour with the `[n]` position, starts with its
+dictionary's name by default, keeps `reading [n]` in its tooltip and
+accessibility label, renames both in place through alias changes, and falls back
+to the text badge, still named, when the position lies outside the reading's
+morae. Turning the name off restores the unlabelled badge live without replacing
+definitions.
 
 `node --test test/yomitan-parity.test.mjs` checks the renderer against
 Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
@@ -1288,6 +1291,8 @@ Three further appearance assertions cover AUTO plus all 42 grouped palette IDs,
 live browser light/dark changes and real high-contrast overrides, immediate
 unsaved opacity/dimension preview and scoped reset, and live reader/child
 geometry with exact highlight restoration and retained Note/cards/resources.
+Another measures the Design preview's pitch dictionary name in each of the 42
+palettes and requires 4.5:1 text contrast against its tinted background.
 Unit coverage checks strict option ranges and no-op CAS, first-layout width
 ordering, and native/term clicked-kanji preview switching without losing Note
 or Back state. Unrelated dictionary changes retain the current clicked-kanji

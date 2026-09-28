@@ -2290,7 +2290,8 @@ html[data-hoshidicts-theme="girlypop"],
   padding: 3px 5px;
 }
 
-.gsm-hoshidicts-frequency-source {
+.gsm-hoshidicts-frequency-source,
+.gsm-hoshidicts-pitch-source {
   min-width: 0;
   max-width: min(18ch, 42vw);
   overflow: hidden;
@@ -2350,12 +2351,23 @@ html[data-hoshidicts-theme="girlypop"],
   color: var(--text-color);
 }
 
+.gsm-hoshidicts-pitch-source,
+.gsm-hoshidicts-pitch-body {
+  padding: 3px 5px;
+  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
+}
+
 .gsm-hoshidicts-pitch-body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 5px;
-  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
+}
+
+/* Unlike Yomitan's filled chip, the name keeps the theme foreground on the
+   body's tint, which stays readable in every palette. */
+.gsm-hoshidicts-pitch-source {
+  align-content: center;
+  border-right: 1px solid var(--hoshidicts-pitch);
 }
 
 /* A badge draws the same mora contour as the header furigana at tag size. */
