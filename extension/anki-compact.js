@@ -70,7 +70,9 @@ function keptAttributes(node) {
 export function compactAnkiGlossary(document, root) {
   const inert = root.ownerDocument;
   const view = document.defaultView;
-  // The popup shows newlines in dictionary text through `white-space: pre-wrap`.
+  // The exporter has already turned dictionary newlines into <br> (#359);
+  // generated text can still hold one (`\A`), which the popup's
+  // `white-space: pre-wrap` shows as a line break.
   const text = value => value.split("\n").flatMap((line, index) => {
     const nodes = index ? [inert.createElement("br")] : [];
     const collapsed = line.replace(/[\t\r ]+/gu, " ");
