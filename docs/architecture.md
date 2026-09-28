@@ -659,6 +659,8 @@ full browser restart without reloading the engine.
 
 ![Enable lookups, the Activation key picker and the keep-open switch in Settings](assets/reader-activation-settings.png)
 
+![Hide popup on cursor exit and its Delay in Settings](assets/reader-cursor-exit-settings.png)
+
 ### Keybinds
 
 `options.keybinds` copies yomitan-gsm's hotkey entries exactly: `action`,
