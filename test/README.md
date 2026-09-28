@@ -853,8 +853,9 @@ What it proves, in order:
    `declaredResponseLength` ignores encoded, zero, and header-less responses.
    With `OVERLAY_MODE` on, a worker instead seeds hover lookups without a page
    highlight on top of the first-install options when it starts. It creates no
-   setup record or tab, and leaves later edits and carried options alone (see
-   [overlay mode](../docs/overlay-mode.md)).
+   setup record or tab and leaves later edits and legacy `modifier` records
+   alone; a carried profile without a lookup mode gains hover in one revisioned
+   write (see [overlay mode](../docs/overlay-mode.md)).
 12. **Isolated import.** A separate engine-service instance is configured with
    an `isolatedImport` that runs the real `importDictionaryArchive` on the
    engine's own filesystem, which is what the direct-OPFS runtime's second
@@ -1441,9 +1442,11 @@ supplementary Unicode characters when the caret lands after the glyph.
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
-on release, and cancellation of a quick press/release. A non-default key is kept
-when switching back to Hover and checked with mode, enablement and hide delay
-after the full browser restart.
+on release, and cancellation of a quick press/release. Choosing No key stores
+Hover, hides the keep-open switch and opens a popup on plain hover; choosing the
+key again restores it with the popup staying open, and the switch selects the
+closing mode. A non-default key is kept behind No key and checked with mode,
+enablement and hide delay after the full browser restart.
 
 Exact-selection checks first use a plain cross-inline mouse drag with Shift
 configured and prove that it sends no worker lookup, paints no source highlight
