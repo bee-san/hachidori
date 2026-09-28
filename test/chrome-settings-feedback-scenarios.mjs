@@ -112,12 +112,14 @@ export async function checkSettingsFeedback(browser, settingsUrl, check, screens
     await pending();
     await release();
     await saved();
-    await page.$eval("#opt-media-texthooker-url", input => {
-      input.value = "https://example.com";
-      input.dispatchEvent(new Event("change", { bubbles: true }));
+    // A native chooser can outlive the frequency dictionary it offered.
+    await page.$eval("#opt-frequency-dictionary", select => {
+      select.append(new Option("Removed frequency dictionary", "Removed frequency dictionary"));
+      select.value = "Removed frequency dictionary";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     const validation = await measure("validation");
-    if (!validation.status.includes("Texthooker must use") || validation.height <= initial.height) {
+    if (!validation.status.includes("no longer available") || validation.height <= initial.height) {
       throw new Error(`Rejected edits must retain prominent feedback: ${JSON.stringify(validation)}`);
     }
   } finally {

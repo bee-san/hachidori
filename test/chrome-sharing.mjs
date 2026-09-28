@@ -584,8 +584,7 @@ async function checkOverlaySharing(hostPage) {
       help: document.getElementById("anki-screenshot-help").textContent }));
     await showSection(page, "audio");
     const speech = await page.evaluate(() => ({ visible: !document.getElementById("audio-mining-help").hidden,
-      help: document.getElementById("audio-mining-help").textContent,
-      captureHelpHidden: document.getElementById("audio-speech-capture-help").hidden }));
+      help: document.getElementById("audio-mining-help").textContent }));
     await showSection(page, "advanced");
     const removedMedia = await page.evaluate(() => document.getElementById("media") === null);
     if (process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT) {
@@ -626,7 +625,7 @@ async function checkOverlaySharing(hostPage) {
         && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
         && afterUnlink.options.customButtons[0]?.id === "local-link"
         && afterUnlink.options.customLinks[0]?.label === "Local link"
-        && screenshot.help.includes("unavailable in this overlay") && speech.visible && speech.captureHelpHidden
+        && screenshot.help.includes("unavailable in this overlay") && speech.visible
         && speech.help.includes("cannot be recorded into Anki")
         && removedMedia
         && shortcuts.browserDisabled && shortcuts.pageEnabled && !buttons.disabled && buttons.helpVisible

@@ -521,6 +521,7 @@ try {
   });
   await settings.evaluate(async () => {
     const stored = await chrome.storage.local.get("options");
+    const options = HDReaderOptions.normaliseOptions(stored.options);
     await chrome.storage.local.set({ options: {
       ...stored.options,
       customButtons: [{

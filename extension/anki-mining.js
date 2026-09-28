@@ -299,7 +299,7 @@ export function createAnkiMiningService({
     if (!checked.canAdd) return { state: checked.state, error: checked.error,
       action: checked.action, noteIds: checked.noteIds };
     const { config, configJson, firstField, note, invoke } = prepared;
-    const { fields, target, templates } = fieldsForDecision(prepared, checked);
+    const { fields, target } = fieldsForDecision(prepared, checked);
     if (JSON.stringify(await readConfig(request?.templateId)) !== configJson) throw new Error(CONFIG_CHANGED);
     const writeResources = await beforeWrite({
       request,
