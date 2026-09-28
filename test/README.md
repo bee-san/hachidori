@@ -104,6 +104,14 @@ badge draws its own mora contour with the `[n]` position, keeps `reading [n]`
 in its tooltip and accessibility label through alias changes, and falls back to
 the text badge when the position lies outside the reading's morae.
 
+`node --test test/yomitan-parity.test.mjs` checks the renderer against
+Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
+Yomitan function that produced it, so no Yomitan checkout is needed. It covers
+structured-content inline styles (JMdict's `130%` redirect span, keywords,
+`calc()`, gradients, numeric em margins, shorthand order) and the values that
+stay refused: resource and custom functions, `var()` and CSS escapes. It uses
+the same external jsdom dependency.
+
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
 pending save. The extension smoke suite also verifies that selected missing

@@ -1614,6 +1614,14 @@ inherit a value into one nor register an `@property` for it, and a reference the
 dictionary never declares falls back as in a theme without it. Dictionary media
 still uses the generation-owned `hd_media` path, not stylesheet URLs.
 
+Structured-content `style` objects are applied as Yomitan's
+`_setStructuredContentElementStyle` applies them: each schema key goes to CSSOM
+in Yomitan's order, shorthands before the longhands that refine them, numeric
+margin longhands become `em`, and CSSOM drops what it cannot parse. There are no
+unit, size or colour allowlists. The same resource and custom functions refused
+in stylesheets are refused inline, together with CSS escapes and `var()`, which
+would read custom properties the page sets on the popup host.
+
 The trusted glossary card sits outside the dictionary scope and establishes
 paint containment, so fixed descendants and oversized shadows cannot cover
 reader controls. Style installation replaces the previous generation's elements

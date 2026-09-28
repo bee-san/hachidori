@@ -100,40 +100,50 @@
     "video",
   ]);
   const STRUCTURED_TAGS_WITHOUT_CONTENT = new Set(["br", "img"]);
-  const STRUCTURED_STYLE_PROPERTIES = new Map([
-    ["background", ["background", "color"]],
-    ["backgroundColor", ["background-color", "color"]],
-    ["borderColor", ["border-color", "color"]],
-    ["borderRadius", ["border-radius", "length-sequence"]],
-    ["borderStyle", ["border-style", "border-style"]],
-    ["borderWidth", ["border-width", "length-sequence"]],
-    ["clipPath", ["clip-path", "clip-path"]],
-    ["color", ["color", "color"]],
-    ["cursor", ["cursor", "cursor"]],
-    ["fontSize", ["font-size", "length"]],
-    ["fontStyle", ["font-style", "font-style"]],
-    ["fontWeight", ["font-weight", "font-weight"]],
-    ["listStyleType", ["list-style-type", "list-style-type"]],
-    ["margin", ["margin", "signed-length-sequence"]],
-    ["marginBottom", ["margin-bottom", "signed-length"]],
-    ["marginLeft", ["margin-left", "signed-length"]],
-    ["marginRight", ["margin-right", "signed-length"]],
-    ["marginTop", ["margin-top", "signed-length"]],
-    ["padding", ["padding", "length-sequence"]],
-    ["paddingBottom", ["padding-bottom", "length"]],
-    ["paddingLeft", ["padding-left", "length"]],
-    ["paddingRight", ["padding-right", "length"]],
-    ["paddingTop", ["padding-top", "length"]],
-    ["textAlign", ["text-align", "text-align"]],
-    ["textDecorationColor", ["text-decoration-color", "color"]],
-    ["textDecorationLine", ["text-decoration-line", "text-decoration-line"]],
-    ["textDecorationStyle", ["text-decoration-style", "text-decoration-style"]],
-    ["textEmphasis", ["text-emphasis", "safe-css-token"]],
-    ["textShadow", ["text-shadow", "safe-css-token"]],
-    ["verticalAlign", ["vertical-align", "vertical-align"]],
-    ["whiteSpace", ["white-space", "white-space"]],
-    ["wordBreak", ["word-break", "word-break"]],
-  ]);
+  // Yomitan's _setStructuredContentElementStyle (structured-content-generator.js
+  // at 67db60d), in its order: each shorthand is set before the longhands that
+  // refine it. textDecorationLine sets the text-decoration shorthand there too.
+  const STRUCTURED_STYLE_PROPERTIES = [
+    ["fontStyle", "font-style"],
+    ["fontWeight", "font-weight"],
+    ["fontSize", "font-size"],
+    ["color", "color"],
+    ["background", "background"],
+    ["backgroundColor", "background-color"],
+    ["verticalAlign", "vertical-align"],
+    ["textAlign", "text-align"],
+    ["textEmphasis", "text-emphasis"],
+    ["textShadow", "text-shadow"],
+    ["textDecorationLine", "text-decoration"],
+    ["textDecorationStyle", "text-decoration-style"],
+    ["textDecorationColor", "text-decoration-color"],
+    ["borderColor", "border-color"],
+    ["borderStyle", "border-style"],
+    ["borderRadius", "border-radius"],
+    ["borderWidth", "border-width"],
+    ["clipPath", "clip-path"],
+    ["margin", "margin"],
+    ["marginTop", "margin-top"],
+    ["marginLeft", "margin-left"],
+    ["marginRight", "margin-right"],
+    ["marginBottom", "margin-bottom"],
+    ["padding", "padding"],
+    ["paddingTop", "padding-top"],
+    ["paddingLeft", "padding-left"],
+    ["paddingRight", "padding-right"],
+    ["paddingBottom", "padding-bottom"],
+    ["wordBreak", "word-break"],
+    ["whiteSpace", "white-space"],
+    ["cursor", "cursor"],
+    ["listStyleType", "list-style-type"],
+  ];
+  // Functions that could fetch a resource or reach past the dictionary's own
+  // declarations (attributes, page-registered worklets and custom functions).
+  // The popup is a shadow root in the page's origin, so dictionary stylesheets
+  // and inline styles both refuse them; CSSOM judges everything else, as the
+  // browser does for Yomitan.
+  const UNSAFE_STYLE_FUNCTION =
+    /\b(?:url|src|image-set|paint|attr)\s*\(|(?<![\w\P{ASCII}-])--[\w\P{ASCII}-]+\(/iu;
 
   function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -493,168 +503,35 @@
     return String(value || "").split(/\s+/u).filter(Boolean);
   }
 
-  function isSafeCssToken(value) {
-    return (
-      typeof value === "string" &&
-      value.length > 0 &&
-      value.length <= 128 &&
-      !/[\u0000-\u001f\u007f;{}]/u.test(value) &&
-      !/(?:url|expression|var)\s*\(/iu.test(value)
-    );
+  // An inline value also refuses var(): a dictionary stylesheet's own custom
+  // properties are renamed by applyDictionaryStyles, but a reference here would
+  // read whatever the page sets on the popup host. A backslash could escape a
+  // refused function name.
+  function isSafeStructuredStyleValue(value) {
+    return typeof value === "string" && !value.includes("\\")
+      && !UNSAFE_STYLE_FUNCTION.test(value) && !/\bvar\s*\(/iu.test(value);
   }
 
-  function normalizeColor(value) {
-    if (!isSafeCssToken(value)) {
-      return null;
+  function setStructuredStyle(element, cssProperty, value) {
+    if (isSafeStructuredStyleValue(value)) {
+      element.style.setProperty(cssProperty, value);
     }
-    const trimmed = value.trim();
-    if (
-      /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(trimmed) ||
-      /^(?:rgb|rgba|hsl|hsla)\([0-9.,%+\-\s/]+\)$/iu.test(trimmed) ||
-      /^(?:[a-z]+|currentColor|transparent)$/iu.test(trimmed)
-    ) {
-      return trimmed;
-    }
-    return null;
-  }
-
-  function normalizeLengthToken(value, allowNegative = false) {
-    if (typeof value === "number") {
-      if (!Number.isFinite(value) || Math.abs(value) > 256 || (!allowNegative && value < 0)) {
-        return null;
-      }
-      return `${value}px`;
-    }
-    if (!isSafeCssToken(value)) {
-      return null;
-    }
-    const trimmed = value.trim();
-    const match = /^(-?(?:0|[0-9]+(?:\.[0-9]+)?))(px|em|rem|%)?$/u.exec(trimmed);
-    if (!match) {
-      return null;
-    }
-    const amount = Number(match[1]);
-    const unit = match[2] || (amount === 0 ? "" : "px");
-    const limit = unit === "em" || unit === "rem"
-      ? 16
-      : unit === "%"
-        ? 100
-        : 256;
-    if (!Number.isFinite(amount) || Math.abs(amount) > limit || (!allowNegative && amount < 0)) {
-      return null;
-    }
-    return `${match[1]}${unit}`;
-  }
-
-  function normalizeLengthSequence(value, allowNegative = false) {
-    if (typeof value === "number") {
-      return normalizeLengthToken(value, allowNegative);
-    }
-    if (!isSafeCssToken(value)) {
-      return null;
-    }
-    const tokens = value.trim().split(/\s+/u);
-    if (tokens.length < 1 || tokens.length > 4) {
-      return null;
-    }
-    const normalized = tokens.map((token) => normalizeLengthToken(token, allowNegative));
-    return normalized.every((token) => token !== null) ? normalized.join(" ") : null;
-  }
-
-  // Value kinds that are one pattern match against a string. The rest need
-  // their own handling and stay spelled out below.
-  const STRUCTURED_STYLE_PATTERNS = new Map([
-    ["border-style", /^(?:none|hidden|dotted|dashed|solid|double)$/u],
-    ["clip-path", /^(?:circle|ellipse|inset)\([0-9.,%+\-\s]+\)$/u],
-    [
-      "cursor",
-      /^(?:auto|default|pointer|help|text|wait|progress|not-allowed|zoom-in|zoom-out)$/u,
-    ],
-    ["font-style", /^(?:normal|italic)$/u],
-    ["text-align", /^(?:start|end|left|right|center|justify|match-parent)$/u],
-    ["text-decoration-style", /^(?:solid|double|dotted|dashed|wavy)$/u],
-    ["white-space", /^(?:normal|nowrap|pre|pre-wrap|pre-line|break-spaces)$/u],
-    ["word-break", /^(?:normal|break-all|keep-all|break-word)$/u],
-  ]);
-
-  function normalizeStructuredStyleValue(kind, value) {
-    const pattern = STRUCTURED_STYLE_PATTERNS.get(kind);
-    if (pattern) {
-      return typeof value === "string" && pattern.test(value) ? value : null;
-    }
-    if (kind === "color") {
-      return normalizeColor(value);
-    }
-    if (kind === "length") {
-      return normalizeLengthToken(value);
-    }
-    if (kind === "signed-length") {
-      // A bare number here means em, not the px normalizeLengthToken assumes.
-      if (typeof value === "number") {
-        return Number.isFinite(value) && Math.abs(value) <= 16
-          ? `${value}em`
-          : null;
-      }
-      return normalizeLengthToken(value, true);
-    }
-    if (kind === "length-sequence") {
-      return normalizeLengthSequence(value);
-    }
-    if (kind === "signed-length-sequence") {
-      return normalizeLengthSequence(value, true);
-    }
-    if (kind === "font-weight") {
-      if (
-        typeof value === "string" &&
-        /^(?:normal|bold|bolder|lighter|[1-9]00)$/u.test(value)
-      ) {
-        return value;
-      }
-      if (Number.isInteger(value) && value >= 100 && value <= 900 && value % 100 === 0) {
-        return String(value);
-      }
-    }
-    if (kind === "list-style-type") {
-      return isSafeCssToken(value) && value.trim().length <= 64
-        ? value.trim()
-        : null;
-    }
-    if (kind === "text-decoration-line") {
-      const values = Array.isArray(value) ? value : [value];
-      return values.length >= 1 && values.length <= 4 && values.every(
-        (item) => typeof item === "string" &&
-          /^(?:none|underline|overline|line-through|blink)$/u.test(item)
-      ) ? values.join(" ") : null;
-    }
-    if (kind === "vertical-align") {
-      if (
-        typeof value === "string" &&
-        /^(?:baseline|sub|super|text-top|text-bottom|middle|top|bottom)$/u.test(value)
-      ) {
-        return value;
-      }
-      return normalizeLengthToken(value, true);
-    }
-    if (kind === "safe-css-token") {
-      return isSafeCssToken(value) ? value.trim() : null;
-    }
-    return null;
   }
 
   function applyStructuredStyle(element, rawStyle) {
     if (!isRecord(rawStyle)) {
       return;
     }
-    for (const [property, value] of Object.entries(rawStyle)) {
-      const definition = STRUCTURED_STYLE_PROPERTIES.get(property);
-      if (!definition) {
-        continue;
+    for (const [property, cssProperty] of STRUCTURED_STYLE_PROPERTIES) {
+      let value = rawStyle[property];
+      // As in Yomitan, numeric margin longhands are em and a decoration-line
+      // array is one value; any other value must be a string.
+      if (typeof value === "number" && /^margin[A-Z]/u.test(property)) {
+        value = `${value}em`;
+      } else if (Array.isArray(value) && property === "textDecorationLine") {
+        value = value.join(" ");
       }
-      const [cssProperty, kind] = definition;
-      const normalized = normalizeStructuredStyleValue(kind, value);
-      if (normalized !== null) {
-        element.style.setProperty(cssProperty, normalized);
-      }
+      setStructuredStyle(element, cssProperty, value);
     }
   }
 
@@ -765,13 +642,9 @@
     if (typeof value.title === "string" && value.title.length <= 4096) {
       container.title = value.title;
     }
-    if (isSafeCssToken(value.border)) {
-      container.style.border = value.border;
-    }
-    const borderRadius = normalizeLengthSequence(value.borderRadius);
-    if (borderRadius !== null) {
-      container.style.borderRadius = borderRadius;
-    }
+    // Yomitan assigns both verbatim.
+    setStructuredStyle(container, "border", value.border);
+    setStructuredStyle(container, "border-radius", value.borderRadius);
 
     const sizer = documentRef.createElement("span");
     sizer.className = "gloss-image-sizer";
@@ -1329,9 +1202,7 @@
     // empty longhands until substitution. Residual escapes can disguise both
     // function names and variable delimiters; drop that cosmetic rule rather
     // than reinterpret CSS tokens. Do not strip comment-like text in strings.
-    if (declarations.includes("\\")
-      || /\b(?:url|src|image-set|paint|attr)\s*\(/iu.test(declarations)
-      || /(?<![\w\P{ASCII}-])--[\w\P{ASCII}-]+\(/u.test(declarations)) return false;
+    if (declarations.includes("\\") || UNSAFE_STYLE_FUNCTION.test(declarations)) return false;
     for (const property of style) {
       // Named fonts can activate an outer page's @font-face without a URL here.
       // CSSOM expands non-variable font shorthands into font-family as well.
@@ -1459,12 +1330,7 @@
     createFuriganaSegment,
     getFuriganaKanaSegments,
     isRecord,
-    isSafeCssToken,
-    normalizeColor,
-    normalizeLengthSequence,
-    normalizeLengthToken,
     normalizeMediaPath,
-    normalizeStructuredStyleValue,
     parseStructuredLink,
     parseTagList,
     segmentFurigana,
