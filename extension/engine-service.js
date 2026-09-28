@@ -236,6 +236,22 @@ function termLookupReply(json, source) {
   return { results: parsed.results, dictionaryCount: parsed.dictionaryCount, nativeJsonLength: json.length };
 }
 
+// A reader with the personal dictionary off leaves out its glossaries. The
+// managed package itself stays loaded, enabled and first, so turning the
+// option back on needs no rebuild. Filtering after the engine's maxResults
+// cut means a personal-only term can use up one result slot.
+function withoutPersonalDictionary(reply, message) {
+  if (message.options?.personalDictionary !== false) return reply;
+  const results = [];
+  for (const result of reply.results) {
+    const glossaries = result?.term?.glossaries ?? [];
+    const kept = glossaries.filter((glossary) => glossary?.dictionary !== CUSTOM_DICTIONARY_TITLE);
+    if (kept.length === glossaries.length) results.push(result);
+    else if (kept.length > 0) results.push({ ...result, term: { ...result.term, glossaries: kept } });
+  }
+  return { ...reply, results };
+}
+
 let tail = Promise.resolve();
 
 function serialise(job) {
@@ -2960,7 +2976,7 @@ const HANDLERS = {
       lookupArguments(message),
     );
     throwIfEngineFailed("hdw_lookup");
-    return termLookupReply(json, "hdw_lookup");
+    return withoutPersonalDictionary(termLookupReply(json, "hdw_lookup"), message);
   },
 
   async hd_lookup_dictionary(message) {
@@ -2983,7 +2999,7 @@ const HANDLERS = {
       [args[0], text(entry.path), ...args.slice(1)],
     );
     throwIfEngineFailed("hdw_lookup_dictionary");
-    return termLookupReply(json, "hdw_lookup_dictionary");
+    return withoutPersonalDictionary(termLookupReply(json, "hdw_lookup_dictionary"), message);
   },
 
   async hd_kanji(message) {

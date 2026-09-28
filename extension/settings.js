@@ -1431,6 +1431,15 @@ function renderCursorExitControls() {
   if (delay !== document.activeElement) delay.disabled = !options.hidePopupOnCursorExit;
 }
 
+// The notice belongs to the personal dictionary, and the Library card says why
+// its entries are missing from lookups while it is off.
+function renderPersonalDictionaryControls() {
+  const enabled = options.personalDictionaryEnabled;
+  element("opt-personal-dictionary").checked = enabled;
+  element("selection-notice-controls").hidden = !enabled;
+  element("custom-dictionary-off").hidden = enabled;
+}
+
 function renderCompactSummaryControls() {
   const enabled = options.showCompactDefinitionSummary;
   element("opt-compact-summary").checked = enabled;
@@ -1731,6 +1740,7 @@ function renderOptions() {
   }
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  renderPersonalDictionaryControls();
   element("opt-no-result-notice").checked = options.showNoResultNotice;
   renderCursorExitControls();
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
@@ -3335,6 +3345,11 @@ function attachHandlers() {
   });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-personal-dictionary").addEventListener("change", (event) => {
+    options.personalDictionaryEnabled = event.target.checked;
+    renderPersonalDictionaryControls();
     writeOptions();
   });
   element("opt-no-result-notice").addEventListener("change", (event) => {

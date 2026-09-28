@@ -89,7 +89,8 @@ sentence.
 
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
-plus the toolbar toggle and revision conflicts. Search uses
+including "highlight", "selection" and "custom dictionary" finding **Use the
+personal dictionary**, plus the toolbar toggle and revision conflicts. Search uses
 the same external jsdom dependency described below. The toolbar tests do not
 start a recording session.
 
@@ -131,7 +132,9 @@ external jsdom dependency.
 
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
-pending save. The extension smoke suite also verifies that selected missing
+pending save, and that turning off **Use the personal dictionary** hides only
+the pencil, through the popup host, while custom buttons stay. The extension smoke
+suite also verifies that selected missing
 words refresh into their personal definition after the save, including when no
 dictionaries were installed. It uses the same external jsdom dependency.
 
@@ -1518,6 +1521,16 @@ renders, and requires the notice back once the switch is on again.
 extension suite applies the Japanese-only gate to both selection resolvers,
 including a Latin selection that precedes Japanese text, and keeps the
 no-dictionaries notice and the retained selection when the notice is off.
+The same Chrome check then turns **Use the personal dictionary** off: selecting
+Japanese text looks nothing up, hovering the still-selected word sends an
+ordinary lookup at the configured scan length with a hidden pencil, and the
+personal entry saved earlier in Settings is missing until the switch is on
+again, without a dictionary-state revision. The extension suite covers the same
+switch for selection changes, drag releases and activation-key selections in
+every lookup mode, Scan selected text, the notices and the lookup flag, and its
+real-WASM custom stage requires the engine service to drop only the personal
+glossaries and personal-only results. `chrome-overlay.mjs` requires a released
+glyph drag to keep its selection without a lookup or the host window claim.
 
 Seven source-highlight assertions cover selected-text DOM replacement/stale
 cleanup without selection changes, native ancestor Range identity and fallback

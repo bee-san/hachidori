@@ -146,6 +146,21 @@ test("hidden conditional results lead to their visible enable control without en
   assert.equal(f.scrolled, f.el("definition-blur-settings"));
 });
 
+test("highlight, selection and custom dictionary searches find the personal dictionary switch", t => {
+  const f = fixture(t);
+  for (const words of ["highlight", "selection", "custom dictionary"]) {
+    f.query(words);
+    const result = f.match("Use the personal dictionary");
+    assert.ok(result, `"${words}" finds the switch`);
+    assert.equal(result.querySelector("small").textContent, "Reading › Personal dictionary");
+  }
+  // Off, the notice switch it governs is hidden and leads back to it.
+  f.el("selection-notice-controls").hidden = true;
+  f.query("selection has no definition");
+  f.match("Show a popup when a selection has no definition").click();
+  assert.equal(f.document.activeElement, f.el("opt-personal-dictionary"));
+});
+
 test("unmatched markup query remains plain text and clearing restores the active page", t => {
   const f = fixture(t, "design");
   f.query('<img src=x onerror="alert(1)">');

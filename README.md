@@ -52,6 +52,9 @@ Do you keep on seeing a name pop up over & over again in a book, but it's not in
 
 With Hachidori, you can highlight the word and add it as a custom definition.
 
+Never add your own words? Turn off **Settings → Reading → Personal dictionary →
+Use the personal dictionary** and highlighting text no longer opens a popup.
+
 <p align="center">
   <img src="docs/assets/custom-dictionary.gif" alt="Animated demonstration of adding and viewing a custom dictionary definition in Hachidori" width="720">
 </p>

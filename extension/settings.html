@@ -358,6 +358,7 @@
           <div class="card-head">
             <h1 id="custom-dictionary-heading" tabindex="-1">Personal dictionary</h1>
             <p class="hint">Your entries appear first. Save source edits when you are ready.</p>
+            <p class="hint" id="custom-dictionary-off" hidden>The personal dictionary is off, so these entries are left out of lookups. Turn it on in <a href="#lookup">Reading</a>.</p>
           </div>
           <form
             class="custom-dictionary-form"
@@ -531,11 +532,18 @@
           </fieldset>
           <fieldset class="lookup-group" id="selection-notice-settings">
             <legend>Personal dictionary</legend>
-            <label class="lookup-enable">
-              <span>Show a popup when a selection has no definition</span>
-              <input id="opt-no-result-notice" type="checkbox" aria-describedby="selection-notice-help" />
+            <label class="lookup-enable" data-search-keywords="custom dictionary highlighted selected selection pencil add word">
+              <span>Use the personal dictionary</span>
+              <input id="opt-personal-dictionary" type="checkbox" aria-describedby="personal-dictionary-help" />
             </label>
-            <p class="field-hint" id="selection-notice-help">Use the pencil in the popup to add your own definition. The setup notice still appears when no dictionaries are loaded.</p>
+            <p class="field-hint" id="personal-dictionary-help">Highlighting Japanese text looks it up so you can add your own definition with the pencil. Turn this off to stop highlighted text from opening a popup and to hide the pencil; your entries are kept but left out of lookups. To look up a selection on demand, bind Scan selected text in <a href="#keybinds">Keybinds</a>.</p>
+            <div id="selection-notice-controls">
+              <label class="lookup-enable">
+                <span>Show a popup when a selection has no definition</span>
+                <input id="opt-no-result-notice" type="checkbox" aria-describedby="selection-notice-help" />
+              </label>
+              <p class="field-hint" id="selection-notice-help">Use the pencil in the popup to add your own definition. The setup notice still appears when no dictionaries are loaded.</p>
+            </div>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Frequency</legend>

@@ -91,6 +91,9 @@
     maxResults: 32,
     hoverEnabled: true,
     onlyScanJapaneseText: true,
+    // Reading → Personal dictionary: highlight lookups, the pencil and personal
+    // entries in results. Off never touches the managed package or its source.
+    personalDictionaryEnabled: true,
     showNoResultNotice: true,
     lookupMode: "activationSticky",
     activationKey: "Shift",

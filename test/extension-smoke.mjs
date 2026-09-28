@@ -4415,6 +4415,37 @@ async function customEngineStage() {
     fileName: "custom-invariant-peer.zip",
   });
   const stateWithInvariantPeer = await sendWorker("hd_custom_read");
+  // Issue #358: the reader's personalDictionary flag filters the managed
+  // package's glossaries per request; the package stays loaded and first.
+  const personalLookups = {};
+  const statusBeforePersonal = await request("hd_status");
+  for (const personalDictionary of [false, true]) {
+    const options = { personalDictionary };
+    personalLookups[personalDictionary] = {
+      shared: await request("hd_lookup", { text: "\u98df\u3079\u308b", options }),
+      personalOnly: await request("hd_lookup", { text: "\u6ce8\u8a18", options }),
+      routed: await request("hd_lookup_dictionary", { dictionary: CUSTOM_DICTIONARY_TITLE, text: "\u6ce8\u8a18", options }),
+    };
+  }
+  const glossaryTitles = (reply) => (reply.results ?? []).flatMap((result) =>
+    (result.term?.glossaries ?? []).map((glossary) => glossary.dictionary));
+  const personalOff = personalLookups.false;
+  const personalOn = personalLookups.true;
+  check(
+    "a lookup with the personal dictionary off leaves out only its glossaries without reloading the engine",
+    invariantPeer.ok === true
+      && personalOff.shared.ok === true && glossaryTitles(personalOff.shared).length > 0
+      && glossaryTitles(personalOff.shared).every((title) => title === "Custom invariant peer")
+      && personalOff.personalOnly.ok === true && personalOff.personalOnly.results.length === 0
+      && personalOff.routed.ok === true && personalOff.routed.results.length === 0
+      && glossaryTitles(personalOn.shared).includes(CUSTOM_DICTIONARY_TITLE)
+      && glossaryTitles(personalOn.shared).includes("Custom invariant peer")
+      && personalOn.personalOnly.results[0]?.term?.expression === "\u6ce8\u8a18"
+      && personalOn.routed.results[0]?.term?.expression === "\u6ce8\u8a18"
+      && (await request("hd_status")).generation === statusBeforePersonal.generation
+      && JSON.stringify(await sendWorker("hd_custom_read")) === JSON.stringify(stateWithInvariantPeer),
+    JSON.stringify({ personalLookups, statusBeforePersonal }),
+  );
   const brokenState = {
     ...stateWithInvariantPeer.state,
     revision: stateWithInvariantPeer.state.revision + 1,
@@ -4665,16 +4696,20 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
     const noticeCases = [];
-    for (const value of [false, true, "false", 0, null]) {
-      await local.set({ options: saved.options });
-      const reply = await send(message({ showNoResultNotice: value }));
-      noticeCases.push(typeof value === "boolean"
-        ? reply.ok === true && reply.options?.showNoResultNotice === value
-        : reply.ok === false && await unchanged(saved));
+    const selectionOptions = ["showNoResultNotice", "personalDictionaryEnabled"];
+    for (const key of selectionOptions) {
+      for (const value of [false, true, "false", 0, null]) {
+        await local.set({ options: saved.options });
+        const reply = await send(message({ [key]: value }));
+        noticeCases.push(typeof value === "boolean"
+          ? reply.ok === true && reply.options?.[key] === value
+          : reply.ok === false && await unchanged(saved));
+      }
     }
-    check("selection notices default on and use strict boolean options CAS",
-      reader.normaliseOptions({}).showNoResultNotice === true
-        && reader.normaliseOptions({ showNoResultNotice: "false" }).showNoResultNotice === true
+    check("selection notices and the personal dictionary default on and use strict boolean options CAS",
+      selectionOptions.every(key => reader.normaliseOptions({})[key] === true
+        && reader.normaliseOptions({ [key]: "false" })[key] === true)
+        && !reader.DESIGN_OPTION_KEYS.includes("personalDictionaryEnabled")
         && noticeCases.every(Boolean), JSON.stringify(noticeCases));
     const cssCases = [];
     for (const value of ["", "/* 日本語 */\r\n.gsm-hoshidicts-popup { color: red; }\n", "/*" + "x".repeat(40_000) + "*/"]) {
@@ -17585,6 +17620,136 @@ async function contentNoteStage() {
       outcomes.every(value => value.passed) || outcomes };
   }
 
+  // Issue #358: with the personal dictionary off, selections behave as in
+  // Yomitan; only the explicit keybinds look them up.
+  async function personalDictionaryOffCase() {
+    const harness = await createHarness(undefined, { options: { personalDictionaryEnabled: false } });
+    const window = harness.popup.ownerDocument.defaultView;
+    const { document } = window;
+    const selection = window.getSelection();
+    const changed = () => document.dispatchEvent(new window.Event("selectionchange"));
+    const mouse = (type, init = {}) => harness.anchor.dispatchEvent(new window.MouseEvent(type,
+      { bubbles: true, button: 0, clientX: 200, clientY: 200, ...init }));
+    const shift = type => document.dispatchEvent(new window.KeyboardEvent(type,
+      { bubbles: true, code: "ShiftLeft", key: "Shift", shiftKey: type === "keydown" }));
+    const scanSelected = () => harness.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command",
+      action: "scanSelectedText" });
+    const hidden = () => harness.driver.snapshot().popupHidden;
+    const pencil = () => harness.popup.getRootNode().host.dataset.hoshidictsNoteButton;
+    const off = { hoverDelayMs: 0, scanLength: 9, personalDictionaryEnabled: false,
+      kanjiClickDictionary: { title: "Generic", kind: "term" } };
+    const other = document.body.appendChild(document.createElement("span"));
+    const result = {};
+
+    // Hover mode: a selection change, a drag release and pointer motion away
+    // from the text never look the selection up.
+    harness.emitOptions({ ...off, lookupMode: "hover" });
+    const automatic = [];
+    for (const text of ["食べる", "日本語の文です"]) {
+      other.textContent = text;
+      selection.selectAllChildren(other);
+      changed();
+      mouse("mousedown");
+      selection.selectAllChildren(other);
+      mouse("mouseup");
+      harness.driver.setScanCandidate(null);
+      harness.driver.scanPointer({ target: document.body, clientX: 5, clientY: 5 });
+      await harness.settle();
+      automatic.push(harness.take("hd_lookup") === null && hidden());
+    }
+    // Both activation modes: the key held while the selection changes.
+    for (const lookupMode of ["activation", "activationSticky"]) {
+      harness.emitOptions({ ...off, lookupMode, activationKey: "Shift" });
+      shift("keydown");
+      mouse("mousedown", { shiftKey: true });
+      selection.selectAllChildren(other);
+      changed();
+      mouse("mouseup", { shiftKey: true });
+      shift("keyup");
+      await harness.settle();
+      automatic.push(harness.take("hd_lookup") === null && hidden());
+    }
+    harness.emitOptions({ ...off, lookupMode: "hover" });
+
+    // The pointer over highlighted text gets an ordinary scan-length lookup.
+    selection.selectAllChildren(harness.anchor);
+    changed();
+    const quietSelection = harness.take("hd_lookup") === null;
+    harness.driver.setScanCandidate(harness.candidate);
+    harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+    const pointer = harness.take("hd_lookup");
+    if (pointer) harness.reply(pointer, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    result.pointer = quietSelection && pointer?.request.text === harness.candidate.query
+      && pointer.request.scanLength === 9 && pointer.request.options?.personalDictionary === false
+      && harness.render()?.kind === "terms" && !hidden() && pencil() === "hidden";
+    harness.callbacks().onKanjiClick("食", null, null, null);
+    const kanji = harness.take("hd_lookup_dictionary");
+    result.kanji = kanji?.request.options?.personalDictionary === false;
+    if (kanji) harness.reply(kanji, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    harness.driver.hide();
+
+    // Scan selected text stays exact. Its miss closes without a notice and
+    // leaves the pointer free; a changed selection releases its hit.
+    scanSelected();
+    const explicitMiss = harness.take("hd_lookup");
+    if (explicitMiss) harness.reply(explicitMiss, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    const noticeFree = hidden() && harness.renders.every(render => render.kind !== "notice");
+    harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+    const afterMiss = harness.take("hd_lookup");
+    if (afterMiss) harness.reply(afterMiss, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    scanSelected();
+    const explicitHit = harness.take("hd_lookup");
+    if (explicitHit) harness.reply(explicitHit, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const shown = !hidden();
+    selection.selectAllChildren(other);
+    changed();
+    result.explicit = explicitMiss?.request.text === harness.candidate.query
+      && explicitMiss.request.scanLength === Array.from(harness.candidate.query).length
+      && noticeFree && afterMiss?.request.scanLength === 9
+      && explicitHit?.request.text === harness.candidate.query && shown && hidden()
+      && harness.take("hd_lookup") === null;
+
+    // The setup notice drops its pencil sentence.
+    selection.selectAllChildren(harness.anchor);
+    changed();
+    scanSelected();
+    const empty = harness.take("hd_lookup");
+    if (empty) harness.reply(empty, { dictionaryCount: 0, results: [] });
+    await harness.settle();
+    result.setupNotice = harness.render()?.kind === "notice"
+      && harness.render().value === "No dictionaries loaded. Import a Yomitan .zip in Settings.";
+
+    // Turning it back on restores exact selection lookups, the notice and the pencil.
+    harness.driver.hide();
+    harness.emitOptions({ ...off, lookupMode: "hover", personalDictionaryEnabled: true });
+    other.textContent = "ぬるぽがっ";
+    selection.selectAllChildren(other);
+    changed();
+    const restored = harness.take("hd_lookup");
+    if (restored) harness.reply(restored, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    result.restored = restored?.request.text === "ぬるぽがっ" && restored.request.scanLength === 5
+      && restored.request.options?.personalDictionary === true && pencil() === undefined
+      && harness.render()?.kind === "notice"
+      && harness.render().value === "No definition found. Add your own with the pencil.";
+    harness.close();
+    return {
+      "with the personal dictionary off, selections, drag releases and activation-key selections never look up":
+        automatic.every(Boolean) || automatic,
+      "with the personal dictionary off, the pointer ignores live selections, the pencil hides and lookups carry the flag":
+        (result.pointer && result.kanji) || result,
+      "with the personal dictionary off, Scan selected text stays exact and its miss closes without retaining the selection":
+        result.explicit || result,
+      "with the personal dictionary off, the setup notice has no pencil and turning it on restores selection notices":
+        (result.setupNotice && result.restored) || result,
+    };
+  }
+
   async function selectionEditingCase() {
     const outcomes = [];
     for (const tag of ["button", "span", "contents", "restored", "restored-child"]) {
@@ -20637,7 +20802,7 @@ async function contentNoteStage() {
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
-      ...await selectionLanguageCase(), ...await selectionNoticeCase(),
+      ...await selectionLanguageCase(), ...await selectionNoticeCase(), ...await personalDictionaryOffCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
