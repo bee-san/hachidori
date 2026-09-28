@@ -206,8 +206,20 @@
   // How words in a popup's definitions open child popups. "inherit" follows lookupMode.
   const DEFINITION_LOOKUP_MODES = ["inherit", "activation", "click"];
   const POPUP_TOOLBAR_POSITIONS = new Set(["auto", "top", "bottom"]);
-  // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
+  // Mouse buttons that can be held to scan instead of a key. `button` is
+  // MouseEvent.button and `flag` its MouseEvent.buttons bit: the two numberings
+  // differ (middle is 1 and 4). Yomitan names buttons by bit index, so its
+  // `mouse2` is the middle button; the stored names are descriptive instead.
+  // `name` is the Settings choice and `label` reads in a sentence.
+  const ACTIVATION_BUTTONS = new Map([
+    ["MouseMiddle", { button: 1, flag: 4, name: "Middle mouse button", label: "the middle mouse button" }],
+    ["MouseBack", { button: 3, flag: 8, name: "Back mouse button (mouse 4)", label: "the Back mouse button" }],
+    ["MouseForward", { button: 4, flag: 16, name: "Forward mouse button (mouse 5)", label: "the Forward mouse button" }],
+  ]);
+  // The mouse buttons, then browser KeyboardEvent names adapting the source's
+  // desktop hotkey names.
   const ACTIVATION_KEYS = [
+    ...ACTIVATION_BUTTONS.keys(),
     "Shift", "Control", "Alt", "Meta", "Space", "Enter", "Escape", "Backspace", "Delete", "Tab",
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Insert",
     ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
@@ -480,6 +492,11 @@
     return typeof value === "string" ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? fallback : fallback;
   }
 
+  // The activation input as it reads in "Hold … to scan": a key by its name.
+  function activationLabel(key) {
+    return ACTIVATION_BUTTONS.get(key)?.label ?? key;
+  }
+
   function clampOption(key, value) {
     let number;
     try {
@@ -724,12 +741,12 @@
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
-    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_BUTTONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS,
     KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     EXPERIMENTAL_FEATURES,
-    clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
+    activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyEvidence, definitionBlurQualifies,

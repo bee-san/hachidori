@@ -93,6 +93,13 @@ plus the toolbar toggle and revision conflicts. Search uses
 the same external jsdom dependency described below. The toolbar tests do not
 start a recording session.
 
+`node --test test/activation-settings.test.mjs` checks Reading → Activation key
+or button: No key comes first and the mouse buttons above the keys, and **Press
+to set** selects the next middle, Back or Forward press without letting its
+release, click or menu act, records keys by name, reports the primary and
+secondary buttons and unlisted keys without saving them, ignores repeats and
+cancels on Escape.
+
 `node --test test/frequency-presentation.test.mjs` checks full Yomitan-style
 frequency values by default and opt-in abbreviated numbers, the primary result's frequency tags sharing the later
 entries' tag structure, visible kana markers, tabs-only lower chrome, concise typed harmonic averages that keep each
@@ -113,8 +120,14 @@ Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
 Yomitan function that produced it, so no Yomitan checkout is needed. It covers
 structured-content inline styles (JMdict's `130%` redirect span, keywords,
 `calc()`, gradients, numeric em margins, shorthand order) and the values that
-stay refused: resource and custom functions, `var()` and CSS escapes. It uses
-the same external jsdom dependency.
+stay refused: resource and custom functions, `var()` and CSS escapes. The
+glossary cases compare `ul.gloss-list` from `DisplayGenerator._createTermDefinition`
+for plain and Pixiv-style multiline strings, several senses, form-of data, the
+JMdict redirect, a Jitendex gaiji, an image with its description, a table, an
+external link and dictionary-set `lang`, after removing a short documented list
+of Hachidori's own hooks. A popup-view case pins `li.definition-item[data-dictionary]`,
+`.definition-tag-list`, `data-count` and the headword's `lang`. It uses the same
+external jsdom dependency.
 
 `node --test test/note-editor.test.mjs` checks the shared personal-dictionary
 pencil on term, kanji and missing-word views, selected-word prefills and a single
@@ -582,6 +595,15 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   Scan mouse buttons are held through `MouseEvent.buttons`: a middle or Back
+   press claims the host window before any bubble listener, scans at once and
+   while moving, follows each mode on release, and ends at a move after a lost
+   release. It cancels autoscroll over text, Back navigation and a middle click's
+   new tab only on a looked-up word, opens nested lookups from definitions,
+   leaves popup links and focused editors alone, and changes nothing in Hover
+   mode or with a keyboard key. Child popups set to hold the key wait for the
+   button in No key mode, where only a press over definitions is a scan press,
+   and Click ignores it. Yomitan's `mouse2` names stay invalid.
    A successful hover expands its initial one-glyph placement range to the
    complete matched word before rendering. Text moved outside the source during
    a pending lookup retains the original glyph anchor.

@@ -4,6 +4,9 @@
 Measured on 2026-09-28 at Hachidori **89e07c6f5b66599dda0b7bcd303a0b287b01f03d**.
 All three themes use exactly the same engine, input, options and extension revision.
 Subsequent changes update catalogue captions, screenshots, source pins and evidence.
+The final integration also includes main PRs #378 and #381; #381 changes Default
+glossary markup/CSS. The timings below describe the recorded revision, not a new
+measurement of those later Default changes.
 The experimental-switch description was updated during capture; renderer, engine
 and probe code stayed identical. Manifests retain the full asset hashes.
 

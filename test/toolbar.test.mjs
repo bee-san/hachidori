@@ -83,6 +83,8 @@ test("toolbar toggle persists global lookup state and follows external activatio
   await ui.changed({ hoverEnabled: true, lookupMode: "activation", activationKey: "Alt", revision: 9 });
   assert.equal(ui.nodes.get("activation-hint").textContent, "Hold Alt to scan");
   assert.equal(ui.nodes.get("lookup-state").textContent, "On");
+  await ui.changed({ hoverEnabled: true, lookupMode: "activationSticky", activationKey: "MouseMiddle", revision: 10 });
+  assert.equal(ui.nodes.get("activation-hint").textContent, "Hold the middle mouse button to scan");
 });
 
 test("toolbar conflict displays the committed switch state and allows a fresh retry", async () => {

@@ -118,6 +118,8 @@ the service worker and both engine runtimes run the same code.
   `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `memory-settings.js`
   the Advanced → Memory readout and each Library row's *In memory* line;
+  `activation-settings.js` the Reading → Activation key or button picker and
+  its *Press to set* recorder;
   `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`
   the keybinds and custom buttons in the popup; `local-file-access.js` the
   notice about Chrome's *Allow access to file URLs* permission;

@@ -431,13 +431,18 @@
               <input type="checkbox" id="opt-hover-enabled" />
             </label>
             <div class="fields">
-              <label class="field">
-                <span class="field-label">Activation key</span>
-                <select id="opt-activation-key"></select>
-                <span class="field-hint">Hold this key while pointing at a word. No key looks up whenever you hover over Japanese text; child popups set to hold a key use the last key chosen. Some keys are reserved by your browser or operating system.</span>
-              </label>
+              <div class="field">
+                <label class="field-label" for="opt-activation-key"
+                  data-search-keywords="no key hover mouse middle back forward button press to set">Activation key or button</label>
+                <div class="activation-input-controls">
+                  <select id="opt-activation-key" aria-describedby="activation-key-hint"></select>
+                  <button id="opt-activation-record" type="button" class="ghost" aria-pressed="false"
+                    aria-describedby="activation-key-hint">Press to set</button>
+                </div>
+                <span class="field-hint" id="activation-key-hint">Hold this key or button while pointing at a word. No key looks up whenever you hover over Japanese text; child popups set to hold the key use the last key or button chosen. A mouse button used to scan does not also scroll or go back. Some keys are reserved by your browser or operating system.</span>
+              </div>
               <label class="lookup-enable" id="opt-lookup-sticky-row">
-                <span>Keep the popup open after releasing the key</span>
+                <span>Keep the popup open after releasing the key or button</span>
                 <input type="checkbox" id="opt-lookup-sticky" />
               </label>
               <label class="field">

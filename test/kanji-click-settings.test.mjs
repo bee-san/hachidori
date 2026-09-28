@@ -50,6 +50,7 @@ function fixture(t, kanjiClickDictionary) {
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],
     ["theme-store.js", ["createThemeStore"]],
+    ["activation-settings.js", ["createActivationSettings"]],
     ["dictionary-progress.js", ["formatBytes"]],
     ["memory-settings.js", ["createMemorySettings"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],

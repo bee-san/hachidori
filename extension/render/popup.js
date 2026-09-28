@@ -3235,6 +3235,8 @@
       headword.className = "gsm-hoshidicts-headword";
       const expression = documentRef.createElement("span");
       expression.className = "gsm-hoshidicts-expression";
+      // As Yomitan's _appendFurigana: the headword is Japanese whatever the page's lang.
+      expression.lang = "ja";
       const expressionText = String(result.term.expression || "").trim();
       const readingText = String(result.term.reading || "").trim();
       function populateRuby() {
@@ -3513,17 +3515,22 @@
           title.title = dictionary;
           card.appendChild(title);
           const definitions = documentRef.createElement("ol");
-          definitions.className = "gsm-hoshidicts-definitions";
+          definitions.className = "gsm-hoshidicts-definitions definition-list";
+          definitions.dataset.count = String(glossaries.length);
           if (glossaries.length === 1) {
             definitions.classList.add("gsm-hoshidicts-definitions-single");
           }
           applyDefinitionBlurState(definitions);
           for (const [definitionIndex, glossary] of glossaries.entries()) {
+            // Yomitan's definition-item: one per term-bank row.
             const definition = documentRef.createElement("li");
+            definition.className = "definition-item";
+            definition.dataset.dictionary = dictionary;
+            definition.dataset.index = String(definitionIndex);
             const definitionTags = parseTagList(glossary.definitionTags);
             if (definitionTags.length > 0) {
               const definitionTagRow = documentRef.createElement("div");
-              definitionTagRow.className = "gsm-hoshidicts-definition-tags";
+              definitionTagRow.className = "gsm-hoshidicts-definition-tags definition-tag-list";
               for (const tag of definitionTags) {
                 definitionTagRow.appendChild(
                   createTag(documentRef, tag, "", "definition")
@@ -3804,6 +3811,7 @@
       }
       const glyph = documentRef.createElement("div");
       glyph.className = "gsm-hoshidicts-kanji-glyph";
+      glyph.lang = "ja";
       glyph.textContent = kanji.character;
       navigation.appendChild(glyph);
       for (const previous of noteControls.actions.querySelectorAll(

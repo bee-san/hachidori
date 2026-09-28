@@ -90,3 +90,120 @@ test("an image's border and border radius follow the same rule", t => {
   assert.equal(refused.style.getPropertyValue("border"), "");
   assert.equal(refused.style.getPropertyValue("border-radius"), "");
 });
+
+// DisplayGenerator._createTermDefinition (templates-display.html definition-item
+// and gloss-item) on one term-bank row with dictionary "D": its ul.gloss-list.
+// The rows are the dictionary's own, as hoshidicts hands them to the popup.
+// For images Yomitan rendered the row its importer stores: _createImageData
+// makes the dictionary's size the preferred size, beside the media's own 16px.
+const sc = content => ({ type: "structured-content", content });
+const YOMITAN_GLOSS_LISTS = [
+  ["a plain string's newlines become <br>", ["to eat\nto live on"],
+    '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content" lang="ja">to eat<br>to live on</span></li></ul>'],
+  ["Pixiv's indented continuation lines keep their text", ["ゲーム\n  主人公の名前。  愛称は「アキ」。"],
+    '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content" lang="ja">ゲーム<br>  主人公の名前。  愛称は「アキ」。</span></li></ul>'],
+  ["each element is its own item", ["to eat", "to live on"],
+    '<ul class="gloss-list" data-count="2"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content" lang="ja">to eat</span></li><li class="gloss-item click-scannable" data-index="1"><span class="gloss-separator"> </span><span class="gloss-content" lang="ja">to live on</span></li></ul>'],
+  ["form-of data is not a gloss", [["食べる", ["past"]], "kept"],
+    '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content" lang="ja">kept</span></li></ul>'],
+  ["JMdict [2026-09-18] redirect span", [sc({ tag: "span", style: { fontSize: "130%" }, content: ["⟶",
+    { tag: "a", href: "?query=阿吽の呼吸", lang: "ja", content: "阿吽の呼吸" }] })],
+  '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content structured-content"><span class="gloss-sc-span" style="font-size: 130%;">⟶<a class="gloss-link" data-external="false" lang="ja" href="https://extension.test/search.html?query=阿吽の呼吸"><span class="gloss-link-text">阿吽の呼吸</span></a></span></span></li></ul>'],
+  ["Jitendex gaiji 乄 inside 〆粕", [sc([{ tag: "img", path: "img/乄.svg", width: 1, height: 1, sizeUnits: "em",
+    appearance: "monochrome", background: false, collapsible: false }, "粕"])],
+  '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content structured-content" lang="ja"><a class="gloss-image-link" target="_blank" rel="noreferrer noopener" data-path="img/乄.svg" data-dictionary="D" data-image-load-state="not-loaded" data-has-aspect-ratio="true" data-image-rendering="auto" data-appearance="monochrome" data-background="false" data-collapsed="false" data-collapsible="false" data-size-units="em"><span class="gloss-image-container" style="width: 1em;"><span class="gloss-image-sizer" style="padding-top: 100%;"></span><span class="gloss-image-background"></span><span class="gloss-image-container-overlay"></span><img class="gloss-image" style="width: 100%; height: 100%;" width="28" height="28"></span><span class="gloss-image-link-text">Image</span></a>粕</span></li></ul>'],
+  ["an image glossary shows its description", [{ type: "image", path: "img/b.png", width: 40, height: 20,
+    title: "t", description: "caption\n二行目" }],
+  '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content"><a class="gloss-image-link" target="_blank" rel="noreferrer noopener" data-path="img/b.png" data-dictionary="D" data-image-load-state="not-loaded" data-has-aspect-ratio="true" data-image-rendering="auto" data-appearance="auto" data-background="true" data-collapsed="false" data-collapsible="true"><span class="gloss-image-container" style="width: 40em;" title="t"><span class="gloss-image-sizer" style="padding-top: 50%;"></span><span class="gloss-image-background"></span><span class="gloss-image-container-overlay"></span><img class="gloss-image" width="40" height="20" style="width: 100%; height: 100%;"></span><span class="gloss-image-link-text">Image</span></a> <span class="gloss-image-description" lang="ja">caption<br>二行目</span></span></li></ul>'],
+  ["a table's Japanese cells are labelled", [sc({ tag: "table", content: [{ tag: "tr", content: [
+    { tag: "th", content: "表記" }, { tag: "td", content: ["絶対", { tag: "br" }, "absolute"] }] }] })],
+  '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content structured-content"><div class="gloss-sc-table-container"><table class="gloss-sc-table"><tr class="gloss-sc-tr"><th class="gloss-sc-th" lang="ja">表記</th><td class="gloss-sc-td" lang="ja">絶対<br class="gloss-sc-br">absolute</td></tr></table></div></span></li></ul>'],
+  ["an external link", [sc({ tag: "div", content: ["See ", { tag: "a", href: "https://example.com/", content: "example" }] })],
+    '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content structured-content"><div class="gloss-sc-div">See <a class="gloss-link" data-external="true" href="https://example.com/" target="_blank" rel="noreferrer noopener"><span class="gloss-link-text">example</span><span class="gloss-link-external-icon icon" data-icon="external-link"></span></a></div></span></li></ul>'],
+  ["a dictionary's own lang stops detection below it", [sc(["x", { tag: "div", content: ["abc", "直す",
+    { tag: "span", lang: "en", content: ["直", { tag: "span", content: "日本" }] }] },
+  { tag: "ruby", content: ["漢", { tag: "rt", content: "かん" }] }])],
+  '<ul class="gloss-list" data-count="1"><li class="gloss-item click-scannable" data-index="0"><span class="gloss-separator"> </span><span class="gloss-content structured-content">x<div class="gloss-sc-div" lang="ja">abc直す<span class="gloss-sc-span" lang="en">直<span class="gloss-sc-span">日本</span></span></div><ruby class="gloss-sc-ruby" lang="ja">漢<rt class="gloss-sc-rt" lang="ja">かん</rt></ruby></span></li></ul>'],
+];
+
+// The documented differences. Hachidori adds its own hooks: gsm-hoshidicts-*
+// classes and data attributes, the gloss-sc-a/gloss-sc-img gaiji hooks,
+// img alt/draggable/decoding and aria-hidden on the decorative link icon, and
+// resolves internal links itself rather than through a search-page href.
+// Yomitan draws popup images on a canvas sized by width/height attributes, and
+// writes image boxes in em where Hachidori writes px (both containers make
+// 1em one pixel). Its DisplayGenerator labels a glossary string with the
+// profile language ("ja") even when it has no Japanese, so English glosses
+// would read as Japanese to assistive technology; here glossary strings get
+// the same detection as structured-content text.
+const JAPANESE_OR_CHINESE = /[\u3000-\u30ff\u3100-\u312f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff01-\uffee]/u;
+function canonical(element, side) {
+  if (element.nodeType === element.TEXT_NODE) return element.nodeValue;
+  const children = () => [...element.childNodes].map(child => canonical(child, side)).join("");
+  // Re-parsing the reference string adds the tbody an HTML parser implies.
+  if (side === "yomitan" && element.localName === "tbody" && !element.attributes.length) return children();
+  const attributes = [...element.attributes].map(({ name, value }) => [name, value]).filter(([name]) =>
+    !(side === "hachidori" && (/^data-hoshidicts-/u.test(name) || name === "aria-hidden"
+      || (element.localName === "img" && ["alt", "draggable", "decoding"].includes(name))))
+    && !(side === "yomitan" && element.localName === "img" && ["width", "height"].includes(name))
+    && !(name === "href" && element.dataset.external === "false")
+    && !(side === "yomitan" && name === "lang" && element.matches(".gloss-content:not(.structured-content), .gloss-image-description")
+      && !JAPANESE_OR_CHINESE.test(element.textContent)))
+    .map(([name, value]) => {
+      if (name === "class") {
+        value = value.split(" ").filter(token => !/^gsm-hoshidicts-|^gloss-sc-(?:a|img)$/u.test(token)).sort().join(" ");
+      } else if (name === "rel") value = value.split(" ").sort().join(" ");
+      else if (name === "style") value = value.replace(/(\d)em;/gu, (match, digit) =>
+        element.matches(".gloss-image-link:not([data-size-units=em]) > .gloss-image-container") ? `${digit}px;` : match);
+      return `${name}=${JSON.stringify(value)}`;
+    }).sort();
+  return `<${element.localName}${attributes.map(attribute => ` ${attribute}`).join("")}>${children()}</${element.localName}>`;
+}
+
+test("glossary markup matches Yomitan's gloss list", t => {
+  const { window } = new JSDOM("<!doctype html><body></body>",
+    { pretendToBeVisual: true, runScripts: "outside-only", url: "https://extension.test/" });
+  for (const file of ["external-links.js", "render/glossary.js"]) {
+    window.eval(readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8"));
+  }
+  t.after(() => window.close());
+  const { document, HDGlossary } = window;
+  for (const [name, entries, expected] of YOMITAN_GLOSS_LISTS) {
+    const parent = document.createElement("div");
+    HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify(entries),
+      { dictionary: "D", resolveMedia: () => new Promise(() => {}) });
+    const yomitan = document.createElement("div");
+    yomitan.innerHTML = expected;
+    assert.equal(canonical(parent.firstElementChild, "hachidori"), canonical(yomitan.firstElementChild, "yomitan"), name);
+  }
+});
+
+test("each term-bank row is a definition-item that carries its dictionary and tag list", t => {
+  const { window } = new JSDOM('<p>直す</p><div id="popup"></div>',
+    { pretendToBeVisual: true, runScripts: "outside-only", url: "https://extension.test/" });
+  for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js"]) {
+    window.eval(readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8"));
+  }
+  const { document, HDGlossary, HDPopup, HDReaderOptions } = window;
+  const popup = document.getElementById("popup");
+  const view = HDPopup.createPopupView({ document, window, popup, positionPopup() {},
+    appendExpressionRuby: HDGlossary.appendExpressionRuby, appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae });
+  t.after(() => { view.destroy(); window.close(); });
+  const source = document.querySelector("p");
+  view.renderResults([{ matched: "直す", deinflected: "直す", trace: [], term: { expression: "直す", reading: "なおす",
+    rules: "", frequencies: [], pitches: [], glossaries: [
+      { dictionary: "D", glossary: JSON.stringify(["to fix"]), definitionTags: "v5s vt", termTags: "" },
+      { dictionary: "D", glossary: JSON.stringify(["to cure", "to heal"]), definitionTags: "", termTags: "" },
+    ] } }], { anchor: source, query: "直す", sentence: "直す", sourceElements: [source], matchOffset: 0 },
+  HDReaderOptions.normaliseOptions({}));
+  const list = popup.querySelector(".gsm-hoshidicts-glossary-card > ol.definition-list");
+  assert.equal(list.dataset.count, "2");
+  const items = [...list.children];
+  assert.deepEqual(items.map(item => [item.className, item.dataset.dictionary, item.dataset.index]),
+    [["definition-item", "D", "0"], ["definition-item", "D", "1"]]);
+  assert.deepEqual([...items[0].querySelectorAll(".definition-tag-list > *")].map(tag => tag.textContent), ["v5s", "vt"]);
+  assert.equal(items[1].querySelector(".definition-tag-list"), null);
+  assert.deepEqual(items.map(item => item.querySelector(".gloss-list").dataset.count), ["1", "2"]);
+  assert.equal(popup.querySelector(".gsm-hoshidicts-expression").lang, "ja");
+});

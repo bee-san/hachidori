@@ -49,7 +49,7 @@ function fixture(t, initialSection = "dictionaries") {
 test("global search finds inactive section controls and lazy Audio by its voice keywords", t => {
   const f = fixture(t);
   f.query("reading activation key");
-  const result = f.match("Activation key");
+  const result = f.match("Activation key or button");
   assert.ok(result, "inactive Reading controls are searchable");
   assert.match(result.querySelector("small").textContent, /Reading/u);
   assert.equal(f.el("dictionaries").hidden, true);
@@ -71,14 +71,14 @@ test("No key and hover searches lead to the Activation key picker, as does its h
   const f = fixture(t);
   for (const query of ["no key", "hover"]) {
     f.query(query);
-    const result = f.match("Activation key");
+    const result = f.match("Activation key or button");
     assert.ok(result, `"${query}" finds the Activation key picker`);
     result.click();
     assert.equal(f.document.activeElement, f.el("opt-activation-key"));
   }
   f.el("opt-lookup-sticky-row").hidden = true;
   f.query("keep popup open");
-  f.match("Keep the popup open after releasing the key").click();
+  f.match("Keep the popup open after releasing the key or button").click();
   assert.equal(f.document.activeElement, f.el("opt-activation-key"));
 });
 

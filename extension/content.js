@@ -35,6 +35,7 @@
   })();
 
   const {
+    ACTIVATION_BUTTONS,
     DEFAULT_OPTIONS,
     KEYBIND_MODIFIERS,
     KEYBIND_MODIFIER_CODES,
@@ -54,6 +55,10 @@
     ["Alt", "altKey"],
     ["Meta", "metaKey"],
   ]);
+  // MouseEvent.button values of Back and Forward, which navigate on release.
+  const NAVIGATION_BUTTONS = new Set([3, 4]);
+  // Popup text that looks up child popups.
+  const DEFINITION_TEXT_SELECTOR = ".gsm-hoshidicts-glossary-content, .gsm-hoshidicts-compact-definition-summary";
 
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
@@ -198,6 +203,8 @@
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
+  // The scan button's last press and the native actions it cancels.
+  let scanPress = null;
   let pendingCandidateLookup = null;
   let selectionDragActive = false;
   let activeSelectionCandidate = null;
@@ -231,10 +238,13 @@
   // is selecting text: the host answers a mousedown by turning click-through on,
   // which would lose the drag before release could look anything up. The claim
   // carries over to the selection's pending lookup, so the host never sees a
-  // gap between the drag and the popup it produces.
+  // gap between the drag and the popup it produces. A held scan button claims
+  // the window the same way, or the host would stop reporting it mid-hold.
+  // Child popups that wait for it are in a popup, which holds the claim already.
   function syncHostAttention() {
     const wanted = Boolean(rootLevel.popup && !rootLevel.popup.hidden) || selectionDragActive
-      || hostAttentionHold > 0 || pendingCandidateLookup?.candidate?.exactSelection === true;
+      || hostAttentionHold > 0 || pendingCandidateLookup?.candidate?.exactSelection === true
+      || (activationPressed && options.lookupMode !== "hover" && activationButton() !== null);
     if (wanted === hostAttentionPublished) return;
     hostAttentionPublished = wanted;
     window.dispatchEvent(new CustomEvent(wanted ? POPUP_SHOWN_EVENT : POPUP_HIDDEN_EVENT));
@@ -1075,9 +1085,7 @@
     if (startNode.nodeType !== Node.TEXT_NODE) {
       return null;
     }
-    const lookupText = startNode.parentElement?.closest(
-      ".gsm-hoshidicts-glossary-content, .gsm-hoshidicts-compact-definition-summary"
-    );
+    const lookupText = startNode.parentElement?.closest(DEFINITION_TEXT_SELECTOR);
     if (
       !lookupText ||
       !level.popup.contains(lookupText) ||
@@ -1319,6 +1327,7 @@
     disposed = true;
     selectionDragActive = false;
     dragSelection = null;
+    activationPressed = false;
     cancelPopupLayout();
     clearDictionaryResources();
     window.clearTimeout(scanTimer);
@@ -1331,6 +1340,7 @@
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
+    document.removeEventListener("auxclick", onAuxClick, true);
     document.removeEventListener("selectionchange", onSelectionChange);
     document.removeEventListener("fullscreenchange", onFullscreenChange);
     document.removeEventListener("focusin", onPageFocusIn, true);
@@ -3431,6 +3441,14 @@
     return options.definitionLookupMode !== "click" && (!definitionKeyGated() || activationPressed);
   }
 
+  // The configured activation input when it is a mouse button that something
+  // waits for: page lookups outside Hover mode, or child popups set to hold it.
+  // Otherwise a press keeps its ordinary meaning.
+  function activationButton() {
+    if (options.lookupMode === "hover" && !definitionKeyGated()) return null;
+    return ACTIVATION_BUTTONS.get(options.activationKey) ?? null;
+  }
+
   // Yomitan's default: once shown, the popup outlives the activation key and
   // the pointer's wanderings; only an explicit dismissal or a new lookup ends it.
   function schedulePointerHide() {
@@ -3440,6 +3458,37 @@
   function updateModifierState(event) {
     const property = MODIFIER_PROPERTIES.get(options.activationKey);
     if (property) activationPressed = event[property] === true;
+    // Every mouse event reports the held buttons, so a release the page never
+    // saw ends a button's activation at the next move.
+    const button = ACTIVATION_BUTTONS.get(options.activationKey);
+    if (button && typeof event.buttons === "number") {
+      const held = (event.buttons & button.flag) !== 0;
+      if (held !== activationPressed) {
+        activationPressed = held;
+        syncHostAttention();
+      }
+    }
+  }
+
+  // Pressing the activation input while the pointer is stationary reveals the
+  // word under it without asking the reader to jiggle the mouse.
+  function scanActivatedPointer() {
+    const popupLevel = activePointerLevel(lastPointer);
+    const keyGated = popupLevel ? definitionKeyGated() : options.lookupMode !== "hover";
+    if (keyGated && lastPointer && !hasProtectedNote() && !popupHasFocus()
+        && (!pointerInPopup || popupLevel)
+        && !selectionDragActive
+        && (popupLevel || !retainSelectedLookup())) {
+      scheduleScan();
+    }
+  }
+
+  // Releasing it closes an `activation` popup after the hide delay;
+  // `activationSticky` keeps the popup.
+  function releaseActivation() {
+    if (options.lookupMode !== "activation" || activationPressed || selectionIsUnchanged()) return;
+    cancelCandidateScan();
+    scheduleHide();
   }
 
   function pointInsidePopup(clientX, clientY) {
@@ -3727,6 +3776,10 @@
     if (disposed) {
       return;
     }
+    // A press decides afresh what its own release and click may do.
+    if (scanPress?.button === event.button) scanPress = null;
+    const button = activationButton();
+    if (button && options.hoverEnabled && event.button === button.button && startButtonScan(event)) return;
     if (isOurNode(event.target) || pointInsidePopup(event.clientX, event.clientY)) return;
     updateModifierState(event);
     if (event.button === 0 && options.hoverEnabled
@@ -3741,6 +3794,38 @@
       return;
     }
     hide();
+  }
+
+  // The scan button works like the activation key: pressing it looks up the
+  // word under the pointer, and moving while it is held keeps scanning. Its
+  // capture-phase press claims an overlay host's window before the host's own
+  // listener can turn click-through back on. Over content the reader scans, the
+  // press starts no autoscroll and Back or Forward does not navigate; the click
+  // opens no new tab only when the press was on a word the reader looks up. A
+  // popup link's press is the link's, so its middle click keeps opening it.
+  function startButtonScan(event) {
+    const { clientX, clientY } = event;
+    const inPopup = isOurNode(event.target) || pointInsidePopup(clientX, clientY);
+    // Hover mode's page lookups wait for nothing; only child popups can.
+    if (!inPopup && options.lookupMode === "hover") return false;
+    // The popup is a closed shadow root: its own mousemove recorded the real
+    // target and level under the pointer.
+    if (!inPopup) lastPointer = { clientX, clientY, target: event.target };
+    const level = inPopup ? activePointerLevel(lastPointer) : null;
+    // Child popups set to Click wait for no button.
+    if (level && (popupLinkAt(lastPointer.target, level) || !definitionKeyGated())) return false;
+    const scannable = level
+      ? Boolean(selectionBoundaryElement(lastPointer.target)?.closest(DEFINITION_TEXT_SELECTOR))
+      : !inPopup && isScannableElement(selectionBoundaryElement(event.target), new Map());
+    if (scannable) event.preventDefault();
+    const candidate = scannable
+      && (level ? resolveDefinitionCandidate(clientX, clientY, level) : resolveCandidate(clientX, clientY));
+    scanPress = { button: event.button, cancelRelease: scannable && NAVIGATION_BUTTONS.has(event.button),
+      cancelClick: Boolean(candidate) };
+    activationPressed = true;
+    syncHostAttention();
+    scanActivatedPointer();
+    return true;
   }
 
   // Release decides what the press was: a selection looks up that text, a
@@ -3804,9 +3889,24 @@
   }
 
   function onMouseUp(event) {
-    if (disposed || event.button !== 0 || !selectionDragActive) return;
+    if (disposed) return;
+    const button = activationButton();
+    if (button && event.button === button.button) {
+      if (scanPress?.button === event.button && scanPress.cancelRelease) event.preventDefault();
+      updateModifierState(event);
+      releaseActivation();
+      return;
+    }
+    if (event.button !== 0 || !selectionDragActive) return;
     updateModifierState(event);
     finishSelectionDrag({ dismissClick: true });
+  }
+
+  // A middle click on a word the scan press looked up opens no new tab.
+  function onAuxClick(event) {
+    if (scanPress?.button !== event.button) return;
+    if (scanPress.cancelClick) event.preventDefault();
+    scanPress = null;
   }
 
   function onPageFocusIn() {
@@ -3814,6 +3914,7 @@
       cancelCandidateScan();
       activationPressed = false;
       activationCode = null;
+      syncHostAttention();
     }
   }
 
@@ -3954,23 +4055,13 @@
     // the rest of the page. Modifier activation leaves native typing intact;
     // printable/editor keys stay reserved for the focused field.
     if (pageEditorFocused() && !MODIFIER_PROPERTIES.has(options.activationKey)) return;
-    // Pressing the gate key while the pointer is stationary should reveal the
-    // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
     updateModifierState(event);
     if (normaliseActivationKey(event.key, null) === options.activationKey) {
       activationPressed = true;
       activationCode = event.code;
     }
-    const popupLevel = activePointerLevel(lastPointer);
-    const keyGated = popupLevel ? definitionKeyGated() : options.lookupMode !== "hover";
-    if (!wasPressed && activationPressed && keyGated
-        && lastPointer && !hasProtectedNote() && !popupHasFocus()
-        && (!pointerInPopup || popupLevel)
-        && !selectionDragActive
-        && (popupLevel || !retainSelectedLookup())) {
-      scheduleScan();
-    }
+    if (!wasPressed && activationPressed) scanActivatedPointer();
   }
 
   function onKeyUp(event) {
@@ -3981,11 +4072,7 @@
       activationPressed = false;
     }
     if (!activationPressed) activationCode = null;
-    if (options.lookupMode === "activation" && !activationPressed) {
-      if (selectionIsUnchanged()) return;
-      cancelCandidateScan();
-      scheduleHide();
-    }
+    releaseActivation();
   }
 
   function onMouseOut(event) {
@@ -4004,10 +4091,11 @@
   function onWindowBlur() {
     stopPopupResize();
     if (!disposed) {
-      setSelectionDrag(false);
-      lastPointer = null;
+      // Cleared first, so the drag's sync also releases a held scan button's claim.
       activationPressed = false;
       activationCode = null;
+      setSelectionDrag(false);
+      lastPointer = null;
       pointerInPopup = false;
       const interaction = levels.find((level) => !level.popup?.hidden
         && level.pendingPopupInteraction === level.lookupToken);
@@ -4199,6 +4287,7 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
     if (customButtonsChanged) {
       for (const level of levels) level.view?.setCustomButtons(options.customButtons);
@@ -4329,12 +4418,14 @@
     }
     // Capture so a page that stops propagation on its own text still gets
     // scanned; passive so the hot pointer and scroll paths can never delay the
-    // page's own scrolling. A press stays cancelable: an overlay drag is the
-    // reader's, not the browser's.
+    // page's own scrolling. A press, its release and its click stay cancelable:
+    // an overlay drag and a scan button's press are the reader's, not the
+    // browser's.
     const observe = { capture: true, passive: true };
     document.addEventListener("mousemove", onMouseMove, observe);
     document.addEventListener("mousedown", onMouseDown, { capture: true });
-    document.addEventListener("mouseup", onMouseUp, observe);
+    document.addEventListener("mouseup", onMouseUp, { capture: true });
+    document.addEventListener("auxclick", onAuxClick, { capture: true });
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("focusin", onPageFocusIn, observe);

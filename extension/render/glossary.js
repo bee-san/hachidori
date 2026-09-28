@@ -57,6 +57,13 @@
     "ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ"
   ));
   const COMBINING_MARK_PATTERN = /\p{Mark}/u;
+  // Yomitan's getLanguageFromText (text-utilities.js, with ja/japanese.js and
+  // zh/chinese.js ranges) for text with no inherited language: any Japanese
+  // character makes it "ja"; otherwise a Chinese-only character (bopomofo,
+  // small and vertical forms, ideographic symbols) makes it "zh".
+  const JAPANESE_TEXT_PATTERN =
+    /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff01-\uff1f\uff21-\uff3f\uff41-\uff9f\uffe0-\uffee\u{20000}-\u{2a6df}\u{2a700}-\u{2ee5f}\u{2f800}-\u{2fa1f}\u{30000}-\u{323af}]/u;
+  const CHINESE_TEXT_PATTERN = /[\u3100-\u312f\u31a0-\u31bf\ufe10-\ufe1f\ufe50-\ufe6f\u{16fe0}-\u{16fff}]/u;
 
   const ALLOWED_STRUCTURED_TAGS = new Set([
     "a",
@@ -183,6 +190,13 @@
     error.structuredContentLimitKind = kind;
     error.structuredContentLocation = structuredContentLocation(path);
     return error;
+  }
+
+  function countStructuredNode(state, path) {
+    if (state.nodes >= MAX_STRUCTURED_NODES) {
+      throw structuredContentLimitError("node count", state.nodes + 1, MAX_STRUCTURED_NODES, path);
+    }
+    state.nodes += 1;
   }
 
   function toHiragana(text) {
@@ -503,6 +517,22 @@
     return String(value || "").split(/\s+/u).filter(Boolean);
   }
 
+  function languageFromText(text) {
+    return JAPANESE_TEXT_PATTERN.test(text) ? "ja" : CHINESE_TEXT_PATTERN.test(text) ? "zh" : null;
+  }
+
+  // Yomitan's _setMultilineTextContent: each "\n" becomes a <br>, so the text
+  // copies with its line breaks. A glossary's text gets the same language
+  // detection as a string in structured content.
+  function appendMultilineText(documentRef, parent, text) {
+    text.split("\n").forEach((line, index) => {
+      if (index > 0) parent.appendChild(documentRef.createElement("br"));
+      if (line) parent.appendChild(documentRef.createTextNode(line));
+    });
+    const language = languageFromText(text);
+    if (language) parent.lang = language;
+  }
+
   // An inline value also refuses var(): a dictionary stylesheet's own custom
   // properties are renamed by applyDictionaryStyles, but a reference here would
   // read whatever the page sets on the popup host. A backslash could escape a
@@ -614,6 +644,7 @@
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.dataset.path = path;
+    if (typeof state.dictionary === "string") link.dataset.dictionary = state.dictionary;
     link.dataset.imageLoadState = "not-loaded";
     link.dataset.hasAspectRatio = "true";
     link.dataset.imageRendering = typeof value.imageRendering === "string"
@@ -939,10 +970,12 @@
     path = ["structuredContent"]
   ) {
     const currentPath = [...path];
-    const stack = [{ kind: "value", parent, value }];
-    const pushChild = (childParent, childValue, segment) => {
+    // `language` is the nearest dictionary-set lang, as in Yomitan's
+    // _appendStructuredContent: below one, text is not detected again.
+    const stack = [{ kind: "value", parent, value, language: null }];
+    const pushChild = (childParent, childValue, segment, language) => {
       stack.push({ kind: "leave" });
-      stack.push({ kind: "value", parent: childParent, value: childValue });
+      stack.push({ kind: "value", parent: childParent, value: childValue, language });
       stack.push({ kind: "enter", segment });
     };
     while (stack.length > 0) {
@@ -958,32 +991,27 @@
       if (frame.kind === "array") {
         if (frame.index < frame.value.length) {
           stack.push({ ...frame, index: frame.index + 1 });
-          pushChild(frame.parent, frame.value[frame.index], frame.index);
+          pushChild(frame.parent, frame.value[frame.index], frame.index, frame.language);
         }
         continue;
       }
       if (frame.kind === "append-external-icon") {
         const icon = documentRef.createElement("span");
-        icon.className = "gloss-link-external-icon";
+        icon.className = "gloss-link-external-icon icon";
+        icon.dataset.icon = "external-link";
         icon.setAttribute("aria-hidden", "true");
         frame.element.appendChild(icon);
         continue;
       }
 
-      if (state.nodes >= MAX_STRUCTURED_NODES) {
-        throw structuredContentLimitError(
-          "node count",
-          state.nodes + 1,
-          MAX_STRUCTURED_NODES,
-          currentPath
-        );
-      }
       // Bound traversal work, including containers and values that render no DOM.
-      state.nodes += 1;
+      countStructuredNode(state, currentPath);
       value = frame.value;
       parent = frame.parent;
       if (typeof value === "string") {
         parent.appendChild(documentRef.createTextNode(value));
+        const language = frame.language === null ? languageFromText(value) : null;
+        if (language) parent.lang = language;
         continue;
       }
       if (typeof value === "number" || typeof value === "boolean") {
@@ -991,7 +1019,7 @@
         continue;
       }
       if (Array.isArray(value)) {
-        stack.push({ kind: "array", parent, value, index: 0 });
+        stack.push({ kind: "array", parent, value, index: 0, language: frame.language });
         continue;
       }
       if (!isRecord(value)) {
@@ -999,12 +1027,12 @@
       }
 
       if (value.type === "structured-content") {
-        pushChild(parent, value.content, "content");
+        pushChild(parent, value.content, "content", frame.language);
         continue;
       }
       if (value.type === "text") {
         const property = Object.prototype.hasOwnProperty.call(value, "text") ? "text" : "content";
-        pushChild(parent, value[property], property);
+        pushChild(parent, value[property], property, frame.language);
         continue;
       }
       if (value.type === "image") {
@@ -1017,7 +1045,7 @@
       }
       if (!ALLOWED_STRUCTURED_TAGS.has(tag)) {
         if (Object.prototype.hasOwnProperty.call(value, "content")) {
-          pushChild(parent, value.content, "content");
+          pushChild(parent, value.content, "content", frame.language);
         }
         continue;
       }
@@ -1031,11 +1059,13 @@
       element.classList.add(`gloss-sc-${tag}`);
       applyStructuredStyle(element, value.style);
       applyStructuredData(element, value.data);
+      let language = frame.language;
       if (
         typeof value.lang === "string" &&
         /^[A-Za-z0-9-]{1,35}$/u.test(value.lang)
       ) {
         element.setAttribute("lang", value.lang);
+        language = value.lang;
       }
       if (tag === "td" || tag === "th") {
         for (const [property, attribute] of [
@@ -1062,6 +1092,7 @@
         const link = parseStructuredLink(value.href);
         if (link?.internal) {
           element.setAttribute("href", "#");
+          element.dataset.external = "false";
           element.dataset.hoshidictsQuery = link.query;
           if (link.primaryReading) {
             element.dataset.hoshidictsReading = link.primaryReading;
@@ -1121,9 +1152,50 @@
         !STRUCTURED_TAGS_WITHOUT_CONTENT.has(tag) &&
         Object.prototype.hasOwnProperty.call(value, "content")
       ) {
-        pushChild(contentParent, value.content, "content");
+        pushChild(contentParent, value.content, "content", language);
       }
     }
+  }
+
+  // display-generator.js _createTermDefinitionEntry with templates-display.html
+  // "gloss-item": one item per glossary element Yomitan displays, in order,
+  // each inside the row's node budget.
+  function appendGlossItem(documentRef, list, item, state, index) {
+    // A [term, rules] element is form-of data Yomitan's translator consumes
+    // and never displays.
+    if (Array.isArray(item)) return;
+    const path = ["glossary", index];
+    const content = documentRef.createElement("span");
+    content.className = "gloss-content";
+    if (typeof item === "string" || (isRecord(item) && item.type === "text" && typeof item.text === "string")) {
+      countStructuredNode(state, path);
+      appendMultilineText(documentRef, content, typeof item === "string" ? item : item.text);
+    } else if (isRecord(item) && item.type === "image") {
+      countStructuredNode(state, path);
+      appendStructuredImage(documentRef, content, item, state);
+      if (typeof item.description === "string") {
+        const description = documentRef.createElement("span");
+        description.className = "gloss-image-description";
+        appendMultilineText(documentRef, description, item.description);
+        content.append(" ", description);
+      }
+    } else if (isRecord(item) && item.type === "structured-content") {
+      content.classList.add("structured-content");
+      appendStructuredValue(documentRef, content, item, state, 0, path);
+    } else {
+      // A value outside Yomitan's schema, which its importer refuses, still
+      // renders when the structured renderer makes something of it.
+      appendStructuredValue(documentRef, content, item, state, 0, path);
+      if (!content.hasChildNodes()) return;
+    }
+    const glossItem = documentRef.createElement("li");
+    glossItem.className = "gloss-item click-scannable";
+    glossItem.dataset.index = String(list.children.length);
+    const separator = documentRef.createElement("span");
+    separator.className = "gloss-separator";
+    separator.textContent = " ";
+    glossItem.append(separator, content);
+    list.appendChild(glossItem);
   }
 
   function appendTextOnlyGlossary(documentRef, parent, rawGlossary, options = {}) {
@@ -1143,12 +1215,6 @@
     // run but would run two senses together here ("to eatto live on ..."), so
     // the top level is split into one item each, as Yomitan does.
     const items = Array.isArray(parsed) ? parsed : [parsed];
-    if (items.length === 0) {
-      return;
-    }
-    if (items.some((item) => isRecord(item) && item.type === "structured-content")) {
-      parent.classList.add("structured-content");
-    }
     const state = {
       nodes: 0,
       dictionary: options.dictionary,
@@ -1175,6 +1241,24 @@
           })
         : null,
     };
+    if (options.layout !== "anki") {
+      // The popup's glossary markup is Yomitan's: ul.gloss-list, even for one
+      // element, with data-count counting the items it shows.
+      const list = documentRef.createElement("ul");
+      list.className = "gloss-list";
+      items.forEach((item, index) => appendGlossItem(documentRef, list, item, state, index));
+      list.dataset.count = String(list.children.length);
+      parent.appendChild(list);
+      return;
+    }
+    // Yomitan's Anki glossary-single template emits one element bare and
+    // several as a list.
+    if (items.length === 0) {
+      return;
+    }
+    if (items.some((item) => isRecord(item) && item.type === "structured-content")) {
+      parent.classList.add("structured-content");
+    }
     if (items.length === 1) {
       appendStructuredValue(documentRef, parent, items[0], state, 0, ["glossary", 0]);
       return;
