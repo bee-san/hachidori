@@ -1,9 +1,7 @@
 # Architecture
 
-Hachidori shares one WebAssembly dictionary engine and extension codebase across
-Chrome and Firefox desktop. Chrome uses a Manifest V3 service worker
-and offscreen document. Firefox uses a Manifest V2 persistent background page
-with the same offscreen page mounted as a hidden iframe.
+Hachidori uses a WebAssembly dictionary engine in a Chrome Manifest V3
+extension, with a service worker and offscreen document.
 
 ## Runtime layout
 
@@ -17,14 +15,12 @@ web page
 settings.html / content.js
   └─ extension runtime messaging
        └─ background.js
-            ├─ Chrome: MV3 service worker
-            ├─ Firefox: module loaded by persistent firefox-background.html
+            ├─ MV3 service worker
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one next-due alarm
             ├─ owns two retained daily snapshots and their next-due alarm
-            ├─ Chrome: creates or reconnects to offscreen.html
-            ├─ Firefox: waits for the authenticated persistent iframe
+            ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
                  └─ offscreen.js
                       ├─ probes pthread, shared-memory, and direct-OPFS support
@@ -39,8 +35,7 @@ settings.html / content.js
 
 Chrome’s service worker can be terminated after an idle period without
 discarding loaded dictionaries. A later request recreates the routing context
-while the offscreen engine remains authoritative. Firefox keeps both the
-background page and its hidden engine iframe alive. Runtime requests carry
+while the offscreen engine remains authoritative. Runtime requests carry
 explicit IDs, generations, and result message types so stale or malformed
 replies fail closed.
 
@@ -93,8 +88,8 @@ Each dictionary import follows one logical transaction:
 7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots. A root an isolated import is still writing is retained until that import settles.
 8. The settings page renders success only after that reply.
 
-The IDBFS runtimes (Electron's pthread engine and the single-thread engine
-Firefox uses) have no isolated importer: two instances cannot share one IDBFS
+The IDBFS runtimes (Electron's pthread engine and the single-thread engine)
+have no isolated importer: two instances cannot share one IDBFS
 store. There the archive is imported inside the live engine, whose loaded
 dictionaries are mapped into the same 32-bit address space the importer needs,
 so `runImportTransaction` unloads them first and reloads the committed set
@@ -709,8 +704,7 @@ matching keybind action, with a count of one for entry moves. Only a frame with
 an open popup, or a selection for the scans, acts on it. Chrome alone can change
 these shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
-and opens `chrome://extensions/shortcuts` (Firefox: `commands.openShortcutSettings()`,
-since `tabs.create` refuses `about:addons`).
+and opens `chrome://extensions/shortcuts`.
 
 ![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
 
@@ -2379,9 +2373,7 @@ network listener is on, the addresses found from the routes to Tailscale's
 resolver and the default route, or the bind error), `client-open` (with the
 peer address), `client-close` and `client-text`; from the host it takes
 `send`, `broadcast`, `close` and `network`. Its rules: a handshake's `Origin`
-must start with `chrome-extension://` (or, from the relay release that follows
-[hachidori-anki#8](https://github.com/bee-san/hachidori-anki/pull/8),
-`moz-extension://`), `/host` is accepted from loopback peers
+must start with `chrome-extension://`, `/host` is accepted from loopback peers
 only, a client is refused (503) while no host is connected, and turning the
 network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,

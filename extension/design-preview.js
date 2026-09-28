@@ -109,7 +109,7 @@
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
     onCustomLinkClick(link) {
-      void (globalThis.browser ?? globalThis.chrome).runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_open_external", ...link })
+      void globalThis.chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_open_external", ...link })
         .catch(error => console.debug("hachidori: preview link could not be opened", error));
     },
     onResultsRendered({ lookupStats }) {
