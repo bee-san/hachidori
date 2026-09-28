@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 
-const { normaliseKanjiSelection, normaliseOptions, resolveKanjiDictionary, validateOptionsPatch }
-  = globalThis.HDReaderOptions;
+const { DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, KEYBIND_TOGGLE_OPTIONS, normaliseKanjiSelection, normaliseOptions,
+  projectStoredOptions, resolveKanjiDictionary, validateOptionsPatch } = globalThis.HDReaderOptions;
 
 function dictionary(id, title, counts = {}) {
   return { id, title, enabled: true, termCount: 0, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, ...counts };
@@ -63,4 +63,22 @@ test("dictionary selections still resolve to one capability", () => {
   assert.equal(resolveKanjiDictionary({ title: "KANJIDIC", kind: "term" }, dictionaries, groups), null,
     "a requested kind the dictionary lacks is unavailable");
   assert.equal(resolveKanjiDictionary("", dictionaries, groups), null);
+});
+
+test("definition text follows the page lookup mode unless a child popup trigger is chosen", () => {
+  assert.equal(DEFAULT_OPTIONS.definitionLookupMode, "inherit");
+  assert.deepEqual(DEFINITION_LOOKUP_MODES, ["inherit", "activation", "click"]);
+  assert.equal(normaliseOptions({}).definitionLookupMode, "inherit", "missing");
+  for (const mode of DEFINITION_LOOKUP_MODES) {
+    assert.equal(normaliseOptions({ definitionLookupMode: mode }).definitionLookupMode, mode);
+    assert.deepEqual(validateOptionsPatch({ definitionLookupMode: mode }), { definitionLookupMode: mode });
+  }
+  for (const garbage of ["bogus", 3, null, "hover"]) {
+    assert.equal(normaliseOptions({ definitionLookupMode: garbage }).definitionLookupMode, "inherit",
+      `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ definitionLookupMode: garbage }), /invalid reader option/);
+  }
+  assert.deepEqual(projectStoredOptions({ definitionLookupMode: "bogus" }), { definitionLookupMode: "inherit" },
+    "stored garbage falls back to the default without throwing");
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("definitionLookupMode"), "not a boolean hotkey toggle");
 });
