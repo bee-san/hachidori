@@ -434,11 +434,20 @@
               <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Hold this key while pointing at a word. No key looks up whenever you hover over Japanese text. Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Hold this key while pointing at a word. No key looks up whenever you hover over Japanese text; child popups set to hold a key use the last key chosen. Some keys are reserved by your browser or operating system.</span>
               </label>
               <label class="lookup-enable" id="opt-lookup-sticky-row">
                 <span>Keep the popup open after releasing the key</span>
                 <input type="checkbox" id="opt-lookup-sticky" />
+              </label>
+              <label class="field">
+                <span class="field-label">Child popups</span>
+                <select id="opt-definition-lookup-mode">
+                  <option value="inherit">Same as page lookups</option>
+                  <option value="activation">Hold the activation key</option>
+                  <option value="click">Click a word</option>
+                </select>
+                <span class="field-hint">How words in a popup's definitions open child popups. Dictionary links always open on click.</span>
               </label>
             </div>
           </fieldset>
@@ -469,6 +478,24 @@
                 <span class="field-hint"
                   >Characters read forward from the cursor.</span
                 >
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="lookup-group" id="cursor-exit-settings">
+            <legend>Cursor exit</legend>
+            <label class="lookup-enable">
+              <span>Hide popup on cursor exit</span>
+              <input type="checkbox" id="opt-hide-on-cursor-exit" aria-describedby="cursor-exit-help" />
+            </label>
+            <p class="field-hint" id="cursor-exit-help">When the cursor exits the popup, the popup will be hidden. Child popups close when the cursor returns to their parent.</p>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Delay</span>
+                <span class="input-suffix">
+                  <input id="opt-hide-on-cursor-exit-delay" type="number" min="0" max="5000" step="10" />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Time outside the popup before it hides.</span>
               </label>
             </div>
           </fieldset>

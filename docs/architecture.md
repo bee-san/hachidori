@@ -611,10 +611,26 @@ writes `activationKey` with `activationSticky` or `activation` as **Keep the
 popup open after releasing the key** says. That switch is hidden for No key and
 on when a key is chosen again.
 
-The existing 0–2,000 ms open delay defaults to 50 ms and also applies to a key
-pressed over a stationary pointer. Hide/transfer delay defaults to the existing
-160 ms, with the pinned source's 0–5,000 ms range. These are one global setting
-pair, not per-dictionary policies. Zero hide delay dismisses immediately.
+There is no open delay: `hoverDelayMs` always normalises to 0, so a scan runs
+on the next timer turn at the pointer's latest position, and a key pressed over
+a stationary pointer scans at once. The hide/transfer delay defaults to the
+existing 160 ms, with the pinned source's 0–5,000 ms range. It is one global
+setting, not a per-dictionary policy. Zero hide delay dismisses immediately.
+
+Words in a popup's definitions follow `lookupMode` by default
+(`definitionLookupMode: "inherit"`). Reading → Activation → Child popups can
+instead ask for the activation key (`activation`) or a click (`click`) there,
+whatever the page uses, so a No key reader can move over, rest on and scroll
+long definitions without opening children. The key choice names the remembered
+`activationKey`, which No key keeps. With the key, definition text is scanned
+only while it is held, a press over a resting pointer opens that word's child
+and release keeps the child. With Click, a primary click on a word opens its
+child after the press has retired the previous one; a press that travels 3 px
+or more, a selection in the popup, and clicks on links, buttons or disclosure
+summaries look nothing up. A click child loads like a link child, so pointer
+movement does not cancel it. Dictionary links, clicked kanji, the depth limit and
+protected Note drafts behave the same in every mode. The option is kept local to
+a linked overlay.
 
 Disabled readers do not create pointer scan timers. Activation-gated readers
 remember the pointer but do not scan or schedule until the key is held. Modifier
@@ -640,12 +656,26 @@ not invalidate current rendered resources; result-affecting settings still do.
 Hidden retirement clears the DOM and owners immediately without a redundant
 scroll reset; every visible term, kanji or notice render still resets scrolling.
 
+**Hide popup on cursor exit** ports Yomitan's option of that name, off by
+default, with its own 0–5,000 ms delay (160 ms by default). It works in every
+lookup mode, including `activationSticky`. A pane's `mouseleave` for the page,
+an iframe or outside the window starts one exit timer, which is not restarted;
+moving between overlapping panes is not an exit, and a pointer resting in a
+connecting corridor stays inside until the transfer check finds it outside.
+Re-entering any pane, a new lookup, or scanning the popup's own word again
+cancels the timer. When it fires the whole chain hides unless a Note draft or
+pending append, an open audio menu or `:focus-visible` keyboard focus protects
+it; the focus Chrome leaves on a clicked button does not. A popup the pointer
+never entered and an exact-selection lookup stay as before.
+
 Disabling explicitly closes even a focused popup or Note draft, while an already
 dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Enable lookups, the Activation key picker and the keep-open switch in Settings](assets/reader-activation-settings.png)
+![Enable lookups, the Activation key picker on No key and Child popups holding Shift in Settings](assets/reader-activation-settings.png)
+
+![Hide popup on cursor exit and its Delay in Settings](assets/reader-cursor-exit-settings.png)
 
 ### Keybinds
 
@@ -918,9 +948,17 @@ the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and rank, occurrence and unspecified dictionaries aggregate
 separately. Each dictionary contributes its first usable value once. Type labels
 remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
-with source names hidden; individual dictionary names are not shown for an
-aggregate. These display controls do not change native frequency sorting or
-lookup results.
+with source names hidden, and each aggregate carries `data-frequency-average`
+(`rank-based`, `occurrence-based` or `unspecified`). As in Yomitan, every tag
+that averages-off shows stays in the DOM after the aggregates, unchanged apart
+from the `hidden` attribute. Hidden tags take no layout or metadata display
+budget, stay out of the accessibility tree and still follow alias renames.
+Custom CSS can reveal them with
+`.gsm-hoshidicts-tag-frequency[hidden] { display: inline-flex; }`; a result with
+no value to average also hides its frequency group or row, which such a
+stylesheet must reveal too. Theme rules that want only the visible values can
+add `:not([hidden])`. These display controls do not change native frequency
+sorting or lookup results.
 
 The preferred pitch source is a soft canonical-title preference: unavailable or
 disabled sources fall back to another usable pitch source. A committed rename
@@ -1132,7 +1170,9 @@ No dictionary frame, fetch, new permission or configurable action is introduced.
 ### Definition popup chains
 
 Hovering ordinary text inside a rendered glossary opens a child beside that
-word. The closed shadow root is resolved with the native shadow-aware caret
+word; Child popups can ask for the activation key or a click instead (see
+[Hover activation](#hover-activation-and-popup-ownership)). The closed shadow
+root is resolved with the native shadow-aware caret
 API, then the ordinary page scanner's inline, ruby, whitespace, Japanese-only
 and scan-length rules build the child query. The complete glossary remains the
 sentence and offset coordinate space for mining. Headwords, metadata, compact
@@ -1167,7 +1207,10 @@ append, or deliberate keyboard focus still protects them. In `activationSticky`
 pointer movement never prunes a rendered child: entering or resting in an
 ancestor, an empty scan there and hovering a non-dictionary link there all leave
 it open, as Yomitan's children stay open without "Hide popup on cursor exit". An
-unfinished hover child is still cancelled when the pointer leaves its word. In
+unfinished hover child is still cancelled when the pointer leaves its word.
+While Hide popup on cursor exit is on, every mode, `activationSticky` included,
+prunes on that pointer movement after the cursor-exit delay instead of the hide
+delay, with the same protections. In
 every mode a primary
 press in an ancestor pane retires its descendants at once, focused or not, and
 drops a pending definition scan; only an open draft or pending append keeps
@@ -2050,7 +2093,25 @@ renderer into inert HTML. As in Yomitan's default Anki field templates, each
 term-bank row becomes its own `li[data-dictionary]`, and every line break in
 dictionary text becomes a `<br>` because a note field has none of the popup's
 `white-space: pre-wrap`. Dictionary CSS remains scoped, and image filenames
-bind to committed generation paths. First-field audio is resolved before the
+bind to committed generation paths. While the experimental **Smaller Anki
+cards** flag (`options.experimental.smallerAnkiCards`) is on, the rich
+glossary markers are compacted instead, following the Compact HTML Cleanup
+Anki add-on. The flag is part of the checked Anki configuration, so toggling it
+between preflight and Add fails with the existing configuration-changed error.
+`anki-compact.js` mounts a source-less copy of the export in a hidden, closed
+shadow root of the offscreen document, where `getComputedStyle` resolves the
+scoped dictionary CSS exactly as the popup does, and builds new inert markup
+from it: generated `::before`/`::after` text becomes text, `display: none` and
+hidden content is left out, a positive inline margin becomes one space, a
+list marker is written only where it differs from HTML's default, style-only
+bold, italics, underline and strike-through become tags, newlines become `<br>`
+and block-level elements that directly hold content become `<div>`. Stylesheets,
+internal classes, `data-hoshidicts-*`, titles and link targets are dropped;
+`lang`, `rowspan`/`colspan`, `data-sc-content`, ruby, tables, image sizes and
+the outer Yomitan-compatible glossary structure are kept. Plain glossary
+markers and the relay's `ankiFields` API are unchanged.
+
+First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write
 queue, every dictionary image referenced by an applied field and any prepared
 first-field pronunciation is checked against Anki's live media inventory.
@@ -2349,7 +2410,7 @@ uncertain write leaves it for inspection and an explicit retry.
 | Newest `automaticBackupDays` automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates,  | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, cursor-exit hiding, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates,  | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 

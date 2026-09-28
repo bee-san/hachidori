@@ -1407,6 +1407,18 @@ html[data-hoshidicts-theme="girlypop"],
   content: "•";
 }
 
+/* Averages keep each dictionary's tag in the DOM, hidden, as Yomitan does;
+   custom CSS may reveal them. A hidden group takes no separator. */
+.gsm-hoshidicts-primary-frequencies[hidden] + .gsm-hoshidicts-primary-grammar::before {
+  content: none;
+}
+
+.gsm-hoshidicts-primary-frequencies[hidden],
+.gsm-hoshidicts-tag-frequency[hidden],
+.gsm-hoshidicts-frequency-metadata[hidden] {
+  display: none;
+}
+
 .gsm-hoshidicts-primary-grammar {
   color: var(--text-color-light1);
 }

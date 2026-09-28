@@ -71,7 +71,7 @@ const OPTION_SECTIONS = {
 };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
-  DEFAULT_OPTIONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
@@ -85,6 +85,7 @@ const NUMBER_FIELDS = [
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
+  { key: "hidePopupOnCursorExitDelayMs", id: "opt-hide-on-cursor-exit-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
@@ -1421,6 +1422,13 @@ function renderDefinitionBlurFrequencyChoices() {
   select.value = previous;
 }
 
+function renderCursorExitControls() {
+  element("opt-hide-on-cursor-exit").checked = options.hidePopupOnCursorExit;
+  const delay = element("opt-hide-on-cursor-exit-delay");
+  // Like the compact summary count: a focused draft keeps its field enabled.
+  if (delay !== document.activeElement) delay.disabled = !options.hidePopupOnCursorExit;
+}
+
 function renderCompactSummaryControls() {
   const enabled = options.showCompactDefinitionSummary;
   element("opt-compact-summary").checked = enabled;
@@ -1711,6 +1719,10 @@ function renderActivationControls() {
   }
   element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
   element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
+  // Child popups name the remembered key, which No key keeps.
+  const childPopups = element("opt-definition-lookup-mode");
+  childPopups.querySelector('option[value="activation"]').textContent = `Hold ${options.activationKey}`;
+  if (childPopups !== document.activeElement) childPopups.value = options.definitionLookupMode;
 }
 
 function renderOptions() {
@@ -1724,6 +1736,7 @@ function renderOptions() {
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-no-result-notice").checked = options.showNoResultNotice;
+  renderCursorExitControls();
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-audio-autoplay").checked = options.audioAutoplay;
@@ -3332,6 +3345,11 @@ function attachHandlers() {
     options.showNoResultNotice = event.target.checked;
     writeOptions();
   });
+  element("opt-hide-on-cursor-exit").addEventListener("change", (event) => {
+    options.hidePopupOnCursorExit = event.target.checked;
+    renderCursorExitControls();
+    writeOptions();
+  });
   element("opt-low-memory-mode").addEventListener("change", (event) => {
     options.lowMemoryMode = event.target.checked;
     writeOptions();
@@ -3369,6 +3387,10 @@ function attachHandlers() {
   };
   element("opt-activation-key").addEventListener("change", writeActivation);
   element("opt-lookup-sticky").addEventListener("change", writeActivation);
+  element("opt-definition-lookup-mode").addEventListener("change", (event) => {
+    options.definitionLookupMode = DEFINITION_LOOKUP_MODES.includes(event.target.value) ? event.target.value : "inherit";
+    writeOptions();
+  });
 
   element("opt-frequency-order").addEventListener("change", (event) => {
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";
@@ -3419,6 +3441,7 @@ function attachHandlers() {
         renderDefinitionBlurControls();
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      if (event.target.id === "opt-hide-on-cursor-exit-delay") renderCursorExitControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];
       const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);

@@ -3007,7 +3007,7 @@ async function sharingTransitionStage() {
     const blockedTemplates = await write({
       anki: globalThis.HDReaderOptions.normaliseOptions({}).anki,
     });
-    const local = await write({ hoverEnabled: false, popupWidthPx: 480 });
+    const local = await write({ hoverEnabled: false, popupWidthPx: 480, definitionLookupMode: "click" });
     const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
     socket.receive({ kind: "storage", changes: { options: rawHost } });
     await until(() => current().popupTheme === "dracula");
@@ -3021,9 +3021,11 @@ async function sharingTransitionStage() {
         && blockedTemplates.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
         && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
+        && mirrored.definitionLookupMode === "click" && current().definitionLookupMode === "click"
         && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
         && current().revision === mirrored.revision && current().popupTheme === "dracula"
-        && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480,
+        && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480
+        && overlay.storage.raw.get("sharingLocalState").options.definitionLookupMode === "click",
       JSON.stringify({ initial, blockedTemplates, local, mirrored, current: current() }));
 
     async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
@@ -4787,12 +4789,14 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const invalidActivation = [
       { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "not a key" },
       { popupHideDelayMs: -1 }, { popupHideDelayMs: 5001 },
+      { hidePopupOnCursorExit: 1 }, { hidePopupOnCursorExitDelayMs: -1 }, { hidePopupOnCursorExitDelayMs: 5001 },
     ].every((patch) => {
       try { reader.validateOptionsPatch(patch); return false; } catch { return true; }
     });
     check("reader activation options migrate legacy modes without competing policies and validate new fields",
       plain.hoverEnabled === true && plain.lookupMode === "hover" && plain.activationKey === "Shift"
-        && plain.popupHideDelayMs === 160 && held.lookupMode === "activation" && held.activationKey === "Control"
+        && plain.popupHideDelayMs === 160 && plain.hidePopupOnCursorExit === false
+        && plain.hidePopupOnCursorExitDelayMs === 160 && held.lookupMode === "activation" && held.activationKey === "Control"
         && explicit.lookupMode === "hover" && explicit.activationKey === "K" && explicit.modifier === undefined
         && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
         && legacyPatch.modifier === undefined && invalidActivation,
@@ -14806,6 +14810,7 @@ async function contentNoteStage() {
     },
     popupAt(depth = 0) { return levels[depth]?.popup; },
     hideTimerPending() { return hideTimer !== null; },
+    cursorExitTimerPending() { return cursorExitTimer !== null; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
     resolveSelectedLookupCandidate,
@@ -16584,6 +16589,79 @@ async function contentNoteStage() {
       return { "sticky lookups keep a rendered child through parent entry, empty scans, plain links and page departure until a parent press or Escape":
         kept.every((value) => value === true) && pressed && escaped || { kept, pressed, escaped } };
     } finally { harness.close(); }
+  }
+
+  // Issue #363: with "Hide popup on cursor exit" on, returning to an ancestor
+  // prunes its descendants after the option's delay in sticky mode too. Pane
+  // to pane and a rest in the corridor between panes are no exit; leaving the
+  // chain for the page or an iframe hides all of it.
+  async function nestedCursorExitCase() {
+    const harness = await createHarness();
+    const { driver } = harness;
+    const window = harness.anchor.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const page = window.document.body;
+    const pane = (depth) => driver.popupAt(depth);
+    const enter = (depth) => pane(depth).dispatchEvent(new window.MouseEvent("mouseenter"));
+    const leave = (depth, relatedTarget) => pane(depth).dispatchEvent(new window.MouseEvent("mouseleave", { relatedTarget }));
+    const pageMove = (clientX, clientY) => driver.onMouseMove({ target: page, clientX, clientY, buttons: 0 });
+    // The pointer rests in the root, whose link opens the child beside it.
+    const openChild = async () => {
+      await harness.initialLookup();
+      enter(0);
+      const operation = harness.internalLink({ query: "child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+      await operation;
+      pane(0).getBoundingClientRect = () => ({ left: 10, right: 110, top: 10, bottom: 110 });
+      pane(1).getBoundingClientRect = () => ({ left: 114, right: 214, top: 60, bottom: 160 });
+    };
+    try {
+      // A maximal Hide delay: only the option's 300 ms can prune or hide here.
+      harness.emitOptions({ lookupMode: "activationSticky", popupHideDelayMs: 5000,
+        hidePopupOnCursorExit: true, hidePopupOnCursorExitDelayMs: 300 });
+      await openChild();
+      leave(0, pane(1));
+      enter(1);
+      const paneToPane = !driver.cursorExitTimerPending();
+      leave(1, pane(0));
+      enter(0);
+      const pruning = !driver.cursorExitTimerPending() && [...timers.values()].some((timer) => timer.delay === 300);
+      const returned = paneToPane && pruning && fire(300) && !pane(1) && !driver.snapshot().popupHidden;
+
+      await openChild();
+      leave(0, page);
+      pageMove(112, 90);
+      fire(80);
+      const corridor = fire(300) && Boolean(pane(1)) && !driver.snapshot().popupHidden;
+      pageMove(50, 150);
+      fire(80);
+      const leftCorridor = corridor && fire(300) && driver.snapshot().popupHidden && !pane(1);
+
+      // The document sees no move once the pointer is in an iframe; its last
+      // position inside the child is not a corridor.
+      await openChild();
+      leave(0, pane(1));
+      enter(1);
+      driver.onPopupMouseMove({ target: pane(1), clientX: 150, clientY: 100, buttons: 0 }, 1);
+      const frame = window.document.createElement("iframe");
+      page.append(frame);
+      leave(1, frame);
+      const iframe = fire(300) && driver.snapshot().popupHidden && !pane(1);
+      return { "hide popup on cursor exit prunes children on return in sticky mode and hides the chain it leaves":
+        (returned && leftCorridor && iframe) || { paneToPane, pruning, returned, corridor, leftCorridor, iframe } };
+    } finally {
+      harness.close();
+    }
   }
 
   // Issue #299: a child opens beside its own source text, like Yomitan, not
@@ -18990,12 +19068,154 @@ async function contentNoteStage() {
             firstResult || firstDetails,
           "definition text inherits Japanese gating, depth limits and stationary activation":
             gated && stationary?.request.text.startsWith("食用語"),
+          ...await definitionTriggerCases(),
         };
       } finally {
         activation.close();
       }
     } finally {
       hover.close();
+    }
+
+    // Issue #355: a Hover reader can make definition text wait for the
+    // activation key or a click while page lookups stay key-free.
+    async function definitionTriggerCases() {
+      // The harness's stored lookup settings, so a live edit changes only the trigger.
+      const stored = { lookupMode: "hover", hoverDelayMs: 0, maxResults: 7, scanLength: 9,
+        frequencyDictionary: "Frequency A", frequencyOrder: "descending",
+        kanjiClickDictionary: { title: "Generic", kind: "term" } };
+      async function open(definitionLookupMode) {
+        const harness = await createHarness(undefined, { options: { definitionLookupMode } });
+        await harness.initialLookup();
+        const word = appendGlossary(harness, "食用語");
+        const document = harness.popup.ownerDocument;
+        const window = document.defaultView;
+        document.caretPositionFromPoint = () => ({ offsetNode: word.textNode, offset: 0 });
+        return {
+          harness, word, window,
+          pointer: { clientX: 120, clientY: 80, target: word.term },
+          shift: (type) => document.dispatchEvent(new window.KeyboardEvent(type, {
+            bubbles: true, code: "ShiftLeft", key: "Shift", shiftKey: type === "keydown",
+          })),
+          click(target, [x, y], [releaseX, releaseY] = [x, y]) {
+            target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0, clientX: x, clientY: y }));
+            target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, button: 0, clientX: releaseX, clientY: releaseY }));
+          },
+          lookups: () => harness.pending.filter(({ request }) => request.type === "hd_lookup").length,
+        };
+      }
+      const results = {};
+
+      const keyed = await open("activation");
+      try {
+        const { harness } = keyed;
+        harness.driver.onPopupMouseMove(keyed.pointer);
+        await harness.settle();
+        const keyless = keyed.lookups() === 0 && !harness.driver.popupAt(1);
+        keyed.shift("keydown");
+        await harness.settle();
+        const sent = keyed.lookups();
+        const stationary = harness.take("hd_lookup");
+        if (stationary) harness.reply(stationary, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const opened = sent === 1 && stationary?.request.text.startsWith("食用語") === true
+          && !harness.driver.snapshot(1).popupHidden;
+        keyed.shift("keyup");
+        harness.driver.onPopupMouseMove(keyed.pointer);
+        await harness.settle();
+        const released = keyed.lookups() === 0 && !harness.driver.snapshot(1).popupHidden;
+        harness.driver.hide();
+        harness.driver.setScanCandidate(harness.candidate);
+        harness.driver.onMouseMove({ clientX: 300, clientY: 300, target: harness.anchor });
+        await harness.settle();
+        const page = harness.take("hd_lookup")?.request.text === harness.candidate.query;
+        results["definition text can require the activation key in Hover mode"] =
+          keyless && opened && released && page || { keyless, sent, opened, released, page };
+      } finally { keyed.harness.close(); }
+
+      const clicked = await open("click");
+      try {
+        const { harness, word, window } = clicked;
+        harness.driver.onPopupMouseMove(clicked.pointer);
+        harness.driver.onPopupMouseMove({ ...clicked.pointer, shiftKey: true });
+        clicked.shift("keydown");
+        await harness.settle();
+        clicked.shift("keyup");
+        const hoverless = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        clicked.click(word.term, [120, 80]);
+        await harness.settle();
+        const request = harness.take("hd_lookup");
+        // Moving over the parent does not cancel a click child that is still loading.
+        harness.driver.onPopupMouseMove({ ...clicked.pointer, target: word.glossary });
+        await harness.settle();
+        if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const opened = request?.request.text.startsWith("食用語") === true && !harness.driver.snapshot(1).popupHidden
+          && harness.driver.viewRequest(1)?.candidate.sourceDepth === 0;
+        clicked.click(word.term, [110, 80], [120, 80]);
+        await harness.settle();
+        const dragged = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        const root = harness.popup.getRootNode();
+        root.getSelection = () => ({ isCollapsed: false, anchorNode: word.textNode });
+        clicked.click(word.term, [120, 80]);
+        delete root.getSelection;
+        await harness.settle();
+        const selected = clicked.lookups() === 0;
+        // A disclosure keeps its own click, even over Japanese text.
+        const details = window.document.createElement("details");
+        const summary = window.document.createElement("summary");
+        summary.textContent = "食用語";
+        details.append(summary);
+        word.glossary.append(details);
+        window.document.caretPositionFromPoint = () => ({ offsetNode: summary.firstChild, offset: 0 });
+        clicked.click(summary, [120, 80]);
+        await harness.settle();
+        const disclosure = clicked.lookups() === 0;
+        // A dictionary link still routes through its own handler, exactly once.
+        const link = window.document.createElement("a");
+        link.dataset.hoshidictsQuery = "食用語";
+        link.textContent = "食用語";
+        word.glossary.append(link);
+        let linkClicks = 0;
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          linkClicks += 1;
+          harness.render().context.onInternalLink({ anchor: link, query: "食用語" });
+        });
+        clicked.click(link, [120, 80]);
+        await harness.settle();
+        const linkSent = clicked.lookups();
+        const linkRequest = harness.take("hd_lookup");
+        if (linkRequest) harness.reply(linkRequest, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const linked = linkClicks === 1 && linkSent === 1 && linkRequest?.request.text === "食用語"
+          && !harness.driver.snapshot(1).popupHidden;
+        window.document.caretPositionFromPoint = () => ({ offsetNode: word.textNode, offset: 0 });
+        harness.emitOptions({ ...stored, definitionLookupMode: "click", popupNestingMaxDepth: 0 });
+        clicked.click(word.term, [120, 80]);
+        await harness.settle();
+        const depthLimited = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        results["definition text can open child popups on click only"] =
+          hoverless && opened && dragged && selected && disclosure && linked && depthLimited
+          || { hoverless, opened, dragged, selected, disclosure, linked, depthLimited };
+      } finally { clicked.harness.close(); }
+
+      const live = await open("inherit");
+      try {
+        const { harness } = live;
+        harness.driver.onPopupMouseMove(live.pointer);
+        await harness.settle();
+        const request = harness.take("hd_lookup");
+        const pending = request !== null && harness.driver.snapshot(1).popupHidden;
+        harness.emitOptions({ ...stored, definitionLookupMode: "click" });
+        const cancelled = !harness.driver.popupAt(1);
+        if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        results["changing the child popup trigger cancels a pending definition hover"] =
+          pending && cancelled && !harness.driver.popupAt(1) || { pending, cancelled };
+      } finally { live.harness.close(); }
+      return results;
     }
   }
 
@@ -19245,6 +19465,117 @@ async function contentNoteStage() {
         && harness.take("hd_lookup") === null;
     harness.close();
     return result;
+  }
+
+  // Issue #363: Yomitan's "Hide popup on cursor exit" in the default sticky
+  // mode. The popup hides once the pointer has been inside it and left, after
+  // the option's own delay, unless a draft, an audio menu or a resize keeps it.
+  async function cursorExitCase() {
+    const harness = await createHarness();
+    const { driver } = harness;
+    const window = harness.popup.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const page = window.document.body;
+    const shown = () => !driver.snapshot().popupHidden;
+    const enter = () => harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    const leave = (relatedTarget = page) => harness.popup.dispatchEvent(new window.MouseEvent("mouseleave", { relatedTarget }));
+    const pageMove = () => driver.onMouseMove({ target: page, clientX: 900, clientY: 700, buttons: 0 });
+    // The pointer enters the popup and leaves it for the page.
+    const exit = () => { enter(); leave(); pageMove(); };
+    const shift = (type) => window.document.dispatchEvent(new window.KeyboardEvent(type,
+      { key: "Shift", code: "ShiftLeft", shiftKey: type === "keydown", bubbles: true }));
+    const settings = { lookupMode: "activationSticky", hidePopupOnCursorExit: true, hidePopupOnCursorExitDelayMs: 500 };
+    try {
+      harness.emitOptions(settings);
+      await harness.initialLookup();
+      pageMove();
+      leave();
+      driver.onMouseOut({ relatedTarget: null });
+      const neverEntered = shown() && !driver.cursorExitTimerPending();
+      exit();
+      const delayed = [...timers.values()].some((timer) => timer.delay === 500);
+      const leftPage = delayed && fire(500) && !shown();
+      await harness.initialLookup();
+      exit();
+      enter();
+      const reentered = !driver.cursorExitTimerPending() && shown();
+      leave(null);
+      driver.onMouseOut({ relatedTarget: null });
+      const leftWindow = fire(500) && !shown();
+
+      // A new lookup replaces the popup; the old timer cannot hide it.
+      await harness.initialLookup();
+      exit();
+      driver.setScanCandidate({ ...harness.candidate, query: "新しい" });
+      shift("keydown");
+      fire(0);
+      const replacement = harness.take("hd_lookup");
+      shift("keyup");
+      const replacing = replacement !== null && !driver.cursorExitTimerPending();
+      if (replacement) harness.reply(replacement, { dictionaryCount: 1, results: [harness.term("新しい")] });
+      await harness.settle();
+      const replaced = replacing && shown();
+      // Scanning the popup's own word again keeps it.
+      exit();
+      shift("keydown");
+      fire(0);
+      shift("keyup");
+      const ownWord = harness.take("hd_lookup") === null && !driver.cursorExitTimerPending() && shown();
+
+      harness.edit(true);
+      exit();
+      const draftKept = fire(500) && shown() && driver.snapshot().noteEditing;
+      harness.edit(false);
+      const audioButton = harness.popup.querySelector(".gsm-hoshidicts-audio-button");
+      audioButton.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      const menu = harness.popup.querySelector(".gsm-hoshidicts-audio-choices");
+      exit();
+      const menuKept = menu !== null && fire(500) && shown();
+      // Closing the menu refocuses its button, like the focus a mouse click
+      // leaves on a popup button; that focus does not keep the popup.
+      menu?.querySelector(".gsm-hoshidicts-audio-menu-close").click();
+      const buttonFocused = harness.popup.getRootNode().activeElement === audioButton;
+      exit();
+      const buttonHidden = buttonFocused && fire(500) && !shown();
+      await harness.initialLookup();
+      const handle = { getBoundingClientRect: () => ({ left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 }),
+        setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} };
+      enter();
+      harness.callbacks().onResizeStart({ button: 0, pointerId: 1, clientX: 0, clientY: 0, currentTarget: handle,
+        preventDefault() {} });
+      leave();
+      const resizeKept = !driver.cursorExitTimerPending();
+      harness.callbacks().onResizeEnd();
+
+      // Live edits: a new delay restarts a pending exit; switching off stops it.
+      exit();
+      harness.emitOptions({ ...settings, hidePopupOnCursorExitDelayMs: 250 });
+      const restarted = !fire(500) && [...timers.values()].some((timer) => timer.delay === 250);
+      harness.emitOptions({ ...settings, hidePopupOnCursorExit: false });
+      const stopped = restarted && !driver.cursorExitTimerPending() && shown();
+      exit();
+      const off = stopped && !driver.cursorExitTimerPending() && shown();
+      return {
+        "hide popup on cursor exit hides a sticky popup the pointer left, after its own delay, and keeps one never entered":
+          (neverEntered && leftPage && reentered && leftWindow && replaced && ownWord)
+          || { neverEntered, leftPage, reentered, leftWindow, replaced, ownWord },
+        "hide popup on cursor exit spares drafts, audio menus and resizing but not a mouse-focused button, and applies live":
+          (draftKept && menuKept && buttonHidden && resizeKept && off)
+          || { draftKept, menuKept, buttonHidden, resizeKept, restarted, stopped, off },
+      };
+    } finally {
+      harness.close();
+    }
   }
 
   async function deferredInvalidationCase() {
@@ -20047,9 +20378,9 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionLanguageCase(), ...await selectionNoticeCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
-    activation: await activationCase(),
+    activation: { ...await activationCase(), ...await cursorExitCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
@@ -20391,7 +20722,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { title: "Rank A", frequencyMode: "rank-based" },
     { title: "Rank B", frequencyMode: "rank-based" },
     { title: "Occurrences", frequencyMode: "occurrence-based" },
-  ], 12, true, false);
+  ], 12, true, false).filter(tag => !tag.hidden);
   check("frequency aggregates use native values once per dictionary and keep rank occurrence and unknown units separate",
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
       === JSON.stringify([1645, 1000, 7])

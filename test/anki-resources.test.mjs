@@ -6,11 +6,11 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { buildAnkiResourceFields } from "../extension/anki-resources.js";
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+const { JSDOM, VirtualConsole } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(homedir(), ".cache/hachidori-e2e")] }));
 
-function fixture(t) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+function fixture(t, options) {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", options);
   t.after(() => dom.window.close());
   const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [
     { dictionary: "A", glossary: JSON.stringify([{ type: "structured-content", content: [
@@ -52,4 +52,22 @@ test("plain glossary fields neither load CSS nor plan media, while unavailable r
   assert.deepEqual((await buildAnkiResourceFields(request, { Front: template("{glossary-plain}") }, resources)).media, []);
   await assert.rejects(buildAnkiResourceFields(request, { Front: template("{glossary}") }, { ...resources, styles: async () => [] }),
     /dictionary generation is no longer available/u);
+});
+
+test("Smaller Anki cards compacts rich glossaries only and keeps their planned images", async t => {
+  // jsdom resolves no scoped CSS or pseudo-elements (test/chrome-e2e.mjs checks
+  // the cascade); a silent console drops its not-implemented notices.
+  const { document, request } = fixture(t, { virtualConsole: new VirtualConsole() });
+  const resources = { document, dictionaryPaths: { A: "/dicts/generation-a/A", B: "/dicts/generation-b/B" },
+    styles: async () => [] };
+  const templates = { Front: template("{glossary}"), Back: template("{glossary-plain}") };
+  const normal = await buildAnkiResourceFields(request, templates, resources);
+  const compact = await buildAnkiResourceFields(request, templates, { ...resources, compactGlossary: true });
+  assert.equal(compact.fields.Back, normal.fields.Back);
+  assert.match(normal.fields.Front, /gsm-hoshidicts-glossary-content/u);
+  assert.match(compact.fields.Front, /^<div class="yomitan-glossary" style="text-align: left;"><ol><li data-dictionary="A">/u);
+  assert.doesNotMatch(compact.fields.Front, /gloss-sc-|gsm-hoshidicts|data-hoshidicts|structured-content|title=/u);
+  assert.deepEqual(compact.media, normal.media);
+  for (const { filename } of compact.media) assert.ok(compact.fields.Front.includes(`src="${filename}"`));
+  assert.equal(document.body.children.length, 0, "the cascade mount is removed");
 });

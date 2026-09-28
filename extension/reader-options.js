@@ -37,6 +37,8 @@
       description: "Import MDict .mdx dictionaries, with their .mdd resource files, from Add dictionaries. Choose the .mdx and its .mdd files together." },
     { id: "googleDocs", label: "Google Docs",
       description: "Look up words in Google Docs. Asks Google Docs to expose its text to Hachidori, which Google may change or remove without notice; the sentence is the hovered run of text." },
+    { id: "smallerAnkiCards", label: "Smaller Anki cards",
+      description: "Write compact definitions to new Anki notes: dictionary stylesheets, classes and wrappers are left out, keeping the text, line breaks, lists, tables, furigana and images. Notes already in Anki are not changed." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -92,8 +94,12 @@
     showNoResultNotice: true,
     lookupMode: "activationSticky",
     activationKey: "Shift",
+    definitionLookupMode: "inherit",
     hoverDelayMs: 0,
     popupHideDelayMs: 160,
+    // Yomitan's scanning.hidePopupOnCursorExit and hidePopupOnCursorExitDelay.
+    hidePopupOnCursorExit: false,
+    hidePopupOnCursorExitDelayMs: 160,
     popupNestingMaxDepth: 10,
     popupTheme: "default",
     popupToolbarPosition: "auto",
@@ -152,6 +158,7 @@
     maxResults: [1, 256],
     hoverDelayMs: [0, 2000],
     popupHideDelayMs: [0, 5000],
+    hidePopupOnCursorExitDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
     popupWidthPx: [280, 1200],
     popupHeightPx: [200, 900],
@@ -196,6 +203,8 @@
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation", "activationSticky"];
+  // How words in a popup's definitions open child popups. "inherit" follows lookupMode.
+  const DEFINITION_LOOKUP_MODES = ["inherit", "activation", "click"];
   const POPUP_TOOLBAR_POSITIONS = new Set(["auto", "top", "bottom"]);
   // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
   const ACTIVATION_KEYS = [
@@ -544,6 +553,7 @@
   // Enumerated options fall back to their default outside the listed values.
   const ENUMERATED_OPTIONS = {
     lookupMode: new Set(LOOKUP_MODES),
+    definitionLookupMode: new Set(DEFINITION_LOOKUP_MODES),
     popupTheme: POPUP_THEME_IDS,
     popupToolbarPosition: POPUP_TOOLBAR_POSITIONS,
     frequencyOrder: new Set(FREQUENCY_ORDERS),
@@ -714,7 +724,7 @@
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
-    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS,
     KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,

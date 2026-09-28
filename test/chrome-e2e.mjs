@@ -295,7 +295,9 @@ const PLANNED = [
   "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
+  "Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+  "Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
@@ -327,6 +329,7 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
+  "hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
@@ -336,6 +339,7 @@ const PLANNED = [
   "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
+  "definition text can wait for the activation key or a click in Hover mode",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "fallback source paint tracks CSS transitions and animated ancestors",
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
@@ -421,6 +425,7 @@ const PLANNED = [
   "repeated keyboard activation returns focus to an existing child lookup close control",
   "focused popup controls prevent incidental definition pointer lookups",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
+  "hide popup on cursor exit closes a sticky child after its own delay once the pointer returns to the parent",
   "linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports",
   "a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click",
   "a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts",
@@ -1479,12 +1484,16 @@ async function popupReader(page, depth = 0) {
                 && laterStyle.borderTopColor === style.borderTopColor
                 && laterStyle.borderRadius === style.borderRadius && laterStyle.fontSize === style.fontSize;
             })(),
-            clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
-              const value = node.getBoundingClientRect();
-              const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
-              const capsule = node.closest(".gsm-hoshidicts-primary-metadata-capsule").getBoundingClientRect();
-              return value.right > Math.min(tag.right, capsule.right) + 1 || value.left < Math.max(tag.left, capsule.left) - 1;
-            }),
+            // Hidden per-dictionary tags (averages on) have no boxes to clip.
+            clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")]
+              .filter(node => node.getClientRects().length > 0).some(node => {
+                const value = node.getBoundingClientRect();
+                const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
+                const capsule = node.closest(".gsm-hoshidicts-primary-metadata-capsule").getBoundingClientRect();
+                return value.right > Math.min(tag.right, capsule.right) + 1 || value.left < Math.max(tag.left, capsule.left) - 1;
+              }),
+            hiddenFrequencyDictionaries: [...this.querySelectorAll(".gsm-hoshidicts-tag-frequency[hidden]")]
+              .filter(tag => tag.getClientRects().length === 0).map(tag => tag.dataset.dictionary),
             pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
             ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
             ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
@@ -1580,6 +1589,7 @@ async function popupReader(page, depth = 0) {
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
           menuFits: Boolean(menuRect && menuRect.height > 100 && menuRect.top >= popupRect.top && menuRect.bottom <= popupRect.bottom),
           candidatePoint: candidateRect && { x: candidateRect.x + candidateRect.width / 2, y: candidateRect.y + candidateRect.height / 2 },
+          buttonRect: button?.getBoundingClientRect().toJSON(),
           focused: root.activeElement?.className, rect: this.getBoundingClientRect().toJSON() };
       }.toString(),
     });
@@ -3080,6 +3090,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     { x: rect.right - 8, y: rect.top + 8 }, { x: rect.right - 8, y: rect.bottom - 8 },
   ].find(point => !inside(cover, point)) ?? { x: rect.left + 8, y: rect.top + 8, covered: true };
   let definitionEvidence;
+  let triggerEvidence;
   let evidence;
   let clickEvidence;
   let stickyEvidence;
@@ -3323,6 +3334,76 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       activationKey: originalOptions.activationKey ?? "Shift",
       lookupMode: originalOptions.lookupMode ?? "hover",
     });
+    // Issue #355 with the real mouse and keyboard while the page stays on
+    // Hover: sweeping, resting and wheeling over definitions opens nothing
+    // until the key is held or, in Click mode, a word is clicked.
+    const centre = hit => ({ x: hit.rect.x + hit.rect.width / 2, y: hit.rect.y + hit.rect.height / 2 });
+    triggerEvidence = {};
+    await writeOptions({ lookupMode: "hover", activationKey: "Shift", definitionLookupMode: "activation" });
+    await popup.nested("blur");
+    const sweep = [await popup.definitionTextRect("A linked definition."), await popup.definitionTextRect(fixture.child),
+      await popup.definitionTextRect(fixture.missing)];
+    triggerEvidence.sweep = sweep.map(hit => hit?.text ?? null);
+    if (sweep.every(Boolean)) {
+      await tab.mouse.move(centre(sweep[0]).x, centre(sweep[0]).y);
+      for (const hit of sweep.slice(1)) await tab.mouse.move(centre(hit).x, centre(hit).y, { steps: 12 });
+      await tab.mouse.wheel({ deltaY: 240 });
+      await tab.mouse.wheel({ deltaY: -240 });
+      await moveToDefinition(await popup.definitionTextRect(fixture.child));
+      await settle(500);
+    }
+    triggerEvidence.keySwept = await child.state();
+    await tab.keyboard.down("Shift");
+    try {
+      triggerEvidence.keyChild = await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    } finally {
+      await tab.keyboard.up("Shift");
+    }
+    await settle(300);
+    triggerEvidence.keyReleased = await child.state();
+    if (child.visible(triggerEvidence.keyReleased)) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+    await writeOptions({ definitionLookupMode: "click" });
+    const clickSource = await popup.definitionTextRect(fixture.child);
+    await moveToDefinition(clickSource);
+    await tab.keyboard.down("Shift");
+    await settle(400);
+    await tab.keyboard.up("Shift");
+    triggerEvidence.clickHovered = await child.state();
+    if (clickSource) await tab.mouse.click(centre(clickSource).x, centre(clickSource).y);
+    triggerEvidence.clickChild = await waitForPopupState(child, state => state.plain.includes(fixture.child));
+    const clickLayout = await child.nested();
+    triggerEvidence.clickPlacement = anchoredTo(clickLayout?.rect, clickSource?.rect, clickLayout?.viewport);
+    if (triggerEvidence.clickChild) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+    const dragStart = await popup.definitionTextRect("A linked definition.");
+    if (dragStart && clickSource) {
+      // Press near the glyph's edge, as the page drags do: a synthetic press
+      // at a glyph's midpoint did not start a selection in headless Chrome.
+      await tab.mouse.move(dragStart.rect.x + 1, centre(dragStart).y);
+      await tab.mouse.down();
+      try {
+        await tab.mouse.move(centre(clickSource).x, centre(clickSource).y, { steps: 8 });
+      } finally {
+        await tab.mouse.up();
+      }
+      await settle(500);
+    }
+    triggerEvidence.dragged = await child.state();
+    triggerEvidence.dragSelection = await tab.evaluate(() => {
+      const selection = document.querySelector("hachidori-host")?.shadowRoot?.getSelection?.();
+      const text = selection?.toString() ?? "";
+      selection?.removeAllRanges();
+      window.getSelection().removeAllRanges();
+      return text;
+    });
+    await popup.nested("focus-link");
+    await writeOptions({ definitionLookupMode: originalOptions.definitionLookupMode ?? "inherit",
+      lookupMode: originalOptions.lookupMode ?? "hover" });
     definitionEvidence = {
       activationChild,
       activationGated,
@@ -3362,6 +3443,27 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await tab.mouse.move(returnPoint.x, returnPoint.y);
     }
     const pointerReturn = await child.waitForHidden();
+    // Issue #363: with Hide popup on cursor exit on, the same return closes
+    // the child in sticky mode too, after the option's delay rather than the
+    // raised Hide delay.
+    let stickyReturn = null;
+    if (mousePosition && !returnPoint.covered) {
+      await writeOptions({ lookupMode: "activationSticky", popupHideDelayMs: 5000,
+        hidePopupOnCursorExit: true, hidePopupOnCursorExitDelayMs: 300 });
+      await tab.mouse.click(source.linkPoint.x, source.linkPoint.y);
+      const reopened = await child.waitForVisible();
+      const stickyPosition = await child.nested();
+      await popup.nested("blur");
+      await tab.mouse.move(stickyPosition.rect.right - 8, stickyPosition.rect.bottom - 8);
+      await settle(500);
+      const retainedInside = child.visible(await child.state());
+      const back = pointOutside(source.rect, stickyPosition.rect);
+      await tab.mouse.move(back.x, back.y);
+      stickyReturn = { reopened: reopened !== null, retainedInside, back, hidden: await child.waitForHidden(2500) };
+      await writeOptions({ lookupMode: originalOptions.lookupMode ?? "hover",
+        popupHideDelayMs: originalOptions.popupHideDelayMs ?? 160, hidePopupOnCursorExit: false,
+        hidePopupOnCursorExitDelayMs: originalOptions.hidePopupOnCursorExitDelayMs ?? 160 });
+    }
     stickyEvidence = await stickyLargeChildScenario(returnPoint);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
@@ -3465,13 +3567,14 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, mousePosition, childHoverRetained, returnPoint, pointerReturn, first, repeatedKeyboardFocus,
+    evidence = { source, mouseChild, mousePosition, childHoverRetained, returnPoint, pointerReturn, stickyReturn, first, repeatedKeyboardFocus,
       focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
       secondSource, second, fullChain, limited, narrowRoot, narrowChild, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
     await writeOptions({
       activationKey: originalOptions.activationKey ?? "Shift",
       lookupMode: originalOptions.lookupMode ?? "hover",
+      definitionLookupMode: originalOptions.definitionLookupMode ?? "inherit",
       popupNestingMaxDepth: originalOptions.popupNestingMaxDepth ?? 10,
     });
     const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
@@ -3505,6 +3608,15 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && definitionEvidence.activationGated
       && definitionEvidence.activationChild?.plain.includes(fixture.child),
     JSON.stringify(definitionEvidence));
+  check("definition text can wait for the activation key or a click in Hover mode",
+    JSON.stringify(triggerEvidence.sweep) === JSON.stringify(["A", fixture.child[0], fixture.missing[0]])
+      && !child.visible(triggerEvidence.keySwept)
+      && triggerEvidence.keyChild?.plain.includes(fixture.child) && child.visible(triggerEvidence.keyReleased)
+      && !child.visible(triggerEvidence.clickHovered)
+      && triggerEvidence.clickChild?.plain.includes(fixture.child)
+      && triggerEvidence.clickPlacement.ok && (triggerEvidence.clickPlacement.below || triggerEvidence.clickPlacement.above)
+      && !child.visible(triggerEvidence.dragged) && triggerEvidence.dragSelection.length > 0,
+    JSON.stringify(triggerEvidence));
   check("nested definition lookups use an accessible close control that dismisses the child popup",
     definitionEvidence.definitionClose?.label === "Close lookup"
       && definitionEvidence.definitionClose.text === ""
@@ -3539,6 +3651,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
       && JSON.stringify(evidence.disabled.depths) === "[0]"
       && evidence.refreshedControls.every(value => value === true), JSON.stringify(evidence));
+  check("hide popup on cursor exit closes a sticky child after its own delay once the pointer returns to the parent",
+    evidence.stickyReturn?.reopened && evidence.stickyReturn.retainedInside && !evidence.stickyReturn.back.covered
+      && evidence.stickyReturn.hidden, JSON.stringify(evidence.stickyReturn));
   const placement = {
     hoverChild: anchoredTo(definitionEvidence.definitionChildLayout?.rect, definitionEvidence.definitionSource?.rect,
       definitionEvidence.definitionChildLayout?.viewport),
@@ -5174,6 +5289,13 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") }, ...anki } } });
     if (!reply.ok) throw new Error(reply.error);
   }, { audio, source, anki });
+  // Experimental patches carry the complete flag record.
+  const experimental = flags => settings.evaluate(async flags => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+      options: { experimental: { ...HDReaderOptions.normaliseOptions(options).experimental, ...flags } } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, flags);
   const operation = (type, request) => settings.evaluate(async ({ type, request }) => {
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type, requestId: "anki-browser-test", request });
     if (!reply.ok) throw new Error(reply.error);
@@ -5209,6 +5331,29 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
       JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
+
+    // Smaller Anki cards (#354): the same result is written as compact HTML,
+    // and the image it keeps is uploaded again once Anki no longer has it.
+    await experimental({ smallerAnkiCards: true });
+    const compactTemplate = value => ({ value, overwriteMode: "overwrite" });
+    await configure(false, { fieldTemplates: { Front: compactTemplate("{expression} compact"),
+      Back: compactTemplate("{glossary}"), Audio: compactTemplate("") } });
+    const compactRequest = { ...request, configKey: (await operation("hd_anki_status")).configKey };
+    for (const filename of images) files.delete(filename);
+    const compactUploads = calls.filter(call => call.action === "storeMediaFile").length;
+    const compactAdded = await operation("hd_anki_submit", compactRequest);
+    await experimental({ smallerAnkiCards: false });
+    const compactNote = notes.get(compactAdded.noteId);
+    const compactImages = [...new Set([...compactNote.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]))];
+    check("Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
+      compactAdded.state === "added" && compactAdded.warnings.length === 0 && compactNote.Front === "漢字 compact"
+        && compactNote.Back.startsWith('<div class="yomitan-glossary" style="text-align: left;"><ol><li data-dictionary="')
+        && !/<style|@scope|gloss-sc-|gsm-hoshidicts|data-hoshidicts|structured-content/u.test(compactNote.Back)
+        && compactNote.Back.includes("<b>Chinese characters</b>") && compactNote.Back.includes("<i>Han</i>")
+        && JSON.stringify(compactImages) === JSON.stringify([...new Set(images)])
+        && compactImages.every(filename => files.has(filename))
+        && calls.filter(call => call.action === "storeMediaFile").length === compactUploads + compactImages.length,
+      JSON.stringify({ compactAdded, compactNote, compactImages, images }));
 
     const markerDictionary = request.term.glossaries[0].dictionary;
     const markerPackage = await settings.evaluate(async title => {
@@ -5349,7 +5494,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
         options: { anki: original.anki, audioSources: original.audioSources, audioAutoplay: original.audioAutoplay,
-          popupColumns: original.popupColumns ?? 1 } });
+          popupColumns: original.popupColumns ?? 1, experimental: HDReaderOptions.normaliseOptions(original).experimental } });
       if (!reply.ok) throw new Error(reply.error);
     }, original);
     if (screenshotDictionaryInstalled) await settings.evaluate(async title => {
@@ -5690,7 +5835,7 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
 
 async function checkAnkiGlossaryExport(page) {
   const imageRequests = [];
-  const observe = request => { if (request.url().includes("hd-anki-inert-image.png")) imageRequests.push(request.url()); };
+  const observe = request => { if (/hd-anki-(?:inert|hidden)-image\.png/u.test(request.url())) imageRequests.push(request.url()); };
   page.on("request", observe);
   try {
     const result = await page.evaluate(async () => {
@@ -5744,6 +5889,76 @@ async function checkAnkiGlossaryExport(page) {
         && result.sizes.slice(0, 2).every(([width, height]) => width === 400 && height === 200)
         && result.sizes[2][0] === 10 && result.sizes[2][1] === 20
         && imageRequests.length === 0, JSON.stringify({ ...result, imageRequests }));
+
+    // Smaller Anki cards (#354): the exporter reads the scoped cascade of the
+    // live document and writes only what it means for the content.
+    const compact = await page.evaluate(async () => {
+      const { createAnkiDefinitionRenderer } = await import("./anki-glossary.js");
+      const dictionary = "Compact <Dictionary>";
+      const tag = content => ({ tag: "span", title: "Part of speech", data: { class: "tag", content: "part-of-speech-info" }, content });
+      const source = { term: { rules: "v1", glossaries: [{ dictionary, definitionTags: "", termTags: "★", glossary: JSON.stringify([
+        { type: "structured-content", content: [
+          { tag: "ul", lang: "ja", data: { content: "sense-groups" }, content: { tag: "li", content: [tag("1-dan"), tag("transitive"),
+            { tag: "ol", content: { tag: "li", style: { listStyleType: "\"①\"" }, content: [
+              { tag: "ul", data: { content: "glossary" }, content: { tag: "li", content: "to eat" } },
+              { tag: "div", data: { content: "hidden-note" }, content: ["never shown", { tag: "img", path: "hidden.png" }] },
+            ] } }] } },
+          { tag: "table", content: { tag: "tr", content: { tag: "td", data: { class: "form-pri" }, content: { tag: "span" } } } },
+          { tag: "div", content: [{ tag: "span", style: { fontWeight: "bold" }, content: "bold" }, " and ",
+            { tag: "span", style: { textDecorationLine: "underline" }, content: "underlined" }, " ",
+            { tag: "a", href: "https://example.com/", content: "link text" }] },
+          { tag: "strong", content: "Scoped" },
+          { tag: "img", path: "image.png", width: 0.5, height: 1, sizeUnits: "em", title: "Accent" },
+        ] },
+        "line one\nline two",
+      ]) }] }, trace: [{ name: "polite" }], dictionaryAliases: {}, generation: 1,
+      dictionaryMedia: [{ dictionary, path: "image.png", filename: "hd-anki-inert-image.png" },
+        { dictionary, path: "hidden.png", filename: "hd-anki-hidden-image.png" }],
+      dictionaryStyles: [{ dictionary, styles: [
+        'ul[data-sc-content="sense-groups"] { list-style-type: "＊"; }',
+        'span[data-sc-class="tag"] { margin-right: 0.5em; }',
+        'li ul[data-sc-content="glossary"] { list-style-type: none; }',
+        'div[data-sc-content="hidden-note"] { display: none; }',
+        'td[data-sc-class="form-pri"] > span { display: block; &::before { content: "△"; } }',
+        '.gloss-sc-strong::before { content: "</style><img src=x onerror=alert(1)>" }',
+      ].join("\n") }] };
+      const children = document.body.children.length;
+      const render = () => createAnkiDefinitionRenderer(document, source, undefined, { compact: true })({});
+      const html = await render();
+      const again = await render();
+      const inert = document.implementation.createHTMLDocument("");
+      inert.body.innerHTML = html;
+      const $ = selector => inert.querySelector(selector);
+      const groups = $('div[class="yomitan-glossary"] > ol > li[data-dictionary="Compact <Dictionary>"] ul[data-sc-content="sense-groups"]');
+      return {
+        html, same: html === again, mounted: document.body.children.length - children,
+        internal: /<style|@scope|gloss-sc-|gsm-hoshidicts|data-hoshidicts|structured-content|title=|href=|object-fit/u.test(html),
+        root: $('div[class="yomitan-glossary"]').getAttribute("style"),
+        meta: $('div[class="yomitan-glossary"] > ol > li > div > i.yomitan-glossary-meta')?.textContent,
+        details: $("small.yomitan-glossary-details")?.innerHTML,
+        groups: [groups?.getAttribute("lang"), groups?.style.listStyleType],
+        lists: groups ? [...groups.querySelectorAll("li, ol, ul")].map(node => `${node.localName}:${node.getAttribute("style")}`) : [],
+        line: groups?.firstElementChild.textContent,
+        marker: $("td")?.textContent,
+        senses: [...inert.querySelectorAll("ul:not([data-sc-content]) > li")].map(node => node.innerHTML.slice(0, 32)),
+        emphasis: html.includes("<b>bold</b> and <u>underlined</u> link text"),
+        escaped: [...inert.querySelectorAll("b")].some(node => node.textContent === "</style><img src=x onerror=alert(1)>Scoped")
+          && !inert.querySelector("[onerror], script"),
+        images: [...inert.querySelectorAll("img")].map(node => [node.getAttribute("src"), node.alt, node.style.cssText]),
+        hidden: html.includes("never shown") || html.includes("hd-anki-hidden-image.png"),
+      };
+    });
+    check("Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
+      compact.same && compact.mounted === 0 && !compact.internal && !compact.hidden
+        && compact.root === "text-align: left;" && compact.meta === "(★, Compact <Dictionary>)"
+        && compact.details === "Rules: v1<br>Deinflection: polite"
+        && compact.groups[0] === "ja" && compact.groups[1] === '"＊"'
+        && JSON.stringify(compact.lists) === JSON.stringify(["li:null", "ol:null", 'li:list-style-type: "①";', "ul:list-style-type: none;", "li:null"])
+        && compact.line === "1-dan transitive to eat" && compact.marker === "△"
+        && compact.senses.length === 2 && compact.senses[1] === "line one<br>line two"
+        && compact.emphasis && compact.escaped
+        && JSON.stringify(compact.images) === JSON.stringify([["hd-anki-inert-image.png", "Accent", "width: 0.5em; height: 1em; max-width: 100%;"]])
+        && imageRequests.length === 0, JSON.stringify({ ...compact, imageRequests }));
   } finally { page.off("request", observe); }
 }
 
@@ -8009,6 +8224,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
       && !averaged.metadata.clippedFrequencies && averaged.metadata.frequencyTagsUniform
+      && averaged.metadata.hiddenFrequencyDictionaries.includes("hachidori-fixture")
+      && normal.metadata.hiddenFrequencyDictionaries.length === 0
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
@@ -8121,7 +8338,8 @@ async function checkHoverHitTesting(tab, popup) {
 
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay",
+    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay", "opt-hide-on-cursor-exit",
+    "opt-definition-lookup-mode",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -8146,7 +8364,8 @@ async function checkReaderActivation(settings, tab, popup) {
       opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
       JSON.stringify({ closed, disabled, reopened: reopened !== null }));
 
-    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400" });
+    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400",
+      "opt-definition-lookup-mode": "click" });
     await popup.waitForHidden();
     await moveToWord();
     await pause(250);
@@ -8162,20 +8381,25 @@ async function checkReaderActivation(settings, tab, popup) {
     await pause(300);
     const cancelled = !popup.visible(await popup.state());
     const activationControls = () => settings.evaluate(async () => {
-      const { lookupMode, activationKey } = HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
+      const { lookupMode, activationKey, definitionLookupMode } =
+        HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
       return {
         key: document.getElementById("opt-activation-key").value,
         disabled: document.getElementById("opt-activation-key").disabled,
         sticky: document.getElementById("opt-lookup-sticky").checked,
         stickyHidden: document.getElementById("opt-lookup-sticky-row").hidden,
         stored: [lookupMode, activationKey],
+        childPopups: document.getElementById("opt-definition-lookup-mode").value,
+        keyChoice: document.querySelector('#opt-definition-lookup-mode option[value="activation"]').textContent,
+        storedChildPopups: definitionLookupMode,
       };
     });
     const controls = await activationControls();
     check("configured activation keys open stationary lookups and release them using the saved delays",
       gated && activated !== null && retained && released && cancelled
         && JSON.stringify(controls.stored) === JSON.stringify(["activation", "K"])
-        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled,
+        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled
+        && controls.childPopups === "click" && controls.storedChildPopups === "click" && controls.keyChoice === "Hold K",
       JSON.stringify({ gated, activated: activated !== null, retained, released, cancelled, controls }));
 
     await edit({ "opt-activation-key": "" });
@@ -8204,12 +8428,51 @@ async function checkReaderActivation(settings, tab, popup) {
         && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky
         && arrowed.key === "K" && arrowed.sticky && !arrowed.stickyHidden,
       JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing, arrowed }));
+
+    // Issue #363: Hide popup on cursor exit keeps a sticky popup through key
+    // release until the pointer has been inside it and left. The focus a mouse
+    // click leaves on a popup button does not keep it; keyboard focus does.
+    await edit({ "opt-activation-key": "Shift", "opt-lookup-sticky": true,
+      "opt-hide-on-cursor-exit": true, "opt-hide-on-cursor-exit-delay": "300" });
+    const openSticky = async () => {
+      await moveToWord();
+      await tab.keyboard.down("Shift");
+      const shown = await popup.waitForVisible();
+      await tab.keyboard.up("Shift");
+      return shown;
+    };
+    const clickAudio = async () => {
+      const box = (await popup.audio())?.buttonRect;
+      if (box) await tab.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      return (await popup.state()).focusedClass;
+    };
+    const stickyOpened = await openSticky();
+    await tab.mouse.move(2, 2);
+    await pause(600);
+    const neverEntered = popup.visible(await popup.state());
+    const clickFocus = await clickAudio();
+    await tab.mouse.move(2, 2);
+    const clickedHidden = await popup.waitForHidden(3000);
+    await openSticky();
+    await clickAudio();
+    await tab.keyboard.press("Tab");
+    const keyboardFocus = (await popup.state()).focusedClass;
+    await tab.mouse.move(2, 2);
+    await pause(600);
+    const keyboardKept = popup.visible(await popup.state());
+    await tab.keyboard.press("Escape");
+    check("hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
+      stickyOpened !== null && neverEntered && clickFocus.includes("gsm-hoshidicts-audio-button") && clickedHidden
+        && keyboardFocus !== "" && !keyboardFocus.includes("gsm-hoshidicts-audio-button") && keyboardKept,
+      JSON.stringify({ stickyOpened: stickyOpened !== null, neverEntered, clickFocus, clickedHidden, keyboardFocus, keyboardKept }));
   } finally {
     await tab.keyboard.up("k");
     // Keep a non-default key behind No key to prove that choosing No key
     // preserves it and that the exact setting survives the full browser restart.
+    // The cursor-exit delay likewise stays at 300 ms with its switch off, and
+    // child popups keep a non-default Click trigger through the restart.
     await edit({ "opt-activation-key": "K" });
-    await edit(original);
+    await edit({ ...original, "opt-definition-lookup-mode": "click" });
     await tab.keyboard.press("Escape");
   }
 }
@@ -13688,7 +13951,10 @@ async function main() {
       && document.getElementById("opt-activation-key").value
         === (expected.lookupMode === "hover" ? "" : expected.activationKey)
       && document.getElementById("opt-lookup-sticky-row").hidden === (expected.lookupMode === "hover")
+      && document.getElementById("opt-definition-lookup-mode").value === (expected.definitionLookupMode ?? "inherit")
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
+      && document.getElementById("opt-hide-on-cursor-exit").checked === expected.hidePopupOnCursorExit
+      && document.getElementById("opt-hide-on-cursor-exit-delay").value === String(expected.hidePopupOnCursorExitDelayMs)
       && document.getElementById("opt-popup-columns").value === String(expected.popupColumns)
       && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary
       && document.getElementById("opt-frequency-order").value === expected.frequencyOrder
