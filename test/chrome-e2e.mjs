@@ -6010,8 +6010,9 @@ async function checkStartupFileAccess(settings, browser, startupUrl) {
 // options are restored afterwards so the later Anki checks start as they did.
 async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
   const localAudioUrl = "http://127.0.0.1:5050/?term={term}&reading={reading}";
-  const localAudioInfo = { requests: 0, status: 200, contentType: "application/json",
-    body: JSON.stringify({ lookupMode: "sqlite", sources: ["fixture"], audioPack: null }) };
+  // AnkiWeb's Local Audio Server 1.7.0 raises on a path without a term, which
+  // closes the connection and makes Anki show an add-on error: setup never asks.
+  const localAudioInfo = { requests: 0, fail: "ConnectionClosed" };
   const localAudioSample = { requests: 0, status: 200, contentType: "application/json",
     body: JSON.stringify({ type: "audioSourceList", audioSources: [] }) };
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
@@ -6189,7 +6190,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && audioSources[0]?.type === "custom-json" && audioSources[0]?.enabled === true
         && audioSources[0]?.url === localAudioUrl
         && audioSources[1]?.id === "default-tts"
-        && localAudioInfo.requests === 1 && localAudioSample.requests === 1,
+        && localAudioInfo.requests === 0 && localAudioSample.requests === 1,
       JSON.stringify({ configured, audioSources, localAudioInfo, localAudioSample }));
 
     await startup.close();
