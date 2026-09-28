@@ -5340,7 +5340,10 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       calls.findIndex(call => call.action === "storeMediaFile" && call.params.filename === filename));
     check("Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
       before.canAdd && readOnly && added.state === "added" && added.warnings.length === 0 && duplicate.state === "duplicate" && !duplicate.canAdd
-        && images.length > 0 && images.every(filename => files.has(filename)) && note.Back.includes("@scope")
+        && images.length > 0 && images.every(filename => files.has(filename))
+        // Dictionary styles are prefixed with their dictionary's item, as in
+        // Yomitan's cards, so Anki's older Chromium applies them without @scope.
+        && note.Back.includes(".yomitan-glossary [data-dictionary=") && !note.Back.includes("@scope")
         && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
       JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
