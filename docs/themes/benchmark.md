@@ -1,11 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Default vs direct Nazeka — MVP benchmark
 
-Measured on 2026-09-28 at Hachidori **befcf61e5b36138cc8b1e30e3dc32b8ce0bf70ea**.
+Measured on 2026-09-28 at Hachidori **e4af9457acde9fa625805ba0bfb01219dc4e5813**.
 Both themes use exactly the same engine, input, options and extension revision.
-Subsequent changes add catalogue captions, screenshots, evidence and text
-separators for image captions/disclosure headings (not present in these inputs).
-The renderer architecture and benchmark input paths are unchanged.
+Subsequent changes update catalogue captions, screenshots, source pins and evidence.
 
 ## Results
 
@@ -16,27 +14,27 @@ flat, 40-level structured and 24-sense dictionary entries.
 
 | Measurement | Default median / p95 | Nazeka median / p95 |
 | --- | ---: | ---: |
-| Cold first correct frame (6 samples) | 92.70 / 96.50 ms | 68.10 / 70.50 ms |
-| Cold complete stable result | 102.20 / 146.40 ms | 70.30 / 72.90 ms |
-| Warm first correct frame | 19.15 / 27.00 ms | 17.70 / 19.20 ms |
-| Warm complete stable result | 49.80 / 60.30 ms | 33.40 / 50.10 ms |
-| Synchronous renderer, including core callbacks/layout it triggers | 5.75 / 11.90 ms | 2.25 / 4.30 ms |
-| Script duration during sample | 4.100 / 5.216 ms | 2.366 / 3.251 ms |
-| Style recalculation during sample | 1.980 / 4.192 ms | 0.716 / 0.982 ms |
-| Layout during sample | 2.095 / 5.486 ms | 1.265 / 2.639 ms |
-| Popup element count | 73 / 228 | 19 / 91 |
-| Page JS heap used | 3.23 / 3.67 MiB | 2.73 / 3.12 MiB |
+| Cold first correct frame (6 samples) | 89.65 / 98.50 ms | 69.45 / 77.90 ms |
+| Cold complete stable result | 129.90 / 149.40 ms | 71.65 / 80.90 ms |
+| Warm first correct frame | 18.70 / 25.20 ms | 17.25 / 18.50 ms |
+| Warm complete stable result | 49.80 / 56.90 ms | 33.10 / 33.40 ms |
+| Synchronous renderer, including core callbacks/layout it triggers | 5.90 / 11.80 ms | 2.20 / 4.50 ms |
+| Script duration during sample | 4.163 / 5.293 ms | 2.059 / 3.069 ms |
+| Style recalculation during sample | 1.995 / 4.099 ms | 0.588 / 0.842 ms |
+| Layout during sample | 2.132 / 5.652 ms | 0.726 / 1.991 ms |
+| Popup element count | 73 / 228 | 18 / 90 |
+| Page JS heap used | 3.24 / 3.68 MiB | 2.70 / 3.13 MiB |
 
-Nazeka takes **61% less synchronous render time** and creates fewer nodes. All
-measured work categories decrease. Cold first-frame median improves by 27%,
-and warm complete-frame median by 33% in this run. Six cold samples are a small
+Nazeka takes **63% less synchronous render time** and creates fewer nodes. All
+measured work categories decrease. Cold first-frame median improves by 23%,
+and warm complete-frame median by 34% in this run. Six cold samples are a small
 set. These results do **not** establish that every lookup or dictionary search
 is faster.
 
 The earlier pre-review comparison at `7ef2a8d` measured 2.45 vs 0.90 ms rendering
 (63% less), with warm completion at 33.3 ms for both themes. Absolute times vary
 with machine load and frame scheduling: the final run's starting load averages
-were 2.40–3.96. We report the final revision above rather than selecting the
+were 2.20–3.81. We report the final revision above rather than selecting the
 fastest run. Historical raw evidence is in `evidence/pre-review/`; its renderer
 timer was inside the host, while the final timer wraps the host in the existing
 benchmark-only probe. Production code now contains no timing counters.
@@ -54,7 +52,9 @@ Counters accumulated over each full profile, including nested lookups:
 The focused Chrome check additionally verifies no Default layout rules in
 Nazeka's stylesheet, no rich dictionary/image/link DOM, and no dictionary style
 nodes. It checks actual hover, kanji/Back, carousel selection, preview and
-switching back to Default. The renderer contract test injects a failure and
+switching back to Default. The final layout check also uses a local fake
+AnkiConnect to verify the real Anki button is ready, audio follows the reading,
+and no lookup count is created even when global counts are enabled. The renderer contract test injects a failure and
 checks model replay with Default CSS.
 
 An initial run found Nazeka's bold Japanese source context loaded an additional

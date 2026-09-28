@@ -56,7 +56,10 @@ presentation updates are optional.
 ## Content and stylesheet ownership
 
 Default alone loads `render/reader.css` and scoped dictionary CSS. Nazeka loads
-its own CSS plus shared icon controls. Custom CSS remains last. Nazeka's
+its own CSS plus shared icon controls. Both still parse the shared `popup.js`
+script for existing geometry/action helpers; Nazeka never calls its Default
+view factory. Splitting that script could reduce startup parsing later, but is
+outside this MVP. Custom CSS remains last. Nazeka's
 `glossaryToPlainText` traverses dictionary data without building rich DOM,
 requesting images, or creating dictionary links. Rich content remains untrusted.
 The existing `appendTextOnlyGlossary` is a rich helper and is not text mode.
