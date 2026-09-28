@@ -466,10 +466,12 @@ bool dictionary_files_present(const std::filesystem::path &dir) {
          non_empty_file(dir / "blobs.bin");
 }
 
-// The loader maps every file into linear memory (Emscripten's mmap copies it
-// in), and a refused memory.grow surfaces only as MAP_FAILED with errno ENOMEM
-// (WasmFS syscalls.cpp _mmap_js; classic FS FS.ErrnoError(ENOMEM)). Callers zero
-// errno before the add so that case reads differently from a damaged package.
+// The loader maps a package's index files, and its blobs.bin unless the
+// package is paged, into linear memory (Emscripten's mmap copies them in), and
+// a refused memory.grow surfaces only as MAP_FAILED with errno ENOMEM (WasmFS
+// syscalls.cpp _mmap_js; classic FS FS.ErrnoError(ENOMEM)). Callers zero errno
+// before the add so that case reads differently from a damaged package; the
+// extension retries it paged (engine-service.js addDictionaryKind).
 std::string rejected_dictionary(const char* kind, const std::string& dict_path) {
   if (errno == ENOMEM) {
     return std::string{"not enough memory to load "} + kind + " dictionary: " + dict_path;
@@ -928,7 +930,7 @@ EMSCRIPTEN_KEEPALIVE void hdw_reset(void) {
   }
 }
 
-EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
+EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind, int paged) {
   clear_error();
   if (path == nullptr || *path == '\0') {
     set_error("empty dictionary path");
@@ -945,29 +947,33 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
       set_error("not an imported dictionary directory: " + dict_path);
       return 0;
     }
+    // Paged reads blobs.bin on demand instead of copying it into the heap
+    // (DictionaryStorage in hoshidicts/query.hpp). A kind added after another
+    // kind of the same package shares that kind's files either way.
+    const DictionaryStorage storage = paged != 0 ? DictionaryStorage::Paged : DictionaryStorage::Mapped;
     errno = 0;
     switch (kind) {
       case 0:
-        if (!e.query.add_term_dict(dict_path)) {
+        if (!e.query.add_term_dict(dict_path, storage)) {
           set_error(rejected_dictionary("term", dict_path));
           return 0;
         }
         e.term_paths.push_back(dict_path);
         break;
       case 1:
-        if (!e.query.add_freq_dict(dict_path)) {
+        if (!e.query.add_freq_dict(dict_path, storage)) {
           set_error(rejected_dictionary("frequency", dict_path));
           return 0;
         }
         break;
       case 2:
-        if (!e.query.add_pitch_dict(dict_path)) {
+        if (!e.query.add_pitch_dict(dict_path, storage)) {
           set_error(rejected_dictionary("pitch", dict_path));
           return 0;
         }
         break;
       default:
-        if (!e.query.add_kanji_dict(dict_path)) {
+        if (!e.query.add_kanji_dict(dict_path, storage)) {
           set_error(rejected_dictionary("kanji", dict_path));
           return 0;
         }
@@ -1156,23 +1162,21 @@ EMSCRIPTEN_KEEPALIVE int hdw_media(const char* dictionary, const char* path) {
     return 0;
   }
   try {
-    // Copied out of the mmap'd dictionary so the pointer handed to JS survives a
-    // later hdw_reset.
+    // Read out of media.bin, which the engine never copies into the heap, into
+    // a buffer that also survives a later hdw_reset.
     if (std::string_view{dictionary}.size() > MAX_MEDIA_DICTIONARY_BYTES) {
       throw std::length_error("media dictionary exceeds the 1024-byte limit");
     }
     if (std::string_view{path}.size() > MAX_MEDIA_PATH_BYTES) {
       throw std::length_error("media path exceeds the 4096-byte limit");
     }
-    const MediaFileView view = engine().query.get_media_file_view(dictionary, path);
-    if (view.data == nullptr || view.size == 0) {
+    const size_t size = engine().query.read_media_file(dictionary, path, g_media, MAX_MEDIA_BYTES);
+    if (size == 0) {
       return 0;
     }
-    if (view.size > MAX_MEDIA_BYTES) {
+    if (size > MAX_MEDIA_BYTES) {
       throw std::length_error("media exceeds the 4 MiB byte limit");
     }
-    const auto* bytes = reinterpret_cast<const uint8_t*>(view.data);
-    g_media.assign(bytes, bytes + view.size);
     return static_cast<int>(g_media.size());
   } catch (...) {
     set_error(describe_current_exception());
@@ -1182,5 +1186,14 @@ EMSCRIPTEN_KEEPALIVE int hdw_media(const char* dictionary, const char* path) {
 }
 
 EMSCRIPTEN_KEEPALIVE const uint8_t* hdw_media_data(void) { return g_media.data(); }
+
+// Bytes of blobs.bin pages the engine holds for paged dictionaries.
+EMSCRIPTEN_KEEPALIVE double hdw_page_cache_bytes(void) {
+  try {
+    return static_cast<double>(engine().query.page_cache_bytes());
+  } catch (...) {
+    return 0;
+  }
+}
 
 }  // extern "C"
