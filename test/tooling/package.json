@@ -25,6 +25,6 @@
   "devDependencies": {
     "@puppeteer/browsers": "3.2.3",
     "jsdom": "30.1.1",
-    "puppeteer-core": "25.11.0"
+    "puppeteer-core": "25.12.0"
   }
 }
