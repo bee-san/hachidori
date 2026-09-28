@@ -369,12 +369,27 @@ button,
   white-space: nowrap;
 }
 .library-navigation a {
+  /* The label and its hidden semibold copy share one column. */
+  display: grid;
+  justify-items: center;
   flex: 0 0 auto;
   padding: 7px 10px;
   border-radius: var(--radius-control);
   color: var(--text-dim);
   font-size: var(--font-small);
   text-decoration: none;
+}
+/*
+ * data-label repeats each tab's text. This hidden semibold copy makes every
+ * tab as wide as it is when current, so moving aria-current restyles one tab
+ * without moving the others. It is clipped so it adds no scrollable overflow.
+ */
+.library-navigation a::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: var(--weight-medium);
 }
 .library-navigation a:hover {
   background: var(--surface-sunken);
