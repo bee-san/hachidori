@@ -26,7 +26,7 @@
   const DEFAULT_MAX_METADATA_TAGS = 12;
   const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
-    "hidePopupGrammarTags"];
+    "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
 
   // Shared keyboard semantics for rich cards and direct text definitions.
   function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
@@ -651,45 +651,42 @@
     return [...averageTags, ...tags];
   }
 
-  function createPitchTag(
-    documentRef,
-    group,
-    dictionaryDisplayName,
-    pitch,
-    reading,
-    buildPitchAccentMorae,
-    showDictionaryName = false
-  ) {
-    const positionText = [`[${pitch.position}]`, pitch.pattern].filter(Boolean).join(" ");
-    const bodyText = reading ? `${reading} ${positionText}` : positionText;
-    const tag = createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, "pitch");
-    if (showDictionaryName) {
-      // Yomitan labels each dictionary's pronunciations; like a frequency
-      // source, the name leads the badge and the body stays its last child.
-      const source = documentRef.createElement("span");
-      source.className = "gsm-hoshidicts-pitch-source";
-      source.textContent = dictionaryDisplayName;
-      tag.prepend(source);
+  // Yomitan's pronunciation-group (templates-display.html and display-generator.js
+  // _createGroupedPronunciation at 67db60d): the dictionary's
+  // pronunciation-dictionary tag, then its pitch accents. Each keeps the
+  // `reading [n]` label pitch badges had.
+  function createPronunciationGroup(documentRef, group, dictionaryDisplayName, pitches, reading, display,
+    createPronunciationPitchAccent) {
+    const node = documentRef.createElement("li");
+    node.className = "pronunciation-group";
+    node.dataset.dictionary = group.dictionary;
+    node.dataset.pronunciationsMulti = "true";
+    node.dataset.pronunciationsCount = String(pitches.length);
+    const element = (className, parent, tag = "span") => {
+      const child = documentRef.createElement(tag);
+      child.className = className;
+      parent.appendChild(child);
+      return child;
+    };
+    if (display.showPitchAccentDictionaryNames) {
+      const tag = element("tag gsm-hoshidicts-pitch-source", element("pronunciation-group-tag-list tag-list", node));
+      tag.dataset.category = "pronunciation-dictionary";
+      tag.dataset.details = group.dictionary;
+      element("tag-label-content", element("tag-label", tag)).textContent = dictionaryDisplayName;
     }
-    const morae = buildPitchAccentMorae(reading, pitch.position);
-    if (morae === null) return tag;
-    // The same contour the header furigana draws, so every dictionary's
-    // accent reads as a graph; the text stays in the title and aria-label.
-    const contour = documentRef.createElement("span");
-    contour.className = "gsm-hoshidicts-pitch-contour";
-    for (const mora of morae) {
-      const span = documentRef.createElement("span");
-      span.className = "gsm-hoshidicts-pitch-mora";
-      span.dataset.pitchLevel = mora.level;
-      if (mora.transition) span.dataset.pitchTransition = mora.transition;
-      span.textContent = mora.text;
-      contour.appendChild(span);
-    }
-    const position = documentRef.createElement("span");
-    position.className = "gsm-hoshidicts-pitch-position";
-    position.textContent = positionText;
-    tag.lastChild.replaceChildren(contour, position);
-    return tag;
+    const list = element("pronunciation-list", node, "ul");
+    list.dataset.hasTags = "false";
+    list.dataset.count = String(pitches.length);
+    pitches.forEach((pitch, index) => {
+      const item = createPronunciationPitchAccent(documentRef, reading, pitch, { text: display.showPitchAccentText,
+        position: display.showPitchAccentPosition, graph: display.showPitchAccentGraph });
+      item.classList.add("gsm-hoshidicts-tag-pitch");
+      item.dataset.index = String(index);
+      item.dataset.dictionary = group.dictionary;
+      list.appendChild(item);
+      updatePronunciationLabel(item, dictionaryDisplayName);
+    });
+    return node;
   }
 
   function updatePronunciationLabel(tag, dictionaryDisplayName) {
@@ -2158,7 +2155,7 @@
       popup.appendChild(resizeHandle);
     }
     const appendExpressionRuby = options.appendExpressionRuby;
-    const buildPitchAccentMorae = options.buildPitchAccentMorae;
+    const createPronunciationPitchAccent = options.createPronunciationPitchAccent;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
@@ -2971,6 +2968,9 @@
         showFrequencyDictionaryNames = false,
         compactFrequencyNumbers = false,
         showPitchAccentDictionaryNames = true,
+        showPitchAccentText = true,
+        showPitchAccentPosition = true,
+        showPitchAccentGraph = false,
         imageContext,
         isCurrent,
         onLayoutChange,
@@ -3008,34 +3008,33 @@
         if (context.showPitchAccentBadge !== true) return;
         const names = createDictionaryDisplayNames(result.term.pitches.map(({ dictionary }) => dictionary),
           context.dictionaryPresentation);
+        const display = {
+          showPitchAccentDictionaryNames: context.showPitchAccentDictionaryNames !== false,
+          showPitchAccentText: context.showPitchAccentText !== false,
+          showPitchAccentPosition: context.showPitchAccentPosition !== false,
+          showPitchAccentGraph: context.showPitchAccentGraph === true,
+        };
+        const reading = String(result.term.reading || result.term.expression || "").trim();
+        const groups = documentRef.createElement("ol");
+        groups.className = "pronunciation-group-list";
         const seen = new Set();
         let count = frequencyCount;
         for (const group of result.term.pitches) {
-          for (const pitch of group.pitches) {
-            const reading = String(
-              result.term.reading || result.term.expression || ""
-            ).trim();
-            const key = JSON.stringify([
-              group.dictionary,
-              reading,
-              pitch.position,
-              pitch.pattern,
-            ]);
-            if (!seen.has(key) && count < maxMetadataTags) {
-              seen.add(key);
-              pitchRow.appendChild(createPitchTag(
-                documentRef,
-                group,
-                names.get(group.dictionary) || group.dictionary,
-                pitch,
-                reading,
-                buildPitchAccentMorae,
-                context.showPitchAccentDictionaryNames !== false
-              ));
-              count += 1;
-            }
+          const pitches = group.pitches.filter((pitch) => {
+            const key = JSON.stringify([group.dictionary, pitch.position, pitch.pattern]);
+            if (seen.has(key) || count >= maxMetadataTags) return false;
+            seen.add(key);
+            count += 1;
+            return true;
+          });
+          if (pitches.length > 0) {
+            groups.appendChild(createPronunciationGroup(documentRef, group,
+              names.get(group.dictionary) || group.dictionary, pitches, reading, display,
+              createPronunciationPitchAccent));
           }
         }
+        groups.dataset.count = String(groups.children.length);
+        if (groups.children.length > 0) pitchRow.appendChild(groups);
       }
       const ipaGroups = result.term.pitches.filter(group => group.transcriptions.length > 0);
       let fillOpenIpa = () => {};
@@ -3068,7 +3067,8 @@
         ipaRow.appendChild(overflow);
       } else appendTranscriptions(ipaRow);
       const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
-        compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames };
+        compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames,
+        showPitchAccentText, showPitchAccentPosition, showPitchAccentGraph };
       updateFrequency(context);
       updatePitch(context);
       entry.append(frequencyRow, pitchRow, ipaRow);
@@ -3487,6 +3487,9 @@
             compactFrequencyNumbers: renderContext.compactFrequencyNumbers === true,
             showPitchAccentDictionaryNames:
               renderContext.showPitchAccentDictionaryNames !== false,
+            showPitchAccentText: renderContext.showPitchAccentText !== false,
+            showPitchAccentPosition: renderContext.showPitchAccentPosition !== false,
+            showPitchAccentGraph: renderContext.showPitchAccentGraph === true,
           }
         );
 
@@ -3704,8 +3707,10 @@
           for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
             // An average's label names a unit, not a dictionary.
             if (source.parentNode.dataset.frequencyAverage) continue;
-            const dictionary = source.parentNode.dataset.dictionary;
-            changed = updateLabel(source, names.get(dictionary) || dictionary) || changed;
+            const dictionary = source.closest("[data-dictionary]").dataset.dictionary;
+            // A pronunciation-dictionary tag keeps its name in Yomitan's label span.
+            changed = updateLabel(source.querySelector(".tag-label-content") ?? source,
+              names.get(dictionary) || dictionary) || changed;
           }
         }
         return changed;
@@ -3719,8 +3724,8 @@
           const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers"]
             .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
           const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
-          const pitchChanged = ["showPitchAccentBadge", "showPitchAccentDictionaryNames"]
-            .some(key => imageContext[key] !== appliedMetadata[key]);
+          const pitchChanged = ["showPitchAccentBadge", "showPitchAccentDictionaryNames", "showPitchAccentText",
+            "showPitchAccentPosition", "showPitchAccentGraph"].some(key => imageContext[key] !== appliedMetadata[key]);
           let changed = false;
           let deferred = false;
           if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
@@ -4334,7 +4339,6 @@
     popupCoordinateScale,
     createDictionaryDisplayNames,
     createFrequencyTags,
-    createPitchTag,
     createPopupView,
     createAudioControl,
     deinflectionSteps,

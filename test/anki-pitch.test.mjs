@@ -60,10 +60,16 @@ test("kana graph counts contracted kana, long vowels, small tsu and n as morae",
 });
 
 test("explicit patterns take precedence over the native placeholder position and retain an explicit particle", async () => {
-  const root = await render("たべる", [group([pitch(0, "HLL"), pitch(0, "LHH"), pitch(0, "LHHL")])]);
+  const pitches = [group([pitch(0, "HLL"), pitch(0, "LHH"), pitch(0, "LHHL")])];
+  const root = await render("たべる", pitches);
   assert.deepEqual([...root.querySelectorAll("svg")].map(svg => [...svg.querySelectorAll(".pronunciation-graph-dot")]
     .map(dot => dot.getAttribute("cy"))), [["25", "75", "75"], ["75", "25", "25"], ["75", "25", "25"]]);
-  assert.deepEqual([...root.querySelectorAll(".pronunciation-graph-tail")].map(node => node.dataset.pitch), ["low", "high", "low"]);
+  // As Yomitan's createPronunciationGraph reads it, a pattern without a
+  // particle level leaves the particle low; its Jidoujisho graph
+  // (_pitchValueToPattJJ) repeats the pattern's last level instead.
+  assert.deepEqual([...root.querySelectorAll(".pronunciation-graph-tail")].map(node => node.dataset.pitch), ["low", "low", "low"]);
+  const kana = await render("たべる", pitches, "pitch-accent-graphs-jj");
+  assert.deepEqual([...kana.querySelectorAll(".pronunciation-graph-tail")].map(node => node.dataset.pitch), ["low", "high", "low"]);
 });
 
 test("absent, transcription-only, empty and invalid pitch data leave graph fields empty", async () => {

@@ -4794,18 +4794,20 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && !/position: sticky;/u.test(toolbarRule));
     const tagRule = readerCss.match(/^\.gsm-hoshidicts-tag \{([^}]+)\}/mu)?.[1];
     const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
-    const metadataValueRules = ["frequency", "pitch"].map(kind => readerCss
-      .match(new RegExp(`^\\.gsm-hoshidicts-tag-${kind} \\{([^}]+)\\}`, "mu"))?.[1]);
+    const metadataValueRules = ["tag-frequency", "pitch-source"].map(kind => [...readerCss
+      .matchAll(new RegExp(`^\\.gsm-hoshidicts-${kind} \\{([^}]+)\\}`, "gmu"))].map(match => match[1]).join("\n"));
     check("pronunciation and frequency values use the theme foreground while filled definition badges retain their paired foreground",
       /color: var\(--text-color\);/u.test(tagRule)
         && metadataValueRules.every(rule => /color: var\(--text-color\);/u.test(rule))
+        && /--pronunciation-annotation-color: var\(--text-color\);/u.test(readerCss)
         && /color: var\(--hoshidicts-tag-text\);/u.test(definitionTagRule)
         && /--text-color: var\(--hoshidicts-text\);/u.test(readerCss)
         && /--hoshidicts-text: var\(--hoshidicts-palette-base-content\);/u.test(readerCss));
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
-      showPitchAccentBadge: true, showPitchAccentDictionaryNames: true, hidePopupGrammarTags: true,
+      showPitchAccentBadge: true, showPitchAccentDictionaryNames: true, showPitchAccentText: true,
+      showPitchAccentPosition: true, showPitchAccentGraph: false, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -11684,11 +11686,12 @@ async function designPreviewStage() {
       && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"] .gsm-hoshidicts-frequency-values')?.textContent === "120 · 240"
       && !query(".gsm-hoshidicts-frequency-source")
       && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
-      && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-mora")].map(mora => mora.textContent).join("") === "たべる"
-      && query(".gsm-hoshidicts-tag-pitch .gsm-hoshidicts-pitch-position")?.textContent === "[2] LHL"
+      // The engine's { position: 0, pattern: "LHL" } reads as Yomitan's [2].
+      && [...popup.querySelectorAll(".gsm-hoshidicts-tag-pitch .pronunciation-character")].map(mora => mora.textContent).join("") === "たべる"
+      && query(".gsm-hoshidicts-tag-pitch .pronunciation-downstep-notation")?.textContent === "[2]"
       && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
-      && query(".gsm-hoshidicts-tag-pitch > .gsm-hoshidicts-pitch-source")?.textContent === "Sample pitch"
-      && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2] LHL";
+      && query(".pronunciation-group-tag-list > .gsm-hoshidicts-pitch-source")?.textContent === "Sample pitch"
+      && query(".gsm-hoshidicts-tag-pitch")?.title === "Sample pitch: たべる [2]";
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -12120,6 +12123,9 @@ async function settingsFrequencyStage() {
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
       ["opt-pitch-names", "showPitchAccentDictionaryNames", true],
+      ["opt-pitch-text", "showPitchAccentText", true],
+      ["opt-pitch-position", "showPitchAccentPosition", true],
+      ["opt-pitch-graph", "showPitchAccentGraph", false],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
       ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
@@ -16194,7 +16200,8 @@ async function contentNoteStage() {
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
             showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
             pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false,
-            showPitchAccentDictionaryNames: false, hidePopupGrammarTags: true };
+            showPitchAccentDictionaryNames: false, showPitchAccentText: false, showPitchAccentPosition: false,
+            showPitchAccentGraph: true, hidePopupGrammarTags: true };
           const before = combined.sent.length;
           if (update === "options" || update === "metadata") combined.emitOptions(options);
           else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
@@ -21172,7 +21179,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   let addNoteEntry = async () => {};
   const view = HDPopup.createPopupView({
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     document,
     getPopupColumns: () => 1,
@@ -21751,7 +21758,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
   const settle = () => new Promise(resolve => window.setTimeout(resolve, 0));
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     queueMasonry: callback => layouts.add(callback),
@@ -21866,7 +21873,7 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
   let positions = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
@@ -21980,7 +21987,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
   let fills = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
@@ -22217,7 +22224,7 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   let showCounts = false;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     // The owner decides visibility; the renderer only provides the slot.
@@ -22254,7 +22261,7 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
   const expanded = [];
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     onResultsExpanded: ({ audioButtons }) => {
@@ -22313,7 +22320,7 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
   let layouts = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
     queueMasonry() { layouts += 1; },
@@ -22433,7 +22440,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   }
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary(...args) {
       fills += 1;
       linkPredicates.push(args[3].isCurrentLink);
@@ -22678,28 +22685,28 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     const metadataResults = results.map(entry => ({ ...entry, term: { ...entry.term,
       expression: entry.term.glossaries[0].dictionary,
       frequencies: [{ dictionary: "Rank", frequencies: [{ value: 42, displayValue: null }] }],
-      pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 1, pattern: "LH" }] }],
+      pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 0, pattern: "HLL", nasal: [], devoice: [] }] }],
     } }));
     const metadataBefore = JSON.stringify(metadataResults);
     view.renderResults(metadataResults, candidate, { ...context, showFrequencyDictionaryNames: true, showPitchAccentBadge: true });
     const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
-    const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
+    const pronunciation = popup.querySelector(".gsm-hoshidicts-tag-pitch");
     const pitchSource = popup.querySelector(".gsm-hoshidicts-pitch-source");
     view.updateDictionaryPresentation({ dictionaryPresentation: [
       { title: "Rank", displayName: "Rank alias" }, { title: "Pitch", displayName: "Pitch alias" },
       { title: "Second", displayName: "Second alias" },
     ], dictionaryTabGroups: [] });
     live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
-      && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
+      && popup.querySelector(".gsm-hoshidicts-tag-pitch") === pronunciation
       && popup.querySelector(".gsm-hoshidicts-pitch-source") === pitchSource && pitchSource.textContent === "Pitch alias"
       && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
-      && popup.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH");
+      && pronunciation.title === "Pitch alias (Pitch): たべる [1]");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
     live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card-title").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
       && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
-      && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH"
+      && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1]"
       && JSON.stringify(metadataResults) === metadataBefore);
     const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };
     view.renderResults(metadataResults, candidate, { ...context, ...expandedGroup, expandAll: true, selectedDictionaryTab: { groupId: "expanded" } });
@@ -22778,7 +22785,7 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
   let current = true;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
   });
@@ -22871,7 +22878,7 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
   const view = HDPopup.createPopupView({
     document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList,
     positionPopup() { layouts += 1; },
@@ -23422,7 +23429,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     parseTagList: HDGlossary.parseTagList,
     appendTextOnlyGlossary(...args) {
       fills += 1;

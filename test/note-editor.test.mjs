@@ -21,7 +21,7 @@ function fixture(t, onAddCustomEntry = async () => {}) {
   const popup = document.getElementById("popup");
   const view = window.HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: window.HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
     parseTagList: window.HDGlossary.parseTagList, positionPopup() {}, onAddCustomEntry,
   });

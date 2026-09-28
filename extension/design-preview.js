@@ -91,7 +91,7 @@
   const view = themeHost.createView({ document, window, popup,
     sourceHighlighter: HDPopup.createSourceHighlighter(window, document, "gsm-hoshidicts-match", shadow),
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    buildPitchAccentMorae: HDGlossary.buildPitchAccentMorae,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList,
@@ -182,7 +182,9 @@
           { dictionary: "Sample corpus", frequencies: [{ value: 18240, displayValue: "18,240" }] },
           ...installedFrequencies,
         ],
-        pitches: [{ dictionary: pitch, pitches: [{ position: 2, pattern: "LHL", nasal: [], devoice: [] }], transcriptions: ["ta̠be̞ɾɯ̟ᵝ"] }],
+        // The engine's shape for Yomitan's string form: the pattern beside a
+        // placeholder position of 0.
+        pitches: [{ dictionary: pitch, pitches: [{ position: 0, pattern: "LHL", nasal: [], devoice: [] }], transcriptions: ["ta̠be̞ɾɯ̟ᵝ"] }],
       } }];
     return { results, dictionaryPresentation: [
       { title: "Sample ranks", frequencyMode: "rank-based", frequencyCount: 2 },

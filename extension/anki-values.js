@@ -94,12 +94,14 @@ function pitchCategories(term) {
   const inflected = ["v1", "v5", "vk", "vs", "vz", "adj-i"].some(rule => classes.has(rule))
     && !(classes.has("vs") && classes.has("n"));
   const morae = globalThis.HDGlossary.splitPitchAccentMorae(term.reading || term.expression).length;
+  // Yomitan's getPitchCategory: a pattern's category is its first downstep.
   const categories = term.pitches.flatMap(group => group.pitches.map(pitch => {
-    if (pitch.position === 0) return "heiban";
-    if (pitch.position < 0) return null;
+    const position = Number(globalThis.HDGlossary.pitchAccentDownstep(pitch).split(",")[0]);
+    if (position === 0) return "heiban";
+    if (Number.isNaN(position) || position < 0) return null;
     if (inflected) return "kifuku";
-    if (pitch.position === 1) return "atamadaka";
-    return pitch.position >= morae ? "odaka" : "nakadaka";
+    if (position === 1) return "atamadaka";
+    return position >= morae ? "odaka" : "nakadaka";
   }));
   return [...new Set(categories.filter(Boolean))].join(",");
 }
@@ -239,7 +241,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "frequency-harmonic-occurrence": () => frequencyAggregate(term, "occurrence-based", true),
     "frequency-average-rank": () => frequencyAggregate(term, "rank-based", false),
     "frequency-average-occurrence": () => frequencyAggregate(term, "occurrence-based", false),
-    pitch: () => pitchHtml(term), "pitch-position": () => [...new Set(term.pitches.flatMap(group => group.pitches.map(value => value.position)))].join(", "),
+    pitch: () => pitchHtml(term), "pitch-position": () => [...new Set(term.pitches.flatMap(group =>
+      group.pitches.map(value => globalThis.HDGlossary.pitchAccentDownstep(value))))].join(", "),
     "pitch-accent-graphs": () => ankiPitchGraphs(term),
     "pitch-accent-graphs-jj": () => ankiPitchGraphs(term, true),
     "pitch-accent-categories": () => pitchCategories(term), audio: () => audio,

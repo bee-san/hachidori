@@ -5450,7 +5450,9 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
           && state.colors.every(fill => fill === state.color || fill === "none")
           && state.tailFills.every(fill => fill === "none")
           && state.labels.join("") === "たべるたべるたべる"
-          && state.tails.join(",") === "low,high,high,low,high,high"),
+          // [2], [0] and "LHH": as in Yomitan, the graph marker leaves an
+          // unspecified particle low while the kana graph repeats "LHH"'s last level.
+          && state.tails.join(",") === "low,high,low,low,high,high"),
       JSON.stringify({ pitchAdded, themes }));
 
     await configure(true);
