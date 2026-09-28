@@ -1362,10 +1362,13 @@ The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
 real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
 independent parent/child Note drafts and Escape, same-level kanji Back followed
-by child Back, live depth lowering/zero, and narrow-window geometry. Two further
+by child Back, live depth lowering/zero, and narrow-window geometry. Three further
 assertions drive the chain with a real mouse: linked and hovered children hang
 from their source text (below it, else above, left aligned) and follow the
-parent's content scroll, popup scale and a narrow viewport; a primary click in
+parent's content scroll, popup scale and a narrow viewport; at 800×900 panes in
+a 1920×945 window a child that fits on neither side of its link is shortened
+beside it, and in the default sticky mode it outlasts the pointer's return to
+its parent until a click there; a primary click in
 an ancestor pane dismisses focused, hovered and still-pending descendants at
 once while an open child draft stays until Escape closes its form, and a click
 on the root's link keeps its same-query child without another lookup.
