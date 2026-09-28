@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const LIBRARY_NAVIGATION_CHECK = "Library tabs keep their geometry when the page scrollbar appears or disappears";
+export const LIBRARY_TAB_GEOMETRY_CHECK = "Library tabs keep each tab's position and width when the current tab changes";
 export const SETTINGS_NAVIGATION_CHECK = "Sharing, Backup and Advanced keep the sidebar and main column in place when the page scrollbar disappears";
 
 export async function checkLibraryNavigation(puppeteer, launchOptions, settingsUrl, check) {
@@ -26,10 +27,15 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
       measurements.push(await page.evaluate(section => {
         const root = document.documentElement;
         const bounds = document.getElementById("library-navigation").getBoundingClientRect();
+        const tabs = [...document.querySelectorAll("#library-navigation a")].map(link => {
+          const box = link.getBoundingClientRect();
+          return { left: box.left, width: box.width, current: link.getAttribute("aria-current") === "page",
+            weight: getComputedStyle(link).fontWeight, labelled: link.dataset.label === link.textContent };
+        });
         return { section, left: bounds.left, width: bounds.width,
           scrollbarWidth: innerWidth - root.clientWidth,
           overflowing: root.scrollHeight > root.clientHeight,
-          gutter: getComputedStyle(root).scrollbarGutter };
+          gutter: getComputedStyle(root).scrollbarGutter, tabs };
       }, section));
     }
     check(LIBRARY_NAVIGATION_CHECK,
@@ -38,6 +44,15 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
         && measurements.every(row => row.gutter === "stable"
           && row.left === measurements[0].left && row.width === measurements[0].width),
       JSON.stringify(measurements));
+    // The current tab alone is semibold. Its label is wider, so unless every
+    // tab reserves that width, moving aria-current pushes the later tabs aside.
+    check(LIBRARY_TAB_GEOMETRY_CHECK,
+      measurements.every(row => row.tabs.filter(tab => tab.current).length === 1
+        && row.tabs.every((tab, index) => tab.labelled
+          && tab.weight === (tab.current ? "600" : "400")
+          && tab.left === measurements[0].tabs[index].left
+          && tab.width === measurements[0].tabs[index].width)),
+      JSON.stringify(measurements.map(({ section, tabs }) => ({ section, tabs }))));
     // The short top-level sections drop the same scrollbar. Above the shell's
     // 1440px maximum that recentres the sidebar; below it the main column widens.
     const widths = [1920, 1280];

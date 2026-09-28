@@ -1022,6 +1022,10 @@ Dictionaries tall, visits all five Library tabs and returns, requires both
 overflowing and short panels and a
 nonzero scrollbar width, and checks identical navigation left/width values with
 zero tolerance. It also checks the root's computed `scrollbar-gutter: stable`.
+In the same six states every tab must keep one left and width, again with zero
+tolerance, while exactly one tab is `aria-current="page"` at weight 600 and the
+rest stay at 400. Each tab's `data-label` must equal its text, because that
+copy reserves the semibold label's width.
 The same browser then walks Library → Sharing → Backup & restore → Advanced →
 Library at 1920px (above the shell's 1440px maximum, where a vanishing
 scrollbar would recentre the sidebar) and at 1280px (below it, where the main
