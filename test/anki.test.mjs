@@ -370,6 +370,9 @@ test("AnkiConnect failures name the missing deck, note type or open collection a
   assert.match(message("collection is not available"), /^Anki has no open collection\. .* \(AnkiConnect: collection is not available\)$/u);
   assert.match(message("cannot create note because it is empty"), /first field is empty.*\(AnkiConnect: cannot create note because it is empty\)/u);
   assert.match(message("cannot create note because it is a duplicate"), /same first field already exists.*\(AnkiConnect: cannot create note because it is a duplicate\)/u);
+  // AnkiConnect's text for Anki's three cloze refusals names no cause, so it is not repeated.
+  assert.equal(message("cannot create note for unknown reason"), "Anki refused the note because of its cloze deletions ({{c1::…}}): "
+    + "a Cloze note type needs one in its cloze field, and no other field or note type may have one. Check the field mapping in Anki Settings.");
   assert.match(message("note was not found: 42"), /^Anki no longer has note 42\./u);
   assert.match(message("unsupported action"), /AnkiConnect add-on is too old/u);
   assert.equal(message("something else entirely"), "AnkiConnect: something else entirely");
