@@ -1112,6 +1112,7 @@ async function popupReader(page, depth = 0) {
                 .filter(attribute => attribute.name.startsWith("data-sc-"))
                 .map(attribute => [attribute.name, attribute.value])),
               filter: view.getComputedStyle(image).filter,
+              margin: view.getComputedStyle(link).margin,
               overflow: content ? { clientWidth: content.clientWidth, scrollWidth: content.scrollWidth } : null,
               display: { width: rect.width, height: rect.height, rect: rect.toJSON(), inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
@@ -1420,7 +1421,9 @@ async function popupReader(page, depth = 0) {
             dictionary: card.querySelector(".gsm-hoshidicts-glossary-card-title").title,
             label: card.querySelector(".gsm-hoshidicts-glossary-card-title").textContent,
             bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
-            text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.textContent),
+            // Each body's visible text: Yomitan's gloss separators are hidden.
+            text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body =>
+              [...body.querySelectorAll(".gloss-content")].map(content => content.textContent).join("")),
           })),
         }));
         // Attribute insertion order is not DOM meaning. Compare the complete
@@ -4208,6 +4211,7 @@ async function gaijiSizingChrome({ page, tab, popup }) {
       [fixture.path]: `data:image/png;base64,${fixture.bytes.toString("base64")}`,
       [fixture.svgPath]: `data:image/svg+xml;base64,${fixture.svgBytes.toString("base64")}`,
     };
+    // Yomitan's .gloss-image-link has no margin, so a gaiji leaves no gap in its word.
     check("Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
       state?.theme === "dark" && state.images.length === fixture.cases.length
         && state.images.every((image, index) => {
@@ -4219,6 +4223,7 @@ async function gaijiSizingChrome({ page, tab, popup }) {
             && image.structuredData["data-sc-glyph"] === "bs-arrow"
             && !Object.hasOwn(image.structuredData, "data-sc-unsafe key")
             && image.filter !== "none"
+            && image.margin === "0px"
             && image.display.inlineWidth === (expected.inlineWidth ?? `${image.width}px`)
             && Math.abs(image.display.width - expected.width) <= 1 / 64
             && Math.abs(image.display.height - expected.height) <= 1 / 64
