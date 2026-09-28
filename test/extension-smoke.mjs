@@ -5750,6 +5750,7 @@ async function main() {
     "loading",
     "lowMemory",
     "ok",
+    "pagedDictionaries",
     "ready",
     "requestId",
     "storageBackend",
@@ -5758,8 +5759,8 @@ async function main() {
   ]);
   check("hd_status echoes the requestId", status.requestId === "status-1", JSON.stringify(status));
   check(
-    "the fallback reports single-thread IDBFS",
-    status.storageBackend === "idbfs" && status.threaded === false,
+    "the fallback reports single-thread IDBFS with dictionary entries in memory",
+    status.storageBackend === "idbfs" && status.threaded === false && status.pagedDictionaries === false,
     JSON.stringify(status),
   );
 
@@ -5934,26 +5935,31 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
-  // hd_memory: the heap, and each loaded package's mapped file bytes once per
-  // native kind it was added as (the fixture package loads under four).
+  // hd_memory: the heap, and each loaded package's resident file bytes once,
+  // however many native kinds it loads as (the fixture package loads under
+  // four, which share one copy). media.bin stays on disk.
   const memory = await request("hd_memory");
-  const mappedFileBytes = ["hash.table", "bloom.filter", "blobs.bin", "media.bin", "media.idx", "scan.idx", "dict.zstd"]
-    .reduce((sum, name) => {
-      try { return sum + observedEngine.FS.stat(`${importedPackage.path}/${name}`).size; } catch { return sum; }
-    }, 0);
+  const fileSize = (name) => {
+    try { return observedEngine.FS.stat(`${importedPackage.path}/${name}`).size; } catch { return 0; }
+  };
+  const residentFileBytes = ["hash.table", "bloom.filter", "blobs.bin", "media.idx", "scan.idx", "dict.zstd"]
+    .reduce((sum, name) => sum + fileSize(name), 0);
   check(
-    "hd_memory reports the heap and each loaded package's mapped bytes",
+    "hd_memory reports the heap and each loaded package's resident bytes once",
     memory.ok === true
       && Number.isInteger(memory.heapBytes)
       && memory.heapBytes === observedEngine.HEAPU8.byteLength
+      && memory.pageCacheBytes === 0
       && memory.dictionaries.length === 1
       && memory.dictionaries[0].id === importedPackage.id
       && memory.dictionaries[0].title === importedPackage.title
       && memory.dictionaries[0].path === importedPackage.path
-      && mappedFileBytes > 0
-      && memory.dictionaries[0].bytes === mappedFileBytes * 4
+      && memory.dictionaries[0].paged === false
+      && residentFileBytes > 0
+      && fileSize("media.bin") > 0
+      && memory.dictionaries[0].bytes === residentFileBytes
       && memory.heapBytes >= memory.dictionaries[0].bytes,
-    JSON.stringify({ memory, mappedFileBytes }),
+    JSON.stringify({ memory, residentFileBytes }),
   );
 
   // A dictionary with keys longer than the scan length: the import records the
@@ -9719,9 +9725,161 @@ async function main() {
   console.log(`        staged lookup ${stagedLookupMs.toFixed(1)} ms; serialized install ${installPauseMs.toFixed(1)} ms`);
 
   await isolatedImportStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb, trainedExpression });
+  await pagedDictionariesStage({ createHoshidicts, offscreenChrome, storedDictionaryState, trainedExpression });
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/* --------------------------------------------------- paged dictionaries stage */
+
+// Dictionaries whose entries are read from disk on demand (docs/memory.md):
+// Low memory mode's worker pages every package (engine-worker-runtime.js
+// passes pagedDictionaries), and any worker retries a package that does not
+// fit in the heap paged before it reports it. The heap limit is simulated at
+// the ABI, where hdw_add_dict fails the way bindings.cpp reports a refused
+// memory.grow.
+async function pagedDictionariesStage({ createHoshidicts, offscreenChrome, storedDictionaryState, trainedExpression }) {
+  section("paged dictionaries: Low memory mode, and a package that does not fit");
+  const startService = async (tag, options = {}) => {
+    const service = await import(
+      `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?${tag}`
+    );
+    const engine = { adds: [], refuse: () => false, refusal: null };
+    service.configureEngineService(
+      (message) => offscreenChrome.runtime.sendMessage(message),
+      {
+        createHoshidicts: async (...args) => {
+          const module = await createHoshidicts(...args);
+          const ccall = module.ccall.bind(module);
+          module.ccall = (name, returnType, argumentTypes, argumentValues) => {
+            if (name === "hdw_last_error" && engine.refusal !== null) return engine.refusal;
+            engine.refusal = null;
+            if (name === "hdw_add_dict") {
+              const [path, kind, paged] = argumentValues;
+              engine.adds.push({ path, kind, paged });
+              if (engine.refuse(path, paged)) {
+                engine.refusal = `not enough memory to load term dictionary: ${path}`;
+                return 0;
+              }
+            }
+            return ccall(name, returnType, argumentTypes, argumentValues);
+          };
+          return module;
+        },
+        storageBackend: "idbfs",
+        lowRam: true,
+        ...options,
+      },
+    );
+    let counter = 0;
+    engine.request = (type, fields = {}) => {
+      counter += 1;
+      return service.handleEngineMessage({ type, requestId: `${tag}-${counter}`, ...fields });
+    };
+    service.startEngine();
+    const deadline = Date.now() + 30000;
+    let status = await engine.request("hd_status");
+    while (!(status.ok && status.ready && !status.loading) && Date.now() < deadline) {
+      await new Promise((done) => setTimeout(done, 25));
+      status = await engine.request("hd_status");
+    }
+    engine.status = status;
+    return engine;
+  };
+  const resultsOf = async (engine, text) => JSON.stringify((await engine.request("hd_lookup", { text })).results);
+
+  const mapped = await startService("mapped-dictionaries");
+  const paged = await startService("paged-dictionaries", { threaded: true, pagedDictionaries: true });
+  const pagedMemory = await paged.request("hd_memory");
+  const words = [trainedExpression, "食べたかった", "漢字", "ありがとう"];
+  const parity = [];
+  for (const word of words) parity.push([await resultsOf(mapped, word), await resultsOf(paged, word)]);
+  const afterLookups = await paged.request("hd_memory");
+  check(
+    "Low memory mode's worker pages every package and answers as the mapped one does",
+    paged.status.pagedDictionaries === true && paged.status.lowMemory === true
+      && mapped.status.pagedDictionaries === false
+      && paged.adds.length > 0 && paged.adds.every((add) => add.paged === 1)
+      && mapped.adds.every((add) => add.paged === 0)
+      && paged.status.dictionaryCount === mapped.status.dictionaryCount
+      && pagedMemory.dictionaries.length > 0 && pagedMemory.dictionaries.every((row) => row.paged === true)
+      && parity.every(([expected, actual]) => actual === expected)
+      && parity.some(([expected]) => expected !== "[]")
+      && afterLookups.pageCacheBytes > 0,
+    JSON.stringify({ status: paged.status, pagedMemory, afterLookups: afterLookups.pageCacheBytes, parity }),
+  );
+  const mappedMemory = await mapped.request("hd_memory");
+  check(
+    "a paged package's share leaves out its entries",
+    pagedMemory.dictionaries.every((row) => {
+      const full = mappedMemory.dictionaries.find((entry) => entry.path === row.path);
+      return full !== undefined && full.paged === false && row.bytes < full.bytes;
+    }),
+    JSON.stringify({ pagedMemory, mappedMemory }),
+  );
+
+  // A package that does not fit loads paged; the rest stay mapped.
+  const title = "paged-fallback";
+  const oversized = (path) => path.endsWith(`/${title}`);
+  mapped.refuse = (path, pagedAdd) => oversized(path) && pagedAdd === 0;
+  mapped.adds.length = 0;
+  const imported = await mapped.request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(title, {
+      terms: [["溢れる", "あふれる", "", "v1", 0, ["to overflow"], 1, ""]],
+    })),
+    fileName: `${title}.zip`,
+  });
+  const fallbackStatus = await mapped.request("hd_status");
+  const fallbackMemory = await mapped.request("hd_memory");
+  const fallbackLookup = await mapped.request("hd_lookup", { text: "溢れた" });
+  const fallbackAdds = mapped.adds.filter((add) => oversized(add.path));
+  check(
+    "a package the heap cannot hold is retried with its entries read from disk",
+    imported.ok === true && imported.report?.success === true
+      && fallbackAdds.length === 2 && fallbackAdds[0].paged === 0 && fallbackAdds[1].paged === 1
+      && fallbackStatus.failedDictionaries.length === 0
+      && fallbackStatus.pagedDictionaries === false
+      && fallbackMemory.dictionaries.find((row) => row.title === title)?.paged === true
+      && fallbackMemory.dictionaries.filter((row) => row.title !== title).every((row) => row.paged === false)
+      && fallbackLookup.results.some((result) => result.term?.expression === "溢れる"),
+    JSON.stringify({ imported, fallbackAdds, fallbackStatus, fallbackMemory, fallbackLookup }),
+  );
+
+  // When not even the index fits, the package is reported and the rest load.
+  mapped.refuse = oversized;
+  mapped.adds.length = 0;
+  const stored = await storedDictionaryState();
+  const disabled = await mapped.request("hd_apply_state", {
+    baseRevision: stored.revision,
+    dictionaries: stored.dictionaries.map((entry) => (entry.title === title ? { ...entry, enabled: false } : entry)),
+  });
+  const reenabled = await mapped.request("hd_apply_state", {
+    baseRevision: disabled.state.revision,
+    dictionaries: stored.dictionaries,
+  });
+  const failedStatus = await mapped.request("hd_status");
+  const failedPackage = stored.dictionaries.find((entry) => entry.title === title);
+  check(
+    "a package that fails paged too is reported with the memory error while the others load",
+    disabled.ok === true && reenabled.ok === true
+      && mapped.adds.filter((add) => oversized(add.path)).every((add) => add.paged === 1)
+      && failedStatus.failedDictionaries.length === 1
+      && failedStatus.failedDictionaries[0].id === failedPackage?.id
+      && failedStatus.failedDictionaries[0].error.includes("not enough memory to load")
+      && (await mapped.request("hd_lookup", { text: trainedExpression })).results.length > 0,
+    JSON.stringify({ disabled, reenabled, failedStatus, adds: mapped.adds }),
+  );
+
+  mapped.refuse = () => false;
+  const removed = await mapped.request("hd_remove", { id: failedPackage?.id, title });
+  check(
+    "the paged fallback package is removed cleanly",
+    removed.ok === true
+      && !(await storedDictionaryState()).dictionaries.some((entry) => entry.title === title)
+      && (await mapped.request("hd_status")).failedDictionaries.length === 0,
+    JSON.stringify(removed),
+  );
 }
 
 /* ------------------------------------------------------- isolated import stage */

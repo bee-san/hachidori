@@ -480,6 +480,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "low memory mode recycles the engine worker and reports memory in Settings",
   "low memory mode imports single-threaded and recycles the import high-water mark",
+  "low memory mode keeps only each dictionary's index in the heap",
   "turning low memory mode off restarts the full-pool worker",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
@@ -704,6 +705,20 @@ async function activeExtensionWorker(browser, page, label, timeout = 10_000) {
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
   }
   throw new Error(`${label} service-worker target did not become active`);
+}
+
+// File sizes of one dictionary directory, read from OPFS by the page. A File
+// snapshot takes no lock, so this works while the engine holds the files open.
+async function opfsFileSizes(page, dictionaryPath) {
+  return page.evaluate(async (relative) => {
+    let directory = await navigator.storage.getDirectory();
+    for (const name of relative.split("/")) directory = await directory.getDirectoryHandle(name);
+    const sizes = {};
+    for await (const [name, handle] of directory.entries()) {
+      if (handle.kind === "file") sizes[name] = (await handle.getFile()).size;
+    }
+    return sizes;
+  }, opfsPath(dictionaryPath));
 }
 
 async function listOpfsPaths(page) {
@@ -14438,8 +14453,10 @@ async function main() {
       && lowMemoryBefore.memory.ok === true && Number.isInteger(lowMemoryBefore.memory.heapBytes)
       && lowMemoryBefore.memory.dictionaries.length === 0
       && /^Engine memory: [\d.]+ (KB|MB|GB) across 0 dictionaries$/u.test(lowMemoryBefore.total)
+      && lowMemoryBefore.status.pagedDictionaries === false
       && lowMemoryOptions?.lowMemoryMode === true
-      && lowMemoryStatus?.threaded === true && lowMemoryStatus.storageBackend === "opfs",
+      && lowMemoryStatus?.threaded === true && lowMemoryStatus.storageBackend === "opfs"
+      && lowMemoryStatus.pagedDictionaries === true,
     JSON.stringify({ before: lowMemoryBefore, after: lowMemoryStatus, lowMemoryMode: lowMemoryOptions?.lowMemoryMode }),
   );
 
@@ -14500,21 +14517,43 @@ async function main() {
       && afterRecycle.memory.heapBytes <= lowMemoryImported.memory.heapBytes
       && afterRecycle.memory.dictionaries[0]?.bytes === lowMemoryImported.memory.dictionaries[0].bytes
       && afterRecycle.lookup.ok === true && afterRecycle.lookup.results[0]?.term.expression === "食べる"
-      && /^In memory: \u2248 [\d.]+ (KB|MB|GB)$/u.test(afterRecycle.rowMemory ?? "")
+      && /^In memory: \u2248 [\d.]+ (KB|MB|GB) \(entries read from disk\)$/u.test(afterRecycle.rowMemory ?? "")
       && /across 1 dictionary$/u.test(afterRecycle.total ?? ""),
     JSON.stringify({ heapBeforeImport: lowMemoryHeapBeforeImport, imported: lowMemoryImported, recycled: recycledAfterImport, afterRecycle }),
+  );
+
+  // The heap holds the index files once; entries (blobs.bin) are read from
+  // OPFS as lookups need them and kept in the bounded page cache.
+  const lowMemorySizes = lowMemoryImported
+    ? await opfsFileSizes(page, lowMemoryImported.dictionary.path).catch(() => null) : null;
+  const indexBytes = lowMemorySizes === null ? null
+    : ["hash.table", "bloom.filter", "media.idx", "scan.idx", "dict.zstd"]
+      .reduce((sum, name) => sum + (lowMemorySizes[name] ?? 0), 0);
+  check(
+    "low memory mode keeps only each dictionary's index in the heap",
+    recycledAfterImport?.pagedDictionaries === true
+      && indexBytes > 0 && lowMemorySizes["blobs.bin"] > 0
+      && afterRecycle?.memory.dictionaries[0]?.paged === true
+      && afterRecycle.memory.dictionaries[0].bytes === indexBytes
+      && afterRecycle.memory.pageCacheBytes > 0
+      && afterRecycle.memory.pageCacheBytes <= 32 * 1024 * 1024,
+    JSON.stringify({ sizes: lowMemorySizes, indexBytes, memory: afterRecycle?.memory, status: recycledAfterImport }),
   );
 
   await page.evaluate(() => document.getElementById("opt-low-memory-mode").click());
   const fullPoolStatus = recycledAfterImport ? await waitForRecycle(false, null).catch(() => null) : null;
   const fullPoolOptions = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const fullPoolLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  const fullPoolMemory = await engineRequest("hd_memory");
   check(
     "turning low memory mode off restarts the full-pool worker",
     fullPoolOptions?.lowMemoryMode === false
       && fullPoolStatus?.threaded === true && fullPoolStatus.dictionaryCount === 1
-      && fullPoolLookup.ok === true && fullPoolLookup.results[0]?.term.expression === "食べる",
-    JSON.stringify({ status: fullPoolStatus, lookup: fullPoolLookup, lowMemoryMode: fullPoolOptions?.lowMemoryMode }),
+      && fullPoolStatus.pagedDictionaries === false
+      && fullPoolLookup.ok === true && fullPoolLookup.results[0]?.term.expression === "食べる"
+      && fullPoolMemory.dictionaries[0]?.paged === false && fullPoolMemory.pageCacheBytes === 0
+      && fullPoolMemory.dictionaries[0].bytes === indexBytes + lowMemorySizes["blobs.bin"],
+    JSON.stringify({ status: fullPoolStatus, lookup: fullPoolLookup, memory: fullPoolMemory, lowMemoryMode: fullPoolOptions?.lowMemoryMode }),
   );
   await engineRequest("hd_remove", { title: lowMemoryTitle });
   await page.waitForFunction(async () => {
