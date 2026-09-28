@@ -75,9 +75,8 @@ the service worker and both engine runtimes run the same code.
 - **Anki.** `anki.js` is the AnkiConnect gateway and `anki-setup.js`
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
   `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note
-  fields and media; `anki-structured-content-style.js` is Yomitan's
-  `structured-content-style.json`, the class rules the rich glossary fields
-  carry inline. While the experimental Smaller Anki cards flag is on,
+  fields and media; the rich glossary fields carry Yomitan's structured-content
+  class rules inline. While the experimental Smaller Anki cards flag is on,
   `anki-compact.js` rewrites the rich glossary fields as compact HTML.
   Stored Anki Templates group each destination, note type,
   field mapping and duplicate policy; the first powers the built-in action and
@@ -144,7 +143,10 @@ the service worker and both engine runtimes run the same code.
 - **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}`,
   `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
   `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
-  from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime. They are
+  from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime.
+  `vendor/yomitan/structured-content-style.js` is Yomitan's
+  `structured-content-style.json` as an ES module, its revision and checksum
+  in `vendor/yomitan/source.json`. They are
   committed build output: update them with their source change and otherwise
   leave them alone.
 - `icons/` holds the extension's icons.

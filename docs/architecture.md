@@ -2161,7 +2161,7 @@ term-bank row becomes its own `li[data-dictionary]`, and every line break in
 dictionary text becomes a `<br>` because a note field has none of the popup's
 `.gloss-content { white-space: pre-line }`. For the same reason, as Yomitan's
 `AnkiTemplateRenderer` does with `structured-content-style.json`, the rich
-markers carry that file's class rules inline (`anki-structured-content-style.js`,
+markers carry that file's class rules inline (`vendor/yomitan/structured-content-style.js`,
 unchanged from yomidevs/yomitan@67db60d): table borders, padding and header weight
 survive a note type that draws no grid, and the external-link icon is hidden.
 The rules come before an element's own dictionary style, so the dictionary's

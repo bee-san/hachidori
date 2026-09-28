@@ -30,7 +30,7 @@ lines; the repository's root `LICENSE` has the full GNU GPL version 3 text.
   `display-pronunciation.css`, and `glossary.js` ports `PronunciationGenerator`
   and the pitch helpers of `language/ja/japanese.js`, all at
   yomidevs/yomitan@67db60d. Outside this directory, `../anki-glossary.js` ports
-  `CssStyleApplier.applyClassStyles` and `../anki-structured-content-style.js`
+  `CssStyleApplier.applyClassStyles` and `../vendor/yomitan/structured-content-style.js`
   is Yomitan's `structured-content-style.json`, unchanged. Both are licensed
   under GPL-3.0-or-later.
 

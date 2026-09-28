@@ -2,7 +2,7 @@
 import "./external-links.js";
 import "./render/glossary.js";
 import { compactAnkiGlossary } from "./anki-compact.js";
-import { STRUCTURED_CONTENT_STYLE } from "./anki-structured-content-style.js";
+import { STRUCTURED_CONTENT_STYLE } from "./vendor/yomitan/structured-content-style.js";
 
 // Yomitan's CssStyleApplier.applyClassStyles (dom/css-style-applier.js at
 // 67db60d) with structured-content-style.json, as its
