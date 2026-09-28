@@ -866,9 +866,12 @@ before the change event completes.
 
 ## Popup metadata controls
 
-Design has independent controls for frequency source names and averages, pitch
-contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-metadata defaults to compact numbers without dictionary names. The first
+Design has independent controls for frequency source names, number
+abbreviation and averages, pitch contour and its preferred dictionary, pitch
+badges, and grammar tags. Frequency metadata defaults to Yomitan's values
+without dictionary names: each dictionary's own display value, such as `51,499`
+or `142位`, otherwise the plain number, and averages as plain numbers.
+**Abbreviate large numbers** opts into compact values such as `51.5k`. The first
 result's frequency tags are the same Yomitan-like two-tone tags as every later
 entry's metadata row; a filled source segment appears only when names or
 averages are shown. Kana-derived values retain the visible Yomitan/Jiten `㋕`

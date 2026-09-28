@@ -98,6 +98,7 @@ const NUMBER_FIELDS = [
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
+  { key: "compactFrequencyNumbers", id: "opt-frequency-compact" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
