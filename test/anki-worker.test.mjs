@@ -55,7 +55,7 @@ function testIndex(resolve = async () => []) {
 }
 
 function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
-  const calls = [], audioRequests = [];
+  const calls = [], audioRequests = [], renders = [];
   const mediaFiles = new Set();
   let fields = overwrite ? { Front: "猫", Audio: `pronunciation[sound:${AUDIO_FILENAME}]` } : undefined;
   let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
@@ -109,6 +109,7 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
         return { filename: AUDIO_FILENAME, data: AUDIO_DATA };
       }
       assert.deepEqual(message.dictionaryPaths, { A: "/dicts/generation/A" });
+      renders.push(message);
       return { fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) =>
         [field, template.value.replace("{expression}", "猫").replace("{audio}", message.audio)])), media: [] };
     },
@@ -116,7 +117,7 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
     generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫", documentTitle: "Test",
     dictionaryAliases: {}, frequencyDictionaries: [] };
-  return { service, calls, audioRequests, request, changedGeneration() { generation++; },
+  return { service, calls, audioRequests, renders, options, request, changedGeneration() { generation++; },
     duringCheck() { changeDuringCheck = true; }, deferSpeech() { deferSpeech = true; },
     deferAllSpeech() { deferAllSpeech = true; },
     failAudio() { audioUnavailable = true; }, get fields() { return fields; } };
@@ -137,6 +138,23 @@ test("the worker defers ordinary audio until verified note success and rejects s
   f.changedGeneration();
   await assert.rejects(f.service.submit(f.request), /dictionary generation changed/u);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
+});
+
+test("Smaller Anki cards is part of the checked configuration and reaches every render of the note", async () => {
+  const f = fixture();
+  f.request.configKey = (await f.service.status()).configKey;
+  await f.service.preflight(f.request);
+  f.options.experimental = { ...f.options.experimental, smallerAnkiCards: true };
+  await assert.rejects(f.service.submit(f.request), /configuration changed/u,
+    "a toggle between preflight and Add cannot write a note that mixes both modes");
+  assert.equal(f.calls.includes("addNote"), false);
+  assert.ok(f.renders.length > 0 && f.renders.every(message => message.compactGlossary === false));
+  const before = f.renders.length;
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.submit(f.request)).state, "added");
+  const compact = f.renders.slice(before);
+  assert.equal(compact.length, 2, "the note and its deferred pronunciation update both render");
+  assert.ok(compact.every(message => message.compactGlossary === true));
 });
 
 test("first-field audio is resolved before duplicate checking and its exact prepared bytes are reused after add", async () => {

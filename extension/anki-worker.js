@@ -59,7 +59,7 @@ export function createAnkiWorkerService({
     });
   };
   const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
-    dictionaryPaths: resources.dictionaryPaths });
+    dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true });
 
   // One pending viewport picture at a time: a later capture supersedes an
   // earlier one, and a note that is written consumes it. Nothing is uploaded
@@ -133,6 +133,9 @@ export function createAnkiWorkerService({
       return {
         ...template,
         audioSources: options.audioSources.filter(source => source.enabled),
+        // Part of the checked configuration, so toggling Smaller Anki cards
+        // between a preflight and Add refuses the stale Add.
+        compactGlossary: options.experimental.smallerAnkiCards === true,
       };
     },
     buildFields: async (request, current, { preflight = false } = {}) => {
@@ -142,7 +145,8 @@ export function createAnkiWorkerService({
       await currentGeneration(request);
       const dictionaries = await readDictionaries();
       const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.path])), audioPrepared: false, audio: null, deferDuplicateCheck: false };
+        .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
+        audioPrepared: false, audio: null, deferDuplicateCheck: false };
       const first = current.resolved.templates[current.discovery.fields[0]];
       if (ankiTemplateMarkerNames(first.value).includes("audio") && current.config.audioSources.length) {
         // Audio in the first field is part of Anki's duplicate identity. A
