@@ -33,6 +33,6 @@
     "geckodriver": "6.1.1",
     "jsdom": "30.1.1",
     "puppeteer-core": "25.11.0",
-    "web-ext": "10.6.0"
+    "web-ext": "10.7.0"
   }
 }
