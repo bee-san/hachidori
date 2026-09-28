@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "slug": "nazeka",
+  "version": "1.1.0",
+  "renderer": "nazeka (onRender prototype)",
+  "hachidori": {
+    "commit": "fc3eb73053be4851e68217de22cacd8e36a14935",
+    "version": "0.1.6"
+  },
+  "chrome": "152.0.7977.75",
+  "samples": 5,
+  "measuredAt": "2026-09-24",
+  "inputs": [
+    "short",
+    "long",
+    "deep",
+    "kanji",
+    "cold"
+  ],
+  "endToEnd": {
+    "hoverFirst": {
+      "short": {
+        "default": {
+          "median": 16.8,
+          "p95": 17.0
+        },
+        "theme": {
+          "median": 16.8,
+          "p95": 16.9
+        }
+      },
+      "long": {
+        "default": {
+          "median": 17.1,
+          "p95": 56.3
+        },
+        "theme": {
+          "median": 17.0,
+          "p95": 51.4
+        }
+      },
+      "deep": {
+        "default": {
+          "median": 16.9,
+          "p95": 85.6
+        },
+        "theme": {
+          "median": 16.8,
+          "p95": 85.3
+        }
+      }
+    },
+    "hoverComplete": {
+      "short": {
+        "default": {
+          "median": 33.2,
+          "p95": 38.6
+        },
+        "theme": {
+          "median": 33.3,
+          "p95": 33.4
+        }
+      },
+      "long": {
+        "default": {
+          "median": 33.3,
+          "p95": 81.9
+        },
+        "theme": {
+          "median": 33.3,
+          "p95": 80.0
+        }
+      },
+      "deep": {
+        "default": {
+          "median": 33.3,
+          "p95": 112.2
+        },
+        "theme": {
+          "median": 33.3,
+          "p95": 116.4
+        }
+      }
+    },
+    "kanjiOpen": {
+      "default": {
+        "median": 3.4,
+        "p95": 8.7
+      },
+      "theme": {
+        "median": 4.1,
+        "p95": 10.1
+      }
+    },
+    "coldFirst": {
+      "default": {
+        "median": 38.5,
+        "p95": 85.1
+      },
+      "theme": {
+        "median": 41.1,
+        "p95": 47.5
+      }
+    },
+    "coldComplete": {
+      "default": {
+        "median": 54.1,
+        "p95": 89.9
+      },
+      "theme": {
+        "median": 49.9,
+        "p95": 50.9
+      }
+    }
+  },
+  "work": {
+    "renderBuildMs": {
+      "default": {
+        "median": 0,
+        "p95": 0
+      },
+      "theme": {
+        "median": 0,
+        "p95": 0
+      }
+    },
+    "styleMs": {
+      "default": {
+        "median": 0.7,
+        "p95": 0.7
+      },
+      "theme": {
+        "median": 0.56,
+        "p95": 0.56
+      }
+    },
+    "layoutMs": {
+      "default": {
+        "median": 0.63,
+        "p95": 0.63
+      },
+      "theme": {
+        "median": 0.37,
+        "p95": 0.37
+      }
+    },
+    "scriptMs": {
+      "default": {
+        "median": 1.19,
+        "p95": 1.19
+      },
+      "theme": {
+        "median": 1.07,
+        "p95": 1.07
+      }
+    },
+    "nodes": {
+      "default": 32,
+      "theme": 37
+    }
+  },
+  "dictionaryWork": {
+    "stylesRequests": {
+      "default": 0,
+      "theme": 0
+    },
+    "dictionaryStyleElements": {
+      "default": 0,
+      "theme": 0
+    },
+    "structuredNodes": {
+      "default": 0,
+      "theme": 0
+    },
+    "images": {
+      "default": 0,
+      "theme": 0
+    }
+  },
+  "heapDeltaMiB": 0.33,
+  "verdict": {
+    "pass": true,
+    "reasons": []
+  },
+  "label": "standard",
+  "results": "https://github.com/bee-san/hachidori/blob/evidence/issue-330-theme-store/docs/evidence/issue-330/theme-store/nazeka-js/benchmark/run2/summary.md"
+}

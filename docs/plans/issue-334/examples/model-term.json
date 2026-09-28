@@ -1,0 +1,84 @@
+{
+  "modelVersion": 1,
+  "kind": "terms",
+  "reason": "lookup",
+  "request": {
+    "generation": 7,
+    "depth": 0
+  },
+  "source": {
+    "text": "食べたかった",
+    "sentence": "本当は、ずっと前から食べたかったんだ。",
+    "offset": 10,
+    "length": 6
+  },
+  "dictionaries": [
+    {
+      "id": "d1",
+      "title": "hover-popup-fixture",
+      "alias": null,
+      "kind": "term",
+      "frequencyMode": null
+    }
+  ],
+  "tabs": {
+    "items": [
+      {
+        "id": "all",
+        "label": "All",
+        "count": 1
+      }
+    ],
+    "selected": "all"
+  },
+  "results": [
+    {
+      "index": 0,
+      "key": "食べる|たべる|d1",
+      "matched": "食べたかった",
+      "deinflected": "食べる",
+      "expression": "食べる",
+      "reading": "たべる",
+      "furigana": [
+        {
+          "text": "食",
+          "reading": "た"
+        },
+        {
+          "text": "べる",
+          "reading": null
+        }
+      ],
+      "trace": [
+        {
+          "name": "-たい",
+          "description": "Adjective form expressing a desire"
+        },
+        {
+          "name": "-た",
+          "description": "Past tense"
+        }
+      ],
+      "rules": [
+        "v1"
+      ],
+      "termTags": [],
+      "definitions": [
+        {
+          "dictionary": "hover-popup-fixture",
+          "tags": [],
+          "glossary": {
+            "kind": "text",
+            "dictionary": "hover-popup-fixture",
+            "raw": "食べる　漢字"
+          }
+        }
+      ],
+      "frequencies": [],
+      "pitches": [],
+      "ipa": [],
+      "summary": "食べる　漢字"
+    }
+  ],
+  "total": 1
+}

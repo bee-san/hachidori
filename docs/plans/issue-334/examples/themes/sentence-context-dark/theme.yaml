@@ -1,0 +1,33 @@
+# themes/sentence-context-dark/theme.yaml — a variant: another theme's renderer + its own palette.
+# Replaces the schema-1 `extends` guesswork (#334 comment 5817632143, API gap 3). Colours illustrative.
+schema: 2
+slug: sentence-context-dark
+name: Sentence Context (night)
+version: 1.0.0
+author: hachidori theme designers
+description: Sentence Context's newspaper layout on a dark newsprint palette for night reading on a texthooker page.
+tags: [dark, reader, sentence, serif]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.2.0
+mode: dark
+renderer: sentence-context
+palette:
+  color-scheme: dark
+  base-100: "#1d1b18"
+  base-200: "#252219"
+  base-300: "#2e2a20"
+  base-content: "#ece4d4"
+  primary: "#e2643c"
+  primary-content: "#1d1b18"
+  secondary: "#c9b38a"
+  secondary-content: "#1d1b18"
+  accent: "#e2643c"
+  accent-content: "#1d1b18"
+  neutral: "#3a352b"
+  neutral-content: "#ece4d4"
+  info: "#7fa7c9"
+  info-content: "#1d1b18"
+  success: "#8fbf7a"
+  warning: "#d9a75a"
+  error: "#e07a6a"
+screenshot: screenshot.png

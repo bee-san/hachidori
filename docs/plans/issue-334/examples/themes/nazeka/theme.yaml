@@ -1,0 +1,50 @@
+# themes/nazeka/theme.yaml — Hachidori theme manifest, schema 2 (example for #334).
+# A renderer theme: renderer.js draws the whole popup; Default never runs under it.
+schema: 2
+slug: nazeka
+name: Nazeka
+version: 2.0.0
+author: bee-san
+link: https://github.com/wareya/nazeka
+description: Nazeka's popup as texthook.js draws it — #111111 box, 1 px #cccccc frame, 18 px cyan headword with 《reading》, the looked-up sentence at the right, 13 px senses as one paragraph, kanji mode as plain lines.
+tags: [dark, compact, classic, nazeka]
+license: GPL-3.0-or-later
+credits:
+  - name: wareya/nazeka texthook.js (8b220fb)
+    url: https://github.com/wareya/nazeka
+    license: Apache-2.0
+minHachidoriVersion: 0.2.0
+mode: dark
+palette:                  # wareya/nazeka texthook.js:31-35 defaults (unchanged from the schema-1 prototype)
+  color-scheme: dark
+  base-100: "#111111"     # bgcolor
+  base-200: "#111111"
+  base-300: "#1c1c1c"
+  base-content: "#cccccc" # fgcolor
+  primary: "#99ddff"      # hlcolor (keb)
+  primary-content: "#111111"
+  secondary: "#99ff99"    # hlcolor2 (reb)
+  secondary-content: "#111111"
+  accent: "#d8a888"       # titlecolor
+  accent-content: "#111111"
+  neutral: "#606060"
+  neutral-content: "#cccccc"
+  info: "#406080"
+  info-content: "#cccccc"
+  success: "#608040"
+  warning: "#d8a888"
+  error: "#ff7070"
+js:                       # bundled-only: ships inside a Hachidori release, never fetched at runtime
+  file: renderer.js
+  css: renderer.css
+  apiVersion: 1
+  glossary: [text]        # flattened senses; no structured DOM, images, links or dictionary CSS
+  components: [kanjiLink]
+  layout: { size: content }
+  ignores: [popupColumns, popupToolbarPosition, popupHeightPx, showPitchAccentBadge, showPitchAccentFurigana, showCompactDefinitionSummary, compactDefinitionSummaryCount, compactDefinitionSummaryDictionary, customButtons, customLinks]
+  summary: Draws Nazeka's rows directly — looked-up text, 「headword」《reading》～deconjugation #frequency, compact senses, kanji-mode lines — with only the audio and Anki buttons.
+suggestedOptions:
+  popupOpacityPercent: 100
+screenshot: screenshot.png
+preview:
+  swatches: ["#111111", "#cccccc", "#99ddff", "#99ff99"]

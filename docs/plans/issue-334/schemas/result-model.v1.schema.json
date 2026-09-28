@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bee-san/hachidori/blob/main/docs/themes/schemas/result-model.v1.schema.json",
+  "title": "Hachidori popup result model, modelVersion 1",
+  "description": "What a renderer receives (renderTerms / renderKanji / renderState). Frozen by T-01; built by extension/render/result-model.js (T-12) from the objects view.renderResults receives today (render/popup.js:3890). The live model is deep-frozen plain data except glossary handles, which are opaque: only ctx.glossary and components.glossary can read them, so dictionary HTML/CSS stays behind the existing sanitisation (#334 comment 5870917807). Fixture JSON may carry `raw` inside a handle so a test host can hydrate it; the live object never exposes it. Additive changes (new optional fields, new enum members in `reason`) keep modelVersion 1 and must be ignored by renderers that do not know them; anything else is modelVersion 2.",
+  "oneOf": [
+    { "$ref": "#/$defs/termModel" },
+    { "$ref": "#/$defs/kanjiModel" },
+    { "$ref": "#/$defs/stateModel" }
+  ],
+  "$defs": {
+    "reason": {
+      "enum": ["lookup", "show-more", "tab", "back", "presentation", "options", "replay", "fallback"],
+      "description": "Why this render happens: a new lookup; the reader asked for more entries; a dictionary tab switch; Back from the kanji view; dictionary presentation/styles arrived; options changed; a retained view is replayed; the host re-renders after a renderer failure (#334 comments 5815804995, 5817632143, 5821454752)."
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "depth"],
+      "properties": {
+        "generation": { "type": "integer", "minimum": 0, "description": "Monotonic per level; the host drops renderer work for an older generation." },
+        "depth": { "type": "integer", "minimum": 0, "description": "Popup nesting level; 0 is the root popup." }
+      }
+    },
+    "source": {
+      "description": "The looked-up page text and its sentence (content.js refineSentence, 690-695 on main 7ff01b1). Unifies the schema-1 `view.lookup` and the proposed `view.source`. null when the reader has no sentence.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "sentence", "offset", "length"],
+          "properties": {
+            "text": { "type": "string" },
+            "sentence": { "type": "string" },
+            "offset": { "type": "integer", "minimum": 0 },
+            "length": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "dictionary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "kind"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "alias": { "type": ["string", "null"] },
+        "kind": { "enum": ["term", "frequency", "pitch", "ipa", "kanji"] },
+        "frequencyMode": { "enum": ["rank-based", "occurrence-based", null] }
+      }
+    },
+    "tag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"] },
+        "dictionary": { "type": ["string", "null"] }
+      }
+    },
+    "glossaryHandle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "dictionary"],
+      "properties": {
+        "kind": { "enum": ["structured", "text"] },
+        "dictionary": { "type": "string" },
+        "raw": { "type": "string", "description": "Fixtures only: the stored glossary (structured-content JSON or text)." }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dictionary", "tags", "glossary"],
+      "properties": {
+        "dictionary": { "type": "string" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
+        "glossary": { "$ref": "#/$defs/glossaryHandle" }
+      }
+    },
+    "frequency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dictionary", "value", "displayValue"],
+      "properties": {
+        "dictionary": { "type": "string" },
+        "value": { "type": ["number", "null"] },
+        "displayValue": { "type": "string" },
+        "mode": { "enum": ["rank-based", "occurrence-based", null] },
+        "reading": { "type": ["string", "null"] }
+      }
+    },
+    "pitch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dictionary", "position", "morae"],
+      "properties": {
+        "dictionary": { "type": "string" },
+        "position": { "type": "integer", "minimum": 0 },
+        "morae": { "type": "array", "items": { "type": "string" } },
+        "nasal": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "devoice": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } }
+      }
+    },
+    "ipa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dictionary", "value"],
+      "properties": {
+        "dictionary": { "type": "string" },
+        "value": { "type": "string" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "key", "matched", "deinflected", "expression", "reading", "furigana", "trace", "rules", "termTags", "definitions", "frequencies", "pitches", "ipa", "summary"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "description": "Position in the full result list; the key for ctx.actions (playAudio, mine, ...)." },
+        "key": { "type": "string", "description": "Stable identity (expression, reading, dictionaries) across re-renders of the same request." },
+        "matched": { "type": "string" },
+        "deinflected": { "type": "string" },
+        "expression": { "type": "string" },
+        "reading": { "type": "string" },
+        "furigana": {
+          "type": "array",
+          "description": "Data-level ruby segments (what appendExpressionRuby builds as DOM today, glossary.js:386).",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["text", "reading"],
+            "properties": { "text": { "type": "string" }, "reading": { "type": ["string", "null"] } }
+          }
+        },
+        "trace": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["name"],
+            "properties": { "name": { "type": "string" }, "description": { "type": ["string", "null"] } }
+          }
+        },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "termTags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
+        "definitions": { "type": "array", "items": { "$ref": "#/$defs/definition" } },
+        "frequencies": { "type": "array", "items": { "$ref": "#/$defs/frequency" } },
+        "pitches": { "type": "array", "items": { "$ref": "#/$defs/pitch" } },
+        "ipa": { "type": "array", "items": { "$ref": "#/$defs/ipa" } },
+        "summary": { "type": ["string", "null"], "description": "Compact definition summary text (extractCompactDefinitionSummary, popup.js:1963) when the option is on." }
+      }
+    },
+    "termModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelVersion", "kind", "reason", "request", "source", "dictionaries", "tabs", "results", "total"],
+      "properties": {
+        "modelVersion": { "const": 1 },
+        "kind": { "const": "terms" },
+        "reason": { "$ref": "#/$defs/reason" },
+        "request": { "$ref": "#/$defs/request" },
+        "source": { "$ref": "#/$defs/source" },
+        "dictionaries": { "type": "array", "items": { "$ref": "#/$defs/dictionary" } },
+        "tabs": {
+          "type": "object", "additionalProperties": false, "required": ["items", "selected"],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["id", "label", "count"],
+                "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } }
+              }
+            },
+            "selected": { "type": "string" }
+          }
+        },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+        "total": { "type": "integer", "minimum": 0, "description": "Results in the reply; a renderer may draw fewer and offer Show more." }
+      }
+    },
+    "kanjiEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dictionary", "character", "onyomi", "kunyomi", "meanings", "tags", "stats"],
+      "properties": {
+        "dictionary": { "type": "string" },
+        "character": { "type": "string", "minLength": 1 },
+        "onyomi": { "type": "array", "items": { "type": "string" } },
+        "kunyomi": { "type": "array", "items": { "type": "string" } },
+        "meanings": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
+        "stats": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["name", "value"],
+            "properties": { "name": { "type": "string" }, "category": { "type": ["string", "null"] }, "value": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "kanjiModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelVersion", "kind", "reason", "request", "character", "source", "entries", "back"],
+      "properties": {
+        "modelVersion": { "const": 1 },
+        "kind": { "const": "kanji" },
+        "reason": { "$ref": "#/$defs/reason" },
+        "request": { "$ref": "#/$defs/request" },
+        "character": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/kanjiEntry" } },
+        "back": { "type": "boolean", "description": "A term view exists to go back to (actions.back())." }
+      }
+    },
+    "stateModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelVersion", "kind", "reason", "request", "state", "message", "retryable"],
+      "properties": {
+        "modelVersion": { "const": 1 },
+        "kind": { "const": "state" },
+        "reason": { "$ref": "#/$defs/reason" },
+        "request": { "$ref": "#/$defs/request" },
+        "state": { "enum": ["empty", "no-dictionaries", "failure", "notice"] },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean", "description": "Show a Try again control that calls ctx.actions.retry()." }
+      }
+    }
+  }
+}

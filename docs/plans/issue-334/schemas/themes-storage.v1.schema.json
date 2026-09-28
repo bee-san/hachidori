@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bee-san/hachidori/blob/main/docs/themes/schemas/themes-storage.v1.schema.json",
+  "title": "chrome.storage.local `themes` record, version 1",
+  "description": "Owned and written only by the service worker (hd_themes_cas with baseRevision, like hd_options_write at background.js:1250-1258 on main 7ff01b1). Read directly by the content script and Settings at start and on storage.onChanged. `installed` joins backups (backup-state.js:13-18); `catalogue` is a cache and is excluded. Sharing carries only options.popupTheme. Installed themes are colour data only: Hachidori compiles each palette into a CSS block locally; nothing downloaded is ever adopted as CSS or run as code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "revision",
+    "installed",
+    "catalogue",
+    "schedule"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "installed": {
+      "type": "object",
+      "maxProperties": 200,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]{1,40}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/installedTheme"
+      },
+      "description": "Palettes and variants used from a refreshed catalogue that this release does not bundle. Renderer JavaScript is never stored here."
+    },
+    "catalogue": {
+      "description": "The last refreshed dist/index.json, or null (use the vendored index).",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fetchedAt",
+            "commit",
+            "etag",
+            "index"
+          ],
+          "properties": {
+            "fetchedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "etag": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            },
+            "index": {
+              "type": "object",
+              "description": "Validated against theme-index.v1.schema.json before it is stored."
+            }
+          }
+        }
+      ]
+    },
+    "schedule": {
+      "enum": [
+        "off",
+        "daily",
+        "weekly"
+      ],
+      "description": "Optional 'Check for new themes'; default off, like dictionary updates (managed-dictionary-source.js:32)."
+    }
+  },
+  "$defs": {
+    "installedTheme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "renderer",
+        "name",
+        "author",
+        "mode",
+        "license",
+        "palette",
+        "installedAt",
+        "source"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "kind": {
+          "enum": [
+            "palette",
+            "variant"
+          ]
+        },
+        "renderer": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,40}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "mode": {
+          "enum": [
+            "dark",
+            "light"
+          ]
+        },
+        "license": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "palette": {
+          "type": "object",
+          "minProperties": 18,
+          "maxProperties": 18,
+          "propertyNames": {
+            "pattern": "^(color-scheme|base-100|base-200|base-300|base-content|primary|primary-content|secondary|secondary-content|accent|accent-content|neutral|neutral-content|info|info-content|success|warning|error)$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(dark|light|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|oklch\\([^();{}]{1,60}\\)|rgb\\([^();{}]{1,40}\\)|hsl\\([^();{}]{1,40}\\))$"
+          },
+          "description": "Validated colour values (same syntax as theme.yaml); compiled locally into html[data-hoshidicts-theme=<slug>], :host([data-hoshidicts-theme=<slug>]) { --hoshidicts-palette-*: … }."
+        },
+        "installedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit"
+          ],
+          "properties": {
+            "repository": {
+              "const": "bee-san/hachidori-theme-store"
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

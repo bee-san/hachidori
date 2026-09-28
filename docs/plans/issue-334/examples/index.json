@@ -1,0 +1,206 @@
+{
+  "schema": 1,
+  "source": {
+    "repository": "bee-san/hachidori-theme-store",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "palettes": {
+    "path": "dist/palettes.css",
+    "bytes": 46223,
+    "sha256": "24e99d18e4aa72dfb1076b98e659a55300e9badec0e1801e4c290c9834faf2fb"
+  },
+  "themes": [
+    {
+      "slug": "dracula",
+      "name": "Dracula",
+      "version": "1.0.0",
+      "author": "daisyUI via GameSentenceMiner PR #549",
+      "description": "The daisyUI 5 Dracula palette on the Default renderer.",
+      "tags": [
+        "dark"
+      ],
+      "license": "GPL-3.0-or-later",
+      "credits": [
+        {
+          "name": "daisyUI 5 themes",
+          "url": "https://github.com/saadeghi/daisyui",
+          "license": "MIT"
+        }
+      ],
+      "minHachidoriVersion": "0.2.0",
+      "mode": "dark",
+      "kind": "palette",
+      "renderer": "default",
+      "installable": "runtime",
+      "palette": {
+        "color-scheme": "dark",
+        "base-100": "oklch(28.822% 0.022 277.508)",
+        "base-200": "oklch(26.805% 0.02 277.508)",
+        "base-300": "oklch(24.787% 0.019 277.508)",
+        "base-content": "oklch(97.747% 0.007 106.545)",
+        "primary": "oklch(75.461% 0.183 346.812)",
+        "primary-content": "oklch(15.092% 0.036 346.812)",
+        "secondary": "oklch(74.202% 0.148 301.883)",
+        "secondary-content": "oklch(14.84% 0.029 301.883)",
+        "accent": "oklch(83.392% 0.124 66.558)",
+        "accent-content": "oklch(16.678% 0.024 66.558)",
+        "neutral": "oklch(39.445% 0.032 275.524)",
+        "neutral-content": "oklch(87.889% 0.006 275.524)",
+        "info": "oklch(88.263% 0.093 212.846)",
+        "info-content": "oklch(17.652% 0.018 212.846)",
+        "success": "oklch(87.099% 0.219 148.024)",
+        "warning": "oklch(95.533% 0.134 112.757)",
+        "error": "oklch(68.22% 0.206 24.43)"
+      }
+    },
+    {
+      "slug": "nazeka",
+      "name": "Nazeka",
+      "version": "2.0.0",
+      "author": "bee-san",
+      "link": "https://github.com/wareya/nazeka",
+      "description": "Nazeka's popup as texthook.js draws it.",
+      "tags": [
+        "dark",
+        "compact",
+        "classic",
+        "nazeka"
+      ],
+      "license": "GPL-3.0-or-later",
+      "credits": [
+        {
+          "name": "wareya/nazeka texthook.js (8b220fb)",
+          "url": "https://github.com/wareya/nazeka",
+          "license": "Apache-2.0"
+        }
+      ],
+      "minHachidoriVersion": "0.2.0",
+      "mode": "dark",
+      "kind": "renderer",
+      "renderer": "nazeka",
+      "installable": "release",
+      "palette": {
+        "color-scheme": "dark",
+        "base-100": "#111111",
+        "base-200": "#111111",
+        "base-300": "#1c1c1c",
+        "base-content": "#cccccc",
+        "primary": "#99ddff",
+        "primary-content": "#111111",
+        "secondary": "#99ff99",
+        "secondary-content": "#111111",
+        "accent": "#d8a888",
+        "accent-content": "#111111",
+        "neutral": "#606060",
+        "neutral-content": "#cccccc",
+        "info": "#406080",
+        "info-content": "#cccccc",
+        "success": "#608040",
+        "warning": "#d8a888",
+        "error": "#ff7070"
+      },
+      "js": {
+        "file": {
+          "path": "dist/themes/nazeka/renderer.js",
+          "bytes": 9120,
+          "sha256": "4b2b4c22f010d9c409323a856eee7f6fe6d94cccf5f786df0496b1bcafecebf0"
+        },
+        "css": {
+          "path": "dist/themes/nazeka/renderer.css",
+          "bytes": 6230,
+          "sha256": "f108fd6e2eab27a7db26617336179634b0c4d106b7d74e87dbf521233fea97a6"
+        },
+        "apiVersion": 1,
+        "glossary": [
+          "text"
+        ],
+        "components": [
+          "kanjiLink"
+        ],
+        "layout": {
+          "size": "content"
+        },
+        "ignores": [
+          "popupColumns",
+          "popupToolbarPosition"
+        ],
+        "summary": "Draws Nazeka's rows directly, with only the audio and Anki buttons."
+      },
+      "screenshot": {
+        "path": "themes/nazeka/screenshot.png",
+        "width": 1120,
+        "height": 840,
+        "sha256": "50d07fb850acf3049d116a3b44ec6aeceaa0c94e119b7fe3c8691b33ce8bb2fb"
+      },
+      "suggestedOptions": {
+        "popupOpacityPercent": 100
+      },
+      "preview": {
+        "swatches": [
+          "#111111",
+          "#cccccc",
+          "#99ddff",
+          "#99ff99"
+        ]
+      },
+      "benchmark": {
+        "hachidoriCommit": "fc3eb73053be4851e68217de22cacd8e36a14935",
+        "measuredAt": "2026-09-24",
+        "verdict": "pass",
+        "label": "standard",
+        "hoverCompleteMedianMs": {
+          "default": 33.2,
+          "theme": 33.3
+        },
+        "nodes": {
+          "default": 32,
+          "theme": 37
+        }
+      }
+    },
+    {
+      "slug": "sentence-context-dark",
+      "name": "Sentence Context (night)",
+      "version": "1.0.0",
+      "author": "hachidori theme designers",
+      "description": "Sentence Context's newspaper layout on a dark newsprint palette.",
+      "tags": [
+        "dark",
+        "reader",
+        "sentence",
+        "serif"
+      ],
+      "license": "GPL-3.0-or-later",
+      "minHachidoriVersion": "0.2.0",
+      "mode": "dark",
+      "kind": "variant",
+      "renderer": "sentence-context",
+      "installable": "runtime",
+      "palette": {
+        "color-scheme": "dark",
+        "base-100": "#1d1b18",
+        "base-200": "#252219",
+        "base-300": "#2e2a20",
+        "base-content": "#ece4d4",
+        "primary": "#e2643c",
+        "primary-content": "#1d1b18",
+        "secondary": "#c9b38a",
+        "secondary-content": "#1d1b18",
+        "accent": "#e2643c",
+        "accent-content": "#1d1b18",
+        "neutral": "#3a352b",
+        "neutral-content": "#ece4d4",
+        "info": "#7fa7c9",
+        "info-content": "#1d1b18",
+        "success": "#8fbf7a",
+        "warning": "#d9a75a",
+        "error": "#e07a6a"
+      },
+      "screenshot": {
+        "path": "themes/sentence-context-dark/screenshot.png",
+        "width": 1120,
+        "height": 840
+      }
+    }
+  ]
+}

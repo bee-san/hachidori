@@ -1,0 +1,55 @@
+{
+  "modelVersion": 1,
+  "kind": "kanji",
+  "reason": "lookup",
+  "request": {
+    "generation": 8,
+    "depth": 0
+  },
+  "character": "食",
+  "source": {
+    "text": "食べたかった",
+    "sentence": "本当は、ずっと前から食べたかったんだ。",
+    "offset": 10,
+    "length": 6
+  },
+  "entries": [
+    {
+      "dictionary": "hachidori-fixture",
+      "character": "食",
+      "onyomi": [
+        "ショク",
+        "ジキ"
+      ],
+      "kunyomi": [
+        "く.う",
+        "た.べる"
+      ],
+      "meanings": [
+        "eat",
+        "food"
+      ],
+      "tags": [
+        {
+          "name": "jouyou",
+          "category": null,
+          "notes": null,
+          "dictionary": "hachidori-fixture"
+        }
+      ],
+      "stats": [
+        {
+          "name": "Grade",
+          "category": "misc",
+          "value": "2"
+        },
+        {
+          "name": "Strokes",
+          "category": "misc",
+          "value": "9"
+        }
+      ]
+    }
+  ],
+  "back": true
+}

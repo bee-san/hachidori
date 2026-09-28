@@ -1,0 +1,42 @@
+# themes/plain/theme.yaml — Hachidori theme manifest, schema 2 (example for #334, card T-36).
+# Owner update 2026-09-28: render only the dictionary content, no buttons or chrome,
+# as fast as possible. Ships as a PR to bee-san/hachidori-theme-store.
+schema: 2
+slug: plain
+name: Plain
+version: 1.0.0
+author: bee-san
+description: Only the dictionary content — headword, reading and the dictionary's text. No buttons, bars, tags, graphs or images; actions stay on your keybinds.
+tags: [minimal, compact, dark]
+license: GPL-3.0-or-later
+minHachidoriVersion: 0.2.0
+mode: dark
+palette:                  # illustrative neutral dark palette
+  color-scheme: dark
+  base-100: "#161616"
+  base-200: "#161616"
+  base-300: "#202020"
+  base-content: "#e6e6e6"
+  primary: "#e6e6e6"
+  primary-content: "#161616"
+  secondary: "#b0b0b0"
+  secondary-content: "#161616"
+  accent: "#9ecbff"
+  accent-content: "#161616"
+  neutral: "#303030"
+  neutral-content: "#e6e6e6"
+  info: "#9ecbff"
+  info-content: "#161616"
+  success: "#8fd18f"
+  warning: "#e0c070"
+  error: "#ff8a8a"
+js:
+  file: renderer.js
+  css: renderer.css
+  apiVersion: 1
+  glossary: [text]
+  components: []
+  layout: { size: content }
+  ignores: [popupColumns, popupToolbarPosition, showPopupAudioButton, showCompactDefinitionSummary, compactDefinitionSummaryCount, compactDefinitionSummaryDictionary, averageFrequency, showFrequencyDictionaryNames, showPitchAccentFurigana, pitchAccentFuriganaDictionary, showPitchAccentBadge, hidePopupGrammarTags, popupImageSource, customButtons, customLinks]
+  summary: Draws only headword, reading and the dictionary's plain text for each result — no buttons, bars or metadata — in a single pass.
+screenshot: screenshot.png

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bee-san/hachidori-theme-store/main/schema/benchmark.schema.json",
+  "title": "Theme benchmark result (benchmarks/<slug>.json), schema 1",
+  "description": "Written by CI (scripts/bench.mjs over Hachidori's benchmark/hover-popup.mjs at fixture/HACHIDORI_COMMIT), never pasted by authors (decisions.md D7). End-to-end first (#334 comment 5870917807): hover/kanji/cold latency against Default on identical inputs, then where the work goes (renderer build, style, layout, script, nodes, heap) and proof that omitted dictionary work was not performed (#334 comment 5871156145). Times are milliseconds on the page clock; frame-quantised values (16.7 ms at 60 Hz) are compared by median.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "slug", "version", "renderer", "hachidori", "chrome", "samples", "measuredAt", "inputs", "endToEnd", "work", "dictionaryWork", "heapDeltaMiB", "verdict", "label"],
+  "properties": {
+    "schema": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "renderer": { "type": "string" },
+    "hachidori": {
+      "type": "object", "additionalProperties": false, "required": ["commit", "version"],
+      "properties": { "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }, "version": { "type": "string" } }
+    },
+    "chrome": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+\\.\\d+$" },
+    "samples": { "type": "integer", "minimum": 3, "description": "Fresh Chrome profiles per side; CI uses 5." },
+    "measuredAt": { "type": "string", "format": "date" },
+    "inputs": {
+      "type": "array", "minItems": 4,
+      "items": { "enum": ["short", "long", "deep", "kanji", "nested", "cold"] },
+      "description": "short 食べる, long 漢字 with 24 senses, deep 深層 (40 nested elements), kanji 漢 click, nested child popup, cold first hover of a fresh profile."
+    },
+    "endToEnd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hoverFirst", "hoverComplete", "kanjiOpen", "coldFirst", "coldComplete"],
+      "properties": {
+        "hoverFirst": { "$ref": "#/$defs/perInput" },
+        "hoverComplete": { "$ref": "#/$defs/perInput" },
+        "kanjiOpen": { "$ref": "#/$defs/pair" },
+        "coldFirst": { "$ref": "#/$defs/pair" },
+        "coldComplete": { "$ref": "#/$defs/pair" },
+        "nested": { "$ref": "#/$defs/pair" }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["renderBuildMs", "styleMs", "layoutMs", "scriptMs", "nodes"],
+      "properties": {
+        "renderBuildMs": { "$ref": "#/$defs/pair", "description": "Host measure hd:render:<id> around renderTerms/renderKanji (DOM construction)." },
+        "styleMs": { "$ref": "#/$defs/pair" },
+        "layoutMs": { "$ref": "#/$defs/pair" },
+        "scriptMs": { "$ref": "#/$defs/pair" },
+        "nodes": { "$ref": "#/$defs/pairInt" }
+      }
+    },
+    "dictionaryWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stylesRequests", "dictionaryStyleElements", "structuredNodes", "images"],
+      "properties": {
+        "stylesRequests": { "$ref": "#/$defs/pairInt", "description": "hd_styles messages (content.js ensureDictionaryStyles)." },
+        "dictionaryStyleElements": { "$ref": "#/$defs/pairInt" },
+        "structuredNodes": { "$ref": "#/$defs/pairInt", "description": "Elements under .structured-content / rich glossary roots." },
+        "images": { "$ref": "#/$defs/pairInt" }
+      }
+    },
+    "heapDeltaMiB": { "type": "number" },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The renderer's previous published result, for renderer-specific regression checks.",
+      "properties": { "version": { "type": "string" }, "renderBuildP95Ms": { "type": "number" }, "nodes": { "type": "integer" } }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "reasons"],
+      "properties": { "pass": { "type": "boolean" }, "reasons": { "type": "array", "items": { "type": "string" } } }
+    },
+    "label": { "enum": ["lighter", "standard"], "description": "Store badge: 'lighter' only when the theme measurably does less work than Default (benchmarking.md); there is no slow tier because over-budget themes are not published." },
+    "results": { "type": "string", "pattern": "^https://", "description": "Where raw.json lives (CI artifact or branch)." }
+  },
+  "$defs": {
+    "stat": {
+      "type": "object", "additionalProperties": false, "required": ["median", "p95"],
+      "properties": { "median": { "type": "number" }, "p95": { "type": "number" } }
+    },
+    "pair": {
+      "type": "object", "additionalProperties": false, "required": ["default", "theme"],
+      "properties": { "default": { "$ref": "#/$defs/stat" }, "theme": { "$ref": "#/$defs/stat" } }
+    },
+    "pairInt": {
+      "type": "object", "additionalProperties": false, "required": ["default", "theme"],
+      "properties": { "default": { "type": "integer", "minimum": 0 }, "theme": { "type": "integer", "minimum": 0 } }
+    },
+    "perInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["short", "long", "deep"],
+      "properties": { "short": { "$ref": "#/$defs/pair" }, "long": { "$ref": "#/$defs/pair" }, "deep": { "$ref": "#/$defs/pair" } }
+    }
+  }
+}

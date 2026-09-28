@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bee-san/hachidori-theme-store/main/schema/theme.schema.json",
+  "title": "Hachidori theme manifest (themes/<slug>/theme.yaml), schema 2",
+  "description": "Frozen by card T-01 (bee-san/hachidori#334). Schema 2 replaces the schema-1 skeleton on the evidence branch: `extends`, `options`, `css`, `js.hooks` and the author-pasted `benchmark` block are gone (decisions.md D1, D7, D8, D10, D23). A theme is never CSS or JS layered over the Default popup (https://github.com/bee-san/hachidori/issues/334#issuecomment-5872606542): kinds are derived as palette (colours for the Default renderer), renderer (`js`: its own popup, bundled with a Hachidori release) and variant (`renderer` = another theme's slug: that renderer with this palette). validate.mjs adds the cross-file checks this schema cannot express: slug equals folder, slugs unique, `renderer` names a theme that has `js`, files exist and fit their size caps, screenshot is a 1120x840 PNG.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "name",
+    "version",
+    "author",
+    "description",
+    "tags",
+    "license",
+    "minHachidoriVersion",
+    "mode",
+    "palette"
+  ],
+  "properties": {
+    "schema": {
+      "const": 2
+    },
+    "slug": {
+      "$ref": "#/$defs/slug",
+      "description": "Equals the folder name; unique; becomes options.popupTheme and data-hoshidicts-theme."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "pattern": "^[\\x20-\\x7e]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "Semver; bump to publish an update."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "link": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 280
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/tag"
+      }
+    },
+    "license": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9.+() -]+$",
+      "description": "SPDX expression for this theme's own files."
+    },
+    "credits": {
+      "type": "array",
+      "maxItems": 8,
+      "description": "Third-party sources this theme reproduces (colours, layouts, CSS). Shown in the store and copied into THIRD_PARTY_NOTICES when vendored.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "license"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://"
+          },
+          "license": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9.+() -]+$"
+          }
+        }
+      }
+    },
+    "minHachidoriVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "mode": {
+      "enum": [
+        "dark",
+        "light"
+      ]
+    },
+    "palette": {
+      "$ref": "#/$defs/palette"
+    },
+    "renderer": {
+      "$ref": "#/$defs/slug",
+      "description": "Omit (or `default`) for a palette theme on the Default renderer; the slug of a theme that declares `js` for a variant. Must be absent when `js` is present (the theme defines its own renderer)."
+    },
+    "js": {
+      "$ref": "#/$defs/rendererDeclaration"
+    },
+    "suggestedOptions": {
+      "$ref": "#/$defs/suggestedOptions"
+    },
+    "screenshot": {
+      "const": "screenshot.png",
+      "description": "Required for renderer and variant themes; optional for palettes (Settings previews a palette live in the Design preview)."
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "swatches": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/color"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "js"
+        ],
+        "properties": {
+          "js": true
+        }
+      },
+      "then": {
+        "required": [
+          "screenshot"
+        ],
+        "properties": {
+          "screenshot": true
+        },
+        "not": {
+          "required": [
+            "renderer"
+          ],
+          "properties": {
+            "renderer": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "renderer"
+        ],
+        "properties": {
+          "renderer": {
+            "not": {
+              "const": "default"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "screenshot"
+        ],
+        "properties": {
+          "screenshot": true
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,40}$"
+    },
+    "tag": {
+      "enum": [
+        "dark",
+        "light",
+        "high-contrast",
+        "monochrome",
+        "pastel",
+        "colourblind-safe",
+        "seasonal",
+        "compact",
+        "spacious",
+        "minimal",
+        "classic",
+        "retro",
+        "playful",
+        "animated",
+        "nazeka",
+        "rikaikun",
+        "yomitan",
+        "vn",
+        "manga",
+        "reader",
+        "vertical",
+        "serif",
+        "sentence",
+        "kanji",
+        "learner",
+        "frequency",
+        "keyboard"
+      ]
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|oklch\\([^()]{1,60}\\)|rgb\\([^()]{1,40}\\)|hsl\\([^()]{1,40}\\))$"
+    },
+    "palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The 17 colours plus color-scheme that every reader.css palette block declares today (reader.css:32-959 on main 7ff01b1).",
+      "required": [
+        "color-scheme",
+        "base-100",
+        "base-200",
+        "base-300",
+        "base-content",
+        "primary",
+        "primary-content",
+        "secondary",
+        "secondary-content",
+        "accent",
+        "accent-content",
+        "neutral",
+        "neutral-content",
+        "info",
+        "info-content",
+        "success",
+        "warning",
+        "error"
+      ],
+      "properties": {
+        "color-scheme": {
+          "enum": [
+            "dark",
+            "light"
+          ]
+        },
+        "base-100": {
+          "$ref": "#/$defs/color"
+        },
+        "base-200": {
+          "$ref": "#/$defs/color"
+        },
+        "base-300": {
+          "$ref": "#/$defs/color"
+        },
+        "base-content": {
+          "$ref": "#/$defs/color"
+        },
+        "primary": {
+          "$ref": "#/$defs/color"
+        },
+        "primary-content": {
+          "$ref": "#/$defs/color"
+        },
+        "secondary": {
+          "$ref": "#/$defs/color"
+        },
+        "secondary-content": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-content": {
+          "$ref": "#/$defs/color"
+        },
+        "neutral": {
+          "$ref": "#/$defs/color"
+        },
+        "neutral-content": {
+          "$ref": "#/$defs/color"
+        },
+        "info": {
+          "$ref": "#/$defs/color"
+        },
+        "info-content": {
+          "$ref": "#/$defs/color"
+        },
+        "success": {
+          "$ref": "#/$defs/color"
+        },
+        "warning": {
+          "$ref": "#/$defs/color"
+        },
+        "error": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "componentName": {
+      "enum": [
+        "headword",
+        "kanjiLink",
+        "tags",
+        "frequencies",
+        "pitch",
+        "deinflection",
+        "glossary",
+        "audioButton",
+        "mineButton",
+        "noteButton",
+        "customButtons",
+        "tabs",
+        "showMore",
+        "lookupStats",
+        "kanjiEntry",
+        "backButton",
+        "closeButton"
+      ]
+    },
+    "ignorableOption": {
+      "enum": [
+        "popupColumns",
+        "popupToolbarPosition",
+        "showPopupAudioButton",
+        "popupHeightPx",
+        "showCompactDefinitionSummary",
+        "compactDefinitionSummaryCount",
+        "compactDefinitionSummaryDictionary",
+        "averageFrequency",
+        "showFrequencyDictionaryNames",
+        "showPitchAccentFurigana",
+        "pitchAccentFuriganaDictionary",
+        "showPitchAccentBadge",
+        "hidePopupGrammarTags",
+        "popupImageSource",
+        "customButtons",
+        "customLinks"
+      ]
+    },
+    "rendererDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bundled-only renderer: reviewed extension code shipped inside a Hachidori release, never fetched at runtime (Chrome Web Store remote-code rule; security.md). renderer.js builds the whole popup content and renderer.css styles it; neither is layered over Default. check-renderer.mjs verifies that renderer.js registers exactly these declarations.",
+      "required": [
+        "file",
+        "css",
+        "apiVersion",
+        "glossary",
+        "summary"
+      ],
+      "properties": {
+        "file": {
+          "const": "renderer.js"
+        },
+        "css": {
+          "const": "renderer.css"
+        },
+        "apiVersion": {
+          "const": 1
+        },
+        "glossary": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "rich",
+              "text",
+              "none"
+            ]
+          },
+          "description": "Glossary modes the renderer may use (#334 comment 5871156145). Dictionary CSS loads only if a rich glossary is actually rendered."
+        },
+        "components": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/componentName"
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "enum": [
+                "fixed",
+                "content"
+              ],
+              "description": "content: the core sizes the popup to its content, bounded by the user's width/height."
+            }
+          }
+        },
+        "ignores": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ignorableOption"
+          },
+          "description": "Design controls this renderer does not use; Settings says so next to each control."
+        },
+        "needs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "placement",
+              "headwordKanji",
+              "sentenceSegments"
+            ]
+          },
+          "description": "Optional model extensions (backlog cards T-60, T-64, T-65). A host that lacks one refuses the renderer (Default + store note)."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 200,
+          "description": "What the renderer draws; shown in the store's JavaScript notice."
+        }
+      }
+    },
+    "suggestedOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "One-shot suggestions written together with the theme on 'Use this theme', with Undo; never locked or re-applied (#334 comment 5814181505). Bounds mirror reader-options.js NUMBER_RANGES (145-163 on main 7ff01b1).",
+      "properties": {
+        "popupOpacityPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "popupWidthPx": {
+          "type": "integer",
+          "minimum": 280,
+          "maximum": 1200
+        },
+        "popupHeightPx": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 900
+        },
+        "popupColumns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "popupToolbarPosition": {
+          "enum": [
+            "auto",
+            "top",
+            "bottom"
+          ]
+        },
+        "showPopupAudioButton": {
+          "type": "boolean"
+        },
+        "showCompactDefinitionSummary": {
+          "type": "boolean"
+        },
+        "compactDefinitionSummaryCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "averageFrequency": {
+          "type": "boolean"
+        },
+        "showFrequencyDictionaryNames": {
+          "type": "boolean"
+        },
+        "showPitchAccentFurigana": {
+          "type": "boolean"
+        },
+        "showPitchAccentBadge": {
+          "type": "boolean"
+        },
+        "hidePopupGrammarTags": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$comment": "Every conditional `required` sits beside a `properties` entry for the same key so the schema compiles under Ajv strict mode (strictRequired); the schema-1 skeleton failed exactly there (#334 comment 5821458937, API gap 6)."
+}

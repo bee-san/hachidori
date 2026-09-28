@@ -1,0 +1,46 @@
+# themes/rikaikun/theme.yaml — a renderer theme: its own popup, not CSS over Default
+# (#334 comment 5872606542). Colours are illustrative here; T-35 takes them from
+# melink14/rikaikun extension/css/popup.css at dd50b08.
+schema: 2
+slug: rikaikun
+name: Rikaikun
+version: 1.0.0
+author: bee-san
+link: https://github.com/melink14/rikaikun
+description: Rikaikun's blue popup — dense headword, reading and gloss rows as plain text, no cards, no top bar.
+tags: [light, compact, classic, rikaikun]
+license: GPL-3.0-or-later
+credits:
+  - name: melink14/rikaikun popup.css (dd50b08)
+    url: https://github.com/melink14/rikaikun
+    license: GPL-3.0
+minHachidoriVersion: 0.2.0
+mode: light
+palette:
+  color-scheme: light
+  base-100: "#5c73b8"
+  base-200: "#4f65a8"
+  base-300: "#44599a"
+  base-content: "#ffffff"
+  primary: "#ccffff"
+  primary-content: "#1a1a1a"
+  secondary: "#ccffcc"
+  secondary-content: "#1a1a1a"
+  accent: "#ffffcc"
+  accent-content: "#1a1a1a"
+  neutral: "#3b4d86"
+  neutral-content: "#ffffff"
+  info: "#d0e0ff"
+  info-content: "#1a1a1a"
+  success: "#a7e3a7"
+  warning: "#ffd27f"
+  error: "#ff9a9a"
+js:
+  file: renderer.js
+  css: renderer.css
+  apiVersion: 1
+  glossary: [text]
+  layout: { size: content }
+  ignores: [popupColumns, popupToolbarPosition, showPitchAccentBadge, showCompactDefinitionSummary]
+  summary: Draws Rikaikun's popup directly — headword, reading and flattened gloss rows on the blue box, with only the audio and Anki actions.
+screenshot: screenshot.png

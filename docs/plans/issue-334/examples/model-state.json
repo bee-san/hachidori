@@ -1,0 +1,12 @@
+{
+  "modelVersion": 1,
+  "kind": "state",
+  "reason": "lookup",
+  "request": {
+    "generation": 9,
+    "depth": 0
+  },
+  "state": "failure",
+  "message": "The dictionary engine did not answer.",
+  "retryable": true
+}

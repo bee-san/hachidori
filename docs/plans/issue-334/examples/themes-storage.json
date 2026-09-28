@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "revision": 3,
+  "installed": {
+    "sentence-context-dark": {
+      "version": "1.0.0",
+      "kind": "variant",
+      "renderer": "sentence-context",
+      "name": "Sentence Context (night)",
+      "author": "hachidori theme designers",
+      "mode": "dark",
+      "license": "GPL-3.0-or-later",
+      "palette": {
+        "color-scheme": "dark",
+        "base-100": "#1d1b18",
+        "base-200": "#252219",
+        "base-300": "#2e2a20",
+        "base-content": "#ece4d4",
+        "primary": "#e2643c",
+        "primary-content": "#1d1b18",
+        "secondary": "#c9b38a",
+        "secondary-content": "#1d1b18",
+        "accent": "#e2643c",
+        "accent-content": "#1d1b18",
+        "neutral": "#3a352b",
+        "neutral-content": "#ece4d4",
+        "info": "#7fa7c9",
+        "info-content": "#1d1b18",
+        "success": "#8fbf7a",
+        "warning": "#d9a75a",
+        "error": "#e07a6a"
+      },
+      "installedAt": "2026-10-20T10:00:00Z",
+      "source": {
+        "repository": "bee-san/hachidori-theme-store",
+        "commit": "0123456789abcdef0123456789abcdef01234567"
+      }
+    }
+  },
+  "catalogue": null,
+  "schedule": "off"
+}
