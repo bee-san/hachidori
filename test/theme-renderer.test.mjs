@@ -63,6 +63,9 @@ test("text traversal retains deeply nested content without building DOM", () => 
     let data = "deep";
     for (let i = 0; i < 1000; i++) data = { tag: "div", content: data };
     assert.equal(dom.window.HDGlossary.glossaryToPlainText(data), "deep");
+    assert.equal(dom.window.HDGlossary.glossaryToPlainText({ content: [
+      { tag: "img", title: "Caption" }, { tag: "summary", content: "Note" }, { tag: "p", content: "Text" },
+    ] }), "Caption\nNote\nText");
     assert.equal(dom.window.HDGlossary.glossaryToPlainText([{ content: ["食", { tag: "b", content: "べる" }] }, "eat"]), "食べる\neat");
   } finally { dom.window.close(); }
 });

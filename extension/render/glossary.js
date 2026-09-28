@@ -1332,10 +1332,10 @@
         for (let index = item.length - 1; index >= 0; index--) stack.push(item[index]);
       } else if (typeof item === "object") {
         if (item.tag === "img" || item.type === "image") {
-          if (item.title) parts.push(String(item.title));
+          if (item.title) parts.push(String(item.title), "\n");
         } else if (item.tag === "br") parts.push("\n");
         else {
-          if (["div", "p", "li", "tr", "br"].includes(item.tag)) stack.push("\n");
+          if (["div", "p", "li", "tr", "td", "th", "details", "summary"].includes(item.tag)) stack.push("\n");
           stack.push(item.content);
         }
       } else parts.push(String(item));

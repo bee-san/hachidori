@@ -3,8 +3,9 @@
 
 Measured on 2026-09-28 at Hachidori **befcf61e5b36138cc8b1e30e3dc32b8ce0bf70ea**.
 Both themes use exactly the same engine, input, options and extension revision.
-Subsequent changes add catalogue captions, screenshots and evidence, not a new
-popup rendering path.
+Subsequent changes add catalogue captions, screenshots, evidence and text
+separators for image captions/disclosure headings (not present in these inputs).
+The renderer architecture and benchmark input paths are unchanged.
 
 ## Results
 
