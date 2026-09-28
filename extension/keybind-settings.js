@@ -6,6 +6,7 @@ export const KEYBIND_OPTION_LABELS = {
   hoverEnabled: "Enable lookups",
   onlyScanJapaneseText: "Japanese text only",
   showNoResultNotice: "Show a popup when a selection has no definition",
+  hidePopupOnCursorExit: "Hide popup on cursor exit",
   audioAutoplay: "Automatically play the first lookup result",
   sourceHighlightEnabled: "Highlight the word on the page",
   showPopupAudioButton: "Show the audio button",

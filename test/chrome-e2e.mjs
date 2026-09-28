@@ -1580,6 +1580,7 @@ async function popupReader(page, depth = 0) {
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
           menuFits: Boolean(menuRect && menuRect.height > 100 && menuRect.top >= popupRect.top && menuRect.bottom <= popupRect.bottom),
           candidatePoint: candidateRect && { x: candidateRect.x + candidateRect.width / 2, y: candidateRect.y + candidateRect.height / 2 },
+          buttonRect: button?.getBoundingClientRect().toJSON(),
           focused: root.activeElement?.className, rect: this.getBoundingClientRect().toJSON() };
       }.toString(),
     });
@@ -3362,6 +3363,27 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await tab.mouse.move(returnPoint.x, returnPoint.y);
     }
     const pointerReturn = await child.waitForHidden();
+    // Issue #363: with Hide popup on cursor exit on, the same return closes
+    // the child in sticky mode too, after the option's delay rather than the
+    // raised Hide delay.
+    let stickyReturn = null;
+    if (mousePosition && !returnPoint.covered) {
+      await writeOptions({ lookupMode: "activationSticky", popupHideDelayMs: 5000,
+        hidePopupOnCursorExit: true, hidePopupOnCursorExitDelayMs: 300 });
+      await tab.mouse.click(source.linkPoint.x, source.linkPoint.y);
+      const reopened = await child.waitForVisible();
+      const stickyPosition = await child.nested();
+      await popup.nested("blur");
+      await tab.mouse.move(stickyPosition.rect.right - 8, stickyPosition.rect.bottom - 8);
+      await settle(500);
+      const retainedInside = child.visible(await child.state());
+      const back = pointOutside(source.rect, stickyPosition.rect);
+      await tab.mouse.move(back.x, back.y);
+      stickyReturn = { reopened: reopened !== null, retainedInside, back, hidden: await child.waitForHidden(2500) };
+      await writeOptions({ lookupMode: originalOptions.lookupMode ?? "hover",
+        popupHideDelayMs: originalOptions.popupHideDelayMs ?? 160, hidePopupOnCursorExit: false,
+        hidePopupOnCursorExitDelayMs: originalOptions.hidePopupOnCursorExitDelayMs ?? 160 });
+    }
     stickyEvidence = await stickyLargeChildScenario(returnPoint);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
@@ -3465,7 +3487,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
     const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
-    evidence = { source, mouseChild, mousePosition, childHoverRetained, returnPoint, pointerReturn, first, repeatedKeyboardFocus,
+    evidence = { source, mouseChild, mousePosition, childHoverRetained, returnPoint, pointerReturn, stickyReturn, first, repeatedKeyboardFocus,
       focusedDefinitionSource, focusedPointerChild, focusedPointerGrandchild, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
       secondSource, second, fullChain, limited, narrowRoot, narrowChild, narrow, lowered, kanji, back, returnedWithClose, returned, retained, disabled, refreshedControls };
   } finally {
@@ -3539,6 +3561,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
       && JSON.stringify(evidence.disabled.depths) === "[0]"
       && evidence.refreshedControls.every(value => value === true), JSON.stringify(evidence));
+  check("hide popup on cursor exit closes a sticky child after its own delay once the pointer returns to the parent",
+    evidence.stickyReturn?.reopened && evidence.stickyReturn.retainedInside && !evidence.stickyReturn.back.covered
+      && evidence.stickyReturn.hidden, JSON.stringify(evidence.stickyReturn));
   const placement = {
     hoverChild: anchoredTo(definitionEvidence.definitionChildLayout?.rect, definitionEvidence.definitionSource?.rect,
       definitionEvidence.definitionChildLayout?.viewport),
@@ -8119,7 +8144,7 @@ async function checkHoverHitTesting(tab, popup) {
 
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay",
+    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay", "opt-hide-on-cursor-exit",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -8202,10 +8227,48 @@ async function checkReaderActivation(settings, tab, popup) {
         && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky
         && arrowed.key === "K" && arrowed.sticky && !arrowed.stickyHidden,
       JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing, arrowed }));
+
+    // Issue #363: Hide popup on cursor exit keeps a sticky popup through key
+    // release until the pointer has been inside it and left. The focus a mouse
+    // click leaves on a popup button does not keep it; keyboard focus does.
+    await edit({ "opt-activation-key": "Shift", "opt-lookup-sticky": true,
+      "opt-hide-on-cursor-exit": true, "opt-hide-on-cursor-exit-delay": "300" });
+    const openSticky = async () => {
+      await moveToWord();
+      await tab.keyboard.down("Shift");
+      const shown = await popup.waitForVisible();
+      await tab.keyboard.up("Shift");
+      return shown;
+    };
+    const clickAudio = async () => {
+      const box = (await popup.audio())?.buttonRect;
+      if (box) await tab.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      return (await popup.state()).focusedClass;
+    };
+    const stickyOpened = await openSticky();
+    await tab.mouse.move(2, 2);
+    await pause(600);
+    const neverEntered = popup.visible(await popup.state());
+    const clickFocus = await clickAudio();
+    await tab.mouse.move(2, 2);
+    const clickedHidden = await popup.waitForHidden(3000);
+    await openSticky();
+    await clickAudio();
+    await tab.keyboard.press("Tab");
+    const keyboardFocus = (await popup.state()).focusedClass;
+    await tab.mouse.move(2, 2);
+    await pause(600);
+    const keyboardKept = popup.visible(await popup.state());
+    await tab.keyboard.press("Escape");
+    check("hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
+      stickyOpened !== null && neverEntered && clickFocus.includes("gsm-hoshidicts-audio-button") && clickedHidden
+        && keyboardFocus !== "" && !keyboardFocus.includes("gsm-hoshidicts-audio-button") && keyboardKept,
+      JSON.stringify({ stickyOpened: stickyOpened !== null, neverEntered, clickFocus, clickedHidden, keyboardFocus, keyboardKept }));
   } finally {
     await tab.keyboard.up("k");
     // Keep a non-default key behind No key to prove that choosing No key
     // preserves it and that the exact setting survives the full browser restart.
+    // The cursor-exit delay likewise stays at 300 ms with its switch off.
     await edit({ "opt-activation-key": "K" });
     await edit(original);
     await tab.keyboard.press("Escape");
@@ -13687,6 +13750,8 @@ async function main() {
         === (expected.lookupMode === "hover" ? "" : expected.activationKey)
       && document.getElementById("opt-lookup-sticky-row").hidden === (expected.lookupMode === "hover")
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
+      && document.getElementById("opt-hide-on-cursor-exit").checked === expected.hidePopupOnCursorExit
+      && document.getElementById("opt-hide-on-cursor-exit-delay").value === String(expected.hidePopupOnCursorExitDelayMs)
       && document.getElementById("opt-popup-columns").value === String(expected.popupColumns)
       && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary
       && document.getElementById("opt-frequency-order").value === expected.frequencyOrder

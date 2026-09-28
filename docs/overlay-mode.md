@@ -104,7 +104,7 @@ the preferences for its own reading surface:
 
 | Area | Overlay-local preferences |
 | --- | --- |
-| Activation and scanning | Lookups on/off, Japanese-only scanning, lookup mode, activation key, hover delay and hide delay |
+| Activation and scanning | Lookups on/off, Japanese-only scanning, lookup mode, activation key, hover delay, hide delay, and hide popup on cursor exit with its delay |
 | Selection notices | Show a popup when a selection has no definition |
 | Source highlight | Highlight the word on the page |
 | Popup layout | Width, height, columns, toolbar position and nesting depth |

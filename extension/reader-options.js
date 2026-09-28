@@ -92,6 +92,9 @@
     activationKey: "Shift",
     hoverDelayMs: 0,
     popupHideDelayMs: 160,
+    // Yomitan's scanning.hidePopupOnCursorExit and hidePopupOnCursorExitDelay.
+    hidePopupOnCursorExit: false,
+    hidePopupOnCursorExitDelayMs: 160,
     popupNestingMaxDepth: 10,
     popupTheme: "default",
     popupToolbarPosition: "auto",
@@ -150,6 +153,7 @@
     maxResults: [1, 256],
     hoverDelayMs: [0, 2000],
     popupHideDelayMs: [0, 5000],
+    hidePopupOnCursorExitDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
     popupWidthPx: [280, 1200],
     popupHeightPx: [200, 900],

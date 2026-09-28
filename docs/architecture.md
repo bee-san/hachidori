@@ -640,6 +640,18 @@ not invalidate current rendered resources; result-affecting settings still do.
 Hidden retirement clears the DOM and owners immediately without a redundant
 scroll reset; every visible term, kanji or notice render still resets scrolling.
 
+**Hide popup on cursor exit** ports Yomitan's option of that name, off by
+default, with its own 0–5,000 ms delay (160 ms by default). It works in every
+lookup mode, including `activationSticky`. A pane's `mouseleave` for the page,
+an iframe or outside the window starts one exit timer, which is not restarted;
+moving between overlapping panes is not an exit, and a pointer resting in a
+connecting corridor stays inside until the transfer check finds it outside.
+Re-entering any pane, a new lookup, or scanning the popup's own word again
+cancels the timer. When it fires the whole chain hides unless a Note draft or
+pending append, an open audio menu or `:focus-visible` keyboard focus protects
+it; the focus Chrome leaves on a clicked button does not. A popup the pointer
+never entered and an exact-selection lookup stay as before.
+
 Disabling explicitly closes even a focused popup or Note draft, while an already
 dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
@@ -1167,7 +1179,10 @@ append, or deliberate keyboard focus still protects them. In `activationSticky`
 pointer movement never prunes a rendered child: entering or resting in an
 ancestor, an empty scan there and hovering a non-dictionary link there all leave
 it open, as Yomitan's children stay open without "Hide popup on cursor exit". An
-unfinished hover child is still cancelled when the pointer leaves its word. In
+unfinished hover child is still cancelled when the pointer leaves its word.
+While Hide popup on cursor exit is on, every mode, `activationSticky` included,
+prunes on that pointer movement after the cursor-exit delay instead of the hide
+delay, with the same protections. In
 every mode a primary
 press in an ancestor pane retires its descendants at once, focused or not, and
 drops a pending definition scan; only an open draft or pending append keeps
@@ -2349,7 +2364,7 @@ uncertain write leaves it for inspection and an explicit retry.
 | Newest `automaticBackupDays` automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates,  | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, cursor-exit hiding, child popup depth, scan/result limits, frequency ordering, dictionary selectors, ordered custom buttons, Anki Templates,  | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
