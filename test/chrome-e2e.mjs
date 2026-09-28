@@ -819,7 +819,8 @@ async function popupReader(page, depth = 0) {
         // A kanji segment's base is taller than a kana one (its link has a
         // dotted underline), yet every segment's contour and text must share
         // one row. A rise or drop must also span the 2px lines it joins, or
-        // its outer corner is notched.
+        // its outer corner is notched: its border image fills the mora's
+        // padding box and reaches out by its own borders, the lines' width.
         const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
         return {
           hidden: this.hasAttribute("hidden"),
@@ -886,8 +887,8 @@ async function popupReader(page, depth = 0) {
             transitionsCoverLines: transitions.every(mora => {
               const stroke = view.getComputedStyle(mora, "::after");
               const style = view.getComputedStyle(mora);
-              return Number.parseFloat(stroke.top) <= -Number.parseFloat(style.borderTopWidth)
-                && Number.parseFloat(stroke.bottom) <= -Number.parseFloat(style.borderBottomWidth);
+              return stroke.top === "0px" && stroke.bottom === "0px" && stroke.borderImageOutset === "1 0"
+                && stroke.borderTopWidth === style.borderTopWidth && stroke.borderBottomWidth === style.borderBottomWidth;
             }),
           },
         };
