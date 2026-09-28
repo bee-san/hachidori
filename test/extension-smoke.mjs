@@ -3007,7 +3007,7 @@ async function sharingTransitionStage() {
     const blockedTemplates = await write({
       anki: globalThis.HDReaderOptions.normaliseOptions({}).anki,
     });
-    const local = await write({ hoverEnabled: false, popupWidthPx: 480 });
+    const local = await write({ hoverEnabled: false, popupWidthPx: 480, definitionLookupMode: "click" });
     const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
     socket.receive({ kind: "storage", changes: { options: rawHost } });
     await until(() => current().popupTheme === "dracula");
@@ -3021,9 +3021,11 @@ async function sharingTransitionStage() {
         && blockedTemplates.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
         && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
+        && mirrored.definitionLookupMode === "click" && current().definitionLookupMode === "click"
         && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
         && current().revision === mirrored.revision && current().popupTheme === "dracula"
-        && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480,
+        && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480
+        && overlay.storage.raw.get("sharingLocalState").options.definitionLookupMode === "click",
       JSON.stringify({ initial, blockedTemplates, local, mirrored, current: current() }));
 
     async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
@@ -19054,12 +19056,154 @@ async function contentNoteStage() {
             firstResult || firstDetails,
           "definition text inherits Japanese gating, depth limits and stationary activation":
             gated && stationary?.request.text.startsWith("食用語"),
+          ...await definitionTriggerCases(),
         };
       } finally {
         activation.close();
       }
     } finally {
       hover.close();
+    }
+
+    // Issue #355: a Hover reader can make definition text wait for the
+    // activation key or a click while page lookups stay key-free.
+    async function definitionTriggerCases() {
+      // The harness's stored lookup settings, so a live edit changes only the trigger.
+      const stored = { lookupMode: "hover", hoverDelayMs: 0, maxResults: 7, scanLength: 9,
+        frequencyDictionary: "Frequency A", frequencyOrder: "descending",
+        kanjiClickDictionary: { title: "Generic", kind: "term" } };
+      async function open(definitionLookupMode) {
+        const harness = await createHarness(undefined, { options: { definitionLookupMode } });
+        await harness.initialLookup();
+        const word = appendGlossary(harness, "食用語");
+        const document = harness.popup.ownerDocument;
+        const window = document.defaultView;
+        document.caretPositionFromPoint = () => ({ offsetNode: word.textNode, offset: 0 });
+        return {
+          harness, word, window,
+          pointer: { clientX: 120, clientY: 80, target: word.term },
+          shift: (type) => document.dispatchEvent(new window.KeyboardEvent(type, {
+            bubbles: true, code: "ShiftLeft", key: "Shift", shiftKey: type === "keydown",
+          })),
+          click(target, [x, y], [releaseX, releaseY] = [x, y]) {
+            target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0, clientX: x, clientY: y }));
+            target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, button: 0, clientX: releaseX, clientY: releaseY }));
+          },
+          lookups: () => harness.pending.filter(({ request }) => request.type === "hd_lookup").length,
+        };
+      }
+      const results = {};
+
+      const keyed = await open("activation");
+      try {
+        const { harness } = keyed;
+        harness.driver.onPopupMouseMove(keyed.pointer);
+        await harness.settle();
+        const keyless = keyed.lookups() === 0 && !harness.driver.popupAt(1);
+        keyed.shift("keydown");
+        await harness.settle();
+        const sent = keyed.lookups();
+        const stationary = harness.take("hd_lookup");
+        if (stationary) harness.reply(stationary, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const opened = sent === 1 && stationary?.request.text.startsWith("食用語") === true
+          && !harness.driver.snapshot(1).popupHidden;
+        keyed.shift("keyup");
+        harness.driver.onPopupMouseMove(keyed.pointer);
+        await harness.settle();
+        const released = keyed.lookups() === 0 && !harness.driver.snapshot(1).popupHidden;
+        harness.driver.hide();
+        harness.driver.setScanCandidate(harness.candidate);
+        harness.driver.onMouseMove({ clientX: 300, clientY: 300, target: harness.anchor });
+        await harness.settle();
+        const page = harness.take("hd_lookup")?.request.text === harness.candidate.query;
+        results["definition text can require the activation key in Hover mode"] =
+          keyless && opened && released && page || { keyless, sent, opened, released, page };
+      } finally { keyed.harness.close(); }
+
+      const clicked = await open("click");
+      try {
+        const { harness, word, window } = clicked;
+        harness.driver.onPopupMouseMove(clicked.pointer);
+        harness.driver.onPopupMouseMove({ ...clicked.pointer, shiftKey: true });
+        clicked.shift("keydown");
+        await harness.settle();
+        clicked.shift("keyup");
+        const hoverless = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        clicked.click(word.term, [120, 80]);
+        await harness.settle();
+        const request = harness.take("hd_lookup");
+        // Moving over the parent does not cancel a click child that is still loading.
+        harness.driver.onPopupMouseMove({ ...clicked.pointer, target: word.glossary });
+        await harness.settle();
+        if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const opened = request?.request.text.startsWith("食用語") === true && !harness.driver.snapshot(1).popupHidden
+          && harness.driver.viewRequest(1)?.candidate.sourceDepth === 0;
+        clicked.click(word.term, [110, 80], [120, 80]);
+        await harness.settle();
+        const dragged = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        const root = harness.popup.getRootNode();
+        root.getSelection = () => ({ isCollapsed: false, anchorNode: word.textNode });
+        clicked.click(word.term, [120, 80]);
+        delete root.getSelection;
+        await harness.settle();
+        const selected = clicked.lookups() === 0;
+        // A disclosure keeps its own click, even over Japanese text.
+        const details = window.document.createElement("details");
+        const summary = window.document.createElement("summary");
+        summary.textContent = "食用語";
+        details.append(summary);
+        word.glossary.append(details);
+        window.document.caretPositionFromPoint = () => ({ offsetNode: summary.firstChild, offset: 0 });
+        clicked.click(summary, [120, 80]);
+        await harness.settle();
+        const disclosure = clicked.lookups() === 0;
+        // A dictionary link still routes through its own handler, exactly once.
+        const link = window.document.createElement("a");
+        link.dataset.hoshidictsQuery = "食用語";
+        link.textContent = "食用語";
+        word.glossary.append(link);
+        let linkClicks = 0;
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          linkClicks += 1;
+          harness.render().context.onInternalLink({ anchor: link, query: "食用語" });
+        });
+        clicked.click(link, [120, 80]);
+        await harness.settle();
+        const linkSent = clicked.lookups();
+        const linkRequest = harness.take("hd_lookup");
+        if (linkRequest) harness.reply(linkRequest, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        const linked = linkClicks === 1 && linkSent === 1 && linkRequest?.request.text === "食用語"
+          && !harness.driver.snapshot(1).popupHidden;
+        window.document.caretPositionFromPoint = () => ({ offsetNode: word.textNode, offset: 0 });
+        harness.emitOptions({ ...stored, definitionLookupMode: "click", popupNestingMaxDepth: 0 });
+        clicked.click(word.term, [120, 80]);
+        await harness.settle();
+        const depthLimited = clicked.lookups() === 0 && !harness.driver.popupAt(1);
+        results["definition text can open child popups on click only"] =
+          hoverless && opened && dragged && selected && disclosure && linked && depthLimited
+          || { hoverless, opened, dragged, selected, disclosure, linked, depthLimited };
+      } finally { clicked.harness.close(); }
+
+      const live = await open("inherit");
+      try {
+        const { harness } = live;
+        harness.driver.onPopupMouseMove(live.pointer);
+        await harness.settle();
+        const request = harness.take("hd_lookup");
+        const pending = request !== null && harness.driver.snapshot(1).popupHidden;
+        harness.emitOptions({ ...stored, definitionLookupMode: "click" });
+        const cancelled = !harness.driver.popupAt(1);
+        if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("食用語")] });
+        await harness.settle();
+        results["changing the child popup trigger cancels a pending definition hover"] =
+          pending && cancelled && !harness.driver.popupAt(1) || { pending, cancelled };
+      } finally { live.harness.close(); }
+      return results;
     }
   }
 

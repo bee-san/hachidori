@@ -2139,13 +2139,30 @@
     // A draft or pending append protects them as on every other hide path. A
     // press on an internal link keeps that link's own child for its click to
     // reuse or replace, retiring only the branch below it.
+    let press = null;
     popup.addEventListener("mousedown", (event) => {
+      press = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
       if (event.button !== 0 || level.retired) return;
       const link = popupLinkAt(event.target, level)?.hasAttribute("data-hoshidicts-query") === true;
       const depth = level.depth + (link ? 2 : 1);
       if (levels.length <= depth || hasProtectedNote(depth)) return;
       clearScanTimer();
       dismissLevels(depth, false);
+    });
+    // Reading → Activation → Child popups → Click: a primary click on a word in
+    // the definitions opens its child once the press above has retired the
+    // previous one. A press that travels or leaves a selection is a copy, and
+    // links, images, buttons and disclosures keep their own click.
+    popup.addEventListener("click", (event) => {
+      const start = press;
+      press = null;
+      if (options.definitionLookupMode !== "click" || !start || event.defaultPrevented || hasProtectedNote()
+          || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX
+          || event.target.closest("a, button, summary")) return;
+      const selection = shadow.getSelection?.() ?? window.getSelection();
+      if (selection && !selection.isCollapsed && popup.contains(selection.anchorNode)) return;
+      const candidate = resolveDefinitionCandidate(event.clientX, event.clientY, level);
+      if (candidate) void openChildLookup(candidate, level, { source: "click" });
     });
     popup.addEventListener(
       "mousemove",
@@ -3099,7 +3116,9 @@
     clearTransferTimer();
     clearDescendantTimer();
     const existing = levels[level.depth + 1];
-    const pendingKey = source === "link" ? "pendingLink" : "pendingHover";
+    // Only a hover child is cancelled when the pointer leaves its word; link
+    // and click children load independently of pointer movement.
+    const pendingKey = source === "hover" ? "pendingHover" : "pendingLink";
     const pending = existing?.[pendingKey];
     if (
       sameChildLookup(existing, candidate, primaryReading) &&
@@ -3423,6 +3442,17 @@
     return options.lookupMode === "hover" || activationPressed;
   }
 
+  // Words in a popup's definitions follow lookupMode unless Reading →
+  // Activation → Child popups asks for the key or a click instead.
+  function definitionKeyGated() {
+    return options.definitionLookupMode === "activation"
+      || (options.definitionLookupMode === "inherit" && options.lookupMode !== "hover");
+  }
+
+  function definitionHoverAllowed() {
+    return options.definitionLookupMode !== "click" && (!definitionKeyGated() || activationPressed);
+  }
+
   // Yomitan's default: once shown, the popup outlives the activation key and
   // the pointer's wanderings; only an explicit dismissal or a new lookup ends it.
   function schedulePointerHide() {
@@ -3483,7 +3513,7 @@
       else scheduleDescendantPrune(level);
       return;
     }
-    if (!activationAllowed() || level.depth >= options.popupNestingMaxDepth) {
+    if (!definitionHoverAllowed() || level.depth >= options.popupNestingMaxDepth) {
       cancelPendingHover(level);
       scheduleDescendantPrune(level);
       return;
@@ -3606,7 +3636,7 @@
       else scheduleDescendantPrune(level);
       return;
     }
-    if (selectionDragActive || !activationAllowed()) {
+    if (selectionDragActive || !definitionHoverAllowed()) {
       cancelPendingHover(level);
       clearScanTimer();
       return;
@@ -3955,7 +3985,8 @@
       activationCode = event.code;
     }
     const popupLevel = activePointerLevel(lastPointer);
-    if (!wasPressed && activationPressed && options.lookupMode !== "hover"
+    const keyGated = popupLevel ? definitionKeyGated() : options.lookupMode !== "hover";
+    if (!wasPressed && activationPressed && keyGated
         && lastPointer && !hasProtectedNote() && !popupHasFocus()
         && (!pointerInPopup || popupLevel)
         && !selectionDragActive
@@ -4155,7 +4186,8 @@
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
-    const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey;
+    const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey
+      || next.definitionLookupMode !== options.definitionLookupMode;
     const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
       || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
@@ -4274,7 +4306,7 @@
       clearHideTimer();
       const popupLevel = activePointerLevel(lastPointer);
       if (!hasProtectedNote() && !popupHasFocus() && (!pointerInPopup || popupLevel)) {
-        if (!activationAllowed()) {
+        if (!(popupLevel ? definitionHoverAllowed() : activationAllowed())) {
           if (popupLevel) cancelPendingHover(popupLevel);
           else schedulePointerHide();
         }

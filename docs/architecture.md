@@ -611,10 +611,26 @@ writes `activationKey` with `activationSticky` or `activation` as **Keep the
 popup open after releasing the key** says. That switch is hidden for No key and
 on when a key is chosen again.
 
-The existing 0–2,000 ms open delay defaults to 50 ms and also applies to a key
-pressed over a stationary pointer. Hide/transfer delay defaults to the existing
-160 ms, with the pinned source's 0–5,000 ms range. These are one global setting
-pair, not per-dictionary policies. Zero hide delay dismisses immediately.
+There is no open delay: `hoverDelayMs` always normalises to 0, so a scan runs
+on the next timer turn at the pointer's latest position, and a key pressed over
+a stationary pointer scans at once. The hide/transfer delay defaults to the
+existing 160 ms, with the pinned source's 0–5,000 ms range. It is one global
+setting, not a per-dictionary policy. Zero hide delay dismisses immediately.
+
+Words in a popup's definitions follow `lookupMode` by default
+(`definitionLookupMode: "inherit"`). Reading → Activation → Child popups can
+instead ask for the activation key (`activation`) or a click (`click`) there,
+whatever the page uses, so a No key reader can move over, rest on and scroll
+long definitions without opening children. The key choice names the remembered
+`activationKey`, which No key keeps. With the key, definition text is scanned
+only while it is held, a press over a resting pointer opens that word's child
+and release keeps the child. With Click, a primary click on a word opens its
+child after the press has retired the previous one; a press that travels 3 px
+or more, a selection in the popup, and clicks on links, buttons or disclosure
+summaries look nothing up. A click child loads like a link child, so pointer
+movement does not cancel it. Dictionary links, clicked kanji, the depth limit and
+protected Note drafts behave the same in every mode. The option is kept local to
+a linked overlay.
 
 Disabled readers do not create pointer scan timers. Activation-gated readers
 remember the pointer but do not scan or schedule until the key is held. Modifier
@@ -657,7 +673,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Enable lookups, the Activation key picker and the keep-open switch in Settings](assets/reader-activation-settings.png)
+![Enable lookups, the Activation key picker on No key and Child popups holding Shift in Settings](assets/reader-activation-settings.png)
 
 ![Hide popup on cursor exit and its Delay in Settings](assets/reader-cursor-exit-settings.png)
 
@@ -1146,7 +1162,9 @@ No dictionary frame, fetch, new permission or configurable action is introduced.
 ### Definition popup chains
 
 Hovering ordinary text inside a rendered glossary opens a child beside that
-word. The closed shadow root is resolved with the native shadow-aware caret
+word; Child popups can ask for the activation key or a click instead (see
+[Hover activation](#hover-activation-and-popup-ownership)). The closed shadow
+root is resolved with the native shadow-aware caret
 API, then the ordinary page scanner's inline, ruby, whitespace, Japanese-only
 and scan-length rules build the child query. The complete glossary remains the
 sentence and offset coordinate space for mining. Headwords, metadata, compact
