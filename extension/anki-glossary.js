@@ -56,7 +56,21 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     globalThis.HDGlossary.appendTextOnlyGlossary(inert, body, glossary.glossary, {
       dictionary: glossary.dictionary, appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
     });
+    replaceNewlines(body);
     return body;
+  }
+
+  // A note field has none of the popup's `white-space: pre-wrap`, so each line
+  // break in dictionary text becomes a <br>, as in Yomitan's
+  // AnkiTemplateRenderer._replaceNewlines (#359). plainText() reads it back.
+  function replaceNewlines(root) {
+    const walker = inert.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+    const texts = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    for (const text of texts) {
+      const lines = text.nodeValue.split(/\r?\n|\r/u);
+      if (lines.length > 1) text.replaceWith(...lines.flatMap((line, index) => index ? [inert.createElement("br"), line] : line));
+    }
   }
 
   function plainDefinition(selected, noDictionary) {
@@ -115,16 +129,15 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     root.className = "yomitan-glossary";
     root.style.cssText = "text-align: left; contain: layout paint style; isolation: isolate;";
     const list = inert.createElement("ol");
+    // One item per term-bank row, as Yomitan's {glossary} template emits: note
+    // types page by li[data-dictionary] and pad any nested list (#359).
     for (const [name, glossaries] of selected) {
-      const page = inert.createElement("li");
-      page.dataset.dictionary = name;
-      if (glossaries.length === 1) page.append(entry(glossaries[0], brief, noDictionary, pending));
-      else {
-        const senses = inert.createElement("ul");
-        for (const glossary of glossaries) { const sense = inert.createElement("li"); sense.append(entry(glossary, brief, noDictionary, pending)); senses.append(sense); }
-        page.append(senses);
+      for (const glossary of glossaries) {
+        const page = inert.createElement("li");
+        page.dataset.dictionary = name;
+        page.append(entry(glossary, brief, noDictionary, pending));
+        list.append(page);
       }
-      list.append(page);
     }
     root.append(list);
     appendStyles(root, selected);
