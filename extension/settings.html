@@ -427,23 +427,18 @@
           <fieldset class="lookup-group">
             <legend>Activation</legend>
             <label class="lookup-enable">
-              <span>Enable hover lookups</span>
+              <span>Enable lookups</span>
               <input type="checkbox" id="opt-hover-enabled" />
             </label>
             <div class="fields">
               <label class="field">
-                <span class="field-label">Lookup mode</span>
-                <select id="opt-lookup-mode">
-                  <option value="activationSticky">Activation key + hover, popup stays open</option>
-                  <option value="activation">Activation key + hover, popup closes on release</option>
-                  <option value="hover">Hover</option>
-                </select>
-                <span class="field-hint">Hold a key to look up a word, or look up automatically on hover.</span>
-              </label>
-              <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Used by the activation key modes. Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Hold this key while pointing at a word. No key looks up whenever you hover over Japanese text. Some keys are reserved by your browser or operating system.</span>
+              </label>
+              <label class="lookup-enable" id="opt-lookup-sticky-row">
+                <span>Keep the popup open after releasing the key</span>
+                <input type="checkbox" id="opt-lookup-sticky" />
               </label>
             </div>
           </fieldset>

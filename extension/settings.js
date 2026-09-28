@@ -70,7 +70,7 @@ const OPTION_SECTIONS = {
 };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
-  DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  DEFAULT_OPTIONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
   clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
@@ -1701,13 +1701,18 @@ function renderOptions() {
   customButtonController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
-  const mode = element("opt-lookup-mode");
-  if (mode !== document.activeElement) mode.value = options.lookupMode;
+  // Yomitan's "Scan modifier key" lists No key first. Its empty value is never
+  // stored: it means lookupMode "hover" and keeps the remembered activationKey.
   const activation = element("opt-activation-key");
   if (activation.options.length === 0) {
+    activation.add(new Option("No key", ""));
     for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
-  if (activation !== document.activeElement) activation.value = options.activationKey;
+  if (activation !== document.activeElement) {
+    activation.value = options.lookupMode === "hover" ? "" : options.activationKey;
+  }
+  element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
+  element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
@@ -3328,14 +3333,21 @@ function attachHandlers() {
     options.popupImageSource = event.target.value ? JSON.parse(event.target.value) : null;
     writeOptions();
   });
-  element("opt-lookup-mode").addEventListener("change", (event) => {
-    options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
+  // The picker and the keep-open switch together choose one lookup mode, so
+  // either control's change reads both.
+  const writeActivation = () => {
+    const key = element("opt-activation-key").value;
+    if (key === "") {
+      options.lookupMode = "hover";
+    } else {
+      options.activationKey = key;
+      options.lookupMode = element("opt-lookup-sticky").checked ? "activationSticky" : "activation";
+    }
+    element("opt-lookup-sticky-row").hidden = key === "";
     writeOptions();
-  });
-  element("opt-activation-key").addEventListener("change", (event) => {
-    options.activationKey = event.target.value;
-    writeOptions();
-  });
+  };
+  element("opt-activation-key").addEventListener("change", writeActivation);
+  element("opt-lookup-sticky").addEventListener("change", writeActivation);
 
   element("opt-frequency-order").addEventListener("change", (event) => {
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";

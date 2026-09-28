@@ -34,7 +34,7 @@ normal first-install preferences plus:
 
 | Option | Value | Settings control |
 | --- | --- | --- |
-| `lookupMode` | `"hover"` | Lookup → Activation → Lookup mode → Hover |
+| `lookupMode` | `"hover"` | Reading → Activation → Activation key → No key |
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
 | every `anki.templates[].captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
@@ -173,10 +173,10 @@ the worker download endpoint checks the actual API.
 
 `node test/chrome-overlay.mjs` loads a copy of the extension with the flag set
 into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
-does. It checks the Settings capability matrix, editable Custom buttons,
-rendered link and Anki buttons, and backend guards before checking glyph
-selection, the pencil for an unknown selection, and the host events around a
-drag.
+does. It checks the Settings capability matrix, the seeded No key choice,
+editable Custom buttons, rendered link and Anki buttons, and backend guards
+before checking glyph selection, the pencil for an unknown selection, and the
+host events around a drag.
 
 `test/electron-backup.cjs` exercises export, download cancellation and restore in
 a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1

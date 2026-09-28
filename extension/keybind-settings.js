@@ -3,7 +3,7 @@ import { reorderSettingsRows } from "./settings-dom.js";
 
 // Labels of the Settings controls that own each toggleable option.
 export const KEYBIND_OPTION_LABELS = {
-  hoverEnabled: "Enable hover lookups",
+  hoverEnabled: "Enable lookups",
   onlyScanJapaneseText: "Japanese text only",
   showNoResultNotice: "Show a popup when a selection has no definition",
   audioAutoplay: "Automatically play the first lookup result",

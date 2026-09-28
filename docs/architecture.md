@@ -598,9 +598,17 @@ key is released. `activation` instead closes the popup on release, and `hover`
 scans without a key. `reader-options.js` translates legacy
 `modifier` values into the canonical mode/key on read and accepts old Settings
 patches through the same revision CAS. Explicit modern fields win, and selecting
-Hover does not erase the remembered key. Canonical writes contain no competing
+No key does not erase the remembered key. Canonical writes contain no competing
 modifier policy. Letters, digits, punctuation, named browser keys and F1–F24 are
 supported; browser/OS-reserved keys remain subject to their native behavior.
+
+Settings → Reading → Activation shows these stored fields the way Yomitan's
+Scanning settings do. **Enable lookups** is `hoverEnabled`, the same switch as
+the toolbar's Japanese lookups and the toggle shortcut. The **Activation key**
+picker lists **No key** first: it writes only `lookupMode: "hover"`, and a key
+writes `activationKey` with `activationSticky` or `activation` as **Keep the
+popup open after releasing the key** says. That switch is hidden for No key and
+on when a key is chosen again.
 
 The existing 0–2,000 ms open delay defaults to 50 ms and also applies to a key
 pressed over a stationary pointer. Hide/transfer delay defaults to the existing
@@ -636,7 +644,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Lookup mode and activation key in Settings](assets/reader-activation-settings.png)
+![Enable lookups, the Activation key picker and the keep-open switch in Settings](assets/reader-activation-settings.png)
 
 ### Keybinds
 
@@ -1665,7 +1673,8 @@ keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
-The activation-key selector remains editable in either lookup mode.
+The Activation key picker stays editable in every lookup mode, and search finds
+it by "no key" or "hover".
 All sections stay mounted, so navigation and browser history preserve reader
 and personal-dictionary drafts. Personal source loads on first entering its section.
 The rail becomes a compact section chooser in narrow windows. Settings applies

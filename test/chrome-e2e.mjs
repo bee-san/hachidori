@@ -325,6 +325,7 @@ const PLANNED = [
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
+  "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "plain selections cannot lookup, highlight or open personal definitions when Shift is required",
@@ -8117,7 +8118,7 @@ async function checkHoverHitTesting(tab, popup) {
 
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hide-delay",
+    "opt-hover-enabled", "opt-activation-key", "opt-lookup-sticky", "opt-hide-delay",
   ]);
   const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
@@ -8142,7 +8143,7 @@ async function checkReaderActivation(settings, tab, popup) {
       opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
       JSON.stringify({ closed, disabled, reopened: reopened !== null }));
 
-    await edit({ "opt-lookup-mode": "activation", "opt-activation-key": "K", "opt-hide-delay": "400" });
+    await edit({ "opt-activation-key": "K", "opt-lookup-sticky": false, "opt-hide-delay": "400" });
     await popup.waitForHidden();
     await moveToWord();
     await pause(250);
@@ -8157,28 +8158,53 @@ async function checkReaderActivation(settings, tab, popup) {
     await tab.keyboard.up("k");
     await pause(300);
     const cancelled = !popup.visible(await popup.state());
-    const controls = await settings.evaluate(() => ({
-      key: document.getElementById("opt-activation-key").value,
-      disabled: document.getElementById("opt-activation-key").disabled,
-      mode: document.getElementById("opt-lookup-mode").value,
-    }));
+    const activationControls = () => settings.evaluate(async () => {
+      const { lookupMode, activationKey } = HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options);
+      return {
+        key: document.getElementById("opt-activation-key").value,
+        disabled: document.getElementById("opt-activation-key").disabled,
+        sticky: document.getElementById("opt-lookup-sticky").checked,
+        stickyHidden: document.getElementById("opt-lookup-sticky-row").hidden,
+        stored: [lookupMode, activationKey],
+      };
+    });
+    const controls = await activationControls();
     check("configured activation keys open stationary lookups and release them using the saved delays",
       gated && activated !== null && retained && released && cancelled
-        && controls.key === "K" && controls.mode === "activation" && !controls.disabled,
+        && JSON.stringify(controls.stored) === JSON.stringify(["activation", "K"])
+        && controls.key === "K" && !controls.sticky && !controls.stickyHidden && !controls.disabled,
       JSON.stringify({ gated, activated: activated !== null, retained, released, cancelled, controls }));
+
+    await edit({ "opt-activation-key": "" });
+    const noKey = await activationControls();
+    const hovered = await hoverForPopup(tab, popup, "#verb");
+    await edit({ "opt-activation-key": "K" });
+    const keyAgain = await activationControls();
+    await edit({ "opt-lookup-sticky": false });
+    const closing = await activationControls();
+    check("No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
+      JSON.stringify([noKey.stored, keyAgain.stored, closing.stored])
+        === JSON.stringify([["hover", "K"], ["activationSticky", "K"], ["activation", "K"]])
+        && noKey.key === "" && noKey.stickyHidden && hovered !== null
+        && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky,
+      JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing }));
   } finally {
     await tab.keyboard.up("k");
-    // Keep a non-default key in Hover mode to prove that mode changes preserve
-    // it and that the exact setting survives the suite's full browser restart.
-    await edit({ ...original, "opt-activation-key": "K" });
+    // Keep a non-default key behind No key to prove that choosing No key
+    // preserves it and that the exact setting survives the full browser restart.
+    await edit({ "opt-activation-key": "K" });
+    await edit(original);
     await tab.keyboard.press("Escape");
   }
 }
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
+    "opt-activation-key", "opt-lookup-sticky", "opt-scan-length", "opt-japanese-only", "opt-no-result-notice",
   ]);
+  // No key does not show the key it remembers, so the restore chooses it first.
+  const rememberedKey = await settings.evaluate(async () =>
+    HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options).activationKey);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const worker = await installMediaReplyProbe(browser, settings);
   await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
@@ -8217,7 +8243,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   };
   try {
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "hover", "opt-japanese-only": true, "opt-no-result-notice": true,
+      "opt-activation-key": "", "opt-japanese-only": true, "opt-no-result-notice": true,
     });
     // A fresh page has no reader host until its first lookup, so an English
     // selection there proves the gate by leaving the DOM alone; a Japanese
@@ -8285,7 +8311,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         && hiddenMiss && hit?.includes("食べる") && restoredNotice?.includes("No definition found."),
       JSON.stringify({ englishIgnored, freshHit, defaultNotice, hiddenMiss, hit, restoredNotice }));
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-activation-key": "Shift",
+      "opt-activation-key": "Shift", "opt-lookup-sticky": false,
       "opt-scan-length": "1", "opt-japanese-only": true,
     });
     await tab.bringToFront();
@@ -8359,7 +8385,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         requests: requests.map(({ text }) => text),
       };
     };
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     const hoverSelection = await probeSelection([], true, true);
     const modifiers = ["Shift", "Control", "Alt", "Meta"];
     const modifierResults = [];
@@ -8369,8 +8395,8 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         const mismatch = modifiers[(index + 1) % modifiers.length];
         const extra = modifiers[(index + 2) % modifiers.length];
         await editSettingsControls(settings, {
-          "opt-lookup-mode": lookupMode,
           "opt-activation-key": activationKey,
+          "opt-lookup-sticky": lookupMode === "activationSticky",
         });
         const plain = await probeSelection([], false);
         const mismatched = await probeSelection([mismatch], false);
@@ -8392,7 +8418,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       JSON.stringify({ hover: hoverSelection, modifiers: modifierResults }));
 
     await editSettingsControls(settings, {
-      "opt-lookup-mode": "activation", "opt-activation-key": "Shift", "opt-scan-length": "1",
+      "opt-activation-key": "Shift", "opt-lookup-sticky": false, "opt-scan-length": "1",
     });
     await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
@@ -8508,7 +8534,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
 
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    await editSettingsControls(settings, { "opt-activation-key": "", "opt-scan-length": "16" });
     // An overlay host turns click-through when the popup hides, so pressing on
     // text must keep it open until release decides between a drag and a click.
     await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
@@ -8576,7 +8602,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await moveTo("#verb .vn-next");
     await dismiss();
     for (const tag of ["input", "div"]) {
-      await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
+      await editSettingsControls(settings, { "opt-activation-key": "K", "opt-lookup-sticky": false });
       await tab.evaluate((name) => {
         const host = document.createElement("div");
         host.id = "shadow-editor";
@@ -8602,7 +8628,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       }));
       await dismiss();
     }
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     // Neither range endpoint is editable: the interior control still excludes it.
     for (const editor of [
       '<button>べ</button>',
@@ -8634,7 +8660,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         hiddenPointerAccepted: hiddenPointerAccepted !== null }));
 
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-activation-key": "Shift" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     await tab.$eval("#verb", (element) => {
       element.innerHTML = '<input id="jisho-search" autofocus aria-label="Search Japanese">'
         + '<span>Text reading assistance: <a href="/search/example">昨日すき焼きを'
@@ -8645,7 +8671,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const hoveredLink = await popup.waitForVisible();
     const hoverKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "activation" });
+    await editSettingsControls(settings, { "opt-activation-key": "Shift", "opt-lookup-sticky": false });
     await tab.focus("#jisho-search");
     const beforeModifier = (await lookups()).length;
     await moveTo("#jisho-example-word");
@@ -8664,7 +8690,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         modifierGated, hoverKeepsSearch, modifierKeepsSearch }));
 
     await dismiss();
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+    await editSettingsControls(settings, { "opt-activation-key": "" });
     const latinStart = (await lookups()).length;
     await moveTo("#latin");
     const japaneseOnly = (await lookups()).length === latinStart;
@@ -8725,13 +8751,14 @@ async function checkReaderSelection(browser, settings, tab, popup) {
   } finally {
     await dismiss();
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, { "opt-activation-key": rememberedKey });
     await editSettingsControls(settings, original);
     await restoreMediaReplyProbe(worker);
   }
 }
 
 async function checkSourceFallback(settings, tab, popup) {
-  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length"]);
+  const original = await readSettingsControls(settings, ["opt-activation-key", "opt-lookup-sticky", "opt-scan-length"]);
   const sourceBefore = await tab.$eval("#verb", element => ({ html: element.innerHTML,
     style: element.getAttribute("style"), className: element.className }));
   const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
@@ -8748,7 +8775,7 @@ async function checkSourceFallback(settings, tab, popup) {
   let evidence;
   try {
     await tab.keyboard.press("Escape");
-    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    await editSettingsControls(settings, { "opt-activation-key": "", "opt-scan-length": "16" });
     await tab.$eval("#verb", element => {
       getSelection().removeAllRanges();
       element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';
@@ -13624,8 +13651,9 @@ async function main() {
     return JSON.stringify(options) === JSON.stringify(expected)
       && document.getElementById("opt-max-results").value === String(expected.maxResults)
       && document.getElementById("opt-hover-enabled").checked === expected.hoverEnabled
-      && document.getElementById("opt-lookup-mode").value === expected.lookupMode
-      && document.getElementById("opt-activation-key").value === expected.activationKey
+      && document.getElementById("opt-activation-key").value
+        === (expected.lookupMode === "hover" ? "" : expected.activationKey)
+      && document.getElementById("opt-lookup-sticky-row").hidden === (expected.lookupMode === "hover")
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
       && document.getElementById("opt-popup-columns").value === String(expected.popupColumns)
       && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary

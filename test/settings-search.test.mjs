@@ -67,6 +67,21 @@ test("global search finds inactive section controls and lazy Audio by its voice 
   assert.match(experimental.querySelector("small").textContent, /Advanced/u);
 });
 
+test("No key and hover searches lead to the Activation key picker, as does its hidden keep-open switch", t => {
+  const f = fixture(t);
+  for (const query of ["no key", "hover"]) {
+    f.query(query);
+    const result = f.match("Activation key");
+    assert.ok(result, `"${query}" finds the Activation key picker`);
+    result.click();
+    assert.equal(f.document.activeElement, f.el("opt-activation-key"));
+  }
+  f.el("opt-lookup-sticky-row").hidden = true;
+  f.query("keep popup open");
+  f.match("Keep the popup open after releasing the key").click();
+  assert.equal(f.document.activeElement, f.el("opt-activation-key"));
+});
+
 test("Library exposes its related views together and search reports that hierarchy", t => {
   const f = fixture(t);
   const expected = [

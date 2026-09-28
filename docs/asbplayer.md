@@ -13,8 +13,8 @@ from other extensions. If a popup disappears in fullscreen, exit fullscreen or
 use the web app's subtitle list.
 
 By default, hold **Shift** while hovering a subtitle. To look up words without
-holding a key, choose **Hover** under Hachidori **Settings → Reading → Lookup
-mode**. In asbplayer's **Misc** settings, **Auto-pause when mousing over
+holding a key, choose **No key** under Hachidori **Settings → Reading → Activation
+key**. In asbplayer's **Misc** settings, **Auto-pause when mousing over
 subtitles** lets you read a popup while the video is paused. Its auto-resume
 option resumes playback when you move away. If subtitle blur is enabled in
 asbplayer, hovering will also unblur the subtitle.
