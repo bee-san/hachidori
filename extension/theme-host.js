@@ -50,10 +50,13 @@
         shadow.prepend(fallbackStyle);
       }
       shadow.host.dataset.hoshidictsRenderer = current.name;
-      shadow.host.dataset.hoshidictsTheme = current.name === "nazeka" ? "nazeka"
-        : disabled.has(getOptions().popupTheme) ? "default" : getOptions().popupTheme === "auto"
-          ? shadow.ownerDocument.defaultView.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-          : getOptions().popupTheme;
+      let palette = getOptions().popupTheme;
+      if (current.name === "nazeka") palette = "nazeka";
+      else if (disabled.has(palette)) palette = "default";
+      else if (palette === "auto") {
+        palette = shadow.ownerDocument.defaultView.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      shadow.host.dataset.hoshidictsTheme = palette;
       for (const style of shadow.querySelectorAll("style[data-hoshidicts-dictionary-style]")) style.remove();
     }
 

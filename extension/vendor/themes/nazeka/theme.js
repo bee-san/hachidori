@@ -40,7 +40,7 @@ function createView(options) {
     if (highlightEnabled) highlighter?.apply(candidate, matched);
     setDefinitionBlurState(context.definitionBlurState ?? "revealed");
     options.positionPopup();
-    scroll.scrollTop = context.restoreScrollTop ?? 0;
+    if (context.restoreScrollTop) scroll.scrollTop = context.restoreScrollTop;
   }
   function navigation(parent, context) {
     if (context.onClose) parent.append(button("gsm-hoshidicts-popup-close", "Close", context.onClose));

@@ -7442,7 +7442,7 @@ async function checkDesignAppearance(page, frame) {
     await frame.evaluate(() => {
       const host = document.getElementById("preview-host");
       window.appearanceProof = { card: host.shadowRoot.querySelector(".gsm-hoshidicts-glossary-card"),
-        stylesheet: host.shadowRoot.querySelector("link").sheet, highlightSheet: document.adoptedStyleSheets[0] };
+        stylesheet: host.shadowRoot.adoptedStyleSheets[0], highlightSheet: document.adoptedStyleSheets[0] };
     });
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
     await editSettingsControls(page, { "opt-popup-theme": "auto" });
@@ -7456,7 +7456,7 @@ async function checkDesignAppearance(page, frame) {
         const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
         return { theme: host.dataset.hoshidictsTheme,
           retained: window.appearanceProof.card === popup.querySelector(".gsm-hoshidicts-glossary-card")
-            && window.appearanceProof.stylesheet === host.shadowRoot.querySelector("link").sheet
+            && window.appearanceProof.stylesheet === host.shadowRoot.adoptedStyleSheets[0]
             && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
           pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
       }));
@@ -7471,7 +7471,7 @@ async function checkDesignAppearance(page, frame) {
         return { primary: getComputedStyle(host).getPropertyValue("--hoshidicts-palette-primary").trim(),
           backdrop: getComputedStyle(popup).backdropFilter,
           retained: window.appearanceProof.card === popup.querySelector(".gsm-hoshidicts-glossary-card")
-            && window.appearanceProof.stylesheet === host.shadowRoot.querySelector("link").sheet
+            && window.appearanceProof.stylesheet === host.shadowRoot.adoptedStyleSheets[0]
             && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
           pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
       }));
@@ -7742,7 +7742,7 @@ async function checkDesignPreview(page) {
         && !!popup.querySelector(".gsm-hoshidicts-tag-pitch") && CSS.highlights.has("gsm-hoshidicts-match");
       popup.querySelector(".gsm-hoshidicts-kanji-link").focus();
       return initial && popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length === 4
-        && root.querySelector('link[href="render/reader.css"]') !== null;
+        && root.host.dataset.hoshidictsRenderer === "default" && root.adoptedStyleSheets.length > 0;
     });
     await page.keyboard.press("Enter");
     const kanji = await frame.evaluate(() => {

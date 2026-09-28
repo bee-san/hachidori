@@ -12,7 +12,7 @@
 .gsm-hoshidicts-popup [hidden], .gsm-hoshidicts-popup[hidden] { display: none !important; }
 .nazeka-scroll { height: 100%; overflow: auto; overscroll-behavior: contain; }
 .nazeka-original { float: right; margin-right: 2px; margin-left: 4px; max-width: 70%; opacity: .7; font-size: 12px; }
-.nazeka-lookup { color: #99ddff; }
+.nazeka-lookup { color: #99ddff; font-weight: 400; }
 .nazeka-main-keb { white-space: nowrap; }
 .nazeka-count { margin-left: 8px; }
 .gsm-hoshidicts-entry { padding: 3px 0 7px; }

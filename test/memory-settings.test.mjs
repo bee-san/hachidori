@@ -55,6 +55,7 @@ function fixture(t, { hash = "#advanced", stored = {}, threaded = true, memory =
     ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],
+    ["theme-store.js", ["createThemeStore"]],
     ["dictionary-progress.js", ["formatBytes"]],
     ["memory-settings.js", ["createMemorySettings"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
