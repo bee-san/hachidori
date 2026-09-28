@@ -181,14 +181,27 @@ direction), the Settings → Advanced → Memory readout and each Library row's
 is busy or unreachable, a refresh on a new engine generation while Advanced is
 shown and when a row's Details opens, the switch saving
 through the ordinary options queue, and the switch hidden with
-the single-thread engine), and the `lowMemoryMode` option's normalisation. The
+the single-thread engine, and a paged row's *(entries read from disk)*), and the
+`lowMemoryMode` option's normalisation. The
 memory settings suite uses the same external jsdom dependency. `node-smoke.mjs`
 records the heap after import and after `hdw_reset` and imports inside a
-two-thread pool; `extension-smoke.mjs` checks the `hd_memory` reply against the
-engine's file sizes and the offscreen-only `hd_engine_config` read and push;
+two-thread pool. It also loads copies of the fixture into fresh modules with one
+file padded to 16 MiB: four kinds of one package grow the heap by one copy of
+its files, a padded `media.bin` and a paged package's padded `blobs.bin` grow it
+by nothing, and paged `hdw_lookup`/`hdw_kanji`/`hdw_media` answers are
+byte-identical to mapped ones. `extension-smoke.mjs` checks the `hd_memory` reply
+against the engine's file sizes (one copy, no `media.bin`) and the
+offscreen-only `hd_engine_config` read and push; its paged-dictionaries stage
+runs a worker configured as the low-memory one (every add paged, identical
+lookups, smaller rows, a filled page cache) and, with `hdw_add_dict` refusing a
+package the way a full heap does, checks that the package loads paged, and that
+one refused paged too is reported in `failedDictionaries` while the others load.
 `chrome-e2e.mjs` turns the mode on in a real Chrome, watches the worker recycle
 (the generation restarts from zero), imports in the strict two-thread pool,
-and checks that the heap dropped, lookups still hit and the readout renders.
+and checks that the heap dropped, lookups still hit, the package's row counts
+only its index files as sized in OPFS, the page cache filled within its budget
+and the readout renders; turning the mode off again counts `blobs.bin` again.
+The hoshidicts `dictionary-storage` test covers the engine side natively.
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
 test/sharing-host.test.mjs

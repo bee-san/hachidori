@@ -119,6 +119,9 @@ let storageBackend = "memory";
 // pthread runtimes (OPFS or IDBFS) use the bounded worker group, unless the
 // low-memory worker asks for one thread too.
 let lowRam = true;
+// The low-memory worker also keeps only each dictionary's index in the heap
+// and reads its entries from disk as they are looked up (docs/memory.md).
+let pagedDictionaries = false;
 // Whether this is a pthread runtime, as hd_status reports it.
 let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
@@ -140,6 +143,7 @@ export function configureEngineService(request, options = {}) {
   createHoshidicts = options.createHoshidicts;
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
+  pagedDictionaries = options.pagedDictionaries === true;
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
@@ -1069,6 +1073,30 @@ class DictionaryLoadError extends Error {
   }
 }
 
+// bindings.cpp rejected_dictionary: the heap could not grow to hold the files.
+const OUT_OF_MEMORY = "not enough memory to load ";
+
+// Packages that did not fit in the heap this session. Their paths are
+// generation-scoped and never change, so each loads with its entries read from
+// disk from then on instead of growing the heap towards the same failure.
+const pagedPaths = new Set();
+
+function loadsPaged(path) {
+  return pagedDictionaries || pagedPaths.has(path);
+}
+
+function addDictionaryKind(dictionary, kind) {
+  const add = (paged) => engine.ccall(
+    "hdw_add_dict", "number", ["string", "number", "number"], [dictionary.path, kind, paged ? 1 : 0],
+  ) === 1;
+  const paged = loadsPaged(dictionary.path);
+  if (add(paged)) return true;
+  // Only the index has to fit when the entries are read on demand.
+  if (paged || !lastError().startsWith(OUT_OF_MEMORY) || !add(true)) return false;
+  pagedPaths.add(dictionary.path);
+  return true;
+}
+
 function addDictionaries(dictionaries, includeDisabled) {
   let loadedCount = 0;
   for (const dictionary of dictionaries) {
@@ -1076,8 +1104,7 @@ function addDictionaries(dictionaries, includeDisabled) {
       continue;
     }
     for (const kindName of kindsForPackage(dictionary)) {
-      const kind = KINDS.indexOf(kindName);
-      if (!engine.ccall("hdw_add_dict", "number", ["string", "number"], [dictionary.path, kind])) {
+      if (!addDictionaryKind(dictionary, KINDS.indexOf(kindName))) {
         throw new DictionaryLoadError(dictionary, kindName);
       }
       loadedCount += 1;
@@ -1125,6 +1152,7 @@ function trackLoaded(dictionaries, manifest = dictionaries) {
     title: text(dictionary.title),
     path: dictionary.path,
     kinds: packageKinds(dictionary),
+    paged: loadsPaged(dictionary.path),
   }));
   for (const entry of loadedPackages) verifiedPackages.set(entry.path, entry.kinds);
   loadedManifest = new Map(manifest.map(dictionary => [dictionary.path, {
@@ -1136,6 +1164,10 @@ function retainVerified(dictionaries) {
   const requested = new Set(dictionaries.map((dictionary) => dictionary.path));
   for (const path of [...verifiedPackages.keys()]) {
     if (!requested.has(path)) verifiedPackages.delete(path);
+  }
+  // Deleting the entry being visited is safe while iterating a Set.
+  for (const path of pagedPaths) {
+    if (!requested.has(path)) pagedPaths.delete(path);
   }
 }
 
@@ -3322,39 +3354,52 @@ const HANDLERS = {
       storageBackend,
       threaded,
       // Which worker is serving: the low-memory one imports single-threaded
-      // inside the small pool (docs/memory.md).
+      // inside the small pool and reads dictionary entries from disk on
+      // demand (docs/memory.md).
       lowMemory: threaded && lowRam,
+      pagedDictionaries,
     };
   },
 
   // Emscripten's mmap copies each mapped file into linear memory, so a loaded
   // package's resident bytes are the sizes of the files hoshidicts maps for
-  // it, once per kind it was added as (query.cpp add_dict_ maps the directory
-  // again for every kind). The heap itself never shrinks, so heapBytes also
-  // keeps whatever an import or rebuild peaked at.
+  // it, once however many kinds it loads as (the kinds share them). Media is
+  // read from disk when shown, and a paged package's entries as they are
+  // looked up, through a page cache of pageCacheBytes. The heap itself never
+  // shrinks, so heapBytes also keeps whatever an import or rebuild peaked at.
   hd_memory() {
     requireEngine();
     const dictionaries = (loadedPackages ?? []).map((entry) => ({
       id: entry.id,
       title: entry.title,
       path: entry.path,
-      bytes: mappedBytes(entry.path) * entry.kinds.split(",").length,
+      bytes: residentBytes(entry),
+      paged: entry.paged,
     }));
     // Growth on an engine pthread reaches this thread's HEAPU8 view only once
     // some glue touches the heap; a stat does (see writeFileBytes).
     exists("/dicts");
-    return { heapBytes: engine.HEAPU8.byteLength, dictionaries };
+    return {
+      heapBytes: engine.HEAPU8.byteLength,
+      pageCacheBytes: engine.ccall("hdw_page_cache_bytes", "number", [], []),
+      dictionaries,
+    };
   },
 };
 
-// The files query.cpp maps when a package loads; dict.zstd is read into a
-// zstd dictionary instead, which holds the same bytes.
-const MAPPED_FILES = ["hash.table", "bloom.filter", "blobs.bin", "media.bin", "media.idx", "scan.idx", "dict.zstd"];
+// The files query.cpp keeps in the heap for a loaded package: its index, which
+// every probe reads, and blobs.bin unless the package is paged. dict.zstd is
+// read into a zstd dictionary, which holds the same bytes, and scan.idx is
+// mapped only for a package loaded as a term dictionary.
+const INDEX_FILES = ["hash.table", "bloom.filter", "media.idx", "dict.zstd"];
 
-function mappedBytes(path) {
+function residentBytes(entry) {
+  const names = [...INDEX_FILES];
+  if (!entry.paged) names.push("blobs.bin");
+  if (entry.kinds.split(",").includes("term")) names.push("scan.idx");
   let bytes = 0;
-  for (const name of MAPPED_FILES) {
-    const file = `${path}/${name}`;
+  for (const name of names) {
+    const file = `${entry.path}/${name}`;
     if (exists(file)) bytes += engine.FS.stat(file).size;
   }
   return bytes;

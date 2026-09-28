@@ -100,6 +100,17 @@ test("Advanced shows the engine total and each Library row shows its share", asy
   assert.equal(requests.filter(message => message.type === "hd_memory").length, 1, "one read for the Advanced visit, not a poll");
 });
 
+test("a row whose entries are read from disk says so", async t => {
+  const paged = { ...MEMORY, pageCacheBytes: 4 * 1_048_576, dictionaries: [
+    { ...MEMORY.dictionaries[0], bytes: 13 * 1_048_576, paged: true },
+    { ...MEMORY.dictionaries[1], paged: false },
+  ] };
+  const { rowMemory } = fixture(t, { memory: paged });
+  await settle();
+  assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2248 13.0 MB (entries read from disk)");
+  assert.equal(rowMemory(DICTIONARIES[1].id), "In memory: \u2248 1.40 GB");
+});
+
 test("the Library asks only when a reader opens a row's Details", async t => {
   const { window, requests, rowMemory, openDetails } = fixture(t, { hash: "#dictionaries" });
   await settle();
