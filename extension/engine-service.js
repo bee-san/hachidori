@@ -1165,7 +1165,8 @@ function retainVerified(dictionaries) {
   for (const path of [...verifiedPackages.keys()]) {
     if (!requested.has(path)) verifiedPackages.delete(path);
   }
-  for (const path of [...pagedPaths]) {
+  // Deleting the entry being visited is safe while iterating a Set.
+  for (const path of pagedPaths) {
     if (!requested.has(path)) pagedPaths.delete(path);
   }
 }
