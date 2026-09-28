@@ -45,6 +45,10 @@ For a Linux container that cannot run Chrome's sandbox, set
 `HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
 non-loopback network address for its other-computer checks.
 
+The extension smoke suite checks fullscreen host movement and its fallback
+elements; the primary Chrome suite checks an iframe lookup and popup painting
+over a fullscreen player in a real browser.
+
 `.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, the
 four Chrome browser suites on every PR
 and push to `main`, or manually. It also

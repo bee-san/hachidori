@@ -407,6 +407,8 @@ const PLANNED = [
   "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
+  "the reader opens a popup for Japanese text inside a same-origin iframe",
+  "the popup paints above a fullscreen player and returns to body on exit",
   "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
@@ -1788,6 +1790,83 @@ async function hoverForPopup(page, popup, selector, {
     if (state !== null) return state;
   }
   return null;
+}
+
+async function checkFrameAndFullscreenPopups(tab, popup, pageUrl) {
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.evaluate(src => {
+    const frame = document.createElement("iframe");
+    frame.id = "lookup-frame";
+    frame.src = src;
+    frame.style.cssText = "width: 760px; height: 420px";
+    document.body.firstElementChild.before(frame);
+  }, new URL("frame", pageUrl).href);
+  let frameResult = null;
+  try {
+    const frame = await (await tab.$("#lookup-frame")).contentFrame();
+    await frame.waitForSelector("#frame-verb");
+    const box = await (await frame.$("#frame-verb")).boundingBox();
+    for (let attempt = 0; attempt < 12 && !frameResult; attempt += 1) {
+      await tab.mouse.move(2, 2);
+      await tab.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+      await frame.waitForFunction(() => {
+        const host = document.querySelector("hachidori-host");
+        const panel = host?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+        return panel && !panel.hidden && panel.textContent.includes("食べる");
+      }, { timeout: 1500 }).then(() => { frameResult = true; }).catch(() => {});
+    }
+    frameResult = frameResult && await tab.evaluate(() => {
+      const topPopup = document.querySelector("hachidori-host")?.shadowRoot
+        ?.querySelector(".gsm-hoshidicts-popup");
+      return !topPopup || topPopup.hidden;
+    });
+  } finally {
+    await tab.$eval("#lookup-frame", element => element.remove());
+  }
+  check("the reader opens a popup for Japanese text inside a same-origin iframe",
+    frameResult === true, `frame popup: ${frameResult}`);
+
+  await tab.evaluate(() => {
+    const player = document.createElement("div");
+    player.id = "fullscreen-player";
+    player.style.cssText = "width: 800px; height: 450px; padding: 24px; background: black; color: white";
+    player.innerHTML = '<button id="fullscreen-button">Fullscreen</button><p><span id="fullscreen-verb">食べたかった</span></p>';
+    player.querySelector("button").addEventListener("click", () => player.requestFullscreen());
+    document.body.firstElementChild.before(player);
+  });
+  let fullscreenResult = null;
+  let opened = null;
+  let restored = false;
+  try {
+    await tab.click("#fullscreen-button");
+    await tab.waitForFunction(() => !!document.fullscreenElement, { timeout: 5000 });
+    opened = await hoverForPopup(tab, popup, "#fullscreen-verb");
+    fullscreenResult = await tab.evaluate(() => {
+      const player = document.getElementById("fullscreen-player");
+      const host = document.querySelector("#fullscreen-player > hachidori-host");
+      const panel = host?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+      const rect = panel?.getBoundingClientRect();
+      return { mounted: host?.parentElement === player, visible: panel && !panel.hidden,
+        hit: rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.localName : null };
+    });
+    await tab.evaluate(() => document.exitFullscreen());
+    await tab.waitForFunction(() => !document.fullscreenElement &&
+      document.querySelector("body > hachidori-host"), { timeout: 5000 });
+    restored = await hoverForPopup(tab, popup, "#verb") !== null;
+  } finally {
+    await tab.evaluate(async () => {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      document.getElementById("fullscreen-player")?.remove();
+    });
+  }
+  check("the popup paints above a fullscreen player and returns to body on exit",
+    opened !== null && fullscreenResult?.mounted && fullscreenResult.visible
+      && fullscreenResult.hit === "hachidori-host" && restored,
+    JSON.stringify({ opened: opened !== null, fullscreenResult, restored }));
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await hoverForPopup(tab, popup, "#verb");
 }
 
 async function checkDeinflectionDisclosure(settings, tab, popup) {
@@ -6993,7 +7072,10 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     check("a cold Anki duplicate index leaves the popup responsive while its first refresh is held",
       coldDefinition?.plain.includes("食べる") && popup.visible(coldDefinition)
         && releaseIndex !== null && cold?.state === "revealed" && cold.audioAttempted
-        && !coldIndex?.snapshot && refreshCalls() === 1,
+        // A snapshot for a previous Anki configuration is not a warm cache
+        // for this source; its refresh is still the first one for this key.
+        && (!coldIndex?.snapshot || coldIndex.snapshot.sourceKey !== coldIndex.attempt?.sourceKey)
+        && refreshCalls() === 1,
       JSON.stringify({ cold, coldIndex, calls }));
     releaseRefresh();
     const initialIndex = await waitForSnapshot(true);
@@ -9485,9 +9567,11 @@ async function main() {
   const puppeteer = await import(pathToFileURL(PUPPETEER).href);
   const launch = puppeteer.default?.launch ? puppeteer.default : puppeteer;
 
-  const server = createServer((_req, res) => {
+  const server = createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(PAGE_HTML);
+    res.end(req.url === "/frame"
+      ? '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="font: 32px serif; padding: 40px"><span id="frame-verb">食べたかった</span></body></html>'
+      : PAGE_HTML);
   });
   await new Promise(done => server.listen(0, "127.0.0.1", done));
   const pageUrl = `http://127.0.0.1:${server.address().port}/`;
@@ -12183,6 +12267,7 @@ async function main() {
   });
   await checkDefinitionBlur({ settings: page, tab, popup });
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
+  await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
