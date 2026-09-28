@@ -1560,15 +1560,24 @@ async function overlayModeBackgroundStage() {
   const preserved = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(storage.raw.get("options")) === JSON.stringify(edited);
 
+  // A profile carried from before overlay mode never chose a lookup mode, so it
+  // reads on hover after one revisioned write. A legacy modifier is a choice.
   const carried = makeStorage();
   await carried.api().local.set({ options: { scanLength: 20, revision: 4 } });
   start("overlay-worker-carried", carried);
+  await settle(() => carried.raw.get("options")?.revision !== 4);
+  const legacy = makeStorage();
+  await legacy.api().local.set({ options: { modifier: "ctrl", revision: 3 } });
+  start("overlay-worker-legacy", legacy);
   await settle();
-  const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
+  const carriedHover = JSON.stringify(carried.raw.get("options"))
+      === JSON.stringify({ scanLength: 20, revision: 5, lookupMode: "hover" })
+    && JSON.stringify(legacy.raw.get("options")) === JSON.stringify({ modifier: "ctrl", revision: 3 });
 
   check("overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup",
-    seededOnce && preserved && carriedKept,
-    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+    seededOnce && preserved && carriedHover,
+    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"),
+      carried: [...carried.raw.entries()], legacy: [...legacy.raw.entries()] }));
 
   const unavailable = await chrome.__bus.sendMessage("overlay-reader", {
     target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
@@ -2986,6 +2995,7 @@ async function sharingTransitionStage() {
   const overlay = await fixture({ overlayMode: true });
   let restarted;
   let legacy;
+  let modeless;
   try {
     overlay.hello.capabilities = ["linked-anki-v1"];
     await overlay.finishLinks([overlay.link()]);
@@ -3072,6 +3082,16 @@ async function sharingTransitionStage() {
         && !legacy.storage.raw.get("options").sourceHighlightEnabled
         && legacy.storage.raw.get("options").revision > 15
         && legacy.storage.raw.get("options").popupTheme === "dark");
+    const modelessState = structuredClone(legacyState);
+    delete modelessState.sharingLocalState.options.lookupMode;
+    modeless = await fixture({ overlayMode: true, initial: modelessState });
+    const composed = structuredClone(modeless.storage.raw.get("options"));
+    const modelessUnlinked = await modeless.send("hd_sharing_client_unlink");
+    const modelessRestored = modeless.storage.raw.get("options");
+    check("a linked overlay whose local record chose no lookup mode composes and unlinks on hover",
+      legacyState.options.lookupMode === "activationSticky" && composed.lookupMode === "hover"
+        && modelessUnlinked.ok && modelessRestored.lookupMode === "hover" && modelessRestored.popupWidthPx === 640,
+      JSON.stringify({ composed, modelessUnlinked, modelessRestored }));
     restarted = await fixture({ overlayMode: true, initial: restartState });
     const offline = await restarted.send("hd_options_write", { baseRevision: restarted.storage.raw.get("options").revision,
       options: { popupWidthPx: 680 } }, "hoshidicts-worker");
@@ -3092,7 +3112,7 @@ async function sharingTransitionStage() {
       unlinked.ok && lateReply.ok === false && current().popupWidthPx === 640 && current().popupTheme === "sunset"
         && current().revision > restartState.options.revision && !overlay.storage.raw.has("sharingLocalState")
         && !overlay.storage.raw.has("sharingOptionsVersion"), JSON.stringify({ unlinked, lateReply, current: current() }));
-  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); }
+  } finally { overlay.dispose(); restarted?.dispose(); legacy?.dispose(); modeless?.dispose(); }
 }
 
 async function firstRunBackgroundStage() {

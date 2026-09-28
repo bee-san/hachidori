@@ -6,7 +6,7 @@ Overlay mode is for apps that load Hachidori into their own window instead of a
 browser tab, such as the [GameSentenceMiner](https://github.com/bpwhelan/GameSentenceMiner)
 in-game overlay. The overlay floats over a game and passes clicks through, so:
 
-- Lookups start on **hover**. Holding an activation key over a game is awkward.
+- Lookups use **hover** unless you choose an activation key in the overlay. Holding an activation key over a game is awkward.
 - The **word highlight** starts off. A highlight drawn over game text gets in the way.
 - **Dragging selects whole glyphs.** An OCR overlay boxes every glyph in its own span, and Chromium's own drag cannot anchor a selection after such a glyph, so it ends as one glyph or nothing. The reader selects from the pressed glyph to the one under the pointer instead. Releasing looks up exactly the selected text, subject to Reading's Japanese-only setting. With no entry for it, the popup offers the pencil to add your own definition unless Reading → Personal dictionary → **Show a popup when a selection has no definition** is off; the no-dictionaries notice still appears.
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
@@ -40,7 +40,13 @@ normal first-install preferences plus:
 
 - **Reading defaults:** lookup activation and word highlighting remain editable
   in Settings, and later choices persist.
-- **Existing profiles:** a profile that already has stored options keeps them.
+- **Existing profiles:** a profile that already has stored options keeps them,
+  including any lookup mode it chose (or a legacy `modifier`). One that never
+  chose a mode, such as a profile from before overlay mode or a restored browser
+  backup, reads on hover: an unlinked worker stores `lookupMode: "hover"` in one
+  ordinary revisioned write when it starts, a restore writes it with the restored
+  settings, and a linked overlay composes it from its local record and keeps it
+  on Unlink.
 - **Timing:** seeding runs on worker start, not in `chrome.runtime.onInstalled`,
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
@@ -164,7 +170,8 @@ once and never opens setup" check covers:
 - the seeded options;
 - no setup record and no tab;
 - a later edit surviving a restarted worker;
-- a pre-existing profile staying untouched.
+- a pre-existing profile without a lookup mode gaining hover in one revision,
+  and one with a legacy `modifier` staying untouched.
 
 Its "overlay mode never takes a mining screenshot, even when the stored option
 is on" check asks the worker for a screenshot from a Template that has it on. It

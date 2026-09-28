@@ -853,8 +853,9 @@ What it proves, in order:
    `declaredResponseLength` ignores encoded, zero, and header-less responses.
    With `OVERLAY_MODE` on, a worker instead seeds hover lookups without a page
    highlight on top of the first-install options when it starts. It creates no
-   setup record or tab, and leaves later edits and carried options alone (see
-   [overlay mode](../docs/overlay-mode.md)).
+   setup record or tab and leaves later edits and legacy `modifier` records
+   alone; a carried profile without a lookup mode gains hover in one revisioned
+   write (see [overlay mode](../docs/overlay-mode.md)).
 12. **Isolated import.** A separate engine-service instance is configured with
    an `isolatedImport` that runs the real `importDictionaryArchive` on the
    engine's own filesystem, which is what the direct-OPFS runtime's second

@@ -31,6 +31,17 @@ export const OVERLAY_MODE_OPTIONS = Object.freeze({
   anki: Object.freeze({ captureScreenshot: false }),
 });
 
+// Stored options are sparse, and readers fill a missing mode with the
+// browser's Shift default. An overlay record that never chose a mode, such as
+// a restored browser backup or a profile from before overlay mode, reads on
+// hover instead. A legacy `modifier` is a choice: reader-options.js migrates
+// it. A record that already chose is returned unchanged.
+export function withOverlayLookupDefault(record) {
+  const source = record && typeof record === "object" && !Array.isArray(record) ? record : {};
+  return Object.hasOwn(source, "lookupMode") || Object.hasOwn(source, "modifier")
+    ? source : { ...source, lookupMode: OVERLAY_MODE_OPTIONS.lookupMode };
+}
+
 // These describe the local reading surface, even while its library is shared.
 export const OVERLAY_LOCAL_OPTION_KEYS = Object.freeze([
   "hoverEnabled", "onlyScanJapaneseText", "showNoResultNotice", "lookupMode", "activationKey", "popupHideDelayMs",

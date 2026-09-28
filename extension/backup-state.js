@@ -9,6 +9,7 @@ import {
 import { assertDictionaryUpdateSchedule, assertRecommendedDictionary, normaliseUpdateSettings, recommendedDictionarySource } from "./managed-dictionary-source.js";
 import { sameJsonValue } from "./json-value.js";
 import { assertLookupStatsDescriptor } from "./lookup-stats.js";
+import { withOverlayLookupDefault } from "./setup-state.js";
 
 export function backupRevisions(snapshot) {
   return Object.fromEntries(["state", "options", "document", "updates", "lookupStats"].map(key => {
@@ -17,10 +18,13 @@ export function backupRevisions(snapshot) {
   }));
 }
 
-export function restoredBackupSnapshot(current, archived, dictionaries) {
+// An overlay restores an archive that never chose a lookup mode on hover. The
+// engine builds the snapshot once, so the storage CAS and its exact readback
+// commit and verify the same values.
+export function restoredBackupSnapshot(current, archived, dictionaries, { overlay = false } = {}) {
   return Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, {
     ...(key === "options"
-      ? globalThis.HDReaderOptions.projectStoredOptions(archived[key])
+      ? globalThis.HDReaderOptions.projectStoredOptions(overlay ? withOverlayLookupDefault(archived[key]) : archived[key])
       : archived[key]),
     ...(key === "state" ? { dictionaries } : {}),
     ...(key === "lookupStats" ? { generation: crypto.randomUUID() } : {}),

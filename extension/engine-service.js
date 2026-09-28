@@ -30,6 +30,7 @@ import {
   dictionaryArchiveIdentity,
   dictionaryImportTarget,
 } from "./dictionary-import.js";
+import { OVERLAY_MODE } from "./overlay-mode.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -2732,7 +2733,7 @@ async function restoreBackup(message) {
       throw new Error("Hachidori changed since this backup was prepared. Prepare it again before restoring.");
     }
     const loadedCount = loadDictionaries(prepared.dictionaries);
-    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries);
+    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries, { overlay: OVERLAY_MODE });
     const reply = await commitBackupSnapshot(current, snapshot, prepared.lookupStatsRows);
     if (!reply.ok) throw new Error(reply.error || "Could not commit the backup restore.");
     publishLoadedDictionaries(loadedCount);
