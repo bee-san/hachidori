@@ -1672,7 +1672,10 @@ html[data-hoshidicts-theme="girlypop"],
   display: inline-flex;
   flex-direction: column-reverse;
   align-items: stretch;
-  vertical-align: bottom;
+  /* Every segment's reading row is the same height, but a kanji segment's
+     base is 1px taller (its link's dotted underline). Top alignment keeps the
+     contour and the headword text on one row across segments. */
+  vertical-align: top;
 }
 
 .gsm-hoshidicts-pitch-base {
@@ -1717,7 +1720,18 @@ html[data-hoshidicts-theme="girlypop"],
   top: 0;
   right: -1px;
   bottom: 0;
-  border-right: 2px solid var(--hoshidicts-pitch);
+  /* A rise or drop must also cover the 2px lines it joins, or the corner it
+     turns is notched. Chrome rounds zoomed border widths down to whole
+     device pixels, so a fixed -2px offset overshoots the lines at some
+     display and popup scales. Instead the stroke is a border image extended
+     by its own 2px top and bottom borders, which round like the mora's. */
+  border: 2px solid transparent;
+  border-left-width: 0;
+  border-image-source: linear-gradient(currentColor 0 0);
+  border-image-slice: 0 fill;
+  border-image-width: 0;
+  border-image-outset: 1 0;
+  color: var(--hoshidicts-pitch);
   content: "";
 }
 
