@@ -98,7 +98,7 @@ function pitchCategories(term) {
   const categories = term.pitches.flatMap(group => group.pitches.map(pitch => {
     const position = Number(globalThis.HDGlossary.pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
-    if (!(position > 0)) return null;
+    if (Number.isNaN(position) || position < 0) return null;
     if (inflected) return "kifuku";
     if (position === 1) return "atamadaka";
     return position >= morae ? "odaka" : "nakadaka";

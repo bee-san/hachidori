@@ -6,19 +6,24 @@
 import "./render/glossary.js";
 import { escapeAnkiHtml as escape } from "./anki-templates.js";
 
+// The level after the word. Yomitan's graph reads it from the pitch; its
+// Jidoujisho graph (_pitchValueToPattJJ) repeats a pattern's last level when
+// the dictionary gives no particle.
+function particleLevel(positions, moraCount, kana) {
+  const { isMoraPitchHigh } = globalThis.HDGlossary;
+  if (kana && typeof positions === "string") return positions[moraCount] ?? positions.at(-1);
+  return isMoraPitchHigh(moraCount, positions) ? "H" : "L";
+}
+
 function pitchContour(reading, pitch, kana) {
-  const { buildPitchAccentMorae, isMoraPitchHigh, pitchAccentPositions } = globalThis.HDGlossary;
+  const { buildPitchAccentMorae, pitchAccentPositions } = globalThis.HDGlossary;
   // The popup's levels. A pattern is the pitch whenever there is one: the
   // engine keeps it beside a placeholder position of 0.
   const positions = pitchAccentPositions(pitch);
   const morae = buildPitchAccentMorae(reading, positions);
   if (!morae) return null;
-  // Yomitan's graph reads the particle from the pitch; its Jidoujisho graph
-  // repeats a pattern's last level when the dictionary gives no particle.
-  const particle = kana && typeof positions === "string"
-    ? positions[morae.length] ?? positions.at(-1)
-    : isMoraPitchHigh(morae.length, positions) ? "H" : "L";
-  return { morae: morae.map(mora => mora.text), levels: [...morae.map(mora => mora.level === "high" ? "H" : "L"), particle] };
+  return { morae: morae.map(mora => mora.text),
+    levels: [...morae.map(mora => mora.level === "high" ? "H" : "L"), particleLevel(positions, morae.length, kana)] };
 }
 
 function graphLine(from, to, radius) {
