@@ -534,6 +534,7 @@
     showFrequencyDictionaryNames = false,
     compactFrequencyNumbers = false
   ) {
+    const averageTags = [];
     if (averageFrequency) {
       const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
       const aggregates = new Map();
@@ -545,12 +546,12 @@
           if (value !== null) {
             const mode = modes.get(group.dictionary);
             const label = mode === "rank-based"
-              ? { accessible: "Rank average", display: "Avg rank" }
+              ? { accessible: "Rank average", display: "Avg rank", kind: mode }
               : mode === "occurrence-based"
-                ? { accessible: "Occurrence average", display: "Avg count" }
-                : { accessible: "Frequency average (unspecified)", display: "Avg frequency" };
+                ? { accessible: "Occurrence average", display: "Avg count", kind: mode }
+                : { accessible: "Frequency average (unspecified)", display: "Avg frequency", kind: "unspecified" };
             const aggregate = aggregates.get(label.accessible)
-              || { count: 0, reciprocalSum: 0, display: label.display };
+              || { count: 0, reciprocalSum: 0, display: label.display, kind: label.kind };
             aggregate.count += 1;
             aggregate.reciprocalSum += 1 / value;
             aggregates.set(label.accessible, aggregate);
@@ -559,9 +560,9 @@
           }
         }
       }
-      return Array.from(aggregates, ([label, { count, reciprocalSum, display }]) => {
+      for (const [label, { count, reciprocalSum, display, kind }] of aggregates) {
         const frequency = { value: Math.floor(count / reciprocalSum), displayValue: null };
-        return createFrequencyTag(
+        const tag = createFrequencyTag(
           documentRef,
           { dictionary: label },
           display,
@@ -569,7 +570,9 @@
           // These labels identify units, not a source dictionary.
           true
         );
-      });
+        tag.dataset.frequencyAverage = kind;
+        averageTags.push(tag);
+      }
     }
     const tags = [];
     const seen = new Set();
@@ -617,7 +620,11 @@
         ));
       }
     }
-    return tags;
+    if (!averageFrequency) return tags;
+    // Like Yomitan, averaging only hides the per-dictionary tags: they stay in
+    // the DOM, unchanged, for custom CSS and themes.
+    for (const tag of tags) tag.hidden = true;
+    return [...averageTags, ...tags];
   }
 
   function createPitchTag(
@@ -2965,9 +2972,12 @@
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true
         ) : [];
-        const countChanged = frequencyCount !== frequencyTags.length;
-        frequencyCount = frequencyTags.length;
+        // Hidden per-dictionary tags take no display budget from pitch badges.
+        const visibleCount = frequencyTags.filter(tag => !tag.hidden).length;
+        const countChanged = frequencyCount !== visibleCount;
+        frequencyCount = visibleCount;
         frequencyRow.replaceChildren(...frequencyTags);
+        frequencyRow.hidden = visibleCount === 0 && frequencyTags.length > 0;
         return countChanged;
       }
       function updatePitch(context) {
@@ -3096,6 +3106,7 @@
           const frequencies = documentRef.createElement("span");
           frequencies.className = "gsm-hoshidicts-primary-frequencies";
           frequencies.append(...frequencyTags);
+          frequencies.hidden = frequencyTags.every(tag => tag.hidden);
           capsule.prepend(frequencies);
         }
       }
@@ -3121,7 +3132,7 @@
           }
         }
       }
-      capsule.hidden = capsule.childNodes.length === 0;
+      capsule.hidden = Array.from(capsule.children).every(child => child.hidden);
     }
 
     function updateCompactSummary(headword, result, context, media) {
@@ -3663,7 +3674,6 @@
       function updateMetadataLabels(container, result) {
         let changed = false;
         for (const [kind, groups] of [["frequency", result.term.frequencies], ["pitch", result.term.pitches], ["ipa", result.term.pitches]]) {
-          if (kind === "frequency" && imageContext.averageFrequency === true) continue;
           const names = createDictionaryDisplayNames(groups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
           if (kind !== "frequency") {
             for (const tag of container.querySelectorAll(`.gsm-hoshidicts-tag-${kind}`)) {
@@ -3671,6 +3681,8 @@
             }
           }
           for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
+            // An average's label names a unit, not a dictionary.
+            if (source.parentNode.dataset.frequencyAverage) continue;
             const dictionary = source.parentNode.dataset.dictionary;
             changed = updateLabel(source, names.get(dictionary) || dictionary) || changed;
           }

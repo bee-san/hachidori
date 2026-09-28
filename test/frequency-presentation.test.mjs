@@ -182,7 +182,7 @@ test("harmonic averages use concise typed labels and keep each dictionary's tag 
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").hidden, false);
 });
 
-test("averaged hidden tags take no layout or pitch budget and follow live toggles and aliases", t => {
+test("averaged hidden tags take no pitch budget, hide all-hidden groups and follow live toggles and aliases", t => {
   const f = fixture(t);
   const pitch = dictionary => ({ dictionary, pitches: [{ position: 0, pattern: "", nasal: [], devoice: [] }],
     transcriptions: [] });
