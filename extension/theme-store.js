@@ -33,7 +33,10 @@ export function createThemeStore({ root, onSelect }) {
         image.alt = `${theme.name} dictionary popup preview`;
         const heading = element("h3", "", theme.name);
         const description = element("p", "hint", theme.description);
-        const benchmark = element("p", "theme-store-benchmark", theme.benchmark || "Benchmark pending");
+        const benchmark = element("a", "theme-store-benchmark", theme.benchmark);
+        benchmark.href = theme.benchmarkUrl;
+        benchmark.target = "_blank";
+        benchmark.rel = "noopener noreferrer";
         const button = element("button", "ghost");
         button.type = "button";
         button.addEventListener("click", () => onSelect(theme.slug));

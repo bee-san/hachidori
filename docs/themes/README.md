@@ -42,7 +42,8 @@ presentation updates are optional.
   definitions. Blur updates edit state only. A new lookup replaces content;
   Back carries scroll state. Default retains its existing incremental renderer.
 - Switching retires action bindings, destroys the previous view and replaces its
-  content/styles, then replays the latest model and view settings. Obsolete request
+  content/styles, then replays the latest model and view settings. Switching closes
+  the Note editor; finish or cancel a draft before changing renderers. Obsolete request
   contexts are not replayed. A throwing Nazeka renderer is disabled for that page
   and the current model is rendered with Default's CSS. The saved choice remains.
 - `destroy` releases listeners/observers and owned DOM; core closes audio menus
