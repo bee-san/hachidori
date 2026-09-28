@@ -112,7 +112,22 @@
       void globalThis.chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_open_external", ...link })
         .catch(error => console.debug("hachidori: preview link could not be opened", error));
     },
-    onResultsRendered({ lookupStats }) {
+    onResultsRendered({ lookupStats, miningActions = [] }) {
+      // A visual sample only: the preview never connects to Anki or saves notes.
+      for (const { actions } of miningActions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "gsm-hoshidicts-mine-button";
+        button.disabled = true;
+        button.title = "Mine to Anki (preview only)";
+        button.setAttribute("aria-label", button.title);
+        const icon = document.createElement("span");
+        icon.className = "gsm-hoshidicts-mine-icon hd-icon";
+        icon.dataset.icon = "add";
+        icon.setAttribute("aria-hidden", "true");
+        button.append(icon);
+        actions.prepend(button);
+      }
       sampleLookupStats = lookupStats;
       paintSampleLookupStats();
       updateSampleAudio();

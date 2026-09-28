@@ -60,8 +60,6 @@ function createView(options) {
   function renderResults(results, candidate, context = {}) {
     clear();
     const audioButtons = [], miningActions = [];
-    const lookupStats = node("span", "nazeka-count");
-    lookupStats.hidden = true;
     // Adapted from Nazeka build_div_inner's original-text context.
     const text = results[0]?.matched || candidate?.query || "";
     const moreText = candidate?.sentence || text;
@@ -73,7 +71,6 @@ function createView(options) {
     const source = node("div", "nazeka-original");
     source.append(document.createTextNode(before), node("strong", "nazeka-lookup", text), document.createTextNode(after));
     navigation(source, context);
-    source.append(lookupStats);
     scroll.append(source);
     for (const [index, result] of results.entries()) {
       const term = result.term;
@@ -92,6 +89,9 @@ function createView(options) {
       if (term.reading && term.reading !== term.expression) {
         word.append(document.createTextNode("《"), node("span", "nazeka-reading", term.reading), document.createTextNode("》"));
       }
+      const audio = components.createAudioControl(document, term.expression);
+      word.append(audio.element);
+      audioButtons.push({ button: audio.button, result });
       const steps = components.deinflectionSteps(result);
       if (steps.length) word.append(node("span", "nazeka-deconj", ` ～${steps.map(step => step.name).join(" → ")}`));
       const ranks = (term.frequencies ?? []).flatMap(group => group.frequencies.map(frequency => frequency.displayValue ?? frequency.value));
@@ -99,9 +99,6 @@ function createView(options) {
       const actions = node("div", "gsm-hoshidicts-entry-actions");
       actions.setAttribute("role", "group");
       actions.setAttribute("aria-label", "Entry actions");
-      const audio = components.createAudioControl(document, term.expression);
-      actions.append(audio.element);
-      audioButtons.push({ button: audio.button, result });
       const feedback = node("div", "gsm-hoshidicts-anki-feedback");
       feedback.hidden = true;
       miningActions.push({ actions, feedback, result });
@@ -120,7 +117,7 @@ function createView(options) {
     }
     updateDictionaryPresentation(context);
     finish(candidate, results[0]?.matched || candidate?.query, context);
-    options.onResultsRendered?.({ audioButtons, miningActions, lookupStats });
+    options.onResultsRendered?.({ audioButtons, miningActions, lookupStats: null });
   }
   function renderKanji(kanji, candidate, context = {}) {
     clear();
@@ -178,10 +175,6 @@ function createView(options) {
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation,
-    setLookupStats(element, payload) {
-      element.textContent = payload?.lookupCount == null ? "" : `Looked up ${payload.lookupCount}`;
-      element.hidden = payload?.lookupCount == null;
-    },
     setSourceHighlightEnabled(enabled) {
       highlightEnabled = enabled;
       if (!enabled) highlighter?.clear();

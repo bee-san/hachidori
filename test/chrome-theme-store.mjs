@@ -1,6 +1,7 @@
 // Focused MVP check: Store opt-in, real hover, kanji/Back, and Default restore.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -14,7 +15,24 @@ const output = resolve(process.env.HACHIDORI_THEME_OUTPUT || resolve(root, "test
 const extension = resolve(root, "extension");
 const profile = mkdtempSync(resolve(tmpdir(), "hachidori-theme-smoke-"));
 mkdirSync(output, { recursive: true });
-const server = createServer((_request, response) => {
+const server = createServer(async (request, response) => {
+  if (request.method === "POST") {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const reply = await answerAnkiConnect(JSON.parse(body), (action, params) => {
+      if (action === "version") return 6;
+      if (action === "deckNames") return ["Default"];
+      if (action === "modelNames") return ["Basic"];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "modelFieldNames") return ["Front", "Back"];
+      if (["findNotes", "findCards", "notesInfo"].includes(action)) return [];
+      if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
+      throw new Error(`Unexpected Anki action: ${action}`);
+    });
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify(reply));
+    return;
+  }
   response.setHeader("Content-Type", "text/html; charset=utf-8");
   response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><p>朝ごはんを<span id="word">食べたかった</span>。</p>');
 });
@@ -49,13 +67,16 @@ try {
   await settings.waitForSelector("#opt-experimental-themeStore", { visible: true });
   await settings.click("#opt-experimental-themeStore");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options?.experimental?.themeStore === true);
-  await settings.evaluate(async () => {
+  await settings.evaluate(async ankiUrl => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover", popupTheme: "default" } });
+      baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover", popupTheme: "default", showLookupCounts: true,
+        anki: { ...HDReaderOptions.DEFAULT_OPTIONS.anki, url: ankiUrl, model: "Basic",
+          fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+            Back: { value: "{glossary}", overwriteMode: "overwrite" } } } } });
     if (!reply.ok) throw new Error(reply.error);
     location.hash = "design";
-  });
+  }, `http://127.0.0.1:${server.address().port}`);
   await settings.waitForSelector(".theme-store-card button", { visible: true });
   assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 2);
   const tab = await browser.newPage();
@@ -84,6 +105,10 @@ try {
   };
   console.log("hover");
   await hover();
+  await tab.waitForFunction(() => {
+    const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
+    return button && !button.hidden && !button.disabled;
+  });
   await screenshot("default");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
   await settings.bringToFront();
@@ -112,6 +137,27 @@ try {
   assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), true,
     "switching away from Note releases editing so Escape can close Nazeka");
   await hover();
+  await tab.waitForFunction(() => {
+    const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
+    return button && !button.hidden && !button.disabled;
+  });
+  const controls = await tab.evaluate(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    const audio = popup.querySelector(".gsm-hoshidicts-audio-button");
+    const reading = popup.querySelector(".nazeka-reading").getBoundingClientRect();
+    const audioBox = audio.getBoundingClientRect();
+    const mine = popup.querySelector(".gsm-hoshidicts-mine-button");
+    return { count: popup.querySelectorAll(".nazeka-count").length, text: popup.textContent,
+      audioAfterReading: audioBox.left >= reading.right && audioBox.left - reading.right < 24,
+      border: getComputedStyle(audio).borderWidth, mining: mine.dataset.state,
+      mineAfterAudio: mine.getBoundingClientRect().left > audioBox.left };
+  });
+  assert.equal(controls.count, 0);
+  assert.doesNotMatch(controls.text, /Looked up/);
+  assert.equal(controls.audioAfterReading, true);
+  assert.equal(controls.border, "0px");
+  assert.equal(controls.mining, "ready");
+  assert.equal(controls.mineAfterAudio, true);
   await screenshot("nazeka");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".nazeka-kanji-info"));
@@ -125,6 +171,7 @@ try {
   assert.ok(carousel.scroll > carousel.width, "cards scroll horizontally");
   const preview = settings.frames().find(frame => frame.url().includes("design-preview.html"));
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "nazeka");
+  assert.equal(await preview.evaluate(() => !!document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-mine-button")), true);
   await settings.screenshot({ path: resolve(output, "store.png") });
   await settings.click(".theme-store-card:first-child button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "default");

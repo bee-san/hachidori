@@ -14,19 +14,23 @@
 .nazeka-original { float: right; margin-right: 2px; margin-left: 4px; max-width: 70%; opacity: .7; font-size: 12px; }
 .nazeka-lookup { color: #99ddff; font-weight: 400; }
 .nazeka-main-keb { white-space: nowrap; }
-.nazeka-count { margin-left: 8px; }
 .gsm-hoshidicts-entry { padding: 3px 0 7px; }
 .nazeka-word { color: #99ddff; font-size: 18px; }
 .nazeka-reading { color: #99ff99; font-size: 15px; white-space: nowrap; }
 .nazeka-deconj, .nazeka-frequency { color: #ccc; font-size: 12px; }
 .nazeka-dictionary { color: #aaa; font-size: 11px; }
 .nazeka-sense { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.gsm-hoshidicts-entry-actions { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
-.gsm-hoshidicts-audio-control { display: inline-flex; position: relative; }
+.gsm-hoshidicts-entry-actions { display: inline-flex; margin-left: 3px; vertical-align: text-bottom; }
+.gsm-hoshidicts-entry-actions:empty { display: none; }
+.gsm-hoshidicts-audio-control { display: inline-flex; position: relative; margin-left: 3px; vertical-align: text-bottom; }
 .gsm-hoshidicts-popup button { color: inherit; background: #252525; border: 1px solid #777; border-radius: 3px; cursor: pointer; font: inherit; }
 .gsm-hoshidicts-popup .gsm-hoshidicts-kanji-link { padding: 0; background: none; border: 0; color: inherit; }
 .gsm-hoshidicts-popup button:focus-visible, .gsm-hoshidicts-entry:focus-visible { outline: 2px solid #aaf; outline-offset: 2px; }
-.gsm-hoshidicts-audio-button, .gsm-hoshidicts-mine-button { width: 26px; height: 26px; }
+.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: #ccc;
+}
+.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button:hover, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button:hover { color: #99ddff; }
 .gsm-hoshidicts-audio-menu { position: absolute; right: 8px; top: 32px; z-index: 2; min-width: 180px; max-height: calc(100% - 48px); overflow: auto; background: #222; border: 1px solid #aaa; padding: 6px; }
 .gsm-hoshidicts-audio-menu button { display: block; width: 100%; }
 .gsm-hoshidicts-anki-feedback { color: #99ff99; font-size: 12px; }

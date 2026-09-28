@@ -35,7 +35,8 @@ test("Nazeka builds text directly, binds core actions, and never constructs Defa
     assert.equal(popup.querySelectorAll("img,a,b,.gsm-hoshidicts-result-chrome,.gsm-hoshidicts-glossary-card").length, 0);
     assert.equal(bound.audioButtons[0].result, results[0]);
     assert.equal(bound.miningActions[0].result, results[0]);
-    assert.equal(bound.lookupStats.hidden, true);
+    assert.equal(bound.lookupStats, null);
+    assert.equal(popup.querySelector(".nazeka-count"), null);
     const second = { ...results[0], term: { ...results[0].term, glossaries: [
       { dictionary: "second", glossary: "other definition" },
     ] } };

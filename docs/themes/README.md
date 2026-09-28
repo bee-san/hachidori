@@ -14,7 +14,10 @@ dictionary tabs, the Note editor and custom buttons in this MVP. All returned
 entries are rendered; there is no Show more truncation in Nazeka. Keyboard entry
 navigation, nested dictionary lookups, kanji/Back, definition blur and resizing
 use the reader's existing state and handlers. Popup dimensions remain Design's
-saved dimensions.
+saved dimensions. Nazeka omits the lookup-count display. Its borderless audio
+control follows the reading and Anki follows the entry metadata, as in JL.
+The preview shows a disabled Anki sample; real Anki controls appear when mining
+is configured and available, using the existing core behaviour.
 
 ## Version 2 view contract
 
@@ -37,7 +40,8 @@ presentation updates are optional.
   Never scrape Default DOM. Core owns cancellation, navigation and action engines.
 - Term rendering supplies arrays of `{button,result}` audio bindings and
   `{actions,feedback,result}` mining bindings through `onResultsRendered`, with
-  a hidden `lookupStats` slot. Core paints counts and binds current-request actions.
+  a `lookupStats` slot (or `null` when the theme omits counts). Core paints counts
+  and binds current-request actions.
 - `updateDictionaryPresentation` edits dictionary labels without rebuilding
   definitions. Blur updates edit state only. A new lookup replaces content;
   Back carries scroll state. Default retains its existing incremental renderer.
