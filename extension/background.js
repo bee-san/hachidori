@@ -2519,6 +2519,13 @@ function serialiseSharingTransition(job) {
   return run;
 }
 
+// Unlink restores each kept local value above the mirror's revision. A linked
+// overlay composed a mode-less local options record on hover; it stays there.
+function unlinkedLocalValue(key, local, mirrored) {
+  const value = OVERLAY_MODE && key === OPTIONS_KEY ? withOverlayLookupDefault(local) : local;
+  return { ...value, revision: Math.max(optionsRevision(local), optionsRevision(mirrored)) + 1 };
+}
+
 const SHARING_HANDLERS = {
   hd_sharing_status() {
     return { sharing: sharingStatus() };
@@ -2600,9 +2607,7 @@ const SHARING_HANDLERS = {
             if (stored[key] !== undefined) removals.push(key);
             continue;
           }
-          // A linked overlay composed a mode-less local record on hover; Unlink keeps it there.
-          const restored = OVERLAY_MODE && key === OPTIONS_KEY ? withOverlayLookupDefault(local) : local;
-          values[key] = { ...restored, revision: Math.max(optionsRevision(local), optionsRevision(stored[key])) + 1 };
+          values[key] = unlinkedLocalValue(key, local, stored[key]);
         }
         const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
         removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));

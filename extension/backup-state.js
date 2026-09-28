@@ -22,10 +22,9 @@ export function backupRevisions(snapshot) {
 // engine builds the snapshot once, so the storage CAS and its exact readback
 // commit and verify the same values.
 export function restoredBackupSnapshot(current, archived, dictionaries, { overlay = false } = {}) {
+  const options = overlay ? withOverlayLookupDefault(archived.options) : archived.options;
   return Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, {
-    ...(key === "options"
-      ? globalThis.HDReaderOptions.projectStoredOptions(overlay ? withOverlayLookupDefault(archived[key]) : archived[key])
-      : archived[key]),
+    ...(key === "options" ? globalThis.HDReaderOptions.projectStoredOptions(options) : archived[key]),
     ...(key === "state" ? { dictionaries } : {}),
     ...(key === "lookupStats" ? { generation: crypto.randomUUID() } : {}),
     revision: revision + 1,
