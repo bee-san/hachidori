@@ -13,9 +13,7 @@ const [html, source, optionsSource, manifest] = await Promise.all([
   readFile(new URL("manifest.json", extension), "utf8").then(JSON.parse),
 ]);
 
-async function toolbar(stored = {}, captureState = "stopped", {
-  mediaCapture = true,
-} = {}) {
+async function toolbar(stored = {}) {
   const nodes = new Map([...html.matchAll(/id="([^"]+)"/gu)].map(([, id]) => [id, {
     id, textContent: "", hidden: true, attributes: new Map(), listeners: new Map(),
     classList: { values: new Set(), toggle(name, enabled) {
@@ -30,7 +28,6 @@ async function toolbar(stored = {}, captureState = "stopped", {
   let openedSettings = 0;
   let closed = 0;
   const context = vm.createContext({
-    HOST_CAPABILITIES: { mediaCapture },
     document: { querySelectorAll: () => [...nodes.values()] },
     window: { close: () => { closed++; }, addEventListener() {} },
     setInterval() { return 1; }, clearInterval() {},
@@ -53,8 +50,6 @@ async function toolbar(stored = {}, captureState = "stopped", {
             stored = { ...stored, ...message.options, revision: (stored.revision ?? 0) + 1 };
             return { ok: true, options: stored };
           }
-          if (message.type === "hd_capture_status") return { ok: true, state: captureState };
-          if (message.type === "hd_capture_open") return { ok: true, tabId: 8 };
           throw new Error(`Unexpected request: ${message.type}`);
         },
       },
@@ -63,8 +58,7 @@ async function toolbar(stored = {}, captureState = "stopped", {
   vm.runInContext(optionsSource, context);
   const script = source
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
-    .replace('import "./reader-options.js";', "")
-    .replace(/import \{ HOST_CAPABILITIES \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace('import "./reader-options.js";', "");
   await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,
@@ -81,7 +75,7 @@ test("toolbar toggle persists global lookup state and follows external activatio
   assert.equal(manifest.action.default_popup, "toolbar.html");
   const ui = await toolbar({ hoverEnabled: true, revision: 7 });
   assert.equal(ui.nodes.get("lookup-state").textContent, "On");
-  assert.equal(ui.requests.length, 0, "opening a default popup does not start capture services");
+  assert.equal(ui.requests.length, 0, "opening a default popup does not send requests");
   await ui.click("lookup-toggle");
   assert.deepEqual(ui.requests[0], { target: "hoshidicts-worker", type: "hd_options_write",
     requestId: "toolbar-1", baseRevision: 7, options: { hoverEnabled: false } });
@@ -102,31 +96,6 @@ test("toolbar conflict displays the committed switch state and allows a fresh re
   assert.equal(ui.requests[1].baseRevision, 2);
   assert.equal(ui.nodes.get("lookup-state").textContent, "Off");
   assert.equal(ui.nodes.get("toolbar-error").hidden, true);
-});
-
-test("recording shortcut enables existing controls without starting or duplicating a recording", async () => {
-  const ui = await toolbar({ mediaCapture: { enabled: false, clipSeconds: 5 }, revision: 3 });
-  await ui.click("record-screen");
-  assert.deepEqual(ui.requests.map(request => request.type), ["hd_options_write", "hd_capture_open"]);
-  assert.equal(ui.requests[0].options.mediaCapture.enabled, true);
-  assert.equal(ui.requests[0].options.mediaCapture.clipSeconds, 5);
-  assert.equal(ui.closed, 1);
-
-  const active = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording");
-  assert.equal(active.nodes.get("record-label").textContent, "Recording context");
-  await active.click("record-screen");
-  assert.deepEqual(active.requests.map(request => request.type), ["hd_capture_status", "hd_capture_open"]);
-});
-
-test("overlay toolbar keeps recording visibly disabled without waking capture", async () => {
-  const ui = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording", { mediaCapture: false });
-  assert.equal(ui.nodes.get("record-screen").disabled, true);
-  assert.equal(ui.nodes.get("record-label").textContent, "Context capture unavailable");
-  assert.match(ui.nodes.get("record-screen").title, /unavailable in this overlay/u);
-  assert.deepEqual(ui.requests, []);
-  await ui.click("record-screen");
-  assert.deepEqual(ui.requests, []);
-  assert.equal(ui.closed, 0);
 });
 
 test("settings shortcut opens Chrome options and closes the toolbar", async () => {

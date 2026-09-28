@@ -1570,28 +1570,12 @@ async function overlayModeBackgroundStage() {
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 
-  const captureHostStarts = offscreenState.created;
-  const unavailable = await Promise.all([
-    chrome.__bus.sendMessage("overlay-settings", {
-      target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-capture",
-    }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
-
-    chrome.__bus.sendMessage("overlay-reader", {
-      target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
-      url: "https://example.test/", active: true,
-    }, { id: chrome.runtime.id, url: "https://reader.test/page", tab: { id: 1, windowId: 1 } }),
-  ]);
-  await storage.api().local.set({ options: {
-    ...storage.raw.get("options"),
-    mediaCapture: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.mediaCapture, enabled: true },
-    revision: storage.raw.get("options").revision + 1,
-  } });
-  await settle();
-  const unsupportedGuarded = unavailable[0]?.ok === false
-    && unavailable[0].error.includes("unavailable in this overlay")
-    && unavailable[1]?.ok === false
-    && unavailable[1].error.includes("only from lookup popups")
-    && offscreenState.created === captureHostStarts && tabs.length === 0;
+  const unavailable = await chrome.__bus.sendMessage("overlay-reader", {
+    target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
+    url: "https://example.test/", active: true,
+  }, { id: chrome.runtime.id, url: "https://reader.test/page", tab: { id: 1, windowId: 1 } });
+  const unsupportedGuarded = unavailable?.ok === false
+    && unavailable.error.includes("only from lookup popups") && tabs.length === 0;
 
   // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
   // screenshot switched on from before overlay mode must never reach for it.
@@ -1606,7 +1590,7 @@ async function overlayModeBackgroundStage() {
     frameId: 0, documentId: "overlay-document", tab: { id: 1 } });
   check("overlay mode never takes a mining screenshot, even when the stored option is on",
     screenshot?.ok === false && screenshot.error.includes("turned off") && unsupportedGuarded,
-    JSON.stringify({ screenshot, unavailable, captureHostStarts, captureHostEnds: offscreenState.created, tabs }));
+    JSON.stringify({ screenshot, unavailable, tabs }));
 }
 
 // The host side of sharing: a fake WebSocket stands in for the Anki add-on's
@@ -4529,7 +4513,6 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     externalLinkHost: overlayMode,
     customJavaScript: true,
     localFileAccessPrompt: !overlayMode,
-    mediaCapture: !overlayMode,
     lowMemoryMode: true,
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };

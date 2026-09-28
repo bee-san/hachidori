@@ -76,10 +76,9 @@ When implementing the dictionary-only scope from issue #9:
 Settings → Advanced → Experimental features is the one place a feature that is still changing is switched on or off.
 
 - An experimental feature is one entry in `EXPERIMENTAL_FEATURES` in `extension/reader-options.js` (`id`, `label`, `description`, optional `section`) plus its `false` default under `options.experimental`. Add the entry and the default together; do not introduce a parallel storage key, a separate save path, or a second registry. `experimental-settings.js` renders the switches from that registry and needs no per-feature code.
-- Flags are booleans under `options.experimental` and travel through the existing revisioned `hd_options_write`, `normaliseOptions`, and backup paths. A patch must carry the complete record with known ids and boolean values, as `mediaCapture` does; stored garbage normalises to the default without throwing.
-- A feature's own settings live where they always did. Turning a flag off hides the feature and keeps those settings; it must not clear them. When a feature has an enable switch that keeps runtime work going (Media mining → `mediaCapture.enabled`), the Settings toggle is responsible for switching it off in the same save so nothing stays active behind a hidden section. Runtime code gates on the feature's own enable switch, not on the flag.
+- Flags are booleans under `options.experimental` and travel through the existing revisioned `hd_options_write`, `normaliseOptions`, and backup paths. A patch must carry the complete record with known ids and boolean values, as the existing feature flags do; stored garbage normalises to the default without throwing.
+- A feature's own settings live where they always did. Turning a flag off hides the feature and keeps those settings; it must not clear them. Runtime code gates on the feature's own enable switch, not on the flag.
 - A feature that names a Settings `section` keeps that section, its rail link and its picker option hidden while off, and a hash request for it resolves to `#advanced`. Real-Chrome suites that open a gated section turn its switch on first.
-- Migration is stateless and lives in `normaliseOptions`: only a stored record with no `experimental` key derives a flag from legacy state (Media mining from `mediaCapture.enabled`). Once Settings has written the record, the stored value wins.
 - Removing a flag means deleting its registry entry and default, dropping its gate, and leaving its feature permanently on or removing the feature; do not keep dead flags.
 
 ## Repository map

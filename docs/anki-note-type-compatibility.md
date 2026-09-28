@@ -34,7 +34,7 @@ the publisher's `group` wrapper around furigana and its nested `group` /
 Hachidori intentionally differs from a plain publisher mapping in three places:
 
 - Kiku and Lapis `Picture`, and Senren `picture`, use `{screenshot}` so the
-  existing static or captured-media path can attach the page image.
+  existing screenshot path can attach the page image.
 - `MainDefinition` / `definition` use `{main-definition}`, Hachidori's current
   projected primary definition.
 - Senren `pitchAccents` uses the canonical `{pitch}` marker; the accepted
@@ -42,7 +42,7 @@ Hachidori intentionally differs from a plain publisher mapping in three places:
 
 Unsupported card flags, translations, hints, notes and other package fields are
 explicitly blank. `SentenceAudio` / `sentenceAudio` also stay blank in saved
-presets; request-local capture routing may fill captured audio without changing
+presets; screenshot capture fills a mapped picture field without changing
 the saved template. Existing customized mappings are never migrated. Corrected
 defaults apply only when a preset is newly selected or automatically configured.
 

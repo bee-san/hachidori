@@ -172,15 +172,6 @@ async function showSection(page, id) {
   }, { timeout: 30_000, polling: 100 }, id);
 }
 
-// Media capture is an experimental feature: its section only joins the
-// navigation after the Advanced switch is on.
-async function enableMediaMining(page) {
-  await showSection(page, "advanced");
-  await page.click("#opt-experimental-mediaMining");
-  await page.waitForFunction(() => !document.querySelector('.settings-nav a[href="#media"]').parentElement.hidden,
-    { timeout: 10_000, polling: 100 });
-}
-
 async function editSettingsControls(settings, values) {
   const section = await settings.evaluate((id) => {
     const owner = document.getElementById(id).closest("section");
@@ -452,25 +443,10 @@ try {
     { effective: "light", stored: "auto" }, { effective: "dark", stored: "auto" },
   ], "overlay Settings follows the live browser preference from its first seeded options");
   await importFixture(settings);
-  await enableMediaMining(settings);
-  await showSection(settings, "media");
-  await settings.waitForFunction(() =>
-    [...document.querySelectorAll("#media button, #media input, #media select")].every(control => control.disabled));
-  await settings.waitForFunction(() => {
-    const status = document.getElementById("options-status").textContent;
-    return !status.includes("Unsaved") && !status.includes("Saving");
-  });
-  const mediaSettings = await settings.evaluate(() => ({
-    controlsDisabled: [...document.querySelectorAll("#media button, #media input, #media select")]
-      .every(control => control.disabled),
-    enabled: document.getElementById("opt-media-enabled").checked,
-    note: document.getElementById("media-overlay-help").textContent,
-    noteVisible: !document.getElementById("media-overlay-help").hidden,
-    status: document.getElementById("media-runtime-status").textContent,
-  }));
+  assert.equal(await settings.$("#media"), null, "removed recorder settings are absent");
   if (process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT) {
+    await showSection(settings, "advanced");
     await settings.setViewport({ width: 1280, height: 1200 });
-    await settings.$eval("#media-heading", heading => heading.scrollIntoView({ block: "start" }));
     await settings.screenshot({ path: process.env.HACHIDORI_OVERLAY_SETTINGS_SCREENSHOT });
   }
   await showSection(settings, "keybinds");
@@ -515,21 +491,10 @@ try {
     localFilePromptHidden: document.getElementById("settings-local-file-access").hidden,
     localFilePromptEmpty: document.getElementById("settings-local-file-access").childElementCount === 0,
   }));
-  const guardedRequests = await settings.evaluate(() => Promise.all([
-    chrome.runtime.sendMessage({ target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-ui-capture" }),
-
-    chrome.runtime.sendMessage({
-      target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
-      url: "https://example.test/", active: true,
-    }),
-  ]));
-  assert.deepEqual(mediaSettings, {
-    controlsDisabled: true,
-    enabled: false,
-    note: "Hachidori recording is unavailable in this embedded overlay. GameSentenceMiner owns game screenshots, recordings and sentence audio; these saved browser settings are left unchanged.",
-    noteVisible: true,
-    status: "Media capture is unavailable in this overlay.",
-  });
+  const guardedRequests = await settings.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
+    url: "https://example.test/", active: true,
+  }));
   assert.deepEqual(keybindSettings, { browserDisabled: true, browserHelpVisible: true, pageKeybindsEnabled: true });
   assert.deepEqual(designSettings, {
     customButtonsDisabled: false,
@@ -543,11 +508,8 @@ try {
   assert.equal(ankiSettings.screenshotEnabled, false);
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
   assert.deepEqual(readingSettings, { readingEnabled: true, localFilePromptHidden: true, localFilePromptEmpty: true });
-  assert.ok(guardedRequests[0].ok === false && guardedRequests[0].error.includes("unavailable in this overlay")
-    && guardedRequests[1].ok === false && guardedRequests[1].error.includes("only from lookup popups"),
+  assert.ok(guardedRequests.ok === false && guardedRequests.error.includes("only from lookup popups"),
   JSON.stringify(guardedRequests));
-  assert.equal(browser.targets().some(target => target.url().endsWith("/capture.html")), false,
-    "disabled media controls never open a capture tab");
   // Setup never opens in an overlay: the host has no tab to show it in.
   assert.equal(browser.targets().some((target) => target.url().endsWith("/startup.html")), false,
     "overlay mode opens no startup page");
@@ -566,7 +528,6 @@ try {
         id: "remote-link", type: "link", label: "Remote link", url: "https://example.test/%w",
       }],
       customLinks: [{ label: "Remote link", url: "https://example.test/%w" }],
-      mediaCapture: { ...options.mediaCapture, enabled: true },
       revision: options.revision + 1,
     } });
   });

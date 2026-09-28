@@ -6,7 +6,6 @@ export const OVERLAY_MODE = false;
 // Keep every host-owned capability in one place so shared settings cannot make
 // an unavailable control live again.
 export const HOST_CAPABILITIES = Object.freeze({
-
   browserShortcuts: !OVERLAY_MODE,
   // `customLinks` is the pre-Custom-buttons host contract. Keep the alias so
   // an embedding host can update its reader before updating its capability
@@ -16,11 +15,10 @@ export const HOST_CAPABILITIES = Object.freeze({
   linkButtons: true,
   externalLinkHost: OVERLAY_MODE,
   localFileAccessPrompt: !OVERLAY_MODE,
-  mediaCapture: !OVERLAY_MODE,
   lowMemoryMode: true,
 });
 
 export const MINING_CAPABILITIES = Object.freeze({
   screenshot: !OVERLAY_MODE,
-  browserSpeech: !OVERLAY_MODE,
+  browserSpeech: false,
 });

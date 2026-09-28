@@ -357,7 +357,7 @@ test("availability revalidates retained choices, all mappings and the first mode
     Front: { value: "{capture-animation}", overwriteMode: "overwrite" },
     Back: { value: "{expression}", overwriteMode: "overwrite" },
   } });
-  assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /captured media.*first field/iu);
+  assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /Unknown marker.*capture-animation/iu);
   assert.deepEqual(value, before);
 });
 

@@ -129,8 +129,6 @@ def main():
         if name.startswith("distribution/licenses/"):
             upload[name.removeprefix("distribution/")] = entry
     for dependency in dependencies:
-        if dependency["name"] == "libavif" and dependency["revision"].encode() not in sources["wasm/avif/CMakeLists.txt"][0]:
-            raise ValueError("Pinned libavif source no longer matches the build configuration.")
         entries = download_source(dependency, args.cache_dir)
         prefix = "third_party/store-sources/" + dependency["name"] + "/"
         sources.update({prefix + name: entry for name, entry in entries.items()})
@@ -148,7 +146,7 @@ def main():
         "Hachidori is licensed under GPL-3.0-or-later. See LICENSE.\n"
         f"Matching source archive: {source_name}\nSHA-256: {source_hash}\n"
         "The publisher distributes this source archive alongside this release.\n"
-        "It includes recursive submodule sources, pinned AVIF and zip.js sources,\n"
+        "It includes recursive submodule sources, pinned zip.js sources,\n"
         "and docs/source-build.md. The store listing provides the download location.\n"
         "This source archive matches the Chrome ZIP of this release.\n"
     ).encode(), 0o100644)

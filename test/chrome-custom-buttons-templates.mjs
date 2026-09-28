@@ -807,8 +807,6 @@ async function configureThroughSettings(settings) {
     frequency: "",
     pitch: "",
     audio: "",
-    captureAnimation: "",
-    captureAudio: "",
     screenshot: "",
   };
   const legacy = {

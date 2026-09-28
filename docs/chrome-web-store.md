@@ -15,10 +15,10 @@ packaging needed to prepare a submission.
 
 | Area | Preparation included | At publication |
 | --- | --- | --- |
-| Privacy | [The privacy policy](privacy.md) describes local data, providers, capture, backups, retention and contact. Settings and setup link to it. | The GitHub policy URL must be readable without signing in. The repository was private at audit time. |
+| Privacy | [The privacy policy](privacy.md) describes local data, providers, screenshots, backups, retention and contact. Settings and setup link to it. | The GitHub policy URL must be readable without signing in. The repository was private at audit time. |
 | First run | One short welcome and **Start setup** precede automatic dictionary downloads and local Anki discovery. Accepted runs resume automatically; **Set up manually** skips both. | Describe this behavior in the listing and verify it in the uploaded build. |
-| Audio | HTTP localhost audio and custom-provider redirects remain supported. Audio Settings explains word/reading sharing and recommends HTTPS for remote sources. Linked mining fetches URL providers on the host but records browser speech in the reading browser. | Disclose configured provider/voice behavior; do not claim every audio source is offline or encrypted. |
-| Permissions | The redundant `tabs` permission is removed. Capture controls are found through extension contexts, while host access supplies the reading-page titles/URLs. | Use the justifications below for the submitted manifest. |
+| Audio | HTTP localhost audio and custom-provider redirects remain supported. Audio Settings explains word/reading sharing and recommends HTTPS for remote sources. Linked mining fetches URL providers on the host while browser speech is playback-only. | Disclose configured provider/voice behavior; do not claim every audio source is offline or encrypted. |
+| Permissions | The redundant `tabs` permission is removed. Host access supplies reading-page access. | Use the justifications below for the submitted manifest. |
 | Assets | [Store assets](store/README.md) include a 440 × 280 promotional tile and genuine 1280 × 800 extension screenshots using original sample material. | Upload the supplied icon/tile/screenshots and check they match the release UI. |
 | Licensing/source | [The packaging command](../scripts/package-store.py) includes the GPL license, dependency notices, policy and a checksummed source reference. It produces a matching source archive with recursive submodules and pinned dependency sources. | Make that source archive accessible to recipients and give its location in the listing. |
 
@@ -38,31 +38,19 @@ The welcome and settings copy provide the relevant
 
 ### What already fits, and what needs an honest explanation
 
-- **Bundled code:** the dictionary engine, AVIF encoder, workers and ZIP library
+- **Bundled code:** the dictionary engine, workers and ZIP library
   live under `extension/`. The audited loading paths do not fetch remote JS or
   WASM. Dictionary ZIPs, update indexes, audio lists and media are data, not
   downloaded extension logic. The manifest's `'wasm-unsafe-eval'` is Chrome's
   supported mechanism for bundled Wasm, not permission to execute remote scripts.
   See [remote hosted code](https://developer.chrome.com/docs/extensions/develop/migrate/remote-hosted-code)
   and [extension CSP](https://developer.chrome.com/docs/extensions/reference/manifest/content-security-policy).
-- **One purpose:** describe reading Japanese and saving study material. Capture
-  supports that workflow; avoid presenting it as an unrelated general recorder.
-  See [extension quality guidelines](https://developer.chrome.com/docs/webstore/program-policies/quality-guidelines).
-- **Continuous capture:** it is off by default, requires Start capture and Chrome's source
-  picker, retains temporary local history, and sends final assets to the configured Anki
-  only when mining. Explain that closing controls continues recording and how
-  to stop it. There is no microphone recording, OCR or DRM bypass in the audited
-  implementation. See [media capture](media-capture.md#privacy-and-limitations).
-  Separately, the enabled-by-default **Screenshot the page when mining** switch
-  takes one picture of the whole visible reading page when a field maps
-  `{screenshot}` and the user chooses Add or Overwrite. It uses the active tab
-  directly and sends the picture to the configured Anki with the note. In a
-  linked browser, final JPEG/AVIF/WAV assets, including a recorded browser-speech
-  WAV, go through the sharing host, which owns the AnkiConnect transaction.
+- **Page screenshots:** the enabled-by-default **Screenshot the page when mining** switch
+  takes one picture when a field maps `{screenshot}` and the user chooses Add or
+  Overwrite. In a linked browser the final JPEG goes through the sharing host.
 - **Content and claims:** use material you have permission to show in store
   screenshots and verify rights for recommended dictionary distribution and
-  audio sources. Describe capture for authorized study material; do not promise
-  access to protected media. Avoid copying the README's unqualified “fastest”
+  audio sources. Avoid copying the README's unqualified “fastest”
   claim into the listing. Google's [program policies](https://developer.chrome.com/docs/webstore/program-policies/policies)
   cover misleading claims, intellectual property and unauthorized media access.
 
@@ -75,12 +63,12 @@ Google requires [a justification for each permission](https://developer.chrome.c
 | --- | --- |
 | `storage` | Save dictionary configuration, reader preferences, custom entries, lookup counts, Anki settings and the newest automatic backup records (two days by default, configurable) locally. The engine stores dictionary indexes separately in OPFS or IndexedDB. |
 | `unlimitedStorage` | Keep user-imported dictionaries and their generated indexes in OPFS or IndexedDB exempt from ordinary extension storage quotas and storage-pressure eviction. |
-| `offscreen` | Run the local dictionary engine and pronunciation playback, and retain an explicitly started capture session when its controls close. [The worker](../extension/background.js) requests `DOM_SCRAPING`, `AUDIO_PLAYBACK` and `DISPLAY_MEDIA`. |
+| `offscreen` | Run the local dictionary engine and pronunciation playback,  [The worker](../extension/background.js) requests `DOM_SCRAPING` and `AUDIO_PLAYBACK`. |
 | `alarms` | Run the user's configured dictionary update schedules, refresh the local Anki duplicate index every 30 minutes when Anki mining is configured, and schedule at most one local automatic backup per 24 hours. Scheduled runs can install dictionary data updates; they do not replace extension code. |
 | `downloads` | Save an explicitly requested local backup ZIP and monitor that export's completion. [The implementation](../extension/backup-downloads.js) tracks its own export IDs. |
 | `<all_urls>` host access | Fetch dictionaries and updates from configured HTTPS sources, pronunciation from configured sources, communicate with local Anki, and capture the visible reading page for mapped mining screenshots. Explain arbitrary source support and why a fixed allowlist does not cover the shipped feature. |
 | `<all_urls>` content-script matching | Read Japanese text near the pointer/selection and display dictionary results on the user's reading pages. A fixed website list cannot cover where users read. User-enabled local-file access can support local reading pages. |
-| `tabs` | Removed. Host permissions supply reading-page titles/URLs. `chrome.runtime.getContexts()` locates the extension’s own capture controls. |
+| `tabs` | Removed. Host permissions support the reading pages. |
 
 The permission reduction follows Google's [Tabs API permission explanation](https://developer.chrome.com/docs/extensions/reference/api/tabs#permissions).
 Changing to `activeTab` would require a user invocation before access and would
@@ -111,11 +99,9 @@ The policy covers the paths below; use this mapping when completing the dashboar
 | Page text and lookup activity | Pointer/selection text and surrounding context support lookup and mining. Local statistics retain term, reading, count and first/last lookup timestamps. Turning off lookup counts pauses recording and preserves past rows, which do not store page URLs. | [Reader](../extension/content.js), [statistics](../extension/lookup-stats.js) |
 | Dictionaries and personal settings | Imported/generated dictionaries and custom entries remain in extension storage. Preferences include Custom buttons, custom URLs, CSS, Anki Templates and an optional AnkiConnect API key. | [Storage ownership](architecture.md#storage-ownership) |
 | Dictionary downloads | After Start setup, the installer downloads Jitendex, JMnedict, Bee's Ultimate Kanji Dictionary, Jiten Frequency Dictionary and Bee's Ultimate Grammar Dictionary. Their GitHub/GitHub asset hosts, jitendex.org and api.jiten.moe receive ordinary requests/IP metadata. Managed updates contact installed source URLs when checked or scheduled. These requests are not a remote term-lookup service. | [Catalogue](../extension/recommended-dictionaries.js), [updates](update-schedules.md) |
-| Pronunciation | Configured custom audio providers receive the expression/reading substituted into their URLs. Built-in speech uses the browser/OS voice; the code does not require a `localService` voice, so do not promise every voice works offline. During linked mining, URL providers run on the host while browser speech is recorded in the reading browser and its final WAV is transferred. | [Sources](../extension/audio-sources.js), [player](../extension/audio-player.js) |
-| Anki | Requests go to `http://127.0.0.1:8765` by default. After Start setup, Anki discovery reads deck/model/card/note metadata. The first Anki Template powers the built-in action and the scoped duplicate index, which refreshes every 30 minutes and stores only each word, its aggregate maturity flag and matching note IDs; warm Prevent-mode View readiness reads it without Anki, mining misses can perform a scoped repair lookup, and clicking View validates and repairs those IDs live. Mature-word blur reads that local index. Custom Anki buttons can choose other Templates. Explicit mining can send selected text, definitions, page title, audio, images and captured media according to the selected Template's field mappings. A linked browser transfers the selected Template ID, note data and final media to its sharing host, which uses only the host's saved AnkiConnect URL/API key and Templates for Settings discovery/setup checks, mining checks and writes; the linked browser's duplicate-index alarm is suspended. Anki controls any subsequent sync. | [Gateway](../extension/anki.js), [setup](../extension/anki-setup.js), [index](../extension/anki-index.js), [mining](../extension/anki-mining.js) |
-| Lookup counts / texthooker | Lookup counts stay in this browser and never contact an external service. Optional capture texthooker receives timing/text over a loopback WebSocket. | [Statistics](lookup-statistics.md), [capture](media-capture.md) |
+| Pronunciation | Configured custom audio providers receive the expression/reading substituted into their URLs. Built-in speech uses the browser/OS voice; the code does not require a `localService` voice, so do not promise every voice works offline. During linked mining, URL providers run on the host and browser speech is used for playback only. | [Sources](../extension/audio-sources.js), [player](../extension/audio-player.js) |
+| Anki | Requests go to `http://127.0.0.1:8765` by default. After Start setup, Anki discovery reads deck/model/card/note metadata. The first Anki Template powers the built-in action and the scoped duplicate index, which refreshes every 30 minutes and stores only each word, its aggregate maturity flag and matching note IDs; warm Prevent-mode View readiness reads it without Anki, mining misses can perform a scoped repair lookup, and clicking View validates and repairs those IDs live. Mature-word blur reads that local index. Custom Anki buttons can choose other Templates. Explicit mining can send selected text, definitions, page title, downloadable audio and dictionary images according to the selected Template's field mappings. A linked browser transfers the selected Template ID, note data and final screenshot and dictionary media to its sharing host, which uses only the host's saved AnkiConnect URL/API key and Templates for Settings discovery/setup checks, mining checks and writes; the linked browser's duplicate-index alarm is suspended. Anki controls any subsequent sync. | [Gateway](../extension/anki.js), [setup](../extension/anki-setup.js), [index](../extension/anki-index.js), [mining](../extension/anki-mining.js) |
 | Page screenshots | With Screenshot the page when mining enabled and a field mapping `{screenshot}`, Add or Overwrite takes one picture of the whole visible reading page directly from the active tab. The switch is on by default. The picture stays in temporary memory and is sent to the configured Anki with the note; when linked, the reading browser sends the final JPEG to the sharing host for that transaction. | [Mining](../extension/anki-content.js), [screenshot ownership](../extension/background.js) |
-| Continuous capture | User-selected tab/window/monitor frames and available source audio stay in transient capture history after Start capture and Chrome's picker. Stop clears it; explicitly mined final clips are sent to the configured Anki. When linked, only final AVIF/WAV assets cross the relay to the host; this can include a separately recorded browser-speech WAV. Reading-page titles/URLs identify the linked source. | [Capture privacy](media-capture.md#privacy-and-limitations) |
 | Other external resources | Explicit external dictionary links open dictionary-supplied HTTP(S) URLs, which may contain terms or other parameters. User-written popup CSS may fetch URL resources. Their destination hosts may receive request metadata; dictionary CSS has separate restrictions. | [Renderer](../extension/render/glossary.js), [links](../extension/external-links.js), [custom CSS](architecture.md#custom-popup-css) |
 | Backups and deletion | The newest automatic daily snapshots (two days by default; Settings chooses how many) stay in the browser profile and contain the same saved settings, custom entries and statistics as a manual backup payload, including a configured AnkiConnect API key. Clearing current settings does not remove their older retained values until later snapshots replace them or the extension is uninstalled. User-requested ZIPs additionally contain dictionary files; they are unencrypted and remain outside the profile until separately deleted. Automatic and manual backups exclude the derived Anki duplicate index. | [Backup format](backup-format.md) |
 
@@ -130,10 +116,8 @@ backup export UI explicitly warns that the ZIP is unencrypted and can contain
 API keys. The policy describes that behavior; this preparation does not add a
 new encryption or credential-storage system.
 
-For the dashboard's data categories, evaluate **Website content**, **Web history**
-(tab URLs read for capture source selection), **User activity** (lookups), and
-**Authentication information** (the optional AnkiConnect key). Selected screen
-or audio content can also contain sensitive information. These are starting
+For the dashboard's data categories, evaluate **Website content**, **User activity** (lookups), and
+**Authentication information** (the optional AnkiConnect key). Page screenshots can also contain sensitive information. These are starting
 points for mapping the shipped behavior to the current form, not a pre-completed
 certification. Do not select “no user data” simply because most work is local.
 
@@ -158,11 +142,6 @@ node test/chrome-e2e.mjs
 node test/chrome-fallback.mjs
 ```
 
-For a release including media capture, follow the additional browser/platform
-checks in [the capture test guide](../test/README.md#chrome-capturemjs), including
-actual Anki playback. Verify the claimed Chrome/OS support; the manifest's Chrome
-128 minimum and its automated browser check do not prove every capture feature
-on every platform.
 These are release instructions. The pull request records which checks were run
 for its exact changes and any test-environment limitations.
 
@@ -170,8 +149,8 @@ for its exact changes and any test-environment limitations.
 
 Google needs **`manifest.json` at the ZIP root**. The release command packages
 tracked runtime files with their licenses and the privacy policy, then creates
-a matching source ZIP containing recursive submodules and pinned AVIF/zip.js
-sources. Existing dictionary/AVIF Wasm bundles are included unchanged unless
+a matching source ZIP containing recursive submodules and pinned zip.js
+sources. Existing dictionary Wasm bundles are included unchanged unless
 the release intentionally rebuilds them. See [source/build instructions](source-build.md)
 and [Google's package preparation](https://developer.chrome.com/docs/webstore/prepare).
 
@@ -253,7 +232,7 @@ Suggested short description, if adopted in the release manifest:
 
 The longer description should cover supported reading pages, automatic starter
 dictionary downloads, local lookup/storage, pronunciation provider behavior,
-optional Anki features and explicitly started capture. Explain that Anki
+optional Anki features. Explain that Anki
 Desktop with AnkiConnect is needed for mining; ordinary lookup works without it.
 Link a publicly reachable project/support destination and the published privacy
 policy. The current [issue tracker](https://github.com/bee-san/hachidori/issues)
@@ -306,9 +285,6 @@ Provide reviewer instructions specific to Hachidori:
    AnkiConnect, configure a disposable deck/note type and map fields. If an origin
    grant is needed, use the uploaded extension's actual ID rather than an old
    unpacked ID. Explicitly add a note and verify its content.
-5. To review capture, follow [media setup](media-capture.md#setup), choose a
-   non-private test source in Chrome's picker, mine to the disposable deck,
-   then stop capture. Provide OS/audio limitations and reproduction details.
 
 No Hachidori account is needed. Give reviewers any additional test access that
 the final configured features actually require, never a personal Anki backup or

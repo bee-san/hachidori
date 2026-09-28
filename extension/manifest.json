@@ -98,7 +98,6 @@
         "external-link-host.js",
         "audio-content.js",
         "anki-content.js",
-        "capture-content.js",
         "render/glossary.js",
         "render/popup.js",
         "content.js"

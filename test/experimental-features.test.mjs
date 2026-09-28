@@ -12,7 +12,7 @@ const {
 } = globalThis.HDReaderOptions;
 
 test("experimental features are registered with defaults that start off", () => {
-  assert.ok(EXPERIMENTAL_FEATURES.some(feature => feature.id === "mediaMining"));
+  assert.ok(!EXPERIMENTAL_FEATURES.some(feature => feature.id === "mediaMining"));
   for (const feature of EXPERIMENTAL_FEATURES) {
     assert.equal(typeof feature.label, "string");
     assert.equal(typeof feature.description, "string");
@@ -26,10 +26,10 @@ test("experimental features are registered with defaults that start off", () => 
 });
 
 test("experimental patches accept only registered boolean flags", () => {
-  const complete = { ...DEFAULT_OPTIONS.experimental, mediaMining: true };
+  const complete = { ...DEFAULT_OPTIONS.experimental, mdxImport: true };
   assert.deepEqual(validateOptionsPatch({ experimental: complete }), { experimental: complete });
-  // A complete record is required, as for mediaCapture, so a writer cannot silently drop a flag.
-  for (const invalid of [null, [], "on", {}, { mediaMining: true }, { ...complete, mediaMining: "yes" },
+  // A complete record prevents a writer from silently dropping another flag.
+  for (const invalid of [null, [], "on", {}, { mdxImport: true }, { ...complete, mdxImport: "yes" },
     { ...complete, unknown: true }]) {
     assert.throws(() => validateOptionsPatch({ experimental: invalid }), /invalid reader option/);
   }
@@ -37,11 +37,9 @@ test("experimental patches accept only registered boolean flags", () => {
     DEFAULT_OPTIONS.experimental, "stored garbage falls back to the default without throwing");
 });
 
-test("a missing experimental record inherits media mining from the legacy capture switch", () => {
-  assert.equal(normaliseOptions({ mediaCapture: { enabled: true } }).experimental.mediaMining, true);
-  assert.equal(normaliseOptions({ mediaCapture: { enabled: false } }).experimental.mediaMining, false);
-  assert.equal(normaliseOptions({ experimental: { mediaMining: false }, mediaCapture: { enabled: true } })
-    .experimental.mediaMining, false, "a stored record wins over the legacy switch");
-  assert.equal(normaliseOptions({ experimental: { mediaMining: true }, mediaCapture: { enabled: false } })
-    .experimental.mediaMining, true);
+test("legacy recorder settings do not reappear when options are normalised", () => {
+  const options = normaliseOptions({ experimental: { mediaMining: true }, mediaCapture: { enabled: true } });
+  assert.equal(Object.hasOwn(options, "mediaCapture"), false);
+  assert.equal(Object.hasOwn(options.experimental, "mediaMining"), false);
+  assert.deepEqual(options.experimental, DEFAULT_OPTIONS.experimental);
 });

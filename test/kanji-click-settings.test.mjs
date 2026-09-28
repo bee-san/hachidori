@@ -28,7 +28,7 @@ function fixture(t, kanjiClickDictionary) {
   window.OVERLAY_MODE = false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: true, linkButtons: true, externalLinkHost: false, customJavaScript: true,
-    localFileAccessPrompt: true, mediaCapture: true, lowMemoryMode: true,
+    localFileAccessPrompt: true, lowMemoryMode: true,
   };
   window.MINING_CAPABILITIES = { screenshot: true, browserSpeech: true };
   const writes = [];

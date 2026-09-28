@@ -121,7 +121,7 @@ The scheduled compact duplicate and maturity index remains scoped to the first
 Template. Other Templates use the same live duplicate search and final
 authoritative submission check; a cache row for the built-in Template cannot
 answer for another destination. Confirmed writes, overwrite behavior,
-`{screenshot}`, pronunciation and captured-media cleanup keep their existing
+`{screenshot}`, pronunciation and screenshot cleanup keep their existing
 request ownership.
 
 For a linked browser, the selected Template ID is explicitly allowed through

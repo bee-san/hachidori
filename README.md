@@ -46,16 +46,6 @@ Hachidori is 83 times faster than the worlds most popular Japanese dictionary ap
 See [the measured results](docs/browser-performance.md).
 
 
-# Media mining
-
-<img width="917" height="362" alt="Screenshot 2026-09-09 at 11 26 31" src="https://github.com/user-attachments/assets/c0f6d1b5-187d-45b7-9bda-aadf32879586" />
-
-Hachidori can record your screen and capture sentence audio + a gif. Not just in Chrome but in all windows on your desktop.
-
-This feature is **experimental** and may not work very well. I may remove it or reduce it also.
-
-See [Media mining setup, limits, and verification](docs/media-capture.md).
-
 # Custom Dictionary
 
 Do you keep on seeing a name pop up over & over again in a book, but it's not in the dictionary? 
@@ -94,7 +84,6 @@ from **Settings → Sharing → Download the Anki add-on**, then follow the
 **Settings → Advanced → Experimental features** switches on work that is still
 changing and may be removed:
 
-- **Media mining** — the screen and audio capture above.
 - **Long dictionary entries** — find entries longer than the scan length
   (proverbs, titles) without scanning further on every hover.
 - **MDX dictionaries** — import MDict `.mdx` dictionaries with their `.mdd`

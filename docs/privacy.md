@@ -58,13 +58,7 @@ configured audio providers. Automatic playback does this when enabled.
 Provider responses may identify additional media hosts. HTTP localhost
 audio servers are supported; use HTTPS for services on other computers. Browser
 speech uses your selected browser/operating-system voice, which may be provided
-by an online service. If active Media capture is used to attach that speech to
-Anki, its transient shared-audio PCM is read locally and only the mined WAV is
-sent to the configured AnkiConnect endpoint. When linked, mining requests to URL
-audio providers are made by the host (`localhost` means the host computer), but
-browser speech is still produced and recorded in the reading browser; only its
-final WAV crosses the relay. Hachidori does not guarantee that every voice works
-offline or that every selected share captures browser speech.
+by an online service. Pronunciation audio saved to Anki comes from configured downloadable sources.
 
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
@@ -98,9 +92,7 @@ HTTP(S) destination with the selected word, reading or sentence substituted
 when requested.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
-**Texthookers.** Optional media-capture texthookers receive text and timing from
-a WebSocket service on the same computer. Lookup counts use only local browser
-storage and never contact an external service.
+**Lookup counts.** Lookup counts use only local browser storage and never contact an external service.
 
 **Sharing between browsers.** A browser install of Hachidori shares itself by
 default with other Hachidoris on the same computer through Anki: while Anki
@@ -121,7 +113,7 @@ turns it off. A browser linked to a shared Hachidori sends the text it looks up
 and its settings, presentation and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
 unlinks. An explicit mining action also sends its selected note context and
-final screenshot, captured AVIF/WAV, or browser-speech WAV bytes through the
+final screenshot bytes through the
 relay. The host validates them and performs Settings discovery and setup
 checks, availability checks, duplicate checks, generation validation, media
 uploads, note writes and browsing through the host's AnkiConnect
@@ -135,7 +127,7 @@ click the link. Custom CSS you enter can load resources from URLs it
 contains. Those destination services receive ordinary browser requests. Their
 own privacy practices govern their handling of those requests.
 
-## Page screenshots and continuous capture
+## Page screenshots
 
 **Page screenshots.** When **Screenshot the page when mining** is enabled and
 a field maps `{screenshot}`, choosing Add or Overwrite takes one picture of the
@@ -144,21 +136,6 @@ uses the active reading tab directly. The picture stays in temporary memory and
 is sent to your configured AnkiConnect server with the note. When linked, it is
 captured in this browser, transferred to the host only for that submission, and
 sent by the host to its configured AnkiConnect server.
-
-**Continuous media capture** is off by default. It starts only when you enable it, click
-**Start capture** and select a tab, window or screen in Chrome's picker. Capture
-can include everything visible on that source and its audio when available.
-Hachidori does not request microphone recording.
-
-The reading-page picker uses tab titles and URLs to identify a page to link.
-While recording, recent frames, source audio and text/timing stay in temporary
-memory. Closing the capture controls leaves recording active. **Stop capture**
-ends recording and clears the temporary history; it does not delete notes or
-media already sent to Anki. Final clips are sent to your configured AnkiConnect
-server only when you explicitly mine a note. When linked, only those final
-AVIF/WAV assets cross the relay to the host for its Anki transaction; raw
-recording history stays in the capturing browser. Raw recording history is not
-included in backups.
 
 ## Backups, retention and deletion
 
@@ -195,9 +172,9 @@ complies with the Chrome Web Store User Data Policy, including the Limited Use
 requirements.
 
 The maintainer does not receive your local dictionaries, lookup history or
-recordings through Hachidori. If you email support or send a bug report, the
+study material through Hachidori. If you email support or send a bug report, the
 maintainer receives what you choose to include and uses it to respond and
-investigate the issue. Do not send private dictionaries, recordings, backups or
+investigate the issue. Do not send private dictionaries, screenshots, backups or
 API keys unless you intend to share them. You can request deletion of support
 material by contacting [github@skerritt.blog](mailto:github@skerritt.blog).
 
