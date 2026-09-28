@@ -165,8 +165,9 @@ test("an unknown-reason refusal names the cloze rule Anki applied, with its deck
   const notCloze = await refusal(basic, "Basic", { front: "{{c1::foo}}", Back: "" });
   assert.equal(notCloze, `${context("Basic")}: field “Front” contains the cloze deletion “{{c1::foo}}”, but “Basic” is not a Cloze note type. `
     + "Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.");
-  // A filter chain still renders the cloze field; Anki finds a template's field case-insensitively.
-  const chained = { ...cloze, tmpls: [{ qfmt: "{{#Text}}{{furigana:cloze:text}}{{/Text}}" }] };
+  // A filter chain still renders the cloze field. Anki finds a template's field case-insensitively
+  // and skips a reference inside an HTML comment.
+  const chained = { ...cloze, tmpls: [{ qfmt: "<!-- {{cloze:Back Extra}} -->{{#Text}}{{furigana:cloze:text}}{{/Text}}" }] };
   assert.match(await refusal(chained, "Cloze", { Text: "", "Back Extra": "{{c2::x}}" }),
     /: field “Back Extra” contains the cloze deletion “\{\{c2::x\}\}”, but “Cloze” makes cloze cards only from “Text”\./u);
   // Without findModelsByName, or when no rule matches, the cause is still named.

@@ -122,7 +122,7 @@ function clozeDeletion(text) {
   for (const marker of text.matchAll(CLOZE_MARKERS)) {
     if (marker[1] !== undefined) open.push(marker);
     else if (open.length === 1 && /[1-9]/u.test(open[0][1])) return text.slice(open[0].index, marker.index + 2);
-    else open.pop(); // A }} outside every deletion is plain text.
+    else open.pop(); // Closes a nested or number-0 deletion; a stray }} is plain text.
   }
   return null;
 }
@@ -130,10 +130,12 @@ function clozeDeletion(text) {
 // notetype/mod.rs cloze_fields: the fields the first card's front renders with
 // the cloze filter, as in {{cloze:Text}} or {{furigana:cloze:Text}}, in the
 // note type's order (template.rs all_referenced_cloze_field_names). Anki finds
-// each referenced field case-insensitively (get_field_ord).
+// each referenced field case-insensitively (get_field_ord) and, since 25.02,
+// skips references inside an HTML comment.
 function clozeFields(model) {
   const referenced = new Set();
-  for (const [, tag] of model.tmpls[0].qfmt.matchAll(/\{\{([^{}]*)\}\}/gu)) {
+  const template = model.tmpls[0].qfmt.replaceAll(/<!--[\s\S]*?-->/gu, "");
+  for (const [, tag] of template.matchAll(/\{\{([^{}]*)\}\}/gu)) {
     const [field, ...filters] = tag.trim().split(":").reverse();
     if (filters.includes("cloze")) referenced.add(field.toLowerCase());
   }
