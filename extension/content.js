@@ -4237,8 +4237,9 @@
       }
     }
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
-    // A pending exit restarts with the new setting; a pending descendant prune
-    // waits for the next pointer event to schedule it with the new delay.
+    // Either edit applies at once: a pending exit restarts under the new
+    // setting, and a pending descendant prune waits for the pointer to
+    // schedule the next one.
     if (cursorExitChanged) {
       clearDescendantTimer();
       if (cursorExitTimer !== null) {
