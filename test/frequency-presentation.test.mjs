@@ -144,33 +144,92 @@ test("live display choices keep frequency and grammar in the primary result and 
   assert.equal(form.elements.definition.value, "keep my draft");
 });
 
-test("harmonic averages use concise typed labels without individual dictionary names", t => {
+// A hidden tag's markup with `hidden` removed, to compare it with the tag that
+// averages-off renders.
+function unhiddenHTML(tag) {
+  const clone = tag.cloneNode(true);
+  clone.hidden = false;
+  return clone.outerHTML;
+}
+
+test("harmonic averages use concise typed labels and keep each dictionary's tag hidden in the DOM", t => {
   const f = fixture(t);
   const defaults = f.options.normaliseOptions({});
   const result = { ...RESULT, term: { ...RESULT.term, frequencies: [
     { dictionary: "RankDict", frequencies: [{ value: 142, displayValue: "142" }] },
     { dictionary: "CountDict", frequencies: [{ value: 12400, displayValue: "12,400" }] },
   ] } };
-  const capsule = f.render({
+  const options = {
     ...defaults,
-    averageFrequency: true,
     showFrequencyDictionaryNames: true,
     dictionaryPresentation: [
       { title: "RankDict", frequencyMode: "rank-based" },
       { title: "CountDict", frequencyMode: "occurrence-based" },
     ],
-  }, result);
-  assert.deepEqual(
-    [...capsule.querySelectorAll(".gsm-hoshidicts-frequency-source")].map(node => node.textContent),
-    ["Avg rank", "Avg count"]
-  );
-  assert.equal(capsule.textContent, "Avg rank142Avg count12400");
-  assert.equal(capsule.textContent.includes("RankDict"), false);
-  assert.equal(capsule.textContent.includes("CountDict"), false);
-  assert.deepEqual(
-    [...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency")].map(node => node.title),
-    ["Rank average", "Occurrence average"]
-  );
+  };
+  const individual = [...f.render(options, result).querySelectorAll(".gsm-hoshidicts-tag-frequency")]
+    .map(tag => tag.outerHTML);
+  const capsule = f.render({ ...options, averageFrequency: true }, result);
+  const tags = [...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency")];
+  const visible = tags.filter(tag => !tag.hidden);
+  assert.deepEqual(visible.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source").textContent),
+    ["Avg rank", "Avg count"]);
+  assert.deepEqual(visible.map(tag => tag.title), ["Rank average", "Occurrence average"]);
+  assert.deepEqual(visible.map(tag => tag.dataset.frequencyAverage), ["rank-based", "occurrence-based"]);
+  assert.equal(visible.map(tag => tag.textContent).join(""), "Avg rank142Avg count12400");
+  // The averages-off tags follow the aggregates, unchanged apart from hidden.
+  assert.deepEqual(tags.slice(visible.length).map(unhiddenHTML), individual);
+  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").hidden, false);
+});
+
+test("averaged hidden tags take no pitch budget, hide all-hidden groups and follow live toggles and aliases", t => {
+  const f = fixture(t);
+  const pitch = dictionary => ({ dictionary, pitches: [{ position: 0, pattern: "", nasal: [], devoice: [] }],
+    transcriptions: [] });
+  const sources = Array.from({ length: 10 }, (_, index) => `Rank ${index + 1}`);
+  const second = { ...RESULT, term: { ...RESULT.term, expression: "食う", reading: "くう",
+    frequencies: sources.map((dictionary, index) => ({ dictionary,
+      frequencies: [{ value: 100 * (index + 1), displayValue: String(100 * (index + 1)) }] })),
+    pitches: ["NHK", "Daijirin", "Shinmeikai"].map(pitch) } };
+  const presentation = sources.map(title => ({ title, frequencyMode: "rank-based" }));
+  const options = { ...f.options.normaliseOptions({}), showFrequencyDictionaryNames: true,
+    dictionaryPresentation: presentation, expandAll: true };
+  f.view.renderResults([RESULT, second], f.candidate, options);
+  const entry = () => f.popup.querySelectorAll(".gsm-hoshidicts-entry")[1];
+  const row = () => entry().querySelector(".gsm-hoshidicts-frequency-metadata");
+  const pitchBadges = () => entry().querySelectorAll(".gsm-hoshidicts-tag-pitch").length;
+  const individual = [...row().children].map(tag => tag.outerHTML);
+  assert.equal(individual.length, 10);
+  assert.equal(pitchBadges(), 2, "ten frequency tags leave two of the twelve metadata tags for pitch");
+  f.view.updateDictionaryPresentation({ ...options, averageFrequency: true });
+  assert.equal(row().hidden, false);
+  assert.deepEqual([...row().children].map(tag => [tag.dataset.dictionary, tag.hidden]),
+    [["Rank average", false], ...sources.map(source => [source, true])]);
+  assert.deepEqual([...row().children].slice(1).map(unhiddenHTML), individual);
+  assert.equal(pitchBadges(), 3, "hidden tags take none of the metadata budget");
+  // An alias rename relabels the hidden source, not the average's unit.
+  f.view.updateDictionaryPresentation({ ...options, averageFrequency: true,
+    dictionaryPresentation: [{ ...presentation[0], displayName: "Renamed" }, ...presentation.slice(1)] });
+  assert.deepEqual([...row().querySelectorAll(".gsm-hoshidicts-frequency-source")].slice(0, 2)
+    .map(node => node.textContent), ["Avg rank", "Renamed"]);
+  f.view.updateDictionaryPresentation({ ...options, averageFrequency: false });
+  assert.deepEqual([...row().children].map(tag => tag.outerHTML), individual);
+  assert.equal(pitchBadges(), 2);
+
+  // With no value to average, only hidden tags remain: the row, the frequency
+  // group and, unless grammar is shown, the capsule are hidden too.
+  const unusable = { dictionary: "Rank 1", frequencies: [{ value: 0, displayValue: "unranked" }] };
+  const withUnusable = result => ({ ...result, term: { ...result.term, frequencies: [unusable] } });
+  for (const hidePopupGrammarTags of [true, false]) {
+    f.view.renderResults([withUnusable(RESULT), withUnusable(second)], f.candidate,
+      { ...options, averageFrequency: true, hidePopupGrammarTags });
+    const capsule = f.popup.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
+    assert.deepEqual([...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency")].map(tag => tag.hidden), [true]);
+    assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").hidden, true);
+    assert.equal(capsule.hidden, hidePopupGrammarTags);
+    assert.deepEqual([...row().children].map(tag => tag.hidden), [true]);
+    assert.equal(row().hidden, true);
+  }
 });
 
 test("opt-in grammar stays visible without frequency or dictionary tabs and hides again when disabled", t => {

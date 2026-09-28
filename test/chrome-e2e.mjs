@@ -1482,12 +1482,16 @@ async function popupReader(page, depth = 0) {
                 && laterStyle.borderTopColor === style.borderTopColor
                 && laterStyle.borderRadius === style.borderRadius && laterStyle.fontSize === style.fontSize;
             })(),
-            clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
-              const value = node.getBoundingClientRect();
-              const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
-              const capsule = node.closest(".gsm-hoshidicts-primary-metadata-capsule").getBoundingClientRect();
-              return value.right > Math.min(tag.right, capsule.right) + 1 || value.left < Math.max(tag.left, capsule.left) - 1;
-            }),
+            // Hidden per-dictionary tags (averages on) have no boxes to clip.
+            clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")]
+              .filter(node => node.getClientRects().length > 0).some(node => {
+                const value = node.getBoundingClientRect();
+                const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
+                const capsule = node.closest(".gsm-hoshidicts-primary-metadata-capsule").getBoundingClientRect();
+                return value.right > Math.min(tag.right, capsule.right) + 1 || value.left < Math.max(tag.left, capsule.left) - 1;
+              }),
+            hiddenFrequencyDictionaries: [...this.querySelectorAll(".gsm-hoshidicts-tag-frequency[hidden]")]
+              .filter(tag => tag.getClientRects().length === 0).map(tag => tag.dataset.dictionary),
             pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
             ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
             ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
@@ -8116,6 +8120,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
       && !averaged.metadata.clippedFrequencies && averaged.metadata.frequencyTagsUniform
+      && averaged.metadata.hiddenFrequencyDictionaries.includes("hachidori-fixture")
+      && normal.metadata.hiddenFrequencyDictionaries.length === 0
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);

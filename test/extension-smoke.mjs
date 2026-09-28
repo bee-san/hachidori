@@ -20710,7 +20710,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { title: "Rank A", frequencyMode: "rank-based" },
     { title: "Rank B", frequencyMode: "rank-based" },
     { title: "Occurrences", frequencyMode: "occurrence-based" },
-  ], 12, true, false);
+  ], 12, true, false).filter(tag => !tag.hidden);
   check("frequency aggregates use native values once per dictionary and keep rank occurrence and unknown units separate",
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
       === JSON.stringify([1645, 1000, 7])
