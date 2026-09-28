@@ -9201,6 +9201,9 @@ async function main() {
     noteContent?.popupVisibility === true,
     JSON.stringify(noteContent?.popupVisibility),
   );
+  for (const [name, passed] of Object.entries(noteContent?.fullscreenHost ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -17974,6 +17977,40 @@ async function contentNoteStage() {
       held && recovered?.request.text === harness.candidate.query && visible };
   }
 
+  async function fullscreenHostCase() {
+    const harness = await createHarness();
+    const document = harness.popup.ownerDocument;
+    const window = document.defaultView;
+    const host = harness.popup.getRootNode().host;
+    const player = document.createElement("div");
+    player.append(harness.anchor);
+    document.body.append(player);
+    await harness.initialLookup();
+    let fullscreen = player;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreen });
+    document.dispatchEvent(new window.Event("fullscreenchange"));
+    const mounted = host.parentElement === player && !harness.popup.hidden;
+    // Showing after a page moves the host must repair its fullscreen parent.
+    document.body.append(host);
+    harness.driver.show(harness.candidate);
+    const repaired = host.parentElement === player;
+    fullscreen = null;
+    document.dispatchEvent(new window.Event("fullscreenchange"));
+    const restored = host.parentElement === document.body;
+    const excluded = [document.documentElement, document.createElement("video"), document.createElement("iframe")];
+    const shadowPlayer = document.createElement("div");
+    shadowPlayer.attachShadow({ mode: "open" });
+    excluded.push(shadowPlayer);
+    const fallbacks = excluded.every(element => {
+      fullscreen = element;
+      document.dispatchEvent(new window.Event("fullscreenchange"));
+      return host.parentElement === document.body;
+    });
+    harness.close();
+    return { "fullscreen player hosts the visible popup and returns it to body on exit":
+      mounted && repaired && restored && fallbacks };
+  }
+
   // The engine finds dictionary keys longer than the scan length only if it is
   // handed enough text: each package row carries the longest key its long-key
   // index lists, and while the experimental Long dictionary entries flag is on
@@ -19914,6 +19951,7 @@ async function contentNoteStage() {
     callbacksWired,
     keybinds: await keybindCase(),
     popupVisibility: await popupVisibilityCase(),
+    fullscreenHost: await fullscreenHostCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
       ...await frequencyDefinitionBlurCase() },
