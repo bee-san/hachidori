@@ -12,6 +12,7 @@ import { createAnkiTemplateSettingsController } from "./anki-settings.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createExperimentalSettings } from "./experimental-settings.js";
+import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
@@ -70,10 +71,10 @@ const OPTION_SECTIONS = {
 };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
-  DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
-  clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
+  activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -189,6 +190,7 @@ let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController;
 let experimentalController;
+let activationController;
 let memoryController;
 let backingUp = false;
 let settingsSearch;
@@ -1694,19 +1696,13 @@ function renderCustomJavascript(force = false) {
 // stored: it means lookupMode "hover" and keeps the remembered activationKey.
 // No key leaves the keep-open switch on for the next key, as a re-render would.
 function renderActivationControls() {
-  const activation = element("opt-activation-key");
-  if (activation.options.length === 0) {
-    activation.add(new Option("No key", ""));
-    for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
-  }
-  if (activation !== document.activeElement) {
-    activation.value = options.lookupMode === "hover" ? "" : options.activationKey;
-  }
+  activationController ??= createActivationSettings({ document, report: message => setOptionsStatus(message) });
+  activationController.render(options.lookupMode === "hover" ? "" : options.activationKey);
   element("opt-lookup-sticky").checked = options.lookupMode !== "activation";
   element("opt-lookup-sticky-row").hidden = options.lookupMode === "hover";
   // Child popups name the remembered key, which No key keeps.
   const childPopups = element("opt-definition-lookup-mode");
-  childPopups.querySelector('option[value="activation"]').textContent = `Hold ${options.activationKey}`;
+  childPopups.querySelector('option[value="activation"]').textContent = `Hold ${activationLabel(options.activationKey)}`;
   if (childPopups !== document.activeElement) childPopups.value = options.definitionLookupMode;
 }
 

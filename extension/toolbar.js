@@ -2,7 +2,7 @@
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
 
-const { normaliseOptions } = globalThis.HDReaderOptions;
+const { activationLabel, normaliseOptions } = globalThis.HDReaderOptions;
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
 let options = null;
 let linkedAddress = null;
@@ -24,7 +24,7 @@ function render() {
   elements["lookup-toggle"].setAttribute("aria-checked", String(options.hoverEnabled));
   elements["lookup-state"].textContent = options.hoverEnabled ? "On" : "Off";
   const activeHint = options.lookupMode !== "hover"
-    ? `Hold ${options.activationKey} to scan` : "Hover over Japanese text to scan";
+    ? `Hold ${activationLabel(options.activationKey)} to scan` : "Hover over Japanese text to scan";
   elements["activation-hint"].textContent = options.hoverEnabled ? activeHint : "Lookups paused";
 }
 
