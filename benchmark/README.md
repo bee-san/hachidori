@@ -81,6 +81,12 @@ HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js 
   node benchmark/hover-popup.mjs /tmp/hover-results /tmp/hover-fixture.zip
 ```
 
+Use `HACHIDORI_HOVER_OPTIONS='{"popupTheme":"nazeka"}'` to compare the bundled
+renderer with Default under identical options. Raw samples include synchronous
+renderer timings and cumulative counts of Default view construction, rich glossary
+calls and dictionary-style application. These are separate from input-to-frame
+and complete-result measurements; see [the theme report](../docs/themes/benchmark.md).
+
 Use `HACHIDORI_HOVER_SAMPLES` to change the profile count. Each profile also times
 1,000 production `resolveCandidate()` calls at a glyph, 1,000 at a point in
 the tile's padding, 20 CSS pixels left of the text, and 1,000 at a word 600
