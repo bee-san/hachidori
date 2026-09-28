@@ -56,6 +56,47 @@ test("Anki first/brief/plain/dictionary variants keep their distinct source mean
   assert.match(await render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
 });
 
+test("rich Anki glossaries turn dictionary line breaks into <br> as Yomitan does, and plain glossaries keep their lines", async t => {
+  const { document, request } = fixture(t);
+  // A note field has none of the popup's white-space: pre-wrap, so a raw newline renders as a space (#359).
+  request.term.glossaries = [
+    { dictionary: "A", glossary: JSON.stringify([{ type: "structured-content", content: [
+      "ぜっ-たい【絶対】\n㊀〘名〙", { tag: "span", content: "\n① 他に比較するものがないこと。\n「一の真理」" },
+    ] }]) },
+    { dictionary: "B", glossary: JSON.stringify(["first line\r\nsecond line", { type: "text", text: "third\nfourth" }]) },
+  ];
+  const render = createAnkiDefinitionRenderer(document, request);
+  const html = await render({});
+  assert.doesNotMatch(html, /[\r\n]/u);
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  assert.equal(holder.querySelectorAll(".gsm-hoshidicts-glossary-content br").length, 5);
+  assert.equal(holder.querySelector(".gloss-sc-span").innerHTML, "<br>① 他に比較するものがないこと。<br>「一の真理」");
+  assert.equal(await render({ plain: true, noDictionary: true }), "ぜっ-たい【絶対】<br>㊀〘名〙<br>"
+    + "① 他に比較するものがないこと。<br>「一の真理」<br>first line<br>second line<br>third<br>fourth");
+});
+
+test("each Anki glossary row is its own li[data-dictionary] with no nested list, as in Yomitan's glossary template", async t => {
+  const { document, request } = fixture(t);
+  request.term.glossaries = [
+    { dictionary: "A", definitionTags: "", termTags: "", glossary: '["main entry"]' },
+    { dictionary: "A", definitionTags: "子", termTags: "", glossary: '["compound list"]' },
+    { dictionary: "B", definitionTags: "", termTags: "", glossary: '["other entry"]' },
+  ];
+  const render = createAnkiDefinitionRenderer(document, request);
+  const holder = document.createElement("div");
+  const items = async options => {
+    holder.innerHTML = await render(options);
+    return [...holder.querySelectorAll(".yomitan-glossary > ol > li")];
+  };
+  const all = await items({});
+  assert.deepEqual(all.map(item => item.dataset.dictionary), ["A", "A", "B"]);
+  // Note types page by li[data-dictionary] and pad any other list, so the entry sits directly in its item.
+  assert.deepEqual(all.map(item => item.querySelector(":scope > div > .yomitan-glossary-meta")?.textContent),
+    ["(Alias <A>)", "(子, Alias <A>)", "(B)"]);
+  assert.deepEqual((await items({ dictionary: "A" })).map(item => item.dataset.dictionary), ["A", "A"]);
+});
+
 test("plain Anki definitions omit decorative link icons and preferred image sizes retain the intrinsic ratio", async t => {
   const { document, request } = fixture(t);
   request.term.glossaries = [{ dictionary: "B", glossary: JSON.stringify([{ type: "structured-content", content: [
