@@ -1088,6 +1088,16 @@ html[data-hoshidicts-theme="girlypop"],
   --text-color-light1: var(--hoshidicts-text-muted);
   --text-color-light2: var(--hoshidicts-text-faint);
   --accent-color: var(--hoshidicts-accent);
+  /* The rest of the display.css names the glossary rules read, mapped onto the
+     palette (Yomitan's light3/light4 are its faintest text). */
+  --text-color-light3: var(--hoshidicts-text-faint);
+  --text-color-light4: var(--hoshidicts-text-faint);
+  --link-color: var(--hoshidicts-link);
+  --accent-color-dark: var(--hoshidicts-link-hover);
+  --gloss-image-background-color: var(--hoshidicts-surface);
+  --line-height: 1.5;
+  --list-padding1: 1.4em;
+  --list-padding2: var(--list-padding1);
   --tag-default-background-color: var(--hoshidicts-palette-neutral);
   --tag-expression-background-color: var(--hoshidicts-palette-secondary);
   --tag-part-of-speech-background-color: var(--hoshidicts-palette-accent);
@@ -2442,14 +2452,57 @@ html[data-hoshidicts-theme="girlypop"],
   user-select: none;
 }
 
-.gsm-hoshidicts-definitions {
-  margin: 5px 0 0;
-  padding-left: 26px;
+/* Inside each card, the definitions follow Yomitan (yomidevs/yomitan@67db60d,
+ * GPL-3.0-or-later): ext/css/display.css for the definition and gloss lists and
+ * links, ext/css/structured-content.css for dictionary markup. Its selectors
+ * keep Yomitan's specificity, so a dictionary's own styles still override
+ * them. Hachidori's own adjustments are marked. */
+.definition-list {
+  margin: 0;
+  padding: 0 0 0 var(--list-padding1);
+  list-style-type: decimal;
 }
 
-.gsm-hoshidicts-definitions-single {
+.definition-list[data-count="0"],
+.definition-list[data-count="1"] {
   padding-left: 0;
-  list-style: none;
+  list-style-type: none;
+}
+
+.gloss-list {
+  margin: 0;
+  padding: 0 0 0 var(--list-padding2);
+  list-style-type: circle;
+}
+
+.gloss-list[data-count="0"],
+.gloss-list[data-count="1"] {
+  padding-left: 0;
+  list-style-type: none;
+}
+
+.definition-item::marker,
+.gloss-item::marker {
+  color: var(--text-color-light3);
+}
+
+.gloss-content {
+  display: block;
+  white-space: pre-line;
+}
+
+.gloss-separator {
+  display: none;
+}
+
+.definition-item {
+  display: list-item;
+  position: relative;
+}
+
+/* Hachidori: the list starts below the card title. */
+.gsm-hoshidicts-definitions {
+  margin-top: 5px;
 }
 
 .gsm-hoshidicts-definitions[data-definition-blur-state="pending"]
@@ -2467,74 +2520,89 @@ html[data-hoshidicts-theme="girlypop"],
   }
 }
 
-.gsm-hoshidicts-definitions > li {
-  margin: 4px 0;
-  padding-left: 2px;
-}
-
 .gsm-hoshidicts-glossary-content {
   overflow-wrap: anywhere;
   font-size: 16px;
   line-height: 1.5;
-  white-space: pre-wrap;
   transition: filter 120ms ease-out;
 }
 
-.gsm-hoshidicts-glossary-content ul,
-.gsm-hoshidicts-glossary-content ol {
-  margin: 2px 0;
-  padding-left: 20px;
+/* display.css `ol, ul`: its --list-padding is never defined, so both margins are 0. */
+:where(.gsm-hoshidicts-glossary-content) :is(ol, ul) {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
-/* Dictionary-authored disclosures, styled as Yomitan does: the native marker
- * hangs in the left gutter. A dictionary's own scoped styles still win. */
-.gsm-hoshidicts-glossary-content details {
-  margin: 3px 0;
-  padding-left: 1.4em;
-}
-
-.gsm-hoshidicts-glossary-content summary {
-  cursor: pointer;
-  list-style-position: outside;
-}
-
-.gsm-hoshidicts-structured-link {
-  color: var(--hoshidicts-link);
-  font-weight: 600;
+:where(.gsm-hoshidicts-glossary-content) a {
+  color: var(--link-color);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--hoshidicts-link) 58%, transparent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
   cursor: pointer;
+  text-underline-offset: calc(4em / var(--font-size-no-units));
+  text-decoration-thickness: calc(1em / var(--font-size-no-units));
 }
 
-.gsm-hoshidicts-structured-link:hover,
-.gsm-hoshidicts-structured-link:focus-visible {
-  color: var(--hoshidicts-link-hover);
-  text-decoration-color: currentColor;
-  outline: none;
+:where(.gsm-hoshidicts-glossary-content) a:has(rt) {
+  text-decoration: none;
+  border-bottom: solid calc(1em / var(--font-size-no-units)) var(--link-color);
 }
 
-.gloss-link-external-icon {
-  margin-left: 0.2em;
-  font-size: 0.72em;
-  opacity: 0.72;
-  vertical-align: 0.12em;
+.gloss-link-text {
+  vertical-align: baseline;
+}
+
+/* icons.css draws the Fluent glyph (#206) in the link colour; this is
+ * Yomitan's box for it. */
+.gsm-hoshidicts-glossary-content .gloss-link-external-icon {
+  display: inline-block;
+  vertical-align: middle;
+  width: calc(16em / var(--font-size-no-units));
+  height: calc(16em / var(--font-size-no-units));
+  margin-left: 0.25em;
+  position: relative;
 }
 
 .gloss-sc-table-container {
+  display: block;
+  /* Hachidori: a table wider than its card scrolls inside it. */
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
 
-.gsm-hoshidicts-structured-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  object-fit: contain;
+.gloss-sc-table {
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.gloss-sc-thead,
+.gloss-sc-tfoot,
+.gloss-sc-th {
+  font-weight: bold;
+  background-color: var(--background-color-dark1);
+}
+
+.gloss-sc-th,
+.gloss-sc-td {
+  border-width: calc(1em / var(--font-size-no-units));
+  border-style: solid;
+  border-color: var(--text-color-light2);
+  padding: 0.25em;
   vertical-align: top;
+}
+
+.gloss-sc-ol,
+.gloss-sc-ul {
+  padding-left: var(--list-padding2);
+}
+
+.gloss-sc-details {
+  padding-left: var(--list-padding1);
+}
+
+.gloss-sc-summary {
+  list-style-position: outside;
+  /* Hachidori: a disclosure reads as clickable. */
+  cursor: pointer;
 }
 
 .gsm-hoshidicts-structured-image[hidden] {
@@ -2613,15 +2681,38 @@ html[data-hoshidicts-theme="girlypop"],
   }
 }
 
+.gloss-image-container {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 100%;
+  max-height: 100vh;
+  position: relative;
+  vertical-align: top;
+  line-height: 0;
+  /* Yomitan: calc(1em / var(--font-size-no-units)), one CSS pixel at its 14px
+     text, and converted dictionaries write their gaiji rules against that
+     (`width: 15em` means 15px). The glossary text here is 16px, so the same
+     unit keeps dictionary CSS at the size its author saw. */
+  font-size: calc(1em / 16);
+  overflow: hidden;
+}
+
+.gloss-image-link[data-background="true"] > .gloss-image-container {
+  background-color: var(--gloss-image-background-color);
+}
+
 .gloss-image-link {
+  cursor: inherit;
+  color: var(--accent-color);
   display: inline-block;
   position: relative;
-  max-width: 100%;
-  margin: 2px 6px 2px 0;
-  color: var(--accent-color);
   line-height: 1;
-  text-decoration: none;
-  vertical-align: top;
+  max-width: 100%;
+}
+
+.gloss-image-link:hover {
+  color: var(--accent-color-dark);
+  cursor: pointer;
 }
 
 .gloss-image-source {
@@ -2632,60 +2723,46 @@ html[data-hoshidicts-theme="girlypop"],
   line-height: 1.4;
 }
 
-.gloss-image-container {
-  display: inline-block;
-  position: relative;
-  max-width: 100%;
-  overflow: hidden;
-  background: transparent;
-  /* Yomitan sizes this box in em with 1em equal to one CSS pixel at its base
-     text size, and converted dictionaries write their gaiji rules against
-     that (`width: 15em` means 15px). The glossary text here is 16px, so the
-     same unit keeps dictionary CSS at the size its author saw. */
-  font-size: calc(1em / 16);
-  line-height: 0;
-  vertical-align: top;
-}
-
-.gloss-image-link[data-size-units="em"] .gloss-image-container {
-  font-size: 1em;
-}
-
-.gloss-image-link[data-background="true"] > .gloss-image-container {
-  background: var(--hoshidicts-surface);
-}
-
-.gloss-image-sizer {
-  display: inline-block;
-  width: 0;
-  vertical-align: top;
-}
-
-.gloss-image,
-.gloss-image-background,
 .gloss-image-container-overlay {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
   width: 100%;
   height: 100%;
+  font-size: calc(1em * var(--font-size-no-units));
+  line-height: var(--line-height);
+  display: table;
+  table-layout: fixed;
+  white-space: normal;
+  color: var(--text-color-light3);
 }
 
 .gloss-image-background {
   --image: none;
-  display: none;
-  background: var(--text-color);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--text-color);
   mask: var(--image) center / contain no-repeat;
+  display: none;
 }
 
-.gloss-image-container-overlay {
-  display: grid;
-  place-items: center;
-  padding: 4px;
-  color: var(--text-color-light2);
-  font-size: 12px;
-  line-height: 1.25;
-  text-align: center;
-  white-space: normal;
+.gloss-image {
+  display: inline-block;
+  vertical-align: top;
+  object-fit: contain;
+  border: none;
+  outline: none;
+}
+
+.gloss-image-link[data-has-aspect-ratio="true"] .gloss-image {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .gloss-image-link[data-image-rendering="pixelated"] .gloss-image,
@@ -2695,21 +2772,16 @@ html[data-hoshidicts-theme="girlypop"],
   image-rendering: pixelated;
 }
 
-/* A monochrome image is drawn in the text colour: the background layer paints
-   var(--text-color) through the image's alpha once the media reply has set its
-   --image. The <img> stays laid out but unpainted, as it remains the load and
-   error target, the keyboard focus anchor and the preview's source. */
-.gloss-image-link[data-appearance="monochrome"] .gloss-image {
-  visibility: hidden;
-}
-
-.gloss-image-link[data-appearance="monochrome"][data-image-load-state="loaded"] .gloss-image-background {
-  display: block;
+.gloss-image-link[data-has-aspect-ratio="true"] .gloss-image-sizer {
+  display: inline-block;
+  width: 0;
+  vertical-align: top;
+  font-size: 0;
 }
 
 .gloss-image-link-text {
   display: none;
-  line-height: 1.5;
+  line-height: var(--line-height);
 }
 
 .gloss-image-link-text::before {
@@ -2720,6 +2792,37 @@ html[data-hoshidicts-theme="girlypop"],
   content: "]";
 }
 
+.gloss-image-description {
+  display: block;
+  white-space: pre-line;
+}
+
+/* Hachidori (#322): a monochrome image is drawn in the text colour. The
+   background layer paints var(--text-color) through the image's alpha once the
+   media reply has set its --image. The <img> stays laid out but unpainted, as
+   it remains the load and error target, the keyboard focus anchor and the
+   preview's source. */
+.gloss-image-link[data-appearance="monochrome"] .gloss-image {
+  visibility: hidden;
+}
+
+.gloss-image-link[data-appearance="monochrome"][data-image-load-state="loaded"] .gloss-image-background {
+  display: block;
+}
+
+.gloss-image-link[data-size-units="em"] .gloss-image-container {
+  font-size: 1em;
+}
+
+.gloss-image-link[data-vertical-align="baseline"] { vertical-align: baseline; }
+.gloss-image-link[data-vertical-align="sub"] { vertical-align: sub; }
+.gloss-image-link[data-vertical-align="super"] { vertical-align: super; }
+.gloss-image-link[data-vertical-align="text-top"] { vertical-align: top; }
+.gloss-image-link[data-vertical-align="text-bottom"] { vertical-align: bottom; }
+.gloss-image-link[data-vertical-align="middle"] { vertical-align: middle; }
+.gloss-image-link[data-vertical-align="top"] { vertical-align: top; }
+.gloss-image-link[data-vertical-align="bottom"] { vertical-align: bottom; }
+
 .gloss-image-link[data-collapsed="true"] {
   vertical-align: baseline;
 }
@@ -2727,14 +2830,14 @@ html[data-hoshidicts-theme="girlypop"],
 .gloss-image-link[data-collapsed="true"] .gloss-image-container {
   display: none;
   position: absolute;
-  top: 100%;
   left: 0;
-  z-index: 2;
+  top: 100%;
+  z-index: 1;
 }
 
 .gloss-image-link[data-collapsed="true"]:hover .gloss-image-container,
 .gloss-image-link[data-collapsed="true"]:focus .gloss-image-container {
-  display: inline-block;
+  display: block;
 }
 
 .gloss-image-link[data-collapsed="true"] .gloss-image-link-text,
@@ -2742,33 +2845,13 @@ html[data-hoshidicts-theme="girlypop"],
   display: inline;
 }
 
+.gloss-image-link[data-collapsed="true"] ~ .gloss-image-description {
+  display: inline;
+}
+
+/* Hachidori: a failed image shows its label, not an empty box. */
 .gloss-image-link[data-image-load-state="load-error"] .gloss-image-container {
   display: none;
-}
-
-.gloss-image-link[data-vertical-align="baseline"] { vertical-align: baseline; }
-.gloss-image-link[data-vertical-align="sub"] { vertical-align: sub; }
-.gloss-image-link[data-vertical-align="super"] { vertical-align: super; }
-.gloss-image-link[data-vertical-align="text-top"] { vertical-align: text-top; }
-.gloss-image-link[data-vertical-align="text-bottom"] { vertical-align: text-bottom; }
-.gloss-image-link[data-vertical-align="middle"] { vertical-align: middle; }
-.gloss-image-link[data-vertical-align="top"] { vertical-align: top; }
-.gloss-image-link[data-vertical-align="bottom"] { vertical-align: bottom; }
-
-.gsm-hoshidicts-glossary-content table {
-  max-width: 100%;
-  border-collapse: collapse;
-}
-
-.gsm-hoshidicts-glossary-content th,
-.gsm-hoshidicts-glossary-content td {
-  padding: 2px 4px;
-  border: 1px solid var(--text-color-light2);
-  vertical-align: top;
-}
-
-.gsm-hoshidicts-glossary-content th {
-  background: transparent;
 }
 
 .gsm-hoshidicts-show-more {

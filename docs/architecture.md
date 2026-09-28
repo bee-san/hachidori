@@ -1130,6 +1130,27 @@ rendered text and elements; ordinary unknown-wrapper child text and literal
 glossary fallback remain supported. A glossary that exceeds that work budget is
 omitted without clearing the surrounding entry or other dictionary cards.
 
+Inside each dictionary card the markup and CSS are Yomitan's (#364). Each
+term-bank row is an `li.definition-item[data-dictionary]` in the card's
+`ol.definition-list`, with its tags in `.definition-tag-list`. Its glossary
+array becomes `ul.gloss-list[data-count]` with one `li.gloss-item` per element
+Yomitan displays, each a hidden `.gloss-separator` and a `.gloss-content`: a
+string's newlines become `<br>`, an image glossary shows its description, and
+`.gloss-content { white-space: pre-line }` breaks lines inside structured
+content. Form-of `[term, rules]` elements are skipped as Yomitan's translator
+consumes them. As in Yomitan's `_appendStructuredContent`, a container of
+Japanese text gets `lang="ja"` unless a dictionary set a language above it;
+glossary strings use the same detection rather than Yomitan's fallback to its
+profile language, which would label English glosses as Japanese for assistive
+technology. The headword and kanji glyph are `lang="ja"`, so the page's language
+never picks their Han forms. The glossary rules in `reader.css` follow Yomitan's
+`display.css` and `structured-content.css` at their original specificity, so a
+dictionary's own styles still override them, with Yomitan's variable names mapped
+onto the popup palette. Hachidori keeps its per-dictionary cards, the monochrome
+image mask, table scrolling, failed-image labels and 1em-per-pixel image boxes at
+its 16px text. The Anki export keeps Yomitan's own Anki shape (one element bare,
+several as a list) through the renderer's `layout: "anki"` option.
+
 Each node-limit rejection reports its exact attempted value and configured
 limit. Structural paths remain exact for ordinary content and elide the middle
 of unusually deep paths, keeping diagnostics bounded without copying glossary
@@ -2092,7 +2113,7 @@ Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. As in Yomitan's default Anki field templates, each
 term-bank row becomes its own `li[data-dictionary]`, and every line break in
 dictionary text becomes a `<br>` because a note field has none of the popup's
-`white-space: pre-wrap`. Dictionary CSS remains scoped, and image filenames
+`.gloss-content { white-space: pre-line }`. Dictionary CSS remains scoped, and image filenames
 bind to committed generation paths. While the experimental **Smaller Anki
 cards** flag (`options.experimental.smallerAnkiCards`) is on, the rich
 glossary markers are compacted instead, following the Compact HTML Cleanup
