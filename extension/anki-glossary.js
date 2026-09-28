@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./external-links.js";
 import "./render/glossary.js";
+import { compactAnkiGlossary } from "./anki-compact.js";
 
 const BLOCKS = new Set(["BR", "DIV", "LI", "OL", "P", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL"]);
 function plainText(node) {
@@ -25,7 +26,7 @@ function imageSize(image, value) {
   else if (image.style.height && !image.style.width) image.style.width = "auto";
 }
 
-export function createAnkiDefinitionRenderer(document, request, filenameFor) {
+export function createAnkiDefinitionRenderer(document, request, filenameFor, { compact = false } = {}) {
   const inert = document.implementation.createHTMLDocument("");
   const groups = new Map();
   for (const glossary of request.term.glossaries) {
@@ -143,6 +144,6 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     appendStyles(root, selected);
     if (!brief) appendDetails(root);
     await Promise.all(pending);
-    return root.outerHTML;
+    return compact ? compactAnkiGlossary(document, root) : root.outerHTML;
   };
 }

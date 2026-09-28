@@ -295,7 +295,9 @@ const PLANNED = [
   "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
+  "Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+  "Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
   "Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
@@ -5287,6 +5289,13 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") }, ...anki } } });
     if (!reply.ok) throw new Error(reply.error);
   }, { audio, source, anki });
+  // Experimental patches carry the complete flag record.
+  const experimental = flags => settings.evaluate(async flags => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+      options: { experimental: { ...HDReaderOptions.normaliseOptions(options).experimental, ...flags } } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, flags);
   const operation = (type, request) => settings.evaluate(async ({ type, request }) => {
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type, requestId: "anki-browser-test", request });
     if (!reply.ok) throw new Error(reply.error);
@@ -5322,6 +5331,29 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && imageStoreIndexes.every(index => index >= 0 && index < addIndex)
         && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
       JSON.stringify({ before, readOnly, added, duplicate, images, addIndex, imageStoreIndexes, actions: calls.map(call => call.action) }));
+
+    // Smaller Anki cards (#354): the same result is written as compact HTML,
+    // and the image it keeps is uploaded again once Anki no longer has it.
+    await experimental({ smallerAnkiCards: true });
+    const compactTemplate = value => ({ value, overwriteMode: "overwrite" });
+    await configure(false, { fieldTemplates: { Front: compactTemplate("{expression} compact"),
+      Back: compactTemplate("{glossary}"), Audio: compactTemplate("") } });
+    const compactRequest = { ...request, configKey: (await operation("hd_anki_status")).configKey };
+    for (const filename of images) files.delete(filename);
+    const compactUploads = calls.filter(call => call.action === "storeMediaFile").length;
+    const compactAdded = await operation("hd_anki_submit", compactRequest);
+    await experimental({ smallerAnkiCards: false });
+    const compactNote = notes.get(compactAdded.noteId);
+    const compactImages = [...new Set([...compactNote.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]))];
+    check("Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
+      compactAdded.state === "added" && compactAdded.warnings.length === 0 && compactNote.Front === "漢字 compact"
+        && compactNote.Back.startsWith('<div class="yomitan-glossary" style="text-align: left;"><ol><li data-dictionary="')
+        && !/<style|@scope|gloss-sc-|gsm-hoshidicts|data-hoshidicts|structured-content/u.test(compactNote.Back)
+        && compactNote.Back.includes("<b>Chinese characters</b>") && compactNote.Back.includes("<i>Han</i>")
+        && JSON.stringify(compactImages) === JSON.stringify([...new Set(images)])
+        && compactImages.every(filename => files.has(filename))
+        && calls.filter(call => call.action === "storeMediaFile").length === compactUploads + compactImages.length,
+      JSON.stringify({ compactAdded, compactNote, compactImages, images }));
 
     const markerDictionary = request.term.glossaries[0].dictionary;
     const markerPackage = await settings.evaluate(async title => {
@@ -5462,7 +5494,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
         options: { anki: original.anki, audioSources: original.audioSources, audioAutoplay: original.audioAutoplay,
-          popupColumns: original.popupColumns ?? 1 } });
+          popupColumns: original.popupColumns ?? 1, experimental: HDReaderOptions.normaliseOptions(original).experimental } });
       if (!reply.ok) throw new Error(reply.error);
     }, original);
     if (screenshotDictionaryInstalled) await settings.evaluate(async title => {
@@ -5803,7 +5835,7 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
 
 async function checkAnkiGlossaryExport(page) {
   const imageRequests = [];
-  const observe = request => { if (request.url().includes("hd-anki-inert-image.png")) imageRequests.push(request.url()); };
+  const observe = request => { if (/hd-anki-(?:inert|hidden)-image\.png/u.test(request.url())) imageRequests.push(request.url()); };
   page.on("request", observe);
   try {
     const result = await page.evaluate(async () => {
@@ -5857,6 +5889,76 @@ async function checkAnkiGlossaryExport(page) {
         && result.sizes.slice(0, 2).every(([width, height]) => width === 400 && height === 200)
         && result.sizes[2][0] === 10 && result.sizes[2][1] === 20
         && imageRequests.length === 0, JSON.stringify({ ...result, imageRequests }));
+
+    // Smaller Anki cards (#354): the exporter reads the scoped cascade of the
+    // live document and writes only what it means for the content.
+    const compact = await page.evaluate(async () => {
+      const { createAnkiDefinitionRenderer } = await import("./anki-glossary.js");
+      const dictionary = "Compact <Dictionary>";
+      const tag = content => ({ tag: "span", title: "Part of speech", data: { class: "tag", content: "part-of-speech-info" }, content });
+      const source = { term: { rules: "v1", glossaries: [{ dictionary, definitionTags: "", termTags: "★", glossary: JSON.stringify([
+        { type: "structured-content", content: [
+          { tag: "ul", lang: "ja", data: { content: "sense-groups" }, content: { tag: "li", content: [tag("1-dan"), tag("transitive"),
+            { tag: "ol", content: { tag: "li", style: { listStyleType: "\"①\"" }, content: [
+              { tag: "ul", data: { content: "glossary" }, content: { tag: "li", content: "to eat" } },
+              { tag: "div", data: { content: "hidden-note" }, content: ["never shown", { tag: "img", path: "hidden.png" }] },
+            ] } }] } },
+          { tag: "table", content: { tag: "tr", content: { tag: "td", data: { class: "form-pri" }, content: { tag: "span" } } } },
+          { tag: "div", content: [{ tag: "span", style: { fontWeight: "bold" }, content: "bold" }, " and ",
+            { tag: "span", style: { textDecorationLine: "underline" }, content: "underlined" }, " ",
+            { tag: "a", href: "https://example.com/", content: "link text" }] },
+          { tag: "strong", content: "Scoped" },
+          { tag: "img", path: "image.png", width: 0.5, height: 1, sizeUnits: "em", title: "Accent" },
+        ] },
+        "line one\nline two",
+      ]) }] }, trace: [{ name: "polite" }], dictionaryAliases: {}, generation: 1,
+      dictionaryMedia: [{ dictionary, path: "image.png", filename: "hd-anki-inert-image.png" },
+        { dictionary, path: "hidden.png", filename: "hd-anki-hidden-image.png" }],
+      dictionaryStyles: [{ dictionary, styles: [
+        'ul[data-sc-content="sense-groups"] { list-style-type: "＊"; }',
+        'span[data-sc-class="tag"] { margin-right: 0.5em; }',
+        'li ul[data-sc-content="glossary"] { list-style-type: none; }',
+        'div[data-sc-content="hidden-note"] { display: none; }',
+        'td[data-sc-class="form-pri"] > span { display: block; &::before { content: "△"; } }',
+        '.gloss-sc-strong::before { content: "</style><img src=x onerror=alert(1)>" }',
+      ].join("\n") }] };
+      const children = document.body.children.length;
+      const render = () => createAnkiDefinitionRenderer(document, source, undefined, { compact: true })({});
+      const html = await render();
+      const again = await render();
+      const inert = document.implementation.createHTMLDocument("");
+      inert.body.innerHTML = html;
+      const $ = selector => inert.querySelector(selector);
+      const groups = $('div[class="yomitan-glossary"] > ol > li[data-dictionary="Compact <Dictionary>"] ul[data-sc-content="sense-groups"]');
+      return {
+        html, same: html === again, mounted: document.body.children.length - children,
+        internal: /<style|@scope|gloss-sc-|gsm-hoshidicts|data-hoshidicts|structured-content|title=|href=|object-fit/u.test(html),
+        root: $('div[class="yomitan-glossary"]').getAttribute("style"),
+        meta: $('div[class="yomitan-glossary"] > ol > li > div > i.yomitan-glossary-meta')?.textContent,
+        details: $("small.yomitan-glossary-details")?.innerHTML,
+        groups: [groups?.getAttribute("lang"), groups?.style.listStyleType],
+        lists: groups ? [...groups.querySelectorAll("li, ol, ul")].map(node => `${node.localName}:${node.getAttribute("style")}`) : [],
+        line: groups?.firstElementChild.textContent,
+        marker: $("td")?.textContent,
+        senses: [...inert.querySelectorAll("ul:not([data-sc-content]) > li")].map(node => node.innerHTML.slice(0, 32)),
+        emphasis: html.includes("<b>bold</b> and <u>underlined</u> link text"),
+        escaped: [...inert.querySelectorAll("b")].some(node => node.textContent === "</style><img src=x onerror=alert(1)>Scoped")
+          && !inert.querySelector("[onerror], script"),
+        images: [...inert.querySelectorAll("img")].map(node => [node.getAttribute("src"), node.alt, node.style.cssText]),
+        hidden: html.includes("never shown") || html.includes("hd-anki-hidden-image.png"),
+      };
+    });
+    check("Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
+      compact.same && compact.mounted === 0 && !compact.internal && !compact.hidden
+        && compact.root === "text-align: left;" && compact.meta === "(★, Compact <Dictionary>)"
+        && compact.details === "Rules: v1<br>Deinflection: polite"
+        && compact.groups[0] === "ja" && compact.groups[1] === '"＊"'
+        && JSON.stringify(compact.lists) === JSON.stringify(["li:null", "ol:null", 'li:list-style-type: "①";', "ul:list-style-type: none;", "li:null"])
+        && compact.line === "1-dan transitive to eat" && compact.marker === "△"
+        && compact.senses.length === 2 && compact.senses[1] === "line one<br>line two"
+        && compact.emphasis && compact.escaped
+        && JSON.stringify(compact.images) === JSON.stringify([["hd-anki-inert-image.png", "Accent", "width: 0.5em; height: 1em; max-width: 100%;"]])
+        && imageRequests.length === 0, JSON.stringify({ ...compact, imageRequests }));
   } finally { page.off("request", observe); }
 }
 
