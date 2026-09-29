@@ -118,7 +118,7 @@ test("Plain writes complete definitions directly with no action or metadata DOM"
   } finally { dom.window.close(); }
 });
 
-test("JL renders one block per dictionary, binds each block to its own definitions and switches tabs in place", async () => {
+test("JL renders one block per dictionary, binds each shown block to its own definitions and switches tabs in place", async () => {
   const dom = environment(), { window } = dom, { document } = window;
   try {
     window.chrome = { runtime: { getURL: path => pathToFileURL(resolve(extension, path)).href } };
@@ -129,14 +129,15 @@ test("JL renders one block per dictionary, binds each block to its own definitio
     await host.sync();
     assert.equal(shadow.host.dataset.hoshidictsRenderer, "jl");
     const popup = document.createElement("div"); shadow.append(popup);
-    let bound, tab;
-    const view = host.createView({ document, window, popup, positionPopup() {}, onResultsRendered(value) { bound = value; } });
+    let bound, expanded, tab;
+    const view = host.createView({ document, window, popup, positionPopup() {},
+      onResultsRendered(value) { bound = value; }, onResultsExpanded(value) { expanded = value; } });
     const result = { matched: "食べた", trace: [{ name: "-た" }], term: { expression: "食べる", reading: "たべる",
-      frequencies: [{ dictionary: "JPDB", frequencies: [{ value: 9209, displayValue: "9209" }] }],
+      frequencies: [{ dictionary: "JPDB", frequencies: [{ value: 9209, displayValue: "9209" }, { value: 9500, displayValue: "9500" }] }],
       pitches: [{ dictionary: "NHK", pitches: [{ position: 2, pattern: "", nasal: [], devoice: [] }] }],
       glossaries: [
         { dictionary: "JMdict", glossary: JSON.stringify(["to eat", "to have a meal"]), definitionTags: "v1 vt" },
-        { dictionary: "JMdict", glossary: JSON.stringify(["to live on"]), definitionTags: "v1 vt" },
+        { dictionary: "JMdict", glossary: JSON.stringify(["to live on"]), definitionTags: "v1 vt col" },
         { dictionary: "大辞泉", glossary: JSON.stringify(["た・べる【食べる】"]), definitionTags: "" },
       ] } };
     const context = { dictionaryPresentation: [{ title: "大辞泉" }, { title: "JMdict", displayName: "JM" }],
@@ -144,7 +145,7 @@ test("JL renders one block per dictionary, binds each block to its own definitio
     view.renderResults([result], { query: "食べた" }, context);
     const blocks = [...popup.querySelectorAll(".gsm-hoshidicts-entry")];
     assert.deepEqual(blocks.map(block => block.querySelector(".gsm-hoshidicts-glossary-content").textContent),
-      ["[v1, vt]\n1. to eat; to have a meal\n2. to live on", "た・べる【食べる】"]);
+      ["[v1, vt]\n1. to eat; to have a meal\n2. [col] to live on", "た・べる【食べる】"]);
     assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries.length), [2, 1]);
     assert.equal(bound.audioButtons[1].result, bound.miningActions[1].result);
     assert.equal(bound.lookupStats, null);
@@ -159,12 +160,17 @@ test("JL renders one block per dictionary, binds each block to its own definitio
     tabs[1].click();
     assert.deepEqual(tab, { dictionary: "大辞泉" });
     assert.deepEqual(blocks.map(block => block.hidden), [true, false]);
-    assert.equal(view.currentEntryIndex(), 1, "keyboard actions follow the first block of the tab");
+    assert.deepEqual(expanded.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["大辞泉"],
+      "core rebinds audio, Anki and keybinds to the shown blocks");
+    assert.equal(expanded.audioButtons[0].button, bound.audioButtons[1].button);
+    assert.equal(view.currentEntryIndex(), 0, "keyboard actions index the shown blocks");
     assert.equal(popup.querySelectorAll(".gsm-hoshidicts-entry")[1], blocks[1], "switching tabs does not rebuild");
     assert.equal(bound.miningActions[1].actions.isConnected, true);
     view.renderResults([result], { query: "食べた" }, { ...context, selectedDictionaryTab: tab });
     assert.deepEqual([...popup.querySelectorAll(".gsm-hoshidicts-entry")].map(block => block.hidden), [true, false],
       "Back restores the selected tab");
+    assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["大辞泉"],
+      "Back binds the restored tab's blocks, so autoplay starts from the first one shown");
     view.destroy();
   } finally { dom.window.close(); }
 });
