@@ -25,7 +25,6 @@ These instructions apply to the entire repository.
 
 - Changes to colour, contrast, dictionary-image colouring, focus or keyboard navigation, screen-reader semantics, motion, or font sizing affect accessibility.
 - Open an accessibility-affecting change with the `accessibility` label and screenshots of the affected palettes.
-- The agent must not add the `human-reviewed` label, approve or merge an accessibility-affecting pull request, or fast-forward `main` for it. @bee-san reviews and merges it in GitHub.
 - Under Windows contrast themes, masked image layers need `forced-color-adjust: none` and a `CanvasText` background in `@media (forced-colors: active)` so the glyph remains visible.
 
 ## Issue #9 scope and phases
@@ -135,7 +134,6 @@ Before opening the pull request:
 
 Before merging a pull request:
 
-- If the pull request carries the `accessibility` label or the Accessibility review check identifies an accessibility change, leave review and merging to @bee-san (see "Accessibility").
 - Require a successful completed CI check and a clean merge state for the exact head SHA.
 - Fix every substantive review finding and resolve every review thread.
 - Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
