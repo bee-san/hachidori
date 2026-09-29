@@ -4,6 +4,7 @@
   "paths": {
     "default": "themes/default",
     "nazeka": "themes/nazeka",
-    "plain": "themes/plain"
+    "plain": "themes/plain",
+    "jl": "themes/jl"
   }
 }

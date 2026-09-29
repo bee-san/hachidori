@@ -24,6 +24,14 @@
       "contentMode": "text",
       "benchmark": "Render 1.00 ms · complete 33.2 ms (median)",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    },
+    {
+      "slug": "jl",
+      "name": "JL",
+      "description": "JL's popup with its colours and pitch marker. Each dictionary gets its own block and tab, with its own audio and Anki buttons.",
+      "contentMode": "text",
+      "benchmark": "Benchmark pending",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     }
   ]
 }

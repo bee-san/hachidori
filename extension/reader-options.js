@@ -30,7 +30,7 @@
   // reveals.
   const EXPERIMENTAL_FEATURES = [
     { id: "themeStore", label: "Theme Store",
-      description: "Try Default, Nazeka and Plain popup layouts in Design." },
+      description: "Try Default, Nazeka, Plain and JL popup layouts in Design." },
     { id: "longKeyScan", label: "Long dictionary entries",
       description: "Find dictionary entries longer than the scan length. The reader collects more page text only when an installed dictionary lists such entries, and the engine reads further only when the text starts like one of them." },
     { id: "mdxImport", label: "MDX dictionaries",
@@ -198,7 +198,7 @@
       : id.replace(/(^|-)([a-z])/gu, (_, separator, letter) => `${separator ? " " : ""}${letter.toUpperCase()}`),
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
-  const POPUP_RENDERER_IDS = ["nazeka", "plain"];
+  const POPUP_RENDERER_IDS = ["nazeka", "plain", "jl"];
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
