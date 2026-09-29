@@ -133,11 +133,15 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --clobber
           else
+            notes=( --generate-notes --notes-file "$GITHUB_WORKSPACE/.github/release-notes-header.md" )
+            release_notes="$GITHUB_WORKSPACE/docs/releases/$RELEASE_TAG.md"
+            if [[ -f "$release_notes" ]]; then
+              notes=( --notes-file "$release_notes" )
+            fi
             gh release create "$RELEASE_TAG" ./* \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --generate-notes \
-              --notes-file "$GITHUB_WORKSPACE/.github/release-notes-header.md" \
+              "${notes[@]}" \
               --title "Hachidori ${RELEASE_TAG}"
           fi
 
