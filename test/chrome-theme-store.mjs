@@ -179,6 +179,7 @@ try {
   await settings.waitForFunction(() => document.querySelector('.theme-store-scroll[aria-label="Next themes"]').disabled);
   assert.deepEqual(await scrollButtons(), [["Previous themes", false], ["Next themes", true]]);
   assert.ok(await settings.$eval(".theme-store-grid", grid => grid.scrollLeft > 0), "Next themes scrolls the cards");
+  assert.equal(await settings.evaluate(() => document.activeElement.id), "theme-store-previous", "focus moves off the disabled Next themes");
   await settings.click(".theme-store-card:nth-child(3) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "plain");
   await hover();

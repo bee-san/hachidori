@@ -45,6 +45,25 @@ export function createThemeStore({ root, onSelect }) {
         grid.append(card);
       }
       updateSelection();
+      // The row only shows two or three cards, so Previous and Next themes
+      // page it. Each disables (which hides it) at its end, the last pixel
+      // counting as the end for fractional widths, and hands keyboard focus
+      // to the other rather than dropping it.
+      const previousButton = root.querySelector("#theme-store-previous");
+      const nextButton = root.querySelector("#theme-store-next");
+      const updateScrollButtons = () => {
+        const focused = document.activeElement;
+        previousButton.disabled = grid.scrollLeft <= 0;
+        nextButton.disabled = grid.scrollLeft >= grid.scrollWidth - grid.clientWidth - 1;
+        if (focused === nextButton && nextButton.disabled) previousButton.focus();
+        else if (focused === previousButton && previousButton.disabled) nextButton.focus();
+      };
+      previousButton.addEventListener("click", () => grid.scrollBy({ left: -grid.clientWidth }));
+      nextButton.addEventListener("click", () => grid.scrollBy({ left: grid.clientWidth }));
+      grid.addEventListener("scroll", updateScrollButtons, { passive: true });
+      // Also runs once the row first has a size (the store can load while
+      // Design is hidden) and whenever it resizes.
+      new ResizeObserver(updateScrollButtons).observe(grid);
     } catch (error) {
       root.querySelector(".theme-store-status").textContent = `Could not load bundled themes: ${error.message}`;
     }

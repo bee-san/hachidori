@@ -664,7 +664,11 @@
               <fieldset id="theme-store" class="lookup-group" hidden>
                 <legend>Theme Store</legend>
                 <p class="hint">Choose a bundled popup layout. More themes can ship with future Hachidori releases.</p>
-                <section class="theme-store-grid" aria-label="Popup themes"></section>
+                <div class="theme-store-carousel">
+                  <button id="theme-store-previous" type="button" class="ghost theme-store-scroll" aria-label="Previous themes" disabled><span class="hd-icon" data-icon="arrow-right" aria-hidden="true"></span></button>
+                  <button id="theme-store-next" type="button" class="ghost theme-store-scroll" aria-label="Next themes" disabled><span class="hd-icon" data-icon="arrow-right" aria-hidden="true"></span></button>
+                  <section class="theme-store-grid" aria-label="Popup themes"></section>
+                </div>
                 <p class="hint">Nazeka is a compact text popup. Plain shows only definitions. Default includes rich definitions, images and all reading tools.</p>
                 <p><a href="https://github.com/bee-san/hachidori-themes" target="_blank" rel="noopener noreferrer">Themes on GitHub</a></p>
                 <output class="theme-store-status" aria-live="polite"></output>
