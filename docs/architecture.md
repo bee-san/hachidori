@@ -1650,6 +1650,8 @@ does not resolve media again or change inline dimensions. The shared positioning
 function clamps it to the viewport with an 8-pixel margin. Pixelated and
 monochrome presentation are retained: a monochrome image is drawn in the palette
 text colour by a layer masked with the image, in the card and in the preview.
+Under forced colours the masked layers paint `CanvasText`, so Windows contrast
+themes keep the glyph visible in both places.
 Reduced motion disables the animation.
 
 Each popup owns one requested preview image, including a still-loading image.

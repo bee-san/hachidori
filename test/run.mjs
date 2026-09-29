@@ -63,7 +63,7 @@ try {
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", ["test/extension-smoke.mjs"]);
-  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay"].includes(suite)) {
+  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
     await run(suite, [`test/${suite}.mjs`], {
       HACHIDORI_DEINFLECTION_SCREENSHOT: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT || resolve(OUTPUT, "deinflection.png"),
@@ -74,7 +74,7 @@ try {
   } else {
     throw new Error(
       "Choose node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay or install-chrome.",
+        + " chrome-overlay, chrome-theme-contrast or install-chrome.",
     );
   }
 } catch (error) {

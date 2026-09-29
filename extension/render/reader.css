@@ -2834,6 +2834,7 @@ html[data-hoshidicts-theme="girlypop"],
      :host but not the popup's --text-color alias. */
   background: var(--hoshidicts-palette-base-content);
   mask: var(--image) center / contain no-repeat;
+  forced-color-adjust: none;
 }
 
 @keyframes gsm-hoshidicts-image-emerge {
@@ -2913,7 +2914,15 @@ html[data-hoshidicts-theme="girlypop"],
   height: 100%;
   background-color: var(--text-color);
   mask: var(--image) center / contain no-repeat;
+  forced-color-adjust: none;
   display: none;
+}
+
+@media (forced-colors: active) {
+  .gsm-hoshidicts-image-hover-preview[data-appearance="monochrome"]::after,
+  .gloss-image-background {
+    background: CanvasText;
+  }
 }
 
 .gloss-image {

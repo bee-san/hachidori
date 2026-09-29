@@ -1077,6 +1077,10 @@ for.
 
 ---
 
+## `chrome-theme-contrast.mjs`
+
+Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
+
 ## `chrome-e2e.mjs`
 
 The Library navigation regression launches its own temporary browser with real
