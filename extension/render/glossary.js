@@ -1724,8 +1724,8 @@
           const list = lists.at(-1), type = item.style?.listStyleType ?? list.type;
           list.number++;
           // A quoted type is a literal CSS marker, such as Jitendex's "①".
-          const literal = /^(["'])(.*)\1$/u.exec(type ?? "")?.[2];
-          const marker = type === "none" ? "" : literal ?? (list.tag === "ol" ? `${list.number}.` : "•");
+          let marker = /^(["'])(.*)\1$/u.exec(type ?? "")?.[2] ?? (list.tag === "ol" ? `${list.number}.` : "•");
+          if (type === "none") marker = "";
           if (marker) stack.push(`${marker} `);
         } else if ((item.tag === "th" || item.tag === "td") && rows.length) {
           if (rows[rows.length - 1]++) stack.push(" | "); // every cell after the row's first
