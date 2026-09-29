@@ -1667,27 +1667,71 @@
   }
 
   // Walk dictionary data directly. Text mode never constructs rich DOM or media.
+  // Layout follows JL's text flattening: tag spans are spaced, furigana reads
+  // 昨日[きのう], list items get markers, table rows read "| a | b |", and block
+  // boundaries add one line break instead of stacking blank lines.
+  const TEXT_BLOCK_TAGS = new Set(["div", "p", "li", "table", "thead", "tbody", "tfoot", "details", "summary"]);
   function glossaryToPlainText(glossary) {
     let value = glossary;
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch { return value; }
     }
-    const stack = Array.isArray(value) ? value.flatMap(item => [item, "\n"]).reverse() : [value];
-    const parts = [];
+    const LINE = {}, parts = [], lists = [], rows = [];
+    let lineBreak = false;
+    const write = text => {
+      if (lineBreak) {
+        // A run of block boundaries becomes one break, without the whitespace before it.
+        lineBreak = false;
+        while (parts.length) {
+          const last = parts.pop().trimEnd();
+          if (last) { parts.push(last, "\n"); break; }
+        }
+      }
+      if (text) parts.push(text);
+    };
+    const stack = [Array.isArray(value) ? value.flatMap(item => [item, LINE]) : value];
     while (stack.length) {
       const item = stack.pop();
       if (item == null) continue;
-      if (Array.isArray(item)) {
+      if (item === LINE) lineBreak = true;
+      else if (typeof item === "function") item();
+      else if (Array.isArray(item)) {
         for (let index = item.length - 1; index >= 0; index--) stack.push(item[index]);
-      } else if (typeof item === "object") {
-        if (item.tag === "img" || item.type === "image") {
-          if (item.title) parts.push(String(item.title), "\n");
-        } else if (item.tag === "br") parts.push("\n");
-        else {
-          if (["div", "p", "li", "tr", "td", "th", "details", "summary"].includes(item.tag)) stack.push("\n");
-          stack.push(item.content);
+      } else if (typeof item !== "object") write(String(item));
+      else if (item.tag === "img" || item.type === "image") {
+        if (item.title) stack.push(LINE, String(item.title));
+      } else if (item.tag === "br") write("\n");
+      else if (item.tag === "rt") stack.push("]", item.content, "[");
+      else if (item.tag === "ul" || item.tag === "ol") {
+        lists.push({ tag: item.tag, type: item.style?.listStyleType, number: 0 });
+        stack.push(LINE, () => lists.pop(), item.content, LINE);
+      } else if (item.tag === "tr") {
+        rows.push(0);
+        stack.push(LINE, () => rows.pop(), " |", item.content, "| ", LINE);
+      } else if (item.tag !== "rp") {
+        const block = TEXT_BLOCK_TAGS.has(item.tag);
+        if (block) stack.push(LINE);
+        // JL's rule for tag pills: a styled span spaces itself only with a right
+        // margin; an unstyled classed span does when its text starts with ASCII.
+        if (item.tag === "span" && (item.style ? item.style.marginRight != null : item.data?.class != null)) {
+          write(""); // settle a pending break so parts[start] is the pill's own text
+          const start = parts.length, always = item.style != null;
+          stack.push(() => { if (parts.length > start && (always || parts[start].charCodeAt(0) < 128)) parts.push(" "); });
         }
-      } else parts.push(String(item));
+        // Icon-only cells such as Jitendex's form markers carry their meaning in the title.
+        stack.push(item.content ?? (typeof item.title === "string" ? item.title : null));
+        if (item.tag === "li" && lists.length) {
+          const list = lists.at(-1), type = item.style?.listStyleType ?? list.type;
+          list.number++;
+          // A quoted type is a literal CSS marker, such as Jitendex's "①".
+          const literal = /^(["'])(.*)\1$/u.exec(type ?? "")?.[2];
+          const marker = type === "none" ? "" : literal ?? (list.tag === "ol" ? `${list.number}.` : "•");
+          if (marker) stack.push(`${marker} `);
+        } else if ((item.tag === "th" || item.tag === "td") && rows.length) {
+          if (rows[rows.length - 1]++) stack.push(" | "); // every cell after the row's first
+        }
+        if (block) stack.push(LINE);
+      }
     }
     return parts.join("").trim();
   }
