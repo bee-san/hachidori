@@ -83,6 +83,8 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /python3 scripts\/package-store\.py/u);
   assert.match(workflow, /sha256sum -c/u);
   assert.match(workflow, /--notes-file "\$GITHUB_WORKSPACE\/\.github\/release-notes-header\.md"/u);
+  assert.match(workflow, /release_notes="\$GITHUB_WORKSPACE\/docs\/releases\/\$RELEASE_TAG\.md"/u);
+  assert.match(workflow, /if \[\[ -f "\$release_notes" \]\]; then\n\s*notes=\( --notes-file "\$release_notes" \)/u);
   assert.doesNotMatch(workflow, /firefox|\.xpi/iu);
   assert.match(workflow, /outputs:[\s\S]*release_tag:[\s\S]*release_commit:/u);
   assert.match(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish/u);
@@ -90,7 +92,7 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /gh release create/u);
   assert.match(workflow, /gh release upload[\s\S]*--clobber/u);
   // A tag pushed after its release was drafted by hand uploads into it.
-  assert.match(workflow, /elif gh release view "\$RELEASE_TAG"[\s\S]*gh release upload "\$RELEASE_TAG"[\s\S]*--clobber[\s\S]*else\n\s*gh release create/u);
+  assert.match(workflow, /elif gh release view "\$RELEASE_TAG"[\s\S]*gh release upload "\$RELEASE_TAG"[\s\S]*--clobber[\s\S]*else\n[\s\S]*gh release create/u);
   assert.match(workflow, /Release tag \$RELEASE_TAG points to \$tag_commit/u);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
   assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
