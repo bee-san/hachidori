@@ -127,6 +127,7 @@ try {
   const media = await tab.createCDPSession();
   const results = [];
   const tiles = [];
+  let interrupted = null;
   try {
     for (const scenario of scenarios) {
       await media.send("Emulation.setEmulatedMedia", { features: [
@@ -192,15 +193,21 @@ try {
       console.log(`${passed ? "ok  " : "FAIL"} ${scenario.name}${passed ? "" : ` ${JSON.stringify(result)}`}`);
       await tab.mouse.move(2, 2);
     }
-    await writeFilmstrip(tab, tiles);
+  } catch (error) {
+    interrupted = error;
+    console.error(error);
   } finally {
     await media.send("Emulation.setEmulatedMedia", { features: [] });
     await media.detach();
   }
+  for (const scenario of scenarios.slice(results.length)) {
+    results.push({ name: scenario.name, passed: false, error: "check never completed" });
+  }
+  if (tiles.length) await writeFilmstrip(tab, tiles);
   const output = resolve(dirname(filmstrip), "theme-contrast.json");
   writeFileSync(output, JSON.stringify({ chrome: await browser.version(), results }, null, 2));
   console.log(`${results.filter(result => result.passed).length}/${scenarios.length} contrast rows passed`);
-  if (results.length !== scenarios.length || results.some(result => !result.passed)) process.exitCode = 1;
+  if (interrupted || results.some(result => !result.passed)) process.exitCode = 1;
 } finally {
   await browser?.close();
   server.close();
