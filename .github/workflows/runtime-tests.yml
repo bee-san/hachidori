@@ -89,7 +89,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [chrome-e2e, chrome-sharing, chrome-fallback, chrome-overlay]
+        suite: [chrome-e2e, chrome-sharing, chrome-fallback, chrome-overlay, chrome-theme-contrast]
     env:
       HACHIDORI_ALLOW_NO_SANDBOX: '1'
     steps:
@@ -119,6 +119,14 @@ jobs:
         with:
           name: popup-scale-screenshots
           path: test/tmp/popup-scale/*.png
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.suite == 'chrome-theme-contrast'
+        with:
+          name: theme-contrast-filmstrip
+          path: |
+            test/tmp/ci/theme-contrast.png
+            test/tmp/ci/theme-contrast.json
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
