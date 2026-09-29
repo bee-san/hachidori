@@ -6,7 +6,7 @@
       "name": "Default",
       "description": "The original Hachidori popup, with dictionary tabs, frequency, pitch and all your reading tools.",
       "contentMode": "rich",
-      "benchmark": "Render 5.60 ms · complete 49.9 ms (median)",
+      "benchmark": "Render 2.25 ms · complete 33.3 ms (median)",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
@@ -14,7 +14,7 @@
       "name": "Nazeka",
       "description": "A compact dark popup with inline readings and senses. Keeps audio and Anki actions beside the looked-up text.",
       "contentMode": "text",
-      "benchmark": "Render 2.10 ms · complete 33.1 ms (median)",
+      "benchmark": "Render 0.80 ms · complete 33.2 ms (median)",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
@@ -22,7 +22,15 @@
       "name": "Plain",
       "description": "Only dictionary definition text. No headings, metadata, counts, Anki or audio controls.",
       "contentMode": "text",
-      "benchmark": "Render 1.00 ms · complete 33.2 ms (median)",
+      "benchmark": "Render 0.40 ms · complete 33.2 ms (median)",
+      "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
+    },
+    {
+      "slug": "jl",
+      "name": "JL",
+      "description": "JL's popup with its colours and pitch marker. Each dictionary gets its own block and tab, with its own audio and Anki buttons.",
+      "contentMode": "text",
+      "benchmark": "Render 0.80 ms · complete 33.2 ms (median)",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     }
   ]

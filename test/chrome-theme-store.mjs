@@ -78,7 +78,7 @@ try {
     location.hash = "design";
   }, `http://127.0.0.1:${server.address().port}`);
   await settings.waitForSelector(".theme-store-card button", { visible: true });
-  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 3);
+  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 4);
   const tab = await browser.newPage();
   tab.on("pageerror", error => { errors.push(error.message); console.log("tab error", error.message); });
   tab.on("console", message => { if (["error", "warn"].includes(message.type())) console.log(message.type(), message.text()); });
@@ -175,8 +175,13 @@ try {
   await settings.screenshot({ path: resolve(output, "store.png") });
   const scrollButtons = () => settings.$$eval(".theme-store-scroll", buttons => buttons.map(button => [button.getAttribute("aria-label"), button.disabled]));
   assert.deepEqual(await scrollButtons(), [["Previous themes", true], ["Next themes", false]]);
-  await settings.click('.theme-store-scroll[aria-label="Next themes"]');
-  await settings.waitForFunction(() => document.querySelector('.theme-store-scroll[aria-label="Next themes"]').disabled);
+  while (!(await settings.$eval('.theme-store-scroll[aria-label="Next themes"]', button => button.disabled))) {
+    const scrollSettled = settings.evaluate(() => new Promise(resolve => {
+      document.querySelector(".theme-store-grid").addEventListener("scrollend", resolve, { once: true });
+    }));
+    await settings.click('.theme-store-scroll[aria-label="Next themes"]');
+    await scrollSettled;
+  }
   assert.deepEqual(await scrollButtons(), [["Previous themes", false], ["Next themes", true]]);
   assert.ok(await settings.$eval(".theme-store-grid", grid => grid.scrollLeft > 0), "Next themes scrolls the cards");
   assert.equal(await settings.evaluate(() => document.activeElement.id), "theme-store-previous", "focus moves off the disabled Next themes");
@@ -200,6 +205,30 @@ try {
   await settings.bringToFront();
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "plain");
   await settings.screenshot({ path: resolve(output, "store-plain.png") });
+  await settings.click(".theme-store-card:nth-child(4) button");
+  await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "jl");
+  await hover();
+  await tab.waitForFunction(() => {
+    const buttons = [...document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
+    return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled);
+  });
+  const jl = await tab.evaluate(() => {
+    const shadow = document.querySelector("hachidori-host").shadowRoot;
+    const popup = shadow.querySelector(".gsm-hoshidicts-popup");
+    const blocks = [...popup.querySelectorAll(".jl-entry")];
+    return { blocks: blocks.length, tabs: [...popup.querySelectorAll(".jl-tab")].map(tab => tab.textContent),
+      controls: blocks.map(block => [block.querySelectorAll(".gsm-hoshidicts-audio-button").length,
+        block.querySelector(".gsm-hoshidicts-mine-button").dataset.state]),
+      defaultStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))) };
+  });
+  assert.ok(jl.blocks > 1);
+  assert.deepEqual(jl.tabs, ["All", "hachidori-fixture"]);
+  assert.deepEqual(jl.controls, Array.from({ length: jl.blocks }, () => [1, "ready"]), "every block has its own audio and Anki button");
+  assert.equal(jl.defaultStyles, false);
+  await screenshot("jl");
+  await settings.bringToFront();
+  assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "jl");
+  await settings.screenshot({ path: resolve(output, "store-jl.png") });
   await settings.click(".theme-store-card:first-child button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "default");
   console.log("hover");
@@ -210,8 +239,8 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence,
-    checks: ["Store hidden by default", "experimental opt-in", "three bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: Store opt-in, Nazeka actions, kanji/Back, Plain definitions and Default restore. Evidence: ${output}`);
+    checks: ["Store hidden by default", "experimental opt-in", "four bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL actions and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

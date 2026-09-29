@@ -40,7 +40,11 @@
     const current = snapshot[active.depth];
     const reply = active.replies.at(-1);
     const actual = current?.definitions ?? current?.expressions;
-    const expected = current?.definitions ? reply?.definitions : reply?.results.map(result => result.term.expression);
+    // JL shows one block, so one headword, per result and dictionary.
+    const blocks = result => options.popupTheme === "jl"
+      ? [...new Set(result.term.glossaries.map(glossary => glossary.dictionary))].map(() => result.term.expression)
+      : [result.term.expression];
+    const expected = current?.definitions ? reply?.definitions : reply?.results.flatMap(blocks);
     const correct = active.rendered && reply && current && !current.hidden && current.connected
       && reply.results[0]?.term.expression === active.expected && actual?.[0] === expected?.[0];
     if (correct && kind === 'frame' && active.first === null) active.first = now;

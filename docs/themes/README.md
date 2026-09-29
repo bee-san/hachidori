@@ -30,10 +30,40 @@ source highlighting, scrolling and nested lookups still use the core reader.
 It has no resize handle or dictionary navigation UI; size remains configurable
 in Design. Native kanji requests display their definitions only.
 
+## JL
+
+JL follows the popup of [rampaa/JL](https://github.com/rampaa/JL) with its
+default colours, font sizes, spacing and Meiryo. Each result gets one block per
+dictionary, so a word with JMdict and 大辞泉 definitions appears twice, and each
+block repeats the word's frequencies and pitch. The top line wraps: spelling,
+reading, audio, deconjugation (`攫い ～masu stem`), frequencies (`#3551` from one
+frequency dictionary, `JPDB: 9209, …` from several), dictionary name and Anki.
+Definitions are plain text; a dictionary's rows are numbered and one sense's
+plain glosses are joined with `; `. As in JL's JMdict, word classes and other
+tags get separate brackets (`[v5u, vt] [uk]`), and a bracket every row shares
+goes on the line above them. A dotted line marks pitch over the reading using
+Default's pitch rules, supplied through the `buildPitchAccentMorae` and
+`pitchAccentPositions` components. Design's pitch accent switch and pitch
+dictionary apply.
+
+The tab row shows All and each dictionary with results, in Settings order.
+Choosing a tab hides the other blocks without rendering again, and the reader
+keeps the tab for Back, as with Default's tabs. Core binds audio, Anki and
+keybinds to the blocks the tab shows, so autoplay and keyboard actions follow
+the tab as they do in Default. A block's audio and Anki buttons act on that
+block: Anki receives only its dictionary's definitions, as in JL. Tabs and audio
+are always visible, where JL shows them in mining mode only. JL's title row
+holds its x, which appears where Hachidori offers Close (nested popups); a root
+popup starts with the tabs. The background is black at Design's opacity (JL
+ships 80%; Hachidori defaults to 85%). The theme leaves out JL's alternative
+spellings, which Hachidori returns as separate results, and has no images, Note
+editor, custom buttons or lookup counts. Its kanji view lists meanings, then
+JL's `On:`, `Kun:` and `Statistics:` lines.
+
 ## Version 2 view contract
 
 `theme-host.js` chooses a bundled renderer before content construction. Default
-adapts `HDPopup.createPopupView`; Nazeka and Plain export `{schema: 2, slug, contentMode,
+adapts `HDPopup.createPopupView`; Nazeka, Plain and JL export `{schema: 2, slug, contentMode,
 createView(options)}`. Executable modules are maintainer-reviewed release assets;
 no remote theme code is fetched for execution. This is not a JavaScript sandbox.
 Sources and proposals live in [hachidori-themes](https://github.com/bee-san/hachidori-themes).
@@ -52,7 +82,9 @@ presentation updates are optional.
 - Term rendering supplies arrays of `{button,result}` audio bindings and
   `{actions,feedback,result}` mining bindings through `onResultsRendered`, with
   a `lookupStats` slot (or `null` when the theme omits counts). Core paints counts
-  and binds current-request actions.
+  and binds current-request actions. When the shown entries change without a new
+  render, `onResultsExpanded` announces the arrays again, as Default's Show more
+  and JL's tabs do; keybinds index the announced entries.
 - `updateDictionaryPresentation` edits dictionary labels without rebuilding
   definitions. Blur updates edit state only. A new lookup replaces content;
   Back carries scroll state. Default retains its existing incremental renderer.
@@ -73,6 +105,8 @@ view factory. Splitting that script could reduce startup parsing later, but is
 outside this MVP. Custom CSS remains last. Nazeka's
 `glossaryToPlainText` traverses dictionary data without building rich DOM,
 requesting images, or creating dictionary links. Rich content remains untrusted.
+It lays structured content out as JL does: spaced tag pills, `昨日[きのう]`
+furigana, list markers, `| a | b |` table rows and one line break per block.
 The existing `appendTextOnlyGlossary` is a rich helper and is not text mode.
 
 ## Focused validation
