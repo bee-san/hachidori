@@ -172,7 +172,8 @@ try {
       ]);
       for (let attempt = 0; attempt < 2; attempt++) {
         const imagePoint = centre(cardRect);
-        await tab.mouse.move(imagePoint.x, imagePoint.y);
+        if (attempt === 0) await tab.mouse.move(imagePoint.x, imagePoint.y);
+        else await tab.$eval("hachidori-host", host => host.shadowRoot.querySelector(".gloss-image-link").focus());
         try {
           await tab.waitForFunction(() => {
             const preview = document.querySelector("hachidori-host")?.shadowRoot
@@ -204,6 +205,7 @@ try {
       results.push(result);
       tiles.push({ name: scenario.name, cardPng, cardRect, previewPng, previewRect: preview.rect });
       console.log(`${passed ? "ok  " : "FAIL"} ${scenario.name}${passed ? "" : ` ${JSON.stringify(result)}`}`);
+      await tab.$eval("hachidori-host", host => host.shadowRoot.activeElement?.blur());
       await tab.mouse.move(2, 2);
     }
   } catch (error) {
