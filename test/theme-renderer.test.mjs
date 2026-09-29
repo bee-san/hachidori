@@ -117,3 +117,54 @@ test("Plain writes complete definitions directly with no action or metadata DOM"
     view.destroy();
   } finally { dom.window.close(); }
 });
+
+test("JL renders one block per dictionary, binds each block to its own definitions and switches tabs in place", async () => {
+  const dom = environment(), { window } = dom, { document } = window;
+  try {
+    window.chrome = { runtime: { getURL: path => pathToFileURL(resolve(extension, path)).href } };
+    window.fetch = async () => ({ ok: true, text: async () => "" });
+    const host = window.HDThemeHost.createThemeHost({ getOptions: () => ({ popupTheme: "jl" }) });
+    const shadow = document.getElementById("host").attachShadow({ mode: "open" });
+    host.attach(shadow);
+    await host.sync();
+    assert.equal(shadow.host.dataset.hoshidictsRenderer, "jl");
+    const popup = document.createElement("div"); shadow.append(popup);
+    let bound, tab;
+    const view = host.createView({ document, window, popup, positionPopup() {}, onResultsRendered(value) { bound = value; } });
+    const result = { matched: "食べた", trace: [{ name: "-た" }], term: { expression: "食べる", reading: "たべる",
+      frequencies: [{ dictionary: "JPDB", frequencies: [{ value: 9209, displayValue: "9209" }] }],
+      pitches: [{ dictionary: "NHK", pitches: [{ position: 2, pattern: "", nasal: [], devoice: [] }] }],
+      glossaries: [
+        { dictionary: "JMdict", glossary: JSON.stringify(["to eat", "to have a meal"]), definitionTags: "v1 vt" },
+        { dictionary: "JMdict", glossary: JSON.stringify(["to live on"]), definitionTags: "v1 vt" },
+        { dictionary: "大辞泉", glossary: JSON.stringify(["た・べる【食べる】"]), definitionTags: "" },
+      ] } };
+    const context = { dictionaryPresentation: [{ title: "大辞泉" }, { title: "JMdict", displayName: "JM" }],
+      onDictionaryTabSelected(value) { tab = value; } };
+    view.renderResults([result], { query: "食べた" }, context);
+    const blocks = [...popup.querySelectorAll(".gsm-hoshidicts-entry")];
+    assert.deepEqual(blocks.map(block => block.querySelector(".gsm-hoshidicts-glossary-content").textContent),
+      ["[v1, vt]\n1. to eat; to have a meal\n2. to live on", "た・べる【食べる】"]);
+    assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries.length), [2, 1]);
+    assert.equal(bound.audioButtons[1].result, bound.miningActions[1].result);
+    assert.equal(bound.lookupStats, null);
+    assert.deepEqual(["jl-deconj", "jl-frequency", "jl-dictionary"].map(name => blocks[0].querySelector(`.${name}`).textContent),
+      ["食べた ～-た", "#9209", "JM"]);
+    assert.deepEqual([...blocks[0].querySelectorAll(".jl-reading .jl-mora")]
+      .map(mora => [mora.textContent, mora.dataset.pitch, mora.dataset.transition]),
+    [["た", "low", "rise"], ["べ", "high", "drop"], ["る", "low", undefined]]);
+    const tabs = [...popup.querySelectorAll(".jl-tab")];
+    assert.deepEqual(tabs.map(button => [button.textContent, button.getAttribute("aria-pressed")]),
+      [["All", "true"], ["大辞泉", "false"], ["JM", "false"]]);
+    tabs[1].click();
+    assert.deepEqual(tab, { dictionary: "大辞泉" });
+    assert.deepEqual(blocks.map(block => block.hidden), [true, false]);
+    assert.equal(view.currentEntryIndex(), 1, "keyboard actions follow the first block of the tab");
+    assert.equal(popup.querySelectorAll(".gsm-hoshidicts-entry")[1], blocks[1], "switching tabs does not rebuild");
+    assert.equal(bound.miningActions[1].actions.isConnected, true);
+    view.renderResults([result], { query: "食べた" }, { ...context, selectedDictionaryTab: tab });
+    assert.deepEqual([...popup.querySelectorAll(".gsm-hoshidicts-entry")].map(block => block.hidden), [true, false],
+      "Back restores the selected tab");
+    view.destroy();
+  } finally { dom.window.close(); }
+});
