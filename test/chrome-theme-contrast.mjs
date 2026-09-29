@@ -130,6 +130,7 @@ try {
   let interrupted = null;
   try {
     for (const scenario of scenarios) {
+      const expectedTheme = scenario.theme === "auto" ? scenario.scheme : scenario.theme;
       await media.send("Emulation.setEmulatedMedia", { features: [
         { name: "prefers-reduced-motion", value: "reduce" },
         { name: "prefers-color-scheme", value: scenario.scheme },
@@ -147,11 +148,12 @@ try {
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       });
       await tab.mouse.move(point.x, point.y);
-      await tab.waitForFunction(() => {
+      await tab.waitForFunction(theme => {
         const root = document.querySelector("hachidori-host")?.shadowRoot;
         const images = root?.querySelectorAll(".gloss-image-link img");
-        return images?.length === 2 && [...images].every(image => image.naturalWidth === 100);
-      });
+        return root?.host.dataset.hoshidictsTheme === theme && images?.length === 2
+          && [...images].every(image => image.naturalWidth === 100);
+      }, {}, expectedTheme);
       const state = await tab.evaluate(() => {
         const root = document.querySelector("hachidori-host").shadowRoot;
         const popup = root.querySelector(".gsm-hoshidicts-popup");
@@ -168,12 +170,24 @@ try {
         ...state.rects.map(centre),
         { x: cardRect.left + cardRect.width * 0.04, y: cardRect.top + cardRect.height / 2 },
       ]);
-      await tab.mouse.move(...Object.values(centre(cardRect)));
-      await tab.waitForFunction(() => {
-        const preview = document.querySelector("hachidori-host")?.shadowRoot
-          ?.querySelector(".gsm-hoshidicts-image-hover-preview");
-        return preview?.querySelector("img")?.naturalWidth === 100;
-      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const imagePoint = centre(cardRect);
+        await tab.mouse.move(imagePoint.x, imagePoint.y);
+        try {
+          await tab.waitForFunction(() => {
+            const preview = document.querySelector("hachidori-host")?.shadowRoot
+              ?.querySelector(".gsm-hoshidicts-image-hover-preview");
+            return preview?.querySelector("img")?.naturalWidth === 100;
+          }, { timeout: 7500 });
+          break;
+        } catch (error) {
+          if (attempt === 1) throw new Error(`${scenario.name}: preview did not open`, { cause: error });
+          await tab.mouse.move(2, 2);
+          await tab.mouse.move(point.x, point.y);
+          await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot
+            ?.querySelectorAll(".gloss-image-link img")?.length === 2);
+        }
+      }
       const preview = await tab.evaluate(() => {
         const node = document.querySelector("hachidori-host").shadowRoot
           .querySelector(".gsm-hoshidicts-image-hover-preview");
@@ -182,7 +196,6 @@ try {
       const { png: previewPng, pixels: [previewInk] } = await sample(tab, [centre(preview.rect)]);
       const textColor = state.textColor;
       const ratio = contrast(ink, background);
-      const expectedTheme = scenario.theme === "auto" ? scenario.scheme : scenario.theme;
       const passed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
         && preview.appearance === "monochrome" && near(previewInk, textColor)
         && ratio >= (scenario.forced ? 20 : 3);
