@@ -71,6 +71,22 @@ test("text traversal retains deeply nested content without building DOM", () => 
     assert.equal(dom.window.HDGlossary.glossaryToPlainText([{ content: ["食", { tag: "b", content: "べる" }] }, "eat"]), "食べる\neat");
   } finally { dom.window.close(); }
 });
+test("text traversal lays out Jitendex-style structured content like JL", () => {
+  const dom = environment();
+  try {
+    const tag = content => ({ tag: "span", data: { class: "tag" }, content });
+    const special = content => ({ tag: "span", data: { class: "form-special" }, content });
+    assert.equal(dom.window.HDGlossary.glossaryToPlainText([{ type: "structured-content", content: [
+      { tag: "div", content: [tag("noun"), tag("adverb"),
+        { tag: "ol", content: { tag: "li", style: { listStyleType: "\"①\"" }, content: { tag: "ul", content: { tag: "li", content: "yesterday" } } } },
+        { tag: "div", content: [{ tag: "ruby", content: ["昨日", { tag: "rp", content: "(" }, { tag: "rt", content: "きのう" }, { tag: "rp", content: ")" }] }, "は"] }] },
+      { tag: "div", content: [tag("forms"), { tag: "table", content: [
+        { tag: "tr", content: [{ tag: "th" }, { tag: "th", content: "昨日" }] },
+        { tag: "tr", content: [{ tag: "th", content: [special("《"), "きのう", special("》")] }, { tag: "td", content: { tag: "span", title: "high priority form" } }] },
+      ] }] },
+    ] }]), "noun adverb\n①\n• yesterday\n昨日[きのう]は\nforms\n|  | 昨日 |\n| 《きのう》 | high priority form |");
+  } finally { dom.window.close(); }
+});
 test("renderer failure replays the current model with Default CSS and keeps the preference", async () => {
   const dom = environment(), { window } = dom, { document } = window;
   const original = theme.createView;

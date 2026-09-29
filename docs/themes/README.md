@@ -105,6 +105,8 @@ view factory. Splitting that script could reduce startup parsing later, but is
 outside this MVP. Custom CSS remains last. Nazeka's
 `glossaryToPlainText` traverses dictionary data without building rich DOM,
 requesting images, or creating dictionary links. Rich content remains untrusted.
+It lays structured content out as JL does: spaced tag pills, `昨日[きのう]`
+furigana, list markers, `| a | b |` table rows and one line break per block.
 The existing `appendTextOnlyGlossary` is a rich helper and is not text mode.
 
 ## Focused validation
