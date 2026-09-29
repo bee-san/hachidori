@@ -1680,6 +1680,9 @@ function renderKanjiChoices() {
   select.value = selectedValue;
 }
 
+// Theme Store renderer names for the Theme select, matching the Store cards.
+const rendererLabel = slug => slug === "jl" ? "JL" : slug[0].toUpperCase() + slug.slice(1);
+
 function renderThemeChoices() {
   themeStore.render(options);
   if (activeSection !== "design") return;
@@ -1696,7 +1699,7 @@ function renderThemeChoices() {
   if (!storeGroup && (options.experimental.themeStore || popupRenderer(options.popupTheme) !== "default")) {
     storeGroup = document.createElement("optgroup");
     storeGroup.label = "Theme Store";
-    for (const slug of POPUP_RENDERER_IDS) storeGroup.append(new Option(slug[0].toUpperCase() + slug.slice(1), slug));
+    for (const slug of POPUP_RENDERER_IDS) storeGroup.append(new Option(rendererLabel(slug), slug));
     theme.append(storeGroup);
   }
   if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && popupRenderer(options.popupTheme) === "default";

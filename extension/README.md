@@ -130,7 +130,7 @@ the service worker and both engine runtimes run the same code.
   `assets/ATTRIBUTION.md`); `design-preview.js` renders the preview from
   `sample-meal.svg` and local sample data.
 - **Theme Store.** `theme-store.js` renders the experimental Design carousel.
-  `theme-host.js` selects Default or the bundled Nazeka view before constructing
+  `theme-host.js` selects Default or a bundled Nazeka, Plain or JL view before constructing
   content and applies only its CSS. See the [renderer contract](../docs/themes/README.md).
 - **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
