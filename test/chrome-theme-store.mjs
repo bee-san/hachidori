@@ -173,6 +173,18 @@ try {
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "nazeka");
   assert.equal(await preview.evaluate(() => !!document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-mine-button")), true);
   await settings.screenshot({ path: resolve(output, "store.png") });
+  const scrollButtons = () => settings.$$eval(".theme-store-scroll", buttons => buttons.map(button => [button.getAttribute("aria-label"), button.disabled]));
+  assert.deepEqual(await scrollButtons(), [["Previous themes", true], ["Next themes", false]]);
+  while (!(await settings.$eval('.theme-store-scroll[aria-label="Next themes"]', button => button.disabled))) {
+    const scrollSettled = settings.evaluate(() => new Promise(resolve => {
+      document.querySelector(".theme-store-grid").addEventListener("scrollend", resolve, { once: true });
+    }));
+    await settings.click('.theme-store-scroll[aria-label="Next themes"]');
+    await scrollSettled;
+  }
+  assert.deepEqual(await scrollButtons(), [["Previous themes", false], ["Next themes", true]]);
+  assert.ok(await settings.$eval(".theme-store-grid", grid => grid.scrollLeft > 0), "Next themes scrolls the cards");
+  assert.equal(await settings.evaluate(() => document.activeElement.id), "theme-store-previous", "focus moves off the disabled Next themes");
   await settings.click(".theme-store-card:nth-child(3) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "plain");
   await hover();
@@ -227,8 +239,8 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence,
-    checks: ["Store hidden by default", "experimental opt-in", "four bundled themes", "Plain definitions only", "JL blocks and actions", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: Store opt-in, Nazeka actions, kanji/Back, Plain definitions, JL actions and Default restore. Evidence: ${output}`);
+    checks: ["Store hidden by default", "experimental opt-in", "four bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL actions and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

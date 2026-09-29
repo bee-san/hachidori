@@ -43,10 +43,35 @@
 }
 
 #theme-store { min-width: 0; }
+.theme-store-carousel {
+  --theme-store-preview-height: 130px;
+  position: relative;
+}
+/* Previous and Next themes straddle the row's edges, centred on the previews
+   (13px is the card's border and padding above its preview). Sitting 12px
+   outside keeps them within the narrowest (16px) page gutter. */
+.theme-store-carousel .theme-store-scroll {
+  position: absolute;
+  top: calc(13px + (var(--theme-store-preview-height) - var(--control-height)) / 2);
+  width: var(--control-height);
+  padding: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-overlay);
+}
+#theme-store-previous { left: -12px; }
+#theme-store-previous .hd-icon { transform: scaleX(-1); }
+#theme-store-next { right: -12px; }
+/* The page focus ring is drawn for page surfaces; a surface halo keeps it
+   visible over the dark previews, where light palettes' accent is too dim. */
+.theme-store-carousel .theme-store-scroll:focus-visible { box-shadow: 0 0 0 7px var(--surface), var(--shadow-overlay); }
+.theme-store-scroll:disabled { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .theme-store-grid { scroll-behavior: smooth; }
+}
 .theme-store-card h3, .theme-store-card p { margin: 0; }
 .theme-store-card button { margin-top: auto; }
 .theme-store-card button[aria-pressed="true"] { outline: 2px solid var(--accent); }
-.theme-store-preview { width: 100%; height: 130px; object-fit: contain; background: #111; border-radius: 4px; }
+.theme-store-preview { width: 100%; height: var(--theme-store-preview-height); object-fit: contain; background: #111; border-radius: 4px; }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-hoshidicts-theme]) {
