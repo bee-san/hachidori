@@ -4,9 +4,9 @@
   "cpu": "Intel(R) Xeon(R) Platinum 8488C",
   "logicalCpus": 16,
   "load": [
-    1.35,
-    1.07,
-    0.79
+    1.76,
+    1.21,
+    0.85
   ],
   "settings": {
     "hoverEnabled": true,
@@ -20,7 +20,7 @@
     "definitionBlurEnabled": false,
     "showCompactDefinitionSummary": true,
     "compactDefinitionSummaryCount": 3,
-    "popupTheme": "default"
+    "popupTheme": "jl"
   },
   "words": [
     "食べる",
