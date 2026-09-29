@@ -275,6 +275,10 @@ fails if `git status` in the submodule comes back dirty.
 
 Run `node --test test/issue-template.test.mjs` for changes to issue templates or their enforcement workflow. This dependency-free suite uses the production validator and mocked GitHub issue calls to check completed and incomplete submissions, Markdown comments and code fences, the acknowledgement, closure feedback, and stale issue events. It never closes real issues. The Issue template workflow runs this check on relevant pull requests and pushes to `main`; its separate issue-event job enforces the template on opened, edited, and reopened issues.
 
+## `accessibility-review.test.mjs`
+
+Run `node --test test/accessibility-review.test.mjs` for changes to the accessibility review gate. It checks affected-file detection, exact-head owner approval, and the label/check decision using mocked GitHub calls. The workflow tests pull-request code with a read-only token; its review gate executes the default-branch script and posts the result to the pull request's head commit.
+
 ---
 
 ## `submodule-identity.mjs`

@@ -21,6 +21,13 @@ These instructions apply to the entire repository.
 - Do not add broad or extensive test coverage by default. Add a focused regression test when behavior changes or a bug needs to stay fixed; do not duplicate coverage already provided by a suitable suite.
 - Avoid adding test-only dependencies or expanding fixtures unless the changed behavior genuinely needs them.
 
+## Accessibility
+
+- Changes to colour, contrast, dictionary-image colouring, focus or keyboard navigation, screen-reader semantics, motion, or font sizing affect accessibility.
+- Open an accessibility-affecting change with the `accessibility` label and screenshots of the affected palettes.
+- The agent must not add the `human-reviewed` label, approve or merge an accessibility-affecting pull request, or fast-forward `main` for it. @bee-san reviews and merges it in GitHub.
+- Under Windows contrast themes, masked image layers need `forced-color-adjust: none` and a `CanvasText` background in `@media (forced-colors: active)` so the glyph remains visible.
+
 ## Issue #9 scope and phases
 
 - D1-D9 and E1-E27 are delivered. The user's subsequent request, "work on l2 to l5", authorizes L2 backup/restore, L3 per-dictionary update schedules, L4 lookup/corpus-seen statistics, and L5 definition blur as the current phase. Deliver them in focused pull requests preserving the completed dictionary and reader behavior, using GSM PR #549 as the reference.
@@ -126,6 +133,7 @@ Before opening the pull request:
 
 Before merging a pull request:
 
+- If the pull request carries the `accessibility` label or the Accessibility review check identifies an accessibility change, leave review and merging to @bee-san (see "Accessibility").
 - Require a successful completed CI check and a clean merge state for the exact head SHA.
 - Fix every substantive review finding and resolve every review thread.
 - Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
