@@ -3,8 +3,8 @@
 
 Measured on 2026-09-29 at Hachidori **fb999351c10d50be1124acd3165070c0ab0ebb8a**.
 All four themes use exactly the same engine, input, options and extension revision.
-Later commits change only catalogue captions, the source pin and this report;
-renderer, engine and probe code stay identical. Manifests retain the full asset hashes.
+Later commits don't touch renderer, engine or probe code, and manifests retain
+the full asset hashes.
 
 ## Results
 
