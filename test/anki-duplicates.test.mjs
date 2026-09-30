@@ -4,6 +4,7 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
   findAnkiDuplicateNotes, findAnkiOverwriteTarget, validateAnkiNote, canonicalAnkiFields } from "../extension/anki-duplicates.js";
+import { renderAnkiTemplate } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
   model: "Basic", deck: "Japanese::Words", ...patch });
@@ -151,8 +152,13 @@ test("an unknown-reason refusal names the cloze rule Anki applied, with its deck
   const basic = { type: 0, flds: [{ name: "Front" }, { name: "Back" }], tmpls: [{ qfmt: "{{Front}}" }] };
   const requests = [];
   const reads = model => async (action, params) => { requests.push({ action, params }); return [model]; };
-  const refusal = (model, modelName, fields) => explainAnkiRefusal(reads(model), note({ modelName, fields }), unknown);
+  // These deletions are literal template text.
+  const literal = fields => Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }]));
+  const refusal = (model, modelName, fields, templates = literal(fields)) =>
+    explainAnkiRefusal(reads(model), note({ modelName, fields }), unknown, templates);
   const context = modelName => `Anki refused the note for deck “Japanese::Words”, note type “${modelName}”`;
+  const generic = `${context("Basic")} because of its cloze deletions ({{c1::…}}): a Cloze note type needs one in its cloze field, `
+    + "and no other field or note type may have one. Check the field mapping in Anki Settings.";
   // The three cloze states of Anki's own fields_check test (rslib/src/notes/mod.rs).
   const missing = await refusal(cloze, "Cloze", { Text: "no cloze", "Back Extra": "" });
   assert.equal(missing, `${context("Cloze")}: it is a Cloze note type, but its cloze field “Text” has no cloze deletion such as {{c1::…}}. `
@@ -165,22 +171,30 @@ test("an unknown-reason refusal names the cloze rule Anki applied, with its deck
   const notCloze = await refusal(basic, "Basic", { front: "{{c1::foo}}", Back: "" });
   assert.equal(notCloze, `${context("Basic")}: field “Front” contains the cloze deletion “{{c1::foo}}”, but “Basic” is not a Cloze note type. `
     + "Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.");
+  // A deletion that reached the field through a marker's content has no template text to remove.
+  const fromContent = await refusal(basic, "Basic", { Front: "猫", Back: "例: {{c1::より}}" },
+    { Front: { value: "{expression}" }, Back: { value: "<i>{glossary}</i>{sentence}" } });
+  assert.equal(fromContent, `${context("Basic")}: field “Back” contains the cloze deletion “{{c1::より}}”, but “Basic” is not a Cloze note type. `
+    + "The deletion comes from the content of {glossary}, {sentence}, not from the field's template. "
+    + "Map that field to other content in Anki Settings, or choose a Cloze note type.");
+  assert.doesNotMatch(fromContent, /Remove the deletion/u);
+  // Rendered through a template, a dictionary's own cloze text is no deletion at all.
+  const glossary = renderAnkiTemplate("{glossary}", { glossary: "<li>{{c1::猫}}</li>" });
+  assert.equal(await refusal(basic, "Basic", { Front: "猫", Back: glossary }, { Back: { value: "{glossary}" } }), generic);
   // A filter chain still renders the cloze field. Anki finds a template's field case-insensitively
   // and skips a reference inside an HTML comment.
   const chained = { ...cloze, tmpls: [{ qfmt: "<!-- {{cloze:Back Extra}} -->{{#Text}}{{furigana:cloze:text}}{{/Text}}" }] };
   assert.match(await refusal(chained, "Cloze", { Text: "", "Back Extra": "{{c2::x}}" }),
     /: field “Back Extra” contains the cloze deletion “\{\{c2::x\}\}”, but “Cloze” makes cloze cards only from “Text”\./u);
   // Without findModelsByName, or when no rule matches, the cause is still named.
-  const generic = `${context("Basic")} because of its cloze deletions ({{c1::…}}): a Cloze note type needs one in its cloze field, `
-    + "and no other field or note type may have one. Check the field mapping in Anki Settings.";
-  assert.equal(await explainAnkiRefusal(async () => { throw new Error("AnkiConnect: unsupported action"); }, note(), unknown), generic);
+  assert.equal(await explainAnkiRefusal(async () => { throw new Error("AnkiConnect: unsupported action"); }, note(), unknown, {}), generic);
   assert.equal(await refusal(basic, "Basic", { Front: "{{c0::zero}}" }), generic, "cloze number 0 is not a deletion");
-  for (const message of [missing, misplaced, notCloze, generic]) assert.doesNotMatch(message, /unknown/iu);
+  for (const message of [missing, misplaced, notCloze, fromContent, generic]) assert.doesNotMatch(message, /unknown/iu);
   // Other per-note refusals get the gateway's translation; unmatched text is kept.
   const read = requests.length;
-  assert.equal(await explainAnkiRefusal(reads(basic), note(), "cannot create note because it is empty"),
+  assert.equal(await explainAnkiRefusal(reads(basic), note(), "cannot create note because it is empty", {}),
     "Anki refused the note because its first field is empty. Map the first field to content this result has. "
       + "(AnkiConnect: cannot create note because it is empty)");
-  assert.equal(await explainAnkiRefusal(reads(basic), note(), "Anki rejected this note."), "Anki rejected this note.");
+  assert.equal(await explainAnkiRefusal(reads(basic), note(), "Anki rejected this note.", {}), "Anki rejected this note.");
   assert.equal(requests.length, read, "only an unknown-reason refusal reads the note type");
 });

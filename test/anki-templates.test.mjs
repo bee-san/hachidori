@@ -91,7 +91,7 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
 test("template rendering substitutes once, preserves literal HTML and removes only empty marker-only breaks", () => {
   assert.equal(renderAnkiTemplate("<b>{EXPRESSION}</b><br>{audio}<BR />literal<br>{single-glossary-missing}",
     { expression: "&lt;語&gt;", audio: "" }), "<b>&lt;語&gt;</b><br>literal");
-  assert.equal(renderAnkiTemplate("{expression}", { expression: "{reading}" }), "{reading}");
+  assert.equal(renderAnkiTemplate("{expression}", { expression: "{reading}" }), "&#123;reading&#125;");
   assert.throws(() => renderAnkiTemplate("{unknown}", {}), /Unknown marker/u);
 });
 

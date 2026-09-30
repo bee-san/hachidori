@@ -146,6 +146,15 @@ const availableFields = fields => fields.length === 0 ? ""
 export const escapeAnkiHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 
+// Anki's cloze tokenizer (cloze.rs) reads {{c1::…}} in raw field HTML, so
+// braces a marker value carries, such as a dictionary's own cloze-marked
+// example, would become a real deletion. Encoded braces display unchanged
+// but can never open or close one. <style> text is CSS, where entities are
+// not decoded; it stays literal and cannot form a {{c<n>:: opener anyway.
+const STYLE_ELEMENT = /(<style\b[^>]*>[\s\S]*?<\/style\s*>)/giu;
+export const encodeAnkiClozeBraces = value => String(value).split(STYLE_ELEMENT)
+  .map((part, index) => index % 2 ? part : part.replaceAll("{", "&#123;").replaceAll("}", "&#125;")).join("");
+
 export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }
@@ -186,7 +195,7 @@ export function renderAnkiTemplate(template, values) {
     const markers = [...segment.matchAll(MARKER_PATTERN)];
     const rendered = segment.replace(MARKER_PATTERN, (_, name) => {
       const key = name.toLowerCase();
-      return values[key] ?? values[MARKER_ALIASES.get(key)] ?? "";
+      return encodeAnkiClozeBraces(values[key] ?? values[MARKER_ALIASES.get(key)] ?? "");
     });
     return markers.length && !rendered.trim() ? [] : [rendered];
   }).join("<br>");

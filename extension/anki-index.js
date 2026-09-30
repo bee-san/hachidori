@@ -2,7 +2,7 @@
 import { ankiMultiResults } from "./anki.js";
 import { ankiDigest } from "./anki-digest.js";
 import { ankiSetupFamily, ankiSetupTemplates } from "./anki-setup.js";
-import { escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
+import { encodeAnkiClozeBraces, escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
 import "./reader-options.js";
 
 // Anki parses these field names as operators before considering a field search.
@@ -29,7 +29,7 @@ export function ankiWordKey(expression) {
   if (typeof expression !== "string" || !expression) return null;
   // Ordinary Anki field search escapes the rendered HTML, folds ASCII only,
   // and normalizes query text to NFC. Stored field values remain unnormalized.
-  return foldAscii(escapeAnkiHtml(expression).normalize("NFC"));
+  return foldAscii(encodeAnkiClozeBraces(escapeAnkiHtml(expression)).normalize("NFC"));
 }
 
 function storedWordKey(value) {
@@ -106,7 +106,7 @@ function completeQuery(source, models) {
 }
 
 function lookupQuery(source, models, expression) {
-  const value = escapeAnkiHtml(expression).normalize("NFC");
+  const value = encodeAnkiClozeBraces(escapeAnkiHtml(expression)).normalize("NFC");
   const clauses = models.flatMap(model => model.fields.map(field =>
     `(${searchToken("note", model.name)} ${searchToken(field, value)})`));
   if (clauses.length === 0) return null;
