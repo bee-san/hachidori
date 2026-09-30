@@ -25,7 +25,8 @@ export const KEYBIND_OPTION_LABELS = {
   showPitchAccentText: "Show pitch accent text",
   showPitchAccentPosition: "Show pitch accent position",
   showPitchAccentGraph: "Show pitch accent graph",
-  hidePopupGrammarTags: "Hide grammar tags",
+  // Stored inverted; named like the Settings checkbox it flips.
+  hidePopupGrammarTags: "Show grammar tags",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
 const SCOPE_LABELS = { popup: "While a popup is open", web: "Anywhere on the page" };

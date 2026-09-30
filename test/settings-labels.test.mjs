@@ -35,7 +35,8 @@ function controlLabels() {
   for (const label of document.querySelectorAll("label")) {
     const control = label.control;
     const name = labelText(label);
-    if (!control || !name) continue;
+    // A later inline reference, such as "Turn on … above", is not the control's name.
+    if (!control || !name || labels.has(control.id)) continue;
     labels.set(control.id, name);
   }
   return labels;

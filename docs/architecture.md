@@ -879,7 +879,7 @@ engine scan window; a prefix-only result is not an exact match. A miss retains
 selection ownership until the selection changes or is dismissed, so pointer
 movement cannot silently replace it with a prefix. Its notice exposes the same
 personal-dictionary pencil as term and kanji results, prefilled with the
-selected word even when no dictionaries are installed. Reading → Personal
+selected word even when no dictionaries are installed. Library → Personal
 dictionary → **Show a popup when a selection has no definition**
 (`showNoResultNotice`, default on) owns that notice: switched off, a miss with
 loaded dictionaries hides the popup and still retains the selection, while the
@@ -889,7 +889,7 @@ Note append transaction and replays that exact request to show the new
 definition; publisher dictionaries remain unchanged.
 
 Automatic selection lookups are the personal dictionary's entry point, so
-Reading → Personal dictionary → **Use the personal dictionary**
+Library → Personal dictionary → **Use the personal dictionary**
 (`personalDictionaryEnabled`, default on) owns them. Switched off, the reader
 behaves like Yomitan: a selection change or drag release never looks anything
 up, in any lookup mode, and a live selection no longer outranks the pointer, so

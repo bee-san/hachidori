@@ -154,6 +154,13 @@ suite also verifies that selected missing
 words refresh into their personal definition after the save, including when no
 dictionaries were installed. It uses the same external jsdom dependency.
 
+`node --test test/settings-labels.test.mjs` parses `settings.html` and fails
+when two controls share a visible label, when a keybind-toggleable option lacks
+a Toggle option label, or when that label's leading word (Show, Hide, Blur…)
+differs from the Settings checkbox it flips, so an inverted option cannot read
+with opposite polarity. It also rejects a sidebar item without a link. It uses
+the same external jsdom dependency.
+
 `node --test test/keybind-settings.test.mjs` checks Yomitan's default keybinds for
 supported actions, keybind normalisation and strict option patches, key
 combination capture, action/argument/scope editing, Clear, Reset, Remove, Add and
@@ -1448,8 +1455,8 @@ an ancestor pane dismisses focused, hovered and still-pending descendants at
 once while an open child draft stays until Escape closes its form, and a click
 on the root's link keeps its same-query child without another lookup.
 With Hide popup on cursor exit on in sticky mode, a mouse return from the child
-to its parent closes the child within the option's 300 ms delay while the Hide
-delay is raised to 5,000 ms.
+to its parent closes the child within the option's 300 ms delay while the grace
+period to reach the popup is raised to 5,000 ms.
 Reimports and held service-worker replies also prove top/bottom Note forms stay
 mounted, focused and reachable, and a still-focused tab survives same-view
 refresh. `HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
