@@ -847,6 +847,9 @@ What it proves, in order:
    admission. Invalidation and teardown settle every job before more dispatch.
    LRU checks accept 64 entries and exactly 16 MiB of decoded media, promote hits,
    evict on one extra entry/byte, and reset byte accounting on invalidation.
+   The Image hover preview modes are pinned: `large` opens no preview for an
+   `em`-sized or 16px image but does for a 64px one, `off` opens none on hover
+   or focus, and `all` previews every image.
    Preview checks cover lazy closed-shadow ownership, exact source reuse without
    another media request, viewport corners, unchanged inline dimensions,
    combined hover/focus retention and failure cleanup, tab/clear/destroy, and

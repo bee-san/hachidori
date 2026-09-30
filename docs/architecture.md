@@ -1643,6 +1643,12 @@ messages already sent cannot be aborted: the deadline bounds logical ownership
 and waiting, not underlying native execution.
 
 Hovering or keyboard-focusing an image lazily opens one larger, fixed preview.
+Design → Definitions → Image hover preview (`imageHoverPreview`) chooses
+`large` (default), `off` or `all`. `large` skips inline glyphs, meaning images
+sized in `em` or at most 32px on both sides, such as dictionary brackets and
+labels drawn as SVG; `off` opens no preview on hover or focus. The view reads
+the option at each request, so a change applies to the next hover. Collapsed
+images still expand inline on hover and focus through CSS.
 It is a sibling of the popup inside the same closed shadow root, so it inherits
 the palette without being clipped by the glossary card or popup scrollport.
 The preview copies the original image's exact current source and alt text; it
