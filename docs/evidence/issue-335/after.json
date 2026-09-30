@@ -1,0 +1,779 @@
+{
+  "dictionaries": [
+    "Jitendex.org [2026-08-11]",
+    "JMnedict [2026-09-30]",
+    "Bee's Ultimate Kanji Dictionary",
+    "Jiten",
+    "Bee's Ultimate Grammar Dictionary",
+    "KANJIDIC [2026-273]"
+  ],
+  "importState": "Finished 1 of 1 archive — 1 imported, 0 failed.",
+  "taberu": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 67.6,
+      "height": 66.6,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 66.6,
+      "height": 65.6,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 67.6,
+      "bottom": 419,
+      "height": 351.4,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 370,
+      "left": 103
+    },
+    "summaryBeside": true,
+    "firstDefinition": 154.4,
+    "visibleLines": 8,
+    "visibleBaseLines": 8,
+    "naturalContentHeight": 3177,
+    "entries": [
+      65.6,
+      53.6,
+      34.6,
+      53.6,
+      53.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "食たべる",
+    "rect": {
+      "x": 96,
+      "y": 84,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "hikouki": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 67.6,
+      "height": 66.6,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 66.6,
+      "height": 65.6,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 67.6,
+      "bottom": 419,
+      "height": 351.4,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 370,
+      "left": 103
+    },
+    "summaryBeside": true,
+    "firstDefinition": 154.4,
+    "visibleLines": 8,
+    "visibleBaseLines": 8,
+    "naturalContentHeight": 2409,
+    "entries": [
+      65.6,
+      53.6,
+      34.6,
+      53.6,
+      53.6,
+      34.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "飛行機ひこうき",
+    "rect": {
+      "x": 124,
+      "y": 142,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "kaku": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 67.6,
+      "height": 66.6,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 66.6,
+      "height": 65.6,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 67.6,
+      "bottom": 419,
+      "height": 351.4,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 28,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 426,
+      "left": 47
+    },
+    "summaryBeside": true,
+    "firstDefinition": 154.4,
+    "visibleLines": 10,
+    "visibleBaseLines": 10,
+    "naturalContentHeight": 1911,
+    "entries": [
+      65.6,
+      34.6,
+      53.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "格かく",
+    "rect": {
+      "x": 96,
+      "y": 200,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "kakeru": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 67.6,
+      "height": 66.6,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 66.6,
+      "height": 65.6,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 67.6,
+      "bottom": 419,
+      "height": 351.4,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 370,
+      "left": 103
+    },
+    "summaryBeside": true,
+    "firstDefinition": 154.4,
+    "visibleLines": 8,
+    "visibleBaseLines": 8,
+    "naturalContentHeight": 11149,
+    "entries": [
+      65.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      34.6,
+      53.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "掛かける",
+    "rect": {
+      "x": 152,
+      "y": 258,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "tabetakatta": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 90.4,
+      "height": 89.4,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 88,
+      "clientHeight": 88,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 89.4,
+      "height": 88.4,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 90.4,
+      "bottom": 419,
+      "height": 328.6,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 370,
+      "left": 103
+    },
+    "summaryBeside": true,
+    "firstDefinition": 177.2,
+    "visibleLines": 7,
+    "visibleBaseLines": 7,
+    "naturalContentHeight": 3177,
+    "entries": [
+      88.4,
+      53.6,
+      34.6,
+      53.6,
+      53.6
+    ],
+    "minTarget": 18.8,
+    "smallTargets": [
+      {
+        "cls": "summary",
+        "w": 464,
+        "h": 18.8
+      }
+    ],
+    "headword": "食たべる",
+    "rect": {
+      "x": 124,
+      "y": 316,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "youni": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 48,
+      "height": 47,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 46,
+      "clientHeight": 46,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 1,
+      "bottom": 47,
+      "height": 46,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 48,
+      "bottom": 419,
+      "height": 371,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 7.1,
+      "bottom": 40.7,
+      "height": 33.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 7.1,
+      "bottom": 40.9,
+      "height": 33.8,
+      "width": 370,
+      "left": 103
+    },
+    "summaryBeside": true,
+    "firstDefinition": 111.2,
+    "visibleLines": 7,
+    "visibleBaseLines": 10,
+    "naturalContentHeight": 25637,
+    "entries": [
+      46,
+      53.6,
+      53.6,
+      53.6,
+      34,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      53.6,
+      76.4,
+      76.4,
+      76.4,
+      76.4,
+      76.4,
+      76.4,
+      34,
+      34,
+      53.6,
+      53.6
+    ],
+    "minTarget": 18.8,
+    "smallTargets": [
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      },
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      },
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      },
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      },
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      },
+      {
+        "cls": "summary",
+        "w": 490,
+        "h": 18.8
+      }
+    ],
+    "headword": "ように",
+    "rect": {
+      "x": 124,
+      "y": 374,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "taberu-bottom": {
+    "popup": {
+      "width": 560,
+      "height": 420
+    },
+    "toolbar": "bottom",
+    "chrome": {
+      "top": 352.4,
+      "bottom": 419,
+      "height": 66.6,
+      "width": 558,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 558
+    },
+    "header": {
+      "top": 353.4,
+      "bottom": 419,
+      "height": 65.6,
+      "width": 558,
+      "left": 1
+    },
+    "content": {
+      "top": 1,
+      "bottom": 352.4,
+      "height": 351.4,
+      "width": 558,
+      "left": 1
+    },
+    "expression": {
+      "top": 420.5,
+      "bottom": 474.1,
+      "height": 53.6,
+      "width": 42,
+      "left": 9
+    },
+    "summary": {
+      "top": 438.9,
+      "bottom": 455.8,
+      "height": 16.9,
+      "width": 438,
+      "left": 61
+    },
+    "summaryBeside": true,
+    "firstDefinition": 87.8,
+    "visibleLines": 8,
+    "visibleBaseLines": 8,
+    "naturalContentHeight": 3177,
+    "entries": [
+      53.6,
+      34.6,
+      53.6,
+      53.6,
+      65.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "食しょく",
+    "rect": {
+      "x": 96,
+      "y": 416,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "kanji": {
+    "chrome": {
+      "height": 70.59375,
+      "scrollHeight": 70,
+      "clientHeight": 70,
+      "clientWidth": 558
+    },
+    "header": {
+      "width": 558,
+      "height": 69.59375
+    },
+    "glyph": "48px",
+    "rect": {
+      "x": 96,
+      "y": 84,
+      "width": 560,
+      "height": 420
+    }
+  },
+  "narrow-taberu": {
+    "popup": {
+      "width": 320,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 86.5,
+      "height": 85.5,
+      "width": 318,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 84,
+      "clientHeight": 84,
+      "clientWidth": 318
+    },
+    "header": {
+      "top": 1,
+      "bottom": 85.5,
+      "height": 84.5,
+      "width": 318,
+      "left": 1
+    },
+    "content": {
+      "top": 86.5,
+      "bottom": 419,
+      "height": 332.5,
+      "width": 318,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 62.6,
+      "bottom": 79.5,
+      "height": 16.9,
+      "width": 224,
+      "left": 9
+    },
+    "summaryBeside": false,
+    "firstDefinition": 173.3,
+    "visibleLines": 8,
+    "visibleBaseLines": 8,
+    "naturalContentHeight": 3583,
+    "entries": [
+      84.5,
+      53.6,
+      34.6,
+      53.6,
+      53.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "食たべる",
+    "rect": {
+      "x": 96,
+      "y": 84,
+      "width": 320,
+      "height": 420
+    }
+  },
+  "narrow-kaku": {
+    "popup": {
+      "width": 320,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 67.6,
+      "height": 66.6,
+      "width": 318,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 66,
+      "clientHeight": 66,
+      "clientWidth": 318
+    },
+    "header": {
+      "top": 1,
+      "bottom": 66.6,
+      "height": 65.6,
+      "width": 318,
+      "left": 1
+    },
+    "content": {
+      "top": 67.6,
+      "bottom": 419,
+      "height": 351.4,
+      "width": 318,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 28,
+      "left": 9
+    },
+    "summary": {
+      "top": 25.3,
+      "bottom": 42.2,
+      "height": 16.9,
+      "width": 186,
+      "left": 47
+    },
+    "summaryBeside": true,
+    "firstDefinition": 154.4,
+    "visibleLines": 10,
+    "visibleBaseLines": 10,
+    "naturalContentHeight": 2125,
+    "entries": [
+      65.6,
+      34.6,
+      53.6
+    ],
+    "minTarget": 28,
+    "smallTargets": [],
+    "headword": "格かく",
+    "rect": {
+      "x": 96,
+      "y": 200,
+      "width": 320,
+      "height": 420
+    }
+  },
+  "narrow-tabetakatta": {
+    "popup": {
+      "width": 320,
+      "height": 420
+    },
+    "toolbar": "top",
+    "chrome": {
+      "top": 1,
+      "bottom": 109.3,
+      "height": 108.3,
+      "width": 318,
+      "left": 1
+    },
+    "chromeScroll": {
+      "scrollHeight": 107,
+      "clientHeight": 107,
+      "clientWidth": 318
+    },
+    "header": {
+      "top": 1,
+      "bottom": 108.3,
+      "height": 107.3,
+      "width": 318,
+      "left": 1
+    },
+    "content": {
+      "top": 109.3,
+      "bottom": 419,
+      "height": 309.7,
+      "width": 318,
+      "left": 1
+    },
+    "expression": {
+      "top": 7,
+      "bottom": 60.6,
+      "height": 53.6,
+      "width": 84,
+      "left": 9
+    },
+    "summary": {
+      "top": 62.6,
+      "bottom": 79.5,
+      "height": 16.9,
+      "width": 224,
+      "left": 9
+    },
+    "summaryBeside": false,
+    "firstDefinition": 196.1,
+    "visibleLines": 7,
+    "visibleBaseLines": 7,
+    "naturalContentHeight": 3583,
+    "entries": [
+      107.3,
+      53.6,
+      34.6,
+      53.6,
+      53.6
+    ],
+    "minTarget": 18.8,
+    "smallTargets": [
+      {
+        "cls": "summary",
+        "w": 224,
+        "h": 18.8
+      }
+    ],
+    "headword": "食たべる",
+    "rect": {
+      "x": 124,
+      "y": 316,
+      "width": 320,
+      "height": 420
+    }
+  }
+}
