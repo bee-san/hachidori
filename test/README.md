@@ -1497,13 +1497,22 @@ select that group as the clicked-kanji dictionary through the real Design
 chooser, click 食 in the verb popup and require All plus one tab per member in
 group order, the two native entries merged into one entry and the term member's
 own entry with its glossary, then remove the group and require the option to
-reset to Automatic in storage and in the open chooser.
+reset to Automatic in storage and in the open chooser. A third configures a
+Kiku note type behind a mocked AnkiConnect, clicks 食 again and requires every
+mining control to settle to ready with no feedback banner or offscreen
+exception, and Add to write `Expression` 食 with an empty reading and pitch
+fields and the native card as `Glossary` and `MainDefinition`.
 `HACHIDORI_KANJI_GROUP_SCREENSHOT` and `HACHIDORI_KANJI_GROUP_SETTINGS_SCREENSHOT`
 capture the group popup and the chooser. The extension smoke suite pins strict
 group-reference CAS and its reset, the parallel fan-out with out-of-order
-replies, the scoped tabs and structured native cards in the real renderer, the
+replies, the scoped tabs and structured native cards in the real renderer, the complete
+term-result shape of a merged native card and the Anki fields it builds, the
 Design preview's group sample, and `node --test test/reader-options.test.mjs
 test/kanji-click-settings.test.mjs` covers the resolver and the chooser.
+`node --test test/kanji-group-mining.test.mjs` pins the renderer's
+`kanjiEntryResult` to the engine's `LookupResult` keys and builds the Kiku,
+Lapis and Senren presets, `{tags}`, `{part-of-speech}`, `{conjugation}` and the
+rendered `{glossary}` from it.
 
 `compactSummaryFixture()` adds two temporary suppliers through the real WASM
 importer without changing generated fixture counts. Its single predeclared
