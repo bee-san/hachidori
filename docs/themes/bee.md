@@ -66,9 +66,13 @@ from initial popup latency.
 Each row uses three fresh Chrome profiles and 72 measured warm lookups. The
 harness excludes an alternating warmup pair per profile and retains cold,
 nested, rapid-replacement and correctness samples in the raw evidence.
-Baseline revision is `ed2f340`; unchanged JL/Default comparisons use `d5047b2`
-and the final Girlypop Bee run uses `4f3c59a`. Later edits update evidence,
-documentation and the vendored source pin. Manifests retain full SHAs and hashes.
+Baseline revision is `ed2f340`; the local JL/Default comparison checkout was
+`d5047b2` and the final Girlypop Bee checkout was `4f3c59a`. Manifests retain
+these measurement SHAs and hashes. The published integration snapshot is
+[`96da264`](https://github.com/bee-san/hachidori/commit/96da264f2c73d028b60cb5720edeaedf40678a33):
+JL/Default runtime code is unchanged from their measured checkout, and Bee
+runtime code matches its final measured checkout. Later edits add evidence,
+documentation and the vendored source pin; they do not change the measured paths.
 
 Environment: Linux, AMD EPYC 9V74 (9 logical CPUs exposed), Node 22.23.1,
 Chrome 152.0.7977.75 and the pinned test tooling. Profiles run sequentially.
@@ -79,7 +83,9 @@ Formatted glossary construction and media decoding are deferred until expansion
 and are excluded from these initial-display timings. Custom actions and group
 switching are covered by the focused browser suite rather than this microbenchmark.
 
-Reproduce each row using its revision and `popupTheme` value from the manifest:
+To reproduce, check out `ed2f340` for the baseline rows or the published
+integration snapshot for the after/Bee rows. Use the `popupTheme` value from
+the corresponding manifest (`jl`, `default` or `bee`):
 
 ```sh
 HACHIDORI_BENCH_REPO=/path/to/checkout \
