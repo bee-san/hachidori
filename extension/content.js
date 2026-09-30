@@ -4096,14 +4096,29 @@
     // bubble, and a capture listener would fire for every element left.
     if (!disposed && event.relatedTarget === null) {
       lastPointer = null;
-      pointerInPopup = false;
       cancelCandidateScan();
+      // An overlay host reports the pointer leaving the window whenever it turns
+      // click-through on as the pointer leaves OCR text (#403). As in Yomitan's
+      // TextScanner, that only forgets the pointer; the popup follows the
+      // ordinary hover and cursor-exit rules at the next forwarded move.
+      if (overlayMode) return;
+      pointerInPopup = false;
       schedulePointerHide();
     }
   }
 
   function onWindowBlur() {
     stopPopupResize();
+    if (!disposed && overlayMode) {
+      // An overlay host moves focus between itself and the game while the
+      // reader stays in the page (#403), so blur dismisses nothing and keeps a
+      // drag or a held scan button. Only a key's release can go missing.
+      if (!ACTIVATION_BUTTONS.has(options.activationKey)) {
+        activationPressed = false;
+        activationCode = null;
+      }
+      return;
+    }
     if (!disposed) {
       // Cleared first, so the drag's sync also releases a held scan button's claim.
       activationPressed = false;
