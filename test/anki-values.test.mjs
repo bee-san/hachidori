@@ -89,7 +89,8 @@ test("stable single-glossary markers survive dated title updates without changin
   const template = "{single-glossary-jitendex-plain-no-dictionary}|"
     + `{single-glossary-id--${id}-brief}`;
   const templatesBefore = templates(template);
-  const definition = options => JSON.stringify(options);
+  // Braces a value carries reach Anki encoded; this stub's output has none.
+  const definition = options => JSON.stringify(options).slice(1, -1);
   const dated = title => request({
     term: { ...request().term, glossaries: [
       { dictionary: title, glossary: '["to eat"]', definitionTags: "", termTags: "" },
@@ -101,11 +102,11 @@ test("stable single-glossary markers survive dated title updates without changin
   const newTitle = "Jitendex.org [2026-09-16]";
   const oldValue = (await buildAnkiFields(dated(oldTitle), templatesBefore, { definition })).Front;
   const newValue = (await buildAnkiFields(dated(newTitle), templatesBefore, { definition })).Front;
-  assert.equal(oldValue, `{"dictionary":"${oldTitle}","plain":true,"noDictionary":true}|{"dictionary":"${oldTitle}","brief":true}`);
-  assert.equal(newValue, `{"dictionary":"${newTitle}","plain":true,"noDictionary":true}|{"dictionary":"${newTitle}","brief":true}`);
+  assert.equal(oldValue, `"dictionary":"${oldTitle}","plain":true,"noDictionary":true|"dictionary":"${oldTitle}","brief":true`);
+  assert.equal(newValue, `"dictionary":"${newTitle}","plain":true,"noDictionary":true|"dictionary":"${newTitle}","brief":true`);
   assert.equal(templatesBefore.Front.value, template, "rendering never rewrites a saved field template");
   assert.equal(await render(dated(newTitle), "{single-glossary-jitendexorg-2026-09-16}", { definition }),
-    `{"dictionary":"${newTitle}"}`, "the current title marker remains compatible");
+    `"dictionary":"${newTitle}"`, "the current title marker remains compatible");
   assert.equal(await render(dated(newTitle), "{single-glossary-jitendexorg-2026-08-11}", { definition }), "",
     "Hachidori does not guess historical titles or silently migrate their templates");
 });
@@ -216,4 +217,22 @@ test("the screenshot marker references only a stored picture and escapes its fil
     captureUnavailable: ["screenshot"] }), "{screenshot}"), "");
   assert.equal(await render(request({ screenshot: { filename: '"><script>' } }), "{screenshot}"),
     '<img src="&quot;&gt;&lt;script&gt;">');
+});
+
+test("cloze syntax inside marker values cannot become an Anki deletion, while template deletions and CSS stay literal", async () => {
+  const deletion = /\{\{c\d+::|\}\}/u;
+  const css = "<style>.x { color: red; } .x > .y { margin: 0 }</style>";
+  const definition = options => `${options.plain ? "" : css}<li>例: {{c1::猫}}がいる</li>`;
+  const source = request({ sentence: "{{c1::より}}食べます。", matchOffset: 10 });
+  for (const marker of ["{glossary}", "{glossary-plain}", "{single-glossary-a}", "{sentence}"]) {
+    const value = await render(source, marker, { definition });
+    assert.doesNotMatch(value, deletion, marker);
+  }
+  const glossary = await render(source, "{glossary}", { definition });
+  assert.equal(glossary, `${css}<li>例: &#123;&#123;c1::猫&#125;&#125;がいる</li>`, "dictionary CSS is emitted unchanged");
+  assert.equal(await render(source, "{sentence}"), "&#123;&#123;c1::より&#125;&#125;<b>食べます</b>。");
+  const cloze = await render(request({ matched: "食べ}}ます", sentence: "🍵 食べ}}ます。" }),
+    "{cloze-prefix}{{c1::{cloze-body}}}{cloze-suffix}");
+  assert.equal(cloze, "🍵 {{c1::食べ&#125;&#125;ます}}。", "the template's own deletion survives; the body's braces cannot close it");
+  assert.equal([...cloze.matchAll(/\{\{c1::/gu)].length, 1);
 });

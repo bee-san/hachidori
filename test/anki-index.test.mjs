@@ -45,6 +45,8 @@ test("index identity keeps the direct expression mapping and exact Hachidori wor
   assert.equal(ankiWordKey(`re:猫<&>"'*_:\\ (or)`),
     "re:猫&lt;&amp;&gt;&quot;&#x27;*_:\\ (or)");
   assert.equal(ankiWordKey("HELLO"), "hello");
+  // The rendered {expression} field encodes braces so they cannot form a cloze deletion.
+  assert.equal(ankiWordKey("{{c1::猫}}"), "&#123;&#123;c1::猫&#125;&#125;");
   assert.equal(ankiWordKey("か\u3099"), "が");
   assert.equal(ankiWordKey(""), null);
 
