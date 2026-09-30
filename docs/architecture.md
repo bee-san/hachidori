@@ -2602,6 +2602,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) that reads every package's entries from disk (`pagedDictionaries`); while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report the engine heap size, the paged entries' cache (`pageCacheBytes`), and each loaded package's resident bytes (its index files and, unless it is `paged`, its entries, once however many native kinds it loads as); see [memory.md](memory.md) |
+| `hd_memory_total` | Answered by the offscreen document itself, outside the engine queue: `performance.measureUserAgentSpecificMemory()` over the document and its workers, with the engine heap (`heapBytes`, from `hd_memory`) counted once rather than once per engine thread; `bytes` is `null` where the API is unavailable; see [memory.md](memory.md) |
 | `hd_engine_config` | Read `options.lowMemoryMode` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when the stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
