@@ -285,7 +285,13 @@ try {
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
       buttons: buttons.map(box), grouped: buttons.every(button => group.contains(button)),
       order: [...group.querySelectorAll("button")].slice(0, 3).map(button => button.className.split(" ")[0]),
-      cursors: [...popup.querySelectorAll("button:not(:disabled), summary")].map(node => getComputedStyle(node).cursor) };
+      cursors: [...popup.querySelectorAll("button:not(:disabled), summary")]
+      .filter(node => node.matches("summary") || !node.closest("details:not([open])")).map(node => {
+        // The cursor the user sees comes from the topmost element under the mouse.
+        const rect = node.getBoundingClientRect();
+        const hit = popup.getRootNode().elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return node.contains(hit) ? getComputedStyle(hit).cursor : `${node.className} covered by ${hit?.className}`;
+      }) };
   });
   for (const icon of [icons.mine, icons.note]) {
     assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
