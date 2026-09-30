@@ -4,11 +4,12 @@
 Enable **Advanced → Experimental features → Theme Store**, then open **Design**
 and select **Bee's Theme**.
 
-The theme puts a girlypop pink and lilac palette on JL's compact layout,
-typography and repeated header for each dictionary. Existing frequency text and
-pitch markings follow JL. Light rose surfaces use darker pink and lilac text
-accents for contrast at the default opacity. Selected groups have an underline
-and keyboard focus has a lilac outline.
+The theme puts Miku's charcoal, turquoise and pink palette on JL's compact
+layout, typography and repeated header for each dictionary. Existing frequency
+text and pitch markings follow JL. Brighter text accents keep the translucent
+surface readable at the default opacity. Group tabs have equal widths and share
+one frame without gaps. Selected groups have an underline and keyboard focus
+has a visible turquoise outline.
 
 - **Group tabs:** only configured groups with results appear, in their saved
   order. A group filters existing blocks in place and audio, mining and keyboard
@@ -61,18 +62,16 @@ from initial popup latency.
 | JL after | 16.80 / 17.10 ms | 33.20 / 33.90 ms | 1.00 / 2.00 ms |
 | Default before | 17.00 / 18.20 ms | 33.30 / 35.40 ms | 2.50 / 5.50 ms |
 | Default after | 16.90 / 18.10 ms | 33.30 / 33.40 ms | 3.00 / 5.80 ms |
-| Bee's Theme | 16.80 / 17.20 ms | 33.20 / 33.60 ms | 1.20 / 2.00 ms |
+| Bee's Theme (Miku) | 16.80 / 17.60 ms | 33.20 / 33.50 ms | 1.20 / 1.80 ms |
 
 Each row uses three fresh Chrome profiles and 72 measured warm lookups. The
 harness excludes an alternating warmup pair per profile and retains cold,
 nested, rapid-replacement and correctness samples in the raw evidence.
 Baseline revision is `ed2f340`; the local JL/Default comparison checkout was
-`d5047b2` and the final Girlypop Bee checkout was `4f3c59a`. Manifests retain
-these measurement SHAs and hashes. The published integration snapshot is
-[`96da264`](https://github.com/bee-san/hachidori/commit/96da264f2c73d028b60cb5720edeaedf40678a33):
-JL/Default runtime code is unchanged from their measured checkout, and Bee
-runtime code matches its final measured checkout. Later edits add evidence,
-documentation and the vendored source pin; they do not change the measured paths.
+`d5047b2`. The current Miku Bee run uses local snapshot `6c7f7cc`; manifests
+retain full measurement SHAs and hashes. Earlier Girlypop measurements are
+also retained in the evidence. The published PR branch contains the same
+measured runtime code, with later evidence and vendored source-pin updates.
 
 Environment: Linux, AMD EPYC 9V74 (9 logical CPUs exposed), Node 22.23.1,
 Chrome 152.0.7977.75 and the pinned test tooling. Profiles run sequentially.
@@ -83,8 +82,8 @@ Formatted glossary construction and media decoding are deferred until expansion
 and are excluded from these initial-display timings. Custom actions and group
 switching are covered by the focused browser suite rather than this microbenchmark.
 
-To reproduce, check out `ed2f340` for the baseline rows or the published
-integration snapshot for the after/Bee rows. Use the `popupTheme` value from
+To reproduce, check out `ed2f340` for the baseline rows or `feat/bees-theme`
+for the after/Bee rows. Use the `popupTheme` value from
 the corresponding manifest (`jl`, `default` or `bee`):
 
 ```sh

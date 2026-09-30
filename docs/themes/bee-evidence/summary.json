@@ -248,5 +248,55 @@
         "dictionaryStyles": 1
       }
     ]
+  },
+  "miku-bee": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.800000000745058,
+      "p95": 17.59999999962747
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.200000000186265,
+      "p95": 33.5
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 1.2000000001862645,
+      "p95": 1.7999999998137355
+    },
+    "nodes": {
+      "n": 72,
+      "median": 24.0,
+      "p95": 43
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 30.5,
+      "p95": 31.299999999813735
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33.19999999925494,
+      "p95": 35.09999999962747
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      }
+    ]
   }
 }

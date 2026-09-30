@@ -62,7 +62,7 @@ JL's `On:`, `Kun:` and `Statistics:` lines.
 
 ## Bee's Theme
 
-Bee's Theme puts girlypop pink and lilac colours on JL's typography, per-dictionary headers, inline
+Bee's Theme puts Miku turquoise and pink colours on JL's typography, per-dictionary headers, inline
 audio/Anki controls and pitch marker. It adds tabs for configured dictionary
 groups with matching results, a pencil editor and custom actions beside each
 block, and a Formatted definition disclosure for dictionary markup and media.

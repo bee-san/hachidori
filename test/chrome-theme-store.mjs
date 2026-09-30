@@ -264,6 +264,12 @@ try {
   assert.equal(bee.rich, 0);
   assert.ok(bee.notes > 0 && bee.custom > 0 && bee.menus > 0, JSON.stringify(bee));
   assert.equal(bee.defaultStyles, false);
+  const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
+    .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
+  assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
+  assert.equal(tabGeometry[0].height, tabGeometry[1].height);
+  assert.equal(tabGeometry[0].top, tabGeometry[1].top);
+  assert.ok(Math.abs(tabGeometry[0].right - tabGeometry[1].left) < 1, "group tabs share an edge without gaps");
   const contrast = [];
   const checkBeeContrast = async () => {
     const checks = await tab.evaluate(() => {
@@ -301,7 +307,7 @@ try {
         ".gsm-hoshidicts-text-action-button", ".gsm-hoshidicts-note-field", "input", "textarea", ".gsm-hoshidicts-note-actions button"]) {
         for (const node of popup.querySelectorAll(selector)) if (node.getClientRects().length) check(node, "color", 4.5);
       }
-      for (const node of popup.querySelectorAll(".jl-tab, .gsm-hoshidicts-text-action-button, input, textarea")) {
+      for (const node of popup.querySelectorAll(".jl-tabs, .gsm-hoshidicts-text-action-button, input, textarea")) {
         if (node.getClientRects().length) check(node, "borderTopColor", 3, node.parentElement);
       }
       const mine = popup.querySelector(".gsm-hoshidicts-mine-button");
@@ -322,6 +328,7 @@ try {
   await tab.keyboard.press("Tab");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
   await checkBeeContrast();
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
   await screenshot("bee");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));

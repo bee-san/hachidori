@@ -2,8 +2,9 @@
 
 Bee's Theme shares the direct JL renderer in `../jl/theme.js` and keeps JL's
 typography, repeated dictionary headers, frequencies and pitch marker. Its
-light rose and lilac palette adapts Hachidori's Girlypop colours, with darker
-text accents and focus colours for contrast.
+charcoal, turquoise and pink palette adapts Hachidori's Miku colours, with
+brighter text accents and focus colours for contrast. Group tabs share one
+frame and equal widths.
 See [JL's attribution](../jl/ATTRIBUTION.md) and [Apache-2.0 licence](../jl/LICENSE.Apache-2.0).
 
 The additions are group-only tabs, expandable rich dictionary content, the shared
