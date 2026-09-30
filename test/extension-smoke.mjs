@@ -12342,7 +12342,9 @@ async function settingsFrequencyStage() {
       await editControl(frequencyBlur, true);
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyEnabled: true })
         && !blurControl("definition-blur-frequency-controls").hidden && !frequencyDictionary.disabled
-        && frequencyDictionary.value === "" && blurControl("definition-blur-frequency-help").textContent.includes("Choose one")
+        // Same as sorting follows this page's sort dictionary, which declares no mode.
+        && frequencyDictionary.value === "" && frequencyDictionary.options[0].textContent === "Same as sorting (Unknown mode)"
+        && blurControl("definition-blur-frequency-help").textContent.includes("Using undeclared metadata")
         && !blurControl("definition-blur-any-help").hidden);
       await editControl(frequencyDictionary, "Occurrence");
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
