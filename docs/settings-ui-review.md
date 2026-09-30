@@ -89,6 +89,7 @@ changed; "—" means the key was already unambiguous.
 | `compactDefinitionSummaryCount` | Design › Compact summary | `#opt-summary-count` | Snippets | — | — |
 | `compactDefinitionSummaryDictionary` | Design › Compact summary | `#opt-summary-dictionary` | Summary dictionary | — | Was "Preferred dictionary", the same label as the pitch picker |
 | `popupImageSource` | Design › Definitions | `#opt-image-source` | Image source | — | — |
+| `imageHoverPreview` | Design › Definitions | `#opt-image-hover-preview` | Image hover preview | — | — |
 | `averageFrequency` | Design › Frequency labels | `#opt-average-frequency` | Show frequency averages | same | — |
 | `showFrequencyDictionaryNames` | Design › Frequency labels | `#opt-frequency-names` | Show frequency dictionary names | same | Was "Show dictionary names", the same label as the pitch switch |
 | `compactFrequencyNumbers` | Design › Frequency labels | `#opt-frequency-compact` | Abbreviate large numbers (51.5k) | Abbreviate large frequency numbers | — |
