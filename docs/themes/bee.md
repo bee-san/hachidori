@@ -15,12 +15,14 @@ has a visible turquoise outline.
   order. A group filters existing blocks in place and audio, mining and keyboard
   actions follow its visible dictionaries. Without matching groups, all results
   appear without a tab row. Back restores the selected group.
-- **Formatted definitions:** each dictionary block starts as complete JL text.
-  Opening Formatted definition replaces that visible text with the existing
-  structured glossary renderer's lists, tables, furigana, links and images.
-  DOM and media requests start on expansion; reopening reuses the rendered
-  content. Back restores disclosures. Scoped dictionary CSS applies to the rich
-  content. The existing media service and link handlers retain request ownership.
+- **Formatted definitions:** each dictionary block shows only the existing
+  structured glossary renderer's lists, tables, furigana, links and images. JL's
+  plain text and JMdict tag brackets (`[★, priority form] [n, adv]`) do not
+  appear. Kanji blocks show formatted meanings, then JL's On/Kun/Statistics
+  lines. Scoped dictionary CSS applies to the content. The existing media
+  service and link handlers retain request ownership.
+- **Controls:** audio, Anki and the pencil use Hachidori's outline icon set at
+  one size in the text colour.
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
@@ -34,14 +36,14 @@ It builds its own popup and stylesheet. Sources and attribution are in
 
 ![Compact popup](../assets/bee/bee.png)
 ![Personal dictionary editor](../assets/bee/bee-note.png)
-![Expanded structured dictionary](../assets/bee/bee-structured-rich.png)
+![Structured dictionary](../assets/bee/bee-structured-rich.png)
 
 ## Validation
 
 The focused theme test uses the real extension, WASM importer and a local fake
 AnkiConnect. It checks the Store selection, group-only tabs, inline custom
-actions, lazy rich content, Note/Escape, kanji, structured tables and loaded
-dictionary images, plus switching back to Default. Forced-colour screenshots
+actions, formatted-only content, uniform action icons, Note/Escape, kanji,
+structured tables and loaded dictionary images, plus switching back to Default. Forced-colour screenshots
 cover the new layout in both light and dark system palettes. Browser assertions
 check WCAG AA text contrast (4.5:1) and control/focus contrast (3:1) with the
 default popup opacity composited over both white and black pages.
@@ -52,9 +54,9 @@ default popup opacity composited over both white and black pages.
 ## Performance
 
 Measurements use the existing production hover harness with the same synthetic
-flat, 40-level structured and 24-sense entries. Initial lookup measurements keep
-formatted definitions closed; expansion costs and media loading are separate
-from initial popup latency.
+flat, 40-level structured and 24-sense entries. Bee's Theme now builds each
+block's formatted glossary during the initial render, so its row includes that
+construction; media decoding remains asynchronous.
 
 | Renderer / revision | First display, median / p95 | Complete display, median / p95 | Synchronous render, median / p95 |
 | --- | ---: | ---: | ---: |
@@ -62,28 +64,33 @@ from initial popup latency.
 | JL after | 16.80 / 17.10 ms | 33.20 / 33.90 ms | 1.00 / 2.00 ms |
 | Default before | 17.00 / 18.20 ms | 33.30 / 35.40 ms | 2.50 / 5.50 ms |
 | Default after | 16.90 / 18.10 ms | 33.30 / 33.40 ms | 3.00 / 5.80 ms |
-| Bee's Theme (Miku) | 16.80 / 17.60 ms | 33.20 / 33.50 ms | 1.20 / 1.80 ms |
+| Bee's Theme (Miku, deferred formatting) | 16.80 / 17.60 ms | 33.20 / 33.50 ms | 1.20 / 1.80 ms |
+| Bee's Theme (formatted only, `f62a0d4`) | 16.80 / 17.10 ms | 33.30 / 33.50 ms | 1.30 / 2.70 ms |
 
 Each row uses three fresh Chrome profiles and 72 measured warm lookups. The
 harness excludes an alternating warmup pair per profile and retains cold,
 nested, rapid-replacement and correctness samples in the raw evidence.
 Baseline revision is `ed2f340`; the local JL/Default comparison checkout was
-`d5047b2`. The current Miku Bee run uses local snapshot `6c7f7cc`; manifests
-retain full measurement SHAs and hashes. Earlier Girlypop measurements are
-also retained in the evidence. The published PR branch contains the same
-measured runtime code, with later evidence and vendored source-pin updates.
+`d5047b2`. The deferred-formatting Miku Bee run uses local snapshot `6c7f7cc`;
+manifests retain full measurement SHAs and hashes. Earlier Girlypop
+measurements are also retained in the evidence.
 
-Environment: Linux, AMD EPYC 9V74 (9 logical CPUs exposed), Node 22.23.1,
-Chrome 152.0.7977.75 and the pinned test tooling. Profiles run sequentially.
-These synthetic dictionaries isolate popup work; they do not represent a large
-dictionary library. First/complete timings are frame-quantised. The results
-show no material initial-display regression; they do not establish a speedup.
-Formatted glossary construction and media decoding are deferred until expansion
-and are excluded from these initial-display timings. Custom actions and group
-switching are covered by the focused browser suite rather than this microbenchmark.
+The formatted-only row (`formatted-bee-*` in the evidence) was measured on
+Linux, Intel Xeon Platinum 8488C (16 logical CPUs), Node 22.23.1, Chrome
+152.0.7977.75 and the pinned test tooling; the earlier rows used an AMD EPYC
+9V74 (9 logical CPUs exposed). Compare rows within one machine, not across.
+The Theme Store's `Render 1.30 ms` label is this row's synchronous render
+median; the other themes' labels come from the [four-theme benchmark](benchmark.md)
+on the same Xeon model. Profiles run sequentially. These synthetic dictionaries
+isolate popup work; they do not represent a large dictionary library.
+First/complete timings are frame-quantised. Formatted-only Bee's median element
+count rises from 24 to 66 (p95 43 to 270) and every block now calls the shared
+glossary renderer, yet warm first and complete display stay in the same frames.
+Custom actions and group switching are covered by the focused browser suite
+rather than this microbenchmark.
 
-To reproduce, check out `ed2f340` for the baseline rows or `feat/bees-theme`
-for the after/Bee rows. Use the `popupTheme` value from
+To reproduce, check out `ed2f340` for the baseline rows, `feat/bees-theme`
+for the after/deferred Bee rows, or `f62a0d4` for the formatted-only row. Use the `popupTheme` value from
 the corresponding manifest (`jl`, `default` or `bee`):
 
 ```sh

@@ -255,15 +255,35 @@ try {
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     return { tabs: [...popup.querySelectorAll(".jl-tab")].map(node => node.textContent),
       rich: popup.querySelectorAll(".bee-rich-content > *").length,
+      plain: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-content")].filter(node => !node.classList.contains("bee-rich-content")).length,
+      disclosures: popup.querySelectorAll(".bee-rich-definition, .bee-rich-tags").length,
+      brackets: /\[/.test(popup.querySelector(".gsm-hoshidicts-definitions").textContent),
       notes: popup.querySelectorAll(".gsm-hoshidicts-note-button").length,
       custom: popup.querySelectorAll(".gsm-hoshidicts-custom-anki-button").length,
       menus: popup.querySelectorAll(".bee-more-actions").length,
       defaultStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))) };
   });
   assert.deepEqual(bee.tabs, ["English", "Study"]);
-  assert.equal(bee.rich, 0);
+  assert.ok(bee.rich > 0, "Bee shows formatted definitions immediately");
+  assert.equal(bee.plain, 0, "Bee has no plain-text glossary");
+  assert.equal(bee.disclosures, 0);
+  assert.equal(bee.brackets, false, "Bee shows no JMdict tag brackets");
   assert.ok(bee.notes > 0 && bee.custom > 0 && bee.menus > 0, JSON.stringify(bee));
   assert.equal(bee.defaultStyles, false);
+  const icons = await tab.evaluate(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    const audio = getComputedStyle(popup.querySelector(".gsm-hoshidicts-audio-button"), "::before");
+    const describe = style => ({ width: style.width, height: style.height, color: style.backgroundColor, mask: style.maskImage });
+    return { audio: describe(audio),
+      mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
+      note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
+      shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22") };
+  });
+  for (const icon of [icons.mine, icons.note]) {
+    assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
+  }
+  assert.equal(icons.audio.width, "16px");
+  assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
   const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
   assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
@@ -303,7 +323,7 @@ try {
         results.push({ selector: node.className || node.tagName, property, minimum, ratio: Math.min(...ratios) });
       };
       for (const selector of [".jl-spelling", ".jl-reading", ".jl-deconj", ".jl-frequency", ".jl-dictionary",
-        ".jl-tab", ".gsm-hoshidicts-glossary-content", ".bee-rich-definition > summary", ".bee-rich-tags",
+        ".jl-tab", ".gsm-hoshidicts-glossary-content",
         ".gsm-hoshidicts-text-action-button", ".gsm-hoshidicts-note-field", "input", "textarea", ".gsm-hoshidicts-note-actions button"]) {
         for (const node of popup.querySelectorAll(selector)) if (node.getClientRects().length) check(node, "color", 4.5);
       }
@@ -330,9 +350,7 @@ try {
   await checkBeeContrast();
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
   await screenshot("bee");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
-  await screenshot("bee-rich");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector("form:not([hidden])"));
   await checkBeeContrast();
@@ -341,15 +359,12 @@ try {
   assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), false,
     "Escape closes Bee's Note editor before closing its popup");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji"));
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
   await screenshot("bee-kanji-rich");
   await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
   await tab.keyboard.press("Escape");
   await hover();
   await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-spelling")?.textContent === "漢字");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
   await tab.waitForFunction(() => [...document.querySelector("hachidori-host")?.shadowRoot.querySelectorAll(".bee-rich-content img") ?? []]
     .some(image => image.complete && image.naturalWidth > 0));
   assert.ok(await tab.evaluate(() => !!document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content table")));
@@ -375,7 +390,7 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Bee group-only tabs, lazy rich content, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Bee group-only tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
   console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();

@@ -71,15 +71,10 @@
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button {
   display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; border: 0;
 }
-/* JL's flat 🔊 and ➕ glyphs, in place of the outline icons. */
-.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button::before {
-  width: 16px; height: 16px;
-  --hd-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M1 7h3.5L10 2.5v15L4.5 13H1z'/%3E%3Cpath d='M12.5 7.5a3.5 3.5 0 0 1 0 5M14.5 5a7 7 0 0 1 0 10M16.5 2.5a10.5 10.5 0 0 1 0 15' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
-}
-.gsm-hoshidicts-popup .gsm-hoshidicts-mine-icon { width: 12px; height: 12px; }
-.gsm-hoshidicts-popup .hd-icon[data-icon="add"] {
-  --hd-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M8 1h4v7h7v4h-7v7H8v-7H1V8h7z'/%3E%3C/svg%3E");
-}
+/* Audio, Anki and pencil share Hachidori's outline icon set at one size in the text colour. */
+.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button::before,
+.gsm-hoshidicts-popup .gsm-hoshidicts-mine-icon,
+.gsm-hoshidicts-popup .gsm-hoshidicts-note-icon { width: 16px; height: 16px; }
 /* Keep duplicate actions legible against the translucent charcoal surface. */
 .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button:is([data-state="duplicate"], [data-state="add-duplicate"],
   [data-state="view-existing"], [data-state="overwrite"]) { color: #ffb1aa; }
@@ -109,7 +104,6 @@
 .gsm-hoshidicts-popup .gsm-hoshidicts-note-button {
   padding: 0; background: none; border: 0; display: inline-flex; align-items: center;
 }
-.gsm-hoshidicts-note-icon { width: 16px; height: 16px; }
 .gsm-hoshidicts-popup .gsm-hoshidicts-text-action-button {
   padding: 1px 4px; background: #2e3d43; border: 1px solid #76acae;
   border-radius: 3px; font-size: 12px;
@@ -127,11 +121,7 @@
 .gsm-hoshidicts-note-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .gsm-hoshidicts-popup .gsm-hoshidicts-note-actions button { background: #2e3d43; border: 1px solid #76acae; padding: 3px 8px; }
 .gsm-hoshidicts-note-error { color: #ffb1aa; font-size: 12px; }
-.bee-rich-definition { margin-top: 4px; white-space: normal; }
-.bee-rich-definition > summary { color: #ff9fc8; font-size: 12px; cursor: pointer; }
-.gsm-hoshidicts-definitions:has(> .bee-rich-definition[open]) > .gsm-hoshidicts-glossary-content { display: none; }
-.bee-rich-content { margin-top: 6px; white-space: normal; }
-.bee-rich-tags { color: #b5cece; font-size: 14px; }
+.bee-rich-content { white-space: normal; }
 .bee-rich-row + .bee-rich-row { margin-top: 4px; }
 .bee-rich-content .gloss-list { margin: 0; padding-left: 1.2em; }
 .bee-rich-content .gloss-list[data-count="1"] { padding-left: 0; list-style: none; }
