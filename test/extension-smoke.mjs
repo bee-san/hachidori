@@ -19962,7 +19962,7 @@ async function contentNoteStage() {
       await harness.settle();
       return lookup;
     };
-    const base = { hoverDelayMs: 0, popupHideDelayMs: 250, hidePopupOnCursorExit: false };
+    const base = { popupHideDelayMs: 250, hidePopupOnCursorExit: false };
     const result = {};
     try {
       await harness.settle();
