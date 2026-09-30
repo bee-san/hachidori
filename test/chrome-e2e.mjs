@@ -420,6 +420,7 @@ const PLANNED = [
   "hovering an inflected verb shows a popup",
   "the reader opens a popup for Japanese text inside a same-origin iframe",
   "the popup paints above a fullscreen player and returns to body on exit",
+  "the popup stays in place while a chat feed or the page scrolls and after its source is removed",
   "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
@@ -1927,6 +1928,75 @@ async function checkFrameAndFullscreenPopups(tab, popup, pageUrl) {
     JSON.stringify({ opened: opened !== null, fullscreenResult, restored }));
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
+  await hoverForPopup(tab, popup, "#verb");
+}
+
+// Like Yomitan (#402): once shown, the popup keeps the viewport position it
+// opened at while a live chat scrolls its comment away, the page scrolls, and
+// the comment leaves the DOM. Only the usual paths, here Escape, close it.
+async function checkPopupStaysInPlace(tab, popup) {
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.evaluate(() => {
+    const feed = document.createElement("div");
+    feed.id = "chat-feed";
+    feed.style.cssText = "height: 160px; width: 480px; overflow: auto; font: 24px serif";
+    feed.innerHTML = '<p id="chat-comment"><span id="chat-verb">食べたかった</span></p>'
+      + "<p>コメント</p>".repeat(40);
+    document.body.firstElementChild.before(feed);
+    document.body.style.minHeight = "6000px";
+  });
+  const box = () => tab.evaluate(() => {
+    const panel = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+    const rect = panel?.getBoundingClientRect();
+    return rect && !panel.hidden ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  });
+  // Two frames let any scroll listener, observer or rAF placement run.
+  const settle = () => tab.evaluate(() => new Promise(done =>
+    requestAnimationFrame(() => requestAnimationFrame(done))));
+  const steps = {};
+  let closed = false;
+  try {
+    const opened = await hoverForPopup(tab, popup, "#chat-verb");
+    const start = opened && await box();
+    if (start) {
+      // Read the popup, as a user would, while the feed moves underneath.
+      await tab.mouse.move(start.left + start.width / 2, start.top + start.height / 2);
+      await settle();
+      steps.entered = await box();
+      await tab.evaluate(() => { document.getElementById("chat-feed").scrollTop += 30; });
+      await settle();
+      steps.feedNudged = await box();
+      await tab.evaluate(() => {
+        const feed = document.getElementById("chat-feed");
+        feed.scrollTop = feed.scrollHeight;
+      });
+      await settle();
+      steps.feedScrolledPast = await box();
+      await tab.evaluate(() => window.scrollBy(0, 2000));
+      await settle();
+      steps.pageScrolled = await box();
+      steps.sourceOffscreen = await tab.evaluate(() =>
+        document.getElementById("chat-verb").getBoundingClientRect().bottom < 0);
+      await tab.evaluate(() => document.getElementById("chat-comment").remove());
+      await settle();
+      steps.sourceRemoved = await box();
+    }
+    await tab.keyboard.press("Escape");
+    closed = await popup.waitForHidden();
+    const same = rect => rect !== null && rect !== undefined && start && ["left", "top", "width", "height"]
+      .every(key => rect[key] === start[key]);
+    check("the popup stays in place while a chat feed or the page scrolls and after its source is removed",
+      Boolean(start) && same(steps.entered) && same(steps.feedNudged) && same(steps.feedScrolledPast)
+        && same(steps.pageScrolled) && steps.sourceOffscreen === true && same(steps.sourceRemoved) && closed,
+      JSON.stringify({ start, ...steps, closed }));
+  } finally {
+    await tab.evaluate(() => {
+      document.getElementById("chat-feed")?.remove();
+      document.body.style.minHeight = "";
+      window.scrollTo(0, 0);
+    });
+  }
   await hoverForPopup(tab, popup, "#verb");
 }
 
@@ -12881,6 +12951,7 @@ async function main() {
   await checkDefinitionBlur({ settings: page, tab, popup });
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
   await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
+  await checkPopupStaysInPlace(tab, popup);
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
