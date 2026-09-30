@@ -9346,19 +9346,19 @@ async function main() {
     JSON.stringify(noteContent?.refreshFailure),
   );
   check(
-    "Note refresh skips a replaced view or an anchor detached before or during its response",
+    "Note refresh skips a replaced view but still refreshes a popup whose page source was removed (#402)",
     noteContent?.replaced?.refreshCount === 0
       && noteContent.replaced.backExpression === "\u98df\u3079\u305f"
       && noteContent.replaced.popupHidden === true
-      && noteContent.detached?.refreshCount === 0
+      && noteContent.detached?.refreshCount === 1
       && noteContent.detached.resolved === true
       && noteContent.detachedDuringRefresh?.term?.refreshCount === 1
-      && noteContent.detachedDuringRefresh.term.renderCount === 0
-      && noteContent.detachedDuringRefresh.term.popupHidden === true
+      && noteContent.detachedDuringRefresh.term.renderCount === 1
+      && noteContent.detachedDuringRefresh.term.popupHidden === false
       && noteContent.detachedDuringRefresh.term.resolved === true
       && noteContent.detachedDuringRefresh?.kanji?.refreshCount === 1
-      && noteContent.detachedDuringRefresh.kanji.renderCount === 0
-      && noteContent.detachedDuringRefresh.kanji.popupHidden === true
+      && noteContent.detachedDuringRefresh.kanji.renderCount === 1
+      && noteContent.detachedDuringRefresh.kanji.popupHidden === false
       && noteContent.detachedDuringRefresh.kanji.resolved === true,
     JSON.stringify({
       replaced: noteContent?.replaced,
@@ -16398,7 +16398,16 @@ async function contentNoteStage() {
           detached.emitState(state);
           await detached.initialLookup();
           detached.render().context.onDictionaryTabSelected({ groupId: "g" });
-          const operation = detached.internalLink({ query: "orphan child" });
+          // A placed root outlives its page source (#402), so the detached
+          // ancestor is a child pane whose link text leaves the root.
+          const parentOperation = detached.internalLink({ query: "orphan parent" });
+          const parentResult = detached.term("orphan parent");
+          Object.assign(parentResult.term, { frequencies: [], pitches: [] });
+          detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [parentResult] });
+          await parentOperation;
+          const parentPopup = detached.driver.popupAt(1);
+          const parentSource = detached.driver.viewRequest(1).candidate.anchor;
+          const operation = detached.internalLink({ query: "orphan child" }, 1);
           const result = detached.term("orphan child");
           Object.assign(result.term, { frequencies: [], pitches: [] });
           if (update === "summary") result.term.glossaries[0].glossary = JSON.stringify([
@@ -16407,9 +16416,9 @@ async function contentNoteStage() {
           result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
           detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
           await operation;
-          const childRender = detached.render(1);
-          const childPopup = detached.driver.popupAt(1);
-          const callbacks = detached.callbacks(1);
+          const childRender = detached.render(2);
+          const childPopup = detached.driver.popupAt(2);
+          const callbacks = detached.callbacks(2);
           const fills = [];
           let allowed = null;
           let permissionChecks = 0;
@@ -16431,6 +16440,7 @@ async function contentNoteStage() {
           view.renderResults(childRender.results, childRender.candidate, childRender.context);
           const beforeFills = fills.length;
           detached.anchor.remove();
+          parentSource.remove();
           const connectedChildSource = childRender.candidate.anchor.isConnected;
           if (update === "membership") {
             detached.emitState({ ...state, revision: 3,
@@ -16443,11 +16453,11 @@ async function contentNoteStage() {
           }
           // The content harness records this storage delivery; run it through
           // the attached real renderer and its actual content owner predicate.
-          const delivered = detached.presentations(1).at(-1);
+          const delivered = detached.presentations(2).at(-1);
           view.updateDictionaryPresentation(delivered);
           checks.push(beforeFills === 1 && connectedChildSource && allowed === false
-            && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
-            && childPopup.hidden && fills.length === beforeFills && summaryImages === 0);
+            && !detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
+            && parentPopup.hidden && childPopup.hidden && fills.length === beforeFills && summaryImages === 0);
           const checked = permissionChecks;
           view.flushDictionaryPresentation();
           view.updateDictionaryPresentation(delivered);
@@ -16459,8 +16469,8 @@ async function contentNoteStage() {
       try {
         await detachedRoot.initialLookup();
         detachedRoot.anchor.remove();
-        checks.push(detachedRoot.callbacks().canProjectDictionaryPresentation() === false
-          && detachedRoot.driver.snapshot().popupHidden);
+        checks.push(detachedRoot.callbacks().canProjectDictionaryPresentation() === true
+          && !detachedRoot.driver.snapshot().popupHidden);
       } finally { detachedRoot.driver.teardown(); detachedRoot.close(); }
       return { [name]: checks.every(Boolean) || checks };
     } finally { harness.close(); }
@@ -16476,6 +16486,7 @@ async function contentNoteStage() {
     let layouts = 0;
     let popupReads = 0;
     let rootReads = 0;
+    let rootPlacements = 0;
     let queueDuringLayout = false;
     const initialMasonryReads = [];
     let recordMasonryReads = true;
@@ -16503,6 +16514,11 @@ async function contentNoteStage() {
       };
       const rootRect = harness.anchor.getBoundingClientRect.bind(harness.anchor);
       harness.anchor.getBoundingClientRect = () => { rootReads += 1; return rootRect(); };
+      // The root is re-placed from the rect it opened at, never re-measured (#402).
+      const rootStyle = harness.driver.popupAt(0).style;
+      Object.defineProperty(rootStyle, "left", { configurable: true,
+        get() { return this.getPropertyValue("left"); },
+        set(value) { rootPlacements += 1; this.setProperty("left", value); } });
       for (let depth = 0; depth < 4; depth += 1) {
         const popup = harness.driver.popupAt(depth);
         popup.getBoundingClientRect = () => {
@@ -16543,8 +16559,8 @@ async function contentNoteStage() {
       const oneBatch = frames.size === 1 && layouts === 0;
       frame();
       recordMasonryReads = false;
-      // Placement measures each pane's source text, never the panes themselves.
-      const resize = layouts === 4 && rootReads === 1 && popupReads === 0 && frames.size === 0
+      // Placement measures each child's source text, never the panes themselves.
+      const resize = layouts === 4 && rootReads === 0 && rootPlacements === 1 && popupReads === 0 && frames.size === 0
         && initialMasonryReads.length === 8 && initialMasonryReads.every(read =>
           read.widths.every(width => width !== "" && width === read.widths[0])
           && read.transforms.every(transform => transform === ""))
@@ -16557,10 +16573,10 @@ async function contentNoteStage() {
       window.innerWidth = 500;
       window.dispatchEvent(new window.Event("resize"));
       frame();
-      layouts = 0; rootReads = 0; popupReads = 0;
+      layouts = 0; rootReads = 0; rootPlacements = 0; popupReads = 0;
       observers.forEach(observer => observer.callback());
       frame();
-      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 0 && frames.size === 0
+      const observerFollowup = layouts === 4 && rootReads === 0 && rootPlacements === 1 && popupReads === 0 && frames.size === 0
         && [0, 1, 2, 3].every(depth => {
           const popup = harness.driver.popupAt(depth);
           const card = popup.querySelector(".gsm-hoshidicts-glossary-grid").firstElementChild;
@@ -16572,26 +16588,26 @@ async function contentNoteStage() {
       const childCallbacks = harness.callbacks(1);
       views[0].scheduleMasonry();
       harness.emitOptions({ popupNestingMaxDepth: 0 });
-      rootReads = 0; popupReads = 0;
+      rootReads = 0; rootPlacements = 0; popupReads = 0;
       frame();
-      const rootSurvivesPrune = rootReads === 1 && popupReads === 0;
+      const rootSurvivesPrune = rootReads === 0 && rootPlacements === 1 && popupReads === 0;
       childCallbacks.queueMasonry(() => { layouts += 1; });
       const retiredIgnored = frames.size === 0;
-      rootReads = 0; layouts = 0;
+      rootReads = 0; rootPlacements = 0; layouts = 0;
       views[0].scheduleMasonry();
       views[0].scheduleMasonry();
       frame();
-      const rootSameFrame = layouts === 1 && rootReads === 1 && frames.size === 0;
+      const rootSameFrame = layouts === 1 && rootReads === 0 && rootPlacements === 1 && frames.size === 0;
 
       // Work queued while a batch runs belongs to the next frame, not this
       // snapshot. The native observer-width followup is checked separately.
-      layouts = 0; rootReads = 0;
+      layouts = 0; rootReads = 0; rootPlacements = 0;
       queueDuringLayout = true;
       views[0].scheduleMasonry();
       frame();
-      const nextBatchQueued = layouts === 1 && rootReads === 1 && frames.size === 1;
+      const nextBatchQueued = layouts === 1 && rootReads === 0 && rootPlacements === 1 && frames.size === 1;
       frame();
-      const nextBatchCompleted = layouts === 2 && rootReads === 2 && frames.size === 0;
+      const nextBatchCompleted = layouts === 2 && rootReads === 0 && rootPlacements === 2 && frames.size === 0;
 
       harness.emitOptions({ popupNestingMaxDepth: 1 });
       const child = harness.internalLink({ query: "replacement" });
@@ -16613,13 +16629,13 @@ async function contentNoteStage() {
       const replacementView = harness.createLayoutView({ ...harness.callbacks(1),
         getPopupColumns() { childLayouts += 1; return 2; } });
       views.push(replacementView);
-      layouts = 0; rootReads = 0;
+      layouts = 0; rootReads = 0; rootPlacements = 0;
       views[0].scheduleMasonry();
       replacementView.scheduleMasonry();
       replacementView.destroy();
       frame();
       const liveDestroyPreservesRoot = childLayouts === 0 && layouts === 1
-        && rootReads === 1 && frames.size === 0;
+        && rootReads === 0 && rootPlacements === 1 && frames.size === 0;
       const soleView = harness.createLayoutView(harness.callbacks(1));
       views.push(soleView);
       soleView.scheduleMasonry();
@@ -17155,13 +17171,19 @@ async function contentNoteStage() {
     harness.close();
     const detached = await createHarness();
     await detached.initialLookup();
-    const pendingChild = detached.internalLink({ query: "detached ancestor" });
+    const detachedParent = detached.internalLink({ query: "detached parent" });
+    detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [detached.term("detached parent")] });
+    await detachedParent;
+    const pendingChild = detached.internalLink({ query: "detached ancestor" }, 1);
     const held = detached.take("hd_lookup");
+    // A placed root outlives its page source (#402); a child's source inside
+    // its parent pane still retires that child and its pending descendant.
     detached.anchor.remove();
+    detached.driver.viewRequest(1).candidate.anchor.remove();
     detached.reply(held, { generation: 99, dictionaryCount: 1, results: [detached.term("must not render")] });
     await pendingChild;
-    const detachedIgnored = detached.driver.snapshot().currentGeneration === 2 && detached.renders.length === 1
-      && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+    const detachedIgnored = detached.driver.snapshot().currentGeneration === 2 && detached.renders.length === 2
+      && !detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
     detached.close();
     const optionsRace = await createHarness();
     await optionsRace.initialLookup();
@@ -17371,8 +17393,9 @@ async function contentNoteStage() {
       } finally { owner.close(); }
     }
 
-    // A live internal anchor is insufficient when its page-root ancestor was
-    // detached during a protected failed replay.
+    // A live internal anchor is insufficient when its ancestor's source was
+    // detached during a protected failed replay. A placed root outlives its
+    // page source (#402), so the detached ancestor is a child pane.
     const detached = await createHarness();
     let detachedProtectedReply;
     try {
@@ -17380,20 +17403,24 @@ async function contentNoteStage() {
       const child = detached.internalLink({ query: "retained child" });
       detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [detached.term("retained child")] });
       await child;
-      const grandchild = detached.internalLink({ query: "new generation" }, 1);
+      const middle = detached.internalLink({ query: "retained middle" }, 1);
+      detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [detached.term("retained middle")] });
+      await middle;
+      const grandchild = detached.internalLink({ query: "new generation" }, 2);
       detached.setStylesGeneration(3);
       detached.reply(detached.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [detached.term("new generation")] });
       await grandchild;
-      detached.edit(true, 1);
-      detached.callbacks(1).onBeforeResultsRendered();
+      detached.edit(true, 2);
+      detached.callbacks(2).onBeforeResultsRendered();
       const failed = detached.take("hd_lookup");
-      const source = detached.driver.viewRequest(1).candidate.anchor;
+      const source = detached.driver.viewRequest(2).candidate.anchor;
       detached.anchor.remove();
+      detached.driver.viewRequest(1).candidate.anchor.remove();
       const ownAnchorStillConnected = source.isConnected;
       if (failed) detached.reply(failed, { error: "detached ancestor" }, false);
       await detached.settle();
       detachedProtectedReply = Boolean(failed) && ownAnchorStillConnected
-        && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+        && !detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
     } finally { detached.close(); }
 
     // Sharing expires with its token: a child accepting another generation

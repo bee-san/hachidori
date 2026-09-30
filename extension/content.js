@@ -169,6 +169,7 @@
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
+      placedAnchor: null,
     };
   }
 
@@ -1727,12 +1728,21 @@
       ));
   }
 
+  // Like Yomitan, a root popup stays where it first opened (#402): later
+  // placements reuse the source rect captured then, and its page source may
+  // scroll away or leave the DOM without closing it. A child keeps following
+  // its link text inside the parent pane.
+  function sourceRetained(candidate, level) {
+    return anchorConnected(candidate)
+      || (level === rootLevel && candidate != null && rootLevel.placedAnchor?.candidate === candidate);
+  }
+
   function requestCanRender(token, candidate, level = rootLevel) {
     if (disposed || level.retired || token !== level.lookupToken || !level.popup) return false;
     if (retireDetachedAncestor(level)) return false;
     // Initial selections still own the live page selection; Note/Back replays
     // intentionally use their stored descriptor even after focus collapses it.
-    if (!anchorConnected(candidate) || (level === rootLevel && pendingCandidateLookup?.token === token
+    if (!sourceRetained(candidate, level) || (level === rootLevel && pendingCandidateLookup?.token === token
         && candidate.exactSelection === true && !selectionIsUnchanged(candidate))) {
       hide(level);
       return false;
@@ -1743,7 +1753,7 @@
   function retireDetachedAncestor(level) {
     for (let depth = 0; depth < level.depth; depth += 1) {
       const ancestor = levels[depth];
-      if (!anchorConnected(ancestor.activeCandidate)) {
+      if (!sourceRetained(ancestor.activeCandidate, ancestor)) {
         hide(ancestor);
         return true;
       }
@@ -1884,15 +1894,21 @@
       return;
     }
     if (retireDetachedAncestor(fromLevel)) return;
-    if (!anchorConnected(rootLevel.activeCandidate)) {
-      hide();
-      return;
+    const placed = rootLevel.placedAnchor;
+    let anchorRect = placed?.candidate === rootLevel.activeCandidate ? placed.rect : null;
+    if (!anchorRect) {
+      if (!anchorConnected(rootLevel.activeCandidate)) {
+        hide();
+        return;
+      }
+      anchorRect = anchorRectFor(rootLevel.activeCandidate);
+      rootLevel.placedAnchor = { candidate: rootLevel.activeCandidate, rect: anchorRect };
     }
     highlighter?.refresh();
     const viewport = popupViewport();
     if (fromLevel === rootLevel) {
       placePopup(rootLevel, popupResize?.level === rootLevel ? popupResizePosition() : calculatePopupPosition(
-        popupRect(anchorRectFor(rootLevel.activeCandidate)),
+        popupRect(anchorRect),
         viewport,
         rootLevel.activeCandidate.vertical
       ), resetToolbar);
@@ -2600,6 +2616,7 @@
     pointerLevel = null;
     pruneLevels(1, false);
     rootLevel.activeCandidate = null;
+    rootLevel.placedAnchor = null;
     rootLevel.activeSignature = null;
     rootLevel.activeHighlightText = "";
     rootLevel.activeTermRender = null;
@@ -3352,7 +3369,7 @@
         && !level.retired
         && level.currentViewRequest === expectedView
         && level.popup && !level.popup.hidden
-        && anchorConnected(expectedView.candidate)
+        && sourceRetained(expectedView.candidate, level)
       ) {
         level.deferredRefresh = expectedView;
       }
@@ -3369,7 +3386,7 @@
       if (level.pendingCustomAppends > 0 || hasProtectedNote(level.depth + 1)) continue;
       const request = level.deferredRefresh;
       if (request && request === level.currentViewRequest && !level.popup.hidden
-          && anchorConnected(request.candidate)) {
+          && sourceRetained(request.candidate, level)) {
         level.deferredRefresh = null;
         level.deferredDictionaryInvalidationRevision = -1;
         // The append has committed. Replay failures must never invite a second
@@ -4157,25 +4174,10 @@
     }
   }
 
+  // Page and element scrolls leave an open popup where it is (#402).
   function onScroll() {
     cancelCandidateScan();
     rootLevel.view?.hideImagePreview();
-    if (disposed || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
-      return;
-    }
-    if (!anchorConnected(rootLevel.activeCandidate)) {
-      hide();
-      return;
-    }
-    const rect = anchorRectFor(rootLevel.activeCandidate);
-    if (
-      rect.bottom < 0 || rect.top > window.innerHeight ||
-      rect.right < 0 || rect.left > window.innerWidth
-    ) {
-      hide();
-      return;
-    }
-    positionPopup();
   }
 
   function invalidateStoredState(dictionaryChanged) {
