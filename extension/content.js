@@ -391,8 +391,8 @@
         continue;
       }
       for (const entry of nativeEntries.filter((candidate) => candidate.dictionary === member.title)) {
-        append({ matched: character, term: { expression: character, reading: "", frequencies: [], pitches: [],
-          glossaries: [{ dictionary: entry.dictionary, glossary: window.HDPopup.kanjiEntryGlossary(entry) }] } });
+        append({ matched: character, deinflected: character, trace: [], preprocessorSteps: 0, term: { expression: character, reading: "", rules: "", score: 0, frequencies: [], pitches: [],
+          glossaries: [{ dictionary: entry.dictionary, glossary: window.HDPopup.kanjiEntryGlossary(entry), definitionTags: "", termTags: ""}] } });
       }
     }
     return merged;
