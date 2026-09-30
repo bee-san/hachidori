@@ -1561,6 +1561,7 @@ async function popupReader(page, depth = 0) {
           rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
           grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
             width: grid.clientWidth, rect: grid.getBoundingClientRect().toJSON(), height: grid.style.height,
+            gap: Number.parseFloat(getComputedStyle(grid).columnGap),
             masonry: grid.classList.contains("gsm-hoshidicts-glossary-grid-masonry"),
             cards: [...grid.children].map(card => ({ rect: card.getBoundingClientRect().toJSON(),
               offsetHeight: card.offsetHeight, width: card.style.width, transform: card.style.transform,
@@ -2266,11 +2267,13 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const near = (a, b) => Math.abs(a - b) <= 1;
     return value.grids.every(grid => {
       const columns = Math.min(requested, grid.cards.length), heights = Array(columns).fill(0);
-      const width = (grid.width - 8 * (columns - 1)) / columns;
+      // The stylesheet's grid gap, which masonry must reuse between columns.
+      const { gap } = grid;
+      const width = (grid.width - gap * (columns - 1)) / columns;
       if (grid.width <= 0 || grid.masonry !== (columns > 1)) return false;
       for (const [index, card] of grid.cards.entries()) {
         const column = heights.indexOf(Math.min(...heights));
-        const x = column * (width + 8), y = heights[column];
+        const x = column * (width + gap), y = heights[column];
         if (!near(card.rect.width, width) || !near(card.rect.left - grid.rect.left, x)
             || !near(card.rect.top - grid.rect.top, y) || card.rect.right > grid.rect.right + 1) return false;
         if (columns === 1 && (card.width !== "" || card.transform !== "" || card.visibility !== "")) return false;
@@ -2279,10 +2282,10 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
           if (Math.min(card.rect.right, other.rect.right) - Math.max(card.rect.left, other.rect.left) > 1
               && Math.min(card.rect.bottom, other.rect.bottom) - Math.max(card.rect.top, other.rect.top) > 1) return false;
         }
-        heights[column] += (columns === 1 ? card.rect.height : card.offsetHeight) + 8;
+        heights[column] += (columns === 1 ? card.rect.height : card.offsetHeight) + gap;
       }
       return columns === 1 ? grid.height === ""
-        : near(Number.parseFloat(grid.height), Math.max(...heights) - 8);
+        : near(Number.parseFloat(grid.height), Math.max(...heights) - gap);
     });
   }
   async function openChild() {
