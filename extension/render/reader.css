@@ -1671,6 +1671,14 @@ html[data-hoshidicts-theme="girlypop"],
   align-items: flex-start;
 }
 
+/* An icon-only toolbar now shares the headword's line; keep it beside the
+   word rather than at the foot of an expanded trace, where the result
+   chrome's max-height would scroll it out of reach. */
+.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection[open]) > .gsm-hoshidicts-entry-actions {
+  /* start, not flex-start: the row wraps in reverse. */
+  align-self: start;
+}
+
 .gsm-hoshidicts-deinflection > summary {
   padding: 1px 2px;
   border-radius: 4px;
