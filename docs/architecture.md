@@ -2113,6 +2113,16 @@ or requests while unconfigured. Mining uses the selected projected result,
 current frequency units and audio choice, and the raw source span for
 sentence/cloze boundaries.
 
+A note field keeps its template's literal text, so a template such as
+`{cloze-prefix}{{c1::{cloze-body}}}{cloze-suffix}` still makes a real cloze
+deletion. Braces inside marker values, such as a dictionary definition's own
+`{{c1::…}}` example, reach Anki as `&#123;` and `&#125;`: they display
+unchanged but never form a deletion, so these entries stay addable to a
+non-Cloze note type (#398). Dictionary `<style>` CSS is left literal. Editing
+such a field later in Anki's editor may turn the entities back into braces.
+When Anki still refuses a deletion on a non-Cloze note type, the message says
+whether it came from the field's template or from its markers' content.
+
 Status, cached View, preflight, submit, screenshot and browse carry the selected
 Template identity. Per-Template configuration digests and status caches prevent
 a readiness result from one destination being submitted through another. The
