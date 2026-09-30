@@ -4932,7 +4932,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       JSON.stringify({ imageSources, invalidImageSources }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
-      { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { hoverDelayMs: 2000 }, { modifier: "meta" },
+      { definitionBlurCountEnabled: "true" }, { definitionBlurEnabled: 1 }, { modifier: "meta" },
       { frequencyOrder: "sideways" }, { frequencyDictionary: {} },
       { kanjiClickDictionary: { title: "字", kind: "other" } },
       { kanjiClickDictionary: { title: "", kind: "kanji" } },
@@ -4946,11 +4946,15 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       rejected.push(reply.ok === false && reply.requestId === "options-contract" && await unchanged(saved));
     }
     await local.set({ options: saved.options });
-    const healthy = await send(message({ scanLength: 64, maxResults: 256, hoverDelayMs: 0, modifier: "alt" }));
+    // Retired keys from an older Settings page: the removed hover delay is
+    // ignored and the renamed blur switch migrates.
+    const healthy = await send(message({ scanLength: 64, maxResults: 256, hoverDelayMs: 0, modifier: "alt",
+      definitionBlurEnabled: true }));
     check("reader options reject malformed known fields without committing and accept a healthy follow-up",
       rejected.every(Boolean) && healthy.ok === true && healthy.options?.revision === 3
         && healthy.options?.scanLength === 64 && healthy.options?.maxResults === 256
-        && healthy.options?.hoverDelayMs === 0 && healthy.options?.lookupMode === "activation"
+        && !Object.hasOwn(healthy.options ?? {}, "hoverDelayMs") && healthy.options?.lookupMode === "activation"
+        && healthy.options?.definitionBlurCountEnabled === true && !Object.hasOwn(healthy.options ?? {}, "definitionBlurEnabled")
         && healthy.options?.activationKey === "Alt" && healthy.options?.modifier === undefined,
       JSON.stringify({ rejected, healthy }));
 
@@ -4959,7 +4963,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const ignoredUnchanged = await unchanged(saved);
     const legacy = {
       revision: 2, scanLength: "20.9", maxResults: 900, modifier: "bad",
-      hoverDelayMs: { toString: null },
+      hoverDelayMs: { toString: null }, definitionBlurEnabled: true,
       kanjiClickDictionary: { title: "旧名", kind: "kanji", ignored: true },
       unknown: "stored junk",
     };
@@ -4975,7 +4979,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && conflict.options?.maxResults === 256 && conflict.options?.lookupMode === "hover"
         && conflict.options?.modifier === undefined
         && conflict.options?.kanjiClickDictionary?.ignored === undefined
-        && conflict.options?.hoverDelayMs === 0 && conflict.options?.frequencyOrder === undefined
+        && !Object.hasOwn(conflict.options ?? {}, "hoverDelayMs") && conflict.options?.frequencyOrder === undefined
+        && conflict.options?.definitionBlurCountEnabled === true && !Object.hasOwn(conflict.options ?? {}, "definitionBlurEnabled")
         && repaired.ok === true
         && repaired.options?.revision === 3 && noOp.options?.revision === 3
         && JSON.stringify((await local.get("options")).options) === JSON.stringify(repaired.options),
@@ -11903,7 +11908,7 @@ async function designPreviewStage() {
       && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
     const blurState = () => popup.dataset.definitionBlurState ?? "revealed";
     let blur = blurState() === "revealed";
-    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
+    options = { ...options, definitionBlurCountEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
       definitionBlurReveal: "hover" };
     update();
     await settle();
@@ -11918,7 +11923,7 @@ async function designPreviewStage() {
     update();
     await settle();
     blur &&= blurState() === "revealed" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
-    options = { ...options, definitionBlurEnabled: false };
+    options = { ...options, definitionBlurCountEnabled: false };
     update();
     await settle();
     options = { ...options, showLookupCounts: false, definitionBlurAnkiMature: true };
@@ -12020,7 +12025,7 @@ async function designPreviewStage() {
       && popup.textContent.includes("Second") && query("form") === kanjiNote
       && kanjiNote.elements.definition.value === "Keep across source choices";
     // Native kanji stays outside term blur even while the sample frequency qualifies.
-    options = { ...options, definitionBlurEnabled: false, definitionBlurFrequencyEnabled: true,
+    options = { ...options, definitionBlurCountEnabled: false, definitionBlurFrequencyEnabled: true,
       definitionBlurFrequencyDictionary: "Sample ranks", definitionBlurFrequencyOrder: "auto",
       definitionBlurFrequencyThreshold: 120, definitionBlurReveal: "hover" };
     update();
@@ -12324,7 +12329,7 @@ async function settingsFrequencyStage() {
         && !blurControl("definition-blur-reveal-controls").hidden
         && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(countBlur, true);
-      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurEnabled: true })
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurCountEnabled: true })
         && storedOptions.definitionBlurAnkiMature && !storedOptions.showLookupCounts
         && !blurControl("definition-blur-any-help").hidden
         && !blurControl("definition-blur-count-controls").hidden
@@ -12337,7 +12342,9 @@ async function settingsFrequencyStage() {
       await editControl(frequencyBlur, true);
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyEnabled: true })
         && !blurControl("definition-blur-frequency-controls").hidden && !frequencyDictionary.disabled
-        && frequencyDictionary.value === "" && blurControl("definition-blur-frequency-help").textContent.includes("Choose one")
+        // Same as sorting follows this page's sort dictionary, which declares no mode.
+        && frequencyDictionary.value === "" && frequencyDictionary.options[0].textContent === "Same as sorting (Unknown mode)"
+        && blurControl("definition-blur-frequency-help").textContent.includes("Using undeclared metadata")
         && !blurControl("definition-blur-any-help").hidden);
       await editControl(frequencyDictionary, "Occurrence");
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
@@ -12359,9 +12366,9 @@ async function settingsFrequencyStage() {
       await editControl(frequencyBlur, false);
       for (const { control, group, draft, external, key, saved, restore } of [
         { control: "opt-blur-threshold", group: "definition-blur-count-controls", draft: "7",
-          external: { definitionBlurEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-count", true] },
+          external: { definitionBlurCountEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-count", true] },
         { control: "opt-blur-reveal", group: "definition-blur-reveal-controls", draft: "hover",
-          external: { definitionBlurEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-count", true] },
+          external: { definitionBlurCountEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-count", true] },
         { control: "opt-blur-delay", group: "definition-blur-delay-control", draft: "2.5",
           external: { definitionBlurReveal: "hover" }, key: "definitionBlurDelayMs", saved: 2500, restore: ["opt-blur-reveal", "timed"] },
       ]) {
@@ -14995,7 +15002,6 @@ async function contentNoteStage() {
               options: {
                 frequencyDictionary: "Frequency A",
                 frequencyOrder: "descending",
-                hoverDelayMs: 0,
                 kanjiClickDictionary,
                 maxResults: 7,
                 modifier: "none",
@@ -15521,7 +15527,7 @@ async function contentNoteStage() {
       outcomes["changing the Anki mapping releases a pending visit and rejects its late mature result"] =
         harness.blurState() === "revealed" && plays() === 5;
 
-      const combined = { ...options, showLookupCounts: true, definitionBlurEnabled: true, definitionBlurThreshold: 5 };
+      const combined = { ...options, showLookupCounts: true, definitionBlurCountEnabled: true, definitionBlurThreshold: 5 };
       harness.emitOptions(combined);
       const byCount = await lookup("回数");
       const count = harness.take("hd_lookup_stats_record");
@@ -15614,7 +15620,7 @@ async function contentNoteStage() {
     ] });
     let activeOptions = {
       showLookupCounts: false,
-      definitionBlurEnabled: false,
+      definitionBlurCountEnabled: false,
       definitionBlurAnkiMature: false,
       definitionBlurFrequencyEnabled: true,
       definitionBlurFrequencyDictionary: "Rank",
@@ -15677,7 +15683,7 @@ async function contentNoteStage() {
 
       editOptions({
         showLookupCounts: true,
-        definitionBlurEnabled: true,
+        definitionBlurCountEnabled: true,
         definitionBlurThreshold: 5,
         definitionBlurFrequencyDictionary: "Rank",
         definitionBlurFrequencyThreshold: 100,
@@ -15694,7 +15700,7 @@ async function contentNoteStage() {
 
       editOptions({
         showLookupCounts: false,
-        definitionBlurEnabled: false,
+        definitionBlurCountEnabled: false,
         definitionBlurFrequencyDictionary: "Rank",
         definitionBlurFrequencyThreshold: 120,
       });
@@ -15726,7 +15732,7 @@ async function contentNoteStage() {
 
     const navigation = await createHarness({ title: "Generic", kind: "kanji" }, {
       holdLookupStats: true,
-      options: { ...activeOptions, showLookupCounts: false, definitionBlurEnabled: false,
+      options: { ...activeOptions, showLookupCounts: false, definitionBlurCountEnabled: false,
         definitionBlurFrequencyDictionary: "Rank", definitionBlurFrequencyThreshold: 120, audioAutoplay: false },
     });
     try {
@@ -15755,7 +15761,7 @@ async function contentNoteStage() {
   async function definitionBlurCase() {
     const outcomes = {};
     const wait = ms => new Promise(done => setTimeout(done, ms));
-    const blurOptions = { showLookupCounts: true, definitionBlurEnabled: true, definitionBlurDirection: "atLeast",
+    const blurOptions = { showLookupCounts: true, definitionBlurCountEnabled: true, definitionBlurDirection: "atLeast",
       definitionBlurThreshold: 5, definitionBlurReveal: "hover", definitionBlurDelayMs: 1000, audioAutoplay: true };
     const harness = await createHarness(null, { holdLookupStats: true, options: blurOptions });
     const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
@@ -15817,7 +15823,7 @@ async function contentNoteStage() {
       answer(fourth, 0);
       await harness.settle();
       const belowBlurred = harness.blurState() === "blurred" && plays() === 3;
-      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
+      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurCountEnabled: false });
       outcomes["Below blurs a zero count and disabling blur reveals and plays the held result"] =
         belowBlurred && harness.blurState() === "revealed" && plays() === 4;
 
@@ -16117,7 +16123,6 @@ async function contentNoteStage() {
     harness.emitOptions({
       frequencyDictionary: "Different",
       frequencyOrder: "ascending",
-      hoverDelayMs: 0,
       kanjiClickDictionary: "",
       maxResults: 2,
       modifier: "none",
@@ -16355,7 +16360,7 @@ async function contentNoteStage() {
         try {
           await combined.initialLookup();
           const current = combined.render().context;
-          const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+          const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending",
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
             showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
@@ -16447,7 +16452,7 @@ async function contentNoteStage() {
               groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
             });
           } else {
-            detached.emitOptions({ frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+            detached.emitOptions({ frequencyDictionary: "Frequency A", frequencyOrder: "descending",
               kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
               showCompactDefinitionSummary: true });
           }
@@ -17830,7 +17835,7 @@ async function contentNoteStage() {
       action: "scanSelectedText" });
     const hidden = () => harness.driver.snapshot().popupHidden;
     const pencil = () => harness.popup.getRootNode().host.dataset.hoshidictsNoteButton;
-    const off = { hoverDelayMs: 0, scanLength: 9, personalDictionaryEnabled: false,
+    const off = { scanLength: 9, personalDictionaryEnabled: false,
       kanjiClickDictionary: { title: "Generic", kind: "term" } };
     const other = document.body.appendChild(document.createElement("span"));
     const result = {};
@@ -18236,7 +18241,7 @@ async function contentNoteStage() {
     const hover = await createHarness();
     let hoverAllowed = false;
     try {
-      hover.emitOptions({ lookupMode: "hover", activationKey: "Shift", hoverDelayMs: 0 });
+      hover.emitOptions({ lookupMode: "hover", activationKey: "Shift" });
       hoverAllowed = (await select(hover)).allowed;
     } finally {
       hover.close();
@@ -18250,7 +18255,7 @@ async function contentNoteStage() {
         const extra = modifiers[(index + 2) % modifiers.length][0];
         const harness = await createHarness();
         try {
-          harness.emitOptions({ lookupMode, activationKey, hoverDelayMs: 0 });
+          harness.emitOptions({ lookupMode, activationKey });
           results.push({
             activationKey,
             lookupMode,
@@ -18269,7 +18274,7 @@ async function contentNoteStage() {
     let explicitAllowed = false;
     try {
       const window = explicit.popup.ownerDocument.defaultView;
-      explicit.emitOptions({ lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 0 });
+      explicit.emitOptions({ lookupMode: "activation", activationKey: "Shift" });
       window.getSelection().selectAllChildren(explicit.anchor);
       window.document.dispatchEvent(new window.Event("selectionchange"));
       const automatic = explicit.take("hd_lookup");
@@ -18710,7 +18715,7 @@ async function contentNoteStage() {
     document.caretRangeFromPoint = () => null;
     const imposters = () => [...group.querySelectorAll("text")];
     const scan = (x, y) => harness.driver.resolveCandidate(x, y);
-    const flag = (experimental) => harness.emitOptions({ hoverDelayMs: 0, lookupMode: "hover", scanLength: 9, experimental });
+    const flag = (experimental) => harness.emitOptions({ lookupMode: "hover", scanLength: 9, experimental });
 
     // Default: the flag is off, so Docs behaves as before and nothing is injected.
     const flagOff = scan(185, 30);
@@ -19008,7 +19013,7 @@ async function contentNoteStage() {
       range.setStart(link.firstChild, 0);
       range.collapse(true);
       document.caretRangeFromPoint = () => range;
-      harness.emitOptions({ lookupMode, activationKey: "Shift", hoverDelayMs: 0, scanLength: 32 });
+      harness.emitOptions({ lookupMode, activationKey: "Shift", scanLength: 32 });
       search.focus();
       harness.driver.onMouseMove({ target: link, clientX: 200, clientY: 200 });
       await harness.settle();
@@ -19102,7 +19107,7 @@ async function contentNoteStage() {
     const input = window.document.createElement("input");
     window.document.body.append(input);
     harness.driver.setScanCandidate(harness.candidate);
-    harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K" });
     const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
     harness.driver.onMouseMove(pointer);
     input.focus();
@@ -19146,7 +19151,7 @@ async function contentNoteStage() {
       innerHost.attachShadow({ mode: "open" }).append(editor);
       harness.driver.setScanCandidate(harness.candidate);
       const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
-      harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+      harness.emitOptions({ lookupMode: "activation", activationKey: "K" });
       harness.driver.onMouseMove(pointer);
       editor.focus();
       editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "k", code: "KeyK", bubbles: true, composed: true }));
@@ -19154,7 +19159,7 @@ async function contentNoteStage() {
       const typing = harness.take("hd_lookup");
       if (typing) harness.reply(typing, {}, false);
       editor.blur();
-      harness.emitOptions({ lookupMode: "hover", hoverDelayMs: 0 });
+      harness.emitOptions({ lookupMode: "hover" });
       harness.driver.onMouseMove(pointer);
       editor.focus();
       await harness.settle();
@@ -19385,7 +19390,6 @@ async function contentNoteStage() {
       try {
         activation.emitOptions({
           activationKey: "Shift",
-          hoverDelayMs: 0,
           lookupMode: "activation",
           popupNestingMaxDepth: 1,
         });
@@ -19458,7 +19462,7 @@ async function contentNoteStage() {
     // activation key or a click while page lookups stay key-free.
     async function definitionTriggerCases() {
       // The harness's stored lookup settings, so a live edit changes only the trigger.
-      const stored = { lookupMode: "hover", hoverDelayMs: 0, maxResults: 7, scanLength: 9,
+      const stored = { lookupMode: "hover", maxResults: 7, scanLength: 9,
         frequencyDictionary: "Frequency A", frequencyOrder: "descending",
         kanjiClickDictionary: { title: "Generic", kind: "term" } };
       async function open(definitionLookupMode) {
@@ -19621,7 +19625,7 @@ async function contentNoteStage() {
     const move = (target = window.document.body, extra = {}) => harness.driver.onMouseMove({
       clientX: 200, clientY: 200, target, ...extra,
     });
-    const settings = { lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 0, popupHideDelayMs: 250 };
+    const settings = { lookupMode: "activation", activationKey: "Shift", popupHideDelayMs: 250 };
     harness.emitOptions(settings);
     harness.driver.setScanCandidate(harness.candidate);
     move();
@@ -19985,7 +19989,7 @@ async function contentNoteStage() {
       await harness.settle();
       return lookup;
     };
-    const base = { hoverDelayMs: 0, popupHideDelayMs: 250, hidePopupOnCursorExit: false };
+    const base = { popupHideDelayMs: 250, hidePopupOnCursorExit: false };
     const result = {};
     try {
       await harness.settle();
@@ -20105,7 +20109,7 @@ async function contentNoteStage() {
       return lookup;
     };
     const reset = (settings) => {
-      harness.emitOptions({ hoverDelayMs: 0, popupHideDelayMs: 250, ...settings });
+      harness.emitOptions({ popupHideDelayMs: 250, ...settings });
       harness.driver.onWindowBlur();
       while (harness.take("hd_lookup")) { /* A reset drops unanswered lookups. */ }
       harness.driver.setScanCandidate(harness.candidate);
@@ -20624,7 +20628,7 @@ async function contentNoteStage() {
     const url = "data:image/png;base64,Yg==";
     const otherUrl = "data:image/png;base64,Yw==";
     const sourceOptions = {
-      frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+      frequencyDictionary: "Frequency A", frequencyOrder: "descending",
       kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7,
       modifier: "none", scanLength: 9,
     };

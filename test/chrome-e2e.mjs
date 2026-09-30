@@ -6703,6 +6703,9 @@ async function checkAnkiSettings(page, browser) {
     await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("HTTP 503"));
     const failed = await status();
     offline = false;
+    // The Audio view before this leaves the page scrolled, clipping the button
+    // at the top edge where a click misses it; bring it fully into view first.
+    await page.$eval("#anki-refresh", node => node.scrollIntoView({ block: "center" }));
     await page.click("#anki-refresh");
     await settled();
     check("Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
@@ -7455,7 +7458,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki").checked);
       persisted = await reloadedSettings.evaluate(async () => {
         const { options } = await chrome.storage.local.get("options");
-        return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
+        return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurCountEnabled,
           checked: document.getElementById("opt-blur-anki").checked,
           revealDisabled: document.getElementById("opt-blur-reveal").disabled };
       });

@@ -68,7 +68,7 @@ When implementing the dictionary-only scope from issue #9:
 - Generalize the offscreen import lock to a mutation lock for custom saves/appends. Reuse private staging/import helpers; do not recursively invoke the public queued import handler.
 - The fixed Note form is shared by term and kanji views. Treat append success separately from best-effort lookup refresh so a refresh error cannot invite a duplicate retry. Refresh the exact current request/view only if it is still current and anchored, and make reply/state-event ordering harmless by adopting only newer committed revisions.
 - While the Note form is open, Escape closes the form before document capture can hide the popup, and hover-hide timers must not discard the draft.
-- Reading → Personal dictionary → Use the personal dictionary (`personalDictionaryEnabled`) is a reader option, not package state. Off, it stops automatic selection lookups, hides the pencil and filters personal glossaries out of lookup replies in the engine service; it never disables, reorders, recompiles or removes the managed package.
+- Library → Personal dictionary → Use the personal dictionary (`personalDictionaryEnabled`) is a reader option, not package state. Off, it stops automatic selection lookups, hides the pencil and filters personal glossaries out of lookup replies in the engine service; it never disables, reorders, recompiles or removes the managed package.
 
 ## Lookup statistics and definition blur
 

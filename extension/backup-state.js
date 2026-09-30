@@ -73,7 +73,8 @@ function assertGroups(groups, dictionaries) {
 
 function validBackupReaderOptions(options) {
   if (!options || typeof options !== "object" || Array.isArray(options)) return false;
-  const allowed = new Set([...Object.keys(globalThis.HDReaderOptions.DEFAULT_OPTIONS), "modifier"]);
+  const { DEFAULT_OPTIONS, RETIRED_OPTION_KEYS } = globalThis.HDReaderOptions;
+  const allowed = new Set([...Object.keys(DEFAULT_OPTIONS), ...RETIRED_OPTION_KEYS]);
   if (Object.keys(options).some(key => !allowed.has(key))) return false;
   let projected;
   try {

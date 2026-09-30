@@ -64,9 +64,6 @@
             <output class="nav-status" id="nav-status-audio" aria-live="polite"></output>
           </div>
           <div class="nav-item">
-            <output class="nav-status" id="nav-status-media" aria-live="polite"></output>
-          </div>
-          <div class="nav-item">
             <a href="#anki" aria-describedby="nav-status-anki">Anki</a>
             <output class="nav-status" id="nav-status-anki" aria-live="polite"></output>
           </div>
@@ -358,8 +355,24 @@
           <div class="card-head">
             <h1 id="custom-dictionary-heading" tabindex="-1">Personal dictionary</h1>
             <p class="hint">Your entries appear first. Save source edits when you are ready.</p>
-            <p class="hint" id="custom-dictionary-off" hidden>The personal dictionary is off, so these entries are left out of lookups. Turn it on in <a href="#lookup">Reading</a>.</p>
+            <p class="hint" id="custom-dictionary-off" hidden>The personal dictionary is off, so these entries are left out of lookups.</p>
           </div>
+          <div class="options-feedback-slot"></div>
+          <fieldset class="lookup-group" id="selection-notice-settings">
+            <legend>Lookups</legend>
+            <label class="lookup-enable" data-search-keywords="custom dictionary highlighted selected selection pencil add word">
+              <span>Use the personal dictionary</span>
+              <input id="opt-personal-dictionary" type="checkbox" aria-describedby="personal-dictionary-help" />
+            </label>
+            <p class="field-hint" id="personal-dictionary-help">Highlighting Japanese text looks it up so you can add your own definition with the pencil. Turn this off to stop highlighted text from opening a popup and to hide the pencil; your entries are kept but left out of lookups. To look up a selection on demand, bind Scan selected text in <a href="#keybinds">Keybinds</a>.</p>
+            <div id="selection-notice-controls">
+              <label class="lookup-enable">
+                <span>Show a popup when a selection has no definition</span>
+                <input id="opt-no-result-notice" type="checkbox" aria-describedby="selection-notice-help" />
+              </label>
+              <p class="field-hint" id="selection-notice-help">Use the pencil in the popup to add your own definition. The setup notice still appears when no dictionaries are loaded.</p>
+            </div>
+          </fieldset>
           <form
             class="custom-dictionary-form"
             id="custom-dictionary-form"
@@ -456,6 +469,7 @@
                 <span class="field-hint">How words in a popup's definitions open child popups. Dictionary links always open on click.</span>
               </label>
             </div>
+            <p class="field-hint">Highlighting Japanese text also opens a popup while <a href="#custom-dictionary">Library › Personal dictionary</a> is on.</p>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Scanning</legend>
@@ -464,14 +478,6 @@
               <input type="checkbox" id="opt-japanese-only" />
             </label>
             <div class="fields">
-              <label class="field">
-                <span class="field-label">Hide delay</span>
-                <span class="input-suffix">
-                  <input id="opt-hide-delay" type="number" min="0" max="5000" step="10" />
-                  <span class="suffix">ms</span>
-                </span>
-                <span class="field-hint">Time to move from a word into its popup.</span>
-              </label>
               <label class="field">
                 <span class="field-label">Scan length</span>
                 <input
@@ -488,7 +494,17 @@
             </div>
           </fieldset>
           <fieldset class="lookup-group" id="cursor-exit-settings">
-            <legend>Cursor exit</legend>
+            <legend>Popup closing</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Grace period to reach the popup</span>
+                <span class="input-suffix">
+                  <input id="opt-hide-delay" type="number" min="0" max="5000" step="10" />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Time to move from a word into its popup before the popup hides.</span>
+              </label>
+            </div>
             <label class="lookup-enable">
               <span>Hide popup on cursor exit</span>
               <input type="checkbox" id="opt-hide-on-cursor-exit" aria-describedby="cursor-exit-help" />
@@ -496,7 +512,7 @@
             <p class="field-hint" id="cursor-exit-help">When the cursor exits the popup, the popup will be hidden. Child popups close when the cursor returns to their parent.</p>
             <div class="fields">
               <label class="field">
-                <span class="field-label">Delay</span>
+                <span class="field-label">Delay after leaving the popup</span>
                 <span class="input-suffix">
                   <input id="opt-hide-on-cursor-exit-delay" type="number" min="0" max="5000" step="10" />
                   <span class="suffix">ms</span>
@@ -530,26 +546,11 @@
 
             </div>
           </fieldset>
-          <fieldset class="lookup-group" id="selection-notice-settings">
-            <legend>Personal dictionary</legend>
-            <label class="lookup-enable" data-search-keywords="custom dictionary highlighted selected selection pencil add word">
-              <span>Use the personal dictionary</span>
-              <input id="opt-personal-dictionary" type="checkbox" aria-describedby="personal-dictionary-help" />
-            </label>
-            <p class="field-hint" id="personal-dictionary-help">Highlighting Japanese text looks it up so you can add your own definition with the pencil. Turn this off to stop highlighted text from opening a popup and to hide the pencil; your entries are kept but left out of lookups. To look up a selection on demand, bind Scan selected text in <a href="#keybinds">Keybinds</a>.</p>
-            <div id="selection-notice-controls">
-              <label class="lookup-enable">
-                <span>Show a popup when a selection has no definition</span>
-                <input id="opt-no-result-notice" type="checkbox" aria-describedby="selection-notice-help" />
-              </label>
-              <p class="field-hint" id="selection-notice-help">Use the pencil in the popup to add your own definition. The setup notice still appears when no dictionaries are loaded.</p>
-            </div>
-          </fieldset>
           <fieldset class="lookup-group">
-            <legend>Frequency</legend>
+            <legend>Frequency sorting</legend>
             <div class="fields">
               <label class="field">
-                <span class="field-label">Frequency dictionary</span>
+                <span class="field-label">Sort by frequency dictionary</span>
                 <select id="opt-frequency-dictionary"></select>
                 <span class="field-hint">
                   Choosing a dictionary sets its direction from rank or occurrence
@@ -558,7 +559,7 @@
               </label>
 
               <div class="field">
-                <label class="field-label" for="opt-frequency-order">Frequency order</label>
+                <label class="field-label" for="opt-frequency-order">Sort order</label>
                 <div class="frequency-order-controls">
                   <select id="opt-frequency-order" aria-describedby="frequency-order-hint">
                     <option value="auto">Automatic &mdash; all dictionaries</option>
@@ -572,6 +573,7 @@
                 <span class="field-hint" id="frequency-order-hint"></span>
               </div>
             </div>
+            <p class="field-hint">Definition blur can use this dictionary too. How frequencies are shown in the popup is under <a href="#design">Design › Frequency labels</a>.</p>
           </fieldset>
           <fieldset class="lookup-group" id="lookup-history-settings">
             <legend>Lookup history</legend>
@@ -584,15 +586,15 @@
           <fieldset class="lookup-group" id="definition-blur-settings">
             <legend>Definition blur</legend>
             <label class="lookup-enable">
-              <span>Lookup count</span>
+              <span>Blur by lookup count</span>
               <input id="opt-blur-count" type="checkbox" />
             </label>
             <label class="lookup-enable">
-              <span>Mature Anki card</span>
+              <span>Blur mature Anki cards</span>
               <input id="opt-blur-anki" type="checkbox" />
             </label>
             <label class="lookup-enable">
-              <span>Frequency threshold</span>
+              <span>Blur by frequency</span>
               <input id="opt-blur-frequency" type="checkbox" />
             </label>
             <p class="field-hint">Any checked condition can give you a moment to recall a word before showing its meaning.</p>
@@ -616,11 +618,11 @@
               <p class="field-hint" id="definition-blur-anki-help" hidden>Mature means a review card with an interval of at least 21 days. Uses the duplicate scope and dedicated Expression fields selected in <a href="#anki">Anki settings</a>. The shared index refreshes every 30 minutes; its last saved results still work when Anki is closed.</p>
               <div class="fields" id="definition-blur-frequency-controls" hidden>
                 <label class="field">
-                  <span class="field-label">Frequency dictionary</span>
+                  <span class="field-label">Blur threshold dictionary</span>
                   <select id="opt-blur-frequency-dictionary"></select>
                 </label>
                 <label class="field">
-                  <span class="field-label">Frequency order</span>
+                  <span class="field-label">Blur threshold direction</span>
                   <select id="opt-blur-frequency-order">
                     <option value="auto">Automatic from dictionary</option>
                     <option value="ascending">Ascending — lower values qualify</option>
@@ -628,7 +630,7 @@
                   </select>
                 </label>
                 <label class="field">
-                  <span class="field-label">Frequency threshold</span>
+                  <span class="field-label">Threshold (frequency value)</span>
                   <input id="opt-blur-frequency-threshold" type="number" min="1" max="9007199254740991"
                     step="1" inputmode="numeric" />
                 </label>
@@ -724,11 +726,6 @@
                   <span>Highlight the word on the page</span>
                   <input id="opt-source-highlight" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
-                  <span>Show the audio button</span>
-                  <input id="opt-popup-audio-button" type="checkbox" aria-describedby="popup-audio-button-help" />
-                </label>
-                <p class="field-hint" id="popup-audio-button-help">Autoplay and audio keybinds still work when it's hidden.</p>
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Definitions</legend>
@@ -768,7 +765,7 @@
               <fieldset class="lookup-group">
                 <legend>Frequency labels</legend>
                 <label class="lookup-enable">
-                  <span>Show dictionary names</span>
+                  <span>Show frequency dictionary names</span>
                   <input id="opt-frequency-names" type="checkbox" />
                 </label>
                 <label class="lookup-enable">
@@ -780,6 +777,7 @@
                   <input id="opt-average-frequency" type="checkbox" />
                 </label>
                 <p class="field-hint">Harmonic mean within each frequency type. Ranks and occurrence counts stay separate.</p>
+                <p class="field-hint">The sorting and blur dictionaries are under <a href="#lookup">Reading</a>.</p>
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Pitch accent</legend>
@@ -789,7 +787,7 @@
                 </label>
                 <div class="fields">
                   <label class="field">
-                    <span class="field-label">Preferred dictionary</span>
+                    <span class="field-label">Pitch accent dictionary</span>
                     <select id="opt-pitch-dictionary"></select>
                     <span class="field-hint">Falls back to the first available pitch pattern.</span>
                   </label>
@@ -799,7 +797,7 @@
                   <input id="opt-pitch-badge" type="checkbox" />
                 </label>
                 <label class="lookup-enable">
-                  <span>Show dictionary names</span>
+                  <span>Show pitch dictionary names</span>
                   <input id="opt-pitch-names" type="checkbox" />
                 </label>
                 <label class="lookup-enable">
@@ -843,7 +841,7 @@
                     <span class="field-hint">Full definitions stay available below.</span>
                   </label>
                   <label class="field">
-                    <span class="field-label">Preferred dictionary</span>
+                    <span class="field-label">Summary dictionary</span>
                     <select id="opt-summary-dictionary"></select>
                     <span class="field-hint">Falls back to the first available definition in the current tab.</span>
                   </label>
@@ -939,6 +937,11 @@
           </div>
           <div class="options-feedback-slot"></div>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
+          <label class="lookup-enable">
+            <span>Show the audio button</span>
+            <input id="opt-popup-audio-button" type="checkbox" aria-describedby="popup-audio-button-help" />
+          </label>
+          <p class="field-hint" id="popup-audio-button-help">Autoplay and audio keybinds still work when it's hidden.</p>
           <p id="audio-mining-help" class="section-note" hidden>Browser speech can play in this overlay, but cannot be recorded into Anki. Add a downloadable pronunciation source to fill <code>{audio}</code> fields.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
@@ -1210,7 +1213,7 @@
         <section class="card" id="advanced" aria-labelledby="advanced-heading" hidden>
           <div class="card-head">
             <h1 id="advanced-heading" tabindex="-1" data-search-keywords="experimental beta labs flags preview">Advanced</h1>
-            <p class="hint">Features that are still changing. Changes save automatically.</p>
+            <p class="hint">Memory use and features that are still changing. Changes save automatically.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <fieldset class="lookup-group" id="memory-settings">

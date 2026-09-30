@@ -152,13 +152,14 @@ test("highlight, selection and custom dictionary searches find the personal dict
     f.query(words);
     const result = f.match("Use the personal dictionary");
     assert.ok(result, `"${words}" finds the switch`);
-    assert.equal(result.querySelector("small").textContent, "Reading › Personal dictionary");
+    assert.equal(result.querySelector("small").textContent, "Library › Personal dictionary › Lookups");
   }
   // Off, the notice switch it governs is hidden and leads back to it.
   f.el("selection-notice-controls").hidden = true;
   f.query("selection has no definition");
   f.match("Show a popup when a selection has no definition").click();
   assert.equal(f.document.activeElement, f.el("opt-personal-dictionary"));
+  assert.equal(f.el("custom-dictionary").hidden, false);
 });
 
 test("unmatched markup query remains plain text and clearing restores the active page", t => {
@@ -197,4 +198,21 @@ test("arrow keys traverse results and Escape restores the active section from in
   f.key("Escape");
   assert.equal(f.el("settings-search-results").hidden, true);
   assert.equal(f.el("anki").hidden, false);
+});
+
+test("moved settings are found under the section that now owns them", t => {
+  const f = fixture(t);
+  for (const [words, label, breadcrumb, section] of [
+    ["audio button", "Show the audio button", "Audio", "audio"],
+    ["grace period", "Grace period to reach the popup", "Reading › Popup closing", "lookup"],
+    ["leaving the popup", "Delay after leaving the popup", "Reading › Popup closing", "lookup"],
+    ["threshold dictionary", "Blur threshold dictionary", "Reading › Definition blur", "lookup"],
+  ]) {
+    f.query(words);
+    const result = f.match(label);
+    assert.ok(result, `"${words}" finds ${label}`);
+    assert.equal(result.querySelector("small").textContent, breadcrumb);
+    result.click();
+    assert.equal(f.el(section).hidden, false);
+  }
 });

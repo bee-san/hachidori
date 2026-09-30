@@ -94,11 +94,23 @@ test("missing, disabled, nonnumeric, and unselected frequency sources fail open"
 });
 
 test("frequency qualification ORs independently with count and Anki evidence", () => {
-  const combined = options({ definitionBlurEnabled: true, definitionBlurAnkiMature: true,
+  const combined = options({ definitionBlurCountEnabled: true, definitionBlurAnkiMature: true,
     definitionBlurDirection: "atLeast", definitionBlurThreshold: 5 });
   assert.equal(definitionBlurQualifies(combined, 1, false, true), true);
   assert.equal(definitionBlurQualifies(combined, 5, false, false), true);
   assert.equal(definitionBlurQualifies(combined, 1, true, false), true);
   assert.equal(definitionBlurQualifies(combined, 1, false, false), false);
   assert.equal(definitionBlurQualifies({ ...combined, definitionBlurFrequencyEnabled: false }, 1, false, true), false);
+});
+
+test("an empty blur dictionary is Same as sorting and follows the sort dictionary", () => {
+  const sorted = options({ definitionBlurFrequencyDictionary: "", frequencyDictionary: "Frequency" });
+  assert.deepEqual(definitionBlurFrequencyEvidence(sorted, groups([100]), source("rank-based")),
+    { qualified: true, value: 100, order: "ascending" });
+  // Automatic sorting has no single dictionary, so the condition stays unqualified.
+  assert.deepEqual(definitionBlurFrequencyEvidence(options({ definitionBlurFrequencyDictionary: "", frequencyDictionary: "" }),
+    groups([100]), source("rank-based")), { qualified: false, value: null, order: null });
+  // An explicit blur dictionary still wins over the sort dictionary.
+  assert.deepEqual(definitionBlurFrequencyEvidence(options({ frequencyDictionary: "Other" }),
+    groups([100]), source("rank-based")), { qualified: true, value: 100, order: "ascending" });
 });

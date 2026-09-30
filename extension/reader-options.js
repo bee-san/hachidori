@@ -98,7 +98,6 @@
     lookupMode: "activationSticky",
     activationKey: "Shift",
     definitionLookupMode: "inherit",
-    hoverDelayMs: 0,
     popupHideDelayMs: 160,
     // Yomitan's scanning.hidePopupOnCursorExit and hidePopupOnCursorExitDelay.
     hidePopupOnCursorExit: false,
@@ -122,7 +121,8 @@
     showPopupAudioButton: true,
     popupColumns: 1,
     showLookupCounts: true,
-    definitionBlurEnabled: false,
+    // Only the lookup-count condition; stored as `definitionBlurEnabled` before #401.
+    definitionBlurCountEnabled: false,
     definitionBlurAnkiMature: false,
     definitionBlurFrequencyEnabled: false,
     definitionBlurFrequencyDictionary: "",
@@ -166,7 +166,6 @@
   const NUMBER_RANGES = {
     scanLength: [1, 64],
     maxResults: [1, 256],
-    hoverDelayMs: [0, 2000],
     popupHideDelayMs: [0, 5000],
     hidePopupOnCursorExitDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
@@ -206,7 +205,7 @@
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
@@ -540,16 +539,23 @@
     return typeof value === "string" ? value : "";
   }
 
+  // An empty blur dictionary means "Same as sorting": the Reading → Frequency
+  // sorting dictionary, which may itself be Automatic (no single dictionary).
+  function definitionBlurFrequencyDictionary(options) {
+    return options.definitionBlurFrequencyDictionary || options.frequencyDictionary;
+  }
+
   // Shared by the reader and the Design preview. Native numeric frequency
   // values are the evidence; rendered labels are intentionally ignored.
   function definitionBlurFrequencyEvidence(options, frequencyGroups, dictionaries) {
     const unavailable = { qualified: false, value: null, order: null };
-    if (!options.definitionBlurFrequencyEnabled || !options.definitionBlurFrequencyDictionary
+    const title = definitionBlurFrequencyDictionary(options);
+    if (!options.definitionBlurFrequencyEnabled || !title
         || !Array.isArray(frequencyGroups) || !Array.isArray(dictionaries)) return unavailable;
-    const source = dictionaries.find(dictionary => dictionary?.title === options.definitionBlurFrequencyDictionary);
+    const source = dictionaries.find(dictionary => dictionary?.title === title);
     if (!source || source.enabled === false || source.frequencyCount === 0) return unavailable;
     const values = frequencyGroups
-      .filter(group => group?.dictionary === options.definitionBlurFrequencyDictionary
+      .filter(group => group?.dictionary === title
         && Array.isArray(group.frequencies))
       .flatMap(group => group.frequencies)
       .map(frequency => frequency?.value)
@@ -573,7 +579,7 @@
   function definitionBlurQualifies(options, lookupCount, ankiMature = false, frequencyQualified = false) {
     if (options.definitionBlurFrequencyEnabled && frequencyQualified === true) return true;
     if (options.definitionBlurAnkiMature && ankiMature === true) return true;
-    if (!options.definitionBlurEnabled || !Number.isSafeInteger(lookupCount) || lookupCount < 0) return false;
+    if (!options.definitionBlurCountEnabled || !Number.isSafeInteger(lookupCount) || lookupCount < 0) return false;
     return options.definitionBlurDirection === "below"
       ? lookupCount < options.definitionBlurThreshold
       : lookupCount >= options.definitionBlurThreshold;
@@ -593,7 +599,6 @@
   };
 
   function normaliseField(key, value) {
-    if (key === "hoverDelayMs") return 0;
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
@@ -676,9 +681,22 @@
     return (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
   }
 
+  // Keys an older stored record or backup may still carry. `modifier` and
+  // `definitionBlurEnabled` migrate; `hoverDelayMs` was never adjustable and is dropped.
+  const RETIRED_OPTION_KEYS = ["modifier", "definitionBlurEnabled", "hoverDelayMs"];
+
+  // `definitionBlurEnabled` was renamed; the new key wins when both are present.
+  function legacyBlurCountOption(source, strict) {
+    if (!Object.hasOwn(source, "definitionBlurEnabled") || Object.hasOwn(source, "definitionBlurCountEnabled")) return {};
+    const value = source.definitionBlurEnabled;
+    if (typeof value === "boolean") return { definitionBlurCountEnabled: value };
+    if (strict) throw new Error("the options write request carried an invalid reader option");
+    return {};
+  }
+
   function projectOptions(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    const result = legacyActivationOptions(source, strict);
+    const result = { ...legacyActivationOptions(source, strict), ...legacyBlurCountOption(source, strict) };
     for (const key of OPTION_KEYS) {
       if (!Object.hasOwn(source, key)) continue;
       const raw = source[key];
@@ -754,7 +772,7 @@
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
-    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_BUTTONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    DEFAULT_OPTIONS, RETIRED_OPTION_KEYS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_BUTTONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS,
     KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
@@ -762,7 +780,7 @@
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
-    definitionBlurFrequencyEvidence, definitionBlurQualifies,
+    definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,

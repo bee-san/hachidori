@@ -632,7 +632,8 @@ with No key and Child popups set to hold it, only a press over a popup is a
 scan press, and page presses keep their ordinary meaning. Otherwise No key and
 keyboard keys are unchanged, including a middle press closing the popup.
 
-There is no open delay: `hoverDelayMs` always normalises to 0, so a scan runs
+There is no open delay (the never-adjustable `hoverDelayMs` option was removed
+in #401 and is dropped from older records and backups), so a scan runs
 on the next timer turn at the pointer's latest position, and a key pressed over
 a stationary pointer scans at once. The hide/transfer delay defaults to the
 existing 160 ms, with the pinned source's 0–5,000 ms range. It is one global
@@ -878,7 +879,7 @@ engine scan window; a prefix-only result is not an exact match. A miss retains
 selection ownership until the selection changes or is dismissed, so pointer
 movement cannot silently replace it with a prefix. Its notice exposes the same
 personal-dictionary pencil as term and kanji results, prefilled with the
-selected word even when no dictionaries are installed. Reading → Personal
+selected word even when no dictionaries are installed. Library → Personal
 dictionary → **Show a popup when a selection has no definition**
 (`showNoResultNotice`, default on) owns that notice: switched off, a miss with
 loaded dictionaries hides the popup and still retains the selection, while the
@@ -888,7 +889,7 @@ Note append transaction and replays that exact request to show the new
 definition; publisher dictionaries remain unchanged.
 
 Automatic selection lookups are the personal dictionary's entry point, so
-Reading → Personal dictionary → **Use the personal dictionary**
+Library → Personal dictionary → **Use the personal dictionary**
 (`personalDictionaryEnabled`, default on) owns them. Switched off, the reader
 behaves like Yomitan: a selection change or drag release never looks anything
 up, in any lookup mode, and a live selection no longer outranks the pointer, so
@@ -1033,7 +1034,8 @@ scans the statistics collection. See [lookup statistics](lookup-statistics.md)
 for local recording, revision adoption and backup behavior. Lookup counts never
 contact an external application; retired corpus connection settings are ignored.
 
-`definitionBlurEnabled` remains the count criterion and requires
+`definitionBlurCountEnabled` (stored as `definitionBlurEnabled` before #401,
+which still migrates from older records and backups) remains the count criterion and requires
 `showLookupCounts`. The independent, default-off
 `definitionBlurAnkiMature` and `definitionBlurFrequencyEnabled` criteria
 combine with it through the shared `definitionBlurQualifies` OR rule. Anki's
