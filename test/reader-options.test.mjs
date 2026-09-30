@@ -101,3 +101,17 @@ test("the image hover preview defaults to large images and keeps only its three 
     "stored garbage falls back to the default without throwing");
   assert.ok(DESIGN_OPTION_KEYS.includes("imageHoverPreview"), "Design's reset restores it");
 });
+
+test("stored options drop the removed hover delay and migrate the renamed blur-count switch", () => {
+  assert.equal(Object.hasOwn(DEFAULT_OPTIONS, "hoverDelayMs"), false);
+  assert.equal(Object.hasOwn(DEFAULT_OPTIONS, "definitionBlurEnabled"), false);
+  const legacy = { hoverDelayMs: 250, definitionBlurEnabled: true };
+  assert.deepEqual(projectStoredOptions(legacy), { definitionBlurCountEnabled: true });
+  assert.equal(normaliseOptions(legacy).definitionBlurCountEnabled, true);
+  assert.equal(Object.hasOwn(normaliseOptions(legacy), "hoverDelayMs"), false);
+  // A record that has both keeps the renamed one.
+  assert.equal(normaliseOptions({ definitionBlurEnabled: true, definitionBlurCountEnabled: false })
+    .definitionBlurCountEnabled, false);
+  assert.deepEqual(validateOptionsPatch({ definitionBlurEnabled: false }), { definitionBlurCountEnabled: false });
+  assert.throws(() => validateOptionsPatch({ definitionBlurEnabled: "yes" }));
+});

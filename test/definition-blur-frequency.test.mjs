@@ -94,7 +94,7 @@ test("missing, disabled, nonnumeric, and unselected frequency sources fail open"
 });
 
 test("frequency qualification ORs independently with count and Anki evidence", () => {
-  const combined = options({ definitionBlurEnabled: true, definitionBlurAnkiMature: true,
+  const combined = options({ definitionBlurCountEnabled: true, definitionBlurAnkiMature: true,
     definitionBlurDirection: "atLeast", definitionBlurThreshold: 5 });
   assert.equal(definitionBlurQualifies(combined, 1, false, true), true);
   assert.equal(definitionBlurQualifies(combined, 5, false, false), true);

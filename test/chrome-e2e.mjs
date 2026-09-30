@@ -7385,7 +7385,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki").checked);
       persisted = await reloadedSettings.evaluate(async () => {
         const { options } = await chrome.storage.local.get("options");
-        return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
+        return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurCountEnabled,
           checked: document.getElementById("opt-blur-anki").checked,
           revealDisabled: document.getElementById("opt-blur-reveal").disabled };
       });

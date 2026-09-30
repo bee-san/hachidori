@@ -632,7 +632,8 @@ with No key and Child popups set to hold it, only a press over a popup is a
 scan press, and page presses keep their ordinary meaning. Otherwise No key and
 keyboard keys are unchanged, including a middle press closing the popup.
 
-There is no open delay: `hoverDelayMs` always normalises to 0, so a scan runs
+There is no open delay (the never-adjustable `hoverDelayMs` option was removed
+in #401 and is dropped from older records and backups), so a scan runs
 on the next timer turn at the pointer's latest position, and a key pressed over
 a stationary pointer scans at once. The hide/transfer delay defaults to the
 existing 160 ms, with the pinned source's 0–5,000 ms range. It is one global
@@ -1033,7 +1034,8 @@ scans the statistics collection. See [lookup statistics](lookup-statistics.md)
 for local recording, revision adoption and backup behavior. Lookup counts never
 contact an external application; retired corpus connection settings are ignored.
 
-`definitionBlurEnabled` remains the count criterion and requires
+`definitionBlurCountEnabled` (stored as `definitionBlurEnabled` before #401,
+which still migrates from older records and backups) remains the count criterion and requires
 `showLookupCounts`. The independent, default-off
 `definitionBlurAnkiMature` and `definitionBlurFrequencyEnabled` criteria
 combine with it through the shared `definitionBlurQualifies` OR rule. Anki's

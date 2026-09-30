@@ -42,6 +42,15 @@ test("an overlay restore reads on hover only when the backup chose no lookup mod
   }
 });
 
+test("an older backup restores without the removed hover delay and with the renamed blur-count switch", async () => {
+  const archived = snapshot();
+  archived.options = { revision: 5, hoverDelayMs: 0, definitionBlurEnabled: true, popupTheme: "dark" };
+  await assertBackupSnapshot(archived);
+  const restored = restoredBackupSnapshot(snapshot(), archived, []);
+  assert.deepEqual(restored.options, { definitionBlurCountEnabled: true, popupTheme: "dark", revision: 22 });
+  await assertBackupSnapshot(restored);
+});
+
 test("a pre-Template backup validates and restores through the canonical Template and Custom-button model", async () => {
   const archived = snapshot();
   const defaults = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki;

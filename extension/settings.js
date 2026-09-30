@@ -1458,7 +1458,7 @@ function renderCompactSummaryControls() {
 // All blur rules use the shared reveal controls. The delay field shows
 // seconds, fractions allowed, for the stored milliseconds.
 function renderDefinitionBlurControls() {
-  const countEnabled = options.definitionBlurEnabled;
+  const countEnabled = options.definitionBlurCountEnabled;
   const ankiEnabled = options.definitionBlurAnkiMature;
   const frequencyEnabled = options.definitionBlurFrequencyEnabled;
   const enabled = countEnabled || ankiEnabled || frequencyEnabled;
@@ -3278,7 +3278,7 @@ function attachHandlers() {
       writeOptions();
     });
   }
-  for (const [id, key] of [["opt-blur-count", "definitionBlurEnabled"],
+  for (const [id, key] of [["opt-blur-count", "definitionBlurCountEnabled"],
     ["opt-blur-anki", "definitionBlurAnkiMature"],
     ["opt-blur-frequency", "definitionBlurFrequencyEnabled"]]) {
     element(id).addEventListener("change", (event) => {

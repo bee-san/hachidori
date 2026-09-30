@@ -12,7 +12,7 @@ export const KEYBIND_OPTION_LABELS = {
   sourceHighlightEnabled: "Highlight the word on the page",
   showPopupAudioButton: "Show the audio button",
   showLookupCounts: "Record and show lookup counts",
-  definitionBlurEnabled: "Blur definitions by lookup count",
+  definitionBlurCountEnabled: "Blur definitions by lookup count",
   definitionBlurAnkiMature: "Blur definitions of mature Anki cards",
   definitionBlurFrequencyEnabled: "Blur definitions by frequency threshold",
   showCompactDefinitionSummary: "Show brief definitions beside the headword",

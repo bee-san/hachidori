@@ -770,7 +770,7 @@ try {
       baseRevision: optionRevision,
       options: {
         showLookupCounts: true,
-        definitionBlurEnabled: true,
+        definitionBlurCountEnabled: true,
         definitionBlurDirection: "atLeast",
         definitionBlurThreshold: 1,
         definitionBlurReveal: "hover",

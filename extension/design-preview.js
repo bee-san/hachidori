@@ -41,7 +41,7 @@
   let sampleBlurTimer = null;
   let sampleTermView = false;
   const DEFINITION_BLUR_KEYS = [
-    "showLookupCounts", "definitionBlurEnabled", "definitionBlurAnkiMature",
+    "showLookupCounts", "definitionBlurCountEnabled", "definitionBlurAnkiMature",
     "definitionBlurFrequencyEnabled", "definitionBlurFrequencyDictionary",
     "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
     "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",

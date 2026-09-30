@@ -220,7 +220,7 @@
   let dictionaryStateRevision = -1;
   let lookupStatsDescriptor = { generation: null, revision: -1 };
   const DEFINITION_BLUR_KEYS = [
-    "definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled",
+    "definitionBlurCountEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled",
     "definitionBlurFrequencyDictionary", "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
     "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
   ];
@@ -2375,7 +2375,7 @@
   }
 
   function definitionBlurActive(candidate = options) {
-    return (candidate.definitionBlurEnabled && candidate.showLookupCounts)
+    return (candidate.definitionBlurCountEnabled && candidate.showLookupCounts)
       || candidate.definitionBlurAnkiMature || candidate.definitionBlurFrequencyEnabled;
   }
 
@@ -2488,7 +2488,7 @@
     if (!blur) return;
     if (blur.lookupCount === undefined && lookupCount !== undefined) blur.lookupCount = lookupCount;
     if (blur.awaitingOptions || blur.state === "revealed") return;
-    const countEnabled = options.definitionBlurEnabled && options.showLookupCounts;
+    const countEnabled = options.definitionBlurCountEnabled && options.showLookupCounts;
     const frequency = currentDefinitionBlurFrequency(blur);
     const qualifies = definitionBlurQualifies(options, countEnabled ? blur.lookupCount : null,
       blur.ankiMature, frequency.qualified);
@@ -3698,10 +3698,9 @@
       extendGlyphDrag(event);
       return;
     }
-    // Cancel a pending dismissal here rather than waiting for the throttled
-    // scan, so the popup stays reachable even with hoverDelayMs turned up. The
-    // retargeted event target is enough; the rect test costs a layout and can
-    // wait for the scan.
+    // Cancel a pending dismissal here rather than waiting for the scheduled
+    // scan. The retargeted event target is enough; the rect test costs a
+    // layout and can wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
       clearTransferTimer();
@@ -3735,14 +3734,13 @@
     if (scanTimer !== null) {
       return;
     }
-    // Trailing-edge throttle: at most one scan per hoverDelayMs, always at the
-    // pointer's latest position.
+    // Coalesce the moves of one task into a scan at the pointer's latest position.
     scanTimer = window.setTimeout(() => {
       scanTimer = null;
       if (lastPointer) {
         scanPointer(lastPointer);
       }
-    }, options.hoverDelayMs);
+    }, 0);
   }
 
   const GLYPH_DRAG_START_PX = 3;
@@ -4288,7 +4286,6 @@
       || next.definitionLookupMode !== options.definitionLookupMode;
     const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
       || next.onlyScanJapaneseText !== options.onlyScanJapaneseText || personalChanged;
-    const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const cursorExitChanged = next.hidePopupOnCursorExit !== options.hidePopupOnCursorExit
       || next.hidePopupOnCursorExitDelayMs !== options.hidePopupOnCursorExitDelayMs;
@@ -4396,7 +4393,7 @@
       activationCode = null;
       hide();
     }
-    else if (interactionChanged || scanDelayChanged) {
+    else if (interactionChanged) {
       if (selectionIsUnchanged()) {
         clearScanTimer();
         clearHideTimer();
