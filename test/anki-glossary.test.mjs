@@ -6,11 +6,11 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createAnkiDefinitionRenderer } from "../extension/anki-glossary.js";
 const require = createRequire(import.meta.url);
-const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
+const { JSDOM, VirtualConsole } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(homedir(), ".cache/hachidori-e2e")] }));
 
-function fixture(t) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+function fixture(t, options) {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", options);
   t.after(() => dom.window.close());
   const request = { term: { rules: "v1", glossaries: [
     { dictionary: "A", definitionTags: "common", termTags: "", glossary: '["first", "<script>literal</script>"]' },
@@ -38,6 +38,17 @@ test("Anki glossary export reuses the production structured renderer and preserv
   assert.match(holder.textContent, /Rules: v1/u);
   assert.match(holder.textContent, /Deinflection: polite/u);
   assert.equal(document.body.children.length, 0, "export does not mount a popup or load images into the live document");
+});
+
+test("Smaller Anki cards leaves out the Rules/Deinflection footer that Yomitan's glossary does not write (#399)", async t => {
+  // jsdom resolves no scoped CSS (test/chrome-e2e.mjs checks the cascade); a
+  // silent console drops its not-implemented notices.
+  const { document, request } = fixture(t, { virtualConsole: new VirtualConsole() });
+  request.term.rules = "vs";
+  const html = await createAnkiDefinitionRenderer(document, request, undefined, { compact: true })({});
+  assert.match(html, /<i class="yomitan-glossary-meta">/u);
+  assert.match(html, /<\/ol><\/div>$/u);
+  assert.doesNotMatch(html, /Rules:|Deinflection:|yomitan-glossary-details/u);
 });
 
 test("Anki first/brief/plain/dictionary variants keep their distinct source meanings", async t => {
