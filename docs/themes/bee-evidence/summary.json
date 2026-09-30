@@ -1,0 +1,302 @@
+{
+  "base-jl": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.799999999813735,
+      "p95": 17.699999999720603
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.200000000186265,
+      "p95": 33.5
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 0.9500000001862645,
+      "p95": 1.5
+    },
+    "nodes": {
+      "n": 72,
+      "median": 20.0,
+      "p95": 34
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 24.399999999906868,
+      "p95": 26.40000000037253
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33.3000000002794,
+      "p95": 34
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      }
+    ]
+  },
+  "head-jl": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.799999999813735,
+      "p95": 17.100000000093132
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.200000000186265,
+      "p95": 33.89999999990687
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 1.0,
+      "p95": 2
+    },
+    "nodes": {
+      "n": 72,
+      "median": 20.0,
+      "p95": 34
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 26.90000000037253,
+      "p95": 27.100000000093132
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33,
+      "p95": 35.39999999990687
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 0
+      }
+    ]
+  },
+  "base-default": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 17.0,
+      "p95": 18.200000000186265
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.300000000046566,
+      "p95": 35.39999999990687
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 2.5,
+      "p95": 5.5
+    },
+    "nodes": {
+      "n": 72,
+      "median": 77.0,
+      "p95": 352
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 34.5,
+      "p95": 37.40000000037253
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 49.799999999813735,
+      "p95": 51
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      }
+    ]
+  },
+  "head-default": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.899999999906868,
+      "p95": 18.100000000093132
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.299999999813735,
+      "p95": 33.40000000037253
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 3.0,
+      "p95": 5.800000000279397
+    },
+    "nodes": {
+      "n": 72,
+      "median": 77.0,
+      "p95": 352
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 30.899999999906868,
+      "p95": 33.10000000009313
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 34.60000000009313,
+      "p95": 50
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 2,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      }
+    ]
+  },
+  "girlypop-bee": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.799999999813735,
+      "p95": 17.200000000186265
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.19999999925494,
+      "p95": 33.59999999962747
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 1.2000000001862645,
+      "p95": 2
+    },
+    "nodes": {
+      "n": 72,
+      "median": 24.0,
+      "p95": 43
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 29.40000000037253,
+      "p95": 29.59999999962747
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33.200000000186265,
+      "p95": 33.200000000186265
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      }
+    ]
+  },
+  "miku-bee": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.800000000745058,
+      "p95": 17.59999999962747
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.200000000186265,
+      "p95": 33.5
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 1.2000000001862645,
+      "p95": 1.7999999998137355
+    },
+    "nodes": {
+      "n": 72,
+      "median": 24.0,
+      "p95": 43
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 30.5,
+      "p95": 31.299999999813735
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33.19999999925494,
+      "p95": 35.09999999962747
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 0,
+        "dictionaryStyles": 1
+      }
+    ]
+  }
+}

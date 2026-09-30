@@ -32,7 +32,7 @@
         ]);
         if (module && (module.default?.schema !== 2 || module.default.slug !== name
             || typeof module.default.createView !== "function")) throw new Error("Unsupported renderer contract");
-        return { name, css: `${css}\n${icons}`, dictionaryStyles: name === "default",
+        return { name, css: `${css}\n${icons}`, dictionaryStyles: name === "default" || name === "bee",
           createView: module?.default.createView ?? window.HDPopup.createPopupView };
       })());
       return cache.get(name);
@@ -87,7 +87,9 @@
       let view, lastRender;
       let destroyed = false;
       const settings = new Map();
-      const components = { glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
+      const components = { createLookupActions: window.HDPopup.createLookupActions,
+        createDictionaryTabs: window.HDPopup.createDictionaryTabs,
+        glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
         buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae, pitchAccentPositions: window.HDGlossary.pitchAccentPositions,
         createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps,
         findDifferentDictionary: window.HDPopup.findDifferentDictionary, popupCoordinateScale: window.HDPopup.popupCoordinateScale };
@@ -103,10 +105,9 @@
           if (lastRender) {
             const [method, args] = lastRender;
             if (method === "renderResults" && viewport) args[2] = { ...args[2], ...viewport };
-            if (args[2]?.isCurrentRequest?.() === false) return;
-            call(method, args);
-            for (const [method, args] of settings) call(method, args);
+            if (args[2]?.isCurrentRequest?.() !== false) call(method, args);
           }
+          for (const [method, args] of settings) call(method, args);
         } catch (error) { void fail(error); }
       } };
       function call(method, args) {

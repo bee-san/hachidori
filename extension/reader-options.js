@@ -202,7 +202,7 @@
       : id.replace(/(^|-)([a-z])/gu, (_, separator, letter) => `${separator ? " " : ""}${letter.toUpperCase()}`),
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
-  const POPUP_RENDERER_IDS = ["nazeka", "plain", "jl"];
+  const POPUP_RENDERER_IDS = ["nazeka", "plain", "jl", "bee"];
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [

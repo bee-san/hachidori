@@ -1,0 +1,758 @@
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "defaultStyles": false,
+  "dictionaryStyles": 0,
+  "richNodes": 0,
+  "hiddenToolbar": true,
+  "background": "rgb(17, 17, 17)",
+  "reading": "たべる",
+  "word": "食べる, たべる",
+  "contrast": [
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.110527975282778
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.110527975282778
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-deconj",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.9220011105470665
+    },
+    {
+      "selector": "jl-frequency",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.50066737249719
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.704850505102503
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 12.039539281998346
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "jl-tabs",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-mine-button",
+      "property": "color",
+      "minimum": 3,
+      "ratio": 5.659057017595459
+    },
+    {
+      "selector": "jl-tab",
+      "property": "outlineColor",
+      "minimum": 3,
+      "ratio": 8.477818090067007
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.110527975282778
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.110527975282778
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-deconj",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.9220011105470665
+    },
+    {
+      "selector": "jl-frequency",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.50066737249719
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.704850505102503
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 12.039539281998346
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "bee-rich-tags",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.9220011105470665
+    },
+    {
+      "selector": "bee-rich-tags",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.9220011105470665
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-note-field",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.154455062013685
+    },
+    {
+      "selector": "gsm-hoshidicts-note-field",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.154455062013685
+    },
+    {
+      "selector": "gsm-hoshidicts-note-field",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.154455062013685
+    },
+    {
+      "selector": "gsm-hoshidicts-note-term",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 13.808867983063067
+    },
+    {
+      "selector": "gsm-hoshidicts-note-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 13.808867983063067
+    },
+    {
+      "selector": "gsm-hoshidicts-note-definition",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 13.808867983063067
+    },
+    {
+      "selector": "gsm-hoshidicts-note-cancel",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-note-save",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "jl-tabs",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-note-term",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-note-reading",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-note-definition",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-mine-button",
+      "property": "color",
+      "minimum": 3,
+      "ratio": 5.659057017595459
+    },
+    {
+      "selector": "gsm-hoshidicts-note-term",
+      "property": "outlineColor",
+      "minimum": 3,
+      "ratio": 8.477818090067007
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 6.110527975282778
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 7.704850505102503
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 12.039539281998346
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.67769758805775
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.1566921276076325
+    },
+    {
+      "selector": "bee-rich-tags",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 5.9220011105470665
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 9.96775894244701
+    },
+    {
+      "selector": "jl-tabs",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 3.8668457276168904
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 5.364907057736155
+    },
+    {
+      "selector": "gsm-hoshidicts-mine-button",
+      "property": "color",
+      "minimum": 3,
+      "ratio": 5.659057017595459
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 8.728122576381333
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 19.555999999999997
+    },
+    {
+      "selector": "bee-rich-tags",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-tabs",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-mine-button",
+      "property": "color",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-expression jl-spelling",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-reading",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-dictionary",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 11.32025621138092
+    },
+    {
+      "selector": "jl-tab",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "SUMMARY",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 13.994023083921398
+    },
+    {
+      "selector": "bee-rich-tags",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "color",
+      "minimum": 4.5,
+      "ratio": 21
+    },
+    {
+      "selector": "jl-tabs",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
+      "property": "borderTopColor",
+      "minimum": 3,
+      "ratio": 21
+    },
+    {
+      "selector": "gsm-hoshidicts-mine-button",
+      "property": "color",
+      "minimum": 3,
+      "ratio": 21
+    }
+  ],
+  "checks": [
+    "Store hidden by default",
+    "experimental opt-in",
+    "five bundled themes",
+    "Next and Previous themes buttons",
+    "Plain definitions only",
+    "JL blocks and actions",
+    "Bee group-only tabs, lazy rich content, Note, custom actions and kanji images",
+    "Bee WCAG AA text and control/focus contrast over white and black pages",
+    "Nazeka hover",
+    "kanji and Back",
+    "Default restore"
+  ],
+  "errors": []
+}

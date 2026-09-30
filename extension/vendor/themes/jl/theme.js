@@ -18,7 +18,7 @@ const brackets = groups => groups.filter(tags => tags.length).map(tags => `[${ta
 const frequencyValue = ({ frequencies: [first] }) => first.displayValue || String(first.value);
 const kanjiTokens = value => Array.isArray(value) ? value : String(value || "").split(/\s+/u).filter(Boolean);
 
-function createView(options) {
+export function createView(options, enhanced = false) {
   const { document, popup, components } = options;
   const node = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -37,7 +37,7 @@ function createView(options) {
   const nav = node("div", "jl-nav");
   const tabs = node("div", "jl-tabs");
   tabs.setAttribute("role", "group");
-  tabs.setAttribute("aria-label", "Dictionaries");
+  tabs.setAttribute("aria-label", enhanced ? "Dictionary groups" : "Dictionaries");
   header.append(nav, tabs);
   const scroll = node("div", "jl-scroll");
   popup.append(header, scroll);
@@ -52,9 +52,16 @@ function createView(options) {
   const highlighter = options.sourceHighlighter;
   let highlightEnabled = options.sourceHighlightEnabled;
   let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], tab = null, onTabSelected = null;
+  let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
+  let customButtons = options.customButtons || [];
+  const images = new Set();
+  let pendingPresentation = null;
   const shown = () => entries.filter(entry => !entry.hidden);
 
   function clear() {
+    revision += 1;
+    for (const control of tools) control.close(false);
+    tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
     entries = []; bindings = []; labels = []; frequencies = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
     highlighter?.clear();
@@ -81,7 +88,7 @@ function createView(options) {
     labels.push(label);
     return label;
   }
-  function updateDictionaryPresentation(context) {
+  function updateDictionaryPresentation(context, notify = true) {
     const names = new Map((context.dictionaryPresentation ?? []).map(item => [item.title, item.displayName || item.title]));
     const name = dictionary => names.get(dictionary) || dictionary;
     for (const label of labels) label.textContent = name(label.dataset.dictionary);
@@ -90,6 +97,92 @@ function createView(options) {
       element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
     }
+    if (enhanced) {
+      for (const image of images) image.updatePresentation(context);
+      if (groupContext) {
+        if (tools.some(control => control.form && !control.form.hidden) || options.canProjectDictionaryPresentation?.() === false) {
+          pendingPresentation = context;
+          return;
+        }
+        groupContext = { ...groupContext, ...context };
+        renderGroupTabs(availableDictionaries, groupContext, notify);
+      }
+    }
+  }
+  function flushDictionaryPresentation() {
+    if (!pendingPresentation) return;
+    const context = pendingPresentation; pendingPresentation = null;
+    updateDictionaryPresentation(context);
+  }
+
+  function addTools(parent, host, prefill, context) {
+    const control = components.createLookupActions({ ...options, customButtons,
+      idPrefix: `${options.idPrefix || "bee"}-${tools.length}`,
+      readPrefill: () => prefill, renderContext: context,
+      onNoteEditingChange(editing) {
+        if (editing) for (const other of tools) if (other !== control) other.close(false);
+        options.onNoteEditingChange?.(editing);
+      },
+      onFormCreated(form) { host.insertBefore(form, host.children[1] || null); options.positionPopup(); },
+      onClose: flushDictionaryPresentation,
+      onButtonsUpdated(actions, buttons) {
+        actions.querySelector(".bee-more-actions")?.remove();
+        if (buttons.length <= 2) return;
+        const more = node("details", "bee-more-actions");
+        const summary = node("summary", "", "⋯");
+        summary.setAttribute("aria-label", "More actions");
+        const menu = node("div", "bee-action-menu");
+        menu.append(...buttons.slice(2)); more.append(summary, menu); actions.append(more);
+      },
+    });
+    tools.push(control);
+    parent.append(control.actions);
+    return control;
+  }
+
+  function termPrefill(result, candidate) {
+    const exact = candidate?.exactSelection === true;
+    return { term: exact ? candidate.query : result.term.expression,
+      reading: !exact || candidate.query === result.term.expression ? result.term.reading || "" : "",
+      definition: "", sentence: candidate?.sentence || "" };
+  }
+
+  function richDefinition(parent, rows, dictionary, context, owner) {
+    const details = node("details", "bee-rich-definition");
+    details.append(node("summary", "", "Formatted definition"));
+    const content = node("div", "gsm-hoshidicts-glossary-content bee-rich-content");
+    content.dataset.hoshidictsDictionary = dictionary;
+    details.append(content); parent.append(details);
+    const ownRevision = revision;
+    const isCurrent = () => ownRevision === revision && owner.isConnected
+      && context.isCurrentRequest?.() !== false;
+    let rendered = false;
+    details.addEventListener("toggle", () => {
+      details.firstElementChild.textContent = details.open ? "Plain definition" : "Formatted definition";
+      if (!details.open || rendered || !isCurrent()) return;
+      try {
+        content.replaceChildren();
+        for (const row of rows) {
+          const rowContent = node("div", "bee-rich-row");
+          const tags = brackets(tagGroups(row.definitionTags));
+          if (tags) rowContent.append(node("span", "bee-rich-tags", tags));
+          content.append(rowContent);
+          options.appendTextOnlyGlossary(document, rowContent, row.glossary, {
+            dictionary, generation: context.generation, isCurrent,
+            isCurrentLink: () => ownRevision === revision && owner.isConnected && !owner.hidden
+              && (context.isCurrentView || context.isCurrentRequest)?.() !== false,
+            onExternalLink: context.onExternalLink, onInternalLink: context.onInternalLink,
+            resolveMedia: context.resolveMedia, imageContext: context,
+            onImageCreated: image => images.add(image), onLayoutChange: options.positionPopup,
+          });
+        }
+        rendered = true;
+        options.positionPopup();
+      } catch (error) {
+        content.replaceChildren(node("div", "gsm-hoshidicts-lookup-failure", `Could not render definition: ${error.message}`));
+      }
+    });
+    if (context.beeExpandedDefinitions?.includes(entries.length)) details.open = true;
   }
 
   // The first pitch accent that fits the text, preferring Design's pitch dictionary.
@@ -194,6 +287,10 @@ function createView(options) {
     const feedback = node("div", "gsm-hoshidicts-anki-feedback");
     feedback.hidden = true;
     entry.append(line, definitions, feedback);
+    if (enhanced) {
+      addTools(actions, entry, termPrefill(result, candidate), context);
+      richDefinition(definitions, rows, dictionary, context, entry);
+    }
     entries.push(entry);
     bindings.push({ audio: { button: audio.button, result: projected }, mining: { actions, feedback, result: projected } });
     scroll.append(entry);
@@ -216,6 +313,11 @@ function createView(options) {
     options.onResultsExpanded?.(shownBindings());
   }
   function renderTabs(dictionaries, context) {
+    if (enhanced) {
+      groupContext = context; availableDictionaries = dictionaries;
+      renderGroupTabs(dictionaries, context);
+      return;
+    }
     const all = button("jl-tab", "All", () => selectTab(null, true));
     all.title = "All dictionaries";
     tabs.append(all);
@@ -228,6 +330,38 @@ function createView(options) {
     }
     const requested = context.selectedDictionaryTab?.dictionary;
     selectTab(dictionaries.includes(requested) ? requested : null, false);
+  }
+
+  function selectGroup(descriptor, notify) {
+    tab = descriptor ? { groupId: descriptor.groupId } : null;
+    for (const element of tabs.children) element.setAttribute("aria-pressed", String(element.dataset.groupId === descriptor?.groupId));
+    for (const entry of entries) entry.hidden = !!descriptor && !descriptor.dictionaries.has(entry.dataset.dictionary);
+    selected = Math.max(0, entries.findIndex(entry => !entry.hidden));
+    if (notify) {
+      scroll.scrollTop = 0;
+      onTabSelected?.(tab);
+      options.onResultsExpanded?.(shownBindings());
+    }
+  }
+  function renderGroupTabs(dictionaries, context, notify = false) {
+    const descriptors = components.createDictionaryTabs(dictionaries, context).tabs.filter(item => item.groupId);
+    const selectedGroup = (tab || context.selectedDictionaryTab)?.groupId;
+    const active = descriptors.find(item => item.groupId === selectedGroup) || descriptors[0];
+    const previous = JSON.stringify(groupTabs.map(item => [item.groupId, item.label, [...item.dictionaries]]));
+    const next = JSON.stringify(descriptors.map(item => [item.groupId, item.label, [...item.dictionaries]]));
+    if (previous !== next) {
+      tabs.replaceChildren();
+      for (const descriptor of descriptors) {
+        const element = button("jl-tab", descriptor.label, () => selectGroup(descriptor, true));
+        element.dataset.groupId = descriptor.groupId; element.title = descriptor.title;
+        tabs.append(element);
+      }
+      groupTabs = descriptors;
+    }
+    const changed = tab?.groupId !== active?.groupId;
+    selectGroup(active, false);
+    if (changed) onTabSelected?.(tab);
+    if (notify) options.onResultsExpanded?.(shownBindings());
   }
 
   function renderResults(results, candidate, context = {}) {
@@ -244,7 +378,7 @@ function createView(options) {
     const order = (context.dictionaryPresentation ?? []).map(item => item.title);
     renderTabs([...order.filter(title => found.includes(title)), ...found.filter(title => !order.includes(title))], context);
     navigation(context);
-    updateDictionaryPresentation(context);
+    updateDictionaryPresentation(context, false);
     finish(candidate, results[0]?.matched || candidate?.query, context);
     options.onResultsRendered?.({ ...shownBindings(), lookupStats: null });
   }
@@ -263,15 +397,26 @@ function createView(options) {
       const line = node("div", "jl-top");
       line.append(node("span", "jl-spelling", kanji.character), dictionaryLabel(entry.dictionary));
       block.append(line, node("div", "jl-kanji-text", lines.filter(Boolean).join("\n")));
+      if (enhanced) {
+        block.dataset.dictionary = entry.dictionary;
+        addTools(line, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
+        richDefinition(block, [{ glossary: JSON.stringify(entry.definitions) }], entry.dictionary, context, block);
+        entries.push(block);
+      }
       scroll.append(block);
     }
-    updateDictionaryPresentation(context);
+    if (enhanced) {
+      onTabSelected = context.onDictionaryTabSelected;
+      renderTabs([...new Set(kanji.entries.map(entry => entry.dictionary))], context);
+    }
+    updateDictionaryPresentation(context, false);
     finish(candidate, context.highlightText || kanji.character, context);
   }
   function renderNotice(message, candidate, context = {}) {
     clear(); navigation(context);
     const notice = node("div", "gsm-hoshidicts-lookup-notice", message);
     notice.setAttribute("role", "status"); scroll.append(notice);
+    if (enhanced) addTools(nav, scroll, { term: candidate?.query || "", reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
     finish(candidate, candidate?.query, context);
   }
   function renderLookupFailure(state, { preserveView = false } = {}) {
@@ -286,7 +431,8 @@ function createView(options) {
   return {
     scrollElement: scroll, clear, renderResults, renderKanji, renderNotice, renderLookupFailure,
     captureTermView: () => ({ expandAll: true, restoreScrollTop: scroll.scrollTop,
-      selectedDictionaryTab: tab === null ? null : { dictionary: tab } }),
+      ...(enhanced ? { beeExpandedDefinitions: entries.flatMap((entry, index) => entry.querySelector(".bee-rich-definition")?.open ? [index] : []) } : {}),
+      selectedDictionaryTab: enhanced ? tab : tab === null ? null : { dictionary: tab } }),
     currentEntryIndex: () => Math.max(0, shown().indexOf(entries[selected])),
     focusEntry(target) {
       const visible = shown();
@@ -310,7 +456,13 @@ function createView(options) {
       scroll.scrollTo({ top, behavior: "instant" });
       return true;
     },
-    setDefinitionBlurState, updateDictionaryPresentation,
+    setDefinitionBlurState, updateDictionaryPresentation, flushDictionaryPresentation,
+    closeNoteForm() { return tools.some(control => control.close()); },
+    setCustomButtons(value) {
+      customButtons = value || [];
+      for (const control of tools) control.setCustomButtons(customButtons);
+      if (enhanced) options.positionPopup();
+    },
     setSourceHighlightEnabled(enabled) {
       highlightEnabled = enabled;
       if (!enabled) highlighter?.clear();

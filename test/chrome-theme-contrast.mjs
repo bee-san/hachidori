@@ -154,6 +154,12 @@ try {
         return root?.host.dataset.hoshidictsTheme === theme && images?.length === 2
           && [...images].every(image => image.naturalWidth === 100);
       }, {}, expectedTheme);
+      // Natural dimensions can be available before the CSS mask is painted.
+      await tab.evaluate(async () => {
+        await Promise.all([...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".gloss-image-link img")]
+          .map(image => image.decode()));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      });
       const state = await tab.evaluate(() => {
         const root = document.querySelector("hachidori-host").shadowRoot;
         const popup = root.querySelector(".gsm-hoshidicts-popup");

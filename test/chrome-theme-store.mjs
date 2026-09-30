@@ -78,7 +78,7 @@ try {
     location.hash = "design";
   }, `http://127.0.0.1:${server.address().port}`);
   await settings.waitForSelector(".theme-store-card button", { visible: true });
-  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 4);
+  assert.equal(await settings.$$eval(".theme-store-card", cards => cards.length), 5);
   const tab = await browser.newPage();
   tab.on("pageerror", error => { errors.push(error.message); console.log("tab error", error.message); });
   tab.on("console", message => { if (["error", "warn"].includes(message.type())) console.log(message.type(), message.text()); });
@@ -229,6 +229,142 @@ try {
   await settings.bringToFront();
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "jl");
   await settings.screenshot({ path: resolve(output, "store-jl.png") });
+  await settings.evaluate(async () => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const groups = ["English", "Study"].map((name, index) => ({ id: `bee-group-${index}`, name,
+      dictionaryIds: dictionaryState.dictionaries.map(dictionary => dictionary.id) }));
+    const grouped = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: dictionaryState.revision, dictionaries: dictionaryState.dictionaries, groups });
+    if (!grouped.ok) throw new Error(grouped.error);
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { customButtons: [
+        { id: "search", type: "link", label: "Search", url: "https://example.test/%w" },
+        { id: "template", type: "anki", label: "My card", templateId: "default" },
+        { id: "extra", type: "link", label: "Another search", url: "https://example.test/%r" },
+      ] } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
+  await settings.click(".theme-store-card:nth-child(5) button");
+  await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "bee");
+  await hover();
+  await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsRenderer === "bee");
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-more-actions"));
+  const bee = await tab.evaluate(() => {
+    const shadow = document.querySelector("hachidori-host").shadowRoot;
+    const popup = shadow.querySelector(".gsm-hoshidicts-popup");
+    return { tabs: [...popup.querySelectorAll(".jl-tab")].map(node => node.textContent),
+      rich: popup.querySelectorAll(".bee-rich-content > *").length,
+      notes: popup.querySelectorAll(".gsm-hoshidicts-note-button").length,
+      custom: popup.querySelectorAll(".gsm-hoshidicts-custom-anki-button").length,
+      menus: popup.querySelectorAll(".bee-more-actions").length,
+      defaultStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))) };
+  });
+  assert.deepEqual(bee.tabs, ["English", "Study"]);
+  assert.equal(bee.rich, 0);
+  assert.ok(bee.notes > 0 && bee.custom > 0 && bee.menus > 0, JSON.stringify(bee));
+  assert.equal(bee.defaultStyles, false);
+  const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
+    .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
+  assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
+  assert.equal(tabGeometry[0].height, tabGeometry[1].height);
+  assert.equal(tabGeometry[0].top, tabGeometry[1].top);
+  assert.ok(Math.abs(tabGeometry[0].right - tabGeometry[1].left) < 1, "group tabs share an edge without gaps");
+  const contrast = [];
+  const checkBeeContrast = async () => {
+    const checks = await tab.evaluate(() => {
+      const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      const canvas = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+      const rgba = value => {
+        canvas.clearRect(0, 0, 1, 1); canvas.fillStyle = value; canvas.fillRect(0, 0, 1, 1);
+        return [...canvas.getImageData(0, 0, 1, 1).data];
+      };
+      const blend = (front, back) => front.slice(0, 3).map((value, index) => value * front[3] / 255 + back[index] * (1 - front[3] / 255));
+      const luminance = color => color.reduce((sum, value, index) => {
+        const channel = value / 255;
+        return sum + (channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][index];
+      }, 0);
+      const ratio = (front, back) => {
+        const values = [luminance(front), luminance(back)].sort((a, b) => a - b);
+        return (values[1] + .05) / (values[0] + .05);
+      };
+      const background = (node, page) => {
+        const ancestors = [];
+        for (let current = node; current; current = current.parentElement) ancestors.unshift(current);
+        return ancestors.reduce((color, ancestor) => blend(rgba(getComputedStyle(ancestor).backgroundColor), color), page);
+      };
+      const results = [];
+      const check = (node, property, minimum, against = node) => {
+        const color = rgba(getComputedStyle(node)[property]);
+        const ratios = [[255, 255, 255], [0, 0, 0]].map(page => {
+          const back = background(against, page);
+          return ratio(blend(color, back), back);
+        });
+        results.push({ selector: node.className || node.tagName, property, minimum, ratio: Math.min(...ratios) });
+      };
+      for (const selector of [".jl-spelling", ".jl-reading", ".jl-deconj", ".jl-frequency", ".jl-dictionary",
+        ".jl-tab", ".gsm-hoshidicts-glossary-content", ".bee-rich-definition > summary", ".bee-rich-tags",
+        ".gsm-hoshidicts-text-action-button", ".gsm-hoshidicts-note-field", "input", "textarea", ".gsm-hoshidicts-note-actions button"]) {
+        for (const node of popup.querySelectorAll(selector)) if (node.getClientRects().length) check(node, "color", 4.5);
+      }
+      for (const node of popup.querySelectorAll(".jl-tabs, .gsm-hoshidicts-text-action-button, input, textarea")) {
+        if (node.getClientRects().length) check(node, "borderTopColor", 3, node.parentElement);
+      }
+      const mine = popup.querySelector(".gsm-hoshidicts-mine-button");
+      const state = mine.dataset.state; mine.dataset.state = "duplicate";
+      check(mine, "color", 3); mine.dataset.state = state;
+      const selected = popup.querySelector('.jl-tab[aria-pressed="true"]');
+      if (selected && !getComputedStyle(selected).textDecorationLine.includes("underline")) throw new Error("Selected group needs a non-colour indicator");
+      const focused = popup.getRootNode().activeElement;
+      if (focused?.matches(":focus-visible")) {
+        if (parseFloat(getComputedStyle(focused).outlineWidth) < 2) throw new Error("Keyboard focus needs a visible outline");
+        check(focused, "outlineColor", 3, focused.parentElement);
+      }
+      return results;
+    });
+    for (const check of checks) assert.ok(check.ratio >= check.minimum, JSON.stringify(check));
+    contrast.push(...checks);
+  };
+  await tab.keyboard.press("Tab");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
+  await checkBeeContrast();
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
+  await screenshot("bee");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
+  await screenshot("bee-rich");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector("form:not([hidden])"));
+  await checkBeeContrast();
+  await screenshot("bee-note");
+  await tab.keyboard.press("Escape");
+  assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), false,
+    "Escape closes Bee's Note editor before closing its popup");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji"));
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
+  await screenshot("bee-kanji-rich");
+  await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
+  await tab.keyboard.press("Escape");
+  await hover();
+  await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-spelling")?.textContent === "漢字");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-definition").open = true);
+  await tab.waitForFunction(() => [...document.querySelector("hachidori-host")?.shadowRoot.querySelectorAll(".bee-rich-content img") ?? []]
+    .some(image => image.complete && image.naturalWidth > 0));
+  assert.ok(await tab.evaluate(() => !!document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content table")));
+  await checkBeeContrast();
+  await screenshot("bee-structured-rich");
+  const media = await tab.createCDPSession();
+  for (const scheme of ["dark", "light"]) {
+    await media.send("Emulation.setEmulatedMedia", { features: [
+      { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
+    await checkBeeContrast();
+    await screenshot(`bee-forced-${scheme}`);
+  }
+  await media.send("Emulation.setEmulatedMedia", { features: [] });
+  await settings.bringToFront();
+  await settings.screenshot({ path: resolve(output, "store-bee.png") });
   await settings.click(".theme-store-card:first-child button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "default");
   console.log("hover");
@@ -238,9 +374,9 @@ try {
     return popup && !popup.querySelector(".nazeka-word") && !popup.querySelector(".gsm-hoshidicts-result-chrome")?.hidden;
   });
   assert.deepEqual(errors, []);
-  writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence,
-    checks: ["Store hidden by default", "experimental opt-in", "four bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL actions and Default restore. Evidence: ${output}`);
+  writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
+    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Bee group-only tabs, lazy rich content, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

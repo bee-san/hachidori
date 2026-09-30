@@ -2135,6 +2135,267 @@
     return { element: audio, button };
   }
 
+  function configureEntryActions(actions, label) {
+    actions.className = "gsm-hoshidicts-entry-actions";
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", label);
+    actions.addEventListener("focusin", event => {
+      const item = [...actions.children].find(child =>
+        child === event.target || child.contains(event.target));
+      if (!item || actions.scrollWidth <= actions.clientWidth) return;
+      const padding = 2;
+      const left = item.offsetLeft;
+      const right = left + item.offsetWidth;
+      if (left < actions.scrollLeft + padding) {
+        actions.scrollLeft = Math.max(0, left - padding);
+      } else if (right > actions.scrollLeft + actions.clientWidth - padding) {
+        actions.scrollLeft = right - actions.clientWidth + padding;
+      }
+    });
+    return actions;
+  }
+
+  // Shared personal dictionary editor and custom actions. Renderers own placement.
+  function createLookupActions(options) {
+    const documentRef = options.document, windowRef = options.window, popup = options.popup;
+    const positionPopup = options.positionPopup;
+    const onAddCustomEntry = options.onAddCustomEntry ?? (() => {});
+    const onNoteEditingChange = options.onNoteEditingChange ?? (() => {});
+    const idPrefix = options.idPrefix || "gsm-hoshidicts";
+    let { readPrefill, renderContext = {}, customButtons = [] } = options;
+    function createNoteForm(button, readPrefill) {
+      const form = documentRef.createElement("form");
+      form.className = "gsm-hoshidicts-note-form";
+      form.id = `${idPrefix}-note-form`;
+      form.hidden = true;
+      button.setAttribute("aria-controls", form.id);
+
+      function createField(labelText, name, multiline = false) {
+        const label = documentRef.createElement("label");
+        label.className = "gsm-hoshidicts-note-field";
+        const labelValue = documentRef.createElement("span");
+        labelValue.textContent = labelText;
+        const control = multiline
+          ? documentRef.createElement("textarea")
+          : documentRef.createElement("input");
+        control.id = `${idPrefix}-note-${name}`;
+        control.name = name;
+        control.className = `gsm-hoshidicts-note-${name}`;
+        control.required = true;
+        if (!multiline) control.autocomplete = "off";
+        label.htmlFor = control.id;
+        label.append(labelValue, control);
+        form.appendChild(label);
+        return control;
+      }
+
+      const term = createField("Term", "term");
+      const reading = createField("Reading", "reading");
+      const definition = createField("Definition", "definition", true);
+      const error = documentRef.createElement("div");
+      error.className = "gsm-hoshidicts-note-error";
+      error.setAttribute("role", "alert");
+      error.hidden = true;
+      form.appendChild(error);
+
+      const formActions = documentRef.createElement("div");
+      formActions.className = "gsm-hoshidicts-note-actions";
+      const cancel = documentRef.createElement("button");
+      cancel.type = "button";
+      cancel.className = "gsm-hoshidicts-note-cancel";
+      cancel.textContent = "Cancel";
+      const save = documentRef.createElement("button");
+      save.type = "submit";
+      save.className = "gsm-hoshidicts-note-save";
+      save.textContent = "Save";
+      formActions.append(cancel, save);
+      form.appendChild(formActions);
+
+      let editing = false;
+      let accepted = false;
+
+      function close(restoreFocus = true) {
+        if (form.hidden) return false;
+        form.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+        error.hidden = true;
+        error.textContent = "";
+        if (editing) {
+          editing = false;
+          onNoteEditingChange(false);
+        }
+        if (restoreFocus && button.isConnected) button.focus();
+        positionPopup();
+        options.onClose?.();
+        return true;
+      }
+
+      function open() {
+        accepted = false;
+        const prefill = readPrefill() || {};
+        term.value = String(prefill.term || "");
+        reading.value = String(prefill.reading || "");
+        definition.value = String(prefill.definition || "");
+        error.hidden = true;
+        error.textContent = "";
+        form.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        if (!editing) {
+          editing = true;
+          onNoteEditingChange(true);
+        }
+        positionPopup();
+        form.scrollTop = 0;
+        term.focus();
+        term.select();
+      }
+
+      cancel.addEventListener("click", () => close());
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && close()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (accepted) return;
+        const entry = {
+          term: term.value,
+          reading: reading.value,
+          definition: definition.value,
+        };
+        if (Object.values(entry).some((value) => value.trim() === "")) {
+          error.textContent = "Complete the term, reading, and definition.";
+          error.hidden = false;
+          positionPopup();
+          return;
+        }
+        error.hidden = true;
+        error.textContent = "";
+        try {
+          onAddCustomEntry(entry);
+          accepted = true;
+          close();
+        } catch (appendError) {
+          error.textContent = typeof appendError?.message === "string"
+            ? appendError.message
+            : String(appendError);
+          error.hidden = false;
+          positionPopup();
+        }
+      });
+
+      return { close, open, form };
+    }
+
+    const button = documentRef.createElement("button");
+    button.type = "button";
+    button.className = "gsm-hoshidicts-note-button";
+    button.title = "Edit personal dictionary";
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-expanded", "false");
+
+    const icon = documentRef.createElement("span");
+    icon.className = "gsm-hoshidicts-note-icon hd-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.dataset.icon = "edit";
+    button.appendChild(icon);
+
+    const actions = documentRef.createElement("div");
+    configureEntryActions(actions, "Lookup actions");
+    actions.appendChild(button);
+    const buttonNodes = new Map();
+
+    function createCustomButton(value) {
+      const custom = documentRef.createElement("button");
+      custom.type = "button";
+      custom.dataset.customButtonId = value.id;
+      const label = documentRef.createElement("span");
+      label.className = "gsm-hoshidicts-text-action-label";
+      custom.appendChild(label);
+      if (value.type === "link") {
+        custom.className = "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button";
+        const activate = event => {
+          if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const link = customButtons.find(candidate =>
+            candidate.id === custom.dataset.customButtonId && candidate.type === "link");
+          if (!link || !custom.isConnected || popup.hidden || !popup.contains(actions)
+              || renderContext.isCurrentRequest?.() === false) return;
+          const prefill = readPrefill() || {};
+          const url = windowRef.HDExternalLinks.expandCustomLinkUrl(link.url, {
+            word: prefill.term, reading: prefill.reading, sentence: prefill.sentence,
+          });
+          if (url) options.onCustomLinkClick?.({ url,
+            active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey) });
+        };
+        custom.addEventListener("click", activate);
+        custom.addEventListener("auxclick", activate);
+      } else {
+        custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+        custom.disabled = true;
+      }
+      return custom;
+    }
+
+    function updateButtons() {
+      const retained = new Set();
+      const ordered = [];
+      for (const value of customButtons) {
+        let custom = buttonNodes.get(value.id);
+        const expectedType = value.type === "anki" ? "anki" : "link";
+        if (custom && custom.dataset.customButtonType !== expectedType) {
+          custom.remove();
+          buttonNodes.delete(value.id);
+          custom = null;
+        }
+        if (!custom) {
+          custom = createCustomButton(value);
+          custom.dataset.customButtonType = expectedType;
+          buttonNodes.set(value.id, custom);
+        }
+        custom.firstElementChild.textContent = value.label;
+        custom.dataset.customButtonLabel = value.label;
+        custom.title = value.type === "anki" ? `Send to Anki with ${value.label}` : value.label;
+        custom.setAttribute("aria-label", custom.title);
+        if (value.type === "anki") custom.dataset.ankiTemplateId = value.templateId;
+        else delete custom.dataset.ankiTemplateId;
+        retained.add(value.id);
+        ordered.push(custom);
+      }
+      for (const [id, removed] of buttonNodes) {
+        if (retained.has(id)) continue;
+        const focused = popup.getRootNode().activeElement === removed;
+        removed.remove();
+        buttonNodes.delete(id);
+        if (focused) button.focus();
+      }
+      actions.append(...ordered);
+      options.onButtonsUpdated?.(actions, ordered);
+    }
+    updateButtons();
+
+    let editor = null;
+    button.addEventListener("click", () => {
+      if (!editor) {
+        editor = createNoteForm(button, () => readPrefill());
+        options.onFormCreated?.(editor.form);
+      }
+      if (editor.form.hidden) editor.open();
+      else editor.close();
+    });
+    return {
+      actions,
+      button,
+      close: (restoreFocus) => editor?.close(restoreFocus) ?? false,
+      setCustomButtons(value) { customButtons = value || []; updateButtons(); },
+      setPrefillReader(value, context) { readPrefill = value; renderContext = context; },
+      get form() { return editor?.form ?? null; },
+    };
+  }
+
   function createPopupView(options) {
     const documentRef = options.document;
     const windowRef = options.window;
@@ -2176,12 +2437,6 @@
       : () => "all";
     const onKanjiClick = typeof options.onKanjiClick === "function"
       ? options.onKanjiClick
-      : () => {};
-    const onAddCustomEntry = typeof options.onAddCustomEntry === "function"
-      ? options.onAddCustomEntry
-      : async () => {};
-    const onNoteEditingChange = typeof options.onNoteEditingChange === "function"
-      ? options.onNoteEditingChange
       : () => {};
     const onBeforeResultsRendered =
       typeof options.onBeforeResultsRendered === "function"
@@ -2581,26 +2836,6 @@
     }
     popup.addEventListener("focusout", onPresentationFocusOut);
 
-    function configureEntryActions(actions, label) {
-      actions.className = "gsm-hoshidicts-entry-actions";
-      actions.setAttribute("role", "group");
-      actions.setAttribute("aria-label", label);
-      actions.addEventListener("focusin", event => {
-        const item = [...actions.children].find(child =>
-          child === event.target || child.contains(event.target));
-        if (!item || actions.scrollWidth <= actions.clientWidth) return;
-        const padding = 2;
-        const left = item.offsetLeft;
-        const right = left + item.offsetWidth;
-        if (left < actions.scrollLeft + padding) {
-          actions.scrollLeft = Math.max(0, left - padding);
-        } else if (right > actions.scrollLeft + actions.clientWidth - padding) {
-          actions.scrollLeft = right - actions.clientWidth + padding;
-        }
-      });
-      return actions;
-    }
-
     function runRenderAction(isCurrent, renderContext, action) {
       if (!isCurrent()) return;
       try {
@@ -2626,117 +2861,17 @@
         currentNoteControls.setPrefillReader(readPrefill, renderContext);
         return currentNoteControls;
       }
-      const button = documentRef.createElement("button");
-      button.type = "button";
-      button.className = "gsm-hoshidicts-note-button";
-      button.title = "Edit personal dictionary";
-      button.setAttribute("aria-label", button.title);
-      button.setAttribute("aria-expanded", "false");
-
-      const icon = documentRef.createElement("span");
-      icon.className = "gsm-hoshidicts-note-icon hd-icon";
-      icon.setAttribute("aria-hidden", "true");
-      icon.dataset.icon = "edit";
-      button.appendChild(icon);
-
-      const actions = documentRef.createElement("div");
-      configureEntryActions(actions, "Lookup actions");
-      actions.appendChild(button);
-      const buttonNodes = new Map();
-
-      function createCustomButton(value) {
-        const custom = documentRef.createElement("button");
-        custom.type = "button";
-        custom.dataset.customButtonId = value.id;
-        const label = documentRef.createElement("span");
-        label.className = "gsm-hoshidicts-text-action-label";
-        custom.appendChild(label);
-        if (value.type === "link") {
-          custom.className = "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button";
-          const activate = event => {
-            if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            const link = customButtons.find(candidate =>
-              candidate.id === custom.dataset.customButtonId && candidate.type === "link");
-            if (!link || !custom.isConnected || popup.hidden || currentNoteControls?.actions !== actions
-                || renderContext.isCurrentRequest?.() === false) return;
-            const prefill = readPrefill() || {};
-            const url = windowRef.HDExternalLinks.expandCustomLinkUrl(link.url, {
-              word: prefill.term, reading: prefill.reading, sentence: prefill.sentence,
-            });
-            if (url) options.onCustomLinkClick?.({ url,
-              active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey) });
-          };
-          custom.addEventListener("click", activate);
-          custom.addEventListener("auxclick", activate);
-        } else {
-          custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
-          custom.disabled = true;
-        }
-        return custom;
-      }
-
-      function updateButtons() {
-        const retained = new Set();
-        const ordered = [];
-        for (const value of customButtons) {
-          let custom = buttonNodes.get(value.id);
-          const expectedType = value.type === "anki" ? "anki" : "link";
-          if (custom && custom.dataset.customButtonType !== expectedType) {
-            custom.remove();
-            buttonNodes.delete(value.id);
-            custom = null;
-          }
-          if (!custom) {
-            custom = createCustomButton(value);
-            custom.dataset.customButtonType = expectedType;
-            buttonNodes.set(value.id, custom);
-          }
-          custom.firstElementChild.textContent = value.label;
-          custom.dataset.customButtonLabel = value.label;
-          custom.title = value.type === "anki" ? `Send to Anki with ${value.label}` : value.label;
-          custom.setAttribute("aria-label", custom.title);
-          if (value.type === "anki") custom.dataset.ankiTemplateId = value.templateId;
-          else delete custom.dataset.ankiTemplateId;
-          retained.add(value.id);
-          ordered.push(custom);
-        }
-        for (const [id, removed] of buttonNodes) {
-          if (retained.has(id)) continue;
-          const focused = popup.getRootNode().activeElement === removed;
-          removed.remove();
-          buttonNodes.delete(id);
-          if (focused) button.focus();
-        }
-        actions.append(...ordered);
-      }
-      updateButtons();
-
-      let editor = null;
-      button.addEventListener("click", () => {
-        if (!editor) {
-          editor = createNoteForm(button, () => readPrefill());
-          applyToolbarLayout();
-        }
-        if (editor.form.hidden) editor.open();
-        else editor.close();
+      return createLookupActions({ ...options, readPrefill, renderContext, customButtons,
+        positionPopup, onClose: flushDictionaryPresentation,
+        onFormCreated(form) { popup.append(form); applyToolbarLayout(); },
       });
-      return {
-        actions,
-        button,
-        close: (restoreFocus) => editor?.close(restoreFocus) ?? false,
-        updateButtons,
-        setPrefillReader(value, context) { readPrefill = value; renderContext = context; },
-        get form() { return editor?.form ?? null; },
-      };
     }
 
     function setCustomButtons(value) {
       const next = value || [];
       if (JSON.stringify(customButtons) === JSON.stringify(next)) return;
       customButtons = next;
-      currentNoteControls?.updateButtons();
+      currentNoteControls?.setCustomButtons(customButtons);
       positionPopup();
     }
 
@@ -2746,132 +2881,6 @@
         type: "link",
         ...link,
       })));
-    }
-
-    function createNoteForm(button, readPrefill) {
-      const form = documentRef.createElement("form");
-      form.className = "gsm-hoshidicts-note-form";
-      form.id = `${idPrefix}-note-form`;
-      form.hidden = true;
-      button.setAttribute("aria-controls", form.id);
-
-      function createField(labelText, name, multiline = false) {
-        const label = documentRef.createElement("label");
-        label.className = "gsm-hoshidicts-note-field";
-        const labelValue = documentRef.createElement("span");
-        labelValue.textContent = labelText;
-        const control = multiline
-          ? documentRef.createElement("textarea")
-          : documentRef.createElement("input");
-        control.id = `${idPrefix}-note-${name}`;
-        control.name = name;
-        control.className = `gsm-hoshidicts-note-${name}`;
-        control.required = true;
-        if (!multiline) control.autocomplete = "off";
-        label.htmlFor = control.id;
-        label.append(labelValue, control);
-        form.appendChild(label);
-        return control;
-      }
-
-      const term = createField("Term", "term");
-      const reading = createField("Reading", "reading");
-      const definition = createField("Definition", "definition", true);
-      const error = documentRef.createElement("div");
-      error.className = "gsm-hoshidicts-note-error";
-      error.setAttribute("role", "alert");
-      error.hidden = true;
-      form.appendChild(error);
-
-      const formActions = documentRef.createElement("div");
-      formActions.className = "gsm-hoshidicts-note-actions";
-      const cancel = documentRef.createElement("button");
-      cancel.type = "button";
-      cancel.className = "gsm-hoshidicts-note-cancel";
-      cancel.textContent = "Cancel";
-      const save = documentRef.createElement("button");
-      save.type = "submit";
-      save.className = "gsm-hoshidicts-note-save";
-      save.textContent = "Save";
-      formActions.append(cancel, save);
-      form.appendChild(formActions);
-
-      let editing = false;
-      let accepted = false;
-
-      function close(restoreFocus = true) {
-        if (form.hidden) return false;
-        form.hidden = true;
-        button.setAttribute("aria-expanded", "false");
-        error.hidden = true;
-        error.textContent = "";
-        if (editing) {
-          editing = false;
-          onNoteEditingChange(false);
-        }
-        if (restoreFocus && button.isConnected) button.focus();
-        positionPopup();
-        flushDictionaryPresentation();
-        return true;
-      }
-
-      function open() {
-        accepted = false;
-        const prefill = readPrefill() || {};
-        term.value = String(prefill.term || "");
-        reading.value = String(prefill.reading || "");
-        definition.value = String(prefill.definition || "");
-        error.hidden = true;
-        error.textContent = "";
-        form.hidden = false;
-        button.setAttribute("aria-expanded", "true");
-        if (!editing) {
-          editing = true;
-          onNoteEditingChange(true);
-        }
-        positionPopup();
-        form.scrollTop = 0;
-        term.focus();
-        term.select();
-      }
-
-      cancel.addEventListener("click", () => close());
-      form.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && close()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      });
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        if (accepted) return;
-        const entry = {
-          term: term.value,
-          reading: reading.value,
-          definition: definition.value,
-        };
-        if (Object.values(entry).some((value) => value.trim() === "")) {
-          error.textContent = "Complete the term, reading, and definition.";
-          error.hidden = false;
-          positionPopup();
-          return;
-        }
-        error.hidden = true;
-        error.textContent = "";
-        try {
-          onAddCustomEntry(entry);
-          accepted = true;
-          close();
-        } catch (appendError) {
-          error.textContent = typeof appendError?.message === "string"
-            ? appendError.message
-            : String(appendError);
-          error.hidden = false;
-          positionPopup();
-        }
-      });
-
-      return { close, open, form };
     }
 
     function setSourceHighlightEnabled(enabled) {
@@ -4346,6 +4355,8 @@
     createDictionaryDisplayNames,
     createFrequencyTags,
     createPopupView,
+    createLookupActions,
+    createDictionaryTabs,
     createAudioControl,
     deinflectionSteps,
     createSourceHighlighter,
