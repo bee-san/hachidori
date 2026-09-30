@@ -122,17 +122,19 @@ inactive statistics namespaces. Cleanup failure cannot make the restore
 retryable; an uncertain commit retains both namespaces.
 
 The focused archive/state/download/Settings unit tests cover format and control
-contracts. `test/backup-engine-scenarios.mjs`, included by extension smoke, covers
+contracts, including large-file export and restore with a failing Response Blob
+sink, existing ZIP64 compatibility, and empty payloads.
+`test/backup-engine-scenarios.mjs`, included by extension smoke, covers
 automatic cadence, retention, shared real generations, malformed paths, schema
 failure, lost replies, storage failures, uncertain commits, corrupt-newest
 fallback, interrupted cleanup, disabled-package validation, damaged-installation
-recovery and empty restores through real WASM. Seven shared browser assertions
+recovery and empty restores through real WASM. Eight shared browser assertions
 in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
 confirmation and a real oldest-retained-snapshot restore that brings back its
 saved retention count, plus the actual Chrome download,
 immutable preview/conflict, complete restore, corrupt-archive cleanup and actual
-page closure during staged preparation in both OPFS and IDBFS suites, followed
-by browser restart.
+page closure during staged preparation and a 16 MiB binary restore/re-export in
+both OPFS and IDBFS suites, followed by browser restart.
 
 ## Archive representation
 
@@ -161,5 +163,7 @@ The lazy backup module uses zip.js 2.11.2, vendored from commit
 `09a4776c6baf40f3e2aa0c7c66199f6aa3ebdefc927e83dcaf1dfffd432f9bac`).
 It runs in the existing engine context with additional workers disabled. Only
 stored, unencrypted regular files are part of this format, so neither external
-codecs nor an additional WebAssembly binary are needed. This is not a GSM or
-general-purpose ZIP importer.
+codecs nor an additional WebAssembly binary are needed. Export and extraction
+use a zip.js `Writer` that snapshots each output chunk into a Blob, avoiding the
+`BlobWriter` Response-stream sink and a single archive-sized typed array.
+This is not a GSM or general-purpose ZIP importer.
