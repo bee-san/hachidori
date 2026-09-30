@@ -205,7 +205,7 @@
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
@@ -541,14 +541,21 @@
 
   // Shared by the reader and the Design preview. Native numeric frequency
   // values are the evidence; rendered labels are intentionally ignored.
+  // An empty blur dictionary means "Same as sorting": the Reading → Frequency
+  // sorting dictionary, which may itself be Automatic (no single dictionary).
+  function definitionBlurFrequencyDictionary(options) {
+    return options.definitionBlurFrequencyDictionary || options.frequencyDictionary;
+  }
+
   function definitionBlurFrequencyEvidence(options, frequencyGroups, dictionaries) {
     const unavailable = { qualified: false, value: null, order: null };
-    if (!options.definitionBlurFrequencyEnabled || !options.definitionBlurFrequencyDictionary
+    const title = definitionBlurFrequencyDictionary(options);
+    if (!options.definitionBlurFrequencyEnabled || !title
         || !Array.isArray(frequencyGroups) || !Array.isArray(dictionaries)) return unavailable;
-    const source = dictionaries.find(dictionary => dictionary?.title === options.definitionBlurFrequencyDictionary);
+    const source = dictionaries.find(dictionary => dictionary?.title === title);
     if (!source || source.enabled === false || source.frequencyCount === 0) return unavailable;
     const values = frequencyGroups
-      .filter(group => group?.dictionary === options.definitionBlurFrequencyDictionary
+      .filter(group => group?.dictionary === title
         && Array.isArray(group.frequencies))
       .flatMap(group => group.frequencies)
       .map(frequency => frequency?.value)
@@ -773,7 +780,7 @@
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
-    definitionBlurFrequencyEvidence, definitionBlurQualifies,
+    definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,

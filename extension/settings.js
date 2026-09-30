@@ -69,12 +69,14 @@ const OPTION_SECTIONS = {
   anki: "Anki",
   keybinds: "Keybinds",
   advanced: "Advanced",
+  // Library → Personal dictionary owns its lookup switches.
+  "custom-dictionary": "Personal dictionary",
 };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
-  DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES,
+  DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, definitionBlurFrequencyDictionary,
   activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -869,7 +871,8 @@ function selectedFrequencyDictionary(title = options.frequencyDictionary) {
     && isAvailableFrequencyDictionary(dictionary));
 }
 
-function selectedDefinitionBlurFrequencyDictionary(title = options.definitionBlurFrequencyDictionary) {
+// The dictionary the blur threshold reads: its own choice, or "Same as sorting".
+function selectedDefinitionBlurFrequencyDictionary(title = definitionBlurFrequencyDictionary(options)) {
   return dictionaries.find((dictionary) => dictionary.title === title
     && isAvailableFrequencyDictionary(dictionary));
 }
@@ -1415,7 +1418,8 @@ function renderDefinitionBlurFrequencyChoices() {
   if (select === document.activeElement) return;
   const previous = options.definitionBlurFrequencyDictionary;
   select.disabled = !options.definitionBlurFrequencyEnabled;
-  select.replaceChildren(new Option("Choose an enabled frequency dictionary", ""));
+  const sorting = selectedFrequencyDictionary();
+  select.replaceChildren(new Option(sorting ? `Same as sorting (${dictionaryLabel(sorting)})` : "Same as sorting", ""));
   const available = dictionaries.filter(isAvailableFrequencyDictionary);
   for (const dictionary of available) select.add(new Option(dictionaryLabel(dictionary), dictionary.title));
   if (previous !== "" && !available.some(dictionary => dictionary.title === previous)) {
@@ -1495,8 +1499,8 @@ function renderDefinitionBlurControls() {
   frequencyHelp.hidden = !frequencyEnabled;
   if (frequencyEnabled) {
     const selected = selectedDefinitionBlurFrequencyDictionary();
-    if (!options.definitionBlurFrequencyDictionary) {
-      frequencyHelp.textContent = "Choose one enabled frequency dictionary. Missing frequency data leaves this condition unqualified.";
+    if (!definitionBlurFrequencyDictionary(options)) {
+      frequencyHelp.textContent = "Sorting compares every frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.";
     } else if (!selected) {
       frequencyHelp.textContent = "The saved frequency dictionary is unavailable. This condition fails open until it is enabled or reinstalled.";
     } else {
@@ -3426,6 +3430,8 @@ function attachHandlers() {
       return;
     }
     options.frequencyDictionary = event.target.value;
+    // Blur set to "Same as sorting" follows this choice.
+    renderDefinitionBlurControls();
     applyFrequencyDirection();
   });
   element("opt-frequency-auto").addEventListener("click", applyFrequencyDirection);

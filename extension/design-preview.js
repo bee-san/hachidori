@@ -42,7 +42,7 @@
   let sampleTermView = false;
   const DEFINITION_BLUR_KEYS = [
     "showLookupCounts", "definitionBlurCountEnabled", "definitionBlurAnkiMature",
-    "definitionBlurFrequencyEnabled", "definitionBlurFrequencyDictionary",
+    "definitionBlurFrequencyEnabled", "definitionBlurFrequencyDictionary", "frequencyDictionary",
     "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
     "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
   ];

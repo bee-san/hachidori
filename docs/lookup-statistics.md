@@ -37,12 +37,12 @@ and safe JSON integer representation still apply.
 Settings → Reading → Definition blur hides definitions, compact summaries and
 reading furigana behind a blur until you recall the word. Its three conditions
 are off by default and can be enabled independently; a match from any checked
-condition qualifies. **Lookup count** needs lookup counts. Choose **At least**
+condition qualifies. **Blur by lookup count** needs lookup counts. Choose **At least**
 to blur words looked up the threshold number of times (default 5) or more, or
 **Below** to blur words looked up fewer times. Zero is a valid Below count. The decision uses the same count the popup displays, after
 the current lookup is recorded.
 
-**Mature Anki card** works even with lookup counts off.
+**Blur mature Anki cards** works even with lookup counts off.
 It checks the first result's canonical expression against the configured Anki
 note type across all decks. A word qualifies if at least one matching card is
 in review with an interval of **21 days or more**, following
@@ -63,7 +63,10 @@ That check does not add or edit notes, cards or scheduling data. Anki being
 closed leaves the last saved index available; an absent or unsupported source
 leaves this condition unqualified. Dictionary lookup never waits for Anki.
 
-**Frequency threshold** selects one enabled frequency dictionary. Automatic
+**Blur by frequency** reads one enabled frequency dictionary. Its **Blur
+threshold dictionary** defaults to **Same as sorting**, the dictionary chosen in
+Reading → Frequency sorting; when sorting compares every dictionary, choose one
+here. Automatic
 order treats rank-based dictionaries as ascending and occurrence-based or
 undeclared dictionaries as descending. Ascending qualifies when the lowest
 positive native value is at or below the threshold. Descending qualifies when

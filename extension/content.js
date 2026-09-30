@@ -221,7 +221,7 @@
   let lookupStatsDescriptor = { generation: null, revision: -1 };
   const DEFINITION_BLUR_KEYS = [
     "definitionBlurCountEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled",
-    "definitionBlurFrequencyDictionary", "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
+    "definitionBlurFrequencyDictionary", "frequencyDictionary", "definitionBlurFrequencyOrder", "definitionBlurFrequencyThreshold",
     "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
   ];
 
