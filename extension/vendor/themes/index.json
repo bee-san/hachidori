@@ -36,7 +36,7 @@
     {
       "slug": "bee",
       "name": "Bee's Theme",
-      "description": "Miku turquoise and pink on JL's compact layout, with joined group tabs, formatted definitions, the personal dictionary editor and custom actions.",
+      "description": "Girlypop blush and violet on JL's compact layout, with joined group tabs, formatted definitions, image previews, the personal dictionary editor and custom actions.",
       "contentMode": "rich",
       "benchmark": "Render 1.30 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/bee.md"

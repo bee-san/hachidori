@@ -92,6 +92,7 @@
         glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
         buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae, pitchAccentPositions: window.HDGlossary.pitchAccentPositions,
         createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps,
+        createImagePreview: window.HDPopup.createImagePreview,
         findDifferentDictionary: window.HDPopup.findDifferentDictionary, popupCoordinateScale: window.HDPopup.popupCoordinateScale };
       const record = { rebuild() {
         if (destroyed || !current) return;
