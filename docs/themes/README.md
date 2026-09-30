@@ -60,10 +60,19 @@ spellings, which Hachidori returns as separate results, and has no images, Note
 editor, custom buttons or lookup counts. Its kanji view lists meanings, then
 JL's `On:`, `Kun:` and `Statistics:` lines.
 
+## Bee's Theme
+
+Bee's Theme puts girlypop pink and lilac colours on JL's typography, per-dictionary headers, inline
+audio/Anki controls and pitch marker. It adds tabs for configured dictionary
+groups with matching results, a pencil editor and custom actions beside each
+block, and a Formatted definition disclosure for dictionary markup and media.
+With no matching groups, all results appear without a tab row. Extra custom
+actions go into More actions after the first two. See [details and measurements](bee.md).
+
 ## Version 2 view contract
 
 `theme-host.js` chooses a bundled renderer before content construction. Default
-adapts `HDPopup.createPopupView`; Nazeka, Plain and JL export `{schema: 2, slug, contentMode,
+adapts `HDPopup.createPopupView`; Nazeka, Plain, JL and Bee export `{schema: 2, slug, contentMode,
 createView(options)}`. Executable modules are maintainer-reviewed release assets;
 no remote theme code is fetched for execution. This is not a JavaScript sandbox.
 Sources and proposals live in [hachidori-themes](https://github.com/bee-san/hachidori-themes).
@@ -76,6 +85,11 @@ and returns `renderResults`, `renderKanji`, `renderNotice`, `renderLookupFailure
 `updateDictionaryPresentation`, and `scrollElement`. Rich-only methods such as
 masonry, image preview, toolbar/custom buttons, note closing and deferred
 presentation updates are optional.
+
+`createDictionaryTabs` supplies the existing dictionary/group descriptors.
+`createLookupActions` shares the personal dictionary editor and custom link/Anki
+buttons with Default; the renderer supplies prefill, form placement and optional
+custom-button layout. Core still binds mining to the returned actions container.
 
 - Render calls receive structured lookup results and the current request context.
   Never scrape Default DOM. Core owns cancellation, navigation and action engines.
@@ -98,7 +112,9 @@ presentation updates are optional.
 
 ## Content and stylesheet ownership
 
-Default alone loads `render/reader.css` and scoped dictionary CSS. Nazeka loads
+Default loads `render/reader.css`; Default and Bee load scoped dictionary CSS. Bee
+uses its own JL-based stylesheet and builds rich glossary DOM only on expansion.
+Nazeka loads
 its own CSS plus shared icon controls. Plain loads only its own CSS. Both still parse the shared `popup.js`
 script for existing geometry/action helpers; Nazeka never calls its Default
 view factory. Splitting that script could reduce startup parsing later, but is

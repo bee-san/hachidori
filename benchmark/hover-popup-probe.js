@@ -41,7 +41,7 @@
     const reply = active.replies.at(-1);
     const actual = current?.definitions ?? current?.expressions;
     // JL shows one block, so one headword, per result and dictionary.
-    const blocks = result => options.popupTheme === "jl"
+    const blocks = result => ["jl", "bee"].includes(options.popupTheme)
       ? [...new Set(result.term.glossaries.map(glossary => glossary.dictionary))].map(() => result.term.expression)
       : [result.term.expression];
     const expected = current?.definitions ? reply?.definitions : reply?.results.flatMap(blocks);

@@ -8,12 +8,13 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import plain from "../extension/vendor/themes/plain/theme.js";
 import theme from "../extension/vendor/themes/nazeka/theme.js";
+import bee from "../extension/vendor/themes/bee/theme.js";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const extension = resolve(import.meta.dirname, "../extension");
 function environment() {
   const dom = new JSDOM("<div id='host'></div>", { runScripts: "outside-only", pretendToBeVisual: true });
-  for (const name of ["reader-options.js", "render/glossary.js", "render/popup.js", "theme-host.js"]) dom.window.eval(readFileSync(resolve(extension, name), "utf8"));
+  for (const name of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js", "theme-host.js"]) dom.window.eval(readFileSync(resolve(extension, name), "utf8"));
   return dom;
 }
 const results = [{ matched: "食べる", trace: [], term: { expression: "食べる", reading: "たべる", frequencies: [],
@@ -189,4 +190,116 @@ test("JL renders one block per dictionary, binds each shown block to its own def
       "Back binds the restored tab's blocks, so autoplay starts from the first one shown");
     view.destroy();
   } finally { dom.window.close(); }
+});
+
+function beeFixture(t, overrides = {}) {
+  const dom = environment(), { window } = dom, { document } = window;
+  const popup = document.createElement("div"); document.body.append(popup);
+  const view = bee.createView({ document, window, popup, positionPopup() {},
+    components: { ...window.HDPopup, ...window.HDGlossary },
+    appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary, ...overrides });
+  t.after(() => { view.destroy(); window.close(); });
+  return { popup, view, window };
+}
+const beeResult = { ...results[0], term: { ...results[0].term, glossaries: [
+  ...results[0].term.glossaries, { dictionary: "second", glossary: '["meal"]' },
+] } };
+const beeContext = { dictionaryPresentation: [{ title: "test", favorite: true }, { title: "second" }],
+  dictionaryTabGroups: [{ id: "first", name: "English", dictionaries: ["test"] },
+    { id: "both", name: "Everything", dictionaries: ["test", "second"] }] };
+
+test("Bee shows only named groups, filters existing blocks, binds per-dictionary actions and restores Back", t => {
+  let bound, selected;
+  const f = beeFixture(t, { onResultsRendered(value) { bound = value; }, onResultsExpanded(value) { bound = value; } });
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, onDictionaryTabSelected(value) { selected = value; } });
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["English", "Everything"]);
+  assert.deepEqual(selected, { groupId: "first" });
+  assert.equal(bound.miningActions.length, 1);
+  const blocks = [...f.popup.querySelectorAll(".jl-entry")];
+  f.popup.querySelectorAll(".jl-tab")[1].click();
+  assert.deepEqual(blocks.map(node => node.hidden), [false, false]);
+  assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["test", "second"]);
+  assert.equal(f.popup.querySelectorAll(".jl-spelling").length, 2, "retain JL's repeated headers");
+  const saved = f.view.captureTermView();
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved });
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
+  f.view.renderResults([beeResult], { query: "食べる" });
+  assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0, "ungrouped dictionaries never become tabs");
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
+});
+
+test("Bee constructs safe rich content and requests images only on expansion; retired replies cannot publish", async t => {
+  let requests = 0, resolveMedia;
+  const f = beeFixture(t);
+  f.view.renderResults([beeResult], { query: "食べる" }, { generation: 8,
+    resolveMedia() { requests++; return new Promise(resolve => { resolveMedia = resolve; }); } });
+  assert.equal(f.popup.querySelectorAll("img,a,b").length, 0);
+  const details = f.popup.querySelector(".bee-rich-definition");
+  details.open = true; details.dispatchEvent(new f.window.Event("toggle"));
+  assert.match(f.popup.querySelector(".bee-rich-content").textContent, /eat food/);
+  assert.equal(f.popup.querySelector("a").href, "https://example.test/");
+  assert.equal(f.popup.querySelectorAll("img").length, 1);
+  assert.equal(requests, 1);
+  details.dispatchEvent(new f.window.Event("toggle"));
+  assert.equal(requests, 1, "expansion builds once");
+  const image = f.popup.querySelector("img");
+  f.view.renderNotice("No match", { query: "unknown" });
+  resolveMedia("data:image/png;base64,AA==");
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(image.hasAttribute("src"), false);
+});
+
+test("Bee reuses Note save/Escape and custom actions, retaining a draft through group presentation updates", t => {
+  const saves = [], links = [];
+  const buttons = [
+    { id: "link", type: "link", label: "Search", url: "https://example.test/%w" },
+    { id: "anki", type: "anki", label: "Sentence", templateId: "sentence" },
+    { id: "more", type: "link", label: "More", url: "https://example.test/%r" },
+  ];
+  const f = beeFixture(t, { customButtons: buttons, onAddCustomEntry(entry) { saves.push({ ...entry }); },
+    onCustomLinkClick(link) { links.push(link); } });
+  f.view.renderResults([beeResult], { query: "食べる" }, beeContext);
+  assert.equal(f.popup.querySelector('[data-custom-button-id="anki"]').dataset.ankiTemplateId, "sentence");
+  assert.equal(f.popup.querySelector('.bee-action-menu [data-custom-button-id="more"]').textContent, "More");
+  f.popup.querySelector('[data-custom-button-id="link"]').click();
+  assert.equal(links[0].url, "https://example.test/%E9%A3%9F%E3%81%B9%E3%82%8B");
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  const form = f.popup.querySelector("form");
+  assert.equal(form.elements.term.value, "食べる");
+  assert.equal(form.elements.reading.value, "たべる");
+  form.elements.definition.value = "My meaning";
+  f.view.updateDictionaryPresentation({ ...beeContext, dictionaryTabGroups: [
+    { id: "both", name: "All grouped", dictionaries: ["test", "second"] }] });
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "My meaning");
+  form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
+  form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
+  assert.deepEqual(saves, [{ term: "食べる", reading: "たべる", definition: "My meaning" }]);
+  assert.equal(f.popup.querySelector(".jl-tab").textContent, "All grouped");
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  assert.equal(f.view.closeNoteForm(), true);
+  assert.equal(form.hidden, true);
+});
+
+test("switching after a retired lookup applies saved actions to the next renderer before a fresh lookup", async t => {
+  const dom = environment(), { window } = dom, { document } = window;
+  t.after(() => window.close());
+  const options = { popupTheme: "jl" };
+  window.chrome = { runtime: { getURL: path => pathToFileURL(resolve(extension, path)).href } };
+  window.fetch = async () => ({ ok: true, text: async () => "" });
+  const host = window.HDThemeHost.createThemeHost({ getOptions: () => options });
+  await host.sync();
+  const popup = document.createElement("div"); document.body.append(popup);
+  const view = host.createView({ document, window, popup, customButtons: [], positionPopup() {},
+    appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary });
+  t.after(() => view.destroy());
+  let current = true;
+  view.renderResults(results, { query: "食べる" }, { isCurrentRequest: () => current });
+  view.setCustomButtons([{ id: "search", type: "link", label: "Search", url: "https://example.test/%w" }]);
+  current = false; options.popupTheme = "bee";
+  await host.sync();
+  assert.equal(popup.querySelector(".jl-entry"), null, "do not replay obsolete content");
+  view.renderResults(results, { query: "食べる" });
+  assert.equal(popup.querySelector('[data-custom-button-id="search"]').textContent, "Search");
+  assert.equal(host.dictionaryStyles, true);
 });
