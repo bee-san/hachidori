@@ -99,19 +99,7 @@
       "ratio": 9.96775894244701
     },
     {
-      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 9.96775894244701
-    },
-    {
       "selector": "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 9.96775894244701
-    },
-    {
-      "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
       "property": "color",
       "minimum": 4.5,
       "ratio": 9.96775894244701

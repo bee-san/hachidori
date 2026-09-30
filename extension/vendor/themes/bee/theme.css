@@ -15,11 +15,15 @@
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
 }
 .gsm-hoshidicts-popup [hidden], .gsm-hoshidicts-popup[hidden] { display: none !important; }
-.gsm-hoshidicts-popup button { color: inherit; font: inherit; cursor: default; }
+/* Clickable controls show a pointer, unlike JL's WPF default. */
+.gsm-hoshidicts-popup button { color: inherit; font: inherit; cursor: pointer; }
+.gsm-hoshidicts-popup button:disabled { cursor: default; }
 .gsm-hoshidicts-popup :is(button, input, textarea, a, summary):focus-visible { outline: 2px solid #5ce0d6; outline-offset: 2px; }
 .jl-header { flex: none; }
 /* JL's 20 px title row holds the x; the tab row sits 2 px below it. */
 .jl-nav { display: flex; justify-content: flex-end; min-height: 20px; margin-right: 10px; }
+/* The x stays top right; the kanji view's Back sits top left. */
+.jl-nav:has(> .gsm-hoshidicts-kanji-back) { justify-content: flex-start; margin: 0 0 0 10px; }
 .jl-tabs {
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   margin: 6px 12px 0; border: 1px solid #76acae; border-radius: 6px; background: #233034;
@@ -71,10 +75,19 @@
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button {
   display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; border: 0;
 }
-/* Audio, Anki and pencil share Hachidori's outline icon set at one size in the text colour. */
+/* Audio, Anki and pencil sit together in one group as identical 22 px icon
+ * buttons, using Hachidori's outline icon set at one size in the text colour. */
+.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button,
+.gsm-hoshidicts-popup .gsm-hoshidicts-note-button {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  margin: 0; padding: 0; background: transparent; border: 0; border-radius: 4px; color: inherit; cursor: pointer;
+}
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button::before,
 .gsm-hoshidicts-popup .gsm-hoshidicts-mine-icon,
 .gsm-hoshidicts-popup .gsm-hoshidicts-note-icon { width: 16px; height: 16px; }
+.gsm-hoshidicts-popup :is(.gsm-hoshidicts-audio-button, .gsm-hoshidicts-mine-button, .gsm-hoshidicts-note-button):is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: color-mix(in srgb, #5ce0d6 22%, transparent);
+}
 /* Keep duplicate actions legible against the translucent charcoal surface. */
 .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button:is([data-state="duplicate"], [data-state="add-duplicate"],
   [data-state="view-existing"], [data-state="overwrite"]) { color: #ffb1aa; }
@@ -101,9 +114,7 @@
 :host([data-hoshidicts-note-button="hidden"]) .gsm-hoshidicts-note-button { display: none; }
 :host([data-hoshidicts-audio-button="hidden"]) .gsm-hoshidicts-audio-control { display: none; }
 .gsm-hoshidicts-entry-actions { align-items: center; gap: 4px; flex-wrap: wrap; }
-.gsm-hoshidicts-popup .gsm-hoshidicts-note-button {
-  padding: 0; background: none; border: 0; display: inline-flex; align-items: center;
-}
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-audio-control { margin-left: 0; }
 .gsm-hoshidicts-popup .gsm-hoshidicts-text-action-button {
   padding: 1px 4px; background: #2e3d43; border: 1px solid #76acae;
   border-radius: 3px; font-size: 12px;

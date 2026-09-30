@@ -220,7 +220,8 @@ export function createView(options, enhanced = false) {
       line.append(element);
     }
     const audio = components.createAudioControl(document, term.expression);
-    line.append(audio.element);
+    // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.
+    if (!enhanced) line.append(audio.element);
     const steps = components.deinflectionSteps(result);
     const matched = result.matched || "";
     const process = steps.length ? `～${steps.map(step => step.name).join("→")}` : "";
@@ -237,6 +238,7 @@ export function createView(options, enhanced = false) {
     const actions = node("div", "gsm-hoshidicts-entry-actions");
     actions.setAttribute("role", "group");
     actions.setAttribute("aria-label", "Entry actions");
+    if (enhanced) actions.append(audio.element);
     line.append(dictionaryLabel(dictionary), actions);
     return { line, audio, actions };
   }

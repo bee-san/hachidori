@@ -274,16 +274,29 @@ try {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const audio = getComputedStyle(popup.querySelector(".gsm-hoshidicts-audio-button"), "::before");
     const describe = style => ({ width: style.width, height: style.height, color: style.backgroundColor, mask: style.maskImage });
+    const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button"]
+      .map(selector => popup.querySelector(selector));
+    const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
+      return { width: style.width, height: style.height, cursor: style.cursor, border: style.borderTopWidth, top: Math.round(rect.top) }; };
+    const group = buttons[0].closest(".gsm-hoshidicts-entry-actions");
     return { audio: describe(audio),
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
-      shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22") };
+      shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
+      buttons: buttons.map(box), grouped: buttons.every(button => group.contains(button)),
+      order: [...group.querySelectorAll("button")].slice(0, 3).map(button => button.className.split(" ")[0]),
+      cursors: [...popup.querySelectorAll("button:not(:disabled), summary")].map(node => getComputedStyle(node).cursor) };
   });
   for (const icon of [icons.mine, icons.note]) {
     assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
   }
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
+  assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
+  assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
+  for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
+  assert.equal(icons.buttons[0].cursor, "pointer");
+  assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
   const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
   assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
@@ -361,6 +374,14 @@ try {
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
   await screenshot("bee-kanji-rich");
+  const back = await tab.evaluate(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    const rect = element => { const { left, top, bottom, width } = element.getBoundingClientRect(); return { left, top, bottom, width }; };
+    return { back: rect(popup.querySelector(".gsm-hoshidicts-kanji-back")), popup: rect(popup), tabs: rect(popup.querySelector(".jl-tabs")) };
+  });
+  assert.ok(back.back.left - back.popup.left < back.popup.width / 4, `kanji Back sits top left in Bee ${JSON.stringify(back)}`);
+  assert.ok(Math.abs(back.back.left - back.tabs.left) < 2, "kanji Back aligns with the tab row's left edge");
+  assert.ok(back.back.bottom <= back.tabs.top, "kanji Back sits above the tab row");
   await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
   await tab.keyboard.press("Escape");
   await hover();
