@@ -39,7 +39,7 @@ export async function verifyAnkiFields(invoke, noteId, expected) {
 // the gateway's translation, so it is explained before the reader sees it.
 async function checkedDecision(prepared, addable, error) {
   return { state: addable ? "addable" : "invalid", canAdd: addable,
-    error: error === null ? null : await explainAnkiRefusal(prepared.invoke, prepared.note, error) };
+    error: error === null ? null : await explainAnkiRefusal(prepared.invoke, prepared.note, error, prepared.resolved.templates) };
 }
 
 async function addableDecision(prepared) {

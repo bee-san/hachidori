@@ -627,6 +627,8 @@ test("preflight and submit name the cloze rule behind AnkiConnect's unknown-reas
     if (action === "findModelsByName") return [{ type: 0, flds: [{ name: "Front" }, { name: "Back" }], tmpls: [{ qfmt: "{{Front}}" }] }];
     return invoke(action, params);
   };
+  // The deletion is literal text in Front's template (this fixture's fields stand for its rendering).
+  f.change({ fieldTemplates: { Front: { value: "{{c1::{expression}}}", overwriteMode: "coalesce" } } });
   const { configKey } = await f.service.status();
   const error = "Anki refused the note for deck “Default”, note type “Basic”: field “Front” contains the cloze deletion “{{c1::猫}}”, "
     + "but “Basic” is not a Cloze note type. Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.";
@@ -638,6 +640,11 @@ test("preflight and submit name the cloze rule behind AnkiConnect's unknown-reas
     const written = await f.service.submit({ expression: "{{c1::猫}}", configKey });
     assert.deepEqual([written.state, written.error], ["invalid", error]);
   }
+  // Without the deletion in its template, Front got it from the {expression} content.
+  f.change({ fieldTemplates: null });
+  const content = await f.service.preflight({ expression: "{{c1::猫}}", configKey: (await f.service.status()).configKey });
+  assert.equal(content.error, error.replace("Remove the deletion from that field's template in Anki Settings",
+    "The deletion comes from the content of {expression}, not from the field's template. Map that field to other content in Anki Settings"));
   assert.equal(f.calls.includes("addNote"), false);
 });
 

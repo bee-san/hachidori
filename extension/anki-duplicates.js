@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { isAnkiAudioOnlyTemplate } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, isAnkiAudioOnlyTemplate } from "./anki-templates.js";
 import { ankiClozeRefusal, explainAnkiConnectError, isAnkiClozeRefusal } from "./anki.js";
 
 // GSM PR #549 hoshidicts_anki.py and hoshidicts_markers.py. These policies
@@ -145,7 +145,7 @@ function clozeFields(model) {
 // notes/mod.rs field_cloze_check, in Anki's order: the first deletion in a
 // field that cannot make cloze cards, then a Cloze note type without any.
 // AnkiConnect assigns submitted fields to the note type's case-insensitively.
-function clozeRule(model, note, refused) {
+function clozeRule(model, note, refused, templates) {
   const values = new Map(Object.entries(note.fields).map(([name, value]) => [name.toLowerCase(), value]));
   const deletions = model.flds.map(({ name }) => [name, clozeDeletion(values.get(name.toLowerCase()) ?? "")])
     .filter(([, deletion]) => deletion !== null);
@@ -153,8 +153,16 @@ function clozeRule(model, note, refused) {
   if (model.type !== MODEL_CLOZE) {
     if (!deletions.length) return null;
     const [[field, deletion]] = deletions;
-    return `${refused}: field “${field}” contains the cloze deletion “${deletion}”, but ${modelName} is not a Cloze note type. `
-      + "Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.";
+    const refusal = `${refused}: field “${field}” contains the cloze deletion “${deletion}”, but ${modelName} is not a Cloze note type.`;
+    // A template without literal deletion text has nothing to remove: the
+    // deletion arrived inside a marker's content, such as a dictionary's.
+    const template = Object.entries(templates).find(([name]) => name.toLowerCase() === field.toLowerCase())?.[1].value;
+    if (template !== undefined && clozeDeletion(template) === null) {
+      const markers = [...new Set(ankiTemplateMarkerNames(template))].map(name => `{${name}}`).join(", ");
+      return `${refusal} The deletion comes from the content of ${markers || "its markers"}, not from the field's template. `
+        + "Map that field to other content in Anki Settings, or choose a Cloze note type.";
+    }
+    return `${refusal} Remove the deletion from that field's template in Anki Settings, or choose a Cloze note type.`;
   }
   const clozable = clozeFields(model);
   if (!clozable.length) return null;
@@ -175,12 +183,12 @@ function clozeRule(model, note, refused) {
 // AnkiConnect's "unknown reason" is one of Anki's three cloze refusals: one
 // read of the note type names which. Text no translation knows, such as the
 // legacy fallback's own, is kept.
-export async function explainAnkiRefusal(invoke, note, error) {
+export async function explainAnkiRefusal(invoke, note, error, templates) {
   if (!isAnkiClozeRefusal(error)) return explainAnkiConnectError(error) ?? error;
   const refused = `Anki refused the note for deck “${note.deckName}”, note type “${note.modelName}”`;
   try {
     const [model] = await invoke("findModelsByName", { modelNames: [note.modelName] });
-    return clozeRule(model, note, refused) ?? ankiClozeRefusal(refused);
+    return clozeRule(model, note, refused, templates) ?? ankiClozeRefusal(refused);
   } catch {
     // An AnkiConnect without findModelsByName, or a note type it could not
     // return, still gets the rules Anki applies.
