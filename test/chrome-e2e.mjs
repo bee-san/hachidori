@@ -6633,6 +6633,9 @@ async function checkAnkiSettings(page, browser) {
     await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("HTTP 503"));
     const failed = await status();
     offline = false;
+    // The Audio view before this leaves the page scrolled, clipping the button
+    // at the top edge where a click misses it; bring it fully into view first.
+    await page.$eval("#anki-refresh", node => node.scrollIntoView({ block: "center" }));
     await page.click("#anki-refresh");
     await settled();
     check("Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
