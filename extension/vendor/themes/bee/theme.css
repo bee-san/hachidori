@@ -88,9 +88,10 @@
 .gsm-hoshidicts-popup :is(.gsm-hoshidicts-audio-button, .gsm-hoshidicts-mine-button, .gsm-hoshidicts-note-button):is(:hover, [aria-expanded="true"]):not(:disabled) {
   background: color-mix(in srgb, #9a236c 16%, transparent);
 }
-/* Keep duplicate actions legible against the translucent blush surface. */
+/* Duplicate warnings stand out; "View existing notes in Anki" is an ordinary
+ * action, so its book icon keeps the text colour like audio and pencil. */
 .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button:is([data-state="duplicate"], [data-state="add-duplicate"],
-  [data-state="view-existing"], [data-state="overwrite"]) { color: #9f2850; }
+  [data-state="overwrite"]) { color: #9f2850; }
 .gsm-hoshidicts-definitions, .jl-kanji-text { margin: 6px 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .jl-scroll[data-definition-blur="pending"] .gsm-hoshidicts-definitions,
 .jl-scroll[data-definition-blur="blurred"] .gsm-hoshidicts-definitions { filter: blur(5px); }

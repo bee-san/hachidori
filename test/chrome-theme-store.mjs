@@ -279,7 +279,11 @@ try {
     const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
       return { width: style.width, height: style.height, border: style.borderTopWidth, top: Math.round(rect.top) }; };
     const group = buttons[0].closest(".gsm-hoshidicts-entry-actions");
-    return { audio: describe(audio),
+    const mineButton = popup.querySelector(".gsm-hoshidicts-mine-button"), savedState = mineButton.dataset.state;
+    mineButton.dataset.state = "view-existing";
+    const viewExistingColor = getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).backgroundColor;
+    if (savedState === undefined) delete mineButton.dataset.state; else mineButton.dataset.state = savedState;
+    return { audio: describe(audio), viewExistingColor,
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
@@ -296,6 +300,7 @@ try {
   for (const icon of [icons.mine, icons.note]) {
     assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
   }
+  assert.equal(icons.viewExistingColor, icons.audio.color, "the view-existing Anki book matches the other icons' colour");
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
   assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
