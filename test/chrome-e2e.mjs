@@ -5984,7 +5984,7 @@ async function checkAnkiGlossaryExport(page) {
     check("Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
       compact.same && compact.mounted === 0 && !compact.internal && !compact.hidden
         && compact.root === "text-align: left;" && compact.meta === "(★, Compact <Dictionary>)"
-        && compact.details === "Rules: v1<br>Deinflection: polite"
+        && compact.details === undefined && compact.html.endsWith("</ol></div>")
         && compact.groups[0] === "ja" && compact.groups[1] === '"＊"'
         && JSON.stringify(compact.lists) === JSON.stringify(["li:null", "ol:null", 'li:list-style-type: "①";', "ul:list-style-type: none;", "li:null"])
         && compact.line === "1-dan transitive to eat" && compact.marker === "△"

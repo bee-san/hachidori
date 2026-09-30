@@ -98,7 +98,9 @@ changing and may be removed:
 - **Smaller Anki cards** — write compact definitions to new Anki notes. The
   dictionary stylesheets, classes and wrappers are left out; the text, line
   breaks, lists, tables, furigana, images and the markers note types such as
-  Lapis, Kiku and Senren rely on are kept. A Jitendex note shrinks to about a
+  Lapis, Kiku and Senren rely on are kept. As in Yomitan, the definition ends
+  without a Rules/Deinflection line; use `{part-of-speech}` and
+  `{conjugation}` for that information. A Jitendex note shrinks to about a
   quarter of its size. Notes already in Anki are not changed. The behaviour
   follows the Compact HTML Cleanup Anki add-on.
 
