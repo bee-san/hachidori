@@ -345,7 +345,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  if (activeSection === "advanced") refreshMemorySettings();
+  if (activeSection === "advanced") refreshAdvancedMemory();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
@@ -487,7 +487,8 @@ function renderLowMemoryMode() {
 }
 
 function memorySettings() {
-  memoryController ??= createMemorySettings({ document, numberFormat, readMemory: () => send("hd_memory") });
+  memoryController ??= createMemorySettings({ document, numberFormat, readMemory: () => send("hd_memory"),
+    readExtensionTotal: () => send("hd_memory_total") });
   return memoryController;
 }
 
@@ -497,6 +498,12 @@ function memorySettings() {
 // on: a rebuilt row shows the last reading.
 function refreshMemorySettings() {
   void memorySettings().refresh();
+}
+
+// Advanced also measures the whole extension; a row's Details does not.
+function refreshAdvancedMemory() {
+  refreshMemorySettings();
+  void memorySettings().refreshExtensionTotal();
 }
 
 // With the MDX dictionaries flag on, the picker and drop zone also take .mdx
@@ -1339,7 +1346,7 @@ async function refreshStatus() {
   renderUpdatingRows(previousUpdating, reply.updating?.id ?? null);
   renderLowMemoryMode();
   if (activeSection === "advanced" && reply.ready && !reply.loading && reply.generation !== previousGeneration) {
-    refreshMemorySettings();
+    refreshAdvancedMemory();
   }
   if (!reply.ready || reply.loading || updating) {
     scheduleStatusPoll();
