@@ -1959,6 +1959,11 @@ one column, Automatic toolbar placement, summary off with three snippets and aut
 contour/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, and frequency
 names/abbreviation/averages, the pitch graph and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
+The default renderer's density comes from `--hd-*` custom properties declared on
+`.gsm-hoshidicts-popup` in `render/reader.css` (spacing steps, header, content
+and card padding, 32 px control size, 28 px headword with 14 px furigana, 12 px
+labels, 16 px / 1.5 definitions), so a theme or custom CSS can override the
+scale in one place; multi-column masonry reads its gap from the same grid.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.
 

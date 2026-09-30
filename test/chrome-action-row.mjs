@@ -159,13 +159,23 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
                 )) };
             });
             const actionsStyle = getComputedStyle(actions);
+            // What the row needs before anything can shrink further: each
+            // control's min-width (its own width when it cannot shrink), the gaps and padding.
+            const minimumActionWidth = [...actions.children].reduce((sum, node) => {
+              const style = getComputedStyle(node);
+              return sum + (style.flexShrink === "0" ? node.offsetWidth : parseFloat(style.minWidth) || node.offsetWidth);
+            }, 0)
+              + parseFloat(actionsStyle.columnGap) * (actions.children.length - 1)
+              + parseFloat(actionsStyle.paddingLeft) + parseFloat(actionsStyle.paddingRight);
             const heading = root.querySelector(".gsm-hoshidicts-headword, .gsm-hoshidicts-kanji-navigation");
             return { actions: rect(actions), controls, popup: rect(popup), header: rect(header),
+              controlSize: parseFloat(getComputedStyle(popup).getPropertyValue("--hd-control-size")),
               heading: rect(heading),
               overflow: header.scrollWidth > header.clientWidth + 1,
               actionOverflow: actions.scrollWidth > actions.clientWidth + 1,
               actionScrollWidth: actions.scrollWidth,
               actionClientWidth: actions.clientWidth,
+              minimumActionWidth,
               actionOverflowX: actionsStyle.overflowX,
               actionRole: actions.getAttribute("role"),
               actionLabel: actions.getAttribute("aria-label"),
@@ -185,7 +195,8 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             });
           }
           const detail = JSON.stringify(evidence.at(-1));
-          const expectedHeight = variant.large ? 54 : 36;
+          // The density token, scaled like the rest of the popup at 150 %.
+          const expectedHeight = geometry.controlSize * (variant.large ? 1.5 : 1);
           assert.deepEqual(geometry.controls.map(({ kind }) => kind), variant.expected, `action order changed: ${detail}`);
           assert.equal(new Set(geometry.controls.map(({ bounds }) => Math.round(bounds.top))).size, 1,
             `actions split into rows: ${detail}`);
@@ -216,7 +227,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
             || geometry.actions.top >= geometry.heading.bottom - 1,
           `heading overlaps actions: ${detail}`);
           if (width === 200) {
-            assert.equal(geometry.actionOverflow, variant.expected.length >= 5,
+            assert.equal(geometry.actionOverflow, geometry.minimumActionWidth > geometry.actionClientWidth + 1,
               `narrow action overflow does not match the minimum control widths: ${detail}`);
           }
           if (!variant.buttons) {
@@ -304,18 +315,19 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
     assert.ok(await page.evaluate(() => window.rowFixture.root.querySelector(".gsm-hoshidicts-note-form").hidden), "keyboard closes Note");
     const absent = await page.evaluate(() => {
       const { root, popup, render } = window.rowFixture;
+      const controlSize = parseFloat(getComputedStyle(popup).getPropertyValue("--hd-control-size"));
       render({ expression: "響く", reading: "ひびく", definitions: ["to resound"],
         compact: true, navigation: "back", buttons: true, ankiEnabled: false });
       popup.style.width = "200px";
       const buttons = [...root.querySelectorAll(".gsm-hoshidicts-audio-button, .gsm-hoshidicts-note-button, .gsm-hoshidicts-external-link-button, .gsm-hoshidicts-kanji-back")];
-      return { mine: Boolean(root.querySelector(".gsm-hoshidicts-mine-button")), buttons: buttons.map(button => {
+      return { controlSize, mine: Boolean(root.querySelector(".gsm-hoshidicts-mine-button")), buttons: buttons.map(button => {
         const r = button.getBoundingClientRect();
         return { height: r.height, top: r.top };
       }) };
     });
     assert.equal(absent.mine, false, "disabled Anki omits mining control");
     assert.equal(absent.buttons.length, 5);
-    assert.ok(absent.buttons.every(button => Math.abs(button.height - 36) < 1),
+    assert.ok(absent.buttons.every(button => Math.abs(button.height - absent.controlSize) < 1),
       "remaining controls keep their size without Anki");
     assert.equal(new Set(absent.buttons.map(({ top }) => Math.round(top))).size, 1,
       "Back, audio, Note and links stay aligned without Anki");

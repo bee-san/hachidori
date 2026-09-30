@@ -44,12 +44,15 @@ export async function checkCompactSummaryLayout(browser) {
           const list = root.querySelector(".gsm-hoshidicts-compact-definition-items");
           const summary = list.parentElement;
           const button = root.querySelector(".gsm-hoshidicts-note-button");
+          const expression = root.querySelector(".gsm-hoshidicts-expression").getBoundingClientRect();
           const bounds = button.getBoundingClientRect();
           return { width, fontSize, height: list.clientHeight, contentHeight: list.scrollHeight,
             summaryHeight: summary.clientHeight, summaryContentHeight: summary.scrollHeight,
             popup: popup.getBoundingClientRect().toJSON(), button: bounds.toJSON(),
             hit: button.contains(root.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
             text: list.textContent,
+            beside: summary.getBoundingClientRect().top < expression.bottom,
+            chromeHeight: root.querySelector(".gsm-hoshidicts-result-chrome").getBoundingClientRect().height,
           };
         }, { width, fontSize });
         evidence.push(geometry);
@@ -58,6 +61,13 @@ export async function checkCompactSummaryLayout(browser) {
         assert.ok(geometry.hit && geometry.button.right <= geometry.popup.right
           && geometry.button.bottom <= geometry.popup.bottom, `Note button inaccessible: ${JSON.stringify(geometry)}`);
         assert.equal(geometry.text, "kanji representationrepresentation in Chinese characters");
+        // #335: an icon-only toolbar takes its natural width, so at the
+        // default width the summary sits beside the headword and the header
+        // stays compact instead of wrapping the summary under the word.
+        if (width === 560 && fontSize === 32) {
+          assert.ok(geometry.beside && geometry.chromeHeight < 90,
+            `summary does not sit beside the headword in a compact header: ${JSON.stringify(geometry)}`);
+        }
       }
     }
     const { button } = evidence.at(-1);

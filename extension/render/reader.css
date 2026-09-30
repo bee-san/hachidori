@@ -1105,6 +1105,21 @@ html[data-hoshidicts-theme="girlypop"],
   --tag-default-background-color: var(--hoshidicts-palette-neutral);
   --tag-expression-background-color: var(--hoshidicts-palette-secondary);
   --tag-part-of-speech-background-color: var(--hoshidicts-palette-accent);
+  /* Density tokens. The default is compact; a Comfortable density (or a theme)
+     only needs to override these on the host. */
+  --hd-space-1: 2px;
+  --hd-space-2: 4px;
+  --hd-space-3: 6px;
+  --hd-space-4: 8px;
+  --hd-popup-padding: var(--hd-space-3) var(--hd-space-4) var(--hd-space-4);
+  --hd-header-padding: var(--hd-space-3) var(--hd-space-4);
+  --hd-card-padding: 7px 9px 8px;
+  --hd-control-size: 32px;
+  --hd-font-headword: 28px;
+  --hd-font-reading: 14px;
+  --hd-font-label: 12px;
+  --hd-font-gloss: 16px;
+  --hd-line-gloss: 1.5;
   position: fixed;
   z-index: 2147483646;
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
@@ -1257,7 +1272,7 @@ html[data-hoshidicts-theme="girlypop"],
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 9px 11px 11px;
+  padding: var(--hd-popup-padding);
 }
 
 .gsm-hoshidicts-content-scroll::-webkit-scrollbar,
@@ -1316,8 +1331,8 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-primary-header {
-  min-height: 42px;
-  padding: 11px;
+  min-height: 36px;
+  padding: var(--hd-header-padding);
 }
 
 .gsm-hoshidicts-primary-header > .gsm-hoshidicts-entry-actions:only-child {
@@ -1340,7 +1355,7 @@ html[data-hoshidicts-theme="girlypop"],
   min-width: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 8px 11px 9px;
+  padding: 5px var(--hd-space-4) 6px;
   border-top: 1px solid var(--hoshidicts-border);
 }
 
@@ -1352,7 +1367,7 @@ html[data-hoshidicts-theme="girlypop"],
   display: flex;
   flex: 1 1 auto;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 5px;
   width: auto;
   min-width: 0;
   box-sizing: border-box;
@@ -1383,10 +1398,10 @@ html[data-hoshidicts-theme="girlypop"],
   flex-wrap: wrap;
   align-items: baseline;
   max-width: max-content;
-  margin: 7px 0 0;
+  margin: var(--hd-space-2) 0 0;
   color: var(--text-color-light1);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--hd-font-label);
+  line-height: 1.3;
   white-space: normal;
 }
 
@@ -1453,15 +1468,15 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-tab {
   flex: 0 0 auto;
   max-width: min(150px, 58vw);
-  min-height: 34px;
-  padding: 6px 13px;
+  min-height: 28px;
+  padding: 4px 10px;
   overflow: hidden;
   border: 1px solid var(--hoshidicts-border);
   border-radius: 7px;
   background: var(--hoshidicts-surface);
   color: var(--text-color-light1);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--hd-font-label);
   font-weight: 600;
   line-height: 18px;
   text-overflow: ellipsis;
@@ -1495,7 +1510,7 @@ html[data-hoshidicts-theme="girlypop"],
   overflow-y: auto;
   display: grid;
   gap: 7px;
-  margin: 8px 11px;
+  margin: var(--hd-space-3) var(--hd-space-4);
   padding: 8px;
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 8px;
@@ -1602,8 +1617,8 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-entry + .gsm-hoshidicts-entry {
-  margin-top: 9px;
-  padding-top: 9px;
+  margin-top: var(--hd-space-3);
+  padding-top: var(--hd-space-3);
   border-top: 1px solid var(--hoshidicts-border);
 }
 
@@ -1612,8 +1627,8 @@ html[data-hoshidicts-theme="girlypop"],
   flex-wrap: wrap-reverse;
   align-items: center;
   justify-content: space-between;
-  min-height: 42px;
-  gap: 10px;
+  min-height: 34px;
+  gap: var(--hd-space-4);
 }
 
 .gsm-hoshidicts-entry-header > .gsm-hoshidicts-headword,
@@ -1628,15 +1643,15 @@ html[data-hoshidicts-theme="girlypop"],
   flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 4px 12px;
+  gap: var(--hd-space-1) 10px;
 }
 
 .gsm-hoshidicts-expression {
   min-width: 0;
   flex: 0 1 auto;
   overflow-wrap: anywhere;
-  font-size: 32px;
-  line-height: 1.22;
+  font-size: var(--hd-font-headword);
+  line-height: 1.2;
   ruby-align: center;
   ruby-position: over;
 }
@@ -1654,6 +1669,14 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection),
 .gsm-hoshidicts-kanji-navigation:has(.gsm-hoshidicts-deinflection) {
   align-items: flex-start;
+}
+
+/* An icon-only toolbar now shares the headword's line; keep it beside the
+   word rather than at the foot of an expanded trace, where the result
+   chrome's max-height would scroll it out of reach. */
+.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection[open]) > .gsm-hoshidicts-entry-actions {
+  /* start, not flex-start: the row wraps in reverse. */
+  align-self: start;
 }
 
 .gsm-hoshidicts-deinflection > summary {
@@ -1689,7 +1712,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-expression rt {
   color: var(--text-color-light1);
-  font-size: 15px;
+  font-size: var(--hd-font-reading);
   font-weight: 400;
   line-height: 1;
   user-select: none;
@@ -1772,17 +1795,17 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-compact-definition-summary {
   min-width: min(180px, 100%);
   max-width: 100%;
-  min-height: 36px;
-  margin: 2px 0 0;
+  min-height: 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex: 1 1 180px;
   align-self: center;
   align-items: center;
-  gap: 6px;
+  gap: var(--hd-space-3);
   color: var(--text-color-light1);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
@@ -1835,7 +1858,9 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-entry-actions {
   display: flex;
-  flex: 1 1 270px;
+  /* Icon-only toolbars take their natural width so the headword keeps the rest
+     of the line and the compact summary sits beside the word. */
+  flex: 0 1 auto;
   flex-wrap: nowrap;
   min-width: 0;
   width: auto;
@@ -1846,7 +1871,7 @@ html[data-hoshidicts-theme="girlypop"],
   align-self: end;
   align-items: center;
   justify-content: safe flex-end;
-  gap: 5px;
+  gap: var(--hd-space-2);
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -1856,11 +1881,19 @@ html[data-hoshidicts-theme="girlypop"],
   touch-action: pan-x pan-y;
 }
 
+/* With labelled custom buttons the toolbar would wrap above the headword at
+   its natural width; keep the shared row by letting it shrink from a fixed
+   basis instead (the labels truncate, see .gsm-hoshidicts-text-action-label). */
+.gsm-hoshidicts-entry-header:has(> .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button)
+  > .gsm-hoshidicts-entry-actions {
+  flex: 1 1 270px;
+}
+
 .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-external-link-button,
 .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-custom-anki-button {
   /* Natural width, but still able to shrink so the row never overflows. */
   flex: 0 1 auto;
-  min-width: 36px;
+  min-width: var(--hd-control-size);
 }
 
 .gsm-hoshidicts-entry-actions::-webkit-scrollbar {
@@ -1880,13 +1913,13 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-mine-button,
 .gsm-hoshidicts-note-button {
   display: inline-flex;
-  flex: 0 0 36px;
+  flex: 0 0 var(--hd-control-size);
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
+  width: var(--hd-control-size);
+  height: var(--hd-control-size);
+  min-width: var(--hd-control-size);
+  min-height: var(--hd-control-size);
   padding: 0;
   border-radius: 6px;
   background: transparent;
@@ -1974,10 +2007,10 @@ html[data-hoshidicts-theme="girlypop"],
   align-items: center;
   justify-content: center;
   max-width: 160px;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: var(--hd-control-size);
+  min-height: var(--hd-control-size);
   overflow: hidden;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 6px;
   background: transparent;
@@ -2169,7 +2202,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-mining-feedback {
   flex: 0 0 auto;
-  margin: 8px 11px;
+  margin: var(--hd-space-3) var(--hd-space-4);
 }
 
 .gsm-hoshidicts-lookup-notice {
@@ -2181,7 +2214,7 @@ html[data-hoshidicts-theme="girlypop"],
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 7px 11px;
+  margin: var(--hd-space-3) var(--hd-space-4);
   padding: 7px 8px;
   border: 1px solid var(--hoshidicts-warning);
   border-radius: 7px;
@@ -2247,16 +2280,16 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-lookup-stats {
   display: inline-block;
-  margin: 7px 0 2px;
-  padding: 3px 7px;
+  margin: var(--hd-space-2) 0 0;
+  padding: var(--hd-space-1) var(--hd-space-3);
   border: 1px solid var(--hoshidicts-border);
   border-radius: 999px;
   background: var(--hoshidicts-card-background);
   color: var(--hoshidicts-text);
-  font-size: 13px;
+  font-size: var(--hd-font-label);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
 .gsm-hoshidicts-lookup-stats[hidden] {
@@ -2268,17 +2301,17 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-metadata {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 5px;
+  gap: 3px;
+  margin-top: 3px;
   line-height: 1;
 }
 
 .gsm-hoshidicts-metadata {
-  margin-top: 7px;
+  margin-top: var(--hd-space-2);
 }
 
 .gsm-hoshidicts-tag {
-  padding: 3px 5px;
+  padding: var(--hd-space-1) 5px;
   border-radius: 4px;
   color: var(--text-color);
   font-size: 12px;
@@ -2314,7 +2347,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-frequency-source,
 .gsm-hoshidicts-frequency-body {
-  padding: 3px 5px;
+  padding: var(--hd-space-1) 5px;
 }
 
 .gsm-hoshidicts-frequency-source,
@@ -2577,8 +2610,8 @@ html[data-hoshidicts-theme="girlypop"],
     minmax(0, 1fr)
   );
   align-items: start;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--hd-space-3);
+  margin-top: 5px;
 }
 
 .gsm-hoshidicts-glossary-grid > :only-child {
@@ -2606,16 +2639,17 @@ html[data-hoshidicts-theme="girlypop"],
   --canvas: var(--background-color);
   min-width: 0;
   margin: 0;
-  padding: 11px 12px;
+  padding: var(--hd-card-padding);
   border: 1px solid var(--hoshidicts-border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--hoshidicts-card-background);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
 .gsm-hoshidicts-glossary-card-title {
   color: var(--text-color-light1);
-  font-size: 13px;
+  font-size: var(--hd-font-label);
+  line-height: 1.3;
   user-select: none;
 }
 
@@ -2669,7 +2703,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 /* Hachidori: the list starts below the card title. */
 .gsm-hoshidicts-definitions {
-  margin-top: 5px;
+  margin-top: 3px;
 }
 
 .gsm-hoshidicts-definitions[data-definition-blur-state="pending"]
@@ -2689,8 +2723,8 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-glossary-content {
   overflow-wrap: anywhere;
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: var(--hd-font-gloss);
+  line-height: var(--hd-line-gloss);
   transition: filter 120ms ease-out;
 }
 
@@ -3033,8 +3067,8 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-show-more {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  padding: 6px 8px;
+  margin-top: var(--hd-space-3);
+  padding: var(--hd-space-2) var(--hd-space-4);
   border: 1px solid var(--hoshidicts-border);
   border-radius: 5px;
   background: var(--hoshidicts-card-background);
@@ -3082,9 +3116,9 @@ html[data-hoshidicts-theme="girlypop"],
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  min-height: 36px;
-  padding: 4px 8px;
+  min-width: var(--hd-control-size);
+  min-height: var(--hd-control-size);
+  padding: 3px 8px;
   border: 1px solid var(--hoshidicts-border);
   border-radius: 5px;
   background: var(--hoshidicts-surface);
@@ -3094,7 +3128,7 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-popup-close {
-  width: 36px;
+  width: var(--hd-control-size);
   padding: 0;
 }
 
@@ -3105,12 +3139,14 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-kanji-glyph {
-  font-size: 56px;
-  line-height: 1;
+  font-size: 48px;
+  /* CJK glyphs have a content area of about 1.45em; a unit line-height lets
+     it spill past the header padding and the result chrome grows a scrollbar. */
+  line-height: 1.2;
 }
 
 .gsm-hoshidicts-kanji-entry {
-  padding: 8px 0;
+  padding: var(--hd-space-3) 0;
   border-top: 1px solid var(--hoshidicts-border);
 }
 
@@ -3121,8 +3157,8 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-readings {
   display: grid;
-  gap: 3px;
-  margin: 6px 0;
+  gap: var(--hd-space-1);
+  margin: var(--hd-space-2) 0;
 }
 
 .gsm-hoshidicts-kanji-reading-group {
@@ -3132,7 +3168,7 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-kanji-meanings {
-  margin: 4px 0 8px;
+  margin: var(--hd-space-1) 0 var(--hd-space-3);
   padding-left: 22px;
 }
 

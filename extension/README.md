@@ -27,8 +27,10 @@ those saved settings or other tabs.
 The popup action row is one non-wrapping keyboard and visual group: a nested
 Close or Back control first, then Anki, pronunciation, personal-dictionary
 edit, and custom buttons in saved order. A custom button opens a URL template
-or mines with a chosen Anki Template. Actions share a 36-pixel height and a
-5-pixel gap. At narrow popup widths the whole action row scrolls horizontally
+or mines with a chosen Anki Template. Actions share a 32-pixel height and a
+4-pixel gap. An icon-only row takes its natural width, so the compact summary
+sits beside the headword; a row with labelled custom buttons shares the line
+from a fixed basis and truncates the labels. At narrow popup widths the whole action row scrolls horizontally
 instead of wrapping, clipping, or overlapping controls. Browser mode opens link
 buttons in a Chrome tab; overlay mode asks its embedding host to open the same
 validated URL in the system browser.

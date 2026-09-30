@@ -141,7 +141,6 @@
       },
     };
   }
-  const MASONRY_GAP_PX = 8;
   const DEFINITION_BLUR_STATES = new Set(["pending", "blurred"]);
   const DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT = 3;
   const MIN_COMPACT_DEFINITION_SUMMARY_COUNT = 1;
@@ -2670,21 +2669,23 @@
           continue;
         }
         grid.classList.add("gsm-hoshidicts-glossary-grid-masonry");
+        // The stylesheet's grid gap, so masonry keeps the single-column spacing.
+        const gap = parseFloat(windowRef.getComputedStyle(grid).columnGap) || 0;
         const columnWidth =
-          (grid.clientWidth - MASONRY_GAP_PX * (columns - 1)) / columns;
+          (grid.clientWidth - gap * (columns - 1)) / columns;
         for (const card of cards) card.style.width = `${columnWidth}px`;
         // Measure after every width is set, before placement writes begin.
         const cardHeights = cards.map(card => card.offsetHeight);
         const columnHeights = Array.from({ length: columns }, () => 0);
         cards.forEach((card, index) => {
           const column = columnHeights.indexOf(Math.min(...columnHeights));
-          const x = column * (columnWidth + MASONRY_GAP_PX);
+          const x = column * (columnWidth + gap);
           const y = columnHeights[column];
           card.style.transform = `translate(${x}px, ${y}px)`;
           card.style.visibility = "visible";
-          columnHeights[column] += cardHeights[index] + MASONRY_GAP_PX;
+          columnHeights[column] += cardHeights[index] + gap;
         });
-        grid.style.height = `${Math.max(...columnHeights) - MASONRY_GAP_PX}px`;
+        grid.style.height = `${Math.max(...columnHeights) - gap}px`;
       }
       const restoreScroll = pendingScrollRestoration;
       pendingScrollRestoration = null;
