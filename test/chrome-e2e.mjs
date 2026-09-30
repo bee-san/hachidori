@@ -58,6 +58,7 @@ import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dicti
 import { LIBRARY_NAVIGATION_CHECK, LIBRARY_TAB_GEOMETRY_CHECK, SETTINGS_NAVIGATION_CHECK, checkLibraryNavigation } from "./chrome-library-navigation.mjs";
 import { SETTINGS_FIRST_FRAME_THEME_CHECK, checkSettingsFirstFrameTheme } from "./chrome-settings-first-frame.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { applyAnkiPreset } from "../extension/anki-templates.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -439,6 +440,7 @@ const PLANNED = [
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "a clicked-kanji group shows each member with an entry as its own tab in group order",
   "the clicked-kanji chooser saves a group by its stable ID and resets when the group is removed",
+  "a clicked-kanji group's native kanji card keeps a ready Anki mining control and mines as the character",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Compact summaries wrap without clipping and retain narrow toolbar access",
   ACTION_ROW_CHECK,
@@ -2669,16 +2671,38 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     JSON.stringify({ css: evidence.css, child: evidence.cssChild }));
 }
 
-async function checkKanjiGroup(settings, tab, popup) {
+async function checkKanjiGroup(settings, tab, popup, browser) {
   const fixture = kanjiGroupFixture();
   const [first, terms, second] = fixture.dictionaries.map(dictionary => dictionary.title);
   const groupId = "e2e-kanji-group";
   const groupValue = JSON.stringify({ kind: "tabGroup", id: groupId });
   const original = await settings.evaluate(() => chrome.storage.local.get(["options", "dictionaryState"]));
-  const installed = [], evidence = {};
+  const installed = [], evidence = {}, sessions = [];
   let failure;
   const require = (condition, message) => { if (!condition) throw new Error(message); };
   const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // A Kiku note type behind a mocked AnkiConnect (#333): the group's native
+  // card is mined through the real preflight, field builder and submission.
+  const kikuFields = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "RelatedExpression",
+    "SelectionText", "MainDefinition", "DefinitionPicture", "Sentence", "SentenceFurigana", "SentenceTranslation",
+    "SentenceAudio", "Picture", "Glossary", "Hint", "IsWordAndSentenceCard", "IsClickCard", "IsSentenceCard",
+    "IsAudioCard", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo"];
+  const ankiCalls = [], ankiNotes = [];
+  const ankiRoute = { requests: 0, async respond(request) {
+    const reply = await answerAnkiConnect(JSON.parse(request.postData), async (action, params) => {
+      ankiCalls.push(action);
+      if (action === "deckNames") return ["Default"];
+      if (action === "modelNames") return ["Kiku"];
+      if (action === "modelNamesAndIds") return { Kiku: 1 };
+      if (action === "modelFieldNames") return kikuFields;
+      if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
+      if (action === "findNotes" || action === "notesInfo" || action === "getMediaFilesNames") return [];
+      if (action === "storeMediaFile") return params.filename;
+      if (action === "addNote") { ankiNotes.push(params.note.fields); return ankiNotes.length; }
+      throw new AnkiConnectError(`Unexpected Anki action ${action}`);
+    });
+    return { body: JSON.stringify(reply), status: 200, contentType: "application/json" };
+  } };
   async function until(read, predicate, description) {
     const deadline = Date.now() + 10_000;
     for (;;) {
@@ -2760,6 +2784,33 @@ async function checkKanjiGroup(settings, tab, popup) {
     await until(() => popup.state(), value => value && !value.hidden && value.text.includes("to eat"), "kanji group: Back restores the verb");
     evidence.passed = true;
 
+    // With Anki configured, the native card's mining control settles to ready
+    // and Add mines the character with the kanji dictionary's card.
+    for (const url of ["/background.js", "/offscreen.html"]) {
+      const target = await browser.waitForTarget(candidate => candidate.url().endsWith(url));
+      sessions.push(await interceptFetches(target, new Map([["http://127.0.0.1:8765/", ankiRoute]]), "kanji-group-anki"));
+    }
+    const diagnosticsStart = diagnostics.length;
+    await optionsWrite({ anki: applyAnkiPreset({ ...original.options.anki, deck: "Default", model: "Kiku" }, kikuFields, "kiku") });
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    require(await popup.click(".gsm-hoshidicts-kanji-link"), "kanji group Anki: clicked-kanji control");
+    await until(view, value => visible(value) && value.entries.length === 2, "kanji group Anki: group view");
+    const settledAnki = await until(() => popup.anki(), value => value?.controls.length === 2
+      && value.controls.every(control => !["checking", undefined].includes(control.state)), "kanji group Anki: settled controls");
+    evidence.anki = { controls: settledAnki.controls.map(control => [control.state, control.title]), feedback: settledAnki.feedback };
+    require(await popup.click(".gsm-hoshidicts-mine-button"), "kanji group Anki: Add");
+    await until(() => ankiNotes.length, count => count === 1, "kanji group Anki: addNote");
+    const [note] = ankiNotes;
+    evidence.anki.note = { Expression: note.Expression, ExpressionReading: note.ExpressionReading,
+      PitchCategories: note.PitchCategories, PitchPosition: note.PitchPosition, FreqSort: note.FreqSort,
+      glossary: note.Glossary.includes("kanji-group first meaning") && note.Glossary.includes("ショク · ジキ"),
+      mainDefinition: note.MainDefinition.includes("kanji-group first meaning") };
+    evidence.anki.exceptions = diagnostics.slice(diagnosticsStart).filter(line => /exception|TypeError/u.test(line));
+    require(await popup.click(".gsm-hoshidicts-kanji-back"), "kanji group Anki: Back");
+    await optionsWrite({ anki: original.options.anki });
+
     // Removing the group resets the option, in the worker and in the open Settings page.
     await groups(original.dictionaryState.groups ?? []);
     evidence.reset = await until(async () => ({ stored: (await storedOptions()).kanjiClickDictionary, chooser: await chooser() }),
@@ -2769,7 +2820,8 @@ async function checkKanjiGroup(settings, tab, popup) {
   } finally {
     const errors = [];
     const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
-    await clean(() => optionsWrite({ kanjiClickDictionary: original.options.kanjiClickDictionary }));
+    await clean(() => optionsWrite({ kanjiClickDictionary: original.options.kanjiClickDictionary, anki: original.options.anki }));
+    for (const session of sessions) await clean(() => session.detach());
     for (const title of installed) await clean(async () => {
       const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
       if (!reply.ok) throw new Error(reply.error);
@@ -2795,6 +2847,12 @@ async function checkKanjiGroup(settings, tab, popup) {
     evidence.passed && evidence.chooser.groups.some(([label, value]) => label === "Kanji group" && value === groupValue)
       && evidence.reset?.stored === "" && evidence.reset.chooser.value === "",
     JSON.stringify({ chooser: evidence.chooser, reset: evidence.reset }));
+  check("a clicked-kanji group's native kanji card keeps a ready Anki mining control and mines as the character",
+    evidence.anki?.controls.every(([state]) => state === "ready") && evidence.anki.feedback?.hidden === true
+      && equal(evidence.anki.note, { Expression: fixture.character, ExpressionReading: "", PitchCategories: "",
+        PitchPosition: "", FreqSort: "9999999", glossary: true, mainDefinition: true })
+      && evidence.anki.exceptions.length === 0,
+    JSON.stringify(evidence.anki));
 }
 
 async function checkCompactSummaries(settings, tab, popup, browser) {
@@ -12960,7 +13018,7 @@ async function main() {
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
-  await checkKanjiGroup(page, tab, popup);
+  await checkKanjiGroup(page, tab, popup, browser);
   await checkCompactSummaryLayout(browser);
   check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
   await checkActionRow(browser);

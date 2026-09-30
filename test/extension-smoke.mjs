@@ -16067,6 +16067,20 @@ async function contentNoteStage() {
         && JSON.stringify(nativeGlossary).includes("ショク") && JSON.stringify(nativeGlossary).includes("eat")
         && JSON.stringify(render.context.dictionaryTabScope) === JSON.stringify(["Terms A", "Native B", "Terms C"])
         && typeof render.context.onBack === "function";
+      // The term view mines every card, so a native card carries the engine's
+      // complete LookupResult shape (#333) and builds the fields that failed.
+      const native = render.kind === "terms" ? JSON.parse(JSON.stringify(render.results[1])) : null;
+      const nativeFields = native && await buildAnkiFields(native, Object.fromEntries(["{pitch-accent-categories}",
+        "{part-of-speech}", "{tags}", "{conjugation}"].map((value) => [value, { value, overwriteMode: "coalesce" }])),
+      { definition: async () => "" }).catch((error) => error.message);
+      outcomes["a clicked-kanji group's native card is a complete term result that builds Anki fields"] =
+        JSON.stringify(native && { ...native, term: { ...native.term, glossaries: native.term.glossaries
+          .map((glossary) => ({ ...glossary, glossary: typeof glossary.glossary })) } })
+          === JSON.stringify({ matched: "食", deinflected: "食", trace: [], preprocessorSteps: 0, term: {
+            expression: "食", reading: "", rules: "", score: 0, frequencies: [], pitches: [], glossaries: [
+              { dictionary: "Native B", glossary: "string", definitionTags: "", termTags: "" }] } })
+        && JSON.stringify(nativeFields) === JSON.stringify({ "{pitch-accent-categories}": "", "{part-of-speech}": "Unknown",
+          "{tags}": "", "{conjugation}": "" });
       await render.context.onBack();
 
       // A group that misses everywhere falls back to the automatic native
