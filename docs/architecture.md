@@ -2190,8 +2190,11 @@ bold, italics, underline and strike-through become tags, newlines become `<br>`
 and block-level elements that directly hold content become `<div>`. Stylesheets,
 internal classes, `data-hoshidicts-*`, titles and link targets are dropped;
 `lang`, `rowspan`/`colspan`, `data-sc-content`, ruby, tables, image sizes and
-the outer Yomitan-compatible glossary structure are kept. Plain glossary
-markers and the relay's `ankiFields` API are unchanged.
+the outer Yomitan-compatible glossary structure are kept. The
+`small.yomitan-glossary-details` Rules/Deinflection footer of the uncompacted
+fields is not written, as Yomitan's `{glossary}` has none;
+`{part-of-speech}` and `{conjugation}` carry that information (#399). Plain
+glossary markers and the relay's `ankiFields` API are unchanged.
 
 First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write
