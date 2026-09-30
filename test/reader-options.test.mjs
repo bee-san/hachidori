@@ -82,3 +82,22 @@ test("definition text follows the page lookup mode unless a child popup trigger 
     "stored garbage falls back to the default without throwing");
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("definitionLookupMode"), "not a boolean hotkey toggle");
 });
+
+test("the image hover preview defaults to large images and keeps only its three modes", () => {
+  const { IMAGE_HOVER_PREVIEWS, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.imageHoverPreview, "large");
+  assert.deepEqual(IMAGE_HOVER_PREVIEWS, ["off", "large", "all"]);
+  assert.equal(normaliseOptions({}).imageHoverPreview, "large", "missing");
+  for (const mode of IMAGE_HOVER_PREVIEWS) {
+    assert.equal(normaliseOptions({ imageHoverPreview: mode }).imageHoverPreview, mode);
+    assert.deepEqual(validateOptionsPatch({ imageHoverPreview: mode }), { imageHoverPreview: mode });
+  }
+  for (const garbage of ["bogus", true, null, "Large"]) {
+    assert.equal(normaliseOptions({ imageHoverPreview: garbage }).imageHoverPreview, "large",
+      `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ imageHoverPreview: garbage }), /invalid reader option/);
+  }
+  assert.deepEqual(projectStoredOptions({ imageHoverPreview: "bogus" }), { imageHoverPreview: "large" },
+    "stored garbage falls back to the default without throwing");
+  assert.ok(DESIGN_OPTION_KEYS.includes("imageHoverPreview"), "Design's reset restores it");
+});

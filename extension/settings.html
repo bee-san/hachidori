@@ -750,6 +750,15 @@
                     <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
                   </label>
                   <label class="field">
+                    <span class="field-label">Image hover preview</span>
+                    <select id="opt-image-hover-preview">
+                      <option value="off">Off</option>
+                      <option value="large">Large images only</option>
+                      <option value="all">All images</option>
+                    </select>
+                    <span class="field-hint">Enlarges a dictionary image on hover or keyboard focus. Large images only skips small inline glyphs such as image brackets and labels.</span>
+                  </label>
+                  <label class="field">
                     <span class="field-label">Clicked-kanji dictionary</span>
                     <select id="opt-kanji-dictionary"></select>
                     <span class="field-hint">Term dictionaries also work when they contain a single-kanji entry. A group shows each of its dictionaries with an entry as its own tab, in group order.</span>
