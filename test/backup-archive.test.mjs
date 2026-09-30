@@ -13,6 +13,70 @@ const files = [
 ];
 const zipOptions = { useWebWorkers: false, level: 0, extendedTimestamp: false };
 
+// Model a large worker Response(stream).blob() sink cancelling with an
+// undefined reason, which zip.js masks with the reported outputSize error.
+function failStreamedResponseBlobs(t) {
+  t.mock.method(Response.prototype, "blob", async function () {
+    const reader = this.body.getReader();
+    const parts = [];
+    let size = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return new Blob(parts);
+      parts.push(value);
+      size += value.byteLength;
+      if (size > 10 * 1024 * 1024) {
+        await reader.cancel();
+        throw new TypeError("Failed to fetch");
+      }
+    }
+  });
+}
+
+const largeFile = {
+  path: "dictionaries/0/media/画像.bin",
+  data: new Blob([new Uint8Array(16 * 1024 * 1024).fill(42)]),
+};
+
+test("backup exports large files without Response stream-to-blob consumption", async t => {
+  failStreamedResponseBlobs(t);
+  const archive = await createBackupArchive(snapshot, [largeFile], lookupStatsRows);
+  assert.equal(archive.type, "application/zip");
+  assert.ok(archive.size > largeFile.data.size);
+  const prepared = await openBackupArchive(archive);
+  assert.deepEqual(prepared.snapshot, snapshot);
+  assert.deepEqual(await prepared.files[0].data.arrayBuffer(), await largeFile.data.arrayBuffer());
+});
+
+test("restore reads existing large backups without Response stream-to-blob consumption", async t => {
+  // Build through the old writer before injecting the failure, so export and
+  // restore cannot pass by agreeing on a new, incompatible representation.
+  const writer = new ZipWriter(new BlobWriter(), { ...zipOptions, zip64: true });
+  await writer.add("hachidori-backup.json", new BlobReader(new Blob([JSON.stringify({
+    format: "hachidori-backup", version: 2, createdAt: "2026-09-07T00:00:00.000Z",
+    snapshot, lookupStatsRows, files: [{ path: largeFile.path, size: largeFile.data.size }],
+  })])));
+  await writer.add(largeFile.path, new BlobReader(largeFile.data));
+  const archive = await writer.close();
+  failStreamedResponseBlobs(t);
+  const prepared = await openBackupArchive(archive);
+  assert.deepEqual(prepared.snapshot, snapshot);
+  assert.deepEqual(prepared.lookupStatsRows, lookupStatsRows);
+  assert.equal(prepared.files[0].path, largeFile.path);
+  assert.deepEqual(await prepared.files[0].data.arrayBuffer(), await largeFile.data.arrayBuffer());
+});
+
+test("backup and restore preserve empty payload files and an empty library", async () => {
+  const emptySnapshot = { state: { dictionaries: [] }, lookupStats: { generation: null, revision: 0 } };
+  const prepared = await openBackupArchive(await createBackupArchive(emptySnapshot, [], []));
+  assert.deepEqual(prepared.snapshot, emptySnapshot);
+  assert.deepEqual(prepared.files, []);
+  const emptyFile = { path: "dictionaries/0/empty.bin", data: new Blob() };
+  const withEmptyFile = await openBackupArchive(await createBackupArchive(snapshot, [emptyFile], lookupStatsRows));
+  assert.equal(withEmptyFile.files[0].path, emptyFile.path);
+  assert.equal(withEmptyFile.files[0].data.size, 0);
+});
+
 test("backup ZIP64 preserves snapshot, UTF-8 paths and binary files", async () => {
   const archive = await createBackupArchive(snapshot, files, lookupStatsRows, "2026-09-07T00:00:00.000Z");
   const prepared = await openBackupArchive(archive);
