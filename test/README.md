@@ -185,7 +185,9 @@ the pure recycle scheduler (no restart while busy, the two-second idle window,
 one restart for back-to-back mutations, a restart on option mismatch in either
 direction), the Settings → Advanced → Memory readout and each Library row's
 *In memory* line from a stubbed `hd_memory` reply (an em dash when the engine
-is busy or unreachable, a refresh on a new engine generation while Advanced is
+is busy or unreachable, the *Extension total* line from a stubbed
+`hd_memory_total` reply, a dash where it cannot be measured and never holding
+the engine line, a refresh on a new engine generation while Advanced is
 shown and when a row's Details opens, the switch saving
 through the ordinary options queue, and the switch hidden with
 the single-thread engine, and a paged row's *(entries read from disk)*), and the
@@ -203,7 +205,8 @@ runs a worker configured as the low-memory one (every add paged, identical
 lookups, smaller rows, a filled page cache) and, with `hdw_add_dict` refusing a
 package the way a full heap does, checks that the package loads paged, and that
 one refused paged too is reported in `failedDictionaries` while the others load.
-`chrome-e2e.mjs` turns the mode on in a real Chrome, watches the worker recycle
+`chrome-e2e.mjs` first requires the real extension total, with the engine
+heap counted once, then turns the mode on in a real Chrome, watches the worker recycle
 (the generation restarts from zero), imports in the strict two-thread pool,
 and checks that the heap dropped, lookups still hit, the package's row counts
 only its index files as sized in OPFS, the page cache filled within its budget

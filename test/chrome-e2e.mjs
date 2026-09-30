@@ -14571,6 +14571,15 @@ async function main() {
       && (previous === null || status.generation < previous) ? status : false;
   }, { timeout: 30_000, polling: 250 }, lowMemory, generation).then((handle) => handle.jsonValue());
   await showSettingsSection(page, "advanced");
+  // The extension total arrives on its own once the browser has measured the
+  // offscreen document and its workers; the engine heap is counted once, not
+  // once per engine thread as the raw measurement reports it.
+  const extensionTotal = await page.waitForFunction(async () => {
+    const text = document.getElementById("memory-extension-total").textContent;
+    if (!/^Extension total: [\d.]+ (KB|MB|GB) \([\d.]+ (KB|MB|GB) outside the engine heap\)$/u.test(text)) return false;
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory_total", requestId: "e2e-memory-total" });
+    return { text, reply };
+  }, { timeout: 90_000, polling: 250 }).then((handle) => handle.jsonValue()).catch(() => null);
   const lowMemoryBefore = await page.evaluate(async () => {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-lm-status" });
     const memory = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_memory", requestId: "e2e-lm-memory" });
@@ -14592,11 +14601,15 @@ async function main() {
       && lowMemoryBefore.memory.ok === true && Number.isInteger(lowMemoryBefore.memory.heapBytes)
       && lowMemoryBefore.memory.dictionaries.length === 0
       && /^Engine memory: [\d.]+ (KB|MB|GB) across 0 dictionaries$/u.test(lowMemoryBefore.total)
+      && extensionTotal?.reply.ok === true && Number.isFinite(extensionTotal.reply.bytes)
+      && extensionTotal.reply.heapBytes === lowMemoryBefore.memory.heapBytes
+      && extensionTotal.reply.bytes >= extensionTotal.reply.heapBytes
+      && extensionTotal.reply.bytes - extensionTotal.reply.heapBytes < extensionTotal.reply.heapBytes
       && lowMemoryBefore.status.pagedDictionaries === false
       && lowMemoryOptions?.lowMemoryMode === true
       && lowMemoryStatus?.threaded === true && lowMemoryStatus.storageBackend === "opfs"
       && lowMemoryStatus.pagedDictionaries === true,
-    JSON.stringify({ before: lowMemoryBefore, after: lowMemoryStatus, lowMemoryMode: lowMemoryOptions?.lowMemoryMode }),
+    JSON.stringify({ before: lowMemoryBefore, extensionTotal, after: lowMemoryStatus, lowMemoryMode: lowMemoryOptions?.lowMemoryMode }),
   );
 
   await showSettingsSection(page, "add-dictionaries");

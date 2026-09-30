@@ -52,7 +52,29 @@ Settings → Advanced → **Memory** shows *Engine memory: X GB across N
 dictionaries*: the size of the engine's linear memory and the number of loaded
 packages.
 
-![Settings → Advanced → Memory with the engine total and the Low memory mode switch](assets/memory-settings.png)
+Below it, *Extension total: Z GB (W MB outside the engine heap)* is what the
+browser measures for the offscreen document that runs the engine and every
+worker it started: the engine heap plus the JavaScript of the document, the
+engine worker and its threads, a running import worker and, on IDBFS hosts,
+the in-memory mirror of the dictionary files. The part in brackets is what the
+engine line cannot show, so it is the number to watch if Hachidori's memory
+grows while *Engine memory* stays put. The figure comes from
+[`performance.measureUserAgentSpecificMemory()`](https://developer.mozilla.org/docs/Web/API/Performance/measureUserAgentSpecificMemory),
+which can take a few seconds and fills in on its own; where the browser does
+not offer it (Firefox, or a host without cross-origin isolation) the line shows
+an em dash. Chrome counts the engine heap, a `SharedArrayBuffer`, once in every
+engine thread that holds a view of it, so its raw total overstates the heap
+several times over; Hachidori counts the heap once.
+
+The extension total does not include the service worker, other open Hachidori
+pages (Settings itself, the toolbar), the popup on the page you are reading
+(it runs in that page's process), or the browser's own per-process overhead
+and shared code. Chrome's Task Manager (Shift+Esc) shows the whole process,
+including those, so its *Extension: Hachidori* row is normally larger than the
+extension total; the operating system's figures are larger still because they
+count the browser's shared libraries in every process.
+
+![Settings → Advanced → Memory with the engine total, the extension total and the Low memory mode switch](assets/memory-settings.png)
 
 Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
 package's resident files as described above. A package whose entries are read
@@ -61,10 +83,11 @@ only its index and says *(entries read from disk)*.
 
 ![A Library row's Details with its In memory line](assets/memory-library-details.png)
 
-Both come from the engine's `hd_memory` read (see
-[architecture.md](architecture.md), "Runtime messages"), asked for when you open
-Advanced (and again there when the engine publishes a new generation after an
-import, reload or recycle) and when you open a row's Details; nothing polls.
+The engine lines come from the engine's `hd_memory` read and the extension
+total from `hd_memory_total` (see [architecture.md](architecture.md), "Runtime
+messages"), asked for when you open Advanced (and again there when the engine
+publishes a new generation after an import, reload or recycle); a row's
+*In memory* line is asked for when you open its Details. Nothing polls.
 While the engine is busy or unreachable the readout shows an em dash rather than
 an error.
 

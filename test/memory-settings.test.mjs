@@ -23,7 +23,7 @@ const MEMORY = { ok: true, heapBytes: 3 * 1_073_741_824, dictionaries: [
 ] };
 
 // Settings as a user opens it on Advanced with two installed dictionaries.
-function fixture(t, { hash = "#advanced", stored = {}, threaded = true, memory = MEMORY } = {}) {
+function fixture(t, { hash = "#advanced", stored = {}, threaded = true, memory = MEMORY, total = { ok: true, bytes: 3.5 * 1_073_741_824, heapBytes: 3 * 1_073_741_824 } } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -36,6 +36,7 @@ function fixture(t, { hash = "#advanced", stored = {}, threaded = true, memory =
   window.MINING_CAPABILITIES = { screenshot: true, browserSpeech: true };
   window.replies = {
     hd_memory: memory,
+    hd_memory_total: total,
     hd_status: { ok: true, ready: true, loading: false, dictionaryCount: 2, failedDictionaries: [], generation: 1,
       storageBackend: "opfs", threaded },
   };
@@ -100,6 +101,35 @@ test("Advanced shows the engine total and each Library row shows its share", asy
   assert.equal(requests.filter(message => message.type === "hd_memory").length, 1, "one read for the Advanced visit, not a poll");
 });
 
+test("Advanced shows the extension total beside the engine line, and a dash where it cannot be measured", async t => {
+  const measured = fixture(t);
+  await settle();
+  assert.equal(measured.el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
+  assert.equal(measured.el("memory-extension-total").textContent, "Extension total: 3.50 GB (512.0 MB outside the engine heap)");
+  assert.equal(measured.requests.filter(message => message.type === "hd_memory_total").length, 1);
+
+  // Firefox and hosts without cross-origin isolation have no measurement.
+  const unsupported = fixture(t, { total: { ok: true, bytes: null, heapBytes: null } });
+  await settle();
+  assert.equal(unsupported.el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
+  assert.equal(unsupported.el("memory-extension-total").textContent, "Extension total: \u2014");
+
+  const failed = fixture(t, { total: new Error("Could not establish connection") });
+  await settle();
+  assert.equal(failed.el("memory-extension-total").textContent, "Extension total: \u2014");
+});
+
+test("a slow extension measurement does not hold the engine line", async t => {
+  let release;
+  const { el } = fixture(t, { total: new Promise(resolve => { release = resolve; }) });
+  await settle();
+  assert.equal(el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
+  assert.equal(el("memory-extension-total").textContent, "Extension total: \u2014");
+  release({ ok: true, bytes: 2 * 1_073_741_824 });
+  await settle();
+  assert.equal(el("memory-extension-total").textContent, "Extension total: 2.00 GB");
+});
+
 test("a row whose entries are read from disk says so", async t => {
   const paged = { ...MEMORY, pageCacheBytes: 4 * 1_048_576, dictionaries: [
     { ...MEMORY.dictionaries[0], bytes: 13 * 1_048_576, paged: true },
@@ -116,6 +146,7 @@ test("the Library asks only when a reader opens a row's Details", async t => {
   await settle();
   const reads = () => requests.filter(message => message.type === "hd_memory").length;
   assert.equal(reads(), 0, "rendering the Library requests nothing");
+  const totals = () => requests.filter(message => message.type === "hd_memory_total").length;
   assert.equal(rowMemory(DICTIONARIES[0].id), "In memory: \u2014");
   window.rerenderDictionaries();
   await window.pollStatus();
@@ -128,6 +159,7 @@ test("the Library asks only when a reader opens a row's Details", async t => {
   window.rerenderDictionaries();
   assert.equal(rowMemory(DICTIONARIES[1].id), "In memory: \u2248 1.40 GB", "rebuilt rows show the last reading at once");
   assert.equal(reads(), 1, "a rebuilt open row does not ask again");
+  assert.equal(totals(), 0, "a row's Details does not measure the whole extension");
 });
 
 test("a busy or unreachable engine renders a dash rather than an error", async t => {
