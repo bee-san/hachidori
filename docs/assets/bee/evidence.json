@@ -69,7 +69,7 @@
       "ratio": 12.039539281998346
     },
     {
-      "selector": "gsm-hoshidicts-glossary-content",
+      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
       "property": "color",
       "minimum": 4.5,
       "ratio": 8.67769758805775
@@ -79,30 +79,6 @@
       "property": "color",
       "minimum": 4.5,
       "ratio": 8.67769758805775
-    },
-    {
-      "selector": "gsm-hoshidicts-glossary-content",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 8.67769758805775
-    },
-    {
-      "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 8.67769758805775
-    },
-    {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.1566921276076325
-    },
-    {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.1566921276076325
     },
     {
       "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
@@ -261,40 +237,10 @@
       "ratio": 8.67769758805775
     },
     {
-      "selector": "gsm-hoshidicts-glossary-content",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 8.67769758805775
-    },
-    {
       "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
       "property": "color",
       "minimum": 4.5,
       "ratio": 8.67769758805775
-    },
-    {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.1566921276076325
-    },
-    {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.1566921276076325
-    },
-    {
-      "selector": "bee-rich-tags",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.9220011105470665
-    },
-    {
-      "selector": "bee-rich-tags",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.9220011105470665
     },
     {
       "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
@@ -489,18 +435,6 @@
       "ratio": 8.67769758805775
     },
     {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.1566921276076325
-    },
-    {
-      "selector": "bee-rich-tags",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 5.9220011105470665
-    },
-    {
       "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
       "property": "color",
       "minimum": 4.5,
@@ -580,18 +514,6 @@
     },
     {
       "selector": "gsm-hoshidicts-glossary-content bee-rich-content",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 21
-    },
-    {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 19.555999999999997
-    },
-    {
-      "selector": "bee-rich-tags",
       "property": "color",
       "minimum": 4.5,
       "ratio": 21
@@ -681,18 +603,6 @@
       "ratio": 21
     },
     {
-      "selector": "SUMMARY",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 13.994023083921398
-    },
-    {
-      "selector": "bee-rich-tags",
-      "property": "color",
-      "minimum": 4.5,
-      "ratio": 21
-    },
-    {
       "selector": "gsm-hoshidicts-external-link-button gsm-hoshidicts-text-action-button",
       "property": "color",
       "minimum": 4.5,
@@ -748,7 +658,7 @@
     "Next and Previous themes buttons",
     "Plain definitions only",
     "JL blocks and actions",
-    "Bee group-only tabs, lazy rich content, Note, custom actions and kanji images",
+    "Bee group-only tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images",
     "Bee WCAG AA text and control/focus contrast over white and black pages",
     "Nazeka hover",
     "kanji and Back",

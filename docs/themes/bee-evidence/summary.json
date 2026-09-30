@@ -18,7 +18,7 @@
     },
     "nodes": {
       "n": 72,
-      "median": 20.0,
+      "median": 20,
       "p95": 34
     },
     "coldFirstMs": {
@@ -63,12 +63,12 @@
     },
     "renderMs": {
       "n": 72,
-      "median": 1.0,
+      "median": 1,
       "p95": 2
     },
     "nodes": {
       "n": 72,
-      "median": 20.0,
+      "median": 20,
       "p95": 34
     },
     "coldFirstMs": {
@@ -103,7 +103,7 @@
     "profiles": 3,
     "warmFirstMs": {
       "n": 72,
-      "median": 17.0,
+      "median": 17,
       "p95": 18.200000000186265
     },
     "warmCompleteMs": {
@@ -118,7 +118,7 @@
     },
     "nodes": {
       "n": 72,
-      "median": 77.0,
+      "median": 77,
       "p95": 352
     },
     "coldFirstMs": {
@@ -163,12 +163,12 @@
     },
     "renderMs": {
       "n": 72,
-      "median": 3.0,
+      "median": 3,
       "p95": 5.800000000279397
     },
     "nodes": {
       "n": 72,
-      "median": 77.0,
+      "median": 77,
       "p95": 352
     },
     "coldFirstMs": {
@@ -218,7 +218,7 @@
     },
     "nodes": {
       "n": 72,
-      "median": 24.0,
+      "median": 24,
       "p95": 43
     },
     "coldFirstMs": {
@@ -268,7 +268,7 @@
     },
     "nodes": {
       "n": 72,
-      "median": 24.0,
+      "median": 24,
       "p95": 43
     },
     "coldFirstMs": {
@@ -295,6 +295,56 @@
       {
         "defaultViews": 0,
         "richGlossaries": 0,
+        "dictionaryStyles": 1
+      }
+    ]
+  },
+  "formatted-bee": {
+    "profiles": 3,
+    "warmFirstMs": {
+      "n": 72,
+      "median": 16.80000001192093,
+      "p95": 17.100000023841858
+    },
+    "warmCompleteMs": {
+      "n": 72,
+      "median": 33.30000001192093,
+      "p95": 33.5
+    },
+    "renderMs": {
+      "n": 72,
+      "median": 1.300000011920929,
+      "p95": 2.699999988079071
+    },
+    "nodes": {
+      "n": 72,
+      "median": 66,
+      "p95": 270
+    },
+    "coldFirstMs": {
+      "n": 3,
+      "median": 26.899999976158142,
+      "p95": 27.30000001192093
+    },
+    "coldCompleteMs": {
+      "n": 3,
+      "median": 33.19999998807907,
+      "p95": 33.19999998807907
+    },
+    "childRendererWork": [
+      {
+        "defaultViews": 0,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 296,
+        "dictionaryStyles": 1
+      },
+      {
+        "defaultViews": 0,
+        "richGlossaries": 296,
         "dictionaryStyles": 1
       }
     ]
