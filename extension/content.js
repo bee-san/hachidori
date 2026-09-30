@@ -410,8 +410,7 @@
         continue;
       }
       for (const entry of nativeEntries.filter((candidate) => candidate.dictionary === member.title)) {
-        append({ matched: character, term: { expression: character, reading: "", frequencies: [], pitches: [],
-          glossaries: [{ dictionary: entry.dictionary, glossary: window.HDPopup.kanjiEntryGlossary(entry) }] } });
+        append(window.HDPopup.kanjiEntryResult(character, entry));
       }
     }
     return merged;

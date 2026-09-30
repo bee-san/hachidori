@@ -227,10 +227,11 @@
       if (capability?.kind === "term" || capability?.kind === "group") {
         // A group compares its members: one card each, in group order, with a tab per member.
         const members = capability.kind === "group" ? capability.members : [capability];
-        view.renderResults([{ matched: kanjiCharacter, trace: [], term: {
-          expression: kanjiCharacter, reading: "しょく", glossaries: members.map(member => ({ dictionary: member.title,
-            glossary: member.kind === "kanji" ? HDPopup.kanjiEntryGlossary(nativeSample(member.title))
-              : JSON.stringify(["food; eating — sample single-kanji entry"]) })), frequencies: [], pitches: [],
+        view.renderResults([{ matched: kanjiCharacter, deinflected: kanjiCharacter, trace: [], preprocessorSteps: 0, term: {
+          expression: kanjiCharacter, reading: "しょく", rules: "", score: 0, glossaries: members.map(member => member.kind === "kanji"
+            ? HDPopup.kanjiEntryResult(kanjiCharacter, nativeSample(member.title)).term.glossaries[0]
+            : { dictionary: member.title, glossary: JSON.stringify(["food; eating — sample single-kanji entry"]),
+              definitionTags: "", termTags: "" }), frequencies: [], pitches: [],
         } }], candidate, capability.kind === "group"
           ? { ...renderContext, dictionaryTabScope: members.map(member => member.title) } : renderContext);
         sampleTermView = true;

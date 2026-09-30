@@ -1611,6 +1611,17 @@
     ] }]);
   }
 
+  // A native kanji entry as one complete term result. The term view's
+  // consumers (Anki mining, lookup statistics, audio, Note) read the engine's
+  // LookupResult contract; a kanji card has no reading, rules, tags, trace or score.
+  function kanjiEntryResult(character, entry) {
+    return {
+      matched: character, deinflected: character, trace: [], preprocessorSteps: 0,
+      term: { expression: character, reading: "", rules: "", score: 0, frequencies: [], pitches: [],
+        glossaries: [{ dictionary: entry.dictionary, glossary: kanjiEntryGlossary(entry), definitionTags: "", termTags: "" }] },
+    };
+  }
+
   function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }
@@ -4366,6 +4377,7 @@
     formatCompactFrequencyNumber,
     formatFrequencyValue,
     kanjiEntryGlossary,
+    kanjiEntryResult,
     metadataOptions,
   };
 }));
