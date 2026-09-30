@@ -16550,6 +16550,8 @@ async function contentNoteStage() {
         };
         const grid = window.document.createElement("div");
         grid.className = "gsm-hoshidicts-glossary-grid";
+        // No stylesheet here: masonry reads the grid gap reader.css would give it.
+        grid.style.columnGap = "8px";
         grid.append(window.document.createElement("div"), window.document.createElement("div"));
         for (const card of grid.children) {
           Object.defineProperty(card, "offsetHeight", { get() {
