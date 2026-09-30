@@ -2964,7 +2964,13 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && groupOriginal.images.every(image => Buffer.from(image.src.split(",")[1], "base64").equals(makePng())),
       "E11 group incorrectly retained one global supplier across paths");
     await popup.dictionaryTabs("remember");
-    await popup.imagePreview(1, "focus");
+    // These 16px fixture images are inline glyphs to the default "large"
+    // preview mode; preview every image while checking preview refresh.
+    await write({ imageHoverPreview: "all" });
+    await until(async () => {
+      await popup.imagePreview(1, "blur");
+      return popup.imagePreview(1, "focus");
+    }, value => value.focusedImage === 1 && value.preview !== null, "E11 the reader adopted the all-images preview mode");
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = true; });
     await write({ popupImageSource: { kind: "dictionary", title: fixture.plain } });
     await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E11 focused alternate image");
@@ -2984,6 +2990,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     const blurredFailure = await popup.imagePreview(0, "blur");
     require(blurredFailure.images[0].tabStop === null, "E11 failed image retained a noninteractive tab stop after blur");
     await write({ popupImageSource: null });
+    await write({ imageHoverPreview: "large" });
     await until(() => popup.dictionaryTabs(), value => !value.hidden && value.images.length === 2 && value.imageSources.length === 0
       && value.images[1].same
       && value.images.every(image => image.complete && Buffer.from(image.src.split(",")[1], "base64").equals(makePng())),

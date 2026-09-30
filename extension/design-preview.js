@@ -96,6 +96,7 @@
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList,
     getPopupColumns: () => options.popupColumns,
+    getImageHoverPreview: () => options.imageHoverPreview,
     getPopupScalePercent: () => options.popupScalePercent,
     customButtons: options.customButtons,
     positionPopup, sourceHighlightEnabled: true,

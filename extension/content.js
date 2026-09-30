@@ -2181,6 +2181,7 @@
       getPageZoom: () => pageZoom,
       getPopupScalePercent: () => options.popupScalePercent,
       getPopupColumns: () => options.popupColumns,
+      getImageHoverPreview: () => options.imageHoverPreview,
       onResizeStart: event => startPopupResize(event, level),
       onResizeMove: movePopupResize,
       onResizeEnd: stopPopupResize,

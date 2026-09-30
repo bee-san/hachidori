@@ -21892,6 +21892,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
+  await imageHoverPreviewModeStage({ HDGlossary, HDPopup, document, window, candidate,
+    result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deepStructuredContentStage({ HDGlossary, HDPopup, document });
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
@@ -23181,6 +23183,71 @@ async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, 
     else delete window.navigator.language;
     view.destroy();
     popup.remove();
+  }
+}
+
+// Issue #397: "large" (the default) skips inline glyphs, "off" opens nothing
+// on hover or focus and "all" keeps the preview for every image.
+async function imageHoverPreviewModeStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl }) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const shadow = host.attachShadow({ mode: "open" });
+  const popup = document.createElement("div");
+  shadow.append(popup);
+  let mode = "large";
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList,
+    getImageHoverPreview: () => mode,
+    positionPopup() {},
+  });
+  const images = [
+    { name: "em", path: "media/em.png", width: 1, height: 1, sizeUnits: "em" },
+    { name: "small", path: "media/small.png", width: 16, height: 16 },
+    { name: "large", path: "media/large.png", width: 64, height: 64 },
+    { name: "collapsed", path: "media/collapsed.png", width: 64, height: 64, collapsed: true },
+  ];
+  try {
+    view.renderResults([{ ...result, term: { ...result.term, glossaries: [{
+      dictionary: "A",
+      glossary: JSON.stringify([{ type: "structured-content", content: images.map(({ name, ...image }) => ({
+        tag: "img", alt: name, ...image,
+      })) }]),
+    }] } }], candidate, {
+      generation: 1,
+      dictionaryPresentation: [{ title: "A", favorite: true }],
+      resolveMedia: () => Promise.resolve(mediaUrl),
+    });
+    await new Promise((done) => setTimeout(done, 0));
+    const links = [...popup.querySelectorAll(".gloss-image-link")];
+    const opens = (link, type) => {
+      view.hideImagePreview();
+      link.dispatchEvent(new window.Event(type));
+      const open = shadow.querySelector(".gsm-hoshidicts-image-hover-preview") !== null;
+      link.dispatchEvent(new window.Event(type === "focus" ? "blur" : "mouseleave"));
+      return open;
+    };
+    const observed = {};
+    for (const next of ["large", "off", "all"]) {
+      mode = next;
+      observed[next] = Object.fromEntries(links.map((link, index) => [images[index].name,
+        [opens(link, "mouseenter"), opens(link, "focus")]]));
+    }
+    const expected = {
+      large: { em: [false, false], small: [false, false], large: [true, true], collapsed: [true, true] },
+      off: { em: [false, false], small: [false, false], large: [false, false], collapsed: [false, false] },
+      all: { em: [true, true], small: [true, true], large: [true, true], collapsed: [true, true] },
+    };
+    check("image hover preview skips inline glyphs by default, opens nothing when off and previews every image with all",
+      links.length === 4 && links.every(link => link.querySelector("img").src === mediaUrl)
+        && JSON.stringify(observed) === JSON.stringify(expected)
+        && links[3].dataset.collapsed === "true",
+      JSON.stringify({ links: links.length, observed }));
+  } finally {
+    view.destroy();
+    host.remove();
   }
 }
 

@@ -2170,6 +2170,10 @@
     const getPopupColumns = typeof options.getPopupColumns === "function"
       ? options.getPopupColumns
       : () => 1;
+    // Read at each request so a Settings change applies to the next hover.
+    const getImageHoverPreview = typeof options.getImageHoverPreview === "function"
+      ? options.getImageHoverPreview
+      : () => "all";
     const onKanjiClick = typeof options.onKanjiClick === "function"
       ? options.onKanjiClick
       : () => {};
@@ -2286,7 +2290,9 @@
       positionImagePreview();
     }
 
-    function requestImagePreview(link, image) {
+    function requestImagePreview(link, image, inlineGlyph = false) {
+      const mode = getImageHoverPreview();
+      if (mode === "off" || (mode !== "all" && inlineGlyph)) return;
       if (imagePreview?.owner !== link) {
         hideImagePreview();
         imagePreview = { owner: link, image, source: null, element: null };
