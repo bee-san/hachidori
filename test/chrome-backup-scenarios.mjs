@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { openBackupArchive } from "../extension/backup-archive.js";
+import { createBackupArchive, openBackupArchive } from "../extension/backup-archive.js";
 
 export const BACKUP_CHROME_CHECKS = [
   "automatic backup list shows three actual relative ages and requires explicit restore confirmation",
@@ -11,6 +11,7 @@ export const BACKUP_CHROME_CHECKS = [
   "confirmed restore atomically replaces browser generations and retains the complete saved state",
   "corrupt backup preparation preserves the working browser state and leaves no fresh generations",
   "closing Settings during backup preparation cancels staged generations without waiting for its reply",
+  "a large binary payload survives restore and re-export through the browser engine",
 ];
 
 export async function backupChromeScenarios({ browser, page, directory, check = (name, ok, detail) => assert.ok(ok, `${name}: ${detail}`) }) {
@@ -63,6 +64,19 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const waitForBackupSettings = async () => {
     await page.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready")
       && !document.getElementById("backup-export").disabled, { timeout: 120_000 });
+  };
+  const download = async () => {
+    await page.click("#backup-export");
+    await page.waitForFunction(() => {
+      const status = document.getElementById("backup-status");
+      return /Download started|cancelled/u.test(status.textContent) || status.classList.contains("is-error");
+    }, { timeout: 120_000 });
+    assert.match(await page.$eval("#backup-status", element => element.textContent), /Download started/u);
+    return page.waitForFunction(async () => {
+      const [entry] = await chrome.downloads.search({ orderBy: ["-startTime"], limit: 1 });
+      const tracked = (await chrome.storage.session.get("backupDownloads")).backupDownloads ?? {};
+      return entry?.state === "complete" && Object.keys(tracked).length === 0 ? entry : false;
+    }, { timeout: 30_000 }).then(handle => handle.jsonValue());
   };
 
   const automaticPayload = await readPayload();
@@ -253,24 +267,20 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     if (!reply.ok) throw new Error(reply.error);
   });
   const before = await read();
-  await page.click("#backup-export");
-  await page.waitForFunction(() => {
-    const status = document.getElementById("backup-status");
-    return /Download started|cancelled/u.test(status.textContent) || status.classList.contains("is-error");
-  }, { timeout: 120_000 });
-  assert.match(await page.$eval("#backup-status", element => element.textContent), /Download started/u);
-  const downloaded = await page.waitForFunction(async () => {
-    const [entry] = await chrome.downloads.search({ orderBy: ["-startTime"], limit: 1 });
-    const tracked = (await chrome.storage.session.get("backupDownloads")).backupDownloads ?? {};
-    return entry?.state === "complete" && Object.keys(tracked).length === 0 ? entry : false;
-  }, { timeout: 30_000 }).then(handle => handle.jsonValue());
+  const downloaded = await download();
   const bytes = readFileSync(downloaded.filename);
   const parsed = await openBackupArchive(new Blob([bytes]));
   check(BACKUP_CHROME_CHECKS[2], JSON.stringify(parsed.snapshot) === JSON.stringify(before)
     && parsed.files.some(file => file.path.endsWith("/media.bin")), JSON.stringify({ size: bytes.length, files: parsed.files.length }));
 
   const generation = (await status()).generation;
-  await choose(downloaded.filename);
+  const largePath = "dictionaries/0/media/backup-大容量.bin";
+  const largeBytes = Buffer.alloc(16 * 1024 * 1024, 0xe7);
+  const largeArchive = await createBackupArchive(parsed.snapshot,
+    [...parsed.files, { path: largePath, data: new Blob([largeBytes]) }], parsed.lookupStatsRows, parsed.createdAt);
+  const largeArchivePath = resolve(directory, "large-backup.zip");
+  writeFileSync(largeArchivePath, Buffer.from(await largeArchive.arrayBuffer()));
+  await choose(largeArchivePath);
   assert.equal(await page.$eval("#backup-preview", element => element.hidden), false);
   assert.equal(await page.$eval("#backup-restore", element => element.disabled), true);
   assert.equal((await status()).generation, generation);
@@ -286,7 +296,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const refusal = await page.$eval("#backup-status", element => element.textContent);
   check(BACKUP_CHROME_CHECKS[3], /changed since/u.test(refusal) && JSON.stringify(await read()) === JSON.stringify(edited), refusal);
 
-  await choose(downloaded.filename);
+  await choose(largeArchivePath);
   assert.equal(await page.$eval("#backup-preview", element => element.hidden), false);
   if (process.env.HACHIDORI_BACKUP_SCREENSHOT) {
     await page.setViewport({ width: 1200, height: 900 });
@@ -307,6 +317,12 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   check(BACKUP_CHROME_CHECKS[4], /Restored successfully/u.test(notice) && revisions && paths
     && JSON.stringify(comparable(restored)) === JSON.stringify(comparable(before))
     && lookup.ok && lookup.results.length > 0, JSON.stringify({ notice, revisions, paths, lookupOk: lookup.ok }));
+
+  const reexported = await openBackupArchive(new Blob([readFileSync((await download()).filename)]));
+  const restoredFile = reexported.files.find(file => file.path === largePath);
+  check(BACKUP_CHROME_CHECKS[7], restoredFile?.data.size === largeBytes.length
+    && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes),
+    JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size }));
 
   // Flip a payload byte without changing the ZIP checksum or manifest.
   const corrupt = Buffer.from(bytes);
