@@ -1179,7 +1179,10 @@ and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in). A wrapped cross-inline match proves the popup sits outside the complete
-matched range rather than positioning against only the hovered glyph. The test
+matched range rather than positioning against only the hovered glyph. A
+fixed-height scrolling chat feed proves the popup keeps its exact rectangle
+while the feed and then the page scroll the word out of view, and after the
+comment is removed, until Escape closes it (#402). The test
 then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
