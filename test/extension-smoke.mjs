@@ -15028,6 +15028,8 @@ async function contentNoteStage() {
     popupAt(depth = 0) { return levels[depth]?.popup; },
     hideTimerPending() { return hideTimer !== null; },
     cursorExitTimerPending() { return cursorExitTimer !== null; },
+    setOverlayMode(value) { overlayMode = value === true; },
+    selectionDragging() { return selectionDragActive; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
     resolveSelectedLookupCandidate,
@@ -19926,6 +19928,114 @@ async function contentNoteStage() {
     }
   }
 
+  // Issue #403: an overlay host toggles click-through and hands focus to the
+  // game as the pointer crosses OCR text, which reaches the reader as window
+  // blur and a window-exit mouseout. Neither is the reader leaving the page.
+  async function overlayDepartureCase() {
+    const harness = await createHarness();
+    const { driver } = harness;
+    const window = harness.popup.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const shown = () => !driver.snapshot().popupHidden;
+    const events = () => harness.popupEvents.splice(0);
+    const mouse = (type, init = {}, target = harness.anchor) => target.dispatchEvent(new window.MouseEvent(type, {
+      bubbles: true, cancelable: true, composed: true, clientX: 200, clientY: 200, ...init }));
+    const escape = () => window.document.dispatchEvent(new window.KeyboardEvent("keydown",
+      { key: "Escape", code: "Escape", bubbles: true }));
+    const answer = async () => {
+      const lookup = harness.take("hd_lookup");
+      if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      return lookup;
+    };
+    const base = { hoverDelayMs: 0, popupHideDelayMs: 250, hidePopupOnCursorExit: false };
+    const result = {};
+    try {
+      await harness.settle();
+      driver.setOverlayMode(true);
+      driver.setScanCandidate(harness.candidate);
+
+      const kept = {};
+      for (const lookupMode of ["hover", "activation", "activationSticky"]) {
+        harness.emitOptions({ ...base, lookupMode });
+        await harness.initialLookup();
+        events();
+        window.dispatchEvent(new window.Event("blur"));
+        driver.onMouseOut({ relatedTarget: null });
+        const noTimer = !fire(250) && !driver.hideTimerPending();
+        const survived = shown() && noTimer && events().length === 0;
+        escape();
+        kept[lookupMode] = survived && !shown();
+      }
+      result["overlay blur and window-exit keep a rendered popup in every lookup mode until Escape"] =
+        Object.values(kept).every(Boolean) || kept;
+
+      // A pending hover scan is still cancelled by the window-exit mouseout.
+      harness.emitOptions({ ...base, lookupMode: "hover" });
+      mouse("mousemove", { buttons: 0 });
+      driver.onMouseOut({ relatedTarget: null });
+      const scanCancelled = !fire(0) && harness.take("hd_lookup") === null;
+      // Outside click and a new lookup still close or replace it.
+      await harness.initialLookup();
+      const page = window.document.body;
+      mouse("mousedown", { button: 0, buttons: 1, clientX: 900, clientY: 700 }, page);
+      mouse("mouseup", { button: 0, buttons: 0, clientX: 900, clientY: 700 }, page);
+      await harness.settle();
+      const clickClosed = !shown();
+      await harness.initialLookup();
+      driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+      mouse("mousemove", { buttons: 0, clientX: 220 });
+      fire(0);
+      const replaced = (await answer())?.request.text === "別の語" && shown();
+      escape();
+      driver.setScanCandidate(harness.candidate);
+      result["overlay window-exit cancels a pending scan; outside click and a new lookup still dismiss"] =
+        (scanCancelled && clickClosed && replaced) || { scanCancelled, clickClosed, replaced };
+
+      // A selection drag keeps the host window across a host-caused blur.
+      events();
+      mouse("mousedown", { button: 0, buttons: 1 });
+      const claimed = events();
+      window.dispatchEvent(new window.Event("blur"));
+      const dragKept = driver.selectionDragging() && events().length === 0;
+      mouse("mouseup", { button: 0, buttons: 0 });
+      await harness.settle();
+      while (harness.take("hd_lookup")) { /* The release's own lookup is not under test. */ }
+      escape();
+      events();
+
+      // So does a held scan button, which keeps scanning after the blur.
+      harness.emitOptions({ ...base, lookupMode: "activation", activationKey: "MouseMiddle" });
+      mouse("mousedown", { button: 1, buttons: 4 });
+      fire(0);
+      const pressed = await answer();
+      events();
+      window.dispatchEvent(new window.Event("blur"));
+      const buttonKept = shown() && events().length === 0;
+      driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+      mouse("mousemove", { buttons: 4, clientX: 230 });
+      fire(0);
+      const stillScanning = (await answer())?.request.text === "別の語";
+      mouse("mouseup", { button: 1, buttons: 0 });
+      result["overlay blur keeps a selection drag and a held scan button without publishing popup-hidden"] =
+        (JSON.stringify(claimed) === '["shown"]' && dragKept && pressed !== null && buttonKept && stillScanning)
+        || { claimed, dragKept, pressed: pressed !== null, buttonKept, stillScanning };
+    } finally {
+      harness.close();
+    }
+    return result;
+  }
+
   // Issue #357: a held mouse button scans as a held key does. Its capture-phase
   // press claims an overlay host's window, and it cancels only the native
   // actions that would act on the same press.
@@ -20969,7 +21079,8 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionLanguageCase(), ...await selectionNoticeCase(), ...await personalDictionaryOffCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
-    activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase() },
+    activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase(),
+      ...await overlayDepartureCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },

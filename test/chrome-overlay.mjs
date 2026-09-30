@@ -719,11 +719,19 @@ try {
     `window blur during popup interaction retains the view: ${JSON.stringify(afterInteractiveBlur)}`);
   assert.deepEqual(await events(), [], "interactive blur does not publish an intentional close");
   await setKanjiFailure(null);
+  // Issue #403: GSM hands focus to the game and back as the pointer crosses
+  // OCR text. In overlay mode a later blur is not the reader leaving either.
   await tab.bringToFront();
   await settings.bringToFront();
-  assert.equal(await popup.waitForHidden(), true, "a later genuine blur closes after the interaction settles");
-  assert.deepEqual(await events(), ["hidden"], "the later blur publishes one intentional close");
+  await settle(750);
   await tab.bringToFront();
+  const afterHostBlur = await popup.state();
+  assert.ok(afterHostBlur && !afterHostBlur.hidden && afterHostBlur.plain.includes("食べる"),
+    `an overlay popup outlasts a later window blur: ${JSON.stringify(afterHostBlur)}`);
+  assert.deepEqual(await events(), [], "the later blur publishes no close");
+  await tab.keyboard.press("Escape");
+  assert.equal(await popup.waitForHidden(), true, "Escape still closes the popup after a blur");
+  assert.deepEqual(await events(), ["hidden"]);
   await tab.mouse.move(2, 2);
   await tab.mouse.move(...middle(boxes[0]));
   await popup.waitForVisible(10_000);
@@ -808,6 +816,11 @@ try {
   await tab.mouse.move(...trailing(boxes[0]));
   await tab.mouse.down();
   const pressed = { events: await events(), popup: popup.visible(await popup.state()), selected: await selected() };
+  await tab.mouse.move(...trailing(boxes[2]), { steps: 5 });
+  // A host focus hand-off mid-drag must not end it or release the claim (#403).
+  await settings.bringToFront();
+  await settle();
+  await tab.bringToFront();
   await tab.mouse.move(...trailing(boxes[5]), { steps: 10 });
   const dragged = { events: await events(), selected: await selected(), popup: popup.visible(await popup.state()) };
   await tab.mouse.up();
@@ -816,7 +829,7 @@ try {
   assert.deepEqual(pressed, { events: ["shown"], popup: false, selected: "" },
     "the press claims the host window before any popup exists");
   assert.deepEqual(dragged, { events: [], selected: TEXT, popup: false },
-    "the drag selects whole glyphs from the pressed one and keeps the claim");
+    "the drag selects whole glyphs from the pressed one and keeps the claim through a window blur");
   assert.ok(exact?.plain.includes("食べる"), `release looks up the selection: ${JSON.stringify(exact)}`);
   assert.deepEqual(released, { events: [], selected: TEXT }, "the lookup inherits the claim without a gap");
 

@@ -151,6 +151,18 @@ pressed glyph and the one under the pointer are always included, in either
 direction, and a gap between boxes keeps the last glyph. A press that does
 not move is a click and dismisses the popup, as in Chrome.
 
+The host's own window changes are not the reader leaving the page. Turning
+click-through on as the pointer leaves OCR text reports the pointer leaving the
+window, and handing focus to the game or back blurs it. In overlay mode neither
+closes a popup, ends a drag or releases a held scan button, and neither
+publishes `hachidori-popup-hidden`: a window-exit only forgets the pointer and
+cancels a scan that has not rendered, as Yomitan's does, and a blur only drops
+an activation key whose release the game will receive instead. The popup then
+closes by the usual rules: Escape, a click, scrolling its source away, a new
+lookup, Hover mode's pointer leaving the text for the page, and **Hide popup on
+cursor exit** after its delay. In a browser tab, blur and leaving the window
+still close it.
+
 ## Installing dictionaries without setup
 
 Setup normally offers the recommended dictionaries. Without it, open Settings.
@@ -189,7 +201,8 @@ into a real Chrome, over a page that boxes glyphs the way GameSentenceMiner
 does. It checks the Settings capability matrix, the seeded No key choice,
 editable Custom buttons, rendered link and Anki buttons, and backend guards
 before checking glyph selection, the pencil for an unknown selection, and the
-host events around a drag.
+host events around a drag. A window blur during a hover and in the middle of a
+drag keeps the popup, the drag and the host claim.
 
 `test/electron-backup.cjs` exercises export, download cancellation and restore in
 a sandboxed Electron window without Chrome's downloads API. With Electron 43.4.1

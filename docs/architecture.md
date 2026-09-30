@@ -665,7 +665,11 @@ cancel delayed or unfinished pointer work immediately; the hide delay only
 retains an already-rendered popup for transfer. In `activationSticky` a rendered
 popup ignores key release, pointer movement without the key, an empty scan and
 window departure; outside click, Escape, blur, scrolling its source away, a
-failed lookup or a new lookup still close it. Its rendered children likewise
+failed lookup or a new lookup still close it. In [overlay
+mode](overlay-mode.md) the host's click-through and focus changes produce that
+blur and window departure, so there a blur dismisses nothing and keeps a drag
+or held scan button, and a window departure only forgets the pointer and cancels
+unfinished work in every mode (#403). Its rendered children likewise
 outlive pointer movement through the chain (see
 [Definition popup chains](#definition-popup-chains)). Same-candidate hover,
 popup entry, keyboard focus and Note editing preserve the current view.
