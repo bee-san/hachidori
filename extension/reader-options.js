@@ -136,6 +136,9 @@
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
     popupImageSource: null,
+    // Hover/focus enlargement of dictionary images: "off", "large" skips
+    // inline glyphs (em-sized or at most 32px square), "all" previews every image.
+    imageHoverPreview: "large",
     averageFrequency: false,
     showFrequencyDictionaryNames: false,
     compactFrequencyNumbers: false,
@@ -184,6 +187,7 @@
   const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];
   const DEFINITION_BLUR_REVEALS = ["timed", "hover"];
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
+  const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
     { label: "Automatic", ids: ["auto"] },
@@ -204,7 +208,7 @@
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "showPopupAudioButton", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
-    "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
+    "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
     "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
     "hidePopupGrammarTags",
@@ -585,6 +589,7 @@
     definitionBlurFrequencyOrder: new Set(DEFINITION_BLUR_FREQUENCY_ORDERS),
     definitionBlurDirection: new Set(DEFINITION_BLUR_DIRECTIONS),
     definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
+    imageHoverPreview: new Set(IMAGE_HOVER_PREVIEWS),
   };
 
   function normaliseField(key, value) {
@@ -758,7 +763,7 @@
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyEvidence, definitionBlurQualifies,
-    DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS,
+    DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,

@@ -114,6 +114,7 @@ const METADATA_FIELDS = [
 const APPEARANCE_CHOICES = [
   { key: "popupTheme", id: "opt-popup-theme" },
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
+  { key: "imageHoverPreview", id: "opt-image-hover-preview" },
   { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
   { key: "definitionBlurFrequencyOrder", id: "opt-blur-frequency-order", values: DEFINITION_BLUR_FREQUENCY_ORDERS },
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
@@ -1758,6 +1759,8 @@ function renderOptions() {
   customButtonController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
+  const imageHoverPreview = element("opt-image-hover-preview");
+  if (imageHoverPreview !== document.activeElement) imageHoverPreview.value = options.imageHoverPreview;
   renderActivationControls();
   renderFrequencyOrder();
   renderKanjiChoices();

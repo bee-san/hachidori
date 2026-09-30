@@ -849,6 +849,10 @@
     const units = value.sizeUnits === "em" ? "em" : "px";
     const maximumSize = units === "em" ? 64 : MAX_MEDIA_DISPLAY_SIZE;
     const displayWidth = Math.max(0.1, Math.min(maximumSize, usedWidth));
+    // Glyphs sized in em, or no larger than 32px on either side, sit in the
+    // text as brackets and labels; the "large" hover preview skips them.
+    const inlineGlyph = units === "em"
+      || (displayWidth <= 32 && displayWidth * Math.min(100, aspectHeight / aspectWidth) <= 32);
 
     const link = documentRef.createElement("a");
     link.className = "gloss-image-link gloss-sc-a";
@@ -951,7 +955,7 @@
     let previewFocused = false;
     const showPreview = () => {
       if (!isCurrent()) return;
-      state.requestImagePreview?.(link, image);
+      state.requestImagePreview?.(link, image, inlineGlyph);
     };
     const hidePreview = () => {
       state.hideImagePreview?.(link);
