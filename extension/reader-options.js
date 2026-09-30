@@ -539,14 +539,14 @@
     return typeof value === "string" ? value : "";
   }
 
-  // Shared by the reader and the Design preview. Native numeric frequency
-  // values are the evidence; rendered labels are intentionally ignored.
   // An empty blur dictionary means "Same as sorting": the Reading → Frequency
   // sorting dictionary, which may itself be Automatic (no single dictionary).
   function definitionBlurFrequencyDictionary(options) {
     return options.definitionBlurFrequencyDictionary || options.frequencyDictionary;
   }
 
+  // Shared by the reader and the Design preview. Native numeric frequency
+  // values are the evidence; rendered labels are intentionally ignored.
   function definitionBlurFrequencyEvidence(options, frequencyGroups, dictionaries) {
     const unavailable = { qualified: false, value: null, order: null };
     const title = definitionBlurFrequencyDictionary(options);
