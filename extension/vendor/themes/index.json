@@ -6,7 +6,7 @@
       "name": "Default",
       "description": "The original Hachidori popup, with dictionary tabs, frequency, pitch and all your reading tools.",
       "contentMode": "rich",
-      "benchmark": "Render 2.25 ms \u00b7 complete 33.3 ms (median)",
+      "benchmark": "Render 2.25 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
@@ -14,7 +14,7 @@
       "name": "Nazeka",
       "description": "A compact dark popup with inline readings and senses. Keeps audio and Anki actions beside the looked-up text.",
       "contentMode": "text",
-      "benchmark": "Render 0.80 ms \u00b7 complete 33.2 ms (median)",
+      "benchmark": "Render 0.80 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
@@ -22,7 +22,7 @@
       "name": "Plain",
       "description": "Only dictionary definition text. No headings, metadata, counts, Anki or audio controls.",
       "contentMode": "text",
-      "benchmark": "Render 0.40 ms \u00b7 complete 33.2 ms (median)",
+      "benchmark": "Render 0.40 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
@@ -30,15 +30,15 @@
       "name": "JL",
       "description": "JL's popup with its colours and pitch marker. Each dictionary gets its own block and tab, with its own audio and Anki buttons.",
       "contentMode": "text",
-      "benchmark": "Render 0.80 ms \u00b7 complete 33.2 ms (median)",
+      "benchmark": "Render 0.80 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/benchmark.md"
     },
     {
       "slug": "bee",
       "name": "Bee's Theme",
-      "description": "Miku turquoise and pink on JL's compact layout, with joined group tabs, expandable rich definitions, the personal dictionary editor and custom actions.",
+      "description": "Miku turquoise and pink on JL's compact layout, with joined group tabs, formatted definitions, the personal dictionary editor and custom actions.",
       "contentMode": "rich",
-      "benchmark": "Performance and rendering notes",
+      "benchmark": "Render 1.55 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/bee.md"
     }
   ]

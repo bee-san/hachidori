@@ -15,12 +15,14 @@ has a visible turquoise outline.
   order. A group filters existing blocks in place and audio, mining and keyboard
   actions follow its visible dictionaries. Without matching groups, all results
   appear without a tab row. Back restores the selected group.
-- **Formatted definitions:** each dictionary block starts as complete JL text.
-  Opening Formatted definition replaces that visible text with the existing
-  structured glossary renderer's lists, tables, furigana, links and images.
-  DOM and media requests start on expansion; reopening reuses the rendered
-  content. Back restores disclosures. Scoped dictionary CSS applies to the rich
-  content. The existing media service and link handlers retain request ownership.
+- **Formatted definitions:** each dictionary block shows only the existing
+  structured glossary renderer's lists, tables, furigana, links and images. JL's
+  plain text and JMdict tag brackets (`[★, priority form] [n, adv]`) do not
+  appear. Kanji blocks show formatted meanings, then JL's On/Kun/Statistics
+  lines. Scoped dictionary CSS applies to the content. The existing media
+  service and link handlers retain request ownership.
+- **Controls:** audio, Anki and the pencil use Hachidori's outline icon set at
+  one size in the text colour.
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
@@ -34,14 +36,14 @@ It builds its own popup and stylesheet. Sources and attribution are in
 
 ![Compact popup](../assets/bee/bee.png)
 ![Personal dictionary editor](../assets/bee/bee-note.png)
-![Expanded structured dictionary](../assets/bee/bee-structured-rich.png)
+![Structured dictionary](../assets/bee/bee-structured-rich.png)
 
 ## Validation
 
 The focused theme test uses the real extension, WASM importer and a local fake
 AnkiConnect. It checks the Store selection, group-only tabs, inline custom
-actions, lazy rich content, Note/Escape, kanji, structured tables and loaded
-dictionary images, plus switching back to Default. Forced-colour screenshots
+actions, formatted-only content, uniform action icons, Note/Escape, kanji,
+structured tables and loaded dictionary images, plus switching back to Default. Forced-colour screenshots
 cover the new layout in both light and dark system palettes. Browser assertions
 check WCAG AA text contrast (4.5:1) and control/focus contrast (3:1) with the
 default popup opacity composited over both white and black pages.

@@ -65,7 +65,8 @@ JL's `On:`, `Kun:` and `Statistics:` lines.
 Bee's Theme puts Miku turquoise and pink colours on JL's typography, per-dictionary headers, inline
 audio/Anki controls and pitch marker. It adds tabs for configured dictionary
 groups with matching results, a pencil editor and custom actions beside each
-block, and a Formatted definition disclosure for dictionary markup and media.
+block, and shows each dictionary's formatted definition (markup and media) in
+place of JL's text and tag brackets. Audio, Anki and pencil use one icon set.
 With no matching groups, all results appear without a tab row. Extra custom
 actions go into More actions after the first two. See [details and measurements](bee.md).
 

@@ -202,7 +202,7 @@ function beeFixture(t, overrides = {}) {
   return { popup, view, window };
 }
 const beeResult = { ...results[0], term: { ...results[0].term, glossaries: [
-  ...results[0].term.glossaries, { dictionary: "second", glossary: '["meal"]' },
+  { ...results[0].term.glossaries[0], definitionTags: "v1 vt ★" }, { dictionary: "second", glossary: '["meal"]', definitionTags: "n" },
 ] } };
 const beeContext = { dictionaryPresentation: [{ title: "test", favorite: true }, { title: "second" }],
   dictionaryTabGroups: [{ id: "first", name: "English", dictionaries: ["test"] },
@@ -228,20 +228,19 @@ test("Bee shows only named groups, filters existing blocks, binds per-dictionary
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
 });
 
-test("Bee constructs safe rich content and requests images only on expansion; retired replies cannot publish", async t => {
+test("Bee renders only the formatted glossary, without JL text or tag brackets; retired replies cannot publish", async t => {
   let requests = 0, resolveMedia;
   const f = beeFixture(t);
   f.view.renderResults([beeResult], { query: "食べる" }, { generation: 8,
     resolveMedia() { requests++; return new Promise(resolve => { resolveMedia = resolve; }); } });
-  assert.equal(f.popup.querySelectorAll("img,a,b").length, 0);
-  const details = f.popup.querySelector(".bee-rich-definition");
-  details.open = true; details.dispatchEvent(new f.window.Event("toggle"));
-  assert.match(f.popup.querySelector(".bee-rich-content").textContent, /eat food/);
+  assert.equal(f.popup.querySelector(".bee-rich-definition, .bee-rich-tags"), null);
+  const contents = [...f.popup.querySelectorAll(".gsm-hoshidicts-glossary-content")];
+  assert.ok(contents.every(content => content.classList.contains("bee-rich-content")), "no plain-text glossary");
+  assert.match(contents[0].textContent, /eat food/);
+  assert.doesNotMatch(f.popup.textContent, /\[|★|\bv1\b/, "no JMdict tag brackets in Bee");
   assert.equal(f.popup.querySelector("a").href, "https://example.test/");
   assert.equal(f.popup.querySelectorAll("img").length, 1);
   assert.equal(requests, 1);
-  details.dispatchEvent(new f.window.Event("toggle"));
-  assert.equal(requests, 1, "expansion builds once");
   const image = f.popup.querySelector("img");
   f.view.renderNotice("No match", { query: "unknown" });
   resolveMedia("data:image/png;base64,AA==");
