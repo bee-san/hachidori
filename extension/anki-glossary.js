@@ -190,7 +190,9 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     }
     root.append(list);
     appendStyles(root, selected);
-    if (!brief) appendDetails(root);
+    // Yomitan's {glossary} has no footer; {part-of-speech} and {conjugation}
+    // carry this information, so compact fields leave it out (#399).
+    if (!brief && !compact) appendDetails(root);
     await Promise.all(pending);
     if (compact) return compactAnkiGlossary(document, root);
     applyClassStyles(list);
