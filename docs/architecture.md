@@ -2089,6 +2089,15 @@ text opacity and the user's background setting are unchanged. Oversized toolbar
 content and the Note form scroll within their own bounds. Nested popup anchors
 and Back restoration follow the content scrollport.
 
+Like Yomitan, a root popup stays at the viewport position where it first
+opened (#402). Its placement reuses the source rect captured when that lookup
+was first shown, so scrolling the page or any element neither moves nor closes
+it, and neither does the source word leaving the viewport or the DOM. Resizing,
+popup size, toolbar, page zoom and fullscreen changes re-place and clamp it from
+that rect. Escape, an outside click, cursor exit, key release and a new lookup
+still close or replace it. Child popups keep following their link text inside
+the parent pane.
+
 The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
 Automatic places a horizontal toolbar at the bottom of an above-word popup, or
 the top of a below-word popup, for roots and nested panes alike. Vertical roots
