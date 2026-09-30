@@ -238,7 +238,7 @@ try {
     if (!grouped.ok) throw new Error(grouped.error);
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { customButtons: [
+      baseRevision: options.revision, options: { imageHoverPreview: "all", customButtons: [
         { id: "search", type: "link", label: "Search", url: "https://example.test/%w" },
         { id: "template", type: "anki", label: "My card", templateId: "default" },
         { id: "extra", type: "link", label: "Another search", url: "https://example.test/%r" },
@@ -277,7 +277,7 @@ try {
     const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button"]
       .map(selector => popup.querySelector(selector));
     const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
-      return { width: style.width, height: style.height, cursor: style.cursor, border: style.borderTopWidth, top: Math.round(rect.top) }; };
+      return { width: style.width, height: style.height, border: style.borderTopWidth, top: Math.round(rect.top) }; };
     const group = buttons[0].closest(".gsm-hoshidicts-entry-actions");
     return { audio: describe(audio),
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
@@ -295,7 +295,6 @@ try {
   assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
   assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
   for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
-  assert.equal(icons.buttons[0].cursor, "pointer");
   assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
   const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
@@ -389,6 +388,25 @@ try {
   await tab.waitForFunction(() => [...document.querySelector("hachidori-host")?.shadowRoot.querySelectorAll(".bee-rich-content img") ?? []]
     .some(image => image.complete && image.naturalWidth > 0));
   assert.ok(await tab.evaluate(() => !!document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content table")));
+  const imageBox = await tab.evaluate(() => {
+    const { left, top, width, height } = document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content img").getBoundingClientRect();
+    return { x: left + width / 2, y: top + height / 2 };
+  });
+  await tab.mouse.move(imageBox.x, imageBox.y);
+  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".gsm-hoshidicts-image-hover-preview img"));
+  const enlarged = await tab.evaluate(() => {
+    const shadow = document.querySelector("hachidori-host").shadowRoot;
+    const preview = shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
+    const source = shadow.querySelector(".bee-rich-content img");
+    return { sibling: preview.parentNode === shadow.querySelector(".gsm-hoshidicts-popup").parentNode,
+      larger: preview.getBoundingClientRect().width > source.getBoundingClientRect().width * 2,
+      sameSource: preview.querySelector("img").src === source.src, visible: getComputedStyle(preview).visibility === "visible" };
+  });
+  assert.deepEqual(enlarged, { sibling: true, larger: true, sameSource: true, visible: true }, JSON.stringify(enlarged));
+  await screenshot("bee-image-preview");
+  await tab.mouse.move(0, 0);
+  await tab.waitForFunction(() => !document.querySelector("hachidori-host")?.shadowRoot.querySelector(".gsm-hoshidicts-image-hover-preview"));
+  await hover();
   await checkBeeContrast();
   await screenshot("bee-structured-rich");
   const media = await tab.createCDPSession();

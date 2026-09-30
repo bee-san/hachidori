@@ -248,6 +248,31 @@ test("Bee renders only the formatted glossary, without JL text or tag brackets; 
   assert.equal(image.hasAttribute("src"), false);
 });
 
+test("Bee enlarges a hovered glossary image beside the popup and hides it on leave, clear and destroy", async t => {
+  let mode = "large";
+  const f = beeFixture(t, { getImageHoverPreview: () => mode, getPageZoom: () => 1 });
+  const host = f.popup.parentNode;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  f.view.renderResults([beeResult], { query: "食べる" }, { resolveMedia: async () => "data:image/png;base64,AA==" });
+  await settle();
+  const link = f.popup.querySelector(".gloss-image-link");
+  assert.equal(link.dataset.imageLoadState, "loaded");
+  link.dispatchEvent(new f.window.Event("mouseenter"));
+  const preview = host.querySelector(".gsm-hoshidicts-image-hover-preview");
+  assert.ok(preview && !f.popup.contains(preview), "preview is a sibling of the popup");
+  assert.equal(preview.querySelector("img").src, "data:image/png;base64,AA==");
+  link.dispatchEvent(new f.window.Event("mouseleave"));
+  assert.equal(host.querySelector(".gsm-hoshidicts-image-hover-preview"), null);
+  link.dispatchEvent(new f.window.Event("mouseenter"));
+  f.view.renderNotice("No match", { query: "unknown" });
+  assert.equal(host.querySelector(".gsm-hoshidicts-image-hover-preview"), null, "clear hides the preview");
+  mode = "off";
+  f.view.renderResults([beeResult], { query: "食べる" }, { resolveMedia: async () => "data:image/png;base64,AA==" });
+  await settle();
+  f.popup.querySelector(".gloss-image-link").dispatchEvent(new f.window.Event("mouseenter"));
+  assert.equal(host.querySelector(".gsm-hoshidicts-image-hover-preview"), null, "Reading → Image hover preview Off is respected");
+});
+
 test("Bee reuses Note save/Escape and custom actions, retaining a draft through group presentation updates", t => {
   const saves = [], links = [];
   const buttons = [

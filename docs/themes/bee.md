@@ -4,12 +4,12 @@
 Enable **Advanced → Experimental features → Theme Store**, then open **Design**
 and select **Bee's Theme**.
 
-The theme puts Miku's charcoal, turquoise and pink palette on JL's compact
+The theme puts Girlypop's blush, magenta and violet palette on JL's compact
 layout, typography and repeated header for each dictionary. Existing frequency
 text and pitch markings follow JL. Brighter text accents keep the translucent
 surface readable at the default opacity. Group tabs have equal widths and share
 one frame without gaps. Selected groups have an underline and keyboard focus
-has a visible turquoise outline.
+has a visible violet outline.
 
 - **Group tabs:** only configured groups with results appear, in their saved
   order. A group filters existing blocks in place and audio, mining and keyboard
@@ -25,6 +25,9 @@ has a visible turquoise outline.
   name as identical icon buttons, using Hachidori's outline icon set at one size
   in the text colour. Every enabled control shows a pointer cursor. In the
   kanji view, Back sits top left, aligned with the group tabs.
+- **Image preview:** hovering or focusing a glossary image shows Default's
+  enlarged copy beside the popup, following Reading → Image hover preview
+  (Off, Large images, All images).
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
@@ -39,13 +42,15 @@ It builds its own popup and stylesheet. Sources and attribution are in
 ![Compact popup](../assets/bee/bee.png)
 ![Personal dictionary editor](../assets/bee/bee-note.png)
 ![Structured dictionary](../assets/bee/bee-structured-rich.png)
+![Enlarged image preview](../assets/bee/bee-image-preview.png)
 
 ## Validation
 
 The focused theme test uses the real extension, WASM importer and a local fake
 AnkiConnect. It checks the Store selection, group-only tabs, inline custom
 actions, formatted-only content, uniform action icons, Note/Escape, kanji,
-structured tables and loaded dictionary images, plus switching back to Default. Forced-colour screenshots
+structured tables, loaded dictionary images and the enlarged image preview,
+plus switching back to Default. Forced-colour screenshots
 cover the new layout in both light and dark system palettes. Browser assertions
 check WCAG AA text contrast (4.5:1) and control/focus contrast (3:1) with the
 default popup opacity composited over both white and black pages.

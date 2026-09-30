@@ -51,6 +51,10 @@ export function createView(options, enhanced = false) {
   }
   const highlighter = options.sourceHighlighter;
   let highlightEnabled = options.sourceHighlightEnabled;
+  // Bee enlarges a hovered or focused glossary image with Default's preview.
+  const preview = enhanced ? components.createImagePreview({ document, window: options.window, popup,
+    getCoordinateScale: () => components.popupCoordinateScale(options.getPageZoom?.() ?? 1, options.getPopupScalePercent?.() ?? 100),
+    getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll }) : null;
   let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], tab = null, onTabSelected = null;
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
   let customButtons = options.customButtons || [];
@@ -65,6 +69,7 @@ export function createView(options, enhanced = false) {
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
     entries = []; bindings = []; labels = []; frequencies = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
     highlighter?.clear();
+    preview?.hideImagePreview();
   }
   function finish(candidate, matched, context) {
     activeSource = { candidate, matched };
@@ -166,6 +171,8 @@ export function createView(options, enhanced = false) {
           onExternalLink: context.onExternalLink, onInternalLink: context.onInternalLink,
           resolveMedia: context.resolveMedia, imageContext: context,
           onImageCreated: image => images.add(image), onLayoutChange: options.positionPopup,
+          requestImagePreview: preview.requestImagePreview, refreshImagePreview: preview.refreshImagePreview,
+          hideImagePreview: preview.hideImagePreview,
         });
       }
     } catch (error) {
@@ -448,6 +455,7 @@ export function createView(options, enhanced = false) {
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation, flushDictionaryPresentation,
+    hideImagePreview() { preview?.hideImagePreview(); },
     closeNoteForm() { return tools.some(control => control.close()); },
     setCustomButtons(value) {
       customButtons = value || [];
@@ -459,7 +467,7 @@ export function createView(options, enhanced = false) {
       if (!enabled) highlighter?.clear();
       else if (activeSource) highlighter?.apply(activeSource.candidate, activeSource.matched);
     },
-    destroy() { clear(); popup.replaceChildren(); },
+    destroy() { clear(); preview?.destroy(); popup.replaceChildren(); },
   };
 }
 export default { schema: 2, slug: "jl", contentMode: "text", createView };
