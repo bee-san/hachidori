@@ -32,6 +32,95 @@ an empty or disabled library, while failed dictionary edits retain their error.
 Options save feedback sits near each section heading; failures stay visible while
 scrolling, with the existing retry and use-saved actions.
 
+## Option audit (#401)
+
+[#401](https://github.com/bee-san/hachidori/issues/401) audited every stored
+key in `DEFAULT_OPTIONS` against its Settings control. Each concept now has one
+control, and no two controls share a visible label
+(`test/settings-labels.test.mjs`). *Keybind* is the Keybinds → Toggle option
+label (booleans only, except `lowMemoryMode`). *Finding* records what #401
+changed; "—" means the key was already unambiguous.
+
+| Key | Section › group | Control | Visible label | Keybind | Finding |
+| --- | --- | --- | --- | --- | --- |
+| `scanLength` | Reading › Scanning | `#opt-scan-length` | Scan length | — | — |
+| `maxResults` | Reading › Results | `#opt-max-results` | Maximum results | — | — |
+| `hoverEnabled` | Reading › Activation | `#opt-hover-enabled` | Enable lookups | Enable lookups | — |
+| `onlyScanJapaneseText` | Reading › Scanning | `#opt-japanese-only` | Japanese text only | Japanese text only | — |
+| `personalDictionaryEnabled` | Library › Personal dictionary › Lookups | `#opt-personal-dictionary` | Use the personal dictionary | same | Moved from Reading; Reading › Activation links to it because it also makes highlighting open a popup |
+| `showNoResultNotice` | Library › Personal dictionary › Lookups | `#opt-no-result-notice` | Show a popup when a selection has no definition | same | Moved with the switch it depends on |
+| `lookupMode` | Reading › Activation | `#opt-activation-key` (No key = `hover`), `#opt-lookup-sticky` | Activation key or button; Keep the popup open after releasing the key or button | — | Three stored fields (`hoverEnabled`, `lookupMode`, `activationKey`) drive one visible concept; kept, since #349/#355 designed this mapping |
+| `activationKey` | Reading › Activation | `#opt-activation-key` | Activation key or button | — | See `lookupMode` |
+| `definitionLookupMode` | Reading › Activation | `#opt-definition-lookup-mode` | Child popups | — | — |
+| ~~`hoverDelayMs`~~ | — | none | — | — | **Removed.** It always normalised to 0 and had no control. Older records and backups are accepted and drop it |
+| `popupHideDelayMs` | Reading › Popup closing | `#opt-hide-delay` | Grace period to reach the popup | — | Was "Hide delay" under Scanning, away from the cursor-exit delay it resembles |
+| `hidePopupOnCursorExit` | Reading › Popup closing | `#opt-hide-on-cursor-exit` | Hide popup on cursor exit | same | Group renamed from Cursor exit |
+| `hidePopupOnCursorExitDelayMs` | Reading › Popup closing | `#opt-hide-on-cursor-exit-delay` | Delay after leaving the popup | — | Was "Delay" |
+| `popupNestingMaxDepth` | Reading › Results | `#opt-popup-nesting-depth` | Maximum child popups | — | — |
+| `popupTheme` | Design › Appearance / Theme Store | `#opt-popup-theme` | Theme | — | Not audited further: theme work is out of scope for #401 |
+| `popupToolbarPosition` | Design › Appearance | `#opt-popup-toolbar` | Toolbar position | — | — |
+| `customPopupCss` | Design › Custom CSS | `#opt-custom-popup-css` | Popup stylesheet | — | — |
+| `customPopupJavascript` | Design › Custom CSS | `#opt-custom-popup-javascript` | Custom JavaScript | — | — |
+| `customLinks` | Design › Custom buttons | (derived) | — | — | Legacy projection of link `customButtons` |
+| `customButtons` | Design › Custom buttons | `#custom-button-list` | Button name, Action, URL template, Template | — | — |
+| `audioSources` | Audio | `#audio-source-list` | per-source rows | — | — |
+| `audioAutoplay` | Audio | `#opt-audio-autoplay` | Automatically play the first lookup result | same | — |
+| `anki` | Anki | see below | — | — | — |
+| `experimental` | Advanced › Experimental features | `#experimental-features` | `EXPERIMENTAL_FEATURES` labels | — | One registry, rendered once |
+| `popupWidthPx` | Design › Appearance | `#opt-popup-width` | Width | — | — |
+| `popupHeightPx` | Design › Appearance | `#opt-popup-height` | Height | — | — |
+| `popupScalePercent` | Design › Appearance | `#opt-popup-scale` | Scale | — | — |
+| `popupOpacityPercent` | Design › Appearance | `#opt-popup-opacity` | Background opacity | — | — |
+| `sourceHighlightEnabled` | Design › Appearance | `#opt-source-highlight` | Highlight the word on the page | same | — |
+| `showPopupAudioButton` | Audio | `#opt-popup-audio-button` | Show the audio button | same | Moved from Design › Appearance; no longer reset by Reset Design |
+| `popupColumns` | Design › Definitions | `#opt-popup-columns` | Definition columns | — | — |
+| `showLookupCounts` | Reading › Lookup history | `#opt-lookup-counts` | Record and show lookup counts | same | — |
+| `definitionBlurCountEnabled` | Reading › Definition blur | `#opt-blur-count` | Blur by lookup count | Blur definitions by lookup count | **Renamed** from `definitionBlurEnabled`, which only ever enabled the count condition; old records, patches and backups migrate. Label was "Lookup count" |
+| `definitionBlurAnkiMature` | Reading › Definition blur | `#opt-blur-anki` | Blur mature Anki cards | Blur definitions of mature Anki cards | Was "Mature Anki card" |
+| `definitionBlurFrequencyEnabled` | Reading › Definition blur | `#opt-blur-frequency` | Blur by frequency | Blur definitions by frequency | Was "Frequency threshold", the same label as the threshold field |
+| `definitionBlurFrequencyDictionary` | Reading › Definition blur | `#opt-blur-frequency-dictionary` | Blur threshold dictionary | — | Was "Frequency dictionary", the same label as the sort picker. Empty now means **Same as sorting** (the default) |
+| `definitionBlurFrequencyOrder` | Reading › Definition blur | `#opt-blur-frequency-order` | Blur threshold direction | — | Was "Frequency order", the same label as the sort order |
+| `definitionBlurFrequencyThreshold` | Reading › Definition blur | `#opt-blur-frequency-threshold` | Threshold (frequency value) | — | Was "Frequency threshold" |
+| `definitionBlurDirection` | Reading › Definition blur | `#opt-blur-direction` | Blur when looked up | — | — |
+| `definitionBlurThreshold` | Reading › Definition blur | `#opt-blur-threshold` | Threshold (lookups) | — | — |
+| `definitionBlurReveal` | Reading › Definition blur | `#opt-blur-reveal` | Reveal | — | — |
+| `definitionBlurDelayMs` | Reading › Definition blur | `#opt-blur-delay` | Delay (seconds) | — | — |
+| `showCompactDefinitionSummary` | Design › Compact summary | `#opt-compact-summary` | Show brief definitions beside the headword | same | — |
+| `compactDefinitionSummaryCount` | Design › Compact summary | `#opt-summary-count` | Snippets | — | — |
+| `compactDefinitionSummaryDictionary` | Design › Compact summary | `#opt-summary-dictionary` | Summary dictionary | — | Was "Preferred dictionary", the same label as the pitch picker |
+| `popupImageSource` | Design › Definitions | `#opt-image-source` | Image source | — | — |
+| `averageFrequency` | Design › Frequency labels | `#opt-average-frequency` | Show frequency averages | same | — |
+| `showFrequencyDictionaryNames` | Design › Frequency labels | `#opt-frequency-names` | Show frequency dictionary names | same | Was "Show dictionary names", the same label as the pitch switch |
+| `compactFrequencyNumbers` | Design › Frequency labels | `#opt-frequency-compact` | Abbreviate large numbers (51.5k) | Abbreviate large frequency numbers | — |
+| `showPitchAccentFurigana` | Design › Pitch accent | `#opt-pitch-furigana` | Show pitch in furigana | same | — |
+| `pitchAccentFuriganaDictionary` | Design › Pitch accent | `#opt-pitch-dictionary` | Pitch accent dictionary | — | Was "Preferred dictionary" |
+| `showPitchAccentBadge` | Design › Pitch accent | `#opt-pitch-badge` | Show pitch badges | same | — |
+| `showPitchAccentDictionaryNames` | Design › Pitch accent | `#opt-pitch-names` | Show pitch dictionary names | same | Was "Show dictionary names" |
+| `showPitchAccentText` | Design › Pitch accent | `#opt-pitch-text` | Show pitch accent text | same | — |
+| `showPitchAccentPosition` | Design › Pitch accent | `#opt-pitch-position` | Show pitch accent position | same | — |
+| `showPitchAccentGraph` | Design › Pitch accent | `#opt-pitch-graph` | Show pitch accent graph | same | — |
+| `hidePopupGrammarTags` | Design › Tags | `#opt-grammar-tags` (inverted) | Show grammar tags | Show grammar tags | Keybind said "Hide grammar tags": opposite polarity to the checkbox |
+| `kanjiClickDictionary` | Design › Definitions | `#opt-kanji-dictionary` | Clicked-kanji dictionary | — | — |
+| `frequencyDictionary` | Reading › Frequency sorting | `#opt-frequency-dictionary` | Sort by frequency dictionary | — | Was "Frequency dictionary"; also the blur dictionary unless blur picks its own |
+| `frequencyOrder` | Reading › Frequency sorting | `#opt-frequency-order` | Sort order | — | Was "Frequency order" |
+| `automaticBackupDays` | Backup & restore | `#opt-automatic-backup-days` | Days kept | — | — |
+| `lowMemoryMode` | Advanced › Memory | `#opt-low-memory-mode` | Low memory mode | not offered | The Advanced intro no longer calls Memory experimental |
+| `keybinds` | Keybinds | `#keybind-list` | per-keybind rows | — | — |
+
+`anki` holds `url` (AnkiConnect link), `apiKey` (AnkiConnect API key) and
+`templates`; each Template stores `deck`, `model` (Note type), `tags`,
+`fields` / `fieldTemplates` (Field mapping), `duplicateScope` (Check within),
+`duplicateBehavior` (When found) and `captureScreenshot`. The top-level
+copies of those Template fields are a compatibility projection of the first
+Template, not separate settings. One remaining oddity is left for a later
+change: **Screenshot page during card creation** sits in the connection card
+although it edits the selected Template.
+
+Also removed: the sidebar's `#nav-status-media` item, which had a status output
+but no link or section. Not changed: Sharing's **Advanced** disclosure (a port
+field), a Library "Dictionary roles" panel, and a global "Show advanced
+settings" switch; the dictionary pickers keep their sections and now say which
+role they choose.
 ## Browser captures
 
 These unedited captures use the unpacked extension in Chromium 150.0.7871.186,
