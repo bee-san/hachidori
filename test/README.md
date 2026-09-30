@@ -631,6 +631,9 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   In overlay mode a window blur or window-exit keeps a rendered popup in every
+   lookup mode, a selection drag and a held scan button without publishing
+   `hachidori-popup-hidden`, while a window-exit still cancels a pending scan.
    Scan mouse buttons are held through `MouseEvent.buttons`: a middle or Back
    press claims the host window before any bubble listener, scans at once and
    while moving, follows each mode on release, and ends at a move after a lost
