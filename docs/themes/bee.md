@@ -21,8 +21,10 @@ has a visible turquoise outline.
   appear. Kanji blocks show formatted meanings, then JL's On/Kun/Statistics
   lines. Scoped dictionary CSS applies to the content. The existing media
   service and link handlers retain request ownership.
-- **Controls:** audio, Anki and the pencil use Hachidori's outline icon set at
-  one size in the text colour.
+- **Controls:** audio, Anki and the pencil sit together after the dictionary
+  name as identical icon buttons, using Hachidori's outline icon set at one size
+  in the text colour. Every enabled control shows a pointer cursor. In the
+  kanji view, Back sits top left, aligned with the group tabs.
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
