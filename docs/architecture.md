@@ -1708,7 +1708,10 @@ once: one `hd_kanji` when any member is native and one `hd_lookup_dictionary`
 per term member. The replies merge in group order, entries sharing an expression
 and reading combining their cards as an ordinary lookup does, and each native
 entry becomes one structured card (tags, On/Kun readings, ordered meanings and a
-Details table) through the renderer's `kanjiEntryGlossary`. The term view then
+Details table) through the renderer's `kanjiEntryGlossary`, wrapped by
+`kanjiEntryResult` in a complete engine term result (the character with an
+empty reading, rules and tags, no trace and a zero score) so Anki mining, lookup
+counts and blur treat it like any other term card. The term view then
 shows the members as tabs: All first, then every member with an entry, in group
 order, in place of the reader's group and favourite tabs; live presentation
 updates keep that scope. A group whose members all miss falls back to the
