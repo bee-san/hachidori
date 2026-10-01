@@ -112,12 +112,11 @@ function completeQuery(source, models) {
   return query === null ? null : scopedQuery(source, query);
 }
 
-// One search for every distinct expression. Grouping the values under each
-// note type and direct field keeps the union as shallow as one word's query:
+// One search for every word. Grouping the words under each note type and
+// direct field keeps the union as shallow as one word's query:
 // ("note:A" ("f:x" or "f:y")) or ("note:B" ("g:x" or "g:y")).
 function lookupQuery(source, models, expressions) {
-  const values = [...new Set(expressions.map(expression =>
-    encodeAnkiClozeBraces(escapeAnkiHtml(expression)).normalize("NFC")))];
+  const values = expressions.map(expression => encodeAnkiClozeBraces(escapeAnkiHtml(expression)).normalize("NFC"));
   const clauses = models.flatMap(model => model.fields.map(field => {
     const terms = values.map(value => searchToken(field, value));
     return `(${searchToken("note", model.name)} ${terms.length === 1 ? terms[0] : `(${terms.join(" or ")})`})`;
