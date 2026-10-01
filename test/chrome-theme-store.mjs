@@ -185,8 +185,22 @@ try {
   assert.deepEqual(await scrollButtons(), [["Previous themes", false], ["Next themes", true]]);
   assert.ok(await settings.$eval(".theme-store-grid", grid => grid.scrollLeft > 0), "Next themes scrolls the cards");
   assert.equal(await settings.evaluate(() => document.activeElement.id), "theme-store-previous", "focus moves off the disabled Next themes");
+  // Stored options apart from the theme, and Design's shown legends ("# …") and control labels.
+  const storedOptions = () => settings.evaluate(async () => {
+    const { options: { popupTheme, revision, ...rest } } = await chrome.storage.local.get("options");
+    return rest;
+  });
+  const designShown = () => settings.$$eval("#design .design-controls :is(legend, label.field, label.lookup-enable)", nodes => nodes
+    .filter(node => node.checkVisibility() && !node.closest("#custom-button-form"))
+    .map(node => node.matches("legend") ? `# ${node.textContent}` : (node.querySelector(".field-label") ?? node.querySelector("span")).textContent));
+  const beforePlain = await storedOptions();
   await settings.click(".theme-store-card:nth-child(3) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "plain");
+  assert.deepEqual(await storedOptions(), beforePlain, "choosing a theme writes only popupTheme");
+  assert.deepEqual(await designShown(), ["# Theme Store", "# Appearance", "Theme", "Width", "Height", "Scale",
+    "Highlight the word on the page"], "Plain shows only the core Design controls");
+  assert.equal(await settings.$eval("#popup-theme-hint", node => node.checkVisibility() && node.textContent),
+    "Plain uses only the settings shown here. Your other Design settings are kept for Default.");
   await hover();
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".plain-scroll"));
   const plain = await tab.evaluate(() => {
@@ -226,6 +240,23 @@ try {
   assert.deepEqual(jl.controls, Array.from({ length: jl.blocks }, () => [1, "ready"]), "every block has its own audio and Anki button");
   assert.equal(jl.defaultStyles, false);
   await screenshot("jl");
+  // Design's pitch switch repaints JL's marker in the open popup and the preview,
+  // without another lookup: the probed block survives. It is clicked in place,
+  // because bringing Settings to the front would blur the page and close its popup.
+  assert.ok((await designShown()).includes("Show pitch in furigana"));
+  await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-entry").dataset.pitchProbe = ""; });
+  const popupMarks = await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-mora").length);
+  const previewMarks = await preview.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelectorAll(".jl-mora").length);
+  assert.ok(popupMarks > 0 && previewMarks > 0, "JL marks pitch in the popup and the preview");
+  for (const shown of [false, true]) {
+    await settings.$eval("#opt-pitch-furigana", input => input.click());
+    await tab.waitForFunction(count => {
+      const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      return !popup.hidden && !!popup.querySelector(".jl-entry[data-pitch-probe]") && popup.querySelectorAll(".jl-mora").length === count;
+    }, {}, shown ? popupMarks : 0);
+    await preview.waitForFunction(count => document.getElementById("preview-host").shadowRoot.querySelectorAll(".jl-mora").length === count,
+      {}, shown ? previewMarks : 0);
+  }
   await settings.bringToFront();
   assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsRenderer), "jl");
   await settings.screenshot({ path: resolve(output, "store-jl.png") });
@@ -432,6 +463,9 @@ try {
   await settings.screenshot({ path: resolve(output, "store-bee.png") });
   await settings.click(".theme-store-card:first-child button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "default");
+  assert.equal(await settings.$$eval("#design :is([data-design-setting], [data-design-group], #popup-theme-hint):not([hidden])",
+    nodes => nodes.length), await settings.$$eval("#design :is([data-design-setting], [data-design-group])", nodes => nodes.length),
+  "Default shows every Design control and no theme hint");
   console.log("hover");
   await hover();
   await tab.waitForFunction(() => {
@@ -440,7 +474,7 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "JL blocks and actions", "Bee group-only tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee group-only tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
   console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
