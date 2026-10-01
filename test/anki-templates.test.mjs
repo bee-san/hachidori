@@ -79,6 +79,8 @@ test("resolved saved templates never migrate a blank SentenceAudio field", () =>
 
 test("marker validation retains unknown tokens as errors and recognizes nonempty dictionary-specific markers", () => {
   assert.deepEqual(ankiTemplateErrors("{Expression}<br>{single-glossary-辞典-plain}{single-frequency-number-辞典}"), []);
+  // A Yomitan MiscInfo mapping carries over unchanged.
+  assert.deepEqual(ankiTemplateErrors("{document-title}<br>{URL}{url-plain}"), []);
   assert.deepEqual(ankiTemplateErrors("{capture-animation}{capture-audio}"),
     ["Unknown marker: {capture-animation}", "Unknown marker: {capture-audio}"]);
   const source = "literal {unknown} {single-glossary-} {screenshot} {unknown}";
