@@ -226,6 +226,7 @@ function getApiHost() {
     render: fields => sendAnkiRequest("hachidori-anki-render", fields),
     readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
     readAudioSources: async () => (await readAnkiOptions()).audioSources.filter(source => source.enabled),
+    readAnkiTemplates: async () => (await readAnkiOptions()).anki.templates,
   });
   return apiHost;
 }

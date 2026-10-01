@@ -162,6 +162,21 @@ export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }
 
+// The note fields a Template's legacy mapping names, after the fields Anki
+// reported, compared case-insensitively as Anki compares them.
+export function ankiMappedFieldNames(config, fields = []) {
+  const names = [...fields];
+  const folded = new Set(names.map(field => field.toLowerCase()));
+  for (const semantic of ANKI_FIELDS) {
+    const field = config.fields[semantic];
+    if (field && !folded.has(field.toLowerCase())) {
+      names.push(field);
+      folded.add(field.toLowerCase());
+    }
+  }
+  return names;
+}
+
 export function ankiTemplateMarkerNames(template) {
   return [...template.matchAll(MARKER_PATTERN)].map(match => {
     const name = match[1].toLowerCase();

@@ -24,7 +24,7 @@ dictionaries. **Settings → Sharing** says *Waiting for Anki* and offers
 `hachidori-relay.ankiaddon` (or use **Tools → Add-ons → Install from file…**
 in Anki), restart Anki, and the line becomes *Sharing through Anki.* The
 button downloads the compatible
-[v0.0.4 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.4)
+[v0.0.5 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.5)
 from GitHub, so downloading needs an internet connection. It shows progress
 while fetching and an error with a retryable button if the download fails.
 The add-on has its own version; this extension pins the version it was tested
@@ -233,6 +233,18 @@ the installed dictionaries and `GET /dictionaries/<id>` downloads one as the
 archive **Backup & restore** accepts, so another app on the network can copy a
 library instead of only sending lookups.
 
+Relay v0.0.5 adds Yomitan's `/ankiCardFormats`: the **Settings → Anki**
+Templates as Yomitan card formats, in Template order, so the first is the
+Template the popup's Anki button uses. Each format carries the deck, the note
+type and every field's marker template and overwrite mode; a Template still on
+the older per-field mapping answers the rows mining builds from it. The answer
+never carries the AnkiConnect address or key, tags or duplicate settings.
+Tools such as GSM Companion and Yomine fill their field setup from it and
+render the markers with `/ankiFields`. Every format is a `term` format, since
+Hachidori mines term notes only. Hachidori has one set of Templates: no
+`profileIndex` or `0` selects it, and any other profile index is an error, as
+in Yomitan.
+
 The relay forwards each request to this browser as an `hd_api_*` runtime
 message (the contract is
 [docs/host-contract.md](https://github.com/bee-san/hachidori-anki/blob/main/docs/host-contract.md)
@@ -257,7 +269,8 @@ optional installed-Anki checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test);
 release v0.0.4 adds the Yomitan-compatible API and dictionary downloads on
 top of v0.0.3's ordered large-frame, shutdown and Python 3.9 idle-timeout
-regressions. `node --test test/api-host.test.mjs` covers this extension's
+regressions, and v0.0.5 adds `/ankiCardFormats`.
+`node --test test/api-host.test.mjs` covers this extension's
 answers to the relay's `hd_api_*` requests against a fake engine.
 
 The extension smoke suite's sharing-host and sharing-client stages cover the
@@ -265,7 +278,7 @@ service worker's side against fake sockets. `node test/chrome-sharing.mjs`
 runs two real Chromes: the host imports a fixture, handles a simulated failed
 add-on download, then retries the actual pinned GitHub release from Settings
 and runs its relay with its API, which is asked for lookups, Anki fields,
-tokenizing and a dictionary download over HTTP. The second browser links,
+card formats, tokenizing and a dictionary download over HTTP. The second browser links,
 looks a word up, edits shared state, runs Settings discovery/setup checks, captures a page-local JPEG and
 mines it through a mocked host AnkiConnect while a healthy client endpoint
 remains unused. The suite also
