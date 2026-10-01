@@ -732,6 +732,13 @@
     return String(value || "").split(" ").filter(Boolean);
   }
 
+  // A lookup glossary's definition tags: the engine's tag-bank tags, in
+  // Yomitan's order with their category and notes, or, from a sharing host
+  // that sends none, each name of definitionTags alone.
+  function definitionTagList(glossary) {
+    return Array.isArray(glossary?.tags) ? glossary.tags : parseTagList(glossary?.definitionTags).map((name) => ({ name }));
+  }
+
   function languageFromText(text) {
     return JAPANESE_TEXT_PATTERN.test(text) ? "ja" : CHINESE_TEXT_PATTERN.test(text) ? "zh" : null;
   }
@@ -1780,6 +1787,7 @@
     createPronunciationGraph,
     createPronunciationPitchAccent,
     createPronunciationText,
+    definitionTagList,
     getDownstepPositions,
     getFuriganaKanaSegments,
     isMoraPitchHigh,

@@ -1081,6 +1081,8 @@ html[data-hoshidicts-theme="girlypop"],
   --hoshidicts-tag-text: var(--hoshidicts-palette-neutral-content);
   --hoshidicts-tag-expression-text: var(--hoshidicts-palette-secondary-content);
   --hoshidicts-tag-part-of-speech-text: var(--hoshidicts-palette-accent-content);
+  --hoshidicts-tag-popular-text: var(--hoshidicts-palette-primary-content);
+  --hoshidicts-tag-frequent-text: var(--hoshidicts-palette-info-content);
   --background-color: var(--hoshidicts-popup-background);
   --background-color-light: var(--hoshidicts-card-background);
   --background-color-dark1: var(--hoshidicts-surface-raised);
@@ -1107,6 +1109,8 @@ html[data-hoshidicts-theme="girlypop"],
   --tag-default-background-color: var(--hoshidicts-palette-neutral);
   --tag-expression-background-color: var(--hoshidicts-palette-secondary);
   --tag-part-of-speech-background-color: var(--hoshidicts-palette-accent);
+  --tag-popular-background-color: var(--hoshidicts-palette-primary);
+  --tag-frequent-background-color: var(--hoshidicts-palette-info);
   /* Density tokens. The default is compact; a Comfortable density (or a theme)
      only needs to override these on the host. */
   --hd-space-1: 2px;
@@ -2335,6 +2339,38 @@ html[data-hoshidicts-theme="girlypop"],
   background: var(--tag-default-background-color);
   color: var(--hoshidicts-tag-text);
   font-size: 11px;
+}
+
+/* Yomitan's .tag[data-category] colours (display.css), on each palette's own
+   colour and content pairs. "default", and a category without a rule here,
+   keep the neutral pill. */
+.gsm-hoshidicts-tag-definition[data-category="expression"] {
+  background: var(--tag-expression-background-color);
+  color: var(--hoshidicts-tag-expression-text);
+}
+
+.gsm-hoshidicts-tag-definition[data-category="partOfSpeech"] {
+  background: var(--tag-part-of-speech-background-color);
+  color: var(--hoshidicts-tag-part-of-speech-text);
+}
+
+.gsm-hoshidicts-tag-definition[data-category="popular"] {
+  background: var(--tag-popular-background-color);
+  color: var(--hoshidicts-tag-popular-text);
+}
+
+.gsm-hoshidicts-tag-definition[data-category="frequent"] {
+  background: var(--tag-frequent-background-color);
+  color: var(--hoshidicts-tag-frequent-text);
+}
+
+/* No palette has an error-content colour, so an archaism is tinted instead of
+   filled. The border takes a pixel of padding so the pill keeps its size. */
+.gsm-hoshidicts-tag-definition[data-category="archaism"] {
+  padding: calc(var(--hd-space-1) - 1px) 4px;
+  border: 1px solid var(--hoshidicts-palette-error);
+  background: color-mix(in srgb, var(--hoshidicts-palette-error) 12%, var(--hoshidicts-palette-base-100));
+  color: var(--text-color);
 }
 
 .gsm-hoshidicts-tag-frequency {

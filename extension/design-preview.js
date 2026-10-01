@@ -164,17 +164,25 @@
         value: entry.frequencyMode === "rank-based" ? 120 : 18240,
         displayValue: entry.frequencyMode === "rank-based" ? "120" : "18,240",
       }] }));
-    const glossary = (dictionary, items) => ({ dictionary, glossary: JSON.stringify(items), definitionTags: "v1 vt", termTags: "common" });
+    // Tag-bank tags in every category reader.css colours, sorted as the
+    // engine sends them, so each palette's tag colours show here.
+    const sampleTag = (name, category, order, notes) => ({ name, category, order, score: 0, notes });
+    const verbTags = [sampleTag("v1", "partOfSpeech", 0, "Ichidan verb"), sampleTag("vt", "default", 0, "")];
+    const glossary = (dictionary, items, tags = verbTags) => ({ dictionary, glossary: JSON.stringify(items),
+      definitionTags: tags.map(tag => tag.name).join(" "), termTags: "common", tags });
     const results = [{ matched: "食べる", deinflected: "食べる", trace: [], preprocessorSteps: 0,
       term: { expression: "食べる", reading: "たべる", rules: "v1", score: 0,
         glossaries: [
-          glossary(first, ["to eat", "to live on (e.g. a salary)", "to have a meal"]),
+          glossary(first, ["to eat", "to live on (e.g. a salary)", "to have a meal"], [...verbTags,
+            sampleTag("priority\u00a0form", "frequent", 1, "high priority spelling or reading of this term"),
+            sampleTag("★", "popular", 2, "high priority entry")]),
           glossary(second, [{ type: "structured-content", content: [
             { tag: "p", content: "朝ごはんを食べる。 — To eat breakfast." },
             { tag: "img", path: "sample-meal.svg", width: 160, height: 80, title: "A bowl of rice and chopsticks" },
             { tag: "details", content: [{ tag: "summary", content: "Usage note" },
               { tag: "p", content: "食べる is an ichidan verb. Its polite form is 食べます。" }] },
-          ] }]),
+          ] }], [sampleTag("rarely\u00a0used\u00a0form", "archaism", 0, "rarely used form of this term"),
+            sampleTag("special\u00a0reading", "expression", 1, "an idiomatic reading of a kanji compound")]),
           glossary("Sample collocations", ["ご飯を食べる — to eat a meal", "外で食べる — to eat out"]),
           glossary("Sample expressions", ["食べてみる — to try a food", "食べ終わる — to finish eating"]),
         ],

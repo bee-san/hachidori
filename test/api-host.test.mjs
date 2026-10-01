@@ -107,6 +107,18 @@ test("definition tags keep Jitendex's U+00A0 inside a tag name, as Yomitan's _sp
   assert.deepEqual(entry.definitions[0].tags.map(tag => tag.name), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]);
 });
 
+test("definition tags carry the engine's tag-bank category, order, score and notes, as Yomitan's API does", async () => {
+  const tags = [{ name: "vt", category: "expression", order: 0, score: 0, notes: "transitive verb" },
+    { name: "zz", category: "default", order: 0, score: 0, notes: "" }];
+  const term = { ...tabetakatta.term, glossaries: [{ ...tabetakatta.term.glossaries[0], definitionTags: "zz vt", tags }] };
+  const { answer } = host({ lookups: { 食べる: [{ ...tabetakatta, term }] } });
+  const { results: [{ dictionaryEntries: [entry] }] } = await answer({ type: "hd_api_term_entries", terms: ["食べる"] });
+  assert.deepEqual(entry.definitions[0].tags, [
+    { name: "vt", category: "expression", order: 0, score: 0, content: ["transitive verb"], dictionaries: ["Fixture"], redundant: false },
+    { name: "zz", category: "default", order: 0, score: 0, content: [], dictionaries: ["Fixture"], redundant: false },
+  ]);
+});
+
 test("kanji entries look each character up and answer Yomitan's KanjiDictionaryEntry shape", async () => {
   const { answer } = host({ kanji: { "食": shoku } });
   const { results } = await answer({ type: "hd_api_kanji_entries", characters: ["食", "食x"] });

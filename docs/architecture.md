@@ -1281,6 +1281,23 @@ image mask, table scrolling, failed-image labels and 1em-per-pixel image boxes a
 its 16px text. The Anki export keeps Yomitan's own Anki shape (one element bare,
 several as a list) through the renderer's `layout: "anki"` option.
 
+Definition tags follow Yomitan's tag banks (#426). Tag, rule and kanji reading
+lists split on U+0020 only, as Yomitan's `_splitField` does, so Jitendex's
+`special reading` (U+00A0 inside) stays one tag. The importer keeps every
+`tag_bank_*.json` row in the imported `index.json`'s `tags`, and `hdw_tags`
+returns each term dictionary's rows. The engine service reads them once per
+generation and gives every `hd_lookup` and `hd_lookup_dictionary` glossary a
+`tags` array built as Yomitan's translator builds it: each name is looked up by
+its part before `:`, one the bank lacks is category `default`, a repeated name
+is listed once, and the list is sorted by `order`, then name. `definitionTags`
+stays as the engine wrote it. The renderer draws `glossary.tags` with
+`data-category` and the notes as `title`, `reader.css` colours `expression`,
+`partOfSpeech`, `popular`, `frequent` and `archaism` with palette roles, and
+the Anki `{glossary}` label and `{tags}` and the API's `definitions[].tags` read
+the same array. A reply without `tags`, from an older sharing host, is drawn
+from `definitionTags` as category `default`. A dictionary imported before the
+tags were stored has none until it is imported again, and looks as before.
+
 Each node-limit rejection reports its exact attempted value and configured
 limit. Structural paths remain exact for ordinary content and elide the middle
 of unusually deep paths, keeping diagnostics bounded without copying glossary

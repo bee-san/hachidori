@@ -29,8 +29,10 @@ function strings(value) {
   return Array.isArray(value) ? value.filter(item => typeof item === "string") : [];
 }
 
-function tag(name, dictionary) {
-  return { name, category: "", order: 0, score: 0, content: [], dictionaries: [dictionary], redundant: false };
+// Yomitan's Tag, with a tag-bank tag's category, order, score and notes when
+// the engine's reply has one.
+function tag(name, dictionary, { category = "", order = 0, score = 0, notes = "" } = {}) {
+  return { name, category, order, score, content: notes ? [notes] : [], dictionaries: [dictionary], redundant: false };
 }
 
 function parseGlossary(text) {
@@ -82,7 +84,7 @@ function termEntry(result, where) {
       frequencyOrder: 0,
       sequences: [-1],
       isPrimary: true,
-      tags: words(glossary.definitionTags).map(name => tag(name, glossary.dictionary)),
+      tags: globalThis.HDGlossary.definitionTagList(glossary).map(entry => tag(entry.name, glossary.dictionary, entry)),
       entries: parseGlossary(glossary.glossary),
     })),
     pronunciations: term.pitches.map(group => ({
