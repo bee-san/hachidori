@@ -18843,11 +18843,11 @@ async function contentNoteStage() {
     const computedStyle = window.getComputedStyle.bind(window);
     window.getComputedStyle = (element, pseudo) => {
       const style = computedStyle(element, pseudo);
-      return element !== masked ? style : new Proxy(style, {
+      return element === masked ? new Proxy(style, {
         get: (target, key) => key === "getPropertyValue"
           ? (name) => (name === "-webkit-text-security" ? "disc" : target.getPropertyValue(name))
           : Reflect.get(target, key),
-      });
+      }) : style;
     };
     let pointed = plain;
     document.elementFromPoint = () => pointed;
