@@ -1139,6 +1139,7 @@ async function popupReader(page, depth = 0) {
                 .map(attribute => [attribute.name, attribute.value])),
               filter: view.getComputedStyle(image).filter,
               margin: view.getComputedStyle(link).margin,
+              imageRect: image.getBoundingClientRect().toJSON(),
               overflow: content ? { clientWidth: content.clientWidth, scrollWidth: content.scrollWidth } : null,
               display: { width: rect.width, height: rect.height, rect: rect.toJSON(), inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
@@ -4371,8 +4372,12 @@ async function gaijiSizingChrome({ page, tab, popup }) {
     const expectedSources = {
       [fixture.path]: `data:image/png;base64,${fixture.bytes.toString("base64")}`,
       [fixture.svgPath]: `data:image/svg+xml;base64,${fixture.svgBytes.toString("base64")}`,
+      [fixture.widePath]: `data:image/svg+xml;base64,${fixture.wideBytes.toString("base64")}`,
     };
     // Yomitan's .gloss-image-link has no margin, so a gaiji leaves no gap in its word.
+    // The dictionary's img margin/padding must not move the image layer out
+    // of its clipping container (#423).
+    const sameRect = (a, b) => ["x", "y", "width", "height"].every(key => Math.abs(a[key] - b[key]) <= 1 / 64);
     check("Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow",
       state?.theme === "dark" && state.images.length === fixture.cases.length
         && state.images.every((image, index) => {
@@ -4388,6 +4393,7 @@ async function gaijiSizingChrome({ page, tab, popup }) {
             && image.display.inlineWidth === (expected.inlineWidth ?? `${image.width}px`)
             && Math.abs(image.display.width - expected.width) <= 1 / 64
             && Math.abs(image.display.height - expected.height) <= 1 / 64
+            && sameRect(image.imageRect, image.display.rect)
             && image.overflow?.clientWidth > 0
             && image.overflow.scrollWidth <= image.overflow.clientWidth + 1;
         }), JSON.stringify(state));

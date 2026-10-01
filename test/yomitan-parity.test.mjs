@@ -132,10 +132,12 @@ const YOMITAN_GLOSS_LISTS = [
 // resolves internal links itself rather than through a search-page href.
 // Yomitan draws popup images on a canvas sized by width/height attributes, and
 // writes image boxes in em where Hachidori writes px (both containers make
-// 1em one pixel). Its DisplayGenerator labels a glossary string with the
-// profile language ("ja") even when it has no Japanese, so English glosses
-// would read as Japanese to assistive technology; here glossary strings get
-// the same detection as structured-content text.
+// 1em one pixel). Hachidori's image layer is an <img> that a dictionary's
+// `img` rules can reach, so it pins that layer's margin and padding inline.
+// Yomitan's DisplayGenerator labels a glossary string with the profile
+// language ("ja") even when it has no Japanese, so English glosses would read
+// as Japanese to assistive technology; here glossary strings get the same
+// detection as structured-content text.
 const JAPANESE_OR_CHINESE = /[\u3000-\u30ff\u3100-\u312f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff01-\uffee]/u;
 function canonical(element, side) {
   if (element.nodeType === element.TEXT_NODE) return element.nodeValue;
@@ -155,6 +157,9 @@ function canonical(element, side) {
       } else if (name === "rel") value = value.split(" ").sort().join(" ");
       else if (name === "style") value = value.replace(/(\d)em;/gu, (match, digit) =>
         element.matches(".gloss-image-link:not([data-size-units=em]) > .gloss-image-container") ? `${digit}px;` : match);
+      if (side === "hachidori" && name === "style" && element.localName === "img") {
+        value = value.replace(/ margin: 0px; padding: 0px;$/u, "");
+      }
       return `${name}=${JSON.stringify(value)}`;
     }).sort();
   return `<${element.localName}${attributes.map(attribute => ` ${attribute}`).join("")}>${children()}</${element.localName}>`;

@@ -819,12 +819,12 @@
       .some((key) => Object.prototype.hasOwnProperty.call(value, key))
       && value.sizeUnits !== "px"
       && value.sizeUnits !== "em";
-    const width = Number.isFinite(Number(value.width)) && Number(value.width) > 0
+    const declaredWidth = Number.isFinite(Number(value.width)) && Number(value.width) > 0
       ? Number(value.width)
-      : 100;
-    const height = Number.isFinite(Number(value.height)) && Number(value.height) > 0
+      : null;
+    const declaredHeight = Number.isFinite(Number(value.height)) && Number(value.height) > 0
       ? Number(value.height)
-      : 100;
+      : null;
     const preferredWidth = Number.isFinite(Number(value.preferredWidth)) &&
       Number(value.preferredWidth) > 0
       ? Number(value.preferredWidth)
@@ -833,6 +833,15 @@
       Number(value.preferredHeight) > 0
       ? Number(value.preferredHeight)
       : null;
+    // A bank's width/height are Yomitan's preferred size; its importer
+    // (_createImageData) stores the media's natural size beside them.
+    // hoshidicts hands over the raw bank, so one declared side alone
+    // (日本国語大辞典's accent labels give only `height: 1.2em`) reserves a
+    // square of that size, then takes the decoded image's aspect ratio.
+    const loneSide = preferredWidth === null && preferredHeight === null
+      && (declaredWidth === null) !== (declaredHeight === null);
+    const width = declaredWidth ?? (loneSide ? declaredHeight : 100);
+    const height = declaredHeight ?? (loneSide ? declaredWidth : 100);
     const aspectWidth = preferredWidth || width;
     const aspectHeight = preferredHeight || height;
     let usedWidth = preferredWidth || (
@@ -912,6 +921,11 @@
     image.draggable = false;
     image.style.width = "100%";
     image.style.height = "100%";
+    // Yomitan paints this layer on a <canvas>, which a dictionary's `img`
+    // rules never match. Inline values outrank such a rule's margin and
+    // padding, which would shift the layer inside its clipping container.
+    image.style.margin = "0";
+    image.style.padding = "0";
     container.append(sizer, background, overlay, image);
     link.appendChild(container);
     const linkText = documentRef.createElement("span");
@@ -1010,6 +1024,13 @@
           const naturalWidth = Math.max(0.1, Math.min(MAX_MEDIA_DISPLAY_SIZE, image.naturalWidth));
           container.style.width = `${naturalWidth}px`;
           sizer.style.paddingTop = `${Math.min(10_000, image.naturalHeight / image.naturalWidth * 100)}%`;
+        } else if (loneSide && image.naturalWidth > 0 && image.naturalHeight > 0) {
+          // Yomitan's preferredHeight / (height / width), in the same bounds.
+          const ratio = image.naturalHeight / image.naturalWidth;
+          if (declaredWidth === null) {
+            container.style.width = `${Math.max(0.1, Math.min(maximumSize, declaredHeight / ratio))}${units}`;
+          }
+          sizer.style.paddingTop = `${Math.min(10_000, ratio * 100)}%`;
         }
         link.dataset.imageLoadState = "loaded";
         onLayoutChange();

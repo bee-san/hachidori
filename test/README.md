@@ -1762,6 +1762,12 @@ roughly 33 million pixels high through raw CSS `aspect-ratio`; it must now use
 the existing 10,000% sizer limit (100 pixels). The standard fixture counts and
 archive admission rules remain unchanged.
 
+`gaijiSizingFixture()` adds Meikyo-style gaiji and two images that declare one
+side of a 32×16 SVG, as 日本国語大辞典's accent labels declare only
+`height: 1.2em`. Chrome checks each box against the decoded ratio (2.4em by
+1.2em, 24px by 12px) and that the dictionary's `img { margin; padding }` rule
+leaves every image layer exactly on its container.
+
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
   fixture's bold span is bold through a style object), so the structured-content
