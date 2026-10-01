@@ -96,15 +96,15 @@ export function createThemeStore({ root, design, onSelect }) {
     }
   }
 
-  // The flag only hides the Store: a theme still in use keeps filtering Design.
-  // A catalogue read for an earlier selection never overrides a later one.
+  // Every selection waits for the same catalogue read, so selections apply in
+  // order and the latest wins. The flag only hides the Store: a theme still in
+  // use keeps filtering Design.
   function updateDesign() {
     const slug = globalThis.HDReaderOptions.popupRenderer(options.popupTheme);
     if (slug === designTheme) return;
     designTheme = slug;
-    void loadCatalogue().then(themes => themes.find(theme => theme.slug === slug)).catch(() => undefined).then(theme => {
-      if (designTheme === slug) applyDesignSettings(design, theme);
-    });
+    void loadCatalogue().then(themes => themes.find(theme => theme.slug === slug)).catch(() => undefined)
+      .then(theme => applyDesignSettings(design, theme));
   }
 
   return { render(next) {
