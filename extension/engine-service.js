@@ -1452,25 +1452,34 @@ async function boot() {
   }
 }
 
+// Every count an import report carries. The last four are what a successful
+// MDX import left out; a Yomitan archive reports them as 0. Settings words
+// them (mdxImportNotes); they are not stored with the dictionary.
+const IMPORT_REPORT_COUNTS = Object.freeze([
+  "termCount",
+  "metaCount",
+  "frequencyCount",
+  "pitchCount",
+  "kanjiCount",
+  "mediaCount",
+  "skippedRecordCount",
+  "unresolvedRedirectCount",
+  "missingResourceCount",
+  "unreadableResourceCount",
+]);
+
 function emptyReport(error) {
-  return {
-    success: false,
-    title: "",
-    termCount: 0,
-    metaCount: 0,
-    frequencyCount: 0,
-    pitchCount: 0,
-    kanjiCount: 0,
-    mediaCount: 0,
-    error,
-  };
+  const report = { success: false, title: "" };
+  for (const key of IMPORT_REPORT_COUNTS) report[key] = 0;
+  report.error = error;
+  return report;
 }
 
 function normaliseReport(raw) {
   const report = emptyReport(text(raw?.error));
   report.success = raw?.success === true;
   report.title = text(raw?.title);
-  for (const key of ["termCount", "metaCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"]) {
+  for (const key of IMPORT_REPORT_COUNTS) {
     const count = Number(raw?.[key]);
     report[key] = Number.isFinite(count) ? count : 0;
   }
