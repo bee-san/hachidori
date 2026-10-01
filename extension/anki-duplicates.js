@@ -65,13 +65,15 @@ export function overwriteAnkiFields(incoming, existing, templates, { includeAudi
     .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
 }
 
-function checkResult(result, detailed) {
-  if (!Array.isArray(result) || result.length !== 1
-      || (detailed ? typeof result[0]?.canAdd !== "boolean" : typeof result[0] !== "boolean")) {
+function checkResults(result, count, detailed) {
+  if (!Array.isArray(result) || result.length !== count
+      || !result.every(item => detailed ? typeof item?.canAdd === "boolean" : typeof item === "boolean")) {
     throw new Error("AnkiConnect returned invalid duplicate check results.");
   }
-  return result[0];
+  return result;
 }
+
+const checkResult = (result, detailed) => checkResults(result, 1, detailed)[0];
 
 export async function checkAnkiDuplicate(invoke, note, config) {
   // Anki also validates clozes in non-first fields. Keep all rendered fields,
@@ -91,23 +93,32 @@ export async function checkAnkiDuplicate(invoke, note, config) {
   return { duplicate: isAnkiDuplicateError(error), addable: result.canAdd && !error, error };
 }
 
-export async function validateAnkiNote(invoke, note) {
-  const checkNote = {
+// Anki's add check for every note in one request, in order, without its
+// duplicate rule: the word index decides duplicates.
+export async function validateAnkiNotes(invoke, notes) {
+  if (!notes.length) return [];
+  const checkNotes = notes.map(note => ({
     deckName: note.deckName,
     modelName: note.modelName,
     fields: note.fields,
     tags: note.tags,
     options: { ...note.options, allowDuplicate: true },
-  };
+  }));
   try {
-    const result = checkResult(await invoke("canAddNotesWithErrorDetail", { notes: [checkNote] }), true);
-    const error = typeof result.error === "string" && result.error ? result.error : null;
-    return { addable: result.canAdd && error === null, error };
+    return checkResults(await invoke("canAddNotesWithErrorDetail", { notes: checkNotes }), checkNotes.length, true)
+      .map(result => {
+        const error = typeof result.error === "string" && result.error ? result.error : null;
+        return { addable: result.canAdd && error === null, error };
+      });
   } catch (error) {
     if (!/unsupported action/iu.test(error.message)) throw error;
-    const addable = checkResult(await invoke("canAddNotes", { notes: [checkNote] }), false);
-    return { addable, error: addable ? null : "Anki rejected this note." };
+    return checkResults(await invoke("canAddNotes", { notes: checkNotes }), checkNotes.length, false)
+      .map(addable => ({ addable, error: addable ? null : "Anki rejected this note." }));
   }
+}
+
+export async function validateAnkiNote(invoke, note) {
+  return (await validateAnkiNotes(invoke, [note]))[0];
 }
 
 const MODEL_CLOZE = 1; // pylib/anki/consts.py

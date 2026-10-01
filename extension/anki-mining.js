@@ -4,7 +4,7 @@ import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
-  findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote } from "./anki-duplicates.js";
+  findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
 export async function readAnkiNoteFields(invoke, noteId) {
@@ -74,14 +74,26 @@ async function unindexedDecision(prepared) {
   };
 }
 
+// The indexed duplicate policy, given the word index's answer and Anki's add
+// check where the policy needs one: with no duplicate, and in Add anyway.
+const needsAddCheck = (config, duplicate) => !duplicate.noteIds.length || config.duplicateBehavior === "new";
+
+async function indexedDecision(prepared, duplicate, check) {
+  if (check) {
+    const addable = await checkedDecision(prepared, check.addable, check.error);
+    if (!duplicate.noteIds.length || !addable.canAdd) return addable;
+  }
+  return { state: "duplicate", canAdd: prepared.config.duplicateBehavior === "new", error: null,
+    noteIds: duplicate.noteIds, mature: duplicate.mature };
+}
+
 async function decision(prepared, request, duplicateIndex) {
   const { invoke, config } = prepared;
   const expression = request.term?.expression ?? request.expression;
   const source = await duplicateIndex.source(config);
   if (source === null) return unindexedDecision(prepared);
   let duplicate = await duplicateIndex.lookup(config, expression, invoke);
-  if (!duplicate.noteIds.length) return addableDecision(prepared);
-  if (config.duplicateBehavior === "overwrite") {
+  if (duplicate.noteIds.length && config.duplicateBehavior === "overwrite") {
     let inspected = await inspectAnkiNoteIds(invoke, source, expression, duplicate.noteIds);
     if (inspected.stale) {
       duplicate = await duplicateIndex.repair(config, expression, invoke);
@@ -93,12 +105,25 @@ async function decision(prepared, request, duplicateIndex) {
       mature: duplicate.mature,
       error: target ? null : "A duplicate exists, but no matching configured note type is inside the selected scope." };
   }
-  if (config.duplicateBehavior === "new") {
-    const addable = await addableDecision(prepared);
-    if (!addable.canAdd) return addable;
+  return indexedDecision(prepared, duplicate,
+    needsAddCheck(config, duplicate) ? await validateAnkiNote(invoke, prepared.note) : null);
+}
+
+// One Template's entries of a popup batch, in order. Overwrite needs each
+// target's notesInfo, and a destination the index cannot key needs Anki's own
+// dupe: identity, so both keep the per-entry decision. Otherwise the entries
+// share one duplicate lookup and one add check.
+async function batchDecisions(entries, duplicateIndex) {
+  const [{ prepared: { config, invoke } }] = entries;
+  if (config.duplicateBehavior === "overwrite" || await duplicateIndex.source(config) === null) {
+    return entries.map(({ prepared, request }) => () => decision(prepared, request, duplicateIndex));
   }
-  return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null,
-    noteIds: duplicate.noteIds, mature: duplicate.mature };
+  const found = await duplicateIndex.lookupMany(config,
+    entries.map(({ request }) => request.term?.expression ?? request.expression), invoke);
+  const checked = entries.filter((_, index) => needsAddCheck(config, found[index]));
+  const checks = await validateAnkiNotes(invoke, checked.map(({ prepared }) => prepared.note));
+  const checkFor = new Map(checked.map((entry, index) => [entry, checks[index]]));
+  return entries.map((entry, index) => () => indexedDecision(entry.prepared, found[index], checkFor.get(entry)));
 }
 
 function omitUnchangedFields(fields, existing) {
@@ -264,21 +289,21 @@ export function createAnkiMiningService({
     return { ...current, note, resources, firstField, invoke: invokeFor(current.config) };
   }
 
-  async function preflight(request) {
-    const prepared = await prepare(request, false);
-    if (prepared.resources.deferDuplicateCheck === true) {
-      const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
-      return {
-        state: "addable",
-        canAdd: true,
-        error: null,
-        deferred: true,
-        screenshot: prepared.config.captureScreenshot === true
-          && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
-        ...(extra ?? {}),
-      };
-    }
-    const result = await decision(prepared, request, duplicateIndex);
+  // A mapped {screenshot} that the user has left switched on: the reader
+  // takes the viewport picture itself, when it submits. The whole
+  // request-specific mapping decides, not the subset this preflight would
+  // apply, because the authoritative decision is made again inside the
+  // write and may then apply a field this one would have kept.
+  const screenshotFor = prepared => prepared.config.captureScreenshot === true
+    && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot;
+
+  async function deferredReply(request, prepared) {
+    const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
+    return { state: "addable", canAdd: true, error: null, deferred: true, screenshot: screenshotFor(prepared),
+      ...(extra ?? {}) };
+  }
+
+  async function preflightReply(request, prepared, result) {
     const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
     const extra = await preflightExtra({ request, prepared, applied, deferred: false });
     return {
@@ -287,15 +312,68 @@ export function createAnkiMiningService({
       error: result.error,
       action: result.action,
       noteIds: result.noteIds,
-      // A mapped {screenshot} that the user has left switched on: the reader
-      // takes the viewport picture itself, when it submits. The whole
-      // request-specific mapping decides, not the subset this preflight would
-      // apply, because the authoritative decision is made again inside the
-      // write and may then apply a field this one would have kept.
-      screenshot: prepared.config.captureScreenshot === true
-        && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
+      screenshot: screenshotFor(prepared),
       ...(extra ?? {}),
     };
+  }
+
+  async function preflight(request) {
+    const prepared = await prepare(request, false);
+    if (prepared.resources.deferDuplicateCheck === true) return deferredReply(request, prepared);
+    return preflightReply(request, prepared, await decision(prepared, request, duplicateIndex));
+  }
+
+  // The popup's readiness for several results in one request. Each entry gets
+  // the reply `preflight` would give it; a failure that belongs to one entry,
+  // such as an empty first field, stays with that entry, while a failed shared
+  // request fails every entry that waited on it.
+  const failedPreflight = error => ({ state: "error", canAdd: false, error: error?.message || String(error) });
+
+  async function batchEntry(index, request) {
+    try {
+      const prepared = await prepare(request, false);
+      if (prepared.resources.deferDuplicateCheck === true) return { reply: await deferredReply(request, prepared) };
+      return { entry: { index, request, prepared } };
+    } catch (error) {
+      return { reply: failedPreflight(error) };
+    }
+  }
+
+  async function groupReplies(entries) {
+    let decisions;
+    try {
+      decisions = await batchDecisions(entries, duplicateIndex);
+    } catch (error) {
+      return entries.map(() => failedPreflight(error));
+    }
+    const replies = [];
+    for (const [position, { request, prepared }] of entries.entries()) {
+      try {
+        replies.push(await preflightReply(request, prepared, await decisions[position]()));
+      } catch (error) {
+        replies.push(failedPreflight(error));
+      }
+    }
+    return replies;
+  }
+
+  async function preflightMany(requests) {
+    const replies = new Array(requests.length);
+    const groups = new Map();
+    for (const [index, request] of requests.entries()) {
+      const { reply, entry } = await batchEntry(index, request);
+      if (entry === undefined) {
+        replies[index] = reply;
+        continue;
+      }
+      const { configKey } = entry.prepared;
+      if (!groups.has(configKey)) groups.set(configKey, []);
+      groups.get(configKey).push(entry);
+    }
+    for (const entries of groups.values()) {
+      (await groupReplies(entries)).forEach((reply, position) => { replies[entries[position].index] = reply; });
+    }
+    return replies;
   }
 
   async function write(request) {
@@ -436,5 +514,5 @@ export function createAnkiMiningService({
     return { opened: true, noteIds, repaired };
   }
 
-  return { status, view, preflight, submit, browse };
+  return { status, view, preflight, preflightMany, submit, browse };
 }

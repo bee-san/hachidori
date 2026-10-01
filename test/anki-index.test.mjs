@@ -8,6 +8,7 @@ import {
   fetchAnkiIndex,
   inspectAnkiNoteIds,
   lookupAnkiIndex,
+  lookupAnkiIndexMany,
 } from "../extension/anki-index.js";
 import { AnkiConnectError, ankiInvokeFake } from "./anki-connect-fake.mjs";
 
@@ -188,6 +189,49 @@ test("every recognized note type's fields arrive in one multi, and a note type d
     + "(AnkiConnect: model was not found: Kiku v2)" };
   await assert.rejects(lookupAnkiIndex(invoke, source, "猫"), named);
   await assert.rejects(fetchAnkiIndex(invoke, source), named);
+});
+
+test("a popup's words share one live search, and each keeps only its exact notes and their maturity", async () => {
+  const source = await ankiIndexSource(baseConfig({ duplicateScope: "deck" }));
+  let candidates = [10, 20, 30, 40];
+  const queries = [];
+  const answer = ankiInvokeFake(async (action, params) => {
+    if (action === "modelNamesAndIds") return { Japanese: 1, Lapis: 2 };
+    if (action === "modelFieldNames") return KIKU_FIELDS;
+    if (action === "findNotes") {
+      queries.push(params.query);
+      // 40 is mature but holds 猫です, so it must not make 猫 mature.
+      return params.query.includes("is:review") ? candidates.filter(noteId => [20, 40].includes(noteId)) : candidates;
+    }
+    if (action === "notesInfo") {
+      assert.deepEqual(params.notes, [10, 20, 30, 40]);
+      return [note(10, "Japanese", { Expression: "猫" }), note(20, "Lapis", { Expression: "犬" }),
+        note(30, "Japanese", { Expression: "猫" }), note(40, "Japanese", { Expression: "猫です" })];
+    }
+    throw new Error(`Unexpected ${action}`);
+  });
+  let requests = [];
+  const invoke = async (action, params) => { requests.push(action); return answer(action, params); };
+  assert.deepEqual(await lookupAnkiIndexMany(invoke, source, ["猫", "犬", "猫", "鳥", ""]), [
+    { wordKey: "猫", mature: false, noteIds: [10, 30] },
+    { wordKey: "犬", mature: true, noteIds: [20] },
+    { wordKey: "猫", mature: false, noteIds: [10, 30] },
+    { wordKey: "鳥", mature: false, noteIds: [] },
+    { wordKey: null, mature: false, noteIds: [] },
+  ]);
+  assert.deepEqual(requests, ["modelNamesAndIds", "multi", "multi", "notesInfo"]);
+  const words = '("expression:猫" or "expression:犬" or "expression:鳥")';
+  assert.equal(queries[0], `(("note:Japanese" ${words}) or ("note:Lapis" ${words})) "deck:Mining\\:\\:Words"`,
+    "each distinct word appears once per note type, and the deck filter wraps the whole union");
+  assert.equal(queries[1], `${queries[0]} is:review -is:learn prop:ivl>=21`);
+
+  requests = [];
+  candidates = [];
+  assert.deepEqual((await lookupAnkiIndexMany(invoke, source, ["猫", "犬"])).map(result => result.noteIds), [[], []]);
+  assert.deepEqual(requests, ["modelNamesAndIds", "multi", "multi"], "an empty union reads no notes");
+  requests = [];
+  assert.deepEqual(await lookupAnkiIndexMany(invoke, source, [""]), [{ wordKey: null, mature: false, noteIds: [] }]);
+  assert.deepEqual(requests, []);
 });
 
 test("deck-scope maturity is judged per card inside the configured deck, identically for the complete index and the live lookup", async () => {

@@ -2109,6 +2109,7 @@ async function sharingClientStage() {
     },
     view() { throw new Error("linked View readiness ran in the reading browser"); },
     preflight() { throw new Error("linked preflight ran in the reading browser"); },
+    preflightMany() { throw new Error("linked batch preflight ran in the reading browser"); },
     submit() { throw new Error("linked submit ran in the reading browser"); },
     browse() { throw new Error("linked browse ran in the reading browser"); },
     maturity() { throw new Error("linked maturity ran in the reading browser"); },
@@ -2300,6 +2301,39 @@ async function sharingClientStage() {
   const ankiStatus = await askLinkedAnki("hd_anki_status", {}, { available: true, configKey: "host-config" });
   const ankiPreflight = await askLinkedAnki("hd_anki_preflight", { request: linkedRequest },
     { state: "addable", canAdd: true, clientSpeech: linkedSpeech });
+  // A popup batch crosses the link as today's single preflights, one at a
+  // time, so a host without batches keeps answering.
+  const batchRequests = [structuredClone(linkedRequest),
+    { ...structuredClone(linkedRequest), term: { expression: "犬", reading: "いぬ" } }];
+  const batchStart = socket.requests().length;
+  const batching = send("hd_anki_preflight_batch", { requests: batchRequests }, "hachidori-anki");
+  const batchForwards = [];
+  let forwardedOneAtATime = true;
+  for (const reply of [{ state: "addable", canAdd: true, clientSpeech: linkedSpeech },
+    { ok: false, error: "The dictionary generation changed." }]) {
+    await settle(() => socket.requests().length > batchStart + batchForwards.length);
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 10));
+    forwardedOneAtATime &&= socket.requests().length === batchStart + batchForwards.length + 1;
+    const forwarded = socket.requests().at(-1);
+    batchForwards.push(forwarded);
+    socket.receive({ kind: "reply", id: forwarded.id, response: {
+      type: "hd_anki_preflight_result", requestId: forwarded.message.requestId, ok: true, error: null, ...reply,
+    } });
+  }
+  const batched = await batching;
+  check("a linked browser asks its host about a popup batch one preflight at a time and keeps each reply with its entry",
+    batchForwards.length === 2 && forwardedOneAtATime
+      && batchForwards.every((forwarded, index) => forwarded.message.target === "hachidori-anki"
+        && forwarded.message.type === "hd_anki_preflight"
+        && JSON.stringify(forwarded.message.request) === JSON.stringify(batchRequests[index]))
+      && batched.ok === true && batched.type === "hd_anki_preflight_batch_result"
+      && JSON.stringify(batched.replies) === JSON.stringify([
+        { error: null, state: "addable", canAdd: true, clientSpeech: linkedSpeech },
+        { state: "error", canAdd: false, error: "The dictionary generation changed." },
+      ])
+      && JSON.stringify(localAnkiCalls.filter(call => call[0] === "preflightClientSpeech").at(-1)?.[1])
+        === JSON.stringify({ ...batchRequests[0], clientSpeech: linkedSpeech }),
+    JSON.stringify({ batchForwards, batched, forwardedOneAtATime, localAnkiCalls }));
   linkedRequest.clientSpeech = ankiPreflight.reply.clientSpeech;
   const screenshot = await send("hd_anki_screenshot", { request: {} }, "hachidori-anki");
   const requestsBeforeSubmit = socket.requests().length;
@@ -2347,10 +2381,10 @@ async function sharingClientStage() {
       && rejected.ok === false && /generation changed/u.test(rejected.error)
       && JSON.stringify(forwardedRejected.message.clientMedia) === JSON.stringify({})
       && JSON.stringify(localOperations) === JSON.stringify([
-        "status", "preflightClientSpeech", "screenshot", "clientMedia", "settleClientMedia",
+        "status", "preflightClientSpeech", "preflightClientSpeech", "screenshot", "clientMedia", "settleClientMedia",
         "clientMedia", "settleClientMedia",
       ])
-      && localAnkiCalls[4]?.[2] === "added" && localAnkiCalls[6]?.[2] === "invalid",
+      && localAnkiCalls[5]?.[2] === "added" && localAnkiCalls[7]?.[2] === "invalid",
     JSON.stringify({ ankiView, ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
       rejected, forwardedRejected, localAnkiCalls }));
 

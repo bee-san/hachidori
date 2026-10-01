@@ -4,6 +4,8 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService, verifyAnkiFields } from "../extension/anki-mining.js";
 import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
+import { createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
+import { lookupAnkiIndex, lookupAnkiIndexMany } from "../extension/anki-index.js";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 
 function testIndex(resolve = async () => []) {
@@ -654,4 +656,96 @@ test("saved-field verification names the fields Anki lost or changed", async () 
   await assert.rejects(verifyAnkiFields(invoke, 5, { Front: "猫", Back: "cat", Extra: "x" }),
     /^Error: Anki's saved note differs from the submitted values: field “Extra” is missing from note 5; field “Back” was saved with different content\. Inspect note 5 in Anki\.$/u);
   await assert.doesNotReject(verifyAnkiFields(invoke, 5, { Front: "猫" }));
+});
+
+test("a popup's batched readiness gives every entry its per-entry reply for a fixed number of Anki requests", async () => {
+  const kiku = ["Expression", "ExpressionReading", "ExpressionAudio", "Picture", "MainDefinition", "Glossary",
+    "Sentence", "SentenceFurigana", "PitchPosition", "Frequency", "FreqSort", "MiscInfo"];
+  const fields = { Kiku: kiku, Lapis: kiku, "Lapis Morph": kiku,
+    Senren: ["word", "reading", "sentence", "definition", "wordAudio", "picture", "glossary", "freqSort", "miscInfo"],
+    Basic: ["Front", "Back"] };
+  const models = { Kiku: 1, Lapis: 2, "Lapis Morph": 3, Senren: 4, Basic: 5 };
+  // 猫 is a mature Kiku note, 犬 exists only as another recognized type.
+  const notes = new Map([[7, ["Kiku", "猫"]], [8, ["Lapis", "犬"]]]);
+  const handle = async (action, params) => {
+    switch (action) {
+      case "deckNames": return ["Mining"];
+      case "modelNames": return Object.keys(models);
+      case "modelNamesAndIds": return models;
+      case "modelFieldNames": return fields[params.modelName];
+      case "findNotes": {
+        const found = [...notes].filter(([, [model, value]]) =>
+          params.query.includes(`"note:${model}"`) && params.query.includes(`:${value}"`)).map(([noteId]) => noteId);
+        return params.query.endsWith(" is:review -is:learn prop:ivl>=21") ? found.filter(noteId => noteId === 7) : found;
+      }
+      case "notesInfo": return params.notes.map(noteId => {
+        const [modelName, value] = notes.get(noteId);
+        return { noteId, modelName, cards: [], fields: Object.fromEntries(fields[modelName]
+          .map((field, order) => [field, { value: order === 0 ? value : "", order }])) };
+      });
+      case "canAddNotesWithErrorDetail": return params.notes.map(({ fields: { Expression } }) => Expression === "壊れ"
+        ? { canAdd: false, error: "cannot create note because it is empty" } : { canAdd: true, error: null });
+      default: throw new Error(`Unexpected ${action}`);
+    }
+  };
+  // An absent verb twice, both duplicates, a note Anki refuses and an entry with an empty first field.
+  const words = ["食べる", "猫", "食べる", "犬", "壊れ", "空"];
+  const template = value => ({ value, overwriteMode: "coalesce" });
+  async function popup(scope, behavior, batched) {
+    const config = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Kiku", deck: "Mining",
+      duplicateScope: scope, duplicateBehavior: behavior,
+      fieldTemplates: { Expression: template("{expression}"), Sentence: template("{sentence}") } } }).anki;
+    let state;
+    const duplicateIndex = createAnkiDuplicateIndex({
+      async fetchRows() { throw new Error("no refresh"); },
+      lookupLive: (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression),
+      lookupLiveMany: (source, expressions, invoke) => lookupAnkiIndexMany(invoke, source, expressions),
+      readOptions: async () => ({ anki: config }),
+      readState: async () => structuredClone(state),
+      async updateState(update) {
+        const next = await update({ options: { anki: config }, state: structuredClone(state) });
+        if (next !== undefined) state = structuredClone(next);
+        return structuredClone(state);
+      },
+      alarms: { async get() {}, async clear() {}, async create() {} },
+      reportError(error) { throw error; },
+    });
+    const requests = [];
+    const gateway = createAnkiGateway({ fetch: async (url, options) => {
+      const request = JSON.parse(options.body);
+      requests.push(request.action === "multi"
+        ? `multi[${request.params.actions.map(entry => entry.action)}]` : request.action);
+      return { ok: true, json: async () => answerAnkiConnect(request, handle) };
+    } });
+    const service = createAnkiMiningService({ gateway, duplicateIndex, readConfig: async () => config,
+      buildFields: async request => ({ fields: { Expression: request.term.expression === "空" ? "" : request.term.expression,
+        Sentence: "文" } }) });
+    const { configKey } = await service.status();
+    const asked = requests.length;
+    const entries = words.map(expression => ({ term: { expression, reading: "" }, configKey }));
+    const replies = batched ? await service.preflightMany(entries) : [];
+    for (const entry of batched ? [] : entries) {
+      replies.push(await service.preflight(entry).catch(error => ({ state: "error", canAdd: false, error: error.message })));
+    }
+    return { replies, requests: requests.slice(asked) };
+  }
+  for (const behavior of ["prevent", "new", "overwrite"]) {
+    for (const scope of ["model", "deck", "all"]) {
+      const single = await popup(scope, behavior, false);
+      const batch = await popup(scope, behavior, true);
+      assert.deepEqual(batch.replies, single.replies, `${behavior}/${scope}: every entry keeps its per-entry reply`);
+      if (behavior === "overwrite") continue;
+      const fieldReads = scope === "model" ? [] : ["modelNamesAndIds", "multi[modelFieldNames,modelFieldNames,modelFieldNames]"];
+      assert.deepEqual(batch.requests, [...fieldReads, "multi[findNotes,findNotes]", "notesInfo", "canAddNotesWithErrorDetail"],
+        `${behavior}/${scope}: one lookup and one add check for the whole popup`);
+      assert.ok(single.requests.length > batch.requests.length * 2);
+    }
+  }
+  const sample = (await popup("all", "prevent", true)).replies;
+  assert.deepEqual(sample.map(reply => [reply.state, reply.noteIds]), [
+    ["addable", undefined], ["duplicate", [7]], ["addable", undefined], ["duplicate", [8]], ["invalid", undefined],
+    ["error", undefined],
+  ]);
+  assert.match(sample[4].error, /^Anki refused the note because its first field is empty\./u);
+  assert.match(sample[5].error, /^The first field of note type “Kiku”, “Expression”, is empty for this result/u);
 });
