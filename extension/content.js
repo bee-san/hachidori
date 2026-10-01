@@ -204,6 +204,9 @@
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
+  // A press or a key since the pointer last moved: the reader may be typing in
+  // the field under the pointer rather than pointing at its text.
+  let editedSincePointerMoved = false;
   // The scan button's last press and the native actions it cancels.
   let scanPress = null;
   let pendingCandidateLookup = null;
@@ -450,6 +453,10 @@
   }
 
   function isOurNode(node) {
+    // The text-field imposter can exist before the popup host does.
+    if (fieldImposter?.container.contains(node)) {
+      return true;
+    }
     if (!host) {
       return false;
     }
@@ -934,8 +941,8 @@
     return docsImposter;
   }
 
-  /** The offset of the glyph under the pointer, found by bisecting the imposter's client rects. */
-  function docsOffsetAt(node, clientX, clientY) {
+  /** The offset of the glyph under the pointer, found by bisecting an imposter's client rects. */
+  function imposterOffsetAt(node, clientX, clientY) {
     const range = document.createRange();
     let start = 0;
     let end = node.nodeValue.length;
@@ -952,15 +959,15 @@
     return start;
   }
 
-  function resolveDocsCandidate(clientX, clientY) {
-    const rect = docsRectAt(clientX, clientY);
-    if (!rect) return null;
-    const { text, node } = docsImposterFor(rect);
+  /**
+   * The candidate at `offset` in an imposter's one text node. The imposter is
+   * the scan root, so the walk ends with that node and never crosses into the
+   * page, and the node is the sole source, so the sentence and the highlight
+   * work in it as they do in a page's text nodes.
+   */
+  function imposterCandidate(anchor, node, offset, vertical) {
     const styleCache = new Map();
-    // The imposter lives inside Docs' <svg>, which the page scan treats as
-    // opaque, so it is scanned with the <text> itself as the root: the walk
-    // ends with its one text node and never crosses into the rest of the tile.
-    const entries = collectScanEntries(node, docsOffsetAt(node, clientX, clientY), text, scanWindow(), styleCache);
+    const entries = collectScanEntries(node, offset, anchor, scanWindow(), styleCache);
     if (entries.length === 0) return null;
     const query = entries.map((entry) => entry.text).join("");
     if (options.onlyScanJapaneseText && !isJapaneseToken(query)) return null;
@@ -968,17 +975,198 @@
     const anchorRange = document.createRange();
     anchorRange.setStart(node, first.offset);
     anchorRange.setEnd(node, Math.min(node.nodeValue.length, first.offset + first.sourceLength));
-    // `sourceElements` is the run's one text node, so the sentence and the
-    // highlight work in the run as they do in a page's text nodes.
     return withSentence({
-      anchor: text,
+      anchor,
       anchorRange,
       query,
       scanEntries: entries,
       sourceDepth: -1,
       sourceElements: [node],
-      vertical: false,
+      vertical,
     }, first.offset, first.sourceLength, styleCache);
+  }
+
+  function resolveDocsCandidate(clientX, clientY) {
+    const rect = docsRectAt(clientX, clientY);
+    if (!rect) return null;
+    const { text, node } = docsImposterFor(rect);
+    // The <text> lives inside Docs' <svg>, which the page scan treats as opaque.
+    return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false);
+  }
+
+  // An <input> or <textarea> keeps its value in user-agent shadow DOM, which
+  // the caret APIs never enter. As Yomitan's TextSourceGenerator does, the
+  // reader lays an invisible copy of the hovered field over it and scans that.
+  // These are Yomitan's input types; a password is never read.
+  const FIELD_INPUT_TYPES = new Set(["text", "search"]);
+  // One imposter at a time. It stays while it anchors the root lookup or its
+  // field is under the pointer, so repeated moves share the pending lookup and
+  // the popup, and it goes once neither holds or the popup closes.
+  let fieldImposter = null;
+
+  /** `element` when it is a visible text field with a value the reader may read, else null. */
+  function scannableField(element) {
+    const tag = element?.localName;
+    if ((tag !== "textarea" && (tag !== "input" || !FIELD_INPUT_TYPES.has(element.type)))
+        || !element.value || element.getRootNode() !== document || !document.body) return null;
+    const styleCache = new Map();
+    // A field styled to mask its text, such as a PIN box, is a password in all but name.
+    const masked = computedStyleFor(element, styleCache).getPropertyValue("-webkit-text-security");
+    if ((masked !== "" && masked !== "none") || isHiddenElement(element, styleCache)) return null;
+    for (let current = element.parentElement; current; current = current.parentElement) {
+      if (OPAQUE_TAGS.has(current.localName) || computedStyleFor(current, styleCache).display === "none") return null;
+    }
+    return element;
+  }
+
+  function releaseFieldImposter() {
+    fieldImposter?.container.remove();
+    fieldImposter = null;
+  }
+
+  function retireFieldImposter() {
+    if (!fieldImposter || lastPointer?.target === fieldImposter.field) return;
+    const { imposter } = fieldImposter;
+    if (pendingCandidateLookup?.candidate.anchor !== imposter && rootLevel.activeCandidate?.anchor !== imposter) {
+      releaseFieldImposter();
+    }
+  }
+
+  /**
+   * Yomitan's _createImposter: the field's value in a <div> that carries every
+   * computed property of the field and lies exactly over it with its scroll
+   * offsets, in a container that is invisible, unselectable and never
+   * hit-tested. `box` is the field's client rect. The imposter is reused while
+   * the field keeps its value, scroll offsets and place in the document.
+   */
+  function fieldImposterFor(field, box) {
+    const page = document.documentElement.getBoundingClientRect();
+    const place = { left: box.left - page.left, top: box.top - page.top, width: box.width, height: box.height };
+    const reused = fieldImposter;
+    if (reused?.field === field && reused.value === field.value && reused.scrollLeft === field.scrollLeft
+        && reused.scrollTop === field.scrollTop && reused.container.isConnected
+        && Object.keys(place).every((key) => reused.place[key] === place[key])) {
+      return reused;
+    }
+    releaseFieldImposter();
+    const style = window.getComputedStyle(field);
+    const container = document.createElement("div");
+    setImportant(container, {
+      all: "initial", position: "absolute", left: "0", top: "0", width: `${page.width}px`, height: `${page.height}px`,
+      overflow: "hidden", opacity: "0", "pointer-events": "none", "user-select": "none",
+    });
+    container.setAttribute("aria-hidden", "true");
+    const imposter = document.createElement("div");
+    for (const property of style) imposter.style.setProperty(property, style.getPropertyValue(property), "important");
+    // Placed and scrolled where the field is at once, not eased there.
+    setImportant(imposter, {
+      position: "absolute", left: `${place.left}px`, top: `${place.top}px`, margin: "0", "pointer-events": "none",
+      "user-select": "none", transition: "none", animation: "none", "scroll-behavior": "auto",
+    });
+    const input = field.localName === "input";
+    let value = field.value;
+    if (input) {
+      // One unwrapped line keeping repeated spaces, as the input lays it out. A
+      // line as tall as the content box centres the glyphs in it, as the input
+      // does whatever its own line height.
+      const frame = style.boxSizing === "border-box"
+        ? ["padding-top", "padding-bottom", "border-top-width", "border-bottom-width"]
+          .reduce((sum, property) => sum + pixels(style, property), 0)
+        : 0;
+      setImportant(imposter, {
+        overflow: "hidden", "white-space": "pre", "line-height": `${pixels(style, "height") - frame}px`,
+      });
+    } else {
+      if (style.overflow === "visible") setImportant(imposter, { overflow: "auto" });
+      // A final line break opens a line in a textarea but not in a <div>.
+      if (value.endsWith("\n")) value += "\n";
+    }
+    const node = document.createTextNode(value);
+    imposter.append(node);
+    container.append(imposter);
+    document.body.append(container);
+    const narrower = fitFieldImposter(field, imposter, style, box, place);
+    // The copy lays out text the field has scrolled out of sight. An input shows
+    // text only in its content box; a textarea scrolls it in its padding box.
+    const inset = input ? [pixels(style, "padding-left"), pixels(style, "padding-right") + narrower] : [0, 0];
+    fieldImposter = {
+      field, container, imposter, node, place, value: field.value, scrollLeft: field.scrollLeft,
+      scrollTop: field.scrollTop, vertical: style.writingMode.startsWith("vertical"),
+      clip: {
+        left: field.clientLeft + inset[0], right: field.clientLeft + field.clientWidth - inset[1],
+        top: field.clientTop, bottom: field.clientTop + field.clientHeight,
+      },
+    };
+    return fieldImposter;
+  }
+
+  /**
+   * Corrects the laid-out copy's size and place against the field, as Yomitan
+   * does, then scrolls it as the field is scrolled. Returns how much narrower
+   * the field's own text box is: a search field's clear button or a datalist's
+   * picker lets an input scroll further than the copy could.
+   */
+  function fitFieldImposter(field, imposter, style, box, place) {
+    const drawn = imposter.getBoundingClientRect();
+    if (drawn.width !== box.width || drawn.height !== box.height) {
+      setImportant(imposter, { width: `${pixels(style, "width") + box.width - drawn.width}px`,
+        height: `${pixels(style, "height") + box.height - drawn.height}px` });
+    }
+    if (drawn.left !== box.left || drawn.top !== box.top) {
+      setImportant(imposter, {
+        left: `${place.left + box.left - drawn.left}px`, top: `${place.top + box.top - drawn.top}px`,
+      });
+    }
+    const narrower = field.localName === "input"
+      ? Math.max(0, field.scrollWidth - field.clientWidth - imposter.scrollWidth + imposter.clientWidth)
+      : 0;
+    if (narrower > 0) {
+      setImportant(imposter, { "padding-right": `${pixels(style, "padding-right") + narrower}px` });
+      if (style.boxSizing !== "border-box") {
+        const width = Number.parseFloat(imposter.style.getPropertyValue("width"));
+        setImportant(imposter, { width: `${width - narrower}px` });
+      }
+    }
+    imposter.scrollLeft = field.scrollLeft;
+    imposter.scrollTop = field.scrollTop;
+    return narrower;
+  }
+
+  function pixels(style, property) {
+    return Number.parseFloat(style.getPropertyValue(property)) || 0;
+  }
+
+  function setImportant(element, declarations) {
+    for (const [property, value] of Object.entries(declarations)) {
+      element.style.setProperty(property, value, "important");
+    }
+  }
+
+  function resolveFieldCandidate(field, clientX, clientY) {
+    const box = field.getBoundingClientRect();
+    const { clip, imposter, node, vertical } = fieldImposterFor(field, box);
+    const x = clientX - box.left;
+    const y = clientY - box.top;
+    if (x < clip.left || x > clip.right || y < clip.top || y > clip.bottom) return null;
+    const offset = imposterOffsetAt(node, clientX, clientY);
+    return glyphContainsPoint(node, offset, clientX, clientY)
+      ? imposterCandidate(imposter, node, offset, vertical)
+      : null;
+  }
+
+  /**
+   * Caret APIs snap to nearby text even in padding, and bisection always finds
+   * some glyph. Admit only the pointed glyph, with two CSS pixels for thin
+   * glyphs and subpixel layout.
+   */
+  function glyphContainsPoint(node, offset, clientX, clientY) {
+    const text = node.nodeValue || "";
+    if (offset >= text.length) return false;
+    const glyph = document.createRange();
+    glyph.setStart(node, offset);
+    glyph.setEnd(node, offset + (text.codePointAt(offset) > 0xffff ? 2 : 1));
+    return [...glyph.getClientRects()].some((rect) => clientX >= rect.left - 2 && clientX <= rect.right + 2
+      && clientY >= rect.top - 2 && clientY <= rect.bottom + 2);
   }
 
   /**
@@ -990,29 +1178,17 @@
       const docs = resolveDocsCandidate(clientX, clientY);
       if (docs) return docs;
     }
+    const hit = document.elementFromPoint(clientX, clientY);
+    const field = scannableField(hit);
+    if (field) return resolveFieldCandidate(field, clientX, clientY);
     const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
-    if (node?.nodeType !== Node.TEXT_NODE
-        || !document.elementFromPoint(clientX, clientY)?.contains(node)) {
-      return null;
-    }
+    if (node?.nodeType !== Node.TEXT_NODE || !hit?.contains(node)) return null;
     const text = node.nodeValue || "";
     let offset = caretRange.startOffset;
     // Caret alignment can step back onto the low surrogate of a wide glyph.
     if (offset > 0 && (text.charCodeAt(offset) & 0xfc00) === 0xdc00) offset -= 1;
-    if (offset >= text.length) return null;
-    const glyph = document.createRange();
-    glyph.setStart(node, offset);
-    glyph.setEnd(node, offset + (text.codePointAt(offset) > 0xffff ? 2 : 1));
-    // Caret APIs snap to nearby text even in padding. Admit only the pointed
-    // glyph, with two CSS pixels for thin glyphs and subpixel layout.
-    for (const rect of glyph.getClientRects()) {
-      if (clientX >= rect.left - 2 && clientX <= rect.right + 2
-          && clientY >= rect.top - 2 && clientY <= rect.bottom + 2) {
-        return resolveCandidateAt(node, offset);
-      }
-    }
-    return null;
+    return glyphContainsPoint(node, offset, clientX, clientY) ? resolveCandidateAt(node, offset) : null;
   }
 
   function resolveCandidateAt(startNode, startOffset) {
@@ -1367,6 +1543,7 @@
     appearance?.destroy();
     customStyle?.destroy();
     releaseDocsProbe();
+    releaseFieldImposter();
     host?.remove();
     host = null;
     shadow = null;
@@ -1394,6 +1571,7 @@
     } catch {
       // Best effort: the point is only to leave nothing half-built behind.
     }
+    releaseFieldImposter();
     host?.remove();
     host = null;
     shadow = null;
@@ -2558,6 +2736,7 @@
     level.popup.inert = false;
     level.view.scrollElement.scrollTop = 0;
     syncHostAttention();
+    if (level === rootLevel) retireFieldImposter();
   }
 
   function pruneLevels(depth, restoreFocus = true) {
@@ -2625,6 +2804,7 @@
     rootLevel.deferredRefresh = null;
     rootLevel.retainedView = false;
     rootLevel.lookupToken += 1;
+    releaseFieldImposter();
     if (rootLevel.popup) {
       rootLevel.popup.hidden = true;
       rootLevel.popup.inert = false;
@@ -3424,6 +3604,7 @@
     // or deferred glossary. Only an unfinished candidate loses ownership.
     if (pendingCandidateLookup?.token === rootLevel.lookupToken) rootLevel.lookupToken += 1;
     discardPendingCandidate();
+    retireFieldImposter();
   }
 
   function cancelPendingHover(level) {
@@ -3587,6 +3768,7 @@
       teardown("context-invalidated");
       return;
     }
+    retireFieldImposter();
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
     const popupLevel = activePointerLevel(pointer);
@@ -3701,6 +3883,7 @@
     if (disposed || !options.hoverEnabled) {
       return;
     }
+    editedSincePointerMoved = false;
     lastPointer = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -3799,6 +3982,7 @@
     if (disposed) {
       return;
     }
+    editedSincePointerMoved = true;
     // A press decides afresh what its own release and click may do.
     if (scanPress?.button === event.button) scanPress = null;
     const button = activationButton();
@@ -3822,10 +4006,8 @@
   // The scan button works like the activation key: pressing it looks up the
   // word under the pointer, and moving while it is held keeps scanning. Its
   // capture-phase press claims an overlay host's window before the host's own
-  // listener can turn click-through back on. Over content the reader scans, the
-  // press starts no autoscroll and Back or Forward does not navigate; the click
-  // opens no new tab only when the press was on a word the reader looks up. A
-  // popup link's press is the link's, so its middle click keeps opening it.
+  // listener can turn click-through back on. A popup link's press is the
+  // link's, so its middle click keeps opening it.
   function startButtonScan(event) {
     const { clientX, clientY } = event;
     const inPopup = isOurNode(event.target) || pointInsidePopup(clientX, clientY);
@@ -3837,18 +4019,30 @@
     const level = inPopup ? activePointerLevel(lastPointer) : null;
     // Child popups set to Click wait for no button.
     if (level && (popupLinkAt(lastPointer.target, level) || !definitionKeyGated())) return false;
-    const scannable = level
-      ? Boolean(selectionBoundaryElement(lastPointer.target)?.closest(DEFINITION_TEXT_SELECTOR))
-      : !inPopup && isScannableElement(selectionBoundaryElement(event.target), new Map());
-    if (scannable) event.preventDefault();
-    const candidate = scannable
-      && (level ? resolveDefinitionCandidate(clientX, clientY, level) : resolveCandidate(clientX, clientY));
-    scanPress = { button: event.button, cancelRelease: scannable && NAVIGATION_BUTTONS.has(event.button),
-      cancelClick: Boolean(candidate) };
+    const { claimed, cancelRelease, candidate } = scanPressClaim(event, inPopup, level);
+    if (claimed) event.preventDefault();
+    scanPress = { button: event.button, cancelRelease, cancelClick: Boolean(candidate) };
     activationPressed = true;
     syncHostAttention();
     scanActivatedPointer();
     return true;
+  }
+
+  // Over content the reader scans, a scan press starts no autoscroll and Back
+  // or Forward does not navigate; the click opens no new tab only when the
+  // press was on a word the reader looks up. A text field keeps its press, so
+  // it still pastes or navigates, unless the press is on a word in it.
+  function scanPressClaim({ button, clientX, clientY, target }, inPopup, level) {
+    if (scannableField(inPopup ? null : target)) {
+      const candidate = resolveCandidate(clientX, clientY);
+      return { claimed: Boolean(candidate), cancelRelease: Boolean(candidate), candidate };
+    }
+    const claimed = level
+      ? Boolean(selectionBoundaryElement(lastPointer.target)?.closest(DEFINITION_TEXT_SELECTOR))
+      : !inPopup && isScannableElement(selectionBoundaryElement(target), new Map());
+    const candidate = claimed
+      && (level ? resolveDefinitionCandidate(clientX, clientY, level) : resolveCandidate(clientX, clientY));
+    return { claimed, cancelRelease: claimed && NAVIGATION_BUTTONS.has(button), candidate };
   }
 
   // Release decides what the press was: a selection looks up that text, a
@@ -4089,8 +4283,16 @@
     if (normaliseActivationKey(event.key, null) === options.activationKey) {
       activationPressed = true;
       activationCode = event.code;
+    } else {
+      editedSincePointerMoved = true;
     }
-    if (!wasPressed && activationPressed) scanActivatedPointer();
+    if (!wasPressed && activationPressed && !typingUnderPointer()) scanActivatedPointer();
+  }
+
+  // Shift for a capital letter in the field under a resting pointer must not
+  // cover the field with its own text; moving with the key held still scans.
+  function typingUnderPointer() {
+    return editedSincePointerMoved && scannableField(document.activeElement) === lastPointer?.target;
   }
 
   function onKeyUp(event) {

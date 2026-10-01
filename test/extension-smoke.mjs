@@ -18793,6 +18793,152 @@ async function contentNoteStage() {
     };
   }
 
+  // An <input> or <textarea> keeps its value in user-agent shadow DOM, so the
+  // reader scans an invisible imposter laid over the hovered field (#425).
+  async function textFieldCase() {
+    const harness = await createHarness();
+    harness.emitOptions({ lookupMode: "hover", scanLength: 9 });
+    const { ownerDocument: document } = harness.popup;
+    const window = document.defaultView;
+    // Ten CSS pixels per character from x=100, one 20-pixel row per line from y=20.
+    window.Range.prototype.getClientRects = function () {
+      const rects = [];
+      let lineStart = 0;
+      for (const [row, line] of (this.startContainer.nodeValue ?? "").split("\n").entries()) {
+        const start = Math.max(this.startOffset, lineStart);
+        const end = Math.min(this.endOffset, lineStart + line.length);
+        if (end > start) {
+          rects.push({ left: 100 + (start - lineStart) * 10, right: 100 + (end - lineStart) * 10,
+            top: 20 + row * 20, bottom: 40 + row * 20 });
+        }
+        lineStart += line.length + 1;
+      }
+      return rects;
+    };
+    // Every field's border box starts at (90, 10); an input's text starts after
+    // its ten-pixel padding, a textarea's at its padding box.
+    const field = (tag, value, { type, rows = 1, style = "" } = {}) => {
+      const element = document.createElement(tag);
+      if (type) element.type = type;
+      element.setAttribute("style", tag === "input" ? `padding:0 10px;${style}` : style);
+      element.value = value;
+      const height = 20 + rows * 20;
+      element.getBoundingClientRect = () => ({ left: 90, top: 10, right: 400, bottom: 10 + height, width: 310, height });
+      for (const [name, metric] of Object.entries({ clientLeft: 0, clientTop: 0, clientWidth: 310, clientHeight: height })) {
+        Object.defineProperty(element, name, { configurable: true, value: metric });
+      }
+      return element;
+    };
+    const plain = field("input", "外に行く");
+    const search = field("input", "食べたかった。次の文", { type: "search" });
+    // jsdom reports the longhand of a textarea's pre-wrap only when it is declared.
+    const area = field("textarea", "一行目の文。\n二行目に食べたかった言葉\n三行目", { rows: 3, style: "white-space-collapse:preserve" });
+    const password = field("input", "外に行く", { type: "password" });
+    const masked = field("input", "外に行く");
+    const empty = field("input", "");
+    const paragraph = document.createElement("p");
+    paragraph.textContent = "食べ";
+    document.body.append(plain, search, area, password, masked, empty, paragraph);
+    // jsdom drops -webkit-text-security, which Chrome reports for a masked field.
+    const computedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (element, pseudo) => {
+      const style = computedStyle(element, pseudo);
+      return element !== masked ? style : new Proxy(style, {
+        get: (target, key) => key === "getPropertyValue"
+          ? (name) => (name === "-webkit-text-security" ? "disc" : target.getPropertyValue(name))
+          : Reflect.get(target, key),
+      });
+    };
+    let pointed = plain;
+    document.elementFromPoint = () => pointed;
+    document.caretRangeFromPoint = () => null;
+    const scan = (element, x, y = 30) => {
+      pointed = element;
+      return harness.driver.resolveCandidate(x, y);
+    };
+    const imposters = () => [...document.body.children].filter((child) => child.getAttribute("aria-hidden") === "true");
+    const summary = (candidate) => candidate && { query: candidate.query, sentence: candidate.sentence, matchOffset: candidate.matchOffset };
+
+    const first = scan(plain, 105); // 外
+    const imposter = first?.anchor;
+    const [container] = imposters();
+    const resolved = first?.query === "外に行く" && first.sentence === "外に行く" && first.matchOffset === 0
+      && imposter?.localName === "div" && imposter.textContent === plain.value && imposter.parentElement === container
+      && first.scanEntries[0].node === imposter.firstChild && first.sourceElements[0] === imposter.firstChild
+      && first.anchorRange.toString() === "外" && first.vertical === false
+      && container.style.getPropertyValue("opacity") === "0" && container.style.getPropertyPriority("opacity") === "important"
+      && imposter.style.getPropertyValue("white-space") === "pre" && imposter.style.getPropertyValue("pointer-events") === "none";
+    const next = scan(plain, 118); // に, in the same imposter
+    const shared = next?.query === "に行く" && next.matchOffset === 1 && next.anchor === imposter && imposters().length === 1;
+    const searched = scan(search, 105);
+    const searchField = searched?.query === "食べたかった。次の" && searched.sentence === "食べたかった。"
+      && searched.matchOffset === 0 && searched.anchor !== imposter && !imposter.isConnected && imposters().length === 1;
+    const line = scan(area, 145, 50); // 食 on the second line
+    const textarea = line?.query === "食べたかった言葉" && line.sentence === "二行目に食べたかった言葉" && line.matchOffset === 4
+      && line.anchor.textContent === area.value && imposters().length === 1;
+    const before = scan(plain, 105)?.anchor;
+    plain.value = "外に出る";
+    const changed = scan(plain, 105);
+    const rebuilt = changed?.query === "外に出る" && changed.anchor !== before && before?.isConnected === false
+      && imposters().length === 1;
+    const refused = { padding: scan(plain, 95), pastText: scan(plain, 380), password: scan(password, 105),
+      masked: scan(masked, 105), empty: scan(empty, 105) };
+    const nothing = Object.values(refused).every((candidate) => candidate === null);
+
+    // The imposter follows the body's last paragraph, and a page scan stops before it.
+    scan(plain, 105);
+    const paragraphRange = document.createRange();
+    paragraphRange.setStart(paragraph.firstChild, 0);
+    paragraphRange.collapse(true);
+    document.caretRangeFromPoint = () => paragraphRange;
+    const page = scan(paragraph, 105);
+    const pageStops = page?.query === "食べ" && imposters().length === 1
+      && paragraph.compareDocumentPosition(imposters()[0]) === window.Node.DOCUMENT_POSITION_FOLLOWING;
+    document.caretRangeFromPoint = () => null;
+
+    // Moves within one glyph share the pending lookup; the imposter stays while
+    // it anchors the popup and goes when the popup closes.
+    const lookups = () => harness.pending.filter(({ request }) => request.type === "hd_lookup").length;
+    pointed = plain;
+    harness.driver.onMouseMove({ target: plain, clientX: 105, clientY: 30, buttons: 0 });
+    await harness.settle();
+    harness.driver.onMouseMove({ target: plain, clientX: 108, clientY: 31, buttons: 0 });
+    await harness.settle();
+    const deduped = lookups() === 1;
+    const request = harness.take("hd_lookup");
+    harness.reply(request, { dictionaryCount: 1, results: [harness.term("外")] });
+    await harness.settle();
+    const shown = request?.request.text === "外に出る" && harness.driver.snapshot().popupHidden === false;
+    pointed = paragraph;
+    harness.driver.onMouseMove({ target: paragraph, clientX: 300, clientY: 30, buttons: 0 });
+    await new Promise((resolveWait) => window.setTimeout(resolveWait, 10));
+    const anchoring = imposters().length === 1 && harness.driver.snapshot().popupHidden === false;
+    harness.driver.hide();
+    const hidden = imposters().length === 0;
+    // Without a popup it goes as soon as the pointer leaves its field.
+    pointed = plain;
+    harness.driver.onMouseMove({ target: plain, clientX: 105, clientY: 30, buttons: 0 });
+    await harness.settle();
+    const pending = imposters().length === 1 && lookups() === 1;
+    pointed = paragraph;
+    harness.driver.onMouseMove({ target: paragraph, clientX: 300, clientY: 30, buttons: 0 });
+    await harness.settle();
+    const left = imposters().length === 0;
+    harness.close();
+    return {
+      "text inputs and textareas scan their value through one imposter laid over the hovered field":
+        resolved && shared && searchField && textarea && rebuilt
+        || { first: summary(first), next: summary(next), searched: summary(searched), line: summary(line),
+          changed: summary(changed), resolved, shared, searchField, textarea, rebuilt },
+      "padding, password, masked and empty fields are not read and page scans never reach the imposter":
+        nothing && pageStops || { refused: Object.fromEntries(Object.entries(refused).map(([key, value]) => [key, summary(value)])),
+          page: summary(page) },
+      "a field's imposter shares its pending lookup and is removed when the popup closes or the pointer leaves":
+        deduped && shown && anchoring && hidden && pending && left
+        || { deduped, shown, anchoring, hidden, pending, left },
+    };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -18847,7 +18993,10 @@ async function contentNoteStage() {
         Object.defineProperty(control, "isContentEditable", { value: true });
       }
       block.append(control, document.createTextNode("語"));
-      controls.push(scan(control.firstChild) === null && scan(block.firstChild.firstChild)?.query === "食");
+      // A textarea's value is read through its imposter; the other controls stay unread.
+      const direct = scan(control.firstChild);
+      controls.push((tag === "textarea" ? direct?.query === "べたかった" : direct === null)
+        && scan(block.firstChild.firstChild)?.query === "食");
       control.style.display = "none";
       controls.push(scan(block.firstChild.firstChild)?.query === "食語");
     }
@@ -18913,7 +19062,7 @@ async function contentNoteStage() {
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
       "Japanese-only scanning accepts mixed numeral compounds from Japanese or numeral characters":
         (mixedNumerals.every(Boolean) && rejected) || { mixedNumerals, rejected },
-      "editing controls and contenteditable text stop both direct and forward pointer scanning":
+      "editing controls and contenteditable text stop forward pointer scanning, and only a textarea's value scans directly":
         controls.every(Boolean) || controls,
       "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
         (boxedFirst && boxedNext) || { boxed: boxed && { ...boxed, anchor: null, anchorRange: null, scanEntries: null, sourceElements: boxed.sourceElements.length },
@@ -21120,7 +21269,7 @@ async function contentNoteStage() {
       ...await frequencyDefinitionBlurCase() },
     kanjiNavigation: { ...await kanjiNavigationCase(), ...await kanjiGroupCase() },
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await textFieldCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),

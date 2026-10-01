@@ -825,6 +825,37 @@ covering text cannot trigger distant lookups. This applies equally to horizontal
 and vertical text; exact selections and the reader's boxed-glyph drag keep their
 own selection rules.
 
+An `<input>` of type `text` or `search` (Chrome reports a missing or unknown
+type as `text`) or a `<textarea>` keeps its value in user-agent shadow DOM that
+no caret API enters. When the hit-tested element is such a field with a value,
+the reader scans an imposter instead, ported from Yomitan's
+`TextSourceGenerator._createImposter`: a `<div>` holding the value and every
+computed property of the field, laid exactly over it with its scroll offsets in
+an invisible, unselectable, `aria-hidden` container appended to `<body>` that is
+never hit-tested. An input's copy is one unwrapped line that keeps repeated
+spaces, centred in the content box as the input centres it; when a search
+field's clear button or a datalist's picker narrows the box the input's text
+scrolls in, the copy's is narrowed to match. The hovered glyph is bisected from
+the imposter's client rects, must pass the two-pixel rule above, and must lie
+where the field shows text (an input's content box, a textarea's padding box),
+so padding, borders and text scrolled out of sight look up nothing. The
+imposter is the scan root and its one text node the sole source, so the match
+never runs past the value, a textarea's word and sentence end at its line
+breaks, and the highlight is drawn on the invisible copy. One imposter exists at
+a time and is reused while its field keeps its value, scroll offsets and place
+in the document, so repeated moves share the pending lookup and the popup; it is
+removed once it neither anchors the pending or shown root lookup nor lies under
+the pointer, and whenever the root popup closes. Page scans never enter it.
+Password and other input types, hidden fields and fields masked with
+`-webkit-text-security` are never read. The field keeps its focus, caret,
+selection, value, composition and scroll position: clicking into it still
+dismisses the popup, and selecting inside it still starts no selection lookup.
+An activation key pressed while the pointer rests on the focused field it has
+clicked or typed in since it last moved scans nothing, so Shift for a capital
+letter does not cover the field; moving with the key held looks up as usual. A
+scan-button press on a word in a field looks it up without pasting or
+navigating, while on an empty field the press keeps its native action.
+
 Automatic scanning reads page text in DOM order regardless of layout, as
 Yomitan's default layout-unaware scan does: it crosses inline and block elements
 alike, including glyphs boxed one per absolutely positioned span by an overlay,
@@ -844,8 +875,9 @@ The sentence is cut around the hovered glyph first and again around the whole
 matched word once the engine has answered. A focused page editor keeps printable
 activation keys available for typing. Pointer lookups and modifier activation
 still work over separate page text, including example links beside an
-autofocused search field. The live `onlyScanJapaneseText`
-option defaults to true; disabling it permits other scripts in automatic scans.
+autofocused search field, and over that field's own words. The live
+`onlyScanJapaneseText` option defaults to true; disabling it permits other
+scripts in automatic scans.
 Repeated pointer events for one pending candidate share its lookup, while a
 changed anchor/query or failed request can start fresh work.
 Retained selections are rechecked through the existing pointer throttle rather
