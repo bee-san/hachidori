@@ -422,6 +422,8 @@ const PLANNED = [
   "the reader opens a popup for Japanese text inside a same-origin iframe",
   "the popup paints above a fullscreen player and returns to body on exit",
   "the popup stays in place while a chat feed or the page scrolls and after its source is removed",
+  "switching to another tab and back keeps the popup, its Note draft and keyboard focus until Escape",
+  "a click into one of the page's frames, same-origin or cross-site, still closes the popup",
   "the content script attached its open-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
@@ -2001,6 +2003,86 @@ async function checkPopupStaysInPlace(tab, popup) {
       window.scrollTo(0, 0);
     });
   }
+  await hoverForPopup(tab, popup, "#verb");
+}
+
+// Like Yomitan (#432): with the default Shift key, whose popup outlives its
+// release, switching to another tab and back keeps the popup, its view and a
+// Note draft with keyboard focus in it. A click into one of the page's own
+// frames, same-origin or cross-site, is still a click outside the popup.
+async function checkTabSwitchKeepsPopup(settings, tab, popup, pageUrl) {
+  const original = await readSettingsControls(settings, ["opt-activation-key", "opt-lookup-sticky"]);
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.mouse.move(2, 2);
+  await updateSettingsControls(settings, { "opt-activation-key": "Shift", "opt-lookup-sticky": true });
+  const openSticky = async () => {
+    const box = await (await tab.$("#verb")).boundingBox();
+    await tab.mouse.move(2, 2);
+    await tab.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+    await tab.keyboard.down("Shift");
+    const shown = await popup.waitForVisible();
+    await tab.keyboard.up("Shift");
+    return shown;
+  };
+  const draft = "a draft typed before leaving";
+  const away = {};
+  const frames = {};
+  try {
+    away.opened = await openSticky() !== null && await popup.click(".gsm-hoshidicts-note-button")
+      && (await popup.writeNote({ definition: draft }))?.definition === draft;
+    const before = await popup.retainedControls("remember");
+    await settings.bringToFront();
+    await new Promise(done => setTimeout(done, 600));
+    await tab.bringToFront();
+    const after = await popup.retainedControls();
+    away.kept = popup.visible(await popup.state()) && after?.sameForm && after.mounted && after.inputFocused
+      && after.draft === draft && after.selection.join() === before?.selection.join() && !after.replaced
+      && after.scrollTop === before.scrollTop;
+    await tab.keyboard.press("End");
+    await tab.keyboard.type(" and more");
+    away.typed = (await popup.retainedControls())?.draft;
+    await tab.keyboard.press("Escape");
+    const noteClosed = await popup.state();
+    away.noteFirst = popup.visible(noteClosed) && !noteClosed.noteOpen;
+    await tab.keyboard.press("Escape");
+    away.closed = await popup.waitForHidden();
+
+    const port = new URL(pageUrl).port;
+    for (const [kind, src] of [["same-origin", `http://127.0.0.1:${port}/frame`], ["cross-site", `http://localhost:${port}/frame`]]) {
+      await tab.evaluate(source => {
+        const frame = document.createElement("iframe");
+        frame.id = "click-frame";
+        frame.src = source;
+        frame.style.cssText = "width: 760px; height: 420px";
+        document.body.firstElementChild.before(frame);
+      }, src);
+      try {
+        await (await (await tab.$("#click-frame")).contentFrame()).waitForSelector("#frame-verb");
+        const opened = await openSticky() !== null;
+        const box = await (await tab.$("#click-frame")).boundingBox();
+        // The frame's empty corner, beside the popup above the pushed-down word.
+        const point = { x: box.x + box.width - 20, y: box.y + box.height - 20 };
+        const rect = opened ? (await popup.dictionaryTabs())?.rect : null;
+        const outside = Boolean(rect) && (point.x > rect.right || point.x < rect.left
+          || point.y > rect.bottom || point.y < rect.top);
+        await tab.mouse.click(point.x, point.y);
+        frames[kind] = { opened, outside, closed: await popup.waitForHidden() };
+      } finally {
+        await tab.$eval("#click-frame", element => element.remove());
+      }
+    }
+  } finally {
+    // A failure can leave the Note and then the popup open.
+    for (let press = 0; press < 2; press += 1) await tab.keyboard.press("Escape");
+    await updateSettingsControls(settings, original);
+  }
+  check("switching to another tab and back keeps the popup, its Note draft and keyboard focus until Escape",
+    away.opened && away.kept && away.typed === `${draft} and more` && away.noteFirst && away.closed,
+    JSON.stringify(away));
+  check("a click into one of the page's frames, same-origin or cross-site, still closes the popup",
+    ["same-origin", "cross-site"].every(kind => frames[kind]?.opened && frames[kind].outside && frames[kind].closed),
+    JSON.stringify(frames));
   await hoverForPopup(tab, popup, "#verb");
 }
 
@@ -13135,6 +13217,7 @@ async function main() {
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
   await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
   await checkPopupStaysInPlace(tab, popup);
+  await checkTabSwitchKeepsPopup(page, tab, popup, pageUrl);
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
