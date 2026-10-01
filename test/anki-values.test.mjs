@@ -218,6 +218,11 @@ test("pitch, part-of-speech, tags and transcriptions keep source meanings and ma
     definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form", termTags: "" }] } });
   assert.equal(await render(jitendex, "{tags}"), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]
     .map(tag => `<span class="tag" data-details="${tag}">${tag}</span>`).join(", "));
+  // The engine's tag-bank tags come in Yomitan's order (tag-bank order, then name).
+  jitendex.term.glossaries[0].tags = [{ name: "ateji\u00a0form", category: "expression", order: 1, score: 0, notes: "" },
+    { name: "rarely\u00a0used\u00a0form", category: "archaism", order: 0, score: 1, notes: "" }];
+  assert.equal(await render(jitendex, "{tags}"), ["ateji\u00a0form", "rarely\u00a0used\u00a0form"]
+    .map(tag => `<span class="tag" data-details="${tag}">${tag}</span>`).join(", "));
   assert.match(await render(source, "{phonetic-transcriptions}"), /&lt;ipa&gt;/u);
   assert.equal(await render(source, "{pitch}"), "<b>Pitch</b>: LHH, LHL (nasal 1; devoice 2), &lt;ipa&gt;");
   assert.equal(await render(source, "{audio}", { audio: "[sound:chosen.mp3]" }), "[sound:chosen.mp3]");

@@ -108,6 +108,11 @@ test("each Anki glossary row is its own li[data-dictionary] with no nested list,
   assert.deepEqual(all.map(item => item.querySelector(":scope > div > .yomitan-glossary-meta")?.textContent),
     ["(Alias <A>)", "(子, Alias <A>)", "(rarely\u00a0used\u00a0form, ateji\u00a0form, B)"]);
   assert.deepEqual((await items({ dictionary: "A" })).map(item => item.dataset.dictionary), ["A", "A"]);
+  // The engine's tag-bank tags come in Yomitan's order (tag-bank order, then name).
+  request.term.glossaries[2].tags = [{ name: "ateji\u00a0form", category: "expression", order: 1, score: 0, notes: "" },
+    { name: "rarely\u00a0used\u00a0form", category: "archaism", order: 0, score: 1, notes: "" }];
+  assert.equal((await items({ dictionary: "B" }))[0].querySelector(".yomitan-glossary-meta").textContent,
+    "(ateji\u00a0form, rarely\u00a0used\u00a0form, B)");
 });
 
 test("plain Anki definitions omit decorative link icons and preferred image sizes retain the intrinsic ratio", async t => {

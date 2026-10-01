@@ -4837,6 +4837,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && /color: var\(--hoshidicts-tag-text\);/u.test(definitionTagRule)
         && /--text-color: var\(--hoshidicts-text\);/u.test(readerCss)
         && /--hoshidicts-text: var\(--hoshidicts-palette-base-content\);/u.test(readerCss));
+    // Yomitan's tag categories (#426) on each palette's colour and content pair.
+    const categoryRule = category => readerCss.match(new RegExp(
+      `^\\.gsm-hoshidicts-tag-definition\\[data-category="${category}"\\] \\{([^}]+)\\}`, "mu"))?.[1] ?? "";
+    check("definition tags take their tag-bank category's palette pair; an archaism is tinted and other categories stay neutral",
+      [["expression", "expression", "secondary"], ["partOfSpeech", "part-of-speech", "accent"],
+        ["popular", "popular", "primary"], ["frequent", "frequent", "info"]].every(([category, token, role]) =>
+        categoryRule(category).includes(`background: var(--tag-${token}-background-color);`)
+          && categoryRule(category).includes(`color: var(--hoshidicts-tag-${token}-text);`)
+          && readerCss.includes(`--tag-${token}-background-color: var(--hoshidicts-palette-${role});`)
+          && readerCss.includes(`--hoshidicts-tag-${token}-text: var(--hoshidicts-palette-${role}-content);`))
+        && /border: 1px solid var\(--hoshidicts-palette-error\);/u.test(categoryRule("archaism"))
+        && /background: color-mix\(in srgb, var\(--hoshidicts-palette-error\) 12%, var\(--hoshidicts-palette-base-100\)\);/u
+          .test(categoryRule("archaism"))
+        && /color: var\(--text-color\);/u.test(categoryRule("archaism"))
+        && ["default", "dictionary", "name"].every(category => categoryRule(category) === ""));
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
@@ -8401,6 +8416,14 @@ async function main() {
   );
   check("frequencies came through", first.term.frequencies.length > 0, JSON.stringify(first.term.frequencies));
   check("pitches came through", first.term.pitches.length > 0, JSON.stringify(first.term.pitches));
+  const fixtureTags = [
+    ["vt", [{ name: "vt", category: "expression", order: 0, score: 0, notes: "transitive verb" }]],
+    ["col", [{ name: "col", category: "dictionary", order: 0, score: 0, notes: "colloquial" }]],
+  ];
+  equal("each glossary carries its dictionary's tag-bank tags beside definitionTags",
+    first.term.glossaries.filter(({ dictionary }) => dictionary === FIXTURE_TITLE)
+      .map(({ definitionTags, tags }) => [definitionTags, tags]),
+    fixtureTags);
 
   const selectedLookup = await request("hd_lookup_dictionary", {
     dictionary: FIXTURE_TITLE,
@@ -8413,7 +8436,9 @@ async function main() {
     "hd_lookup_dictionary returns only the selected enabled term dictionary",
     selectedLookup.ok === true
       && selectedLookup.results.length === 1
-      && selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === FIXTURE_TITLE),
+      && selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === FIXTURE_TITLE)
+      && JSON.stringify(selectedLookup.results[0].term.glossaries.map(({ definitionTags, tags }) => [definitionTags, tags]))
+        === JSON.stringify(fixtureTags),
     JSON.stringify(selectedLookup),
   );
   const missingSelectedLookup = await request("hd_lookup_dictionary", {
