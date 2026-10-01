@@ -160,9 +160,11 @@ void set_error(std::string message) { g_last_error = std::move(message); }
 
 // Anything thrown past here aborts the whole module and takes the extension's
 // offscreen document with it, so every ABI entry point funnels through this.
+// Each caller is a catch (...) handler; rethrowing the exception it is handling
+// recovers that exception's message.
 std::string describe_current_exception() {
   try {
-    throw;
+    std::rethrow_exception(std::current_exception());
   } catch (const std::exception& e) {
     return e.what();
   } catch (...) {
