@@ -501,7 +501,11 @@ What it proves, in order:
    half-width kana, decomposed dakuten, and supported kanji variants retaining
    the raw matched input while counting preprocessing; and two misses. Glossaries are asserted
    byte-for-byte against the raw JSON in the term bank, which is what pins down
-   "the renderer parses it, nobody else".
+   "the renderer parses it, nobody else". Frequencies are checked in both object
+   shapes the fixture carries and as text: a frequency-only archive storing
+   `"324/37459"` bare and `"five (5)"` under a reading reports the text as
+   written with its first number as the value, as Yomitan does, and applies the
+   reading-scoped row to that reading only.
 5. **`hdw_kanji`** (including the `{"character":"","entries":[]}` miss sentinel and
    the binding's sort of `stats` by name), **`hdw_styles`**, and **`hdw_media`**
    (byte length, PNG signature, and the full bytes equal to the fixture file).
