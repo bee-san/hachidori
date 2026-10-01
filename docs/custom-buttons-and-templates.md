@@ -5,7 +5,9 @@
 Custom buttons live under **Settings → Design**. A button either opens an
 HTTP(S) URL template or mines the current result to Anki with a chosen
 Template. Link buttons support `%w` for the word, `%r` for its reading and `%s`
-for the sentence. Anki buttons use the same readiness, duplicate, media and
+for the sentence. `%s` is the sentence Anki's `{sentence}` gets: for
+highlighted or dragged text, the sentence the selection starts in, read as a
+hover over its first character reads it. Anki buttons use the same readiness, duplicate, media and
 transactional write path as the built-in Anki action.
 
 ![Link and Anki custom buttons in Settings](assets/custom-buttons-settings.png)

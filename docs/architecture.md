@@ -949,7 +949,11 @@ back on shows the entries again without an engine reload.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
-Reverse/cross-inline ranges retain their exact source offsets. Selecting a
+Reverse/cross-inline ranges retain their exact source offsets. The selection's
+sentence is read as a hover over its first selected character reads one, from
+the scanned text nodes around it, so the furigana, scripts and hidden text of
+the element containing the selection stay out of it, and a selection that
+leaves that character's block is cut at the block's edge. Selecting a
 glossary inside our closed shadow root preserves the current view. Pending
 selection replies share pointer cancellation and are rejected after dismissal
 or relevant storage invalidation; that invalidation also releases completed hits
