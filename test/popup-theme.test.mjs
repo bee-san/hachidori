@@ -40,3 +40,21 @@ test("AUTO popup appearance follows live browser preference and removes its list
   assert.equal(listeners.size, 0);
   dom.window.close();
 });
+
+test("Compact glossaries is a host attribute that a later update removes", () => {
+  const dom = new JSDOM('<div id="host"></div>', { runScripts: "outside-only" });
+  dom.window.eval(readFileSync(new URL("../extension/render/popup.js", import.meta.url), "utf8"));
+  const host = dom.window.document.getElementById("host");
+  const appearance = dom.window.HDPopup.createPopupAppearance(host);
+  const update = glossaryLayoutMode => appearance.update({
+    popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420, popupScalePercent: 100,
+    popupOpacityPercent: 85, showPopupAudioButton: true, glossaryLayoutMode,
+  });
+
+  update("compact");
+  assert.equal(host.getAttribute("data-hoshidicts-glossary-layout"), "compact");
+  update("default");
+  assert.equal(host.hasAttribute("data-hoshidicts-glossary-layout"), false);
+  appearance.destroy();
+  dom.window.close();
+});

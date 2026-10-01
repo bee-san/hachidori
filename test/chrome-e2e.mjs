@@ -51,6 +51,7 @@ import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/
 import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 import { checkPopupResize } from "./chrome-popup-resize.mjs";
 import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
+import { COMPACT_GLOSSARIES_CHECK, checkCompactGlossaries } from "./chrome-glossary-layout.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
@@ -445,6 +446,7 @@ const PLANNED = [
   "a clicked-kanji group's native kanji card keeps a ready Anki mining control and mines as the character",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Compact summaries wrap without clipping and retain narrow toolbar access",
+  COMPACT_GLOSSARIES_CHECK,
   ACTION_ROW_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
@@ -13226,6 +13228,8 @@ async function main() {
   await checkKanjiGroup(page, tab, popup, browser);
   await checkCompactSummaryLayout(browser);
   check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
+  await checkCompactGlossaries(browser);
+  check(COMPACT_GLOSSARIES_CHECK, true);
   await checkActionRow(browser);
   check(ACTION_ROW_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);
