@@ -581,11 +581,15 @@ What it proves, in order:
     alias, duplicate headwords, a StyleSheet substitution, and an MDD holding a
     PNG, CSS files and a traversal key; committed here because the smoke suites
     run without the submodule) go through `hdw_import` from a MEMFS directory: the title comes from the
-    MDX header, eight term rows and four media entries are reported, the
+    MDX header, eight term rows and three media entries are reported (a
+    disabled `sound://` link imports nothing), the report counts one
+    unresolved alias and one missing resource (the traversal key) and the same
+    `.mdx` without its `.mdd` two missing resources, the
     package loads and answers `食べる`, the alias is a headword and the missing
     alias is dropped, the MDD CSS is the dictionary stylesheet, the PNG comes
     back through `hdw_media` while the traversal key does not, and the `.mdd`
-    on its own is refused without leaving staging debris.
+    on its own is refused without leaving staging debris. Yomitan archives
+    report all four MDX loss counts as zero.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -759,9 +763,13 @@ What it proves, in order:
    retained outcome and revoked object URL per file, a cleared picker, and one
    final dictionary-state/status refresh. An `.mdx` with its `.mdd` travels as
    `hd_import` with a `resources` list: the package carries the MDX title, its
-   MDD media and stylesheet answer `hd_media` and `hd_styles`, the `/.hdw-mdx`
+   MDD media and stylesheet answer `hd_media` and `hd_styles`, the reply
+   carries the MDX loss counts the package does not store, the `/.hdw-mdx`
    staging directory is gone afterwards, and a ZIP import carrying resources
-   is refused before staging. The recommendation stage separately
+   is refused before staging. In Settings, an MDX import whose reply has loss
+   counts keeps its green `Imported …` line, lists one note per count beneath
+   it, and is counted `with notes` in the final status line; a ZIP row lists
+   none. The recommendation stage separately
    pins the five catalogue entries and publisher links, download/import phases,
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
