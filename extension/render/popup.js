@@ -1594,7 +1594,7 @@
   // A native kanji entry as one structured-content glossary, so a clicked-kanji
   // group can lay it out beside its term dictionaries' cards.
   function kanjiEntryGlossary(entry) {
-    const tokens = (value) => Array.isArray(value) ? value : String(value || "").split(/\s+/u).filter(Boolean);
+    const tokens = (value) => Array.isArray(value) ? value : window.HDGlossary.parseTagList(value);
     const tags = tokens(entry.tags);
     const readings = [["On", tokens(entry.onyomi)], ["Kun", tokens(entry.kunyomi)]]
       .filter(([, values]) => values.length > 0)

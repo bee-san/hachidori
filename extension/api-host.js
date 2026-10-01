@@ -22,7 +22,7 @@ const AUDIO_TYPES = { aac: "audio/aac", flac: "audio/flac", m4a: "audio/mp4", mp
   wav: "audio/wav", webm: "audio/webm" };
 
 function words(value) {
-  return String(value ?? "").split(/\s+/u).filter(Boolean);
+  return globalThis.HDGlossary.parseTagList(value);
 }
 
 function strings(value) {

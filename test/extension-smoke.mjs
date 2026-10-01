@@ -14935,6 +14935,8 @@ async function contentNoteStage() {
       popupRecords.set(callbacks.popup, record);
       return view;
     }
+    // The production splitter: popup.js's kanjiEntryGlossary reads it too.
+    window.eval(readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8"));
     window.HDGlossary = {
       appendExpressionRuby() {},
       appendTextOnlyGlossary() {},
@@ -14942,7 +14944,7 @@ async function contentNoteStage() {
         appliedStyles.push({ generation, styles });
         return [];
       },
-      parseTagList() { return []; },
+      parseTagList: window.HDGlossary.parseTagList,
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "theme-host.js"), "utf8"));

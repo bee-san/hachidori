@@ -725,8 +725,11 @@
     }
   }
 
+  // Yomitan's DictionaryDatabase._splitField: tag, rule and reading lists are
+  // split on U+0020 only. Jitendex writes the spaces inside a tag name as
+  // U+00A0 ("special reading"), so each name stays one tag.
   function parseTagList(value) {
-    return String(value || "").split(/\s+/u).filter(Boolean);
+    return String(value || "").split(" ").filter(Boolean);
   }
 
   function languageFromText(text) {
