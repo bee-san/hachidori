@@ -1098,6 +1098,8 @@ html[data-hoshidicts-theme="girlypop"],
   --line-height: 1.5;
   --list-padding1: 1.4em;
   --list-padding2: var(--list-padding1);
+  --compact-list-separator: " | ";
+  --hd-compact-list-separator-color: var(--text-color-light3);
   --font-size-no-units: 14;
   --danger-color: var(--hoshidicts-danger);
   /* display-pronunciation.css: Yomitan draws pitch in the text colour. */
@@ -2804,6 +2806,66 @@ html[data-hoshidicts-theme="girlypop"],
   list-style-position: outside;
   /* Hachidori: a disclosure reads as clickable. */
   cursor: pointer;
+}
+
+/* Design → Definitions → Compact glossaries (`glossaryLayoutMode`) puts a
+ * definition's glosses on one line, separated by a grey bar. These are
+ * Yomitan's :root[data-glossary-layout-mode^=compact] rules
+ * (yomidevs/yomitan@67db60d, GPL-3.0-or-later: ext/css/display.css
+ * L2069-L2092, ext/css/structured-content.css L240-L253) on the popup host.
+ * Hachidori's own adjustments are marked. */
+
+/* Hachidori: the tag row keeps its flex gap and shares a line only with plain
+ * glosses. Before structured content (Jitendex's ★ row) an inline row would
+ * only gain a taller line box. */
+:host([data-hoshidicts-glossary-layout="compact"]) .definition-item:not(:has(.gloss-content.structured-content)) > .definition-tag-list {
+  display: inline-flex;
+  margin: 0 0.25em 0 0;
+}
+
+/* Hachidori: .gsm-hoshidicts-glossary-content is a wrapper Yomitan does not
+ * have, between the tags and the list. */
+:host([data-hoshidicts-glossary-layout="compact"]) .gsm-hoshidicts-glossary-content,
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-item,
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-content,
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-sc-ul[data-sc-content="glossary"] .gloss-sc-li {
+  display: inline;
+}
+
+/* display.css shows the separator as a space at font-size 0, so copied and
+ * scanned glosses stay apart while only the bar is seen. Hachidori: without
+ * its white-space: pre-wrap, whose preserved space would hold an empty line
+ * above structured content. */
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-separator {
+  display: inline;
+  font-size: 0;
+  opacity: 0;
+}
+
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-list,
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-sc-ul[data-sc-content="glossary"] {
+  display: inline;
+  list-style: none;
+  padding-left: 0;
+}
+
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-item:not(:first-child)::before,
+:host([data-hoshidicts-glossary-layout="compact"]) .gloss-sc-ul[data-sc-content="glossary"] .gloss-sc-li:not(:first-child)::before {
+  white-space: pre-wrap;
+  /* Hachidori: empty alternative text keeps the bar out of the accessibility
+   * tree, so screen readers read only the list items. */
+  content: var(--compact-list-separator) / "";
+  display: inline;
+  color: var(--hd-compact-list-separator-color);
+}
+
+/* Hachidori: the bar is the only boundary between compact glosses. Where the
+ * faint text colour is below 3:1 against the card (WCAG 1.4.11), it is drawn
+ * in the muted one instead. */
+:host(:is([data-hoshidicts-theme="solarized-dark"], [data-hoshidicts-theme="coffee"],
+  [data-hoshidicts-theme="solarized-light"], [data-hoshidicts-theme="emerald"], [data-hoshidicts-theme="retro"],
+  [data-hoshidicts-theme="winter"], [data-hoshidicts-theme="caramellatte"], [data-hoshidicts-theme="silk"])) .gsm-hoshidicts-popup {
+  --hd-compact-list-separator-color: var(--text-color-light1);
 }
 
 .gsm-hoshidicts-structured-image[hidden] {

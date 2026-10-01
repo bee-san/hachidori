@@ -4480,6 +4480,7 @@
     const cursorExitChanged = next.hidePopupOnCursorExit !== options.hidePopupOnCursorExit
       || next.hidePopupOnCursorExitDelayMs !== options.hidePopupOnCursorExitDelayMs;
     const columnsChanged = next.popupColumns !== options.popupColumns;
+    const layoutChanged = next.glossaryLayoutMode !== options.glossaryLayoutMode;
     const sizeChanged = next.popupWidthPx !== options.popupWidthPx || next.popupHeightPx !== options.popupHeightPx
       || next.popupScalePercent !== options.popupScalePercent;
     const toolbarChanged = next.popupToolbarPosition !== options.popupToolbarPosition;
@@ -4571,7 +4572,7 @@
     if ((sizeChanged || toolbarChanged) && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) {
       positionPopup(rootLevel, toolbarChanged);
     }
-    if ((columnsChanged || sizeChanged || cssChanged) && options.hoverEnabled) {
+    if ((columnsChanged || layoutChanged || sizeChanged || cssChanged) && options.hoverEnabled) {
       for (const level of levels) {
         if (!level.popup?.hidden) level.view?.scheduleMasonry();
       }

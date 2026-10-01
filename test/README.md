@@ -1792,6 +1792,18 @@ side of a 32×16 SVG, as 日本国語大辞典's accent labels declare only
 1.2em, 24px by 12px) and that the dictionary's `img { margin; padding }` rule
 leaves every image layer exactly on its container.
 
+`chrome-glossary-layout.mjs` renders a three-gloss plain row with tags and a
+Jitendex-shaped structured row, styled by Jitendex's own list rules, through
+`createPopupView` with the production stylesheet in a standards-mode shadow
+root. With Compact glossaries on, the tags and plain glosses share one line
+box; each later gloss carries the ` | ` bar; Jitendex's glossary lists compute
+`display: inline` and `padding-left: 0px` while its sense groups, example box
+and ★ tag row keep their lines; structured content starts at the same offset
+as in Default; a blurred definition still renders blurred; and Puppeteer's
+accessibility snapshot reads list items without a bar. The bar must reach 3:1
+against the card in every palette, and switching back restores the exact card
+heights.
+
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
   fixture's bold span is bold through a style object), so the structured-content

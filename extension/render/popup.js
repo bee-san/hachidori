@@ -123,6 +123,10 @@
         // Hiding the pencil the same way keeps an open Note draft through a toggle.
         if (options.personalDictionaryEnabled === false) host.dataset.hoshidictsNoteButton = "hidden";
         else delete host.dataset.hoshidictsNoteButton;
+        // Yomitan's glossaryLayoutMode is CSS over unchanged markup, so a
+        // switch keeps open views, Note drafts and listeners.
+        if (options.glossaryLayoutMode === "compact") host.dataset.hoshidictsGlossaryLayout = "compact";
+        else delete host.dataset.hoshidictsGlossaryLayout;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
           ["popupScalePercent", "scale", "%"],

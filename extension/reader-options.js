@@ -120,6 +120,9 @@
     sourceHighlightEnabled: true,
     showPopupAudioButton: true,
     popupColumns: 1,
+    // Yomitan's general.glossaryLayoutMode: "compact" puts a definition's
+    // glosses on one line, separated by " | ". Popup CSS only.
+    glossaryLayoutMode: "default",
     showLookupCounts: true,
     // Only the lookup-count condition; stored as `definitionBlurEnabled` before #401.
     definitionBlurCountEnabled: false,
@@ -187,6 +190,8 @@
   const DEFINITION_BLUR_REVEALS = ["timed", "hover"];
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
+  // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
+  const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
     { label: "Automatic", ids: ["auto"] },
@@ -206,7 +211,7 @@
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
-    "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
+    "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
     "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
@@ -596,6 +601,7 @@
     definitionBlurDirection: new Set(DEFINITION_BLUR_DIRECTIONS),
     definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
     imageHoverPreview: new Set(IMAGE_HOVER_PREVIEWS),
+    glossaryLayoutMode: new Set(GLOSSARY_LAYOUT_MODES),
   };
 
   function normaliseField(key, value) {
@@ -782,6 +788,7 @@
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
+    GLOSSARY_LAYOUT_MODES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,
