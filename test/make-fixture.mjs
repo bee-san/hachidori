@@ -818,14 +818,20 @@ export function gaijiSizingFixture() {
   const query = '外字表示';
   const path = 'gaiji/bs-arrow.png';
   const svgPath = 'gaiji/参考.svg';
+  const widePath = 'gaiji/wide.svg';
   const bytes = makePng();
   const svgBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
     + '<path d="M992,512L512,992L32,512L512,32Z" fill="#c00"/></svg>');
+  // A 2:1 glyph with an intrinsic size, like 日本国語大辞典's 74x29 accent
+  // labels: a square PNG cannot show where a lone side's ratio came from.
+  const wideBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16" viewBox="0 0 32 16">'
+    + '<rect x="1" y="1" width="30" height="14" fill="none" stroke="#000" stroke-width="2"/></svg>');
   const data = { class: 'gaiji', glyph: 'bs-arrow', 'unsafe key': 'ignored' };
   const svgData = { ...data, img: '' };
   // `width`/`height` are the rendered box in a real browser at the 16px
   // glossary font; `inlineWidth` is the style the renderer writes (null: the
-  // decoded natural width in px).
+  // decoded natural width in px); `natural` is the decoded size (16x16 PNG
+  // unless given).
   const cases = [
     { name: 'natural', dimensions: {}, inlineWidth: null, width: 16, height: 16 },
     { name: 'explicit', dimensions: { width: 40, height: 20 }, inlineWidth: '40px', width: 40, height: 20 },
@@ -833,11 +839,23 @@ export function gaijiSizingFixture() {
     // Chrome decodes a viewBox-only SVG as 150x150; the dictionary's Yomitan
     // rule `width: 15em !important` must land at 15px, not 15 text ems.
     { name: 'viewbox-svg', path: svgPath, data: svgData, dimensions: {}, inlineWidth: null, width: 15, height: 15 },
+    // A lone declared side keeps its size; the other side follows the decoded
+    // ratio, as Yomitan derives it (#423).
+    { name: 'lone-height-em', path: widePath, natural: [32, 16], dimensions: { height: 1.2, sizeUnits: 'em' },
+      inlineWidth: '2.4em', width: 38.4, height: 19.2 },
+    { name: 'lone-width-px', path: widePath, natural: [32, 16], dimensions: { width: 24 },
+      inlineWidth: '24px', width: 24, height: 12 },
   ];
   const hiddenHeadText = 'content="width=device-width, initial-scale = 1.0" />';
   const styles = [
     '.gloss-sc-span[data-sc-class="gaiji"] > .gloss-sc-a[data-sc-glyph="bs-arrow"] .gloss-sc-img {',
     '  filter: invert(0.9);',
+    '}',
+    // 日本国語大辞典's (0,3,1) `img { margin: 3px 2px; padding: 1px }` rule
+    // outranks any reader.css selector for the image layer.
+    '.gloss-sc-span[data-sc-class~="gaiji"] > [data-sc-class~="gaiji"] img {',
+    '  margin: 3px 2px;',
+    '  padding: 1px;',
     '}',
     'span[data-sc-img][data-sc-class="gaiji"] .gloss-image-container {',
     '  width: 15em !important;',
@@ -847,7 +865,7 @@ export function gaijiSizingFixture() {
     '}',
   ].join('\n');
   const archive = buildTitledZip(title, {
-    mediaEntries: [[path, bytes], [svgPath, svgBytes]],
+    mediaEntries: [[path, bytes], [svgPath, svgBytes], [widePath, wideBytes]],
     styles,
     terms: [[query, 'がいじひょうじ', '', '', 0, [{
       type: 'structured-content',
@@ -877,7 +895,7 @@ export function gaijiSizingFixture() {
       },
     }], 1, '']],
   });
-  return { archive, bytes, cases, data, hiddenHeadText, path, query, styles, svgBytes, svgPath, title };
+  return { archive, bytes, cases, data, hiddenHeadText, path, query, styles, svgBytes, svgPath, title, wideBytes, widePath };
 }
 
 export function imagePreviewFixture() {

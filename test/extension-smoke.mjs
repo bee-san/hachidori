@@ -23599,9 +23599,10 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     await Promise.resolve();
     const link = gaijiParent.lastElementChild;
     const image = link.querySelector("img");
+    const [naturalWidth, naturalHeight] = fixtureCase.natural ?? [16, 16];
     Object.defineProperties(image, {
-      naturalWidth: { configurable: true, value: 16 },
-      naturalHeight: { configurable: true, value: 16 },
+      naturalWidth: { configurable: true, value: naturalWidth },
+      naturalHeight: { configurable: true, value: naturalHeight },
     });
     image.dispatchEvent(new window.Event("load"));
     const container = link.querySelector(".gloss-image-container");
@@ -23621,7 +23622,8 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       rendered.linkHook && rendered.imageHook
       && rendered.classData === "gaiji" && rendered.glyphData === "bs-arrow"
       && !rendered.unsafeData
-      // Every image decodes as 16x16 here, so a natural case writes 16px.
+      // Images decode as 16x16 unless a case names its size, so a natural
+      // case writes 16px and a lone side takes the stubbed ratio.
       && rendered.inlineWidth === (gaiji.cases[index].inlineWidth ?? "16px")
       && Math.abs(rendered.padding - gaiji.cases[index].height / gaiji.cases[index].width * 100) < 0.001)
       && gaijiLayouts === gaiji.cases.length
