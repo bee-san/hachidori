@@ -45,8 +45,8 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }
   const source = withoutModules(extension("settings.js"));
-  assert.ok(source.endsWith("start();\n"));
-  window.eval(source.replace(/start\(\);\s*$/u, `
+  assert.ok(source.endsWith("await start();\n"));
+  window.eval(source.replace(/await start\(\);\s*$/u, `
     configureBrowserUi();
     renderMiningCapabilityHelp();
     attachSettingsNavigation();

@@ -3485,5 +3485,7 @@ export function startEngine() {
     throw new Error("the engine service is already started");
   }
   started = true;
-  serialise(boot);
+  // boot() never rejects: a failed start is latched in bootError, which
+  // hd_status and every request needing the engine report.
+  void serialise(boot);
 }

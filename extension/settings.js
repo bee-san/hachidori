@@ -1312,7 +1312,7 @@ function scheduleStatusPoll(delay = STATUS_POLL_MS) {
   }
   statusTimer = setTimeout(() => {
     statusTimer = null;
-    refreshStatus();
+    void refreshStatus();
   }, delay);
 }
 
@@ -2254,7 +2254,7 @@ function renderDictionaryRow(template, entry, index) {
     remove.hidden = true;
   } else {
     remove.addEventListener("click", () => {
-      removeDictionary(entry.id, entry.title);
+      void removeDictionary(entry.id, entry.title);
     });
   }
   return row;
@@ -3740,4 +3740,4 @@ async function start() {
   void recommendedInstallation.request();
 }
 
-start();
+await start();
