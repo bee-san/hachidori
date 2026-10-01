@@ -15953,27 +15953,36 @@ async function contentNoteStage() {
     } finally { harness.close(); }
     for (const route of [null, { title: "Generic", kind: "term" }]) {
       const harness = await createHarness(route);
+      const label = route ? "selected term fallback" : "automatic kanji";
+      const request = route ? "hd_lookup_dictionary" : "hd_kanji";
+      const hit = () => (route ? { results: [harness.term("食", "Generic")] }
+        : { kanji: { character: "食", entries: [{ dictionary: "Generic", meanings: ["eat"] }] } });
+      // Issue #432: jsdom's hasFocus() follows its last focused element, so
+      // each blur says whether focus moved into one of the page's frames.
+      const blur = (focusInPage) => {
+        harness.popup.ownerDocument.hasFocus = () => focusInPage;
+        harness.driver.onWindowBlur();
+      };
       try {
         await harness.initialLookup();
-        if (route) {
-          const termHit = harness.driver.showKanji("食");
-          harness.reply(harness.take("hd_lookup_dictionary"), {
-            results: [harness.term("食", "Generic")],
-          });
-          await termHit;
-          harness.driver.onWindowBlur();
-          outcomes["successful selected-term kanji navigation allows later blur"] = harness.popup.hidden;
-          await harness.initialLookup();
-        }
-        const pendingBlur = harness.driver.showKanji("食");
-        const pendingBlurRequest = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
-        harness.driver.onWindowBlur();
-        const firstBlurGuarded = !harness.popup.hidden;
-        harness.driver.onWindowBlur();
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} guards only the interaction blur`] =
-          firstBlurGuarded && harness.popup.hidden;
-        harness.reply(pendingBlurRequest, route ? { results: [] } : { kanji: null });
-        await pendingBlur;
+        const navigated = harness.driver.showKanji("食");
+        const navigation = harness.take(request);
+        blur(false);
+        harness.reply(navigation, hit());
+        await navigated;
+        const rendered = harness.render();
+        blur(false);
+        outcomes[`${label} navigation keeps its view through tab-switch blurs during and after the request`] =
+          !harness.popup.hidden && harness.render() === rendered && rendered.kind === (route ? "terms" : "kanji");
+        await harness.initialLookup();
+        const closing = harness.driver.showKanji("食");
+        const closingRequest = harness.take(request);
+        blur(true);
+        const closed = harness.popup.hidden;
+        harness.reply(closingRequest, hit());
+        await closing;
+        outcomes[`${label} navigation closes when focus moves into a page frame mid-request`] =
+          closed && harness.popup.hidden && harness.take("hd_kanji") === null;
         await harness.initialLookup();
         const operation = harness.driver.showKanji("食");
         if (route) {
@@ -15982,20 +15991,18 @@ async function contentNoteStage() {
         }
         harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [] } });
         await operation;
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss preserves the old popup`] = !harness.popup.hidden
+        outcomes[`${label} terminal miss preserves the old popup`] = !harness.popup.hidden
           && harness.render().kind === "failure"
           && harness.render().value.kind === "kanji"
           && harness.render().value.title === "Kanji lookup failed.";
-        harness.driver.onWindowBlur();
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} settled interaction allows later blur`] = harness.popup.hidden;
         await harness.initialLookup();
         const stale = harness.driver.showKanji("食");
-        const held = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
+        const held = harness.take(request);
         await harness.initialLookup();
         const current = harness.render();
         harness.reply(held, route ? { results: [] } : { kanji: { character: "食", entries: [] } });
         await stale;
-        outcomes[`${route ? "selected term fallback" : "automatic kanji"} stale miss cannot retire a newer view`] =
+        outcomes[`${label} stale miss cannot retire a newer view`] =
           !harness.popup.hidden && harness.render() === current && current.context.isCurrentView();
       } finally { harness.close(); }
     }
@@ -16845,7 +16852,20 @@ async function contentNoteStage() {
       await reopened;
       harness.driver.onKeyDown({ key: "Escape", code: "Escape", repeat: false, preventDefault() {}, stopPropagation() {} });
       const escaped = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
-      return { "sticky lookups keep a rendered child through parent entry, empty scans, plain links and page departure until a parent press or Escape":
+      // Issue #432: leaving the window before the chain's transfer check runs,
+      // or leaving the tab, keeps the chain as well.
+      const departing = harness.internalLink({ query: "child once more" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child once more")] });
+      await departing;
+      harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+      harness.driver.onMouseMove({ target: harness.anchor, clientX: 900, clientY: 700, buttons: 0 });
+      harness.driver.onMouseOut({ relatedTarget: null });
+      fire(80);
+      keeps("window departure");
+      window.document.hasFocus = () => false;
+      window.dispatchEvent(new window.Event("blur"));
+      keeps("tab switch");
+      return { "sticky lookups keep a rendered child through parent entry, empty scans, plain links, page and window departure and a tab switch until a parent press or Escape":
         kept.every((value) => value === true) && pressed && escaped || { kept, pressed, escaped } };
     } finally { harness.close(); }
   }
@@ -18150,7 +18170,8 @@ async function contentNoteStage() {
 
   async function selectionRecoveryCase() {
     const recovered = [];
-    for (const reason of ["Escape", "disable", "blur", "dictionary-state"]) {
+    let tabSwitchKept = false;
+    for (const reason of ["Escape", "disable", "frame focus", "dictionary-state", "tab switch"]) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       window.getSelection().selectAllChildren(harness.anchor);
@@ -18162,12 +18183,16 @@ async function contentNoteStage() {
       else if (reason === "disable") {
         harness.emitOptions({ hoverEnabled: false, lookupMode: "hover" });
         harness.emitOptions({ hoverEnabled: true, lookupMode: "hover" });
-      } else if (reason === "blur") harness.driver.onWindowBlur();
-      else harness.emitState(harness.state(2, "Changed dictionaries"));
+      } else if (reason === "frame focus" || reason === "tab switch") {
+        // Focus moving into one of the page's frames dismisses; leaving the tab does not (#432).
+        window.document.hasFocus = () => reason === "frame focus";
+        harness.driver.onWindowBlur();
+      } else harness.emitState(harness.state(2, "Changed dictionaries"));
       harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
       harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
       const retry = harness.take("hd_lookup");
-      recovered.push(retry?.request.text === harness.candidate.query);
+      if (reason === "tab switch") tabSwitchKept = first !== null && retry === null && !harness.driver.snapshot().popupHidden;
+      else recovered.push(retry?.request.text === harness.candidate.query);
       if (retry) harness.reply(retry, { dictionaryCount: 1, results: [] });
       await harness.settle();
       harness.close();
@@ -18192,8 +18217,9 @@ async function contentNoteStage() {
     const retained = selected !== null && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null;
     harness.close();
     return {
-      "dismissed selections can be looked up again after Escape, enablement, blur and dictionary changes":
+      "dismissed selections can be looked up again after Escape, enablement, a frame-focus blur and dictionary changes":
         recovered.every(Boolean) || recovered,
+      "a tab-switch blur keeps a selection's popup without looking it up again": tabSwitchKept,
       "an explicit selection survives automatic scanning policy changes, key release and pointer motion": retained,
     };
   }
@@ -19883,6 +19909,8 @@ async function contentNoteStage() {
     window.document.dispatchEvent(new window.Event("selectionchange"));
 
     const departures = [];
+    // A blur below leaves the tab, which only cancels unfinished work (#432).
+    window.document.hasFocus = () => false;
     for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
       harness.emitOptions({ ...settings, lookupMode: "hover" });
       harness.driver.setScanCandidate(harness.candidate);
@@ -20234,6 +20262,74 @@ async function contentNoteStage() {
     return result;
   }
 
+  // Issue #432: as in Yomitan, leaving the tab, the window or the browser is
+  // not a dismissal in a browser tab either. jsdom's hasFocus() follows its
+  // last focused element, so each blur says whether focus stayed in the page.
+  async function browserDepartureCase() {
+    const harness = await createHarness();
+    const { driver } = harness;
+    const window = harness.popup.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const shown = () => !driver.snapshot().popupHidden;
+    const editing = () => driver.snapshot().noteEditing;
+    const events = () => harness.popupEvents.splice(0);
+    const escape = () => window.document.dispatchEvent(new window.KeyboardEvent("keydown",
+      { key: "Escape", code: "Escape", bubbles: true }));
+    const blur = (focusInPage) => {
+      window.document.hasFocus = () => focusInPage;
+      window.dispatchEvent(new window.Event("blur"));
+    };
+    const result = {};
+    try {
+      await harness.settle();
+      const kept = {};
+      for (const lookupMode of ["hover", "activation", "activationSticky"]) {
+        harness.emitOptions({ popupHideDelayMs: 250, hidePopupOnCursorExit: false, lookupMode });
+        for (const draft of [false, true]) {
+          await harness.initialLookup();
+          if (draft) harness.edit(true);
+          events();
+          // Another tab, window or application takes focus and the pointer leaves the window.
+          blur(false);
+          driver.onMouseOut({ relatedTarget: null });
+          const survived = shown() && editing() === draft && !fire(250) && !driver.hideTimerPending()
+            && events().length === 0;
+          // Escape closes the Note first, then the popup.
+          harness.setCloseNext(draft);
+          escape();
+          const noteFirst = !draft || (shown() && !editing());
+          if (draft) escape();
+          kept[draft ? `${lookupMode} with a Note draft` : lookupMode] = survived && noteFirst && !shown();
+        }
+      }
+      result["leaving the tab or the window keeps a popup and its Note draft in every lookup mode until Escape"] =
+        Object.values(kept).every(Boolean) || kept;
+
+      // Focus moving into one of the page's own frames is a click outside the popup.
+      await harness.initialLookup();
+      harness.edit(true);
+      events();
+      blur(true);
+      const published = events();
+      result["a blur that moves focus into one of the page's frames still closes the popup"] =
+        (!shown() && !editing() && JSON.stringify(published) === '["hidden"]')
+        || { shown: shown(), editing: editing(), published };
+    } finally {
+      harness.close();
+    }
+    return result;
+  }
+
   // Issue #357: a held mouse button scans as a held key does. Its capture-phase
   // press claims an overlay host's window, and it cancels only the native
   // actions that would act on the same press.
@@ -20277,7 +20373,9 @@ async function contentNoteStage() {
     };
     const reset = (settings) => {
       harness.emitOptions({ popupHideDelayMs: 250, ...settings });
+      // Blur releases the scan input; leaving the tab no longer closes the popup (#432).
       harness.driver.onWindowBlur();
+      harness.driver.hide();
       while (harness.take("hd_lookup")) { /* A reset drops unanswered lookups. */ }
       harness.driver.setScanCandidate(harness.candidate);
       events();
@@ -21278,7 +21376,7 @@ async function contentNoteStage() {
       ...await selectionLanguageCase(), ...await selectionNoticeCase(), ...await personalDictionaryOffCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase(),
-      ...await overlayDepartureCase() },
+      ...await overlayDepartureCase(), ...await browserDepartureCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },

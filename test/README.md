@@ -647,6 +647,11 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   Leaving the tab or the window keeps a rendered popup and its Note draft in
+   every lookup mode, with no hide timer, until Escape closes the Note and then
+   the popup; it also keeps a selection's popup, a sticky child and a kanji
+   view whose request is in flight. A blur that moves focus into one of the
+   page's frames still closes the popup (#432).
    In overlay mode a window blur or window-exit keeps a rendered popup in every
    lookup mode, a selection drag and a held scan button without publishing
    `hachidori-popup-hidden`, while a window-exit still cancels a pending scan.
@@ -1198,7 +1203,11 @@ opt-in). A wrapped cross-inline match proves the popup sits outside the complete
 matched range rather than positioning against only the hovered glyph. A
 fixed-height scrolling chat feed proves the popup keeps its exact rectangle
 while the feed and then the page scroll the word out of view, and after the
-comment is removed, until Escape closes it (#402). The test
+comment is removed, until Escape closes it (#402). In the default Shift mode,
+switching to another tab and back keeps the popup and its Note draft with the
+same selection and keyboard focus, so typing continues, until Escape closes the
+Note and then the popup; a click into a same-origin or cross-site (`localhost`)
+iframe still closes it (#432). The test
 then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.

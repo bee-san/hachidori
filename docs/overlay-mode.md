@@ -158,10 +158,11 @@ closes a popup, ends a drag or releases a held scan button, and neither
 publishes `hachidori-popup-hidden`: a window-exit only forgets the pointer and
 cancels a scan that has not rendered, as Yomitan's does, and a blur only drops
 an activation key whose release the game will receive instead. The popup then
-closes by the usual rules: Escape, a click, scrolling its source away, a new
-lookup, Hover mode's pointer leaving the text for the page, and **Hide popup on
-cursor exit** after its delay. In a browser tab, blur and leaving the window
-still close it.
+closes by the usual rules: Escape, a click, a new lookup, Hover mode's pointer
+leaving the text for the page, and **Hide popup on cursor exit** after its
+delay. A browser tab keeps the popup through blur and leaving the window as
+well (#432), except that focus moving into one of the page's frames is a click
+outside it.
 
 ## Installing dictionaries without setup
 
