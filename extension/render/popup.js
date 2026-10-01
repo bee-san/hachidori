@@ -428,12 +428,16 @@
     return displayNames;
   }
 
-  function createTag(documentRef, text, description, kind) {
+  function createTag(documentRef, text, description, kind, category) {
     const tag = documentRef.createElement("span");
     tag.className = `gsm-hoshidicts-tag gsm-hoshidicts-tag-${kind}`;
     tag.textContent = text;
     if (description) {
       tag.title = description;
+    }
+    // Yomitan's _createTag: a definition tag's tag-bank category picks its colour.
+    if (category) {
+      tag.dataset.category = category;
     }
     return tag;
   }
@@ -3571,13 +3575,18 @@
             definition.className = "definition-item";
             definition.dataset.dictionary = dictionary;
             definition.dataset.index = String(definitionIndex);
-            const definitionTags = parseTagList(glossary.definitionTags);
+            // The engine's tag-bank tags, in Yomitan's order with their
+            // category and notes. A reply from an older sharing host has only
+            // definitionTags, whose tags look like category "default".
+            const definitionTags = Array.isArray(glossary.tags)
+              ? glossary.tags
+              : parseTagList(glossary.definitionTags).map((name) => ({ name }));
             if (definitionTags.length > 0) {
               const definitionTagRow = documentRef.createElement("div");
               definitionTagRow.className = "gsm-hoshidicts-definition-tags definition-tag-list";
               for (const tag of definitionTags) {
                 definitionTagRow.appendChild(
-                  createTag(documentRef, tag, "", "definition")
+                  createTag(documentRef, tag.name, tag.notes, "definition", tag.category)
                 );
               }
               definition.appendChild(definitionTagRow);

@@ -229,7 +229,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     conjugation: () => request.trace.map(step => escape(step.name)).join(" « ") || escape(term.rules),
     "part-of-speech": () => uniqueTokens([term.rules, ...term.glossaries.map(glossary => glossary.termTags)])
       .map(tag => escape(Object.hasOwn(PARTS_OF_SPEECH, tag) ? PARTS_OF_SPEECH[tag] : tag)).join(", ") || "Unknown",
-    tags: () => uniqueTokens(term.glossaries.flatMap(glossary => [glossary.definitionTags, glossary.termTags]))
+    tags: () => uniqueTokens(term.glossaries.flatMap(glossary =>
+      [...globalThis.HDGlossary.definitionTagList(glossary).map(tag => tag.name), glossary.termTags]))
       .map(tag => `<span class="tag" data-details="${escape(tag)}">${escape(tag)}</span>`).join(", "),
     "phonetic-transcriptions": () => {
       const items = term.pitches.flatMap(group => group.transcriptions).filter(Boolean).map(value =>
