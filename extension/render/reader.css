@@ -1141,8 +1141,6 @@ html[data-hoshidicts-theme="girlypop"],
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 14px;
   background: var(--hoshidicts-popup-background);
-  -webkit-backdrop-filter: blur(16px) saturate(1.08);
-  backdrop-filter: blur(16px) saturate(1.08);
   -webkit-backdrop-filter: var(
     --gsm-hoshidicts-popup-backdrop-filter,
     blur(16px) saturate(1.08)
