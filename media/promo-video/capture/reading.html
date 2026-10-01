@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- Original sample prose for the Hachidori promo video. SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>雨の日の約束 · Hachidori reading sample</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f7f3ec; color: #2b2a33;
+    font-family: "Noto Sans CJK JP", "Noto Sans JP", system-ui, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 56px; padding: 0 56px; background: #fffdf9; border-bottom: 1px solid #e6ded2;
+    font-size: 15px; color: #6d6577;
+  }
+  header .brand { font-weight: 700; letter-spacing: .16em; color: #463c5c; }
+  header nav span { margin-left: 28px; }
+  main { width: 1000px; margin: 0 auto; padding: 30px 0 420px; }
+  .eyebrow { margin: 0 0 6px; font-size: 14px; letter-spacing: .2em; color: #8a7f96; }
+  h1 {
+    margin: 0; font-family: "Noto Serif CJK JP", "Noto Serif JP", serif;
+    font-size: 40px; font-weight: 700; letter-spacing: .1em; color: #2b2340;
+  }
+  .meta { margin: 8px 0 18px; font-size: 14px; color: #8a7f96; }
+  .story {
+    font-family: "Noto Serif CJK JP", "Noto Serif JP", serif;
+    font-size: 28px; line-height: 2.05; letter-spacing: .035em;
+  }
+  .story p { margin: 0; text-indent: 1em; }
+  .comments { margin-top: 48px; padding-top: 24px; border-top: 1px solid #e6ded2; }
+  .comments h2 { margin: 0 0 16px; font-size: 19px; color: #463c5c; }
+  .comment-box { display: flex; gap: 16px; align-items: flex-start; }
+  .avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #f6a6c8, #9b87f5); }
+  textarea {
+    flex: 1; height: 120px; resize: none; padding: 14px 18px;
+    border: 1px solid #d8cfc2; border-radius: 12px; background: #fffdf9; color: #2b2a33;
+    font: 26px/1.6 "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+  }
+  .post { margin: 14px 0 0 68px; padding: 10px 22px; border: 0; border-radius: 999px;
+    background: #463c5c; color: #fff; font: 600 16px "Noto Sans CJK JP", sans-serif; }
+</style>
+<header>
+  <span class="brand" lang="en">YOMIMONO</span>
+  <nav><span>小説</span><span>エッセイ</span><span>ランキング</span></nav>
+</header>
+<main>
+  <p class="eyebrow">短編小説 · 第一話</p>
+  <h1>雨の日の約束</h1>
+  <p class="meta">文・ハチドリ編集部 · 読了 2 分</p>
+  <div class="story">
+    <p id="line-rain">朝から<span id="w-rain">雨</span>が降っていた。窓の外では、<span id="w-ajisai">紫陽花</span>が静かに揺れている。</p>
+    <p id="line-eat">「本当は、公園でお弁当を<span id="w-eat">食べたかった</span>な」と<span id="w-name">千景</span>が言った。</p>
+    <p id="line-usual">私は<span id="w-usual">相変わらず</span>傘を忘れて、駅まで走るはめになった。</p>
+    <p id="line-promise">それでも、二人で交わした<span id="w-promise">約束</span>は、まだ諦めていない。</p>
+    <p id="line-sunday">次の晴れた日曜日に、もう一度出かけよう。</p>
+  </div>
+  <section class="comments">
+    <h2>コメント</h2>
+    <div class="comment-box">
+      <span class="avatar" aria-hidden="true"></span>
+      <textarea id="comment" aria-label="コメント" spellcheck="false">続きを読むのが楽しみです！</textarea>
+    </div>
+    <button class="post" type="button">コメントする</button>
+  </section>
+</main>
+</html>
