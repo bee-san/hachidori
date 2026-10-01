@@ -98,7 +98,8 @@ sentence of a three-sentence text node and a collapsed line wrap through the
 real content script, and checks that the engine reply refines the sentence
 around the whole matched word. The Chrome suite mines a texthooker line through
 the real popup and the fake AnkiConnect and requires that one line as the note's
-sentence.
+sentence, with the page's full address, query and fragment included, as its
+`{url-plain}`.
 
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,

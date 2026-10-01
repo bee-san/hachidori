@@ -119,6 +119,8 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     configKey: "host-config",
     templateId: "sentence",
     dictionaryIds: { A: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    // The reading page's address is note data, unlike an Anki endpoint.
+    pageUrl: "https://example.com/novel/56/",
     url: "https://client.invalid/anki",
     apiKey: "client-secret",
     anki: { url: "https://client.invalid/anki", apiKey: "client-secret" },
@@ -149,6 +151,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
       generation: 3,
       configKey: "host-config",
       dictionaryIds: request.dictionaryIds,
+      pageUrl: "https://example.com/novel/56/",
       templateId: "sentence",
     },
     clientMedia: media,

@@ -307,7 +307,7 @@ const PLANNED = [
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
-  "a note mined from a texthooker line carries that one line as its sentence and highlights only the word",
+  "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -5956,10 +5956,16 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
 async function checkSentenceMining({ tab, popup, configure, calls, notes, settled }) {
   const template = value => ({ value, overwriteMode: "overwrite" });
   const line = "三行目で本を読む。";
+  const original = tab.url();
   try {
-    await configure(false, { fieldTemplates: { Front: template("{expression} sentence"), Back: template("{sentence}"), Audio: template("") } });
+    await configure(false, { fieldTemplates: { Front: template("{expression} sentence"), Back: template("{sentence}<br>{url-plain}"), Audio: template("") } });
     await tab.keyboard.press("Escape");
     await popup.waitForHidden();
+    // {url-plain} is the page's whole address, query and fragment included (#435).
+    const address = await tab.evaluate(() => {
+      history.replaceState(null, "", "?chapter=56&view=1#scene");
+      return location.href;
+    });
     const point = await tab.evaluate(line => {
       const main = document.createElement("main");
       main.id = "hooked-lines";
@@ -5996,17 +6002,21 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
     await tab.keyboard.press("Enter");
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
     const note = [...notes.values()].at(-1);
-    check("a note mined from a texthooker line carries that one line as its sentence and highlights only the word",
+    check("a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
       shown !== null && highlight.text === "読む" && highlight.inLine
         && ready.controls[0].action === "add" && focused
         && saved.controls[0].state === "success"
         && calls.filter(call => call.action === "addNote").length === addsBefore + 1
         && note.Front === "読む sentence"
-        && note.Back === "三行目で本を<b>読む</b>。",
-      JSON.stringify({ shown: shown?.plain, highlight, ready: ready.controls[0], focused, saved: saved.controls[0], note }));
+        && address.endsWith("/?chapter=56&view=1#scene")
+        && note.Back === `三行目で本を<b>読む</b>。<br>${address.replaceAll("&", "&amp;")}`,
+      JSON.stringify({ shown: shown?.plain, highlight, ready: ready.controls[0], focused, saved: saved.controls[0], address, note }));
   } finally {
     await tab.keyboard.press("Escape");
-    await tab.evaluate(() => document.getElementById("hooked-lines")?.remove());
+    await tab.evaluate(original => {
+      document.getElementById("hooked-lines")?.remove();
+      history.replaceState(null, "", original);
+    }, original);
   }
 }
 

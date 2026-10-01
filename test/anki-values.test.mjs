@@ -21,6 +21,17 @@ test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16
   assert.equal(await render(request(), "{sentence-furigana}|{sentence-furigana-plain}"), "🍵 <b>食べます</b>。|🍵 <b>食べます</b>。");
 });
 
+test("{url} links and {url-plain} writes the escaped page address; without one both are empty", async () => {
+  const pageUrl = `https://example.com/novel/56/?q=<a>&b="c"#'{scene}'`;
+  const escaped = "https://example.com/novel/56/?q=&lt;a&gt;&amp;b=&quot;c&quot;#&#x27;&#123;scene&#125;&#x27;";
+  assert.equal(await render(request({ pageUrl }), "{url}|{URL-plain}"), `<a href="${escaped}">${escaped}</a>|${escaped}`);
+  // The relay API and older linked browsers send no address. An empty marker
+  // drops its own break rather than writing an empty link.
+  for (const patch of [{}, { pageUrl: "" }, { pageUrl: null }, { pageUrl: { href: "https://example.com/" } }]) {
+    assert.equal(await render(request(patch), "{document-title}<br>{url}<br>{url-plain}"), "A &amp; B", JSON.stringify(patch));
+  }
+});
+
 test("note field rendering preserves literal whitespace, repeated markers and the source template", async () => {
   const value = " \tstart {expression}{expression} + {reading}\nend  ";
   const mapping = templates(value);

@@ -88,7 +88,7 @@ const CHECKS = [
   "the second browser's startup page offers the shared Hachidori, and one click links it and completes setup",
   "an options edit made on the linked browser is committed by the host and pushed back",
   "a personal dictionary save made on the linked browser lands in the host's source and answers lookups",
-  "the linked browser discovers and mines through the host, stale results fail, and local Anki stays unused",
+  "the linked browser discovers and mines through the host with its page address, stale results fail, and local Anki stays unused",
   "closing the host fails linked lookups, and relaunching it reconnects the linked browser by itself",
   "unlinking restores the linked browser's own empty state",
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",
@@ -191,7 +191,7 @@ function configureAnki(page, url, apiKey) {
       captureScreenshot: true,
       fieldTemplates: {
         Front: template("{expression}"),
-        Back: template("{sentence}"),
+        Back: template("{sentence}<br>{url-plain}"),
         Picture: template("{screenshot}"),
       },
     };
@@ -862,6 +862,7 @@ try {
     popupSelectionText: "",
     searchQuery: "食べたかった",
     documentTitle: "Linked browser mining",
+    pageUrl: "https://example.com/novel/56/?view=1#scene",
     dictionaryAliases: {},
     frequencyDictionaries: [],
     configKey: ankiStatus.configKey,
@@ -933,7 +934,8 @@ try {
       && preflight?.ok === true && preflight.state === "addable" && preflight.canAdd === true && preflight.screenshot === true
       && captured?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(captured.filename ?? "")
       && submitted?.ok === true && submitted.state === "added" && Number.isInteger(submitted.noteId)
-      && note?.fields?.Front === request.term.expression && note.fields.Back.includes("食べたかった")
+      && note?.fields?.Front === request.term.expression
+      && note.fields.Back === `<b>食べたかった</b>。<br>${request.pageUrl}`
       && screenshotFilename === captured.filename && typeof screenshotData === "string"
       && Buffer.from(screenshotData, "base64").subarray(0, 3).toString("hex") === "ffd8ff"
       && screenshotProof?.width === 640 && screenshotProof.height === 480

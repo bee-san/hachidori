@@ -210,6 +210,10 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     request.sentence.slice(request.matchOffset + request.matched.length)].map(escape);
   const sentence = () => { const [prefix, body, suffix] = parts(); return `${prefix}<b>${body}</b>${suffix}`; };
   const firstDictionary = () => term.glossaries[0]?.dictionary || "";
+  // The relay API and older linked browsers send no address. Like Yomitan's
+  // anki-note-data-creator.js, a missing or non-string one is blank.
+  const pageUrl = () => typeof request.pageUrl === "string" ? escape(request.pageUrl) : "";
+  const pageLink = () => { const address = pageUrl(); return address && `<a href="${address}">${address}</a>`; };
   const table = {
     expression: () => escape(term.expression), reading: () => escape(term.reading),
     furigana: () => expressionFurigana(term, false), "furigana-plain": () => expressionFurigana(term, true),
@@ -231,7 +235,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
       return items.length ? `<ul>${items.join("")}</ul>` : "";
     },
     "popup-selection-text": () => escape(request.popupSelectionText), "search-query": () => escape(request.searchQuery),
-    "document-title": () => escape(request.documentTitle), sentence,
+    "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence,
     // GSM falls back to highlighted text when its optional native tokenizer is
     // unavailable. There is no MeCab/native-helper dependency in the extension.
     "sentence-furigana": sentence, "sentence-furigana-plain": sentence,
