@@ -29,6 +29,12 @@
 
 Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and opinionated.
 
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.mp4"><img src="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.gif" width="720" alt="One-minute tour of Hachidori: importing dictionaries in seconds, hover lookups with conjugation, pitch accent and frequency, lookups in text boxes, one-click Anki cards, the personal dictionary, lookup blur and popup themes"></a>
+  <br>
+  <a href="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.mp4">▶ Watch the one-minute tour (MP4)</a>
+</p>
+
 ## Install in 15 seconds
 
 Click <a href="https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe">here to install from Chrome store.</a> (note: this will always lag behind the repo and may have bugs fixed in the repo)
