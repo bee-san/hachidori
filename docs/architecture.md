@@ -664,14 +664,9 @@ then a separate press closes the popup. No page key is captured for activation.
 Key release, target/window departure, outside click, Escape, blur and scroll
 cancel delayed or unfinished pointer work immediately; the hide delay only
 retains an already-rendered popup for transfer. In `activationSticky` a rendered
-popup ignores key release, pointer movement without the key, an empty scan and
-window departure; outside click, Escape, blur, scrolling its source away, a
-failed lookup or a new lookup still close it. In [overlay
-mode](overlay-mode.md) the host's click-through and focus changes produce that
-blur and window departure, so there a blur dismisses nothing and keeps a drag
-or held scan button, and a window departure only forgets the pointer and cancels
-unfinished work in every mode (#403). Its rendered children likewise
-outlive pointer movement through the chain (see
+popup ignores key release, pointer movement without the key and an empty scan;
+outside click, Escape, a failed lookup or a new lookup still close it. Its
+rendered children likewise outlive pointer movement through the chain (see
 [Definition popup chains](#definition-popup-chains)). Same-candidate hover,
 popup entry, keyboard focus and Note editing preserve the current view.
 Dispatching a different
@@ -681,6 +676,20 @@ or resume expired glossary/media callbacks. Interaction-only settings changes do
 not invalidate current rendered resources; result-affecting settings still do.
 Hidden retirement clears the DOM and owners immediately without a redundant
 scroll reset; every visible term, kanji or notice render still resets scrolling.
+
+As in Yomitan, leaving the tab, the window or the browser closes nothing in any
+lookup mode (#432). A window departure only forgets the pointer, so the next
+move applies the mode's usual rules, and a blur only releases the activation
+input, ends a selection drag or a resize and cancels unfinished work. The popup
+chain, its scroll positions and tabs, and a Note draft with focus in it wait
+for the reader's return. A blur that leaves `document.hasFocus()` true moved
+focus into one of the page's own frames, same-origin or cross-site, which is a
+click outside the popup and closes it. A popup inside a frame cannot tell a
+click on its parent page from leaving the tab, so, as in Yomitan, it stays
+until it is closed or replaced from within that frame. In [overlay
+mode](overlay-mode.md) the host's click-through and focus changes produce that
+blur and window departure, so there a blur closes nothing either and keeps a
+drag or held scan button (#403).
 
 **Hide popup on cursor exit** ports Yomitan's option of that name, off by
 default, with its own 0–5,000 ms delay (160 ms by default). It works in every

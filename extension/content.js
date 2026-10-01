@@ -165,7 +165,6 @@
       activeTermRender: null, currentViewRequest: null, noteEditing: false,
       pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
       deferredRefresh: null, lookupToken: 0, pendingHover: null, pendingLink: null,
-      pendingPopupInteraction: null,
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
@@ -2840,8 +2839,9 @@
       }
       // Leaving the chain from a corridor between panes fires no mouseleave.
       scheduleCursorExitHide();
+      // No position means the pointer has since left the window or the reader
+      // the tab, and neither dismisses the chain (#432).
       if (lastPointer) scanPointer(lastPointer);
-      else scheduleHide();
     }, 80);
   }
 
@@ -3381,10 +3381,6 @@
     const { candidate, capability, character } = request;
     const group = capability?.kind === "group";
     const token = (level.lookupToken += 1);
-    level.pendingPopupInteraction = token;
-    const finishInteraction = () => {
-      if (level.pendingPopupInteraction === token) level.pendingPopupInteraction = null;
-    };
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
     // Every selected source is asked at once. A term-only selection defers the
@@ -3397,11 +3393,9 @@
         ...request.termPayloads.map((payload) => sendRequest("hd_lookup_dictionary", payload)),
       ]);
     } catch (error) {
-      finishInteraction();
       return handleLookupFailure(token, error, level, request, true);
     }
     if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
-      finishInteraction();
       return false;
     }
     for (const each of [reply, ...termReplies]) if (each) noteGeneration(each.generation, level);
@@ -3412,7 +3406,6 @@
       results = projectResultsToDictionary(Array.isArray(termReplies[0].results) ? termReplies[0].results : [], capability.title);
     }
     if (results.length > 0) {
-      finishInteraction();
       return renderTerms(
         results,
         candidate,
@@ -3430,11 +3423,9 @@
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
-        finishInteraction();
         return handleLookupFailure(token, error, level, request, true);
       }
       if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
-        finishInteraction();
         return false;
       }
       noteGeneration(reply.generation, level);
@@ -3442,7 +3433,6 @@
     const kanji = reply.kanji;
     const validEntries = nativeKanjiEntries(reply);
     if (!kanji || validEntries.length === 0) {
-      finishInteraction();
       return handleLookupFailure(token, new Error("kanji lookup returned no usable result"), level, request, true);
     }
     const selectedEntries = capability?.kind === "kanji"
@@ -3470,8 +3460,6 @@
     } catch (error) {
       console.warn("hachidori: could not render kanji", error);
       return handleLookupFailure(token, error, level, request, true);
-    } finally {
-      finishInteraction();
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
@@ -4316,13 +4304,11 @@
     if (!disposed && event.relatedTarget === null) {
       lastPointer = null;
       cancelCandidateScan();
-      // An overlay host reports the pointer leaving the window whenever it turns
-      // click-through on as the pointer leaves OCR text (#403). As in Yomitan's
-      // TextScanner, that only forgets the pointer; the popup follows the
-      // ordinary hover and cursor-exit rules at the next forwarded move.
-      if (overlayMode) return;
-      pointerInPopup = false;
-      schedulePointerHide();
+      // As in Yomitan's TextScanner, leaving the window only forgets the
+      // pointer, whether on the way to the tab strip or another window (#432)
+      // or as an overlay host turns click-through on past OCR text (#403). The
+      // popup follows the ordinary hover and cursor-exit rules at the next move.
+      if (!overlayMode) pointerInPopup = false;
     }
   }
 
@@ -4345,13 +4331,12 @@
       setSelectionDrag(false);
       lastPointer = null;
       pointerInPopup = false;
-      const interaction = levels.find((level) => !level.popup?.hidden
-        && level.pendingPopupInteraction === level.lookupToken);
-      if (interaction) {
-        interaction.pendingPopupInteraction = null;
-        return;
-      }
-      hide();
+      // Focus that moved into one of this page's frames is a click outside the
+      // popup. Leaving the tab, the window or the browser is not: Yomitan has
+      // no blur listener, so the popup, its children and a Note draft wait for
+      // the reader's return (#432). Only unfinished pointer work is cancelled.
+      if (document.hasFocus()) hide();
+      else cancelCandidateScan();
     }
   }
 
