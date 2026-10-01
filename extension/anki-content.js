@@ -254,18 +254,22 @@
       }
       return { configKeys, changed: [] };
     }
+    // One request for every record of this Template that still needs its
+    // readiness, so the worker shares one duplicate lookup and one Anki add
+    // check between them. A reply applies only to a record still bound here.
     async function checkRecords(records, owns) {
-      for (const record of records) {
-        if (!owns()) return;
-        if (!needsCheck(record)) continue;
-        record.needsCheck = false;
-        try {
-          const result = await send("hd_anki_preflight", { request: payload(record) });
-          if (owns() && boundHere(record)) decision(record, result);
-        } catch (error) {
-          if (owns() && boundHere(record)) decision(record, { state: "error", canAdd: false, error: error.message });
-        }
+      const pending = records.filter(needsCheck);
+      if (!owns() || !pending.length) return;
+      for (const record of pending) record.needsCheck = false;
+      let replies;
+      try {
+        ({ replies } = await send("hd_anki_preflight_batch", { requests: pending.map(payload) }));
+      } catch (error) {
+        replies = pending.map(() => ({ state: "error", canAdd: false, error: error.message }));
       }
+      pending.forEach((record, index) => {
+        if (owns() && boundHere(record)) decision(record, replies[index]);
+      });
     }
     function recordsByTemplate(records) {
       const byTemplate = new Map();

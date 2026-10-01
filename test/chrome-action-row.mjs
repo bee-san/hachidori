@@ -21,9 +21,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       popup.className = "gsm-hoshidicts-popup";
       popup.style.cssText = "left:20px;top:60px";
       root.append(style, popup);
-      const anki = HDAnki.createAnkiController({ onChange() {}, async send(type) {
+      const anki = HDAnki.createAnkiController({ onChange() {}, async send(type, fields) {
         if (type === "hd_anki_status") return { available: true, configKey: "row" };
-        if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+        if (type === "hd_anki_preflight_batch") return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
         return {};
       } });
       anki.update({ anki: { model: "row" } });
