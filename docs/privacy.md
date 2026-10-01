@@ -9,7 +9,8 @@ or support, email [github@skerritt.blog](mailto:github@skerritt.blog).
 ## Reading and local storage
 
 Hachidori reads text near your pointer or selection to show dictionary results.
-Surrounding text and the page title can be used in a note you choose to create.
+Surrounding text, the page title and the page address can be used in a note you
+choose to create.
 Dictionary lookup runs inside your browser. There is no Hachidori analytics,
 advertising or remote lookup service.
 
@@ -86,7 +87,7 @@ returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
 host owns View readiness, duplicate and maturity checks. Explicit mining sends
 the content selected by the chosen Template's field mappings, such as a word,
-definition, sentence, page title, image or audio, and creates or updates a note
+definition, sentence, page title, page address, image or audio, and creates or updates a note
 according to that Template. Link-type Custom buttons open their configured
 HTTP(S) destination with the selected word, reading or sentence substituted
 when requested.
