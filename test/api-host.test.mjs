@@ -98,6 +98,14 @@ test("term entries project the engine result onto Yomitan's TermDictionaryEntry,
   await assert.rejects(answer({ type: "hd_api_term_entries", terms: "食べる" }), /terms must be an array/u);
 });
 
+test("definition tags keep Jitendex's U+00A0 inside a tag name, as Yomitan's _splitField does (#426)", async () => {
+  const term = { ...tabetakatta.term, glossaries: [{ ...tabetakatta.term.glossaries[0],
+    definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form" }] };
+  const { answer } = host({ lookups: { 明白: [{ ...tabetakatta, matched: "明白", term }] } });
+  const { results: [{ dictionaryEntries: [entry] }] } = await answer({ type: "hd_api_term_entries", terms: ["明白"] });
+  assert.deepEqual(entry.definitions[0].tags.map(tag => tag.name), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]);
+});
+
 test("kanji entries look each character up and answer Yomitan's KanjiDictionaryEntry shape", async () => {
   const { answer } = host({ kanji: { "食": shoku } });
   const { results } = await answer({ type: "hd_api_kanji_entries", characters: ["食", "食x"] });

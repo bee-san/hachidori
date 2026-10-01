@@ -92,7 +92,8 @@ test("each Anki glossary row is its own li[data-dictionary] with no nested list,
   request.term.glossaries = [
     { dictionary: "A", definitionTags: "", termTags: "", glossary: '["main entry"]' },
     { dictionary: "A", definitionTags: "子", termTags: "", glossary: '["compound list"]' },
-    { dictionary: "B", definitionTags: "", termTags: "", glossary: '["other entry"]' },
+    // Jitendex writes the spaces inside a tag name as U+00A0 (#426).
+    { dictionary: "B", definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form", termTags: "", glossary: '["other entry"]' },
   ];
   const render = createAnkiDefinitionRenderer(document, request);
   const holder = document.createElement("div");
@@ -103,8 +104,9 @@ test("each Anki glossary row is its own li[data-dictionary] with no nested list,
   const all = await items({});
   assert.deepEqual(all.map(item => item.dataset.dictionary), ["A", "A", "B"]);
   // Note types page by li[data-dictionary] and pad any other list, so the entry sits directly in its item.
+  // Yomitan's glossary-single writes each tag name, then the dictionary, separated by commas.
   assert.deepEqual(all.map(item => item.querySelector(":scope > div > .yomitan-glossary-meta")?.textContent),
-    ["(Alias <A>)", "(子, Alias <A>)", "(B)"]);
+    ["(Alias <A>)", "(子, Alias <A>)", "(rarely\u00a0used\u00a0form, ateji\u00a0form, B)"]);
   assert.deepEqual((await items({ dictionary: "A" })).map(item => item.dataset.dictionary), ["A", "A"]);
 });
 

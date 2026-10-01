@@ -200,16 +200,22 @@ test("each term-bank row is a definition-item that carries its dictionary and ta
     rules: "", frequencies: [], pitches: [], glossaries: [
       { dictionary: "D", glossary: JSON.stringify(["to fix"]), definitionTags: "v5s vt", termTags: "" },
       { dictionary: "D", glossary: JSON.stringify(["to cure", "to heal"]), definitionTags: "", termTags: "" },
+      // Jitendex writes the spaces inside a tag name as U+00A0 (#426).
+      { dictionary: "D", glossary: JSON.stringify(["openly"]), definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form",
+        termTags: "" },
     ] } }], { anchor: source, query: "直す", sentence: "直す", sourceElements: [source], matchOffset: 0 },
   HDReaderOptions.normaliseOptions({}));
   const list = popup.querySelector(".gsm-hoshidicts-glossary-card > ol.definition-list");
-  assert.equal(list.dataset.count, "2");
+  assert.equal(list.dataset.count, "3");
   const items = [...list.children];
   assert.deepEqual(items.map(item => [item.className, item.dataset.dictionary, item.dataset.index]),
-    [["definition-item", "D", "0"], ["definition-item", "D", "1"]]);
-  assert.deepEqual([...items[0].querySelectorAll(".definition-tag-list > *")].map(tag => tag.textContent), ["v5s", "vt"]);
+    [["definition-item", "D", "0"], ["definition-item", "D", "1"], ["definition-item", "D", "2"]]);
+  const tagNames = item => [...item.querySelectorAll(".definition-tag-list > *")].map(tag => tag.textContent);
+  assert.deepEqual(tagNames(items[0]), ["v5s", "vt"]);
   assert.equal(items[1].querySelector(".definition-tag-list"), null);
-  assert.deepEqual(items.map(item => item.querySelector(".gloss-list").dataset.count), ["1", "2"]);
+  // DictionaryDatabase._splitField splits on U+0020 only.
+  assert.deepEqual(tagNames(items[2]), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]);
+  assert.deepEqual(items.map(item => item.querySelector(".gloss-list").dataset.count), ["1", "2", "1"]);
   assert.equal(popup.querySelector(".gsm-hoshidicts-expression").lang, "ja");
 });
 
