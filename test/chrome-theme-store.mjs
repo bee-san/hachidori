@@ -187,8 +187,8 @@ try {
   assert.equal(await settings.evaluate(() => document.activeElement.id), "theme-store-previous", "focus moves off the disabled Next themes");
   // Stored options apart from the theme, and Design's shown legends ("# …") and control labels.
   const storedOptions = () => settings.evaluate(async () => {
-    const { options: { popupTheme, revision, ...rest } } = await chrome.storage.local.get("options");
-    return rest;
+    const { options } = await chrome.storage.local.get("options");
+    return Object.fromEntries(Object.entries(options).filter(([key]) => key !== "popupTheme" && key !== "revision"));
   });
   const designShown = () => settings.$$eval("#design .design-controls :is(legend, label.field, label.lookup-enable)", nodes => nodes
     .filter(node => node.checkVisibility() && !node.closest("#custom-button-form"))

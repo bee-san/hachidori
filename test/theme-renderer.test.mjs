@@ -431,7 +431,8 @@ async function designSettingsUsed(slug) {
       used.push(key);
       assert.equal(await snapshot(needs, flipped), after, `${slug} applies ${key} to an open popup without a new lookup`);
     }
-    reads.columns = reads.hoverPreview = 0;
+    reads.columns = 0;
+    reads.hoverPreview = 0;
     const { view, popup } = await render({});
     view.scheduleMasonry();
     view.setToolbarPosition("bottom");

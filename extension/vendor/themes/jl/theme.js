@@ -57,6 +57,9 @@ export function createView(options, enhanced = false) {
     getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll }) : null;
   let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], markers = [], tab = null, onTabSelected = null;
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
+  // Design's pitch switch and dictionary, as the markers were last painted.
+  let paintedPitch = "";
+  const pitchOptions = context => JSON.stringify([context.showPitchAccentFurigana !== false, context.pitchAccentFuriganaDictionary ?? ""]);
   let customButtons = options.customButtons || [];
   const images = new Set();
   let pendingPresentation = null;
@@ -102,9 +105,13 @@ export function createView(options, enhanced = false) {
       element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
     }
-    // Markers hold no controls, so Design's pitch switch and dictionary repaint
-    // them in place without moving focus or touching an open Note draft.
-    for (const marker of markers) paintPitch(marker, context);
+    // Markers hold no controls, so a pitch option change repaints them in place
+    // without moving focus or touching an open Note draft.
+    const pitch = pitchOptions(context);
+    if (pitch !== paintedPitch) {
+      paintedPitch = pitch;
+      for (const marker of markers) paintPitch(marker, context);
+    }
     if (enhanced) {
       for (const image of images) image.updatePresentation(context);
       if (groupContext) {
@@ -210,9 +217,11 @@ export function createView(options, enhanced = false) {
     element.textContent = morae ? "" : text;
     if (morae) appendMorae(element, morae);
   }
-  // The marked text, painted by updateDictionaryPresentation.
-  function pitchMarker(element, text, term) {
-    markers.push({ element, text, pitches: term.pitches ?? [] });
+  // Painted while its block is still detached; updateDictionaryPresentation repaints it.
+  function pitchMarker(element, text, term, context) {
+    const marker = { element, text, pitches: term.pitches ?? [] };
+    markers.push(marker);
+    paintPitch(marker, context);
     return element;
   }
   function spelling(result, candidate) {
@@ -225,15 +234,15 @@ export function createView(options, enhanced = false) {
     return element;
   }
   // JL's order: spelling, reading, audio, deconjugation, frequencies, dictionary, Anki.
-  function topLine(result, dictionary, candidate) {
+  function topLine(result, dictionary, candidate, context) {
     const term = result.term;
     const line = node("div", "jl-top");
     const reading = term.reading && term.reading !== term.expression ? term.reading : "";
     const expression = spelling(result, candidate);
     line.append(expression);
-    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term));
+    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
     // Without a reading JL marks the spelling itself, which only works for kana.
-    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term);
+    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);
     const audio = components.createAudioControl(document, term.expression);
     // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.
     if (!enhanced) line.append(audio.element);
@@ -286,7 +295,7 @@ export function createView(options, enhanced = false) {
     entry.dataset.dictionary = dictionary;
     const index = entries.length;
     entry.addEventListener("click", () => { selected = index; });
-    const { line, audio, actions } = topLine(result, dictionary, candidate);
+    const { line, audio, actions } = topLine(result, dictionary, candidate, context);
     const definitions = node("div", "gsm-hoshidicts-definitions");
     const feedback = node("div", "gsm-hoshidicts-anki-feedback");
     feedback.hidden = true;
@@ -371,6 +380,7 @@ export function createView(options, enhanced = false) {
 
   function renderResults(results, candidate, context = {}) {
     clear();
+    paintedPitch = pitchOptions(context);
     onTabSelected = context.onDictionaryTabSelected;
     const found = [];
     for (const result of results) {
