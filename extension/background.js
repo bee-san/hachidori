@@ -2003,7 +2003,7 @@ async function captureSenderViewport(sender) {
 // must never hold the dictionary storage queue while the engine calls into it.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-anki") return false;
-  handleAnkiRequest(message, sender).then(sendResponse);
+  handleAnkiRequest(message, sender).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 
@@ -2348,7 +2348,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== WORKER_TARGET) {
     return false;
   }
-  handleWorkerRequest(message, sender).then(sendResponse);
+  handleWorkerRequest(message, sender).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 
@@ -2422,7 +2422,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== UPDATE_TARGET) {
     return false;
   }
-  handleUpdatesRequest(message).then(sendResponse);
+  handleUpdatesRequest(message).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 

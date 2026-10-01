@@ -4660,7 +4660,9 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import \{ readDictionaryArchiveIdentity \} from "\.\/dictionary-import-archive\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "")
+    // The module awaits its entry point; a classic script has no top-level await.
+    .replace(/^await start\(\);$/mu, "start();");
   window.TextEncoder ??= TextEncoder;
   for (const dialog of window.document.querySelectorAll("dialog")) {
     dialog.showModal ??= function showModal() {
