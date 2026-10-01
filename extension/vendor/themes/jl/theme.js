@@ -55,7 +55,7 @@ export function createView(options, enhanced = false) {
   const preview = enhanced ? components.createImagePreview({ document, window: options.window, popup,
     getCoordinateScale: () => components.popupCoordinateScale(options.getPageZoom?.() ?? 1, options.getPopupScalePercent?.() ?? 100),
     getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll }) : null;
-  let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], tab = null, onTabSelected = null;
+  let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], markers = [], tab = null, onTabSelected = null;
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
   let customButtons = options.customButtons || [];
   const images = new Set();
@@ -67,7 +67,7 @@ export function createView(options, enhanced = false) {
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
-    entries = []; bindings = []; labels = []; frequencies = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
+    entries = []; bindings = []; labels = []; frequencies = []; markers = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
     highlighter?.clear();
     preview?.hideImagePreview();
   }
@@ -102,6 +102,9 @@ export function createView(options, enhanced = false) {
       element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
     }
+    // Markers hold no controls, so Design's pitch switch and dictionary repaint
+    // them in place without moving focus or touching an open Note draft.
+    for (const marker of markers) paintPitch(marker, context);
     if (enhanced) {
       for (const image of images) image.updatePresentation(context);
       if (groupContext) {
@@ -201,10 +204,20 @@ export function createView(options, enhanced = false) {
       parent.append(span);
     }
   }
-  function spelling(result, candidate, morae) {
-    const element = node("span", "gsm-hoshidicts-expression jl-spelling");
+  function paintPitch({ element, text, pitches }, context) {
+    const morae = context.showPitchAccentFurigana === false ? null
+      : pitchMorae(text, pitches, context.pitchAccentFuriganaDictionary);
+    element.textContent = morae ? "" : text;
     if (morae) appendMorae(element, morae);
-    else for (const character of result.term.expression) {
+  }
+  // The marked text, painted by updateDictionaryPresentation.
+  function pitchMarker(element, text, term) {
+    markers.push({ element, text, pitches: term.pitches ?? [] });
+    return element;
+  }
+  function spelling(result, candidate) {
+    const element = node("span", "gsm-hoshidicts-expression jl-spelling");
+    for (const character of result.term.expression) {
       element.append(HAN.test(character)
         ? button("gsm-hoshidicts-kanji-link", character, event => options.onKanjiClick?.(character, result, candidate, event.currentTarget))
         : document.createTextNode(character));
@@ -212,20 +225,15 @@ export function createView(options, enhanced = false) {
     return element;
   }
   // JL's order: spelling, reading, audio, deconjugation, frequencies, dictionary, Anki.
-  function topLine(result, dictionary, candidate, context) {
+  function topLine(result, dictionary, candidate) {
     const term = result.term;
     const line = node("div", "jl-top");
     const reading = term.reading && term.reading !== term.expression ? term.reading : "";
+    const expression = spelling(result, candidate);
+    line.append(expression);
+    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term));
     // Without a reading JL marks the spelling itself, which only works for kana.
-    const pitchText = reading || (HAN.test(term.expression) ? "" : term.expression);
-    const morae = pitchText && context.showPitchAccentFurigana !== false
-      ? pitchMorae(pitchText, term.pitches ?? [], context.pitchAccentFuriganaDictionary) : null;
-    line.append(spelling(result, candidate, reading ? null : morae));
-    if (reading) {
-      const element = node("span", "jl-reading", morae ? null : reading);
-      if (morae) appendMorae(element, morae);
-      line.append(element);
-    }
+    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term);
     const audio = components.createAudioControl(document, term.expression);
     // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.
     if (!enhanced) line.append(audio.element);
@@ -278,7 +286,7 @@ export function createView(options, enhanced = false) {
     entry.dataset.dictionary = dictionary;
     const index = entries.length;
     entry.addEventListener("click", () => { selected = index; });
-    const { line, audio, actions } = topLine(result, dictionary, candidate, context);
+    const { line, audio, actions } = topLine(result, dictionary, candidate);
     const definitions = node("div", "gsm-hoshidicts-definitions");
     const feedback = node("div", "gsm-hoshidicts-anki-feedback");
     feedback.hidden = true;
