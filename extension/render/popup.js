@@ -620,10 +620,8 @@
           frequencies.push({ display, frequency });
         }
       }
-      frequencies.sort((left, right) =>
-        Number(isKanaFrequency(right.frequency))
-        - Number(isKanaFrequency(left.frequency))
-      );
+      // Dictionary order, as Yomitan shows it: the first value is the one
+      // this dictionary contributes to the average.
       const key = JSON.stringify([
         group.dictionary,
         frequencies.map(({ display, frequency }) => [frequency.value, display]),
