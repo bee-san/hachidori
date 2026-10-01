@@ -620,8 +620,8 @@
           frequencies.push({ display, frequency });
         }
       }
-      // Dictionary order, as Yomitan shows it: the first value is the one
-      // this dictionary contributes to the average.
+      // No reordering: Yomitan lists values in dictionary order, and the
+      // average takes each dictionary's first usable value.
       const key = JSON.stringify([
         group.dictionary,
         frequencies.map(({ display, frequency }) => [frequency.value, display]),
