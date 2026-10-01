@@ -101,6 +101,15 @@ the real popup and the fake AnkiConnect and requires that one line as the note's
 sentence, with the page's full address, query and fragment included, as its
 `{url-plain}`.
 
+A highlighted or dragged selection reads its sentence as a hover over its first
+character does (issue #430). The extension smoke suite selects inside an inline
+element and a ruby base, one overlay glyph box, and across two overlay blocks
+with page script and hidden text beside them. The Chrome suite clicks a custom
+link's `%s` after a hover and after selections in an inline element and a ruby
+base, and mines a selection with hidden text inside it.
+`chrome-overlay.mjs` clicks the link with the mouse after a hover, a drag over
+one or several glyph boxes, and a drag on into the next OCR block.
+
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 including "highlight", "selection" and "custom dictionary" finding **Use the

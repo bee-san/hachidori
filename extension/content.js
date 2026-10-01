@@ -702,20 +702,71 @@
    * start in it; the highlighter and rawMatchedText work there. `sentence` and
    * `matchOffset` are Yomitan's sentence around the match, which Anki notes,
    * the Note form and custom links receive. Until the engine answers, the match
-   * is the hovered glyph; the reply refines it to the matched word.
+   * is the hovered glyph; the reply refines it to the matched word. An exact
+   * selection arrives with its own sentence source (selectionSentence).
    */
   function withSentence(candidate, sourceOffset, matchLength, styleCache) {
     candidate.sourceText = candidate.sourceElements.map((source) => source.textContent || "").join("");
     candidate.sourceOffset = sourceOffset;
-    candidate.sentenceSource = sentenceSource(candidate.sourceElements, styleCache);
+    candidate.sentenceSource ??= sentenceSource(candidate.sourceElements, styleCache);
     return refineSentence(candidate, matchLength);
   }
 
   function refineSentence(candidate, matchLength) {
-    const { sentence, matchOffset } = extractSentence(candidate.sentenceSource, candidate.sourceOffset, matchLength);
+    // An exact selection's match is the selection, where selectionSentence put it.
+    const { sentence, matchOffset } = extractSentence(candidate.sentenceSource,
+      candidate.selectionOffset ?? candidate.sourceOffset, candidate.selectionLength ?? matchLength);
     candidate.sentence = sentence;
     candidate.matchOffset = matchOffset;
     return candidate;
+  }
+
+  /** The selected part of the text node `node`, or null when none of it is selected. */
+  function selectedSpan(range, node) {
+    if (!range.intersectsNode(node)) return null;
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
+    return end > start ? { start, end } : null;
+  }
+
+  /** The first selected character a hover could point at: in text the scan reads, and not whitespace. */
+  function firstSelectedGlyph(range, styleCache) {
+    const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+    let node = range.startContainer;
+    if (node.nodeType === Node.TEXT_NODE) walker.currentNode = node;
+    else node = walker.nextNode();
+    for (; node && range.comparePoint(node, 0) <= 0; node = walker.nextNode()) {
+      const selected = selectedSpan(range, node);
+      if (!selected || !isScannableTextNode(node, styleCache)) continue;
+      const glyph = node.nodeValue.slice(selected.start, selected.end).search(/\S/u);
+      if (glyph >= 0) return { node, offset: selected.start + glyph };
+    }
+    return null;
+  }
+
+  /**
+   * An exact selection's sentence, read as a hover over its first selected
+   * glyph reads one: from the text nodes the scan reads around that glyph, up
+   * to the edge of its block. It never takes in the furigana, scripts or
+   * hidden text of the element that happens to contain the whole selection. A
+   * selection that leaves the block is cut where the block ends.
+   * `selectionOffset` and `selectionLength` place the selection in
+   * `sentenceSource`.
+   */
+  function selectionSentence(range, styleCache) {
+    const first = firstSelectedGlyph(range, styleCache);
+    if (!first) return { sentenceSource: "", selectionOffset: 0, selectionLength: 0 };
+    const sources = collectSentenceSources(first.node, document.body, styleCache);
+    let start = 0;
+    let end = 0;
+    let consumed = 0;
+    for (const source of sources) {
+      if (source === first.node) start = consumed + first.offset;
+      const selected = selectedSpan(range, source);
+      if (selected) end = consumed + selected.end;
+      consumed += source.nodeValue.length;
+    }
+    return { sentenceSource: sentenceSource(sources, styleCache), selectionOffset: start, selectionLength: end - start };
   }
 
   function withinSources(sources, node) {
@@ -1372,6 +1423,7 @@
           && hasVisibleContent(control, styleCache)) return null;
     }
     const rawSelectionText = range.toString();
+    // The highlight works in the anchor's text; the sentence is read as a hover reads it.
     return withSentence({
       anchor,
       anchorRange: range.cloneRange(),
@@ -1381,6 +1433,7 @@
       sourceDepth: -1,
       sourceElements: [anchor],
       vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
+      ...selectionSentence(range, styleCache),
     }, rangeOffsetWithin(anchor, range.startContainer, range.startOffset), rawSelectionText.length, styleCache);
   }
 
@@ -1491,6 +1544,16 @@
       // Fall through to the engine's own string.
     }
     return matched;
+  }
+
+  /**
+   * The match as `candidate.sentence` spells it; the Anki sentence and cloze
+   * cut it out by its length. A selection's raw text counts the furigana and
+   * hidden text of its anchor, which its sentence leaves out.
+   */
+  function sentenceMatchedText(candidate, matched) {
+    if (candidate.exactSelection !== true) return rawMatchedText(candidate, matched);
+    return candidate.sentence.slice(candidate.matchOffset, candidate.matchOffset + candidate.selectionLength);
   }
 
   function teardown(reason) {
@@ -2443,7 +2506,7 @@
       const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
       return { ...result, term, generation: level.activeTermRender.generation, sentence: candidate.sentence,
-        matchOffset: candidate.matchOffset, matched: rawMatchedText(candidate, result.matched || result.term.expression),
+        matchOffset: candidate.matchOffset, matched: sentenceMatchedText(candidate, result.matched || result.term.expression),
         searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,

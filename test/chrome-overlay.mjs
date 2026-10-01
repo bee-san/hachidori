@@ -103,6 +103,13 @@ const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>overl
   for (const type of ["hachidori-popup-shown", "hachidori-popup-hidden"]) {
     window.addEventListener(type, () => window.__hostEvents.push(type.replace("hachidori-popup-", "")));
   }
+  // GameSentenceMiner's side of a link button: open the URL and say so.
+  window.__openedLinks = [];
+  window.addEventListener("hachidori-open-external", (event) => {
+    window.__openedLinks.push(event.detail.url);
+    window.dispatchEvent(new CustomEvent("hachidori-open-external-result",
+      { detail: { requestId: event.detail.requestId, ok: true } }));
+  });
 </script></body></html>`;
 
 function prepareExtension() {
@@ -528,9 +535,9 @@ try {
     await chrome.storage.local.set({ options: {
       ...stored.options,
       customButtons: [{
-        id: "remote-link", type: "link", label: "Remote link", url: "https://example.test/%w",
+        id: "remote-link", type: "link", label: "Remote link", url: "https://example.test/?w=%w&r=%r&s=%s",
       }],
-      customLinks: [{ label: "Remote link", url: "https://example.test/%w" }],
+      customLinks: [{ label: "Remote link", url: "https://example.test/?w=%w&r=%r&s=%s" }],
       revision: options.revision + 1,
     } });
   });
@@ -877,6 +884,48 @@ try {
   assert.equal(beyond, TEXT.slice(2), "dragging past the last box keeps its glyph");
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true);
+
+  // Issue #430: a link button's %s is the OCR line the lookup came from, as
+  // its Anki sentence is: for a hover, a drag over several glyphs, a drag over
+  // one, and a drag on into the next block, which reads only the block where
+  // it starts and never the page's script. A real click opens the link.
+  const clickLink = async () => {
+    const button = await popup.rect(".gsm-hoshidicts-external-link-button");
+    assert.ok(button?.width > 0, `the popup shows the link button: ${JSON.stringify(button)}`);
+    const opened = await tab.evaluate(() => window.__openedLinks.length);
+    await tab.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
+    await tab.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
+    await tab.waitForFunction((count) => window.__openedLinks.length > count, { timeout: 5_000 }, opened);
+    const url = new URL(await tab.evaluate(() => window.__openedLinks.at(-1)));
+    await tab.keyboard.press("Escape");
+    assert.equal(await popup.waitForHidden(), true);
+    return Object.fromEntries(["w", "r", "s"].map((marker) => [marker, url.searchParams.get(marker)]));
+  };
+  const dragLink = async (from, to) => {
+    await tab.evaluate(() => window.getSelection().removeAllRanges());
+    await tab.mouse.move(2, 2);
+    await tab.mouse.move(...from);
+    await tab.mouse.down();
+    await tab.mouse.move(...to, { steps: 5 });
+    const selection = await selected();
+    await tab.mouse.up();
+    assert.ok(popup.visible(await popup.waitForVisible()), `release looks up ${JSON.stringify(selection)}`);
+    return { selection, ...await clickLink() };
+  };
+  await tab.evaluate(() => window.getSelection().removeAllRanges());
+  await tab.mouse.move(2, 2);
+  await tab.mouse.move(...middle(boxes[0]));
+  assert.ok((await popup.waitForVisible(10_000))?.plain.includes("食べる"), "hover looks up the boxed word");
+  const hoverLink = await clickLink();
+  const glyphsLink = await dragLink(trailing(boxes[0]), trailing(boxes[1]));
+  const glyphLink = await dragLink([boxes[0].x + 5, boxes[0].y + boxes[0].height / 2], trailing(boxes[0]));
+  const blocksLink = await dragLink(trailing(boxes[3]), trailing(second));
+  assert.deepEqual({ hoverLink, glyphsLink, glyphLink, blocksLink }, {
+    hoverLink: { w: "食べる", r: "たべる", s: TEXT },
+    glyphsLink: { selection: "食べ", w: "食べ", r: "", s: TEXT },
+    glyphLink: { selection: "食", w: "食", r: "たべもの", s: TEXT },
+    blocksLink: { selection: "かった漢", w: "かった漢", r: "", s: TEXT },
+  }, "link buttons fill %s with the line a hover or drag starts in");
 
   // With the personal dictionary off a drag only selects text to copy:
   // releasing looks nothing up and hands the window straight back.

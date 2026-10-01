@@ -105,11 +105,14 @@ test("kanji and missing selections use their own word, and a replaced toolbar ca
   const kanji = new URL(f.opened[0].url);
   assert.equal(kanji.searchParams.get("word"), "食");
   assert.equal(kanji.searchParams.get("reading"), "");
+  assert.equal(kanji.searchParams.get("sentence"), f.candidate.sentence);
   f.view.renderNotice("No definition found.", { ...f.candidate, query: "unknown & ?word" });
   oldLink.click();
   assert.equal(f.opened.length, 1);
   f.link().click();
-  assert.equal(new URL(f.opened[1].url).searchParams.get("word"), "unknown & ?word");
+  const notice = new URL(f.opened[1].url);
+  assert.equal(notice.searchParams.get("word"), "unknown & ?word");
+  assert.equal(notice.searchParams.get("sentence"), f.candidate.sentence);
 });
 
 test("still-mounted links from an obsolete term, kanji or selection request cannot navigate", t => {

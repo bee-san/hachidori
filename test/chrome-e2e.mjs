@@ -309,6 +309,7 @@ const PLANNED = [
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
+  "a note mined from a selection takes the hover's sentence without the hidden text inside it",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -452,6 +453,7 @@ const PLANNED = [
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "external dictionary Enter activation creates one safe browser tab through the extension",
+  "a custom link's %s is the hovered or selected word's sentence without ruby readings",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
   "a grouped favourite uses only its group tab",
@@ -2273,6 +2275,88 @@ async function checkExternalLinks(browser, settings, tab, popup) {
       && evidence.afterOpen.creates[0].openerTabId === undefined
       && evidence.invalid.ok === false && evidence.invalid.requestId === "external-invalid"
       && evidence.afterInvalid === 1 && evidence.sourceUnchanged && evidence.restored, JSON.stringify(evidence));
+}
+
+// Issue #430: a custom link's %s is the sentence Anki gets, read the same way
+// for a hover and for a selection inside an inline element or across ruby.
+// The worker's tab creation is recorded instead of opening the URL.
+async function checkCustomLinkSentence(browser, settings, tab, popup) {
+  const writeButtons = customButtons => settings.evaluate(async buttons => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { customButtons: buttons } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, customButtons);
+  const { options } = await settings.evaluate(() => chrome.storage.local.get("options"));
+  const worker = await activeExtensionWorker(browser, settings, "custom link sentence");
+  const opened = {};
+  try {
+    await worker.evaluate(() => {
+      const probe = { urls: [], create: chrome.tabs.create };
+      chrome.tabs.create = async properties => { probe.urls.push(properties.url); return { id: -1 }; };
+      globalThis.__customLinkProbe = probe;
+    });
+    await writeButtons([{ id: "e2e-sentence-link", type: "link", label: "Sentence",
+      url: "https://example.test/?w=%w&r=%r&s=%s" }]);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await tab.evaluate(() => {
+      const lines = document.createElement("div");
+      lines.id = "link-sentences";
+      lines.innerHTML = '<p>昨日、<span id="link-verb">食べたかった</span>。とてもおいしかった。</p>'
+        + '<p>彼は<ruby id="link-ruby">漢字<rt>かんじ</rt></ruby>を読む。</p>';
+      document.body.prepend(lines);
+    });
+    const clickLink = async () => {
+      const count = await worker.evaluate(() => globalThis.__customLinkProbe.urls.length);
+      await popup.click(".gsm-hoshidicts-external-link-button");
+      const url = await worker.evaluate(async before => {
+        const { urls } = globalThis.__customLinkProbe;
+        for (let attempt = 0; attempt < 50 && urls.length <= before; attempt++) {
+          await new Promise(done => setTimeout(done, 100));
+        }
+        return urls.at(-1) ?? null;
+      }, count);
+      await tab.keyboard.press("Escape");
+      await popup.waitForHidden();
+      const params = new URL(url).searchParams;
+      return Object.fromEntries(["w", "r", "s"].map(marker => [marker, params.get(marker)]));
+    };
+    const selectLink = async (selector, end, expression) => {
+      await tab.$eval(selector, (element, offset) => {
+        getSelection().setBaseAndExtent(element.firstChild, 0, element.firstChild, offset);
+      }, end);
+      await popup.waitForVisible(10_000, state => state.plain.includes(expression));
+      return clickLink();
+    };
+    await hoverForPopup(tab, popup, "#link-verb", { accept: state => state.plain.includes("食べる") });
+    opened.hover = await clickLink();
+    opened.inline = await selectLink("#link-verb", 3, "食べる");
+    opened.ruby = await selectLink("#link-ruby", 2, "漢字");
+  } catch (error) {
+    opened.error = error.message;
+  } finally {
+    await tab.evaluate(() => {
+      getSelection().removeAllRanges();
+      document.getElementById("link-sentences")?.remove();
+    });
+    await writeButtons(options.customButtons);
+    try {
+      await worker.evaluate(() => {
+        chrome.tabs.create = globalThis.__customLinkProbe.create;
+        delete globalThis.__customLinkProbe;
+      });
+    } finally {
+      await worker.detach?.();
+    }
+  }
+  check("a custom link's %s is the hovered or selected word's sentence without ruby readings",
+    JSON.stringify(opened) === JSON.stringify({
+      hover: { w: "食べる", r: "たべる", s: "昨日、食べたかった。" },
+      inline: { w: "食べた", r: "", s: "昨日、食べたかった。" },
+      ruby: { w: "漢字", r: "かんじ", s: "彼は漢字を読む。" },
+    }), JSON.stringify(opened));
 }
 
 async function installMediaArchive(page, archive) {
@@ -6095,6 +6179,27 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
         && address.endsWith("/?chapter=56&view=1#scene")
         && note.Back === `三行目で本を<b>読む</b>。<br>${address.replaceAll("&", "&amp;")}`,
       JSON.stringify({ shown: shown?.plain, highlight, ready: ready.controls[0], focused, saved: saved.controls[0], address, note }));
+
+    // Issue #430: a selection's note takes the sentence a hover would, so text
+    // hidden inside the selection stays out of the sentence and its cloze.
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await tab.evaluate(() => {
+      const selected = document.createElement("p");
+      selected.innerHTML = '「どうも、あり<span style="display:none">隠し</span>がとう。」と言った。';
+      document.getElementById("hooked-lines").append(selected);
+      getSelection().setBaseAndExtent(selected.firstChild, 5, selected.lastChild, 3);
+    });
+    const selection = await popup.waitForVisible(10_000, state => state.plain.includes("ありがとう"));
+    await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const selectionFocused = await popup.focusAnki();
+    await tab.keyboard.press("Enter");
+    await settled(state => state?.controls.some(control => control.state === "success"));
+    const selectionNote = [...notes.values()].at(-1);
+    check("a note mined from a selection takes the hover's sentence without the hidden text inside it",
+      selection !== null && selectionFocused && selectionNote.Front === "ありがとう sentence"
+        && selectionNote.Back === `どうも、<b>ありがとう</b>。<br>${address.replaceAll("&", "&amp;")}`,
+      JSON.stringify({ shown: selection?.plain, selectionFocused, selectionNote }));
   } finally {
     await tab.keyboard.press("Escape");
     await tab.evaluate(original => {
@@ -13223,6 +13328,7 @@ async function main() {
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
+  await checkCustomLinkSentence(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
   await checkKanjiGroup(page, tab, popup, browser);
