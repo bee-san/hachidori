@@ -2626,8 +2626,8 @@ offers to use it; that link then advances setup to `complete`. See
 Linked Anki mining keeps `hd_anki_screenshot`/discard local to the reading
 browser. Settings discovery, preflight, submit, browse and maturity go to the
 host. A popup's preflight batch reaches the host as one `hd_anki_preflight`
-per result, in order, with the same browser-speech follow-up, so the sharing
-protocol is unchanged and an older host keeps answering. The reading browser transfers a request-owned JPEG through the validated
+per result, sent together, each with its own browser-speech follow-up, so the
+sharing protocol is unchanged and an older host keeps answering. The reading browser transfers a request-owned JPEG through the validated
 `clientMedia` envelope when the user submits. The host uses its own AnkiConnect
 configuration and dictionary generation to validate and write the note. A
 confirmed or definitively refused write discards the pending screenshot; an

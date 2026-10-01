@@ -119,7 +119,8 @@ function lookupQuery(source, models, expressions) {
   const values = expressions.map(expression => encodeAnkiClozeBraces(escapeAnkiHtml(expression)).normalize("NFC"));
   const clauses = models.flatMap(model => model.fields.map(field => {
     const terms = values.map(value => searchToken(field, value));
-    return `(${searchToken("note", model.name)} ${terms.length === 1 ? terms[0] : `(${terms.join(" or ")})`})`;
+    const words = terms.length === 1 ? terms[0] : `(${terms.join(" or ")})`;
+    return `(${searchToken("note", model.name)} ${words})`;
   }));
   if (clauses.length === 0) return null;
   const query = clauses.length === 1 ? clauses[0] : `(${clauses.join(" or ")})`;

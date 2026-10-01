@@ -331,9 +331,9 @@ export function createAnkiDuplicateIndex({
         throw new Error("Anki returned an invalid duplicate lookup result.");
       }
       [...misses.keys()].forEach((wordKey, position) => live.set(wordKey, normalizedLookup(values[position], wordKey)));
-      for (const [wordKey, value] of live) {
-        if (value.noteIds.length) await updateRow(source, wordKey, () => ({ mature: value.mature, noteIds: value.noteIds }));
-      }
+      // The control queue still writes the rows one at a time, in this order.
+      await Promise.all([...live].filter(([, value]) => value.noteIds.length).map(([wordKey, value]) =>
+        updateRow(source, wordKey, () => ({ mature: value.mature, noteIds: value.noteIds }))));
     }
     return found.map(({ wordKey, mature, noteIds, cached }) => {
       const value = live.get(wordKey);

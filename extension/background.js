@@ -2054,23 +2054,23 @@ async function forwardLinkedAnki(message) {
 }
 
 // The sharing protocol carries one preflight per request, so a linked browser
-// asks its host about a popup batch one entry at a time, as the reader did
-// before batching, and a host without batches keeps answering. Each entry
-// becomes what the reader made of that single reply.
-async function linkedPreflightBatch(message) {
-  const replies = [];
-  for (const request of message.requests) {
-    const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request };
-    const reply = await forwardLinkedAnki(single);
-    if (reply?.type !== `${single.type}_result` || reply.requestId !== single.requestId) {
-      replies.push({ state: "error", canAdd: false, error: `unexpected reply for ${single.type}` });
-    } else if (reply.ok !== true) {
-      replies.push({ state: "error", canAdd: false, error: reply.error || `${single.type} failed` });
-    } else {
-      replies.push(Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key))));
-    }
+// forwards a popup batch to its host as single preflights, sent together and
+// told apart by their sharing frames, and a host without batches keeps
+// answering. Each entry becomes what the reader made of that single reply.
+async function linkedPreflight(message, request) {
+  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request };
+  const reply = await forwardLinkedAnki(single);
+  if (reply?.type !== `${single.type}_result` || reply.requestId !== single.requestId) {
+    return { state: "error", canAdd: false, error: `unexpected reply for ${single.type}` };
   }
-  return workerReply(message, { replies });
+  if (reply.ok !== true) return { state: "error", canAdd: false, error: reply.error || `${single.type} failed` };
+  return Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
+}
+
+async function linkedPreflightBatch(message) {
+  return workerReply(message, {
+    replies: await Promise.all(message.requests.map(request => linkedPreflight(message, request))),
+  });
 }
 
 async function sendAnkiRequest(target, fields) {

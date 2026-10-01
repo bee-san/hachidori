@@ -300,7 +300,7 @@ export function createAnkiMiningService({
   async function deferredReply(request, prepared) {
     const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
     return { state: "addable", canAdd: true, error: null, deferred: true, screenshot: screenshotFor(prepared),
-      ...(extra ?? {}) };
+      ...extra };
   }
 
   async function preflightReply(request, prepared, result) {
@@ -313,7 +313,7 @@ export function createAnkiMiningService({
       action: result.action,
       noteIds: result.noteIds,
       screenshot: screenshotFor(prepared),
-      ...(extra ?? {}),
+      ...extra,
     };
   }
 
@@ -346,33 +346,24 @@ export function createAnkiMiningService({
     } catch (error) {
       return entries.map(() => failedPreflight(error));
     }
-    const replies = [];
-    for (const [position, { request, prepared }] of entries.entries()) {
-      try {
-        replies.push(await preflightReply(request, prepared, await decisions[position]()));
-      } catch (error) {
-        replies.push(failedPreflight(error));
-      }
-    }
-    return replies;
+    return Promise.all(entries.map(({ request, prepared }, position) => decisions[position]()
+      .then(result => preflightReply(request, prepared, result))
+      .catch(failedPreflight)));
   }
 
   async function preflightMany(requests) {
-    const replies = new Array(requests.length);
+    const prepared = await Promise.all(requests.map((request, index) => batchEntry(index, request)));
+    const replies = prepared.map(({ reply }) => reply);
     const groups = new Map();
-    for (const [index, request] of requests.entries()) {
-      const { reply, entry } = await batchEntry(index, request);
-      if (entry === undefined) {
-        replies[index] = reply;
-        continue;
-      }
+    for (const { entry } of prepared) {
+      if (entry === undefined) continue;
       const { configKey } = entry.prepared;
       if (!groups.has(configKey)) groups.set(configKey, []);
       groups.get(configKey).push(entry);
     }
-    for (const entries of groups.values()) {
+    await Promise.all([...groups.values()].map(async entries => {
       (await groupReplies(entries)).forEach((reply, position) => { replies[entries[position].index] = reply; });
-    }
+    }));
     return replies;
   }
 
