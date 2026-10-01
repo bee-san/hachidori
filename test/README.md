@@ -116,7 +116,8 @@ cancels on Escape.
 
 `node --test test/frequency-presentation.test.mjs` checks full Yomitan-style
 frequency values by default and opt-in abbreviated numbers, the primary result's frequency tags sharing the later
-entries' tag structure, visible kana markers, tabs-only lower chrome, concise typed harmonic averages that keep each
+entries' tag structure, visible kana markers, values in each dictionary's own order with the first one averaged, as in
+Yomitan, tabs-only lower chrome, concise typed harmonic averages that keep each
 dictionary's tag hidden in the DOM outside the pitch-badge budget through live toggles and alias renames, preserved
 explicit display choices, source details, and live grammar/name/abbreviation controls without
 replacing definitions or Note drafts. It uses the same external jsdom dependency.

@@ -997,7 +997,10 @@ remains available; this is lazy presentation, not a source or data limit.
 Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and rank, occurrence and unspecified dictionaries aggregate
-separately. Each dictionary contributes its first usable value once. Type labels
+separately. Each dictionary contributes its first usable value once. Tags list
+a dictionary's values in its own order, as Yomitan does, without moving `㋕`
+values forward, so a positive first value is the first one shown and the one
+averaged. Type labels
 remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
 with source names hidden, and each aggregate carries `data-frequency-average`
 (`rank-based`, `occurrence-based` or `unspecified`). As in Yomitan, every tag

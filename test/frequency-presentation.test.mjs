@@ -99,7 +99,7 @@ test("the default Jiten frequency is a plain tag that preserves the kana marker"
     const capsule = f.render(options);
     const entry = f.popup.querySelector(".gsm-hoshidicts-entry");
     const frequencies = capsule.querySelector(".gsm-hoshidicts-primary-frequencies");
-    assert.equal(capsule.textContent, "14,200㋕ · 191");
+    assert.equal(capsule.textContent, "191 · 14,200㋕");
     assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
     assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-header").contains(capsule), false);
@@ -109,12 +109,13 @@ test("the default Jiten frequency is a plain tag that preserves the kana marker"
     assert.equal(frequencies.className, "gsm-hoshidicts-primary-frequencies");
     assert.deepEqual(
       [...frequencies.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => node.textContent),
-      ["14,200㋕", "191"]
+      ["191", "14,200㋕"]
     );
     const frequency = capsule.querySelector(".gsm-hoshidicts-tag-frequency");
     assert.equal(frequency.title, "Jiten");
-    assert.match(frequency.getAttribute("aria-label"), /Jiten:.*Kana frequency: 14200.*191/u);
-    assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-value").title, "Kana frequency: 14200");
+    assert.match(frequency.getAttribute("aria-label"), /Jiten: 191, Kana frequency: 14200/u);
+    assert.deepEqual([...capsule.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => node.title),
+      ["191", "Kana frequency: 14200"]);
     assert.ok(
       capsule.compareDocumentPosition(entry.querySelector(".gsm-hoshidicts-ipa-metadata"))
         & capsule.DOCUMENT_POSITION_FOLLOWING,
@@ -133,10 +134,10 @@ test("live display choices keep frequency and grammar in the primary result and 
   const form = f.popup.querySelector("form");
   form.elements.definition.value = "keep my draft";
   f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true, hidePopupGrammarTags: false });
-  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").textContent, "Jiten14,200㋕ · 191");
+  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").textContent, "Jiten191 · 14,200㋕");
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
-  assert.equal(capsule.textContent, "14,200㋕ · 191");
+  assert.equal(capsule.textContent, "191 · 14,200㋕");
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
   assert.equal(capsule.closest(".gsm-hoshidicts-entry"), entry);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
@@ -180,6 +181,27 @@ test("harmonic averages use concise typed labels and keep each dictionary's tag 
   // The averages-off tags follow the aggregates, unchanged apart from hidden.
   assert.deepEqual(tags.slice(visible.length).map(unhiddenHTML), individual);
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").hidden, false);
+});
+
+test("tags keep dictionary order, so each first value is the one averaged, as in Yomitan", t => {
+  const f = fixture(t);
+  const rows = (dictionary, ...values) => ({ dictionary, frequencies: values.map(displayValue =>
+    ({ value: Number.parseInt(displayValue, 10), displayValue })) });
+  const options = { ...f.options.normaliseOptions({}), averageFrequency: true, dictionaryPresentation:
+    ["F Filler", "Jiten", "JPDBv2㋕"].map(title => ({ title, frequencyMode: "rank-based" })) };
+  const render = frequencies => {
+    const capsule = f.render(options, { ...RESULT, term: { ...RESULT.term, frequencies } });
+    return [capsule.querySelector("[data-frequency-average]").textContent,
+      [...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency[hidden] .gsm-hoshidicts-frequency-values")]
+        .map(node => node.textContent)];
+  };
+  // 平仮名 in the #421 screenshot; Yomitan 67db60d's Average is also 24795.
+  assert.deepEqual(render([rows("F Filler", "18545", "18727"), rows("Jiten", "27930㋕", "39779"),
+    rows("JPDBv2㋕", "31989㋕", "45254")]),
+  ["Avg rank24795", ["18545 · 18727", "27930㋕ · 39779", "31989㋕ · 45254"]]);
+  // 読む: Jiten 26-09-30 and JPDB v2.2 Kana store the plain rank first; Yomitan's Average is 372.
+  assert.deepEqual(render([rows("Jiten", "462", "24459㋕"), rows("JPDBv2㋕", "312", "19896㋕")]),
+    ["Avg rank372", ["462 · 24459㋕", "312 · 19896㋕"]]);
 });
 
 test("averaged hidden tags take no pitch budget, hide all-hidden groups and follow live toggles and aliases", t => {
@@ -281,16 +303,16 @@ test("frequency values stay as each dictionary shows them unless abbreviation is
   form.elements.definition.value = "keep my draft";
   const values = () => [...capsule.querySelectorAll(".gsm-hoshidicts-frequency-values")].map(node => node.textContent);
   const nwjc = () => capsule.querySelector('[data-dictionary="NWJC"] .gsm-hoshidicts-frequency-value');
-  const full = ["14,200㋕ · 191", "51499", "51,499", "5万"];
+  const full = ["191 · 14,200㋕", "51499", "51,499", "5万"];
   assert.deepEqual(values(), full);
   f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true });
   assert.deepEqual(values(), full);
   f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true, compactFrequencyNumbers: true });
-  assert.deepEqual(values(), ["14.2k㋕ · 191", "51.5k", "51.5k", "5万"]);
+  assert.deepEqual(values(), ["191 · 14.2k㋕", "51.5k", "51.5k", "5万"]);
   assert.equal(nwjc().title, "51499");
   assert.equal(nwjc().dataset.frequency, "51499");
   f.view.updateDictionaryPresentation({ ...defaults, compactFrequencyNumbers: true });
-  assert.deepEqual(values(), ["14.2k㋕ · 191", "51.5k", "51.5k", "50k"]);
+  assert.deepEqual(values(), ["191 · 14.2k㋕", "51.5k", "51.5k", "50k"]);
   f.view.updateDictionaryPresentation(defaults);
   assert.deepEqual(values(), full);
   assert.equal(nwjc().title, "51499");
