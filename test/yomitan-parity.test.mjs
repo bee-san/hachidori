@@ -155,10 +155,11 @@ function canonical(element, side) {
       if (name === "class") {
         value = value.split(" ").filter(token => !/^gsm-hoshidicts-|^gloss-sc-(?:a|img)$/u.test(token)).sort().join(" ");
       } else if (name === "rel") value = value.split(" ").sort().join(" ");
-      else if (side === "hachidori" && name === "style" && element.localName === "img") {
-        value = value.replace(/ margin: 0px; padding: 0px;$/u, "");
-      } else if (name === "style") value = value.replace(/(\d)em;/gu, (match, digit) =>
+      else if (name === "style") value = value.replace(/(\d)em;/gu, (match, digit) =>
         element.matches(".gloss-image-link:not([data-size-units=em]) > .gloss-image-container") ? `${digit}px;` : match);
+      if (side === "hachidori" && name === "style" && element.localName === "img") {
+        value = value.replace(/ margin: 0px; padding: 0px;$/u, "");
+      }
       return `${name}=${JSON.stringify(value)}`;
     }).sort();
   return `<${element.localName}${attributes.map(attribute => ` ${attribute}`).join("")}>${children()}</${element.localName}>`;
