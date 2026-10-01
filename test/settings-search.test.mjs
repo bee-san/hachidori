@@ -5,7 +5,9 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import "../extension/reader-options.js";
 import { createSettingsSearch } from "../extension/settings-search.js";
+import { applyDesignSettings, createThemeStore } from "../extension/theme-store.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -215,4 +217,90 @@ test("moved settings are found under the section that now owns them", t => {
     result.click();
     assert.equal(f.el(section).hidden, false);
   }
+});
+
+const { themes: catalogue } = JSON.parse(readFileSync(new URL("../extension/vendor/themes/index.json", import.meta.url), "utf8"));
+const catalogueTheme = slug => catalogue.find(theme => theme.slug === slug);
+// Shown Design legends ("# …") and control labels, in page order.
+function designControls(document) {
+  return [...document.querySelectorAll("#design .design-controls legend, #design .design-controls label.field, #design .design-controls label.lookup-enable")]
+    .filter(node => !node.closest("[hidden], #custom-button-form"))
+    .map(node => node.matches("legend") ? `# ${node.textContent}`
+      : (node.querySelector(".field-label") ?? node.querySelector("span")).textContent);
+}
+const CORE_DESIGN = ["# Appearance", "Theme", "Width", "Height", "Scale", "Highlight the word on the page"];
+const JL_DESIGN = ["# Appearance", "Theme", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
+  "# Definitions", "Clicked-kanji dictionary", "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary"];
+
+test("Design shows the core controls and only the settings the selected theme declares", t => {
+  const f = fixture(t, "design");
+  const design = f.el("design");
+  const everything = designControls(f.document);
+  const expected = {
+    plain: CORE_DESIGN,
+    nazeka: [...CORE_DESIGN, "# Definitions", "Clicked-kanji dictionary"],
+    jl: JL_DESIGN,
+    bee: ["# Appearance", "Theme", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
+      "# Definitions", "Image source", "Image hover preview", "Clicked-kanji dictionary",
+      "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary", "# Custom buttons"],
+    default: everything,
+  };
+  for (const [slug, controls] of Object.entries(expected)) {
+    applyDesignSettings(design, catalogueTheme(slug));
+    assert.deepEqual(designControls(f.document), controls, slug);
+    assert.equal(f.el("opt-custom-popup-css").closest("[hidden]"), null, "Custom CSS is core");
+    assert.equal(f.el("reset-design").closest("[hidden]"), null, "Reset Design is core");
+    assert.equal(f.el("popup-theme-hint").hidden, slug === "default");
+  }
+  assert.equal(design.querySelectorAll("[data-design-setting][hidden], [data-design-group][hidden]").length, 0,
+    "Default leaves Design unchanged");
+  applyDesignSettings(design, catalogueTheme("plain"));
+  assert.equal(f.el("popup-theme-hint").textContent,
+    "Plain uses only the settings shown here. Your other Design settings are kept for Default.");
+  for (const undeclared of [{ slug: "new", name: "New" }, undefined]) {
+    applyDesignSettings(design, catalogueTheme("plain"));
+    applyDesignSettings(design, undeclared);
+    assert.deepEqual(designControls(f.document), everything, "a theme without a declaration shows every control");
+    assert.equal(f.el("popup-theme-hint").hidden, true);
+  }
+});
+
+test("search offers no Design control the selected theme hides", t => {
+  const f = fixture(t);
+  const design = f.el("design");
+  applyDesignSettings(design, catalogueTheme("plain"));
+  for (const [words, label] of [["pitch badges", "Show pitch badges"], ["compact summary", "Compact summary"],
+    ["custom buttons", "Custom buttons"]]) {
+    f.query(words);
+    assert.equal(f.match(label), undefined, `Plain hides ${label}`);
+  }
+  applyDesignSettings(design, catalogueTheme("default"));
+  f.query("pitch badges");
+  f.match("Show pitch badges").click();
+  assert.equal(f.el("design").hidden, false);
+  assert.equal(f.document.activeElement, f.el("opt-pitch-badge"));
+});
+
+test("Design follows the latest theme in use, even with the Store off, and shows everything without a catalogue", async t => {
+  const f = fixture(t, "design");
+  const design = f.el("design");
+  const everything = designControls(f.document);
+  const settle = () => new Promise(done => setImmediate(done));
+  const fetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = fetch; });
+  const store = () => createThemeStore({ root: f.el("theme-store"), design, onSelect() {} });
+  const options = popupTheme => ({ popupTheme, experimental: { themeStore: false } });
+  let respond;
+  globalThis.fetch = () => new Promise(resolve => { respond = resolve; });
+  const slow = store();
+  slow.render(options("plain"));
+  slow.render(options("jl"));
+  respond({ ok: true, json: async () => ({ themes: catalogue }) });
+  await settle();
+  assert.deepEqual(designControls(f.document), JL_DESIGN, "the earlier Plain selection does not apply");
+  globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  store().render(options("plain"));
+  await settle();
+  assert.deepEqual(designControls(f.document), everything);
+  assert.equal(f.el("popup-theme-hint").hidden, true);
 });
