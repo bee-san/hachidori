@@ -179,8 +179,15 @@ const IMPORT_REPORT = {
   pitchCount: 'int',
   kanjiCount: 'int',
   mediaCount: 'int',
+  skippedRecordCount: 'int',
+  unresolvedRedirectCount: 'int',
+  missingResourceCount: 'int',
+  unreadableResourceCount: 'int',
   error: 'string',
 };
+// What a successful MDX import left out; a Yomitan archive reports 0 for each.
+const MDX_LOSS_COUNTS = ['skippedRecordCount', 'unresolvedRedirectCount', 'missingResourceCount',
+  'unreadableResourceCount'];
 
 function shapeProblems(value, shape, path = '$', out = []) {
   if (typeof shape === 'string') {
@@ -306,6 +313,9 @@ check('title', () => eq(report.title, EXPECTED.title, 'title'));
 for (const key of ['termCount', 'metaCount', 'frequencyCount', 'pitchCount', 'kanjiCount', 'mediaCount']) {
   check(key, () => eq(report[key], EXPECTED[key], key));
 }
+check('a Yomitan archive reports no MDX import losses', () => {
+  for (const key of MDX_LOSS_COUNTS) eq(report[key], 0, key);
+});
 check('last_error cleared after a successful import', () => eq(lastError(), '', 'hdw_last_error'));
 check('output directory laid out as add_dict expects', () => {
   const entries = entriesOf(DICT_DIR);
@@ -1458,10 +1468,32 @@ check('an .mdx with its .mdd imports through hdw_import', () => {
   eq(mdxReport.success, true, `import failed: ${mdxReport.error}`);
   eq(mdxReport.title, MDX_TITLE, 'title from the MDX header');
   eq(mdxReport.termCount, 8, 'seven entries plus the alias headword');
-  eq(mdxReport.mediaCount, 4, 'referenced MDD assets and the stylesheets');
+  // style.css, utf16.css and img/pic.png; a disabled sound:// link imports nothing.
+  eq(mdxReport.mediaCount, 3, 'referenced MDD assets and the stylesheets');
   ok(M.FS.readdir('/dicts').includes(MDX_TITLE), '/dicts holds the MDX beside the ZIP imports');
   ok(!M.FS.readdir('/dicts').includes('.hdw-import'), 'no staging directory left behind');
   ok(markerOf(entriesOf(MDX_DIR)) !== undefined, `no marker in ${JSON.stringify(entriesOf(MDX_DIR).sort())}`);
+});
+
+check('the MDX import report counts what it left out', () => {
+  eq(mdxReport.skippedRecordCount, 0, 'skippedRecordCount');
+  eq(mdxReport.unresolvedRedirectCount, 1, 'missing-alias (@@@LINK=nowhere) is unresolved');
+  eq(mdxReport.missingResourceCount, 1, '../evil.png is a traversal key, so no MDD provides it');
+  eq(mdxReport.unreadableResourceCount, 0, 'unreadableResourceCount');
+});
+
+check('an .mdx chosen without its .mdd reports its images and styles missing', () => {
+  const out = '/work/mdx-alone';
+  M.FS.mkdir(out);
+  M.FS.mkdir('/work/mdx-alone-source');
+  M.FS.writeFile('/work/mdx-alone-source/Alone.mdx',
+    new Uint8Array(readFileSync(join(MDX_FIXTURES, 'v2_utf8_lzo_html.mdx'))));
+  const r = hdwImport('/work/mdx-alone-source/Alone.mdx', out);
+  conforms(r, IMPORT_REPORT, 'ImportReport');
+  eq(r.success, true, `import failed: ${r.error}`);
+  eq(r.mediaCount, 0, 'no media without an MDD');
+  eq(r.missingResourceCount, 2, 'img/pic.png and evil.png are missing');
+  eq(r.unresolvedRedirectCount, 1, 'missing-alias is unresolved');
 });
 
 check('the MDX dictionary loads and answers like a Yomitan one', () => {
@@ -1486,6 +1518,7 @@ check('MDD stylesheets and media come through hdw_styles and hdw_media', () => {
   eq(length, 69, 'PNG byte length');
   same([...mediaBytes(length).subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'PNG signature');
   eq(media(MDX_TITLE, 'mdict-media/evil.png'), 0, 'a traversal MDD key is not imported');
+  eq(media(MDX_TITLE, 'mdict-media/a.spx'), 0, 'a disabled sound:// file is not imported');
 });
 
 check('an .mdd on its own is refused and leaves no debris', () => {
@@ -1524,7 +1557,7 @@ check('production ZIP imports through the real WASM importer', () => {
   eq(customReport.success, true, `custom import failed: ${customReport.error}`);
   eq(customReport.title, CUSTOM_DICTIONARY_TITLE, 'custom dictionary title');
   eq(customReport.termCount, 1_001, 'custom term count');
-  for (const key of ['metaCount', 'frequencyCount', 'pitchCount', 'kanjiCount', 'mediaCount']) {
+  for (const key of ['metaCount', 'frequencyCount', 'pitchCount', 'kanjiCount', 'mediaCount', ...MDX_LOSS_COUNTS]) {
     eq(customReport[key], 0, `custom ${key}`);
   }
 });

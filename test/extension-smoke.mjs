@@ -5879,10 +5879,14 @@ async function main() {
     "kanjiCount",
     "mediaCount",
     "metaCount",
+    "missingResourceCount",
     "pitchCount",
+    "skippedRecordCount",
     "success",
     "termCount",
     "title",
+    "unreadableResourceCount",
+    "unresolvedRedirectCount",
   ]);
   equal(
     "the report counts match the fixture baseline",
@@ -6028,7 +6032,7 @@ async function main() {
     mdxImport.ok === true
       && mdxImport.report?.title === "HTML Fixture"
       && mdxPackage?.termCount === 8
-      && mdxPackage?.mediaCount === 4
+      && mdxPackage?.mediaCount === 3
       && mdxPackage?.revision === "mdx import"
       && expressions(mdxLookup).includes("食べる")
       && mdxStyles.styles?.some((entry) => entry.dictionary === "HTML Fixture" && entry.styles.includes(".mdx-red"))
@@ -6039,6 +6043,18 @@ async function main() {
     JSON.stringify({ import: mdxImport, package: mdxPackage, lookup: expressions(mdxLookup), styles: mdxStyles.styles,
       media: mdxMedia.dataUrl?.slice(0, 32), staging: observedEngine.FS.analyzePath("/.hdw-mdx").exists,
       zipWithResources: mdxZipWithResources }),
+  );
+  // The reply carries what the import left out, for Settings to word; the
+  // stored package does not.
+  check(
+    "the hd_import reply reports what an MDX import left out, and the package does not store it",
+    mdxImport.report?.skippedRecordCount === 0
+      && mdxImport.report?.unresolvedRedirectCount === 1
+      && mdxImport.report?.missingResourceCount === 1
+      && mdxImport.report?.unreadableResourceCount === 0
+      && ["skippedRecordCount", "unresolvedRedirectCount", "missingResourceCount", "unreadableResourceCount"]
+        .every((key) => mdxPackage !== undefined && !Object.hasOwn(mdxPackage, key)),
+    JSON.stringify({ report: mdxImport.report, package: mdxPackage }),
   );
   await request("hd_remove", { id: mdxPackage?.id, title: "HTML Fixture" });
 
