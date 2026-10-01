@@ -12,8 +12,8 @@ import bee from "../extension/vendor/themes/bee/theme.js";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const extension = resolve(import.meta.dirname, "../extension");
-function environment() {
-  const dom = new JSDOM("<div id='host'></div>", { runScripts: "outside-only", pretendToBeVisual: true });
+function environment(html = "<div id='host'></div>") {
+  const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true });
   for (const name of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js", "theme-host.js"]) dom.window.eval(readFileSync(resolve(extension, name), "utf8"));
   return dom;
 }
@@ -326,4 +326,144 @@ test("switching after a retired lookup applies saved actions to the next rendere
   view.renderResults(results, { query: "食べる" });
   assert.equal(popup.querySelector('[data-custom-button-id="search"]').textContent, "Search");
   assert.equal(host.dictionaryStyles, true);
+});
+
+// Settings → Design shows a theme only the settings its catalogue entry
+// declares, so each declaration must match its renderer in both directions.
+const CORE_DESIGN_SETTINGS = ["popupTheme", "popupWidthPx", "popupHeightPx", "popupScalePercent",
+  "sourceHighlightEnabled", "customPopupCss", "customPopupJavascript", "customLinks"];
+const designResult = { matched: "食べた", deinflected: "食べる", preprocessorSteps: 0,
+  trace: [{ name: "-た", description: "past" }],
+  term: { expression: "食べる", reading: "たべる", rules: "v1", score: 0,
+    frequencies: [
+      { dictionary: "JPDB", frequencies: [{ value: 51499, displayValue: "51499" }] },
+      { dictionary: "Jiten", frequencies: [{ value: 23456, displayValue: "23456" }] },
+    ],
+    pitches: [
+      { dictionary: "NHK", pitches: [{ position: 2, pattern: "", nasal: [], devoice: [] }], transcriptions: [] },
+      { dictionary: "Daijirin", pitches: [{ position: 0, pattern: "", nasal: [], devoice: [] }], transcriptions: [] },
+    ],
+    glossaries: [
+      { dictionary: "JMdict", glossary: JSON.stringify(["to eat", "to have a meal"]), definitionTags: "v1 vt", termTags: "common" },
+      { dictionary: "Example", glossary: JSON.stringify([{ type: "structured-content", content: [
+        { tag: "p", content: "朝ごはんを食べる。" }, { tag: "img", path: "meal.png", width: 160, height: 80 }] }]),
+      definitionTags: "", termTags: "" },
+    ] } };
+const designPresentation = [
+  { title: "JMdict", enabled: true, termCount: 1 }, { title: "Example", enabled: true, termCount: 1 },
+  { title: "JPDB", frequencyMode: "rank-based", frequencyCount: 1, enabled: true },
+  { title: "Jiten", frequencyMode: "rank-based", frequencyCount: 1, enabled: true },
+  { title: "NHK", pitchCount: 1, enabled: true }, { title: "Daijirin", pitchCount: 1, enabled: true },
+];
+// Settings core delivers through updateDictionaryPresentation:
+// [key, a value other than its default, options the flip needs to show].
+const DESIGN_FLIPS = [
+  ["showFrequencyDictionaryNames", true], ["compactFrequencyNumbers", true], ["averageFrequency", true],
+  ["showPitchAccentFurigana", false], ["pitchAccentFuriganaDictionary", "Daijirin"],
+  ["showPitchAccentBadge", false], ["showPitchAccentDictionaryNames", false], ["showPitchAccentText", false],
+  ["showPitchAccentPosition", false], ["showPitchAccentGraph", true], ["hidePopupGrammarTags", false],
+  ["showCompactDefinitionSummary", true],
+  ["compactDefinitionSummaryCount", 1, { showCompactDefinitionSummary: true }],
+  ["compactDefinitionSummaryDictionary", "Example", { showCompactDefinitionSummary: true }],
+];
+// Settings a renderer uses outside that update, read from one rendered popup.
+const DESIGN_PROBES = {
+  popupOpacityPercent: probe => probe.css.includes("--gsm-hoshidicts-popup-opacity"),
+  popupToolbarPosition: probe => probe.toolbarPosition === "bottom",
+  popupColumns: probe => probe.columnReads > 0,
+  popupImageSource: probe => probe.images > 0,
+  imageHoverPreview: probe => probe.hoverPreviewReads > 0,
+  kanjiClickDictionary: probe => probe.kanjiLinks > 0,
+  customButtons: probe => probe.customButtons > 0,
+};
+
+async function designSettingsUsed(slug) {
+  const dom = environment("<p id='source'>昨日は食べた</p><div id='host'></div>"), { window } = dom, { document } = window;
+  try {
+    window.chrome = { runtime: { getURL: path => pathToFileURL(resolve(extension, path)).href } };
+    window.fetch = async () => ({ ok: true, text: async () => "" });
+    const host = window.HDThemeHost.createThemeHost({ getOptions: () => ({ popupTheme: slug }) });
+    await host.sync();
+    const settle = (ms = 0) => new Promise(done => setTimeout(done, ms));
+    const reads = { columns: 0, hoverPreview: 0 };
+    const source = document.getElementById("source");
+    const candidate = { query: "食べた", sentence: source.textContent, matchOffset: 2, sourceElements: [source], anchor: source };
+    const context = overrides => ({ ...window.HDReaderOptions.normaliseOptions({}), dictionaryPresentation: designPresentation,
+      dictionaryTabGroups: [], popupImageSources: null, generation: 1, isCurrentRequest: () => true,
+      resolveMedia: async () => "data:image/png;base64,AA==", ...overrides });
+    const { HDGlossary: glossary } = window;
+    async function render(overrides, update) {
+      const popup = document.createElement("div");
+      popup.className = "gsm-hoshidicts-popup";
+      document.getElementById("host").append(popup);
+      const view = host.createView({ document, window, popup, positionPopup() {},
+        appendExpressionRuby: glossary.appendExpressionRuby, createPronunciationPitchAccent: glossary.createPronunciationPitchAccent,
+        appendTextOnlyGlossary: glossary.appendTextOnlyGlossary, appendStructuredImage: glossary.appendStructuredImage,
+        parseTagList: glossary.parseTagList, getPopupScalePercent: () => 100, toolbarPosition: "top",
+        getPopupColumns: () => { reads.columns++; return 2; },
+        getImageHoverPreview: () => { reads.hoverPreview++; return "all"; },
+        sourceHighlighter: { apply() {}, clear() {}, refresh() {} }, sourceHighlightEnabled: true,
+        onKanjiClick() {}, onResultsRendered() {}, onResultsExpanded() {} });
+      view.renderResults([designResult], candidate, context(overrides));
+      await settle();
+      if (update) {
+        view.updateDictionaryPresentation(context(update));
+        view.flushDictionaryPresentation();
+        await settle();
+      }
+      // Generated ids differ between views; compare content.
+      const html = popup.innerHTML.replaceAll(/ (?:id|for|aria-controls|aria-labelledby|aria-describedby)="[^"]*"/gu, "");
+      return { view, popup, html };
+    }
+    async function snapshot(overrides, update) {
+      const { view, popup, html } = await render(overrides, update);
+      view.destroy(); popup.remove();
+      return html;
+    }
+    const used = [];
+    const defaults = await snapshot({});
+    assert.equal(await snapshot({}), defaults, `${slug} renders the same sample identically`);
+    for (const [key, value, needs = {}] of DESIGN_FLIPS) {
+      const before = Object.keys(needs).length ? await snapshot(needs) : defaults;
+      const flipped = { ...needs, [key]: value };
+      const after = await snapshot(flipped);
+      if (after === before) continue;
+      used.push(key);
+      assert.equal(await snapshot(needs, flipped), after, `${slug} applies ${key} to an open popup without a new lookup`);
+    }
+    reads.columns = 0;
+    reads.hoverPreview = 0;
+    const { view, popup } = await render({});
+    view.scheduleMasonry();
+    view.setToolbarPosition("bottom");
+    view.setCustomButtons([{ id: "search", type: "link", label: "Search", url: "https://example.test/%w" }]);
+    await settle(50);
+    popup.querySelector(".gloss-image-link")?.dispatchEvent(new window.Event("mouseenter"));
+    const probe = { css: readFileSync(resolve(extension, slug === "default" ? "render/reader.css" : `vendor/themes/${slug}/theme.css`), "utf8"),
+      toolbarPosition: popup.dataset.toolbarPosition, columnReads: reads.columns, hoverPreviewReads: reads.hoverPreview,
+      images: popup.querySelectorAll(".gloss-image-link").length,
+      kanjiLinks: popup.querySelectorAll(".gsm-hoshidicts-kanji-link").length,
+      customButtons: popup.querySelectorAll('[data-custom-button-id="search"]').length };
+    view.destroy();
+    return [...used, ...Object.keys(DESIGN_PROBES).filter(key => DESIGN_PROBES[key](probe))];
+  } finally { window.close(); }
+}
+
+test("each theme implements exactly the Design settings its catalogue entry declares", async () => {
+  const tagged = [...new Set(Array.from(readFileSync(resolve(extension, "settings.html"), "utf8")
+    .matchAll(/data-design-setting="([^"]+)"/gu), match => match[1]))];
+  const dom = environment();
+  try {
+    assert.deepEqual([...dom.window.HDReaderOptions.DESIGN_OPTION_KEYS].filter(key => !tagged.includes(key)).sort(),
+      [...CORE_DESIGN_SETTINGS].sort(), "every other Design setting is renderer-owned and tagged in Settings");
+  } finally { dom.window.close(); }
+  assert.deepEqual([...DESIGN_FLIPS.map(([key]) => key), ...Object.keys(DESIGN_PROBES)].sort(), [...tagged].sort(),
+    "every tagged Design setting has a check");
+  const { themes } = JSON.parse(readFileSync(resolve(extension, "vendor/themes/index.json"), "utf8"));
+  for (const entry of themes) {
+    const declared = entry.designSettings === "all" ? tagged : entry.designSettings;
+    assert.ok(Array.isArray(declared) && declared.every(key => tagged.includes(key)), `${entry.slug} declares Design settings by key`);
+    assert.deepEqual((await designSettingsUsed(entry.slug)).sort(), [...declared].sort(),
+      `${entry.slug} uses exactly the Design settings it declares`);
+  }
 });

@@ -679,9 +679,10 @@
                 <div class="fields">
                   <label class="field">
                     <span class="field-label">Theme</span>
-                    <select id="opt-popup-theme"></select>
+                    <select id="opt-popup-theme" aria-describedby="popup-theme-hint"></select>
+                    <span id="popup-theme-hint" class="field-hint" hidden></span>
                   </label>
-                  <label class="field">
+                  <label class="field" data-design-setting="popupOpacityPercent">
                     <span class="field-label">Background opacity</span>
                     <span class="input-suffix">
                       <input id="opt-popup-opacity" type="number" min="0" max="100" step="1" />
@@ -713,7 +714,7 @@
                   <span class="field-hint">Scale the whole popup, including text and controls. 100% is the default.</span>
                 </label>
                 <p class="field-hint">Popups shrink to fit smaller windows.</p>
-                <label class="field">
+                <label class="field" data-design-setting="popupToolbarPosition">
                   <span class="field-label">Toolbar position</span>
                   <select id="opt-popup-toolbar">
                     <option value="auto">Automatic</option>
@@ -727,10 +728,10 @@
                   <input id="opt-source-highlight" type="checkbox" />
                 </label>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" data-design-group>
                 <legend>Definitions</legend>
                 <div class="fields">
-                  <label class="field">
+                  <label class="field" data-design-setting="popupColumns">
                     <span class="field-label">Definition columns</span>
                     <select id="opt-popup-columns">
                       <option value="1">1 column</option>
@@ -741,12 +742,12 @@
                     <span class="field-hint">Arrange definition cards side by side.</span>
                   </label>
 
-                  <label class="field">
+                  <label class="field" data-design-setting="popupImageSource">
                     <span class="field-label">Image source</span>
                     <select id="opt-image-source"></select>
                     <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
                   </label>
-                  <label class="field">
+                  <label class="field" data-design-setting="imageHoverPreview">
                     <span class="field-label">Image hover preview</span>
                     <select id="opt-image-hover-preview">
                       <option value="off">Off</option>
@@ -755,80 +756,80 @@
                     </select>
                     <span class="field-hint">Enlarges a dictionary image on hover or keyboard focus. Large images only skips small inline glyphs such as image brackets and labels.</span>
                   </label>
-                  <label class="field">
+                  <label class="field" data-design-setting="kanjiClickDictionary">
                     <span class="field-label">Clicked-kanji dictionary</span>
                     <select id="opt-kanji-dictionary"></select>
                     <span class="field-hint">Term dictionaries also work when they contain a single-kanji entry. A group shows each of its dictionaries with an entry as its own tab, in group order.</span>
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" data-design-group>
                 <legend>Frequency labels</legend>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showFrequencyDictionaryNames">
                   <span>Show frequency dictionary names</span>
                   <input id="opt-frequency-names" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="compactFrequencyNumbers">
                   <span>Abbreviate large numbers (51.5k)</span>
                   <input id="opt-frequency-compact" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="averageFrequency">
                   <span>Show frequency averages</span>
                   <input id="opt-average-frequency" type="checkbox" />
                 </label>
-                <p class="field-hint">Harmonic mean of each dictionary's first value, as in Yomitan. Ranks and occurrence counts stay separate.</p>
+                <p class="field-hint" data-design-setting="averageFrequency">Harmonic mean of each dictionary's first value, as in Yomitan. Ranks and occurrence counts stay separate.</p>
                 <p class="field-hint">The sorting and blur dictionaries are under <a href="#lookup">Reading</a>.</p>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" data-design-group>
                 <legend>Pitch accent</legend>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentFurigana">
                   <span>Show pitch in furigana</span>
                   <input id="opt-pitch-furigana" type="checkbox" />
                 </label>
                 <div class="fields">
-                  <label class="field">
+                  <label class="field" data-design-setting="pitchAccentFuriganaDictionary">
                     <span class="field-label">Pitch accent dictionary</span>
                     <select id="opt-pitch-dictionary"></select>
                     <span class="field-hint">Falls back to the first available pitch pattern.</span>
                   </label>
                 </div>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentBadge">
                   <span>Show pitch badges</span>
                   <input id="opt-pitch-badge" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentDictionaryNames">
                   <span>Show pitch dictionary names</span>
                   <input id="opt-pitch-names" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentText">
                   <span>Show pitch accent text</span>
                   <input id="opt-pitch-text" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentPosition">
                   <span>Show pitch accent position</span>
                   <input id="opt-pitch-position" type="checkbox" />
                 </label>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showPitchAccentGraph">
                   <span>Show pitch accent graph</span>
                   <input id="opt-pitch-graph" type="checkbox" />
                 </label>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" data-design-group>
                 <legend>Tags</legend>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="hidePopupGrammarTags">
                   <span>Show grammar tags</span>
                   <input id="opt-grammar-tags" type="checkbox" />
                 </label>
-                <p class="field-hint">Definition tags and phonetic transcriptions remain visible.</p>
+                <p class="field-hint" data-design-setting="hidePopupGrammarTags">Definition tags and phonetic transcriptions remain visible.</p>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" data-design-group>
                 <legend>Compact summary</legend>
-                <label class="lookup-enable">
+                <label class="lookup-enable" data-design-setting="showCompactDefinitionSummary">
                   <span>Show brief definitions beside the headword</span>
                   <input id="opt-compact-summary" type="checkbox" />
                 </label>
                 <div class="fields">
-                  <label class="field">
+                  <label class="field" data-design-setting="compactDefinitionSummaryCount">
                     <span class="field-label">Snippets</span>
                     <select id="opt-summary-count">
                       <option value="1">1 snippet</option>
@@ -840,14 +841,14 @@
                     </select>
                     <span class="field-hint">Full definitions stay available below.</span>
                   </label>
-                  <label class="field">
+                  <label class="field" data-design-setting="compactDefinitionSummaryDictionary">
                     <span class="field-label">Summary dictionary</span>
                     <select id="opt-summary-dictionary"></select>
                     <span class="field-hint">Falls back to the first available definition in the current tab.</span>
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group" id="custom-buttons-settings">
+              <fieldset class="lookup-group" id="custom-buttons-settings" data-design-setting="customButtons">
                 <legend>Custom buttons</legend>
                 <p id="custom-buttons-overlay-help" class="section-note" hidden>Link buttons open in your system browser from a real lookup popup. The live preview cannot launch links in this overlay.</p>
                 <p class="field-hint">Add link buttons or Anki buttons that use a chosen Template. Buttons appear in this order after the built-in actions.</p>
@@ -911,7 +912,7 @@
                 </div>
               </details>
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
-              <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
+              <p class="field-hint">Resets every Design setting, including ones this theme hides, and switches back to the Default theme. Reading and your library stay unchanged.</p>
             </div>
             <section class="design-sample" aria-labelledby="design-preview-heading">
               <div class="preview-heading">

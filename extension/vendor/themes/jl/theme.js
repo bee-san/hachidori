@@ -55,8 +55,11 @@ export function createView(options, enhanced = false) {
   const preview = enhanced ? components.createImagePreview({ document, window: options.window, popup,
     getCoordinateScale: () => components.popupCoordinateScale(options.getPageZoom?.() ?? 1, options.getPopupScalePercent?.() ?? 100),
     getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll }) : null;
-  let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], tab = null, onTabSelected = null;
+  let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], markers = [], tab = null, onTabSelected = null;
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
+  // Design's pitch switch and dictionary, as the markers were last painted.
+  let paintedPitch = "";
+  const pitchOptions = context => JSON.stringify([context.showPitchAccentFurigana !== false, context.pitchAccentFuriganaDictionary ?? ""]);
   let customButtons = options.customButtons || [];
   const images = new Set();
   let pendingPresentation = null;
@@ -67,7 +70,7 @@ export function createView(options, enhanced = false) {
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
-    entries = []; bindings = []; labels = []; frequencies = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
+    entries = []; bindings = []; labels = []; frequencies = []; markers = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
     highlighter?.clear();
     preview?.hideImagePreview();
   }
@@ -101,6 +104,13 @@ export function createView(options, enhanced = false) {
     for (const { element, groups } of frequencies) {
       element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
+    }
+    // Markers hold no controls, so a pitch option change repaints them in place
+    // without moving focus or touching an open Note draft.
+    const pitch = pitchOptions(context);
+    if (pitch !== paintedPitch) {
+      paintedPitch = pitch;
+      for (const marker of markers) paintPitch(marker, context);
     }
     if (enhanced) {
       for (const image of images) image.updatePresentation(context);
@@ -201,10 +211,22 @@ export function createView(options, enhanced = false) {
       parent.append(span);
     }
   }
-  function spelling(result, candidate, morae) {
-    const element = node("span", "gsm-hoshidicts-expression jl-spelling");
+  function paintPitch({ element, text, pitches }, context) {
+    const morae = context.showPitchAccentFurigana === false ? null
+      : pitchMorae(text, pitches, context.pitchAccentFuriganaDictionary);
+    element.textContent = morae ? "" : text;
     if (morae) appendMorae(element, morae);
-    else for (const character of result.term.expression) {
+  }
+  // Painted while its block is still detached; updateDictionaryPresentation repaints it.
+  function pitchMarker(element, text, term, context) {
+    const marker = { element, text, pitches: term.pitches ?? [] };
+    markers.push(marker);
+    paintPitch(marker, context);
+    return element;
+  }
+  function spelling(result, candidate) {
+    const element = node("span", "gsm-hoshidicts-expression jl-spelling");
+    for (const character of result.term.expression) {
       element.append(HAN.test(character)
         ? button("gsm-hoshidicts-kanji-link", character, event => options.onKanjiClick?.(character, result, candidate, event.currentTarget))
         : document.createTextNode(character));
@@ -216,16 +238,11 @@ export function createView(options, enhanced = false) {
     const term = result.term;
     const line = node("div", "jl-top");
     const reading = term.reading && term.reading !== term.expression ? term.reading : "";
+    const expression = spelling(result, candidate);
+    line.append(expression);
+    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
     // Without a reading JL marks the spelling itself, which only works for kana.
-    const pitchText = reading || (HAN.test(term.expression) ? "" : term.expression);
-    const morae = pitchText && context.showPitchAccentFurigana !== false
-      ? pitchMorae(pitchText, term.pitches ?? [], context.pitchAccentFuriganaDictionary) : null;
-    line.append(spelling(result, candidate, reading ? null : morae));
-    if (reading) {
-      const element = node("span", "jl-reading", morae ? null : reading);
-      if (morae) appendMorae(element, morae);
-      line.append(element);
-    }
+    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);
     const audio = components.createAudioControl(document, term.expression);
     // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.
     if (!enhanced) line.append(audio.element);
@@ -363,6 +380,7 @@ export function createView(options, enhanced = false) {
 
   function renderResults(results, candidate, context = {}) {
     clear();
+    paintedPitch = pitchOptions(context);
     onTabSelected = context.onDictionaryTabSelected;
     const found = [];
     for (const result of results) {

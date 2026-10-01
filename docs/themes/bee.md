@@ -26,8 +26,8 @@ has a visible violet outline.
   in the text colour. Every enabled control shows a pointer cursor. In the
   kanji view, Back sits top left, aligned with the group tabs.
 - **Image preview:** hovering or focusing a glossary image shows Default's
-  enlarged copy beside the popup, following Reading → Image hover preview
-  (Off, Large images, All images).
+  enlarged copy beside the popup, following Design → Definitions → Image hover
+  preview (Off, Large images only, All images).
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
