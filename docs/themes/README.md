@@ -5,6 +5,8 @@ Enable **Advanced → Experimental features → Theme Store**, then open **Desig
 Scroll the cards horizontally and choose **Use**. Selection saves immediately
 and updates open popups and the preview. Disabling the experiment hides the
 Store and keeps the selected popup. Existing palettes continue to use Default.
+Design shows only the settings the selected theme uses (see
+[Design settings](#design-settings)); the others keep their values for Default.
 
 Default is the existing rich popup. Nazeka is a separate text renderer adapted
 from [wareya/nazeka](https://github.com/wareya/nazeka). It constructs expression,
@@ -113,6 +115,47 @@ custom-button layout. Core still binds mining to the returned actions container.
 - `destroy` releases listeners/observers and owned DOM; core closes audio menus
   and retires mining state. Removed node listeners become collectible.
 
+### Design settings
+
+Each entry in `extension/vendor/themes/index.json` declares, in `designSettings`,
+which Design settings its renderer implements: `"all"` or a list of option keys.
+The keys are the renderer-owned controls, tagged `data-design-setting` in
+`settings.html`: `popupOpacityPercent`, `popupToolbarPosition`, `popupColumns`,
+`popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
+`showFrequencyDictionaryNames`, `compactFrequencyNumbers`, `averageFrequency`,
+`showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `showPitchAccentBadge`,
+`showPitchAccentDictionaryNames`, `showPitchAccentText`, `showPitchAccentPosition`,
+`showPitchAccentGraph`, `hidePopupGrammarTags`, `showCompactDefinitionSummary`,
+`compactDefinitionSummaryCount`, `compactDefinitionSummaryDictionary` and
+`customButtons`. Core applies Theme, Width, Height, Scale, Highlight the word on
+the page and Custom CSS/JavaScript to every renderer, so those always show and
+are never declared.
+
+| Theme | Design settings besides the core ones |
+| --- | --- |
+| Default | All (`"all"`) |
+| Nazeka | Clicked-kanji dictionary |
+| Plain | None |
+| JL | Background opacity, Clicked-kanji dictionary, Show pitch in furigana, Pitch accent dictionary |
+| Bee's Theme | JL's four, plus Image source, Image hover preview and Custom buttons |
+
+Settings shows the core controls and the selected theme's declared ones, and
+hides a group whose controls are all hidden. Search skips hidden controls.
+Hidden settings keep their saved values and apply again on Default; choosing a
+theme writes only `popupTheme`. The filter follows the theme in use, even with
+the Theme Store switched off. An entry without `designSettings`, an unknown
+theme or an unreadable catalogue shows every control. Default declares `"all"`
+because new Design settings are built there first; the other themes list their
+keys, so a new setting stays hidden on them until each implements and declares it.
+
+A declared setting must change an open popup and the Design preview without a
+new lookup. Core delivers changes through `updateDictionaryPresentation`
+(frequency, pitch, tag, compact-summary and image-source options),
+`setToolbarPosition`, `setCustomButtons`, the `getPopupColumns` and
+`getImageHoverPreview` callbacks and the `--gsm-hoshidicts-popup-opacity`
+custom property. `test/theme-renderer.test.mjs` checks every declaration
+against its renderer, in both directions.
+
 ## Content and stylesheet ownership
 
 Default loads `render/reader.css`; Default and Bee load scoped dictionary CSS. Bee
@@ -132,7 +175,7 @@ The existing `appendTextOnlyGlossary` is a rich helper and is not text mode.
 
 ```sh
 node test/make-fixture.mjs
-node --test test/theme-renderer.test.mjs
+node --test test/theme-renderer.test.mjs test/settings-search.test.mjs
 node test/chrome-theme-store.mjs
 ```
 
