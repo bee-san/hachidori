@@ -592,7 +592,16 @@ What it proves, in order:
     alias is dropped, the MDD CSS is the dictionary stylesheet, the PNG comes
     back through `hdw_media` while the traversal key does not, and the `.mdd`
     on its own is refused without leaving staging debris. Yomitan archives
-    report all four MDX loss counts as zero.
+    report all four MDX loss counts as zero. Four more engine
+    fixtures cover issue #437. `key_rules.mdx` has no `KeyCaseSensitive` or
+    `StripKey` attribute, so MDict's defaults apply: `ティーシャツ →
+    @@@LINK=tシャツ`, `ワイファイ → @@@LINK=WiFi` and the two-hop `AliasOne`
+    reach their targets in seven rows. `key_rules_exact.mdx` declares exact keys
+    and keeps the first two unresolved in five rows. `css_charsets.mdx` and
+    `.mdd` import with their Shift_JIS (with and without `@charset`) and
+    windows-1252 stylesheets decoded, without `@charset` or U+FFFD.
+    `legacy_font.mdx` turns `<font size>` into `medium` and `x-large`, and its
+    inline `font-size` wins over `size="5"`.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
