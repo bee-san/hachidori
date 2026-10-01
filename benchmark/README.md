@@ -663,6 +663,8 @@ node benchmark/anki-popup-readiness.mjs --extension /path/to/checkout/extension 
 
 `--seed 20000` first pads the destination note type with that many notes that
 match no result, so each field search scans a realistic collection.
+`--glossary-bytes 20000` gives every note a glossary of that size, so the add
+check carries the rendered fields a structured dictionary produces.
 
 ### Scheduling inside a real Electron overlay host
 

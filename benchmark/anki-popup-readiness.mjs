@@ -50,12 +50,13 @@ function argumentsFrom(argv) {
   if (!values["expected-media-dir"]) throw new Error("--expected-media-dir is required to prove which isolated profile is open.");
   const entries = (values.entries ?? "1,5,10").split(",").map(Number);
   const runs = Number(values.runs ?? 10), warmups = Number(values.warmups ?? 2), seed = Number(values.seed ?? 0);
+  const glossaryBytes = Number(values["glossary-bytes"] ?? 0);
   if (!entries.every(value => Number.isSafeInteger(value) && value >= 1 && value <= WORDS.length)) {
     throw new Error(`--entries takes a comma-separated list of counts from 1 to ${WORDS.length}.`);
   }
   if (!Number.isSafeInteger(runs) || runs < 1 || !Number.isSafeInteger(warmups) || warmups < 0
-      || !Number.isSafeInteger(seed) || seed < 0) {
-    throw new Error("--runs must be at least 1, and --warmups and --seed at least 0.");
+      || !Number.isSafeInteger(seed) || seed < 0 || !Number.isSafeInteger(glossaryBytes) || glossaryBytes < 0) {
+    throw new Error("--runs must be at least 1, and --warmups, --seed and --glossary-bytes at least 0.");
   }
   return {
     extension: resolve(values.extension ?? resolve(dirname(fileURLToPath(import.meta.url)), "../extension")),
@@ -67,6 +68,7 @@ function argumentsFrom(argv) {
     runs,
     warmups,
     seed,
+    glossaryBytes,
     label: values.label ?? null,
     output: values.output ? resolve(values.output) : null,
   };
@@ -162,6 +164,9 @@ async function main() {
     });
   }
 
+  // Every add check carries each note's rendered fields; a dictionary's
+  // structured glossary is the largest of them. Each item is 24 UTF-8 bytes.
+  const glossary = "<li>例文の定義</li>".repeat(Math.round(options.glossaryBytes / 24));
   async function sample(scope, behavior, words) {
     const requests = [];
     const gateway = createAnkiGateway({ fetch: (url, init) => {
@@ -171,7 +176,8 @@ async function main() {
     const config = configFor(scope, behavior);
     const service = createAnkiMiningService({ gateway, duplicateIndex: memoryIndex(config),
       readConfig: async () => config,
-      buildFields: async request => ({ fields: { Expression: request.term.expression, Sentence: "文" } }) });
+      buildFields: async request => ({ fields: { Expression: request.term.expression, Sentence: "文",
+        ...(glossary ? { MainDefinition: glossary } : {}) } }) });
     const batched = typeof service.preflightMany === "function";
     const started = process.hrtime.bigint();
     const { configKey } = await service.status();
@@ -231,6 +237,7 @@ async function main() {
     endpoint: options.endpoint,
     mediaDir,
     noteCount,
+    glossaryBytes: options.glossaryBytes,
     warmups: options.warmups,
     runs: options.runs,
     environment: { node: process.version, platform: process.platform, osRelease: os.release(),
