@@ -333,7 +333,7 @@ const PLANNED = [
   "hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
   "Press to set records the middle button, which opens a stationary lookup and releases it like a key",
   "a middle scan press on a Japanese link looks it up without a new tab while other links still open",
-  "a Back scan press on a word looks it up without going back, while one on a field still does",
+  "a Back scan press on a word, in page text or a text field, looks it up without going back, while one on an empty field still does",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "Japanese-only selections leave English text alone and the notice setting propagates to open readers",
   "turning off the personal dictionary stops highlight lookups, the pencil and personal entries until it is on",
@@ -350,8 +350,8 @@ const PLANNED = [
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
   "fallback source paint stays beneath page headers and overlays",
   "fallback source paint refreshes after stylesheet loading and CSSOM edits",
-  "editable controls preserve normal editing and suppress pointer and selection lookups",
-  "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
+  "text fields look up their words without disturbing editing, while other editors suppress pointer and selection lookups",
+  "autofocused search fields allow hover and stationary Shift lookup of their own words and Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "Japanese-only mixed numeral lookups retain native matches and exact source highlights",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
@@ -8735,7 +8735,27 @@ async function checkReaderActivation(settings, tab, popup) {
     await popup.waitForHidden();
     await pause(300);
     const onWord = await tab.evaluate(() => ({ pops: window.__scanButtonPops, state: history.state }));
-    // Over an editing field the same press is not cancelled, so Chrome still
+    // A word in a text field is looked up the same way (#425).
+    await tab.evaluate(() => {
+      const field = document.createElement("input");
+      field.id = "scan-button-word";
+      field.value = "食べたかった";
+      field.style.cssText = "font: 20px/1 serif; padding: 4px; border: 1px solid";
+      document.body.prepend(field);
+    });
+    const wordField = await (await tab.$("#scan-button-word")).boundingBox();
+    await tab.mouse.move(2, 2);
+    await tab.mouse.move(wordField.x + 15, wordField.y + 15);
+    await tab.mouse.down({ button: "back" });
+    const fieldActivated = await popup.waitForVisible();
+    await tab.mouse.up({ button: "back" });
+    await popup.waitForHidden();
+    await pause(300);
+    const onFieldWord = await tab.evaluate(() => {
+      document.getElementById("scan-button-word").remove();
+      return { pops: window.__scanButtonPops, state: history.state };
+    });
+    // Over an empty field the same press is not cancelled, so Chrome still
     // goes back, which also drops the entry pushed above.
     await tab.evaluate(() => {
       const field = document.createElement("input");
@@ -8753,10 +8773,13 @@ async function checkReaderActivation(settings, tab, popup) {
       offText = await tab.evaluate(() => ({ pops: window.__scanButtonPops, state: history.state }));
     }
     await tab.evaluate(() => document.getElementById("scan-button-field").remove());
-    check("a Back scan press on a word looks it up without going back, while one on a field still does",
+    check("a Back scan press on a word, in page text or a text field, looks it up without going back, while one on an empty field still does",
       backActivated !== null && onWord.pops === 0 && onWord.state?.scanButton === true
+        && fieldActivated?.plain.includes("食べる") === true && onFieldWord.pops === 0
+        && onFieldWord.state?.scanButton === true
         && offText.pops === 1 && offText.state?.scanButton !== true,
-      JSON.stringify({ backActivated: backActivated !== null, onWord, offText }));
+      JSON.stringify({ backActivated: backActivated !== null, onWord, fieldActivated: fieldActivated !== null,
+        onFieldWord, offText }));
   } finally {
     await tab.keyboard.up("k");
     for (const button of ["middle", "back"]) await tab.mouse.up({ button }).catch(() => {});
@@ -9204,25 +9227,65 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       JSON.stringify({ hoverPopup: Boolean(hoverPopup), hoverDrag, hoverSelected: Boolean(hoverSelected),
         hoverEditorOpened, hoverEditor, clickPopup: Boolean(clickPopup), clickDismissed }));
     await dismiss();
+    // A text field's words are looked up through an imposter (#425) while its
+    // focus, selection, value and scroll stay the field's own; the input is
+    // scrolled to 食べたかった and the textarea down to its third line.
     await tab.$eval("#verb", (element) => {
-      element.innerHTML = '<input value="食べたかった"><textarea>食べたかった</textarea>'
+      const style = "font: 20px/1 serif; padding: 4px; border: 1px solid; width: 160px";
+      element.innerHTML = `<input style="${style}" value="あいうえおかきくけこ食べたかったさしすせそ">`
+        + `<textarea style="${style}; height: 40px">一行目\n二行目\n食べたかった</textarea>`
+        + `<input type="password" style="${style}" value="食べたかった">`
+        + `<input style="${style}; -webkit-text-security: disc" value="食べたかった">`
         + '<b contenteditable="true"><i>食べたかった</i></b><button class="vn-next" type="button">→</button>';
     });
-    const editingStart = (await lookups()).length;
-    const edits = [];
-    for (const selector of ["#verb input", "#verb textarea", "#verb [contenteditable]"]) {
+    const fieldState = (selector) => tab.$eval(selector, (element) => ({
+      focused: document.activeElement === element, start: element.selectionStart, end: element.selectionEnd,
+      value: element.value, scrollLeft: element.scrollLeft, scrollTop: element.scrollTop,
+    }));
+    const imposters = () => tab.evaluate(() => [...document.body.children]
+      .filter((child) => child.getAttribute("aria-hidden") === "true").length);
+    const fields = [];
+    for (const selector of ["#verb input", "#verb textarea"]) {
       await tab.focus(selector);
-      await moveTo(selector);
+      await tab.$eval(selector, (element) => {
+        element.setSelectionRange(1, 3);
+        element.scrollLeft = 200;
+        element.scrollTop = 20;
+      });
+      const before = await fieldState(selector);
+      const box = await (await tab.$(selector)).boundingBox();
+      // 食 is the first visible glyph, on the input's line and the textarea's second visible one.
+      const shown = await hoverForPopup(tab, popup, selector,
+        { point: { x: box.x + 15, y: box.y + (selector.endsWith("input") ? 15 : 35) } });
+      const during = await fieldState(selector);
+      const selectStart = (await lookups()).length;
+      await tab.$eval(selector, (element) => element.select());
+      await pause();
+      const selectQuiet = (await lookups()).length === selectStart;
       await tab.keyboard.press("End");
       await tab.keyboard.type("k");
-      edits.push(await tab.$eval(selector, (element) => (element.value ?? element.textContent).endsWith("k")));
-      await tab.$eval(selector, (element) => {
-        if ("select" in element) element.select();
-        else window.getSelection().selectAllChildren(element);
-      });
-      await pause();
+      const typed = (await fieldState(selector)).value.endsWith("k");
       await dismiss();
+      fields.push({ selector, looked: shown?.plain.includes("食べる") === true, before, during,
+        undisturbed: before.focused && JSON.stringify(before) === JSON.stringify(during),
+        selectQuiet, typed, removed: await imposters() === 0 });
     }
+    const editingStart = (await lookups()).length;
+    // A password and a masked field are never read.
+    for (const selector of ['#verb input[type="password"]', "#verb input[style*=security]"]) {
+      const box = await (await tab.$(selector)).boundingBox();
+      await tab.mouse.move(2, 2);
+      await tab.mouse.move(box.x + 15, box.y + 15);
+      await pause();
+    }
+    await tab.focus("#verb [contenteditable]");
+    await moveTo("#verb [contenteditable]");
+    await tab.keyboard.press("End");
+    await tab.keyboard.type("k");
+    const edits = [await tab.$eval("#verb [contenteditable]", (element) => element.textContent.endsWith("k"))];
+    await tab.$eval("#verb [contenteditable]", (element) => window.getSelection().selectAllChildren(element));
+    await pause();
+    await dismiss();
     // A webpage cannot use the startup arrow's class to scan a button's text.
     await tab.focus("#verb .vn-next");
     await moveTo("#verb .vn-next");
@@ -9279,41 +9342,81 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const hiddenPointerAccepted = await hoverForPopup(tab, popup, "#verb");
     await selectVerb('食べ<span style="display:none"><button>隠し</button></span>たかった');
     const hiddenControlAccepted = await popup.waitForVisible();
-    check("editable controls preserve normal editing and suppress pointer and selection lookups",
-      edits.every(Boolean) && editingQuiet && blockBoundary && hiddenControlAccepted?.plain.includes("食べる")
+    check("text fields look up their words without disturbing editing, while other editors suppress pointer and selection lookups",
+      fields.every((field) => field.looked && field.undisturbed && field.selectQuiet && field.typed && field.removed)
+        && edits.every(Boolean) && editingQuiet && blockBoundary && hiddenControlAccepted?.plain.includes("食べる")
         && hiddenPointerAccepted?.plain.includes("食べる"),
-      JSON.stringify({ edits, editingQuiet, blockBoundary, hiddenControlAccepted: hiddenControlAccepted !== null,
+      JSON.stringify({ fields, edits, editingQuiet, blockBoundary, hiddenControlAccepted: hiddenControlAccepted !== null,
         hiddenPointerAccepted: hiddenPointerAccepted !== null }));
 
     await dismiss();
     await editSettingsControls(settings, { "opt-activation-key": "" });
     await tab.$eval("#verb", (element) => {
-      element.innerHTML = '<input id="jisho-search" autofocus aria-label="Search Japanese">'
+      element.innerHTML = '<input id="jisho-search" autofocus aria-label="Search Japanese" value="食べました"'
+        + ' style="font: 20px/1 serif; padding: 4px; border: 1px solid">'
         + '<span>Text reading assistance: <a href="/search/example">昨日すき焼きを'
         + '<span id="jisho-example-word">食べました</span></a></span>';
     });
+    const search = await (await tab.$("#jisho-search")).boundingBox();
+    // The pointer rests on 食, the field's first glyph.
+    const toField = async (dx = 0) => {
+      await tab.mouse.move(2, 2);
+      await tab.mouse.move(search.x + 15 + dx, search.y + 15);
+      await pause();
+    };
+    const searchFocused = () => tab.$eval("#jisho-search", element => document.activeElement === element);
     await tab.focus("#jisho-search");
     await moveTo("#jisho-example-word");
     const hoveredLink = await popup.waitForVisible();
-    const hoverKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
+    const hoverKeepsSearch = await searchFocused();
+    await dismiss();
+    await tab.focus("#jisho-search");
+    await toField();
+    const hoveredField = await popup.waitForVisible();
+    const fieldHoverKeepsSearch = await searchFocused();
     await dismiss();
     await editSettingsControls(settings, { "opt-activation-key": "Shift", "opt-lookup-sticky": false });
     await tab.focus("#jisho-search");
     const beforeModifier = (await lookups()).length;
     await moveTo("#jisho-example-word");
     const modifierGated = (await lookups()).length === beforeModifier;
-    let activatedLink;
-    try {
-      await tab.keyboard.down("Shift");
-      activatedLink = await popup.waitForVisible();
-    } finally { await tab.keyboard.up("Shift"); }
-    const modifierKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
-    check("autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
+    const holdShift = async (whileHeld) => {
+      try {
+        await tab.keyboard.down("Shift");
+        return await whileHeld();
+      } finally { await tab.keyboard.up("Shift"); }
+    };
+    const activatedLink = await holdShift(() => popup.waitForVisible());
+    const modifierKeepsSearch = await searchFocused();
+    await popup.waitForHidden();
+    await toField();
+    const activatedField = await holdShift(() => popup.waitForVisible());
+    const fieldText = (await lookups()).at(-1)?.text;
+    await popup.waitForHidden();
+    // After a click into the field and typing, the Shift of a capital letter
+    // does not cover it; moving with Shift held looks up again.
+    await tab.mouse.down();
+    await tab.mouse.up();
+    await tab.keyboard.press("End");
+    await tab.keyboard.type("x");
+    const beforeTyping = (await lookups()).length;
+    const typing = await holdShift(async () => {
+      await pause();
+      const quiet = (await lookups()).length === beforeTyping && !popup.visible(await popup.state());
+      await tab.mouse.move(search.x + 16, search.y + 15);
+      return { quiet, moved: await popup.waitForVisible() };
+    });
+    const typedText = (await lookups()).at(-1)?.text;
+    const typedKeepsSearch = await searchFocused();
+    check("autofocused search fields allow hover and stationary Shift lookup of their own words and Japanese example links",
       hoveredLink?.plain.includes("食べる") && activatedLink?.plain.includes("食べる")
-        && modifierGated && hoverKeepsSearch && modifierKeepsSearch
-        && (await lookups()).at(-1)?.text === "食べました",
+        && hoveredField?.plain.includes("食べる") && activatedField?.plain.includes("食べる") && fieldText === "食べました"
+        && typing.quiet && typing.moved?.plain.includes("食べる") && typedText === "食べましたx"
+        && modifierGated && hoverKeepsSearch && fieldHoverKeepsSearch && modifierKeepsSearch && typedKeepsSearch,
       JSON.stringify({ hoveredLink: Boolean(hoveredLink), activatedLink: Boolean(activatedLink),
-        modifierGated, hoverKeepsSearch, modifierKeepsSearch }));
+        hoveredField: Boolean(hoveredField), activatedField: Boolean(activatedField), fieldText,
+        typingQuiet: typing.quiet, typingMoved: Boolean(typing.moved), typedText,
+        modifierGated, hoverKeepsSearch, fieldHoverKeepsSearch, modifierKeepsSearch, typedKeepsSearch }));
 
     await dismiss();
     await editSettingsControls(settings, { "opt-activation-key": "" });

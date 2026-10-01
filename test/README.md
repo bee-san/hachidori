@@ -1537,7 +1537,11 @@ The real browser checks horizontal and vertical glyph hits, padded link tiles,
 and a transparent element covering text. `HACHIDORI_HOVER_SCREENSHOTS=/path/to/dir`
 saves each state with a red marker at the actual pointer coordinates. The
 extension smoke suite additionally checks the two-pixel tolerance and complete
-supplementary Unicode characters when the caret lands after the glyph.
+supplementary Unicode characters when the caret lands after the glyph. Its text
+field case scans an untyped input, a search input and a textarea line through
+their imposter, shares one imposter and pending lookup across moves, rebuilds it
+for a changed value, refuses padding, password, masked and empty fields, keeps
+page scans out of it and removes it when the popup closes or the pointer leaves.
 
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
@@ -1565,15 +1569,21 @@ observes real worker lookup relays while toggling Japanese-only scanning in the
 open tab. Set `HACHIDORI_SELECTION_BLOCKED_SCREENSHOT`,
 `HACHIDORI_SELECTION_ALLOWED_SCREENSHOT` and
 `HACHIDORI_SELECTION_EVIDENCE` to capture the two visible states and their
-request/highlight summary. Native input, textarea and contenteditable typing
-stays intact; direct and spanning selections exclude visible editing controls,
+request/highlight summary. Text inputs and textareas, one scrolled sideways and
+one scrolled down, look up 食べる from their own value (#425) while their focus,
+selection, value and scroll stay unchanged, typing still appends, selecting in
+them starts no lookup and no imposter remains once the popup closes; password
+and `-webkit-text-security` fields stay unread. Contenteditable typing stays
+intact; direct and spanning selections exclude visible editing controls,
 including boxless `display:contents` editors, without treating a hidden control
 as visible.
 Nested open-shadow editors suppress printable activation typing and cancel
 pending scans when focused. A local Japanese example link beside an autofocused
-search field supports both hover and stationary Shift lookup while preserving
-the field's focus. Visibility-restored descendants are treated as visible even
-inside a hidden editor.
+search field, and the field's own value, support both hover and stationary Shift
+lookup while preserving the field's focus; after a click into the field and
+typing, a stationary Shift scans nothing until the pointer moves.
+Visibility-restored descendants are treated as visible even inside a hidden
+editor.
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.

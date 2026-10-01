@@ -89,9 +89,11 @@ and complete-result measurements; see [the theme report](../docs/themes/benchmar
 
 Use `HACHIDORI_HOVER_SAMPLES` to change the profile count. Each profile also times
 1,000 production `resolveCandidate()` calls at a glyph, 1,000 at a point in
-the tile's padding, 20 CSS pixels left of the text, and 1,000 at a word 600
+the tile's padding, 20 CSS pixels left of the text, 1,000 at a word 600
 characters into a 5,000-character paragraph held in one text node with no
-sentence terminator, after 100 excluded warmups per point.
+sentence terminator, and 1,000 at the first glyph of a text input, which reuse
+its imposter, after 100 excluded warmups per point. Its `fieldBuild` times 200
+first hovers of that input, each building a fresh imposter.
 `session-*-hit-testing.json` records coordinates, duration and accepted
 candidate counts, so a padding miss can be distinguished from a false lookup.
 Its `sentenceCost` times the sentence extraction alone on that long-paragraph
