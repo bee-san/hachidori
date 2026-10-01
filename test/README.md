@@ -371,7 +371,7 @@ read it.
 | `term_bank_1.json` | plain string glossary; a `structured-content` glossary with nested tags, a `ul`, a `table` and an `img`; an inflected-verb target (`食べる`, `rules: "v1"`); a kana-only entry with an empty reading; `definition_tags` and `term_tags` on every row; two rows sharing one (expression, reading) so the term has two glossaries |
 | `term_meta_bank_1.json` | `freq` in both accepted shapes (nested `{"frequency":{…}}` and flat `{"value":…}`), a `pitch` entry exercising int position, string position (pattern), bare-int `nasal` and array `devoice`, and an `ipa` entry |
 | `kanji_bank_1.json` | `食` with onyomi, kunyomi, tags, three definitions and three stats |
-| `tag_bank_1.json` | seven tags across four categories |
+| `tag_bank_1.json` | seven tags across four categories; they end up in the imported `index.json`'s `tags`, which is what `hdw_tags` returns |
 | `styles.css` | ends up in the imported `index.json`'s `styles`, which is what `hdw_styles` returns |
 | `media/kanji.png` | a real 16×16 PNG, the target of the `img` path above |
 | `media/` | a bare directory record; `get_files()` has to skip it or `mediaCount` is wrong |
@@ -517,8 +517,11 @@ What it proves, in order:
    written with its first number as the value, as Yomitan does, and applies the
    reading-scoped row to that reading only.
 5. **`hdw_kanji`** (including the `{"character":"","entries":[]}` miss sentinel and
-   the binding's sort of `stats` by name), **`hdw_styles`**, and **`hdw_media`**
-   (byte length, PNG signature, and the full bytes equal to the fixture file).
+   the binding's sort of `stats` by name), **`hdw_styles`**, **`hdw_tags`** (every
+   tag-bank row in bank order, again after a reset and reload and after a
+   re-import; none for a directory the previous engine imported), and
+   **`hdw_media`** (byte length, PNG signature, and the full bytes equal to the
+   fixture file).
 6. **Error paths.** An uncaught C++ exception aborts the wasm instance and takes
    the extension's offscreen document with it, so these matter as much as the
    happy path: importing a text file and an index-less zip and a missing path;

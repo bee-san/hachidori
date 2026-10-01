@@ -22,6 +22,7 @@ import {
   MANY_BANK_TITLE,
   MEDIA_PATH,
   STYLES,
+  TAGS,
   TERMS,
   LONG_KEY_TITLE,
   LONG_KEY_PROVERB,
@@ -170,6 +171,11 @@ const KANJI_ENTRY = {
 };
 const LOOKUP_KANJI = { character: 'string', entries: arrayOf(KANJI_ENTRY) };
 const STYLE = { dictionary: 'string', styles: 'string' };
+const TAG = { name: 'string', category: 'string', order: 'number', notes: 'string', score: 'number' };
+const DICTIONARY_TAGS = { dictionary: 'string', tags: arrayOf(TAG) };
+// The fixture's tag bank as hdw_tags returns it, in bank order.
+const FIXTURE_TAGS = [{ dictionary: TITLE, tags: TAGS.map(([name, category, order, notes, score]) =>
+  ({ name, category, order, notes, score })) }];
 const IMPORT_REPORT = {
   success: 'boolean',
   title: 'string',
@@ -274,6 +280,7 @@ const lookupDictionary = (text, path, maxResults = 32, scanLength = 16, options 
 );
 const kanji = (character) => JSON.parse(call('hdw_kanji', 'string', ['string'], [character]));
 const styles = () => JSON.parse(call('hdw_styles', 'string', [], []));
+const tags = () => JSON.parse(call('hdw_tags', 'string', [], []));
 const media = (dictionary, path) => call('hdw_media', 'number', ['string', 'string'], [dictionary, path]);
 const mediaBytes = (length) => {
   // 'pointer', as offscreen.js uses: only that return type is masked back to
@@ -750,7 +757,7 @@ check('a text frequency under a reading applies to that reading only', () => {
 
 // ---------------------------------------------------------------------------
 
-G('hdw_kanji / hdw_styles / hdw_media');
+G('hdw_kanji / hdw_styles / hdw_tags / hdw_media');
 
 check('kanji hit conforms and carries sorted stats', () => {
   const result = kanji('食');
@@ -785,6 +792,13 @@ check('styles come from the imported index.json', () => {
   const result = styles();
   conforms(result, arrayOf(STYLE), 'hdw_styles');
   same(result, [{ dictionary: TITLE, styles: STYLES }], 'styles');
+});
+
+check('tag banks come from the imported index.json, every row in bank order', () => {
+  const result = tags();
+  eq(lastError(), '', 'hdw_last_error');
+  conforms(result, arrayOf(DICTIONARY_TAGS), 'hdw_tags');
+  same(result, FIXTURE_TAGS, 'tags');
 });
 
 check('media returns the byte length and the real file bytes', () => {
@@ -991,12 +1005,14 @@ check('reset drops every dictionary', () => {
   same(lookup('食べる'), { results: [], dictionaryCount: 0 }, 'lookup with zero dictionaries');
   same(kanji('食'), { character: '', entries: [] }, 'kanji with zero dictionaries');
   same(styles(), [], 'styles with zero dictionaries');
+  same(tags(), [], 'tags with zero dictionaries');
   eq(media(TITLE, MEDIA_PATH), 0, 'media with zero dictionaries');
 });
 
 check('dictionaries can be reloaded from the same MEMFS directory', () => {
   eq(addDict(DICT_DIR, 0), 1, `add_dict after reset: ${lastError()}`);
   eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+  same(tags(), FIXTURE_TAGS, 'tags after the reload');
 });
 
 // Linear memory never shrinks: the import high-water mark stays for the life
@@ -1065,6 +1081,7 @@ check('a successful re-import replaces the dictionary in place', () => {
   );
   eq(addDict(DICT_DIR, 0), 1, `add_dict after the re-import: ${lastError()}`);
   eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+  same(tags(), FIXTURE_TAGS, 'tags after the re-import');
 });
 
 // ---------------------------------------------------------------------------
@@ -1201,6 +1218,9 @@ check('a .hoshidicts_3 directory from the previous engine still loads beside a f
   // The int32 score of the old layout and the double of the new one must read
   // back as the same number, or the score change silently reorders results.
   eq(merged.term.score, 120, 'score across both layouts');
+  // The previous engine only counted its tag banks: until it is imported
+  // again, that directory has no tags, and the fresh one keeps its own.
+  same(tags(), FIXTURE_TAGS, 'tags beside a directory imported before tag banks were stored');
 });
 
 check('a .hoshidicts_4 directory from the previous engine still decompresses its glossaries', () => {

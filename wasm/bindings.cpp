@@ -139,6 +139,13 @@ struct WireStyle {
   std::string styles;
 };
 
+// A term dictionary's tag-bank rows (name, category, order, notes, score) as
+// the importer stored them in its index.json.
+struct WireTags {
+  std::string dictionary;
+  std::vector<SummaryTag> tags;
+};
+
 struct WireImportReport {
   bool success = false;
   std::string title;
@@ -1158,6 +1165,25 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_styles(void) {
     wire.reserve(styles.size());
     for (const auto& s : styles) {
       wire.push_back({s.dict_name, s.styles});
+    }
+    out = to_json(wire);
+  } catch (...) {
+    set_error(describe_current_exception());
+    out = "[]";
+  }
+  return out.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE const char* hdw_tags(void) {
+  static std::string out;
+  clear_error();
+
+  try {
+    const auto dictionaries = engine().query.get_tags();
+    std::vector<WireTags> wire;
+    wire.reserve(dictionaries.size());
+    for (const auto& d : dictionaries) {
+      wire.emplace_back(d.dict_name, d.tags);
     }
     out = to_json(wire);
   } catch (...) {
