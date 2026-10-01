@@ -1719,6 +1719,22 @@ Under forced colours the masked layers paint `CanvasText`, so Windows contrast
 themes keep the glyph visible in both places.
 Reduced motion disables the animation.
 
+Design → Definitions → Compact glossaries (`glossaryLayoutMode`) is Yomitan's
+`general.glossaryLayoutMode` with its stored values `default` and `compact`
+(Compact popup). `createPopupAppearance` sets
+`data-hoshidicts-glossary-layout="compact"` on the popup host, and
+`render/reader.css` applies Yomitan's compact rules to the unchanged glossary
+markup: a definition's plain glosses, with their tags, and the items of a
+structured `ul[data-sc-content="glossary"]` share one line. The grey
+`--compact-list-separator` (` | `) between them is generated content with empty
+alternative text, so screen readers read only the list items; the zero-size
+`.gloss-separator` space keeps copied and scanned plain glosses apart. Examples,
+notes, tables and structured tag rows keep their own lines. Where a palette's
+faint text is below 3:1 against the card, the bar uses its muted text colour.
+The reader and the Design preview relayout masonry on a change without
+re-rendering, so Note drafts and child popups survive it. Only Default's
+stylesheet has the rules, and Anki notes never load it.
+
 Each popup owns one requested preview image, including a still-loading image.
 A load may resume only that current intent: it cannot replace a newer
 focus/hover preview or revive one dismissed during loading. Leave or blur
@@ -2004,7 +2020,7 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
-dark, 23 light, one high-contrast), strict option validation, and the 29 Design
+dark, 23 light, one high-contrast), strict option validation, and the 30 Design
 reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,

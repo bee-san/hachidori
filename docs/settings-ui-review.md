@@ -74,6 +74,7 @@ changed; "—" means the key was already unambiguous.
 | `sourceHighlightEnabled` | Design › Appearance | `#opt-source-highlight` | Highlight the word on the page | same | — |
 | `showPopupAudioButton` | Audio | `#opt-popup-audio-button` | Show the audio button | same | Moved from Design › Appearance; no longer reset by Reset Design |
 | `popupColumns` | Design › Definitions | `#opt-popup-columns` | Definition columns | — | — |
+| `glossaryLayoutMode` | Design › Definitions | `#opt-glossary-layout` | Compact glossaries | — | — |
 | `showLookupCounts` | Reading › Lookup history | `#opt-lookup-counts` | Record and show lookup counts | same | — |
 | `definitionBlurCountEnabled` | Reading › Definition blur | `#opt-blur-count` | Blur by lookup count | Blur definitions by lookup count | **Renamed** from `definitionBlurEnabled`, which only ever enabled the count condition; old records, patches and backups migrate. Label was "Lookup count" |
 | `definitionBlurAnkiMature` | Reading › Definition blur | `#opt-blur-anki` | Blur mature Anki cards | Blur definitions of mature Anki cards | Was "Mature Anki card" |

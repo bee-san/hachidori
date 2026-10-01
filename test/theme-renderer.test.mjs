@@ -369,6 +369,7 @@ const DESIGN_FLIPS = [
 // Settings a renderer uses outside that update, read from one rendered popup.
 const DESIGN_PROBES = {
   popupOpacityPercent: probe => probe.css.includes("--gsm-hoshidicts-popup-opacity"),
+  glossaryLayoutMode: probe => probe.css.includes("data-hoshidicts-glossary-layout"),
   popupToolbarPosition: probe => probe.toolbarPosition === "bottom",
   popupColumns: probe => probe.columnReads > 0,
   popupImageSource: probe => probe.images > 0,

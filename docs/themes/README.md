@@ -121,7 +121,7 @@ Each entry in `extension/vendor/themes/index.json` declares, in `designSettings`
 which Design settings its renderer implements: `"all"` or a list of option keys.
 The keys are the renderer-owned controls, tagged `data-design-setting` in
 `settings.html`: `popupOpacityPercent`, `popupToolbarPosition`, `popupColumns`,
-`popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
+`glossaryLayoutMode`, `popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
 `showFrequencyDictionaryNames`, `compactFrequencyNumbers`, `averageFrequency`,
 `showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `showPitchAccentBadge`,
 `showPitchAccentDictionaryNames`, `showPitchAccentText`, `showPitchAccentPosition`,
@@ -152,8 +152,9 @@ A declared setting must change an open popup and the Design preview without a
 new lookup. Core delivers changes through `updateDictionaryPresentation`
 (frequency, pitch, tag, compact-summary and image-source options),
 `setToolbarPosition`, `setCustomButtons`, the `getPopupColumns` and
-`getImageHoverPreview` callbacks and the `--gsm-hoshidicts-popup-opacity`
-custom property. `test/theme-renderer.test.mjs` checks every declaration
+`getImageHoverPreview` callbacks, the `--gsm-hoshidicts-popup-opacity`
+custom property and the `data-hoshidicts-glossary-layout` host attribute.
+`test/theme-renderer.test.mjs` checks every declaration
 against its renderer, in both directions.
 
 ## Content and stylesheet ownership

@@ -16728,8 +16728,9 @@ async function contentNoteStage() {
         toolbar &&= panes.every(({ popup }, depth) => popup.dataset.toolbarPosition === (edge === "auto" ? "top" : edge)
           && harness.stats(depth).layoutSchedules === 2);
       }
-      harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
-        popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false });
+      const colour = { popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
+        popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false };
+      harness.emitOptions(colour);
       const host = panes[0].popup.getRootNode().host;
       const results = { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
         "live toolbar overrides update root and child without lookup, masonry or Note loss": toolbar
@@ -16741,6 +16742,19 @@ async function contentNoteStage() {
           && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 2
             && harness.stats(depth).highlightEnabled === false && harness.driver.viewRequest(depth) === request
             && context.isCurrentRequest()) };
+      // Compact glossaries is CSS on the host: each visible owner relayouts at
+      // once, with no lookup, render or Note loss.
+      const rendersBefore = harness.renders.length;
+      harness.emitOptions({ ...colour, glossaryLayoutMode: "compact" });
+      const compact = host.dataset.hoshidictsGlossaryLayout === "compact"
+        && panes.every((_, depth) => harness.stats(depth).layoutSchedules === 3);
+      harness.emitOptions({ ...colour, glossaryLayoutMode: "default" });
+      results["live glossary layout relayouts each visible owner without lookup, rendering or Note loss"] = compact
+        && host.dataset.hoshidictsGlossaryLayout === undefined
+        && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 4
+          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest())
+        && harness.renders.length === rendersBefore && harness.sent.length === sentBefore
+        && harness.driver.snapshot(1).noteEditing;
       harness.emitOptions({ popupToolbarPosition: "bottom" });
       harness.emitOptions({ popupToolbarPosition: "auto", hoverEnabled: false });
       results["live toolbar overrides update root and child without lookup, masonry or Note loss"] &&=

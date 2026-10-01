@@ -117,6 +117,7 @@ const APPEARANCE_CHOICES = [
   { key: "popupTheme", id: "opt-popup-theme" },
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
   { key: "imageHoverPreview", id: "opt-image-hover-preview" },
+  { key: "glossaryLayoutMode", id: "opt-glossary-layout" },
   { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
   { key: "definitionBlurFrequencyOrder", id: "opt-blur-frequency-order", values: DEFINITION_BLUR_FREQUENCY_ORDERS },
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
@@ -1772,6 +1773,8 @@ function renderOptions() {
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const imageHoverPreview = element("opt-image-hover-preview");
   if (imageHoverPreview !== document.activeElement) imageHoverPreview.value = options.imageHoverPreview;
+  const glossaryLayout = element("opt-glossary-layout");
+  if (glossaryLayout !== document.activeElement) glossaryLayout.value = options.glossaryLayoutMode;
   renderActivationControls();
   renderFrequencyOrder();
   renderKanjiChoices();

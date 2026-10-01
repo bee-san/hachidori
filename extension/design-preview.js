@@ -259,6 +259,7 @@
     const themeChanged = HDReaderOptions.popupRenderer(options.popupTheme) !== HDReaderOptions.popupRenderer(nextOptions.popupTheme);
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
+      || options.glossaryLayoutMode !== nextOptions.glossaryLayoutMode
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx
       || options.popupScalePercent !== nextOptions.popupScalePercent;
     if (!state || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
