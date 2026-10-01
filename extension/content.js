@@ -2448,6 +2448,8 @@
         searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
+        // Like Yomitan, a note mined on Hachidori's own page (the setup practice) has no source address.
+        pageUrl: location.protocol === EXTENSION_PROTOCOL ? "" : location.href,
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
