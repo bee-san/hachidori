@@ -1608,6 +1608,16 @@ and make a one-pixel-wide image millions of pixels tall. Ordinary dimensions
 and preferred/em sizing retain their previous geometry. This limits rendered
 geometry, not imported image bytes or native dimensions.
 
+A term bank's image `width` and `height` are Yomitan's preferred size, and
+Yomitan's importer stores the media's natural size beside them. hoshidicts
+keeps the raw bank, so an image that declares only one side (日本国語大辞典's
+accent labels give only `height: 1.2em`) keeps that side and takes the other
+from the decoded image's aspect ratio, within the same bounds. Until the image
+decodes it reserves a square of the declared side. The image layer's margin
+and padding are pinned inline: Yomitan paints that layer on a `<canvas>` that
+no dictionary `img` rule reaches, whereas such a rule would shift or grow
+Hachidori's `<img>` inside its clipped box.
+
 Preferred-height width calculation keeps its original finite positive result.
 Only an intermediate zero or infinity retries the other multiplication/division
 groupings before the existing display-width clamp. This recovers representable
