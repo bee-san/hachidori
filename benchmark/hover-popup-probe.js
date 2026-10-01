@@ -153,6 +153,22 @@
         }),
       };
     },
+    // First hovers of a text field: each call builds a fresh imposter, which
+    // copies every computed property of the field. Null on a revision without
+    // text-field imposters.
+    fieldBuild(point, iterations = 200) {
+      if (typeof releaseFieldImposter !== 'function') return null;
+      hide();
+      let hits = 0, totalMs = 0;
+      for (let i = 0; i < iterations; i++) {
+        releaseFieldImposter();
+        const start = performance.now();
+        if (resolveCandidate(point.x, point.y)) hits++;
+        totalMs += performance.now() - start;
+      }
+      releaseFieldImposter();
+      return { iterations, hits, totalMs };
+    },
     point(query, depth = 0) {
       const popup = levels[depth].popup;
       const walker = document.createTreeWalker(popup.querySelector('.gsm-hoshidicts-definitions'), NodeFilter.SHOW_TEXT);

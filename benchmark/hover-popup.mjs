@@ -38,8 +38,8 @@ const puppeteer = await import(pathToFileURL(process.env.HACHIDORI_PUPPETEER).hr
 const longParagraph = `${'あ'.repeat(600)}食べる${'い'.repeat(4397)}`;
 const server = createServer((_request, response) => {
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
-  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}#hit-tile{position:absolute;left:60px;top:650px;width:200px;height:96px;padding:12px 24px}#long{position:absolute;left:60px;top:780px;width:1300px;height:200px;margin:0;overflow:hidden;font:14px/1.2 sans-serif;word-break:break-all}</style><span id="w2">深層</span><span id="w0">食べる</span><span id="w1">漢字</span><br><a id="hit-tile">食べる</a>'
-    + `<p id="long">${longParagraph}</p>`);
+  response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;margin:60px}span{display:inline-block;margin-right:100px}#hit-tile{position:absolute;left:60px;top:650px;width:200px;height:96px;padding:12px 24px}#long{position:absolute;left:60px;top:780px;width:1300px;height:200px;margin:0;overflow:hidden;font:14px/1.2 sans-serif;word-break:break-all}#field{position:absolute;left:400px;top:650px;width:300px;padding:8px;font:32px sans-serif}</style><span id="w2">深層</span><span id="w0">食べる</span><span id="w1">漢字</span><br><a id="hit-tile">食べる</a>'
+    + `<p id="long">${longParagraph}</p><input id="field" value="食べる">`);
 });
 await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
 const rows = [];
@@ -216,14 +216,21 @@ try {
         const rect = range.getBoundingClientRect();
         return { x: rect.left + rect.width * .3, y: rect.top + rect.height / 2 };
       });
+      // A text field's first glyph; the caret APIs give no glyph rects inside it.
+      hitPoints.field = await tab.$eval('#field', node => {
+        const box = node.getBoundingClientRect();
+        return { x: box.left + node.clientLeft + Number.parseFloat(getComputedStyle(node).paddingLeft) + 8,
+          y: box.top + box.height / 2 };
+      });
       const hitTesting = await evaluate(`__hoverProbe.hitTesting(${JSON.stringify(hitPoints)})`);
       const sentenceCost = await evaluate(`__hoverProbe.sentenceCost(${JSON.stringify(hitPoints.long)})`);
+      const fieldBuild = await evaluate(`__hoverProbe.fieldBuild(${JSON.stringify(hitPoints.field)})`);
       writeFileSync(resolve(output, `session-${session}-hit-testing.json`), JSON.stringify({
-        points: hitPoints, samples: hitTesting, sentenceCost,
+        points: hitPoints, samples: hitTesting, sentenceCost, fieldBuild,
         boundary: 'synchronous production resolveCandidate; 100 warmups per point excluded; excludes event scheduling, messaging, lookup and rendering',
         longParagraph: { characters: longParagraph.length, matchOffset: longParagraph.indexOf('食べる') },
       }, null, 2));
-      console.log(JSON.stringify({ session, hitTesting, sentenceCost }));
+      console.log(JSON.stringify({ session, hitTesting, sentenceCost, fieldBuild }));
     } finally {
       await browser?.close();
       rmSync(directory, { recursive: true, force: true });
