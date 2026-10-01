@@ -122,6 +122,20 @@ package is otherwise ordinary: its glossaries are structured content converted
 from the entry HTML, its MDD assets live under `mdict-media/`, and its revision is
 `mdx import`. There is no interactive duplicate review for MDX files: a same-title
 import replaces the installed package in place, as a re-import does.
+The import report also says what a successful MDX import left out, as Manabitan's
+MDict conversion notes do: `skippedRecordCount` (records in a corrupt `.mdx`
+block; the readable entries still import), `unresolvedRedirectCount`
+(`@@@LINK=` aliases that reach no entry), `missingResourceCount` (images and
+styles the entries refer to that no chosen `.mdd` provides) and
+`unreadableResourceCount` (`.mdd` resources in a corrupt block). A Yomitan ZIP
+reports zeros. `wasm/bindings.cpp` copies them from Hoshidicts'
+`ImportResult::warnings` and `normaliseReport` keeps them in the `hd_import`
+reply; they describe that run and are not stored with the package, its state or
+backups. Settings words each non-zero count as a note under the file's green
+`Imported …` line (`mdxImportNotes` in `dictionary-import.js`); a note never
+turns the import into a failure, and the final `#import-state` line counts the
+files `with notes`. With audio off, a `sound://` link refers to no file, so its
+file is not copied into the package.
 Recommended installation uses the same offscreen runner from both Settings and
 startup: either page attaches with `hd_setup_install`, and the run continues when
 that page closes. `recommended-install-client.js` observes ordered progress and

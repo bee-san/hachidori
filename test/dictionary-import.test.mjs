@@ -8,6 +8,7 @@ import {
   MAX_REVISION_LENGTH,
   compareDictionaryRevisions,
   dictionaryImportMatches,
+  mdxImportNotes,
 } from "../extension/dictionary-import.js";
 import {
   BoundedIndexWriter,
@@ -41,6 +42,41 @@ test("bounded numeric revision comparison handles higher, same, lower, and uncom
     compareDictionaryRevisions("1".repeat(MAX_REVISION_LENGTH + 1), "1"),
     "uncomparable",
   );
+});
+
+test("MDX import notes word each non-zero loss count, singular or plural, in a fixed order", () => {
+  assert.deepEqual(mdxImportNotes({
+    skippedRecordCount: 1,
+    unresolvedRedirectCount: 1,
+    missingResourceCount: 1,
+    unreadableResourceCount: 1,
+  }), [
+    "1 definition record could not be read and was skipped. "
+      + "The imported dictionary is incomplete; try another copy of the .mdx file.",
+    "1 redirect alias could not be resolved. "
+      + "These aliases may not appear in search results; their target definitions may still be available.",
+    "1 referenced resource was not included. Choose the .mdx together with all of its .mdd files "
+      + "to include available images and styles. This does not count missing definitions.",
+    "1 resource in the .mdd files could not be read. "
+      + "Some images or styles are missing. Check that every .mdd belongs to this dictionary and is complete.",
+  ]);
+  assert.deepEqual(mdxImportNotes({
+    unreadableResourceCount: 3,
+    missingResourceCount: 1200,
+    unresolvedRedirectCount: 2,
+    skippedRecordCount: 4,
+  }, new Intl.NumberFormat("en-US")).map(note => note.slice(0, note.indexOf("."))), [
+    "4 definition records could not be read and were skipped",
+    "2 redirect aliases could not be resolved",
+    "1,200 referenced resources were not included",
+    "3 resources in the ",
+  ]);
+  // A Yomitan ZIP reports zeros, and an older engine reply has no counts.
+  for (const report of [{
+    skippedRecordCount: 0, unresolvedRedirectCount: 0, missingResourceCount: 0, unreadableResourceCount: 0,
+  }, { termCount: 8 }, {}, null, { missingResourceCount: -1 }, { missingResourceCount: "2" }]) {
+    assert.deepEqual(mdxImportNotes(report), []);
+  }
 });
 
 test("interactive matching prefers exact canonical titles and keeps byte-distinct titles separate", () => {

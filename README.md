@@ -91,7 +91,9 @@ changing and may be removed:
   (proverbs, titles) without scanning further on every hover.
 - **MDX dictionaries** — import MDict `.mdx` dictionaries with their `.mdd`
   resource files from **Add dictionaries**, next to Yomitan ZIPs. Choose the
-  `.mdx` and its `.mdd` files together.
+  `.mdx` and its `.mdd` files together. When an import leaves something out
+  (unreadable entries, aliases with no target, or images and styles no `.mdd`
+  provides), its row says so with a note for each.
 - **Google Docs** — look up words while reading a Google Doc. Docs paints its
   text to a canvas; Hachidori asks it to expose the text as well, which Google
   may change or remove without notice. The sentence is the hovered run of text.
