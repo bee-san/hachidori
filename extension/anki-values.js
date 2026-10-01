@@ -6,7 +6,9 @@ import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape }
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
 // actually used by the selected templates are built here.
-const uniqueTokens = values => [...new Set(values.flatMap(value => value.split(/[\s,]+/u).filter(Boolean)))];
+// Tags split on U+0020 as in HDGlossary.parseTagList, so a U+00A0 inside a
+// Jitendex tag name ("rarely used form") stays one tag.
+const uniqueTokens = values => [...new Set(values.flatMap(value => value.split(/[ ,]+/u).filter(Boolean)))];
 // Keep this sanitizer unchanged: frequency and existing title-based glossary
 // marker mappings depend on its exact output.
 const dictionaryMarker = name => name.replace(/[_\s]/gu, "-").replace(/[^\p{L}\p{N}-]/gu, "")

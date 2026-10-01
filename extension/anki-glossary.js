@@ -131,7 +131,9 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
 
   function entry(glossary, brief, noDictionary, pending) {
     const wrapper = inert.createElement("div");
-    const labels = brief ? [] : [glossary.definitionTags, glossary.termTags,
+    // Yomitan's glossary-single: one comma-separated label per tag.
+    const { parseTagList } = globalThis.HDGlossary;
+    const labels = brief ? [] : [...parseTagList(glossary.definitionTags), ...parseTagList(glossary.termTags),
       noDictionary ? "" : dictionaryAlias(glossary.dictionary)].filter(Boolean);
     if (labels.length) {
       const meta = inert.createElement("i");

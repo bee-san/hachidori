@@ -213,6 +213,11 @@ test("pitch, part-of-speech, tags and transcriptions keep source meanings and ma
   ] }];
   assert.equal(await render(source, "{pitch-position}|{pitch-accent-categories}|{part-of-speech}|{conjugation}"), "0, 2|heiban,kifuku|Ichidan verb|polite");
   assert.match(await render(source, "{tags}"), /data-details="common">common/u);
+  // Jitendex writes the spaces inside a tag name as U+00A0, so each name stays one tag (#426).
+  const jitendex = request({ term: { ...request().term, glossaries: [{ dictionary: "A", glossary: '["openly"]',
+    definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form", termTags: "" }] } });
+  assert.equal(await render(jitendex, "{tags}"), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]
+    .map(tag => `<span class="tag" data-details="${tag}">${tag}</span>`).join(", "));
   assert.match(await render(source, "{phonetic-transcriptions}"), /&lt;ipa&gt;/u);
   assert.equal(await render(source, "{pitch}"), "<b>Pitch</b>: LHH, LHL (nasal 1; devoice 2), &lt;ipa&gt;");
   assert.equal(await render(source, "{audio}", { audio: "[sound:chosen.mp3]" }), "[sound:chosen.mp3]");
