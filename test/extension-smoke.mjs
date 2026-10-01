@@ -8986,8 +8986,25 @@ async function main() {
         === JSON.stringify([["Dict.mdx", false], ["plain.zip", false], ["Other.mdd", true]])
       && settingsMdx.outcomes[0].text.includes("Imported Dict")
       && settingsMdx.outcomes[2].text.includes("together with the .mdx")
-      && settingsMdx.finalState === "Finished 3 of 3 files — 2 imported, 1 failed.",
+      && settingsMdx.finalState === "Finished 3 of 3 files — 2 imported (1 with notes), 1 failed.",
     JSON.stringify(settingsMdx),
+  );
+  check(
+    "settings lists what an MDX import left out under its Imported line, which stays a success",
+    settingsMdx?.outcomes[0].okTone === true
+      && settingsMdx.outcomes[0].error === false
+      && settingsMdx.outcomes[0].notesHidden === false
+      && JSON.stringify(settingsMdx.outcomes[0].notes) === JSON.stringify([
+        "1 redirect alias could not be resolved. "
+          + "These aliases may not appear in search results; their target definitions may still be available.",
+        "2 referenced resources were not included. Choose the .mdx together with all of its .mdd files "
+          + "to include available images and styles. This does not count missing definitions.",
+      ])
+      && settingsMdx.outcomes[1].okTone === true
+      && settingsMdx.outcomes[1].notesHidden === true
+      && settingsMdx.outcomes[1].notes.length === 0
+      && settingsMdx.outcomes[2].notes.length === 0,
+    JSON.stringify(settingsMdx?.outcomes),
   );
   const navigationSettings = await settingsNavigationStage();
   check("Settings navigation loads personal source on first visit and preserves mounted drafts",
@@ -12917,7 +12934,13 @@ async function settingsMdxImportStage() {
           importRequests.push({ fileName: message.fileName, blobUrl: message.blobUrl,
             resources: message.resources, importDecision: message.importDecision === undefined ? "absent" : "present" });
           await new Promise((done) => window.setTimeout(done, 0));
-          return { ok: true, report: { success: true, title: message.fileName.replace(/\.\w+$/u, ""), termCount: 1 } };
+          // Dict.mdx left an alias and two resources out; plain.zip is a
+          // Yomitan archive and reports zeros.
+          const losses = message.fileName === "Dict.mdx"
+            ? { unresolvedRedirectCount: 1, missingResourceCount: 2 }
+            : { unresolvedRedirectCount: 0, missingResourceCount: 0 };
+          return { ok: true, report: { success: true, title: message.fileName.replace(/\.\w+$/u, ""), termCount: 1,
+            skippedRecordCount: 0, unreadableResourceCount: 0, ...losses } };
         }
         throw new Error(`unexpected settings mdx request ${message.type}`);
       },
@@ -12958,6 +12981,9 @@ async function settingsMdxImportStage() {
     name: item.querySelector(".setup-dictionary-name")?.textContent ?? "",
     text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
     error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
+    okTone: item.querySelector(".setup-dictionary-status")?.classList.contains("is-ok") === true,
+    notesHidden: item.querySelector(".setup-dictionary-notes")?.hidden ?? null,
+    notes: [...item.querySelectorAll(".setup-dictionary-notes li")].map((note) => note.textContent),
   }));
   const result = {
     accept,
