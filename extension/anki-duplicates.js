@@ -218,31 +218,16 @@ async function scopedNoteIds(invoke, infos, config) {
   }).map(card => card.note));
 }
 
-export async function findAnkiDuplicateNotes(invoke, note, firstField, config, {
-  allModels = false,
-} = {}) {
+// Anki's exact first-field duplicates of the configured note type inside the
+// configured scope, for a destination the word index cannot key. One `dupe:`
+// search answers it from Anki's checksum index.
+export async function findAnkiDuplicateNotes(invoke, note, firstField, config) {
   const models = await invoke("modelNamesAndIds");
   const modelId = models?.[config.model];
   if (Array.isArray(models) || !positiveId(modelId)) throw new Error("AnkiConnect returned no valid ID for the selected note type.");
-  const modelEntries = [[config.model, modelId]];
-  if (allModels) {
-    for (const [modelName, id] of Object.entries(models)) {
-      if (modelName === config.model) continue;
-      if (!positiveId(id)) throw new Error("AnkiConnect returned invalid note type IDs.");
-      modelEntries.push([modelName, id]);
-    }
-  }
-  const ids = [];
-  const modelByNote = new Map();
-  for (const [modelName, id] of modelEntries) {
-    const found = await invoke("findNotes", { query: duplicateQuery(note, firstField, id) });
-    if (!Array.isArray(found) || !found.every(positiveId)) throw new Error("AnkiConnect returned invalid duplicate note IDs.");
-    for (const noteId of found) {
-      if (modelByNote.has(noteId)) continue;
-      ids.push(noteId);
-      modelByNote.set(noteId, modelName);
-    }
-  }
+  const found = await invoke("findNotes", { query: duplicateQuery(note, firstField, modelId) });
+  if (!Array.isArray(found) || !found.every(positiveId)) throw new Error("AnkiConnect returned invalid duplicate note IDs.");
+  const ids = [...new Set(found)];
   if (!ids.length) return [];
   const infos = await invoke("notesInfo", { notes: ids });
   if (!Array.isArray(infos)) throw new Error("AnkiConnect returned invalid duplicate note details.");
@@ -252,24 +237,14 @@ export async function findAnkiDuplicateNotes(invoke, note, firstField, config, {
   for (const id of ids) {
     if (scoped && !scoped.has(id)) continue;
     const info = byId.get(id);
-    const expectedModel = modelByNote.get(id);
-    if (typeof info?.modelName !== "string" || info.modelName.toLowerCase() !== expectedModel.toLowerCase()) continue;
-    let fields = null;
-    if (info.modelName.toLowerCase() === config.model.toLowerCase()) {
-      if (!info.fields || typeof info.fields !== "object" || Array.isArray(info.fields)) continue;
-      const entries = Object.entries(info.fields).map(([field, value]) =>
-        [field, typeof value === "string" ? value : value?.value]);
-      if (entries.some(([, value]) => typeof value !== "string")) {
-        throw new Error("AnkiConnect returned invalid duplicate note fields.");
-      }
-      fields = Object.fromEntries(entries);
+    if (typeof info?.modelName !== "string" || info.modelName.toLowerCase() !== config.model.toLowerCase()) continue;
+    if (!info.fields || typeof info.fields !== "object" || Array.isArray(info.fields)) continue;
+    const entries = Object.entries(info.fields).map(([field, value]) =>
+      [field, typeof value === "string" ? value : value?.value]);
+    if (entries.some(([, value]) => typeof value !== "string")) {
+      throw new Error("AnkiConnect returned invalid duplicate note fields.");
     }
-    matches.push({ noteId: id, modelName: info.modelName, fields });
+    matches.push({ noteId: id, modelName: info.modelName, fields: Object.fromEntries(entries) });
   }
   return matches;
-}
-
-export async function findAnkiOverwriteTarget(invoke, note, firstField, config) {
-  const [target] = await findAnkiDuplicateNotes(invoke, note, firstField, config, { allModels: false });
-  return target ? { noteId: target.noteId, fields: target.fields } : null;
 }

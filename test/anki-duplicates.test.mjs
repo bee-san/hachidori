@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
-  findAnkiDuplicateNotes, findAnkiOverwriteTarget, validateAnkiNote, canonicalAnkiFields } from "../extension/anki-duplicates.js";
+  findAnkiDuplicateNotes, validateAnkiNote, canonicalAnkiFields } from "../extension/anki-duplicates.js";
 import { renderAnkiTemplate } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
@@ -73,7 +73,7 @@ test("legacy duplicate checks fall back only for the documented unsupported acti
   await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note(), config()), /offline/u);
 });
 
-test("overwrite target retains Anki order but requires the same model and authoritative card deck scope", async () => {
+test("duplicate discovery keeps Anki order but requires the configured model and authoritative card deck scope", async () => {
   const calls = [];
   const invoke = async (action, params) => {
     calls.push({ action, params });
@@ -88,41 +88,17 @@ test("overwrite target retains Anki order but requires the same model and author
     return [{ note: 6, deckName: "Japanese::Words" }, { note: 7, deckName: "Japanese::Words::Child" },
       { note: 8, deckName: "Outside" }, { note: 9, deckName: "Japanese::Words" }];
   };
-  const exact = await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck" }));
-  assert.deepEqual(exact, { noteId: 7, fields: { Front: "猫" } });
+  const scoped = await findAnkiDuplicateNotes(invoke, note(), "Front", config({ duplicateScope: "deck" }));
+  assert.deepEqual(scoped, [
+    { noteId: 7, modelName: "Basic", fields: { Front: "猫" } },
+    { noteId: 6, modelName: "Basic", fields: { Front: "猫" } },
+  ]);
   assert.deepEqual(calls.map(call => call.action), ["modelNamesAndIds", "findNotes", "notesInfo", "cardsInfo"]);
   assert.equal(calls[1].params.query, '"dupe:123,猫"');
-  assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config())).noteId, 8);
+  assert.deepEqual((await findAnkiDuplicateNotes(invoke, note(), "Front", config())).map(match => match.noteId), [8, 7, 6]);
 });
 
-test("duplicate discovery returns every exact scoped note across configured models", async () => {
-  const calls = [];
-  const invoke = async (action, params) => {
-    calls.push({ action, params });
-    if (action === "modelNamesAndIds") return { Basic: 123, Other: 456 };
-    if (action === "findNotes") return params.query.includes("123") ? [9, 8] : [7, 6];
-    if (action === "notesInfo") return [
-      { noteId: 6, modelName: "Other", fields: { Front: { value: "猫" } }, cards: [60] },
-      { noteId: 7, modelName: "Other", fields: { Front: { value: "猫" } }, cards: [70] },
-      { noteId: 8, modelName: "Basic", fields: { Front: { value: "猫" } }, cards: [80] },
-      { noteId: 9, modelName: "Basic", fields: { Front: { value: "猫" } }, cards: [90] },
-    ];
-    if (action === "cardsInfo") return [
-      { note: 6, deckName: "Outside" },
-      { note: 7, deckName: "Japanese::Words::Child" },
-      { note: 8, deckName: "Japanese::Words" },
-      { note: 9, deckName: "Japanese" },
-    ];
-    throw new Error(`Unexpected ${action}`);
-  };
-  const found = await findAnkiDuplicateNotes(invoke, note(), "Front",
-    config({ duplicateScope: "deck" }), { allModels: true });
-  assert.deepEqual(found.map(value => [value.noteId, value.modelName]), [[8, "Basic"], [7, "Other"]]);
-  assert.deepEqual(calls.filter(call => call.action === "findNotes").map(call => call.params.query),
-    ['"dupe:123,猫"', '"dupe:456,猫"']);
-});
-
-test("overwrite queries use Anki's exact stripped-HTML duplicate identity, not case-insensitive field search", async () => {
+test("duplicate discovery uses Anki's exact stripped-HTML duplicate identity, not case-insensitive field search", async () => {
   for (const text of ["dog", "犬", 'literal *_,:"\\']) {
     const query = `"dupe:123,${text.replace(/[\\"]/gu, "\\$&")}"`;
     const invoke = async (action, params) => {
@@ -133,7 +109,7 @@ test("overwrite queries use Anki's exact stripped-HTML duplicate identity, not c
       }
       return [{ noteId: 2, modelName: "Basic", fields: { Front: { value: `<b>${text}</b>` } } }];
     };
-    const target = await findAnkiOverwriteTarget(invoke, note({ fields: { Front: text } }), "Front", config());
+    const [target] = await findAnkiDuplicateNotes(invoke, note({ fields: { Front: text } }), "Front", config());
     assert.equal(target.noteId, 2);
     assert.equal(target.fields.Front, `<b>${text}</b>`);
   }
