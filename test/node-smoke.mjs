@@ -691,6 +691,55 @@ check('ipa transcriptions merge into the same pitch entry', () => {
 
 // ---------------------------------------------------------------------------
 
+G('text frequencies');
+
+// Yomitan's schema lets a frequency be a string, bare or under a reading, and
+// some lists store every rank that way (monogatari: "324/37459"). As in
+// Yomitan's Translator._getFrequencyInfo, the text is displayed unchanged and
+// its first number is the value. The package gets its own output directory so
+// the /dicts checks below still see only the fixture.
+const TEXT_FREQUENCY_TITLE = 'text-frequency-fixture';
+const TEXT_FREQUENCY_OUT = '/work/text-frequency';
+M.FS.mkdir(TEXT_FREQUENCY_OUT);
+M.FS.writeFile('/work/text-frequency.zip', buildTitledZip(TEXT_FREQUENCY_TITLE, {
+  banks: false,
+  termMeta: [
+    ['食べる', 'freq', '324/37459'],
+    ['読む', 'freq', { reading: 'よむ', frequency: 'five (5)' }],
+    ['読む', 'freq', { reading: 'とく', frequency: 'six (6)' }],
+  ],
+}));
+const textFrequencyReport = hdwImport('/work/text-frequency.zip', TEXT_FREQUENCY_OUT);
+check('a frequency-only archive of text values imports', () => {
+  eq(textFrequencyReport.success, true, `import failed: ${textFrequencyReport.error}`);
+  eq(textFrequencyReport.frequencyCount, 3, 'frequencyCount');
+});
+eq(addDict(`${TEXT_FREQUENCY_OUT}/${TEXT_FREQUENCY_TITLE}`, KINDS.freq), 1, `add text frequencies: ${lastError()}`);
+
+check('a bare text frequency shows its text, with its first number as the value', () => {
+  same(
+    lookup('食べる').results[0].term.frequencies,
+    [
+      { dictionary: TITLE, frequencies: [{ value: 142, displayValue: '142位' }] },
+      { dictionary: TEXT_FREQUENCY_TITLE, frequencies: [{ value: 324, displayValue: '324/37459' }] },
+    ],
+    'frequencies',
+  );
+});
+
+check('a text frequency under a reading applies to that reading only', () => {
+  same(
+    lookup('読む').results[0].term.frequencies,
+    [
+      { dictionary: TITLE, frequencies: [{ value: 88, displayValue: '88' }] },
+      { dictionary: TEXT_FREQUENCY_TITLE, frequencies: [{ value: 5, displayValue: 'five (5)' }] },
+    ],
+    'frequencies',
+  );
+});
+
+// ---------------------------------------------------------------------------
+
 G('hdw_kanji / hdw_styles / hdw_media');
 
 check('kanji hit conforms and carries sorted stats', () => {
