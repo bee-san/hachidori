@@ -54,6 +54,7 @@ import {
   describeRevisionComparison,
   dictionaryImportMatches,
   dictionaryImportTarget,
+  mdxImportNotes,
 } from "./dictionary-import.js";
 
 const TARGET = "hoshidicts-offscreen";
@@ -2820,11 +2821,15 @@ async function importArchive(request, index, total, label, started) {
     const reply = await send("hd_import", request);
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
+      // What an MDX import left out. Notes never turn a success into a
+      // failure: the dictionary is installed and counts as imported.
+      const notes = mdxImportNotes(report, numberFormat);
       updateImportResult(index, {
         text: `Imported ${report.title} in ${importDuration(started)}: ${summariseReport(report)}.`,
         tone: "ok",
+        notes,
       });
-      return "imported";
+      return notes.length > 0 ? "imported-with-notes" : "imported";
     }
     const reason = reply.error ?? report.error ?? "The engine gave no reason.";
     updateImportResult(index, {
@@ -2888,12 +2893,14 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   })));
 
   let imported = 0;
+  let withNotes = 0;
   let cancelled = 0;
   try {
     for (const [index, item] of items.entries()) {
       const outcome = await importOne(item, index, items.length);
-      if (outcome === "imported") {
+      if (outcome === "imported" || outcome === "imported-with-notes") {
         imported += 1;
+        if (outcome === "imported-with-notes") withNotes += 1;
         // A later archive in the same batch must decide against the state the
         // previous archive actually committed, not a delayed storage event.
         await reloadDictionaries();
@@ -2901,8 +2908,12 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
     }
     const failed = items.length - imported - cancelled;
     const itemLabel = items.length === 1 ? singular : plural;
+    // #import-state is the polite live region, so it announces the notes.
+    const importedLabel = withNotes === 0
+      ? `${imported} imported`
+      : `${imported} imported (${withNotes} with notes)`;
     const outcomes = [
-      `${imported} imported`,
+      importedLabel,
       ...(cancelled === 0 ? [] : [`${cancelled} cancelled`]),
       `${failed} failed`,
     ].join(", ");
