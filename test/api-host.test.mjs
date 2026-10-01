@@ -24,7 +24,7 @@ const dictionaries = [
   { id: "kanji-id", title: "Kanji", displayName: null, path: "/dicts/g1/Kanji", enabled: true, revision: "3", termCount: 0, frequencyCount: 0, kanjiCount: 1 },
 ];
 
-function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = {} } = {}) {
+function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = {}, templates = [] } = {}) {
   const calls = [];
   const engine = async message => {
     calls.push(structuredClone(message));
@@ -50,7 +50,8 @@ function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = 
     return { ok: true, fields, media: marker(message, "glossary") ? [{ dictionary: "Fixture", path: "img/eat.png", filename: "hachidori_eat.png" }] : [] };
   };
   const answer = createApiHost({ engine, render, version: "0.1.4",
-    readDictionaries: async () => dictionaries, readAudioSources: async () => audio ? [{ id: "jpod", type: "jpod101", enabled: true }] : [] });
+    readDictionaries: async () => dictionaries, readAudioSources: async () => audio ? [{ id: "jpod", type: "jpod101", enabled: true }] : [],
+    readAnkiTemplates: async () => templates });
   return { answer, calls };
 }
 const marker = (message, name) => Object.hasOwn(message.templates, name);
@@ -58,8 +59,8 @@ const marker = (message, name) => Object.hasOwn(message.templates, name);
 test("the module names the relay contract and every request the relay sends", () => {
   assert.equal(API_CAPABILITY, "hoshidicts-api-v1");
   assert.equal(API_CLIENT_ORIGIN, "relay://yomitan-api");
-  assert.deepEqual([...API_REQUESTS].sort(), ["hd_api_anki_fields", "hd_api_dictionaries", "hd_api_dictionary_close", "hd_api_dictionary_open",
-    "hd_api_dictionary_read", "hd_api_kanji_entries", "hd_api_term_entries", "hd_api_tokenize", "hd_api_version"]);
+  assert.deepEqual([...API_REQUESTS].sort(), ["hd_api_anki_card_formats", "hd_api_anki_fields", "hd_api_dictionaries", "hd_api_dictionary_close",
+    "hd_api_dictionary_open", "hd_api_dictionary_read", "hd_api_kanji_entries", "hd_api_term_entries", "hd_api_tokenize", "hd_api_version"]);
 });
 
 test("version answers the extension's own version", async () => {
@@ -156,6 +157,36 @@ test("anki fields without media skip audio and images, keep every entry when unl
   assert.deepEqual(kanji, { fields: [{ character: "食", onyomi: "ショク, ジキ", kunyomi: "く.う, た.べる", glossary: "<ul><li>food</li><li>eat</li><li>meal</li></ul>",
     "stroke-count": "9", dictionary: "Kanji", tags: "jouyou, grade2", nothing: "" }], dictionaryMedia: [], audioMedia: [] });
   await assert.rejects(answer({ type: "hd_api_anki_fields", text: "食", entryType: "sentence", markers: [] }), /unsupported entry type/u);
+});
+
+test("anki card formats answer each Template as Yomitan's AnkiCardFormat, in Settings order, without the AnkiConnect connection", async () => {
+  const anki = globalThis.HDReaderOptions.normaliseAnki({ url: "http://192.0.2.7:8765", apiKey: "secret-key", templates: [
+    { id: "mining", name: "Mining", deck: "Mining::VN", model: "Lapis", tags: ["vn"], duplicateBehavior: "overwrite", fieldTemplates: {
+      Expression: { value: "{expression}", overwriteMode: "coalesce" },
+      Sentence: { value: "{cloze-prefix}<b>{cloze-body}</b>{cloze-suffix}", overwriteMode: "overwrite" },
+      Hint: { value: "", overwriteMode: "coalesce" } } },
+    { id: "legacy", name: "Legacy", model: "Basic", fields: { expression: "Front", reading: "front", definition: "Back", pitch: "PitchPosition" } },
+    { id: "unset", name: "Template 3" },
+  ] });
+  const { answer } = host({ templates: anki.templates });
+  const reply = await answer({ type: "hd_api_anki_card_formats" });
+  assert.deepEqual(reply, { cardFormats: [
+    { name: "Mining", icon: "big-circle", deck: "Mining::VN", model: "Lapis", fields: {
+      Expression: { value: "{expression}", overwriteMode: "coalesce" },
+      Sentence: { value: "{cloze-prefix}<b>{cloze-body}</b>{cloze-suffix}", overwriteMode: "overwrite" },
+      Hint: { value: "", overwriteMode: "coalesce" } }, type: "term" },
+    // The rows mining builds from a legacy mapping: one shared field, PitchPosition's own marker.
+    { name: "Legacy", icon: "big-circle", deck: "Default", model: "Basic", fields: {
+      Front: { value: "{expression}<br>{reading}", overwriteMode: "coalesce" },
+      Back: { value: "{definition}", overwriteMode: "coalesce" },
+      PitchPosition: { value: "{pitch-position}", overwriteMode: "coalesce" } }, type: "term" },
+    { name: "Template 3", icon: "big-circle", deck: "Default", model: "", fields: {}, type: "term" },
+  ] });
+  assert.deepEqual(Object.keys(reply.cardFormats[0].fields), ["Expression", "Sentence", "Hint"], "the stored field order is kept");
+  assert.deepEqual(await answer({ type: "hd_api_anki_card_formats", profileIndex: 0 }), reply);
+  await assert.rejects(answer({ type: "hd_api_anki_card_formats", profileIndex: 1 }),
+    { message: 'Invalid input for ankiCardFormats, expected "profileIndex" to be a valid profile index but got 1' });
+  assert.doesNotMatch(JSON.stringify(reply), /secret-key|192\.0\.2\.7/u);
 });
 
 test("tokenize scans each text with the dictionaries, spreads the reading over the stem, and advances past unknown characters", async () => {
