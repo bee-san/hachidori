@@ -1173,6 +1173,20 @@ note is mature only through a mature card inside the configured deck.
 Other duplicate policies retain their full preflight because Add duplicate and
 Overwrite require live validation beyond membership.
 
+A popup asks for every pending result of one Template in a single
+`hd_anki_preflight_batch`, so its readiness costs a fixed number of requests
+however many results it shows. Snapshot hits still answer locally. The misses
+share one live lookup, deduplicated by word key: its search ORs every word
+under each recognized note type and direct field, and the deck filter wraps
+the whole union. `notesInfo` then narrows each word to the notes holding
+exactly its key, with that word's own maturity. One `canAddNotesWithErrorDetail`
+validates every result that needs Anki's add check: those without a duplicate,
+and all of them in Add duplicate. Each result receives exactly the reply a
+single preflight gives it, including refusals that belong to it alone, such as
+an empty first field or a cloze rule. Overwrite and a destination the index
+cannot key keep their per-result checks, because they need each target's
+`notesInfo` or Anki's own `dupe:` identity. Submission is unchanged.
+
 Clicking **View in Anki** forces that same scoped live lookup before opening the
 Browser. It replaces stale IDs in the canonical row, or removes an empty row and
 returns the popup to normal addability checks; unrelated expression searches are
@@ -2226,7 +2240,10 @@ are unresolved, the disabled button exposes its busy state and an Arrow
 Clockwise icon. It resolves to Add or the green View in Anki book action.
 Missing Template IDs remain visible as disabled errors and send no Anki
 request.
-The content controller preflights rendered candidates sequentially, retires
+The content controller preflights each Template's rendered candidates in one
+batch per binding pass (the popup renders its first result before the rest, so
+those usually arrive in a second batch), applies each reply only to a control
+still bound to it, retires
 detached actions after live tab/group projection, and creates no Anki controls
 or requests while unconfigured. Mining uses the selected projected result,
 current frequency units and audio choice, and the raw source span for
@@ -2608,7 +2625,9 @@ offers to use it; that link then advances setup to `complete`. See
 
 Linked Anki mining keeps `hd_anki_screenshot`/discard local to the reading
 browser. Settings discovery, preflight, submit, browse and maturity go to the
-host. The reading browser transfers a request-owned JPEG through the validated
+host. A popup's preflight batch reaches the host as one `hd_anki_preflight`
+per result, sent together, each with its own browser-speech follow-up, so the
+sharing protocol is unchanged and an older host keeps answering. The reading browser transfers a request-owned JPEG through the validated
 `clientMedia` envelope when the user submits. The host uses its own AnkiConnect
 configuration and dictionary generation to validate and write the note. A
 confirmed or definitively refused write discards the pending screenshot; an

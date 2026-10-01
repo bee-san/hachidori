@@ -19,6 +19,27 @@ function handlesAnkiView(send) {
   send.handlesAnkiView = true;
   return send;
 }
+function handlesBatches(send) {
+  send.handlesBatches = true;
+  return send;
+}
+// The worker answers a pass's preflights in one batch, entry by entry; most
+// tests describe each entry's reply as a single preflight. Other messages pass
+// straight through, without an extra asynchronous hop.
+function answerBatches(send) {
+  async function batch(requests) {
+    const replies = [];
+    for (const request of requests) {
+      try {
+        replies.push(await send("hd_anki_preflight", { request }));
+      } catch (error) {
+        replies.push({ state: "error", canAdd: false, error: error.message });
+      }
+    }
+    return { replies };
+  }
+  return (type, fields = {}) => type === "hd_anki_preflight_batch" ? batch(fields.requests) : send(type, fields);
+}
 function buttonState(item) {
   const button = item.add;
   return {
@@ -45,9 +66,10 @@ function fixture(t, send, capture = send, wait, conceal) {
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
   const owner = {}, request = {};
-  const controllerSend = (type, fields) => type === "hd_anki_view" && send.handlesAnkiView !== true
+  const viewOrSend = (type, fields) => type === "hd_anki_view" && send.handlesAnkiView !== true
     ? Promise.resolve({ state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false })
     : send(type, fields);
+  const controllerSend = send.handlesBatches === true ? viewOrSend : answerBatches(viewOrSend);
   const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
     ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
@@ -74,15 +96,15 @@ function fixture(t, send, capture = send, wait, conceal) {
   return { controller, context, items };
 }
 
-test("Anki stays quiet when unconfigured and preflights all rendered candidates sequentially", async t => {
+test("Anki stays quiet when unconfigured and preflights a Template's rendered candidates in one batch", async t => {
   const calls = [];
   const held = Promise.withResolvers();
-  const f = fixture(t, async (type, { request } = {}) => {
-    calls.push([type, request?.term.expression]);
+  const f = fixture(t, handlesBatches(async (type, { requests } = {}) => {
+    calls.push([type, requests?.map(request => request.term.expression)]);
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (request.term.expression === "猫") await held.promise;
-    return { state: "addable", canAdd: true };
-  });
+    await held.promise;
+    return { replies: requests.map(() => ({ state: "addable", canAdd: true })) };
+  }));
   f.controller.update(globalThis.HDReaderOptions.DEFAULT_OPTIONS);
   f.controller.bind(f.items, f.context);
   await tick();
@@ -91,10 +113,11 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
     "unconfigured mining creates no Anki control DOM");
   f.controller.update(configured);
   await until(() => calls.length === 2);
-  assert.deepEqual(calls.map(call => call[1]), [undefined, "猫"]);
+  assert.deepEqual(calls, [["hd_anki_status", undefined], ["hd_anki_preflight_batch", ["猫", "犬", "鳥"]]]);
+  f.items.forEach(assertChecking);
   held.resolve();
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
-  assert.deepEqual(calls.map(call => call[1]), [undefined, "猫", "犬", "鳥"]);
+  await until(() => f.items.every(item => !item.add.disabled));
+  assert.equal(calls.length, 2);
   const before = calls.length;
   f.controller.update({ ...configured });
   f.controller.bind(f.items, f.context);
@@ -199,7 +222,7 @@ test("a stale View repair updates exact IDs or returns the control to normal add
   assert.equal(f.items[0].add.getAttribute("aria-busy"), "false");
 });
 
-test("a ready Anki action works while later results are still checking", async t => {
+test("a ready Anki action works while later rendered results are still checking", async t => {
   const held = Promise.withResolvers();
   t.after(() => held.resolve());
   let writes = 0, laterChecks = 0;
@@ -210,6 +233,10 @@ test("a ready Anki action works while later results are still checking", async t
     return { state: "addable", canAdd: true };
   });
   f.controller.update(configured);
+  // The popup renders its first result before the rest, so their readiness
+  // arrives in a later batch.
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "ready");
   f.controller.bind(f.items, f.context);
   await until(() => laterChecks === 1);
   assert.equal(f.items[0].add.dataset.state, "ready");
@@ -343,7 +370,7 @@ test("parent and nested popup owners keep independent loading and resolved actio
     if (type === "hd_anki_preflight") return childPreflight.promise;
     throw new Error(`Unexpected ${type}`);
   });
-  const controller = globalThis.HDAnki.createAnkiController({ send, onChange() {} });
+  const controller = globalThis.HDAnki.createAnkiController({ send: answerBatches(send), onChange() {} });
   const make = (popup, expression, depth) => {
     const actions = dom.window.document.createElement("div");
     actions.className = "gsm-hoshidicts-entry-actions";
@@ -514,28 +541,28 @@ test("settings changes during submission preserve confirmed and uncertain outcom
   }
 });
 
-test("presentation reprojection drops detached actions before queued checks and later refreshes", async t => {
-  const held = Promise.withResolvers(), terms = [];
-  const f = fixture(t, async (type, { request } = {}) => {
+test("presentation reprojection ignores detached actions' in-flight replies and drops them from later checks", async t => {
+  const held = Promise.withResolvers(), batches = [];
+  const f = fixture(t, handlesBatches(async (type, { requests } = {}) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    terms.push(request.term.expression);
-    if (terms.length === 1) await held.promise;
-    return { state: "invalid", canAdd: false, error: "This result cannot be added." };
-  });
+    batches.push(requests.map(request => request.term.expression));
+    if (batches.length === 1) await held.promise;
+    return { replies: requests.map(() => ({ state: "invalid", canAdd: false, error: "This result cannot be added." })) };
+  }));
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => terms.length === 1);
+  await until(() => batches.length === 1);
   f.items[0].actions.remove();
   f.items[2].actions.remove();
   f.controller.bind([f.items[1]], f.context);
   held.resolve();
-  await until(() => terms.includes("犬"));
+  await until(() => f.items[1].add.dataset.state === "error");
   await tick();
-  assert.deepEqual(terms, ["猫", "犬"]);
+  assert.deepEqual(batches, [["猫", "犬", "鳥"]]);
   f.controller.refresh(f.context.owner);
-  await until(() => terms.length >= 3);
+  await until(() => batches.length === 2);
   await tick();
-  assert.deepEqual(terms, ["猫", "犬", "犬"]);
+  assert.deepEqual(batches, [["猫", "犬", "鳥"], ["犬"]]);
   assert.equal(f.items[1].add.dataset.state, "error");
   assert.equal(f.items[1].add.title, "This result cannot be added.");
 });
@@ -610,16 +637,16 @@ test("a note that maps a screenshot captures one with the reader concealed and n
 
 test("built-in and custom Anki buttons keep independent Template status, preflight and submission identities", async t => {
   const calls = [];
-  const f = fixture(t, handlesAnkiView(async (type, fields = {}) => {
+  const f = fixture(t, handlesBatches(handlesAnkiView(async (type, fields = {}) => {
     calls.push({ type, fields: structuredClone(fields) });
     const templateId = fields.templateId ?? fields.request?.templateId;
     if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [],
       configKey: `key-${templateId}`, cached: false };
     if (type === "hd_anki_status") return { available: true, configKey: `key-${templateId}` };
-    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true };
+    if (type === "hd_anki_preflight_batch") return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
     if (type === "hd_anki_submit") return { state: "added", noteId: templateId === "sentence" ? 22 : 11, warnings: [] };
     throw new Error(`Unexpected ${type}`);
-  }));
+  })));
   const custom = f.items[0].actions.ownerDocument.createElement("button");
   custom.type = "button";
   custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
@@ -645,10 +672,10 @@ test("built-in and custom Anki buttons keep independent Template status, preflig
   assert.equal(custom.textContent, "Mine sentence");
   assert.equal(custom.disabled, false);
   assert.equal(custom.getAttribute("aria-label"), "Mine sentence: Mine to Anki");
-  const preflights = calls.filter(call => call.type === "hd_anki_preflight").map(call => call.fields.request);
-  assert.deepEqual(preflights.map(request => [request.templateId, request.configKey]), [
-    ["default", "key-default"], ["sentence", "key-sentence"],
-  ]);
+  const batches = calls.filter(call => call.type === "hd_anki_preflight_batch")
+    .map(call => call.fields.requests.map(request => [request.templateId, request.configKey]));
+  assert.deepEqual(batches, [[["default", "key-default"]], [["sentence", "key-sentence"]]],
+    "each Template's readiness is its own batch");
 
   custom.click();
   await until(() => custom.dataset.state === "success");

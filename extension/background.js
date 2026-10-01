@@ -6,7 +6,7 @@ import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { detectLocalAudioSource } from "./local-audio-setup.js";
 import { createLocalAudioSource, findLocalAudioSource } from "./local-audio-source.js";
-import { lookupAnkiIndex } from "./anki-index.js";
+import { lookupAnkiIndex, lookupAnkiIndexMany } from "./anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "./anki-index-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
@@ -486,6 +486,7 @@ function getAnkiDuplicateIndex() {
       return reply.rows;
     },
     lookupLive: (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression),
+    lookupLiveMany: (source, expressions, invoke) => lookupAnkiIndexMany(invoke, source, expressions),
     readOptions: readAnkiOptions,
     readState: async () => (await chrome.storage.local.get(ANKI_INDEX_KEY))[ANKI_INDEX_KEY],
     updateState: update => serialiseStorage(async () => {
@@ -1938,7 +1939,8 @@ function failureReply(message, error) {
   });
 }
 
-const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_preflight: "preflight", hd_anki_submit: "submit",
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_preflight: "preflight",
+  hd_anki_preflight_batch: "preflightMany", hd_anki_submit: "submit",
   hd_anki_browse: "browse", hd_anki_screenshot: "screenshot", hd_anki_screenshot_discard: "discardScreenshot",
   hd_anki_maturity: "maturity" };
 
@@ -2024,25 +2026,50 @@ async function handleAnkiRequest(message, sender) {
       // from before linked mining advertised a capability.
       if (message.type === "hd_anki_maturity") return forwardToHost(message);
       if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
+      if (message.type === "hd_anki_preflight_batch") return linkedPreflightBatch(message);
       if (["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
-        try {
-          const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
-          if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
-            await getAnkiMining().preflightClientSpeech({
-              ...message.request,
-              clientSpeech: reply.clientSpeech,
-            });
-          }
-          return reply;
-        } catch (error) {
-          if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
-            return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
-          }
-          return failureReply(message, error);
-        }
+        return forwardLinkedAnki(message);
       }
     }
     return answerAnkiRequest(message, sender);
+  });
+}
+
+async function forwardLinkedAnki(message) {
+  try {
+    const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
+    if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
+      await getAnkiMining().preflightClientSpeech({
+        ...message.request,
+        clientSpeech: reply.clientSpeech,
+      });
+    }
+    return reply;
+  } catch (error) {
+    if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
+      return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
+    }
+    return failureReply(message, error);
+  }
+}
+
+// The sharing protocol carries one preflight per request, so a linked browser
+// forwards a popup batch to its host as single preflights, sent together and
+// told apart by their sharing frames, and a host without batches keeps
+// answering. Each entry becomes what the reader made of that single reply.
+async function linkedPreflight(message, request) {
+  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request };
+  const reply = await forwardLinkedAnki(single);
+  if (reply?.type !== `${single.type}_result` || reply.requestId !== single.requestId) {
+    return { state: "error", canAdd: false, error: `unexpected reply for ${single.type}` };
+  }
+  if (reply.ok !== true) return { state: "error", canAdd: false, error: reply.error || `${single.type} failed` };
+  return Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
+}
+
+async function linkedPreflightBatch(message) {
+  return workerReply(message, {
+    replies: await Promise.all(message.requests.map(request => linkedPreflight(message, request))),
   });
 }
 
@@ -2141,6 +2168,7 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
       return service.browse(hostLinkedAnkiRequest(message.request));
     }
     if (message.type === "hd_anki_status") return service.status(message.templateId);
+    if (message.type === "hd_anki_preflight_batch") return { replies: await service.preflightMany(message.requests) };
     return service[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
   }).then(result => workerReply(message, result), error => failureReply(message, error));

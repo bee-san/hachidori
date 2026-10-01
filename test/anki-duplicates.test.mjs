@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
-  findAnkiDuplicateNotes, validateAnkiNote, canonicalAnkiFields } from "../extension/anki-duplicates.js";
+  findAnkiDuplicateNotes, validateAnkiNote, validateAnkiNotes, canonicalAnkiFields } from "../extension/anki-duplicates.js";
 import { renderAnkiTemplate } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
@@ -71,6 +71,40 @@ test("legacy duplicate checks fall back only for the documented unsupported acti
   assert.equal((await checkAnkiDuplicate(invoke, note(), config())).duplicate, true);
   assert.deepEqual(calls, ["canAddNotesWithErrorDetail", "canAddNotes", "canAddNotes"]);
   await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note(), config()), /offline/u);
+});
+
+test("one add check validates every note in order, through the legacy action too", async () => {
+  const notes = ["猫", "犬", "鳥"].map(Front => note({ fields: { Front, Back: "" } }));
+  const calls = [];
+  let detailed = true, reply = null;
+  const invoke = async (action, params) => {
+    calls.push({ action, notes: params.notes });
+    if (action === "canAddNotesWithErrorDetail") {
+      if (!detailed) throw new Error("AnkiConnect: unsupported action");
+      return reply ?? params.notes.map(({ fields }) => fields.Front === "犬"
+        ? { canAdd: false, error: "cannot create note for unknown reason" } : { canAdd: true, error: null });
+    }
+    return params.notes.map(({ fields }) => fields.Front !== "犬");
+  };
+  assert.deepEqual(await validateAnkiNotes(invoke, notes), [
+    { addable: true, error: null },
+    { addable: false, error: "cannot create note for unknown reason" },
+    { addable: true, error: null },
+  ]);
+  assert.deepEqual(calls.map(call => [call.action, call.notes.map(value => value.fields.Front)]),
+    [["canAddNotesWithErrorDetail", ["猫", "犬", "鳥"]]]);
+  assert.ok(calls[0].notes.every(value => value.options.allowDuplicate === true), "the word index decides duplicates");
+  detailed = false;
+  assert.deepEqual(await validateAnkiNotes(invoke, notes), [
+    { addable: true, error: null }, { addable: false, error: "Anki rejected this note." }, { addable: true, error: null },
+  ]);
+  assert.deepEqual(calls.slice(1).map(call => call.action), ["canAddNotesWithErrorDetail", "canAddNotes"]);
+  detailed = true;
+  reply = [{ canAdd: true, error: null }];
+  await assert.rejects(validateAnkiNotes(invoke, notes), /invalid duplicate check results/u);
+  calls.length = 0;
+  assert.deepEqual(await validateAnkiNotes(invoke, []), []);
+  assert.deepEqual(calls, [], "no notes send no request");
 });
 
 test("duplicate discovery keeps Anki order but requires the configured model and authoritative card deck scope", async () => {

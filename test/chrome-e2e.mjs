@@ -5554,11 +5554,13 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   const screenshotDictionary = "screenshot-mining-layout";
   let screenshotDictionaryInstalled = false;
   const notes = new Map(), calls = [], files = new Map();
-  const queryExpression = query => {
+  // The values a search names: Anki's dupe: identity, or every "front:…"
+  // term, which a popup's batched lookup ORs together.
+  const queryExpressions = query => {
     const duplicate = /^"dupe:1,(.*)"$/u.exec(query);
-    const indexed = /\("note:Basic" "front:((?:\\.|[^"])*)"\)/iu.exec(query);
-    const value = duplicate?.[1] ?? indexed?.[1];
-    return value === undefined ? null : value.replace(/\\(.)/gu, "$1");
+    const values = duplicate ? [duplicate[1]]
+      : [...query.matchAll(/"front:((?:\\.|[^"])*)"/giu)].map(match => match[1]);
+    return values.map(value => value.replace(/\\(.)/gu, "$1"));
   };
   // Flags the checks below flip to make the mock refuse specific work.
   const control = { failScreenshotUpload: false, preflightGate: null };
@@ -5579,11 +5581,10 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       }
       if (action === "addNote") { const noteId = notes.size + 1; notes.set(noteId, params.note.fields); return noteId; }
       if (action === "findNotes") {
-        const expression = queryExpression(params.query);
+        const expressions = queryExpressions(params.query);
         const matched = params.query === '"note:Basic"'
           ? [...notes.keys()]
-          : expression === null ? [] : [...notes]
-            .filter(([, fields]) => fields.Front === expression).map(([noteId]) => noteId);
+          : [...notes].filter(([, fields]) => expressions.includes(fields.Front)).map(([noteId]) => noteId);
         // The mock schedules nothing, so no note is mature.
         return params.query.endsWith(" is:review -is:learn prop:ivl>=21") ? [] : matched;
       }

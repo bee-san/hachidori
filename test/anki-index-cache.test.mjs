@@ -23,7 +23,7 @@ function fixture(saved) {
   } });
   let state = copy(saved), clock = 1_800_000, rows = [["猫", true, [9, 7]]];
   let held = null, failure = null, writeFailure = false, storageTail = Promise.resolve(), writing = false;
-  const refreshes = [], lookups = [], alarms = new Map();
+  const refreshes = [], lookups = [], batches = [], alarms = new Map();
   const dependencies = {
     async fetchRows(source) {
       assert.equal(writing, false, "Anki refresh must run outside the storage queue");
@@ -35,6 +35,10 @@ function fixture(saved) {
     async lookupLive(source, expression, invoke) {
       lookups.push({ source, expression, invoke });
       return invoke.answer(expression);
+    },
+    async lookupLiveMany(source, expressions, invoke) {
+      batches.push({ source, expressions });
+      return expressions.map(expression => invoke.answer(expression));
     },
     readOptions: async () => copy(options),
     readState: async () => copy(state),
@@ -68,6 +72,7 @@ function fixture(saved) {
     alarms,
     refreshes,
     lookups,
+    batches,
     invoke(answer) { return { answer }; },
     get options() { return copy(options); },
     get state() { return copy(state); },
@@ -170,6 +175,33 @@ test("a miss repaired from Anki is persisted once and the second lookup makes ze
   assert.deepEqual(second, { wordKey: "犬", mature: true, noteIds: [12, 42], cached: true });
   assert.equal(f.lookups.length, calls);
   assert.deepEqual(f.state.snapshot.rows, [["犬", true, [12, 42]], ["猫", true, [7, 9]]]);
+});
+
+test("a popup batch answers snapshot hits locally and sends its misses in one live lookup, one per word key", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const invoke = f.invoke(expression => expression === "犬"
+    ? { wordKey: "犬", mature: true, noteIds: [42, 12] } : { wordKey: expression, mature: false, noteIds: [] });
+  assert.deepEqual(await f.service.lookupMany(f.options.anki, ["猫", "犬", "鳥", "犬", ""], invoke), [
+    { wordKey: "猫", mature: true, noteIds: [7, 9], cached: true },
+    { wordKey: "犬", mature: true, noteIds: [12, 42], cached: false },
+    { wordKey: "鳥", mature: false, noteIds: [], cached: false },
+    { wordKey: "犬", mature: true, noteIds: [12, 42], cached: false },
+    { wordKey: null, mature: false, noteIds: [], cached: false },
+  ]);
+  assert.deepEqual(f.batches.map(batch => batch.expressions), [["犬", "鳥"]]);
+  assert.equal(f.lookups.length, 0);
+  assert.deepEqual(f.state.snapshot.rows, [["犬", true, [12, 42]], ["猫", true, [7, 9]]],
+    "the found word is recorded and the true miss leaves no row");
+  const again = await f.service.lookupMany(f.options.anki, ["犬", "鳥"], invoke);
+  assert.deepEqual(again.map(result => result.cached), [true, false]);
+  assert.deepEqual(f.batches.map(batch => batch.expressions), [["犬", "鳥"], ["鳥"]], "only the miss is asked again");
+
+  const rows = f.state.snapshot.rows;
+  await assert.rejects(f.service.lookupMany(f.options.anki, ["魚", "鳥"], f.invoke(expression => expression === "魚"
+    ? { wordKey: "魚", mature: false, noteIds: [5] } : { wordKey: "other", mature: false, noteIds: [] })),
+  /invalid duplicate lookup result/u);
+  assert.deepEqual(f.state.snapshot.rows, rows, "an invalid reply records no row, not even a valid one beside it");
 });
 
 test("forced stale repair replaces or removes the compact row", async () => {
