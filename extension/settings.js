@@ -127,7 +127,7 @@ const numberFormat = new Intl.NumberFormat();
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = normaliseOptions({});
-const themeStore = createThemeStore({ root: document.getElementById("theme-store"), onSelect(slug) {
+const themeStore = createThemeStore({ root: document.getElementById("theme-store"), design: document.getElementById("design"), onSelect(slug) {
   options.popupTheme = slug;
   renderThemeChoices();
   writeOptions();
