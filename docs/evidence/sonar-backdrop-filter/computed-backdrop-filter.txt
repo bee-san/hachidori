@@ -1,0 +1,4 @@
+Chrome/128.0.0.0: 42 palettes x 3 custom-property states = 126 cases, 0 differences
+  computed values seen: ["blur(16px) saturate(1.08) | -webkit-: (not exposed)","none | -webkit-: (not exposed)","blur(4px) | -webkit-: (not exposed)"]
+Chrome/152.0.0.0: 42 palettes x 3 custom-property states = 126 cases, 0 differences
+  computed values seen: ["blur(16px) saturate(1.08) | -webkit-: (not exposed)","none | -webkit-: (not exposed)","blur(4px) | -webkit-: (not exposed)"]
