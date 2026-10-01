@@ -76,17 +76,24 @@ async function recognizedModels(invoke, source) {
   if (positiveId(available[source.model])) {
     models.push({ name: source.model, fields: source.fields });
   }
+  const candidates = Object.entries(available).flatMap(([model, id]) => {
+    const family = model === source.model || !positiveId(id) ? null : ankiSetupFamily(model);
+    return family === null ? [] : [{ model, family }];
+  });
+  if (!candidates.length) return models;
+  // Each AnkiConnect request costs one poll interval, so every recognized note
+  // type's fields arrive in one `multi`. A sub-action error, such as a note
+  // type deleted since `modelNamesAndIds`, rejects as a direct request would.
+  const replies = ankiMultiResults(await invoke("multi", { actions: candidates.map(({ model }) =>
+    ({ action: "modelFieldNames", params: { modelName: model } })) }));
   const base = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki;
-  for (const [model, id] of Object.entries(available)) {
-    if (model === source.model) continue;
-    const family = ankiSetupFamily(model);
-    if (family === null || !positiveId(id)) continue;
-    const fields = fieldList(await invoke("modelFieldNames", { modelName: model }));
+  candidates.forEach(({ model, family }, index) => {
+    const fields = fieldList(replies[index]);
     const templates = ankiSetupTemplates(family, model, source.deck ?? "Default", fields, base);
-    if (templates === null) continue;
+    if (templates === null) return;
     const expressionFields = directExpressionFields({ ...base, model, fieldTemplates: templates }, fields);
     if (expressionFields.length) models.push({ name: model, fields: expressionFields });
-  }
+  });
   return models;
 }
 
