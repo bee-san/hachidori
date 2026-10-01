@@ -640,6 +640,30 @@ node benchmark/anki-index-refresh.mjs --notes 20000 --runs 5 \
 mined-note size; use another `--model`/`--deck` for that collection so the
 plain one stays comparable. Seeding is idempotent and only adds missing notes.
 
+### Popup readiness for several results
+
+`anki-popup-readiness.mjs` measures what a popup's Anki buttons cost before
+they are ready, against the same kind of isolated Anki. It loads one
+checkout's production gateway, duplicate index, live lookup and mining
+service, starts each sample from an empty index, and runs `status()` and then
+every result's preflight the way that checkout's reader asks: one batch if the
+service has `preflightMany`, otherwise one preflight per result in order. It
+reports the AnkiConnect request sequence, the decisions, and the time until the
+last result is ready, for each duplicate policy, **Check within** scope and
+result count. Its collection has a Kiku-layout destination and three other
+recognized note types, so deck and All of Anki scope read their fields. Pass
+another checkout's `--extension` to compare revisions with the same harness:
+
+```sh
+node benchmark/anki-popup-readiness.mjs --extension /path/to/checkout/extension \
+  --entries 1,5,10 --runs 10 --endpoint http://127.0.0.1:18765 \
+  --expected-media-dir /tmp/hachidori-anki-index-benchmark/base/HachidoriBenchmark/collection.media \
+  --output /tmp/anki-popup-readiness.json
+```
+
+`--seed 20000` first pads the destination note type with that many notes that
+match no result, so each field search scans a realistic collection.
+
 ### Scheduling inside a real Electron overlay host
 
 `anki-index-electron.mjs` loads a copy of the extension with `OVERLAY_MODE` on
