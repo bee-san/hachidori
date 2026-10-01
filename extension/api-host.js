@@ -9,13 +9,13 @@
  */
 
 import "./render/glossary.js";
-import { escapeAnkiHtml } from "./anki-templates.js";
+import { ankiMappedFieldNames, escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
 
 export { API_CAPABILITY, API_CLIENT_ORIGIN } from "./sharing-protocol.js";
 
 export const API_REQUESTS = new Set([
-  "hd_api_version", "hd_api_term_entries", "hd_api_kanji_entries", "hd_api_anki_fields", "hd_api_tokenize",
-  "hd_api_dictionaries", "hd_api_dictionary_open", "hd_api_dictionary_read", "hd_api_dictionary_close",
+  "hd_api_version", "hd_api_term_entries", "hd_api_kanji_entries", "hd_api_anki_fields", "hd_api_anki_card_formats",
+  "hd_api_tokenize", "hd_api_dictionaries", "hd_api_dictionary_open", "hd_api_dictionary_read", "hd_api_dictionary_close",
 ]);
 
 const AUDIO_TYPES = { aac: "audio/aac", flac: "audio/flac", m4a: "audio/mp4", mp3: "audio/mpeg", ogg: "audio/ogg",
@@ -145,6 +145,23 @@ function kanjiFields(character, entry, markers, where) {
   return Object.fromEntries(markers.map(marker => [marker, Object.hasOwn(table, marker) ? table[marker]() : ""]));
 }
 
+// Yomitan's AnkiCardFormat for one Anki Template. Mining is term-only and a
+// Template has no add-button icon; a legacy mapping answers the rows mining
+// builds from it. Only these keys leave the browser.
+function cardFormat(template) {
+  const fields = template.fieldTemplates
+    ?? resolveAnkiTemplates(template, ankiMappedFieldNames(template)).templates;
+  return {
+    name: template.name,
+    icon: "big-circle",
+    deck: template.deck,
+    model: template.model,
+    fields: Object.fromEntries(Object.entries(fields)
+      .map(([field, { value, overwriteMode }]) => [field, { value, overwriteMode }])),
+    type: "term",
+  };
+}
+
 // Yomitan's distributeFuriganaInflected: the reading covers the stem shared by
 // the dictionary form and the matched text; the inflected ending has none.
 function furiganaSegments(expression, reading, matched) {
@@ -175,9 +192,10 @@ function requireStrings(value, name) {
 
 // `engine(fields)` answers a "hoshidicts-offscreen" request, `render(fields)`
 // a "hachidori-anki-render" one; both resolve to the reply envelope or throw
-// its error. `readDictionaries()` is the stored dictionary list and
-// `readAudioSources()` the enabled pronunciation sources.
-export function createApiHost({ engine, render, readDictionaries, readAudioSources, version }) {
+// its error. `readDictionaries()` is the stored dictionary list,
+// `readAudioSources()` the enabled pronunciation sources and
+// `readAnkiTemplates()` the Anki Templates in Settings order.
+export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version }) {
   async function whereabouts() {
     const dictionaries = await readDictionaries();
     const titles = dictionaries.map(item => item.title);
@@ -317,6 +335,14 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       if (message.entryType === "kanji") return ankiKanjiFields(text, markers, maxEntries);
       if (message.entryType !== "term") throw new Error(`unsupported entry type ${JSON.stringify(message.entryType)}`);
       return ankiTermFields(text, markers, maxEntries, includeMedia);
+    },
+
+    // Hachidori has one set of Templates, Yomitan's profile 0.
+    async hd_api_anki_card_formats(message) {
+      if (message.profileIndex !== undefined && message.profileIndex !== 0) {
+        throw new Error(`Invalid input for ankiCardFormats, expected "profileIndex" to be a valid profile index but got ${message.profileIndex}`);
+      }
+      return { cardFormats: (await readAnkiTemplates()).map(cardFormat) };
     },
 
     async hd_api_tokenize(message) {
