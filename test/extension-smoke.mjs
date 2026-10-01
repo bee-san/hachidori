@@ -18515,6 +18515,85 @@ async function contentNoteStage() {
     };
   }
 
+  // Issue #430: an exact selection's sentence -- the Anki sentence, the Note
+  // prefill and a custom link's %s -- is read as a hover over its first
+  // selected glyph reads one: across inline elements and glyph boxes, without
+  // furigana, scripts or hidden text, and only to the edge of that glyph's
+  // block. The highlight keeps the coordinates of the selection's anchor.
+  async function selectionSentenceCase() {
+    // jsdom's selection text keeps the newline of a gap between paragraphs,
+    // which Chrome's leaves out, so the gap case needs the Japanese-only gate off.
+    const harness = await createHarness(undefined, { options: { onlyScanJapaneseText: false } });
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const page = document.createElement("div");
+    document.body.append(page);
+    const summary = (candidate) => candidate && {
+      query: candidate.query, sentence: candidate.sentence, matchOffset: candidate.matchOffset,
+      sourceText: candidate.sourceText, sourceOffset: candidate.sourceOffset, rawSelectionText: candidate.rawSelectionText,
+    };
+    const select = (html, boundaries) => {
+      page.innerHTML = html;
+      window.getSelection().setBaseAndExtent(...boundaries());
+      return summary(harness.driver.resolveSelectedLookupCandidate());
+    };
+    const text = (selector) => page.querySelector(selector).firstChild;
+    // GameSentenceMiner's overlay: a positioned <p> per OCR block, a positioned
+    // flex box per glyph and a "\n" separator between blocks.
+    const glyphBox = (glyph) => `<span style="position:absolute;display:flex">${glyph}</span>`;
+    const block = (line) => `<p style="position:absolute;left:0;top:0;margin:0">${Array.from(line, glyphBox).join("")}</p>`;
+    const glyph = (index, offset) => page.querySelectorAll("p")[index].children[offset].firstChild;
+    const separator = '<span style="position:absolute">\n</span>';
+    const outcomes = {
+      inline: [select("<p>昨日、<span>食べたかった</span>。とてもおいしかった。</p>",
+        () => [text("span"), 0, text("span"), 3]),
+        { query: "食べた", sentence: "昨日、食べたかった。", matchOffset: 3, sourceText: "食べたかった", sourceOffset: 0,
+          rawSelectionText: "食べた" }],
+      ruby: [select("<p>彼は<ruby>漢字<rt>かんじ</rt></ruby>を読む。</p>", () => [text("ruby"), 0, text("ruby"), 2]),
+        { query: "漢字", sentence: "彼は漢字を読む。", matchOffset: 2, sourceText: "漢字かんじ", sourceOffset: 0,
+          rawSelectionText: "漢字" }],
+      oneGlyph: [select(block("昨日、食べる & 飲む？") + separator + block("ありがとう"),
+        () => [glyph(0, 3), 0, glyph(0, 3), 1]),
+        { query: "食", sentence: "昨日、食べる & 飲む？", matchOffset: 3, sourceText: "食", sourceOffset: 0,
+          rawSelectionText: "食" }],
+      // The page's own script and hidden text sit in the element that holds
+      // both blocks, as GameSentenceMiner's inline script sits in <body>.
+      crossBlock: [select(`${block("太郎")}${separator}${block("食べたかった")}${separator}${block("ありがとう")}`
+        + '<script>window.overlay = "食べ物";</script><span style="display:none">隠し文字</span>',
+        () => [glyph(1, 3), 0, glyph(2, 1), 1]),
+        { query: "かった\nあり", sentence: "食べたかった", matchOffset: 3,
+          sourceText: '太郎\n食べたかった\nありがとうwindow.overlay = "食べ物";隠し文字', sourceOffset: 6,
+          rawSelectionText: "かった\nあり" }],
+      // A selection dragged in from the gap between paragraphs starts at the
+      // paragraph's first glyph.
+      fromGap: [select("<p>一つ目の文。</p>\n<p>二つ目に食べたかった。</p>",
+        () => [page.childNodes[1], 0, page.lastChild.firstChild, 6]),
+        { query: "\n二つ目に食べ", sentence: "二つ目に食べたかった。", matchOffset: 0,
+          sourceText: "一つ目の文。\n二つ目に食べたかった。", sourceOffset: 6, rawSelectionText: "\n二つ目に食べ" }],
+      // Selected text the scan never reads, as an inline SVG's, has no sentence.
+      svgOnly: [select("<p><svg><text>日本語</text></svg>。</p>", () => [page.firstChild, 0, page.firstChild.lastChild, 0]),
+        { query: "日本語", sentence: "", matchOffset: 0, sourceText: "日本語。", sourceOffset: 0, rawSelectionText: "日本語" }],
+    };
+    const mismatched = Object.entries(outcomes)
+      .filter(([, [actual, expected]]) => JSON.stringify(actual) !== JSON.stringify(expected))
+      .map(([name, [actual]]) => ({ name, actual }));
+
+    // The engine's reply keeps the selection where its sentence put it.
+    page.innerHTML = "<p>昨日、<span>食べたかった</span>。とてもおいしかった。</p>";
+    window.getSelection().setBaseAndExtent(text("span"), 0, text("span"), 3);
+    document.dispatchEvent(new window.Event("selectionchange"));
+    const lookup = harness.take("hd_lookup");
+    if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [{ ...harness.term("食べる"), matched: "食べた" }] });
+    await harness.settle();
+    const rendered = summary(harness.render()?.candidate);
+    const replied = lookup?.request.text === "食べた" && JSON.stringify(rendered) === JSON.stringify(outcomes.inline[1]);
+    harness.close();
+    return {
+      "an exact selection's sentence is read like a hover over its first glyph, while its highlight keeps the anchor":
+        (mismatched.length === 0 && replied) || { mismatched, rendered },
+    };
+  }
+
   async function selectedWordEditorCase() {
     const outcomes = [];
     for (const [dictionaryCount, eventFirst] of [[0, true], [1, false]]) {
@@ -21385,7 +21464,7 @@ async function contentNoteStage() {
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await textFieldCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
-      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
+      ...await exactSelectionCase(), ...await selectionSentenceCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
       ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
