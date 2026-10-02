@@ -110,4 +110,11 @@ test("the popup headword draws the engine's split as ruby and as one pitch colum
   assert.deepEqual(columns.map(ruby => [ruby.querySelector(".gsm-hoshidicts-pitch-base").textContent,
     ruby.querySelectorAll(".gsm-hoshidicts-pitch-mora").length]), [["好", 1], ["き", 1], ["嫌", 2], ["い", 1]]);
   assert.deepEqual([...popup.querySelectorAll(".pronunciation-group")].map(group => group.dataset.dictionary), ["NHK"]);
+  // The Overline style shares the reading's morae out to the same segments,
+  // and the headword keeps the pitch group of its furigana's accent.
+  const overline = render(SUKIKIRAI, { showPitchAccentFurigana: true, pitchAccentFuriganaStyle: "overline" });
+  assert.deepEqual([...overline.querySelectorAll(".gsm-hoshidicts-pitch-contour")]
+    .map(contour => [contour.dataset.pitchStyle, contour.textContent]), [["overline", "す"], ["overline", "き"],
+    ["overline", "きら"], ["overline", "い"]]);
+  assert.equal(overline.dataset.pitchCategory, "nakadaka");
 });
