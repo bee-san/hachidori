@@ -2291,9 +2291,6 @@ async function checkExternalLinks(browser, settings, tab, popup) {
       && evidence.afterInvalid === 1 && evidence.sourceUnchanged && evidence.restored, JSON.stringify(evidence));
 }
 
-// Issue #430: a custom link's %s is the sentence Anki gets, read the same way
-// for a hover and for a selection inside an inline element or across ruby.
-// The worker's tab creation is recorded instead of opening the URL.
 // 好き嫌い's kana allow two splits of すききらい (#459). The engine worker reads
 // its kanji's KANJIDIC readings and sends the one that reads; the popup draws it.
 async function checkKanjiReadingFurigana(settings, tab, popup) {
@@ -2326,6 +2323,9 @@ async function checkKanjiReadingFurigana(settings, tab, popup) {
     JSON.stringify(evidence));
 }
 
+// Issue #430: a custom link's %s is the sentence Anki gets, read the same way
+// for a hover and for a selection inside an inline element or across ruby.
+// The worker's tab creation is recorded instead of opening the URL.
 async function checkCustomLinkSentence(browser, settings, tab, popup) {
   const writeButtons = customButtons => settings.evaluate(async buttons => {
     const { options } = await chrome.storage.local.get("options");
