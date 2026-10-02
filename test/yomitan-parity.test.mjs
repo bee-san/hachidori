@@ -290,6 +290,33 @@ test("definition tags expand from the tag bank as Yomitan's translator does and 
   YOMITAN_TAGS.map(([, , tags]) => tags.map(([name, category, , , notes]) => [name, category, notes])));
 });
 
+// distributeFurigana (ja/japanese.js) on [term, reading]: each segment as
+// [text, reading], or [text] when it is read as written. A digit or letter
+// joins the kanji beside it, and halfwidth katakana is not kana.
+const YOMITAN_FURIGANA = [
+  ["ゴミ箱", "ごみばこ", [["ゴミ", "ごみ"], ["箱", "ばこ"]]],
+  ["バカ野郎", "ばかやろう", [["バカ", "ばか"], ["野郎", "やろう"]]],
+  ["くすくす笑う", "クスクスわらう", [["くすくす", "クスクス"], ["笑", "わら"], ["う"]]],
+  ["１つ星", "ひとつぼし", [["１", "ひと"], ["つ"], ["星", "ぼし"]]],
+  ["２人とも", "ふたりとも", [["２人", "ふたり"], ["とも"]]],
+  ["逆２乗の法則", "ぎゃくにじょうのほうそく", [["逆２乗", "ぎゃくにじょう"], ["の"], ["法則", "ほうそく"]]],
+  ["Ｔリンパ球", "ティーリンパきゅう", [["Ｔ", "ティー"], ["リンパ"], ["球", "きゅう"]]],
+  ["ｱﾆﾒを見る", "あにめをみる", [["ｱﾆﾒ", "あにめ"], ["を"], ["見", "み"], ["る"]]],
+  ["聞き取り", "ききとり", [["聞", "き"], ["き"], ["取", "と"], ["り"]]],
+  ["好き嫌い", "すききらい", [["好き嫌い", "すききらい"]]],
+];
+
+test("furigana segments match Yomitan's distributeFurigana", () => {
+  const { segmentFurigana } = require("../extension/render/glossary.js");
+  const pairs = segments => segments.map(({ text, reading }) => (reading ? [text, reading] : [text]));
+  for (const [term, reading, expected] of YOMITAN_FURIGANA) {
+    assert.deepEqual(pairs(segmentFurigana(term, reading)), expected, term);
+  }
+  // The documented difference: Yomitan reads ー as あ after か and falls back
+  // to one ruby, [["高ーい", "たかーい"]]; Hachidori keeps ー and splits.
+  assert.deepEqual(pairs(segmentFurigana("高ーい", "たかーい")), [["高", "たか"], ["ーい"]]);
+});
+
 // PronunciationGenerator.createPronunciationText / createPronunciationDownstepPosition /
 // createPronunciationGraph on getKanaMorae(reading). "LHL" and 2 are the same accent.
 const HASHI_TEXT = '<span class="pronunciation-text"><span class="pronunciation-mora" data-position="0" data-pitch="low" data-pitch-next="high"><span class="pronunciation-character">は</span><span class="pronunciation-mora-line"></span></span><span class="pronunciation-mora" data-position="1" data-pitch="high" data-pitch-next="low"><span class="pronunciation-character">し</span><span class="pronunciation-mora-line"></span></span></span>';
