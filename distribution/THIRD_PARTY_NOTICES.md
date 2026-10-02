@@ -19,6 +19,7 @@ submodules and the pinned source distributions listed below.
 | xxHash | `xxHash-LICENSE` | Dictionary hashing |
 | kanji-processor | `kanji-processor-LICENSE` | Kanji-variant source data |
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
+| KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |
 | Emscripten | `emscripten-LICENSE` | Generated JavaScript runtime, including its Node.js-derived path code |
 | musl | `musl-COPYRIGHT` | C runtime, including its upstream attribution list |
 | LLVM runtime libraries | `libcxx-LICENSE`, `libcxxabi-LICENSE`, `compiler-rt-LICENSE`, `libunwind-LICENSE` | C++ and compiler runtime notices |

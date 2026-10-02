@@ -150,7 +150,10 @@ the service worker and both engine runtimes run the same code.
   from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
-  in `vendor/yomitan/source.json`. They are
+  in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is
+  KANJIDIC2's kanji readings for the furigana split (CC BY-SA 4.0), which
+  `scripts/kanji-readings.mjs` regenerates from the archive pinned in
+  `vendor/kanjidic/source.json`. They are
   committed build output: update them with their source change and otherwise
   leave them alone.
 - `icons/` holds the extension's icons.

@@ -1,0 +1,27 @@
+vendor/kanjidic/kanji-readings.json holds the on'yomi and kun'yomi of the
+kanji in KANJIDIC2. Hachidori uses them to place headword furigana over the
+kanji each reading belongs to.
+
+This package uses the KANJIDIC2 dictionary file. This file is the property of
+the Electronic Dictionary Research and Development Group, and is used in
+conformance with the Group's licence:
+
+  Licence: https://www.edrdg.org/edrdg/licence.html
+  KANJIDIC project: https://www.edrdg.org/wiki/index.php/KANJIDIC_Project
+
+Copyright over KANJIDIC2 is held by James William Breen and the Electronic
+Dictionary Research and Development Group.
+
+The readings were taken from KANJIDIC_english.zip of yomidevs/jmdict-yomitan;
+vendor/kanjidic/source.json records its URL, SHA-256 and KANJIDIC revision.
+Changes: only the readings are kept, all in hiragana; a kun'yomi keeps the "."
+before its okurigana; the "-" that marks a prefix or suffix reading is
+removed; a repeated reading is listed once; kanji without readings are left
+out.
+
+The adapted readings are licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International licence:
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+They are provided without any warranty as to their accuracy or suitability
+for a particular application.
