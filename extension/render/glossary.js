@@ -292,6 +292,22 @@
     return String(typeof positions === "string" ? getDownstepPositions(positions) : positions);
   }
 
+  // Yomitan's getPitchCategory (japanese.js at 67db60d) with its
+  // isNonNounVerbOrAdjective: a pattern's category is its first downstep and
+  // any downstep of a verb or i-adjective is kifuku. The popup and
+  // {pitch-accent-categories} share it.
+  function pitchAccentCategory(reading, pitch, wordClasses = []) {
+    const classes = new Set(wordClasses);
+    const inflected = ["v1", "v5", "vk", "vs", "vz", "adj-i"].some(rule => classes.has(rule))
+      && !(classes.has("vs") && classes.has("n"));
+    const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
+    if (position === 0) return "heiban";
+    if (Number.isNaN(position) || position < 0) return null;
+    if (inflected) return "kifuku";
+    if (position === 1) return "atamadaka";
+    return position >= splitPitchAccentMorae(reading).length ? "odaka" : "nakadaka";
+  }
+
   // japanese.js DIACRITIC_MAPPING: the character a dakuten form is built on.
   const DAKUTEN_BASES = new Map();
   {
@@ -435,13 +451,17 @@
 
   // display-generator.js _createPronunciationPitchAccent with templates-display.html
   // "pronunciation": one pitch accent's li.pronunciation. A notation the
-  // options hide is not built. data-pronunciation is its `reading [n]` label.
-  function createPronunciationPitchAccent(documentRef, reading, pitch, { text = true, position = true, graph = false } = {}) {
+  // options hide is not built. data-pronunciation is its `reading [n]` label,
+  // and data-pitch-category its accent group from the term's word classes.
+  function createPronunciationPitchAccent(documentRef, reading, pitch,
+    { text = true, position = true, graph = false, wordClasses = [] } = {}) {
     const positions = pitchAccentPositions(pitch);
     const morae = splitPitchAccentMorae(reading);
     const node = documentRef.createElement("li");
     node.className = "pronunciation";
     node.dataset.pitchAccentDownstepPosition = `${positions}`;
+    const category = pitchAccentCategory(reading, pitch, wordClasses);
+    if (category) node.dataset.pitchCategory = category;
     node.dataset.pronunciationType = "pitch-accent";
     if (pitch.nasal.length > 0) node.dataset.nasalMoraPosition = pitch.nasal.join(" ");
     if (pitch.devoice.length > 0) node.dataset.devoiceMoraPosition = pitch.devoice.join(" ");
@@ -654,14 +674,16 @@
       }
     };
     const pitchReading = reading || expression;
-    const selectedPitch = pitchOptions.enabled === false
-      ? null
-      : selectPitchAccent(
-          pitchOptions.groups,
-          pitchOptions.dictionary,
-          splitPitchAccentMorae(pitchReading).length
-        );
-    const pitchedMorae = selectedPitch
+    // The furigana's pitch also gives the headword's group, contour or not.
+    const selectedPitch = selectPitchAccent(
+      pitchOptions.groups,
+      pitchOptions.dictionary,
+      splitPitchAccentMorae(pitchReading).length
+    );
+    const category = selectedPitch
+      ? pitchAccentCategory(pitchReading, selectedPitch.pitch, pitchOptions.wordClasses)
+      : null;
+    const pitchedMorae = selectedPitch && pitchOptions.enabled !== false
       ? buildPitchAccentMorae(pitchReading, pitchAccentPositions(selectedPitch.pitch))
       : null;
     if (pitchedMorae) {
@@ -730,7 +752,7 @@
         ruby.appendChild(rt);
         parent.appendChild(ruby);
       }
-      return;
+      return category;
     }
 
     for (const segment of segmentFurigana(expression, reading)) {
@@ -745,6 +767,7 @@
       ruby.appendChild(rt);
       parent.appendChild(ruby);
     }
+    return category;
   }
 
   // Yomitan's DictionaryDatabase._splitField: tag, rule and reading lists are
@@ -1817,6 +1840,7 @@
     normalizeMediaPath,
     parseStructuredLink,
     parseTagList,
+    pitchAccentCategory,
     pitchAccentDownstep,
     pitchAccentPositions,
     segmentFurigana,

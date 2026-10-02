@@ -92,19 +92,10 @@ function pitchHtml(term) {
 }
 
 function pitchCategories(term) {
-  const classes = new Set(uniqueTokens([term.rules]));
-  const inflected = ["v1", "v5", "vk", "vs", "vz", "adj-i"].some(rule => classes.has(rule))
-    && !(classes.has("vs") && classes.has("n"));
-  const morae = globalThis.HDGlossary.splitPitchAccentMorae(term.reading || term.expression).length;
-  // Yomitan's getPitchCategory: a pattern's category is its first downstep.
-  const categories = term.pitches.flatMap(group => group.pitches.map(pitch => {
-    const position = Number(globalThis.HDGlossary.pitchAccentDownstep(pitch).split(",")[0]);
-    if (position === 0) return "heiban";
-    if (Number.isNaN(position) || position < 0) return null;
-    if (inflected) return "kifuku";
-    if (position === 1) return "atamadaka";
-    return position >= morae ? "odaka" : "nakadaka";
-  }));
+  const reading = term.reading || term.expression;
+  const wordClasses = uniqueTokens([term.rules]);
+  const categories = term.pitches.flatMap(group => group.pitches.map(pitch =>
+    globalThis.HDGlossary.pitchAccentCategory(reading, pitch, wordClasses)));
   return [...new Set(categories.filter(Boolean))].join(",");
 }
 

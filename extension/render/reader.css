@@ -1078,6 +1078,17 @@ html[data-hoshidicts-theme="girlypop"],
   --hoshidicts-frequency: var(--hoshidicts-palette-info);
   --hoshidicts-frequency-text: var(--hoshidicts-palette-info-content);
   --hoshidicts-pitch: var(--hoshidicts-palette-accent);
+  /* Pitch accent groups: jp-mining-note's colours for 平板, 頭高, 中高, 尾高 and
+     起伏. Each is adjusted only as far as 3:1 needs on every palette's cards,
+     header and 85% popup body over a white or a black page: light palettes
+     darken JPMN's day values, dark palettes use its night values with 頭高 and
+     起伏 lightened. The popup's color-scheme picks the pair. Custom CSS can
+     restyle these, for example for colour-vision deficiencies. */
+  --hoshidicts-pitch-heiban: light-dark(#096abd, #59b2ff);
+  --hoshidicts-pitch-atamadaka: light-dark(#bb3a3a, #ff8686);
+  --hoshidicts-pitch-nakadaka: light-dark(#a75113, #ff9b54);
+  --hoshidicts-pitch-odaka: light-dark(#007a16, #67e47d);
+  --hoshidicts-pitch-kifuku: light-dark(#7b51c0, #bc99f6);
   --hoshidicts-tag-text: var(--hoshidicts-palette-neutral-content);
   --hoshidicts-tag-expression-text: var(--hoshidicts-palette-secondary-content);
   --hoshidicts-tag-part-of-speech-text: var(--hoshidicts-palette-accent-content);
@@ -1806,6 +1817,42 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-expression rt {
   filter: blur(5px);
   user-select: none;
+}
+
+.gsm-hoshidicts-popup [data-pitch-category="heiban"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-heiban); }
+.gsm-hoshidicts-popup [data-pitch-category="atamadaka"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-atamadaka); }
+.gsm-hoshidicts-popup [data-pitch-category="nakadaka"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-nakadaka); }
+.gsm-hoshidicts-popup [data-pitch-category="odaka"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-odaka); }
+.gsm-hoshidicts-popup [data-pitch-category="kifuku"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-kifuku); }
+
+/* Show pitch accent colours: each badge's overline, downstep hook and graph
+   take its own pitch's group. */
+:host([data-hoshidicts-pitch-colors]) .pronunciation[data-pitch-category] {
+  --pronunciation-annotation-color: var(--hoshidicts-pitch-category);
+}
+
+/* The headword and its furigana lines (the contour, or the Overline style's
+   line and hook) take the group of the pitch the furigana uses. The reading
+   kana keep their muted colour: 14 px text needs 4.5:1. Blur hides that pitch
+   with the reading, so the colour waits too. */
+:host([data-hoshidicts-pitch-colors]) .gsm-hoshidicts-popup:not([data-definition-blur-state]) .gsm-hoshidicts-expression[data-pitch-category] {
+  --hoshidicts-pitch: var(--hoshidicts-pitch-category);
+  --pronunciation-annotation-color: var(--hoshidicts-pitch-category);
+  color: var(--hoshidicts-pitch-category);
+}
+
+/* Focus only recolours a kanji to the accent, which can be close to its group. */
+:host([data-hoshidicts-pitch-colors]) .gsm-hoshidicts-expression[data-pitch-category] .gsm-hoshidicts-kanji-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+/* Forced colours keep today's popup: they replace the headword's colours, but
+   not the SVG paint of a badge's graph, which would keep its group colour. */
+@media (forced-colors: active) {
+  .gsm-hoshidicts-popup [data-pitch-category] {
+    --hoshidicts-pitch-category: var(--text-color);
+  }
 }
 
 .gsm-hoshidicts-compact-definition-summary {

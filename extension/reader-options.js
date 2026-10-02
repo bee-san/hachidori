@@ -157,6 +157,9 @@
     showPitchAccentText: true,
     showPitchAccentPosition: true,
     showPitchAccentGraph: false,
+    // jp-mining-note's pitch accent group colours, off by default as there.
+    // The key is US-spelled like colorScheme; Settings says "colours".
+    showPitchAccentColors: false,
     hidePopupGrammarTags: true,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
@@ -219,7 +222,7 @@
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle",
     "showPitchAccentBadge", "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
-    "hidePopupGrammarTags",
+    "showPitchAccentColors", "hidePopupGrammarTags",
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation", "activationSticky"];

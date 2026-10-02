@@ -58,3 +58,21 @@ test("Compact glossaries is a host attribute that a later update removes", () =>
   appearance.destroy();
   dom.window.close();
 });
+
+test("Pitch accent colours are a host attribute that a later update removes", () => {
+  const dom = new JSDOM('<div id="host"></div>', { runScripts: "outside-only" });
+  dom.window.eval(readFileSync(new URL("../extension/render/popup.js", import.meta.url), "utf8"));
+  const host = dom.window.document.getElementById("host");
+  const appearance = dom.window.HDPopup.createPopupAppearance(host);
+  const update = showPitchAccentColors => appearance.update({
+    popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420, popupScalePercent: 100,
+    popupOpacityPercent: 85, showPopupAudioButton: true, showPitchAccentColors,
+  });
+
+  update(true);
+  assert.equal(host.getAttribute("data-hoshidicts-pitch-colors"), "on");
+  update(false);
+  assert.equal(host.hasAttribute("data-hoshidicts-pitch-colors"), false);
+  appearance.destroy();
+  dom.window.close();
+});

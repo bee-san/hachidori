@@ -25,6 +25,7 @@ export const KEYBIND_OPTION_LABELS = {
   showPitchAccentText: "Show pitch accent text",
   showPitchAccentPosition: "Show pitch accent position",
   showPitchAccentGraph: "Show pitch accent graph",
+  showPitchAccentColors: "Show pitch accent colours",
   // Stored inverted; named like the Settings checkbox it flips.
   hidePopupGrammarTags: "Show grammar tags",
 };

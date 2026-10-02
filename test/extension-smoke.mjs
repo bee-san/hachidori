@@ -4856,7 +4856,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
       showPitchAccentBadge: true, showPitchAccentDictionaryNames: true, showPitchAccentText: true,
-      showPitchAccentPosition: true, showPitchAccentGraph: false, hidePopupGrammarTags: true,
+      showPitchAccentPosition: true, showPitchAccentGraph: false, showPitchAccentColors: false, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -12382,6 +12382,7 @@ async function settingsFrequencyStage() {
       ["opt-pitch-position", "showPitchAccentPosition", true],
       ["opt-pitch-graph", "showPitchAccentGraph", false],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
+      ["opt-pitch-colors", "showPitchAccentColors", false],
       ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
     const pitch = window.document.getElementById("opt-pitch-dictionary");
@@ -12519,6 +12520,10 @@ async function settingsFrequencyStage() {
       metadataDetails.push(blurControl("opt-blur-delay").disabled
         && blurControl("definition-blur-delay-control").hidden
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
+      // The toggles above leave the contour off and colours on: the dictionary
+      // still picks the headword's colour, so it stays editable until both are off.
+      metadataDetails.push(!pitch.disabled);
+      await editControl(window.document.getElementById("opt-pitch-colors"), false);
       metadataDetails.push(pitch.disabled);
       const furigana = window.document.getElementById("opt-pitch-furigana");
       const furiganaStyle = window.document.getElementById("opt-pitch-furigana-style");
