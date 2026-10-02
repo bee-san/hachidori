@@ -213,6 +213,16 @@ test("tokenize scans each text with the dictionaries, spreads the reading over t
     [["猫が食べたかった。", 1, 10], ["が食べたかった。", 1, 10], ["食べたかった。", 1, 10], ["。", 1, 10], ["X", 1, 10]]);
 });
 
+test("tokenize takes the engine's kanji-reading furigana for a word matched in dictionary form", async () => {
+  const furigana = [{ text: "好", reading: "す" }, { text: "き", reading: "" }, { text: "嫌", reading: "きら" }, { text: "い", reading: "" }];
+  const sukikirai = { matched: "好き嫌い", deinflected: "好き嫌い", trace: [],
+    term: { ...tabetakatta.term, expression: "好き嫌い", reading: "すききらい", furigana } };
+  const { answer } = host({ lookups: { "好き嫌い": [sukikirai] } });
+  const { results } = await answer({ type: "hd_api_tokenize", texts: ["好き嫌い"], parser: "scanning-parser" });
+  assert.deepEqual(results[0].content, [[{ text: "好", reading: "す" }, { text: "き", reading: "" },
+    { text: "嫌", reading: "きら" }, { text: "い", reading: "" }]]);
+});
+
 test("dictionaries list the installed packages with a download file name, and downloads pass through the engine", async () => {
   const { answer, calls } = host({ downloads: { 0: "UEsDBA==" } });
   assert.deepEqual(await answer({ type: "hd_api_dictionaries" }), { dictionaries: [

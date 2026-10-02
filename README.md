@@ -137,6 +137,8 @@ assets and their copyright declaration.
 
 Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
 
+Headword furigana use the kanji readings of [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). This file is the property of the [Electronic Dictionary Research and Development Group](https://www.edrdg.org/), and is used in conformance with the Group's [licence](https://www.edrdg.org/edrdg/licence.html). The readings in `extension/vendor/kanjidic/` remain under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
 ## License
 
 Hachidori is available under [GPL-3.0-or-later](LICENSE), matching hoshidicts and the ported GameSentenceMiner code.

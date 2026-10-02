@@ -53,6 +53,17 @@
   // Yomitan's isCodePointKana: the Hiragana and Katakana blocks. Halfwidth
   // katakana is not kana there, so it joins the characters beside it.
   const KANA_PATTERN = /[\u3040-\u30ff]/u;
+  // The kana rendaku voices (箱 はこ, ばこ). Each voiced kana follows its base
+  // in Unicode, and the は row's half-voiced kana follows that (発 はつ, ぱつ).
+  const DAKUTEN_KANA = "かきくけこさしすせそたちつてとはひふへほ";
+  const HANDAKUTEN_KANA = "はひふへほ";
+  // A kun'yomi ending in an u-row kana has its masu-stem in the i row
+  // (す.く, すき; きら.う, きらい).
+  const U_ROW_KANA = "うくぐすつぬぶむる";
+  const I_ROW_KANA = "いきぎしちにびみり";
+  // The final kana a sokuon can replace (一 いち, いっ).
+  const SOKUON_KANA = "つちくきり";
+  const NO_KANJI_READINGS = new Set();
   const PITCH_SMALL_KANA = new Set(Array.from(
     "ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ"
   ));
@@ -558,7 +569,69 @@
     return newSegments;
   }
 
-  function segmentizeFurigana(reading, normalizedReading, groups, groupStart) {
+  // The ways a kanji can be read inside a word, from its KANJIDIC readings
+  // (on'yomi in hiragana, kun'yomi with "." before the okurigana): each
+  // reading; a kun'yomi's stem, stem and okurigana, and masu-stem (す.く: す,
+  // すく, すき); each of those with rendaku; and each of all these with a final
+  // つ, ち, く, き or り as っ (いっ, ぱっ).
+  function kanjiReadingForms(readings) {
+    const forms = new Set();
+    for (const reading of readings.split(" ")) {
+      const [stem, okurigana = ""] = reading.split(".");
+      forms.add(stem).add(stem + okurigana);
+      const row = okurigana === "" ? -1 : U_ROW_KANA.indexOf(okurigana.at(-1));
+      if (row >= 0) forms.add(stem + okurigana.slice(0, -1) + I_ROW_KANA[row]);
+    }
+    for (const form of [...forms]) {
+      const codePoint = form.codePointAt(0);
+      if (DAKUTEN_KANA.includes(form[0])) forms.add(String.fromCodePoint(codePoint + 1) + form.slice(1));
+      if (HANDAKUTEN_KANA.includes(form[0])) forms.add(String.fromCodePoint(codePoint + 2) + form.slice(1));
+    }
+    for (const form of [...forms]) {
+      if (SOKUON_KANA.includes(form.at(-1))) forms.add(`${form.slice(0, -1)}っ`);
+    }
+    return forms;
+  }
+
+  // Each kanji's reading forms over a table of KANJIDIC readings
+  // ({ "好": "こう この.む す.く よ.い い.い", … }), for distributeFurigana. A
+  // kanji's forms are derived the first time it is asked for.
+  function createKanjiReadings(table) {
+    const cache = new Map();
+    return (character) => {
+      let forms = cache.get(character);
+      if (forms === undefined) {
+        forms = Object.hasOwn(table, character) ? kanjiReadingForms(table[character]) : NO_KANJI_READINGS;
+        cache.set(character, forms);
+      }
+      return forms;
+    };
+  }
+
+  // Whether a run of kanji reads as `reading`: one form per character, in
+  // order. 々 repeats the kanji before it; a character without readings (a
+  // digit, a letter, 、) never reads.
+  function readsAs(text, reading, kanjiReadings) {
+    // Where in the reading the characters so far can end.
+    let ends = new Set([0]);
+    let forms = NO_KANJI_READINGS;
+    for (const character of text) {
+      if (character !== "々") forms = kanjiReadings(character);
+      const next = new Set();
+      for (const end of ends) {
+        for (const form of forms) {
+          if (reading.startsWith(form, end)) next.add(end + form.length);
+        }
+      }
+      if (next.size === 0) return false;
+      ends = next;
+    }
+    return ends.has(reading.length);
+  }
+
+  // With kanjiReadings, a non-kana group takes only a share of the reading
+  // its kanji can be read as.
+  function segmentizeFurigana(reading, normalizedReading, groups, groupStart, kanjiReadings = null) {
     const groupCount = groups.length - groupStart;
     if (groupCount <= 0) {
       return reading.length === 0 ? [] : null;
@@ -574,7 +647,8 @@
           reading.substring(group.text.length),
           normalizedReading.substring(group.text.length),
           groups,
-          groupStart + 1
+          groupStart + 1,
+          kanjiReadings
         );
         if (segments !== null) {
           if (reading.startsWith(group.text)) {
@@ -590,12 +664,16 @@
 
     let result = null;
     for (let index = reading.length; index >= group.text.length; index -= 1) {
-      const segments = segmentizeFurigana(
-        reading.substring(index),
-        normalizedReading.substring(index),
-        groups,
-        groupStart + 1
-      );
+      const segments = kanjiReadings === null
+        || readsAs(group.text, normalizedReading.substring(0, index), kanjiReadings)
+        ? segmentizeFurigana(
+          reading.substring(index),
+          normalizedReading.substring(index),
+          groups,
+          groupStart + 1,
+          kanjiReadings
+        )
+        : null;
       if (segments !== null) {
         if (result !== null) {
           return null;
@@ -612,7 +690,11 @@
     return result;
   }
 
-  function segmentFurigana(expression, reading) {
+  // Yomitan's distributeFurigana, but null where Yomitan falls back to one
+  // ruby over the whole word: no split, or more than one, spells the reading.
+  // With kanjiReadings (createKanjiReadings), only the splits whose kanji runs
+  // read by their KANJIDIC readings count.
+  function distributeFurigana(expression, reading, kanjiReadings = null) {
     if (!reading || reading === expression) {
       return [{ text: expression, reading: "" }];
     }
@@ -635,25 +717,42 @@
       }
     }
 
-    const segments = segmentizeFurigana(
+    return segmentizeFurigana(
       reading,
       toHiragana(reading),
       groups,
-      0
+      0,
+      kanjiReadings
     );
-    return segments === null
-      ? [{ text: expression, reading }]
-      : segments;
   }
 
+  function segmentFurigana(expression, reading) {
+    return distributeFurigana(expression, reading) ?? [{ text: expression, reading }];
+  }
+
+  // A term's furigana: the engine's split (term.furigana, from the kanji
+  // readings) when the term carries one that spells its expression, else the
+  // local split. A linked browser's term is untrusted, so a malformed or stale
+  // split falls back too.
+  function termFurigana({ expression, reading, furigana }) {
+    return Array.isArray(furigana) && furigana.length > 0
+      && furigana.every((segment) => typeof segment?.text === "string" && typeof segment.reading === "string")
+      && furigana.map((segment) => segment.text).join("") === expression
+      ? furigana
+      : segmentFurigana(expression, reading);
+  }
+
+  // `furigana` is the term's furigana from the engine, if any (termFurigana).
   function appendExpressionRuby(
     documentRef,
     parent,
     expression,
     reading,
     onKanjiClick,
-    pitchOptions = {}
+    pitchOptions = {},
+    furigana = null
   ) {
+    const furiganaSegments = termFurigana({ expression, reading, furigana });
     const appendText = (target, text) => {
       for (const character of Array.from(text)) {
         if (!HAN_CHARACTER_PATTERN.test(character) || typeof onKanjiClick !== "function") {
@@ -690,7 +789,7 @@
       const downstep = pitchAccentDownstep(selectedPitch.pitch);
       // One column per furigana segment, so each reading sits over the text it
       // reads. Kana segments get a column too, keeping the contour unbroken.
-      let segments = segmentFurigana(expression, reading).map((segment) => ({
+      let segments = furiganaSegments.map((segment) => ({
         text: segment.text,
         moraCount: splitPitchAccentMorae(segment.reading || segment.text).length,
       }));
@@ -755,7 +854,7 @@
       return category;
     }
 
-    for (const segment of segmentFurigana(expression, reading)) {
+    for (const segment of furiganaSegments) {
       if (!segment.reading) {
         appendText(parent, segment.text);
         continue;
@@ -1828,11 +1927,13 @@
     boundedString,
     buildPitchAccentMorae,
     createFuriganaSegment,
+    createKanjiReadings,
     createPronunciationDownstepPosition,
     createPronunciationGraph,
     createPronunciationPitchAccent,
     createPronunciationText,
     definitionTagList,
+    distributeFurigana,
     getDownstepPositions,
     getFuriganaKanaSegments,
     isMoraPitchHigh,
@@ -1848,6 +1949,7 @@
     selectPitchAccent,
     splitPitchAccentMorae,
     structuredDataAttributeName,
+    termFurigana,
     toHiragana,
   };
 }));

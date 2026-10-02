@@ -166,9 +166,10 @@ function cardFormat(template) {
 
 // Yomitan's distributeFuriganaInflected: the reading covers the stem shared by
 // the dictionary form and the matched text; the inflected ending has none.
-function furiganaSegments(expression, reading, matched) {
-  const { segmentFurigana } = globalThis.HDGlossary;
-  if (matched === expression) return segmentFurigana(expression, reading);
+function furiganaSegments(term, matched) {
+  const { segmentFurigana, termFurigana } = globalThis.HDGlossary;
+  const { expression, reading } = term;
+  if (matched === expression) return termFurigana(term);
   let stem = 0;
   while (stem < expression.length && stem < matched.length && expression[stem] === matched[stem]) stem += 1;
   const ending = expression.slice(stem);
@@ -288,7 +289,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
           position += step.length;
           continue;
         }
-        for (const segment of furiganaSegments(best.term.expression, best.term.reading, best.matched)) {
+        for (const segment of furiganaSegments(best.term, best.matched)) {
           if (segment.reading === "") plain(segment.text);
           else segments.push({ text: segment.text, reading: segment.reading });
         }

@@ -32,6 +32,7 @@ import {
   compactSummaryFixture,
   dictionaryTabsFixture,
   kanjiGroupFixture,
+  kanjiReadingFuriganaFixture,
   externalLinksFixture,
   frequencyRankingFixture,
   gaijiSizingFixture,
@@ -454,6 +455,7 @@ const PLANNED = [
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "a custom link's %s is the hovered or selected word's sentence without ruby readings",
+  "an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
   "a grouped favourite uses only its group tab",
@@ -2287,6 +2289,38 @@ async function checkExternalLinks(browser, settings, tab, popup) {
       && evidence.afterOpen.creates[0].openerTabId === undefined
       && evidence.invalid.ok === false && evidence.invalid.requestId === "external-invalid"
       && evidence.afterInvalid === 1 && evidence.sourceUnchanged && evidence.restored, JSON.stringify(evidence));
+}
+
+// 好き嫌い's kana allow two splits of すききらい (#459). The engine worker reads
+// its kanji's KANJIDIC readings and sends the one that reads; the popup draws it.
+async function checkKanjiReadingFurigana(settings, tab, popup) {
+  const fixture = kanjiReadingFuriganaFixture();
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  await installMediaArchive(settings, fixture.archive);
+  let evidence;
+  try {
+    const reply = await settings.evaluate(text => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen",
+      type: "hd_lookup", requestId: "e2e-kanji-reading-furigana", text, maxResults: 1 }), fixture.query);
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    const shown = await hoverForPopup(tab, popup, "#verb", { accept: state => state.plain.includes(fixture.query) });
+    evidence = { furigana: reply?.results?.[0]?.term?.furigana, rubies: shown?.furiganaAlignment.rubies,
+      headword: shown?.text.includes("好すき嫌きらい") };
+  } catch (error) {
+    evidence = { error: error.message };
+  } finally {
+    await tab.keyboard.press("Escape");
+    const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_remove", title,
+    }), fixture.title);
+    if (!removed.ok) throw new Error(removed.error);
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+  }
+  check("an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
+    JSON.stringify(evidence) === JSON.stringify({ furigana: [{ text: "好", reading: "す" }, { text: "き", reading: "" },
+      { text: "嫌", reading: "きら" }, { text: "い", reading: "" }], rubies: 2, headword: true }),
+    JSON.stringify(evidence));
 }
 
 // Issue #430: a custom link's %s is the sentence Anki gets, read the same way
@@ -13358,6 +13392,7 @@ async function main() {
   await checkGlossaryCardsOpen(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkCustomLinkSentence(browser, page, tab, popup);
+  await checkKanjiReadingFurigana(page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
   await checkKanjiGroup(page, tab, popup, browser);

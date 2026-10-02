@@ -32,7 +32,7 @@ import {
 } from "./dictionary-import.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 // HDGlossary.parseTagList: the one U+0020 tag splitter the renderer, Anki and
-// the API host share.
+// the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
 
 /*
@@ -315,6 +315,30 @@ function withDefinitionTags(reply) {
     }
   }
   return { ...reply, nativeJsonLength: reply.nativeJsonLength + tagJsonLength };
+}
+
+// A headword whose furigana split falls back to one ruby over the whole word
+// gets `term.furigana`, the split its kanji's KANJIDIC readings allow, when
+// exactly one does (#459). Every other reply stays as the engine wrote it. The
+// readings table is read on the first such headword and kept for the worker's
+// life; each kanji's readings are derived as it is needed.
+let kanjiReadings = null;
+
+export async function withFurigana(reply) {
+  const { createKanjiReadings, distributeFurigana } = globalThis.HDGlossary;
+  const unsplit = reply.results.filter((result) => result?.term
+    && distributeFurigana(result.term.expression, result.term.reading) === null);
+  if (unsplit.length === 0) return reply;
+  kanjiReadings ??= createKanjiReadings((await import("./vendor/kanjidic/kanji-readings.json",
+    { with: { type: "json" } })).default.readings);
+  let furiganaJsonLength = 0;
+  for (const { term } of unsplit) {
+    const furigana = distributeFurigana(term.expression, term.reading, kanjiReadings);
+    if (furigana === null) continue;
+    term.furigana = furigana;
+    furiganaJsonLength += ',"furigana":'.length + JSON.stringify(furigana).length;
+  }
+  return { ...reply, nativeJsonLength: reply.nativeJsonLength + furiganaJsonLength };
 }
 
 let tail = Promise.resolve();
@@ -3078,7 +3102,7 @@ const HANDLERS = {
       lookupArguments(message),
     );
     throwIfEngineFailed("hdw_lookup");
-    return withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup"), message));
+    return withFurigana(withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup"), message)));
   },
 
   async hd_lookup_dictionary(message) {
@@ -3101,7 +3125,7 @@ const HANDLERS = {
       [args[0], text(entry.path), ...args.slice(1)],
     );
     throwIfEngineFailed("hdw_lookup_dictionary");
-    return withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup_dictionary"), message));
+    return withFurigana(withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup_dictionary"), message)));
   },
 
   async hd_kanji(message) {
