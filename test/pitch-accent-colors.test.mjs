@@ -78,7 +78,7 @@ test("every pitch accent colour keeps 3:1 on the cards, header and popup body of
   assert.deepEqual(failures, []);
 });
 
-test("the five groups stay apart in each colour scheme and a coloured kanji shows its focus", () => {
+test("the five groups stay apart in each colour scheme, focus shows and forced colours are unchanged", () => {
   for (const scheme of ["light", "dark"]) {
     for (const [index, first] of GROUPS.entries()) {
       for (const second of GROUPS.slice(index + 1)) {
@@ -89,4 +89,7 @@ test("the five groups stay apart in each colour scheme and a coloured kanji show
   const focus = /:host\(\[data-hoshidicts-pitch-colors\]\) \.gsm-hoshidicts-expression\[data-pitch-category\] \.gsm-hoshidicts-kanji-link:focus-visible \{([^}]*)\}/u
     .exec(css)?.[1] ?? "";
   assert.match(focus, /outline: 2px solid currentColor;/u);
+  // Forced colours do not repaint SVG strokes, so each group falls back to the
+  // text colour a badge graph uses today.
+  assert.match(css, /@media \(forced-colors: active\) \{\s*\.gsm-hoshidicts-popup \[data-pitch-category\] \{\s*--hoshidicts-pitch-category: var\(--text-color\);\s*\}\s*\}/u);
 });

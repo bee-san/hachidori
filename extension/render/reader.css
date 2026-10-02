@@ -1847,6 +1847,14 @@ html[data-hoshidicts-theme="girlypop"],
   outline-offset: 1px;
 }
 
+/* Forced colours keep today's popup: they replace the headword's colours, but
+   not the SVG paint of a badge's graph, which would keep its group colour. */
+@media (forced-colors: active) {
+  .gsm-hoshidicts-popup [data-pitch-category] {
+    --hoshidicts-pitch-category: var(--text-color);
+  }
+}
+
 .gsm-hoshidicts-compact-definition-summary {
   min-width: min(180px, 100%);
   max-width: 100%;
