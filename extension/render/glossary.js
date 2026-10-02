@@ -50,9 +50,9 @@
   ]);
   const HAN_CHARACTER_PATTERN =
     /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}]/u;
-  const KANJI_SEGMENT_PATTERN =
-    /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}\u3005]+|[^\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}\u3005]+/gu;
-  const KANA_PATTERN = /[\u3040-\u30ff\uff66-\uff9f]/u;
+  // Yomitan's isCodePointKana: the Hiragana and Katakana blocks. Halfwidth
+  // katakana is not kana there, so it joins the characters beside it.
+  const KANA_PATTERN = /[\u3040-\u30ff]/u;
   const PITCH_SMALL_KANA = new Set(Array.from(
     "ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ"
   ));
@@ -528,10 +528,11 @@
       state = nextState;
       start = index;
     }
+    // The reading runs on past this group; the last run ends with the group.
     newSegments.push(
       createFuriganaSegment(
         text.substring(start),
-        state ? "" : reading.substring(start)
+        state ? "" : reading.substring(start, text.length)
       )
     );
     return newSegments;
@@ -596,15 +597,22 @@
       return [{ text: expression, reading: "" }];
     }
 
+    // Yomitan's distributeFurigana: one group per run of kana or of other
+    // code points, so a digit or letter joins the kanji beside it.
     const groups = [];
-    const matches = String(expression).match(KANJI_SEGMENT_PATTERN) || [];
-    for (const text of matches) {
-      const isKana = KANA_PATTERN.test(text[0]);
-      groups.push({
-        isKana,
-        text,
-        normalizedText: isKana ? toHiragana(text) : null,
-      });
+    for (const character of String(expression)) {
+      const isKana = KANA_PATTERN.test(character);
+      const group = groups.at(-1);
+      if (group?.isKana === isKana) {
+        group.text += character;
+      } else {
+        groups.push({ isKana, text: character, normalizedText: null });
+      }
+    }
+    for (const group of groups) {
+      if (group.isKana) {
+        group.normalizedText = toHiragana(group.text);
+      }
     }
 
     const segments = segmentizeFurigana(
