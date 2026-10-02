@@ -48,3 +48,18 @@ Graphs are switched on in every capture so the badge graph shows.
 
 `theme-contrast.png` is `node test/chrome-theme-contrast.mjs` (45/45 rows) on
 the branch head; it is byte-identical to the same run on `main`.
+
+## Benchmark
+
+- `pitch-fixture.mjs <repo> <out.zip>` builds a pitch archive for the hover
+  benchmark's three words (食べる [2] and `LHL`, 漢字 [0], 深層 [0] and [1]),
+  so every hover builds headword groups and pitch badges.
+- `benchmark/hover-popup.mjs` ran with
+  `HACHIDORI_HOVER_OPTIONS='{"showPitchAccentColors":true}'` on both archives,
+  interleaved `main` `e06aacfc`, branch `27f6f0a1`, `main`, branch (3 fresh
+  profiles each). `hover-summary.mjs` prints the medians; result signatures
+  are equal on both sides.
+- `render-bench.mjs <main> <branch> <chrome> <puppeteer> <raw.json> <n>`
+  renders the engine's recorded replies with the production view and
+  `reader.css` in two pages of one Chrome, alternating revisions sample by
+  sample (20 excluded warmups, then n samples per cell), switch off and on.
