@@ -21,6 +21,17 @@ test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16
   assert.equal(await render(request(), "{sentence-furigana}|{sentence-furigana-plain}"), "🍵 <b>食べます</b>。|🍵 <b>食べます</b>。");
 });
 
+test("{furigana} uses the engine's kanji-reading split and ignores one that does not spell the expression", async () => {
+  const term = furigana => ({ ...request().term, expression: "好き嫌い", reading: "すききらい", furigana });
+  const split = [{ text: "好", reading: "す" }, { text: "き", reading: "" }, { text: "嫌", reading: "きら" }, { text: "い", reading: "" }];
+  assert.equal(await render(request({ term: term(split) }), "{furigana}|{furigana-plain}"),
+    "<ruby>好<rt>す</rt></ruby>き<ruby>嫌<rt>きら</rt></ruby>い|好[す]き 嫌[きら]い");
+  for (const furigana of [undefined, [], [{ text: "好き", reading: "すき" }], [{ text: "好き嫌い", reading: null }]]) {
+    assert.equal(await render(request({ term: term(furigana) }), "{furigana}|{furigana-plain}"),
+      "<ruby>好き嫌い<rt>すききらい</rt></ruby>|好き嫌い[すききらい]", JSON.stringify(furigana));
+  }
+});
+
 test("{url} links and {url-plain} writes the escaped page address; without one both are empty", async () => {
   const pageUrl = `https://example.com/novel/56/?q=<a>&b="c"#'{scene}'`;
   const escaped = "https://example.com/novel/56/?q=&lt;a&gt;&amp;b=&quot;c&quot;#&#x27;&#123;scene&#125;&#x27;";

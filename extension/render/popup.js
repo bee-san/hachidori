@@ -3306,7 +3306,8 @@
             dictionary: pitchAccentFuriganaDictionary,
             style: pitchAccentFuriganaStyle,
             wordClasses,
-          }
+          },
+          result.term.furigana
         );
         // The group of the furigana's pitch: CSS colours it only while the
         // Show pitch accent colours host attribute is set.

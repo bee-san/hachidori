@@ -32,7 +32,7 @@ const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, 
   ? request.dictionaryAliases[dictionary] : dictionary;
 
 function expressionFurigana(term, plain) {
-  return globalThis.HDGlossary.segmentFurigana(term.expression, term.reading).map(({ text, reading }, index) => {
+  return globalThis.HDGlossary.termFurigana(term).map(({ text, reading }, index) => {
     if (!reading) return escape(text);
     const prefix = index ? " " : "";
     return plain ? `${prefix}${escape(text)}[${escape(reading)}]`

@@ -591,6 +591,15 @@ export function buildAtomicReplacementZip(revision, definition, overrides = {}) 
   });
 }
 
+// 好き嫌い, whose kana leave its furigana ambiguous until the engine reads
+// its kanji's KANJIDIC readings (#459). In memory, like the fixtures below.
+export function kanjiReadingFuriganaFixture() {
+  const title = 'kanji-reading-furigana-fixture';
+  const query = '好き嫌い';
+  const archive = buildTitledZip(title, { terms: [[query, 'すききらい', '', '', 0, ['likes and dislikes'], 1, '']] });
+  return { title, query, archive };
+}
+
 export function externalLinksFixture(destinationUrl) {
   const title = 'external-links-fixture';
   const query = '参照';
