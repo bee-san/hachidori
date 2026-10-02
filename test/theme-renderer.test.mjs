@@ -360,6 +360,7 @@ const designPresentation = [
 const DESIGN_FLIPS = [
   ["showFrequencyDictionaryNames", true], ["compactFrequencyNumbers", true], ["averageFrequency", true],
   ["showPitchAccentFurigana", false], ["pitchAccentFuriganaDictionary", "Daijirin"],
+  ["pitchAccentFuriganaStyle", "overline"],
   ["showPitchAccentBadge", false], ["showPitchAccentDictionaryNames", false], ["showPitchAccentText", false],
   ["showPitchAccentPosition", false], ["showPitchAccentGraph", true], ["hidePopupGrammarTags", false],
   ["showCompactDefinitionSummary", true],

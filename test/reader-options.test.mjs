@@ -122,6 +122,21 @@ test("compact glossaries default off and keep only Yomitan's two popup layout va
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("glossaryLayoutMode"), "not a boolean hotkey toggle");
 });
 
+test("the furigana pitch style defaults to the contour and keeps only its two values", () => {
+  const { PITCH_ACCENT_FURIGANA_STYLES, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.pitchAccentFuriganaStyle, "contour");
+  assert.deepEqual(PITCH_ACCENT_FURIGANA_STYLES, ["contour", "overline"]);
+  assert.equal(normaliseOptions({}).pitchAccentFuriganaStyle, "contour", "missing");
+  assert.deepEqual(validateOptionsPatch({ pitchAccentFuriganaStyle: "overline" }), { pitchAccentFuriganaStyle: "overline" });
+  for (const garbage of ["bogus", true, null, "Overline"]) {
+    assert.equal(normaliseOptions({ pitchAccentFuriganaStyle: garbage }).pitchAccentFuriganaStyle, "contour",
+      `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ pitchAccentFuriganaStyle: garbage }), /invalid reader option/);
+  }
+  assert.ok(DESIGN_OPTION_KEYS.includes("pitchAccentFuriganaStyle"), "Design's reset restores it");
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("pitchAccentFuriganaStyle"), "not a boolean hotkey toggle");
+});
+
 test("stored options drop the removed hover delay and migrate the renamed blur-count switch", () => {
   assert.equal(Object.hasOwn(DEFAULT_OPTIONS, "hoverDelayMs"), false);
   assert.equal(Object.hasOwn(DEFAULT_OPTIONS, "definitionBlurEnabled"), false);

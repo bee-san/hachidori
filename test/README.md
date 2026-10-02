@@ -137,6 +137,9 @@ in the real popup view: one `li.pronunciation-group` per pitch dictionary with
 its `pronunciation-dictionary` tag, each accent's mora levels, `[n]` notation and
 `reading [n]` tooltip and accessibility label; the engine's `{position: 0,
 pattern: "LHL"}` reading as `[2]` in the badge and the furigana contour; the
+Overline furigana pitch style drawing the headword with the badges' Yomitan
+text, with the list's levels, a hook at a segment-boundary drop and a live
+switch back to the contour; the
 text, position and graph switches updating an open popup without replacing
 definitions; the nasal and devoice marks; and alias renames and the dictionary
 name switch applied live.
@@ -742,6 +745,7 @@ What it proves, in order:
    across newer options and capability changes. Alias writes retain frequency
    mode metadata.
    Metadata controls cover strict options, focused preferred-pitch drafts,
+   the furigana pitch style following its switch and focus,
    stable-ID source rename/removal, numeric unit-separated harmonic averages,
    independent IPA and grammar, metadata-only storage updates, and focused ruby
    deferral without replacing Note, cards, definitions or unchanged metadata.

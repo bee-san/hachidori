@@ -12520,7 +12520,19 @@ async function settingsFrequencyStage() {
         && blurControl("definition-blur-delay-control").hidden
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
       metadataDetails.push(pitch.disabled);
-      await editControl(window.document.getElementById("opt-pitch-furigana"), true);
+      const furigana = window.document.getElementById("opt-pitch-furigana");
+      const furiganaStyle = window.document.getElementById("opt-pitch-furigana-style");
+      metadataDetails.push(furiganaStyle.disabled && furiganaStyle.value === "contour");
+      await editControl(furigana, true);
+      await editControl(furiganaStyle, "overline");
+      metadataDetails.push(!furiganaStyle.disabled
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ pitchAccentFuriganaStyle: "overline" }));
+      furiganaStyle.focus();
+      emitOptions({ pitchAccentFuriganaStyle: "contour", showPitchAccentFurigana: false });
+      metadataDetails.push(furiganaStyle.value === "overline" && !furiganaStyle.disabled);
+      furiganaStyle.blur();
+      metadataDetails.push(furiganaStyle.value === "contour" && furiganaStyle.disabled);
+      await editControl(furigana, true);
       emitDictionaries({ pitchCount: 2 });
       await editControl(pitch, "Rank");
       metadataDetails.push(writes.at(-1).options.pitchAccentFuriganaDictionary === "Rank");
@@ -12572,7 +12584,7 @@ async function settingsFrequencyStage() {
     const previousTheme = theme.value;
     emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,
       sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
-      kanjiClickDictionary: { title: "Rank", kind: "term" } });
+      kanjiClickDictionary: { title: "Rank", kind: "term" }, pitchAccentFuriganaStyle: "overline" });
     const focusedThemeKept = theme.value === previousTheme;
     settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "miku";
     theme.blur();
@@ -16488,7 +16500,7 @@ async function contentNoteStage() {
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
             showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
             showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
-            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false,
+            pitchAccentFuriganaDictionary: "Preferred pitch", pitchAccentFuriganaStyle: "overline", showPitchAccentBadge: false,
             showPitchAccentDictionaryNames: false, showPitchAccentText: false, showPitchAccentPosition: false,
             showPitchAccentGraph: true, hidePopupGrammarTags: true };
           const before = combined.sent.length;
