@@ -1465,13 +1465,13 @@ G('MDX import');
 
 // hoshidicts imports an MDict .mdx directly (format decided by content, not
 // extension) and reads `<stem>.mdd` beside it for media and stylesheets. The
-// fixtures in test/mdict are copies of the engine's own
-// (tests/fixtures/mdict/v2_utf8_lzo_html.* from gen_fixtures.py, committed here
-// because the smoke suites run without the submodule): an HTML MDX with an
-// @@@LINK alias, duplicate headwords, a StyleSheet substitution and an MDD
-// holding a PNG, a CSS file and a traversal key. hdw_import's title pre-check
-// reads index.json out of a ZIP, so this is also the proof that an MDict file
-// gets past it and through the same staging.
+// fixtures in test/mdict are byte copies of the engine's own
+// (tests/fixtures/mdict, written by gen_fixtures.py; committed here because
+// the smoke suites run without the submodule). v2_utf8_lzo_html is an HTML MDX
+// with an @@@LINK alias, duplicate headwords, a StyleSheet substitution and an
+// MDD holding a PNG, a CSS file and a traversal key. hdw_import's title
+// pre-check reads index.json out of a ZIP, so this is also the proof that an
+// MDict file gets past it and through the same staging.
 const MDX_FIXTURES = join(HERE, 'mdict');
 const MDX_TITLE = 'HTML Fixture';
 const MDX_DIR = `/dicts/${MDX_TITLE}`;
@@ -1547,6 +1547,65 @@ check('an .mdd on its own is refused and leaves no debris', () => {
   eq(r.success, false, 'success');
   ok(r.error.includes('MDD resource file'), `error: ${r.error}`);
   ok(!M.FS.readdir('/dicts').includes('.hdw-import'), 'no staging directory left behind');
+});
+
+// Issue #437's reproduction, copied from the engine's fixtures like the pair
+// above: key_rules.mdx with MDict's default key rules (no KeyCaseSensitive or
+// StripKey attribute), key_rules_exact.mdx with KeyCaseSensitive="Yes"
+// StripKey="No"; css_charsets.mdd with Shift_JIS sheets with and without
+// @charset, a windows-1252 sheet that declares it (and undecodable ones the
+// engine leaves out); and legacy_font.mdx with three <font size> elements.
+const importMdx = (stem, companions = []) => {
+  M.FS.mkdir(`/work/${stem}`);
+  for (const name of [`${stem}.mdx`, ...companions]) {
+    M.FS.writeFile(`/work/${stem}/${name}`, new Uint8Array(readFileSync(join(MDX_FIXTURES, name))));
+  }
+  reset();
+  const report = hdwImport(`/work/${stem}/${stem}.mdx`, '/dicts');
+  if (report.success) {
+    eq(addDict(`/dicts/${report.title}`, 0), 1, `add_dict ${report.title}: ${lastError()}`);
+  }
+  return report;
+};
+const headword = (text) => lookup(text).results.find((result) => result.term.expression === text);
+
+check('@@@LINK aliases follow MDict\'s default key rules and chains', () => {
+  const report = importMdx('key_rules');
+  eq(report.success, true, `import failed: ${report.error}`);
+  eq(report.termCount, 7, 'three entries, three aliases and the two-hop alias');
+  for (const [alias, definition] of [['ティーシャツ', 'T-shirt'], ['ワイファイ', 'wireless LAN'], ['AliasOne', 'definition']]) {
+    const glossary = String(headword(alias)?.term.glossaries[0]?.glossary);
+    ok(glossary.includes(definition), `${alias} carries its target's definition: ${glossary}`);
+  }
+});
+
+check('KeyCaseSensitive="Yes" StripKey="No" resolve only exact targets', () => {
+  const report = importMdx('key_rules_exact');
+  eq(report.success, true, `import failed: ${report.error}`);
+  eq(report.termCount, 5, 'three entries and the two exactly spelled aliases');
+  eq(headword('ティーシャツ'), undefined, '@@@LINK=tシャツ does not match Tシャツ');
+  eq(headword('ワイファイ'), undefined, '@@@LINK=WiFi does not match Wi-Fi');
+  ok(headword('AliasOne'), 'the exact two-hop chain still resolves');
+});
+
+check('Shift_JIS and windows-1252 MDD stylesheets import as UTF-8', () => {
+  const report = importMdx('css_charsets', ['css_charsets.mdd']);
+  eq(report.success, true, `import failed: ${report.error}`);
+  const sheet = styles().find((entry) => entry.dictionary === report.title)?.styles ?? '';
+  ok(sheet.includes('.日本 { color: red; }'), `Shift_JIS sheet with @charset decoded: ${sheet}`);
+  ok(sheet.includes('.日本 { color: green; }'), 'Shift_JIS sheet without @charset decoded');
+  ok(sheet.includes('.café { color: red; }'), 'windows-1252 sheet decoded');
+  ok(!sheet.includes('@charset'), 'no @charset rule left in the combined sheet');
+  ok(!sheet.includes('\ufffd'), 'no replacement characters');
+});
+
+check('<font size> becomes a CSS keyword and inline style wins', () => {
+  const report = importMdx('legacy_font');
+  eq(report.success, true, `import failed: ${report.error}`);
+  const glossary = String(headword('font')?.term.glossaries[0]?.glossary);
+  ok(glossary.includes('"style":{"color":"red","fontSize":"medium"}'), `size="3": ${glossary}`);
+  ok(glossary.includes('"style":{"fontSize":"x-large"}'), 'size="+2"');
+  ok(glossary.includes('"style":{"fontSize":"20px"}'), 'the inline style wins over size="5"');
 });
 
 G('production custom dictionary ZIP');
