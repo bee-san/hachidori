@@ -1,0 +1,7 @@
+# The screenshots and rendered outputs live on the media/promo-video branch (see README.md).
+out/
+video/assets/captures/
+# HyperFrames scratch output
+video/node_modules/
+video/renders/
+video/snapshots/

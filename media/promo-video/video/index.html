@@ -1,0 +1,460 @@
+<!doctype html>
+<!-- Hachidori promo video, a HyperFrames composition. Every window shows a real
+     screenshot from ../capture/capture.mjs; captures.js has the pointer positions and
+     element boxes recorded with each one. SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en" data-composition-variables='[{"id":"preview","type":"boolean","label":"GIF preview","description":"Cut instead of zooming the camera or crossfading screenshots, so the README GIF has few full-frame changes and stays small.","default":false}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Hachidori: the blazing-fast Japanese pop-up dictionary</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="captures.js"></script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Inter Display"; src: url("assets/fonts/InterDisplay-Bold.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "Inter Display"; src: url("assets/fonts/InterDisplay-ExtraBold.woff2") format("woff2"); font-weight: 800; }
+      @font-face { font-family: "Noto Sans JP"; src: url("assets/fonts/NotoSansJP-Bold-subset.woff2") format("woff2"); font-weight: 500 800; }
+
+      :root {
+        --ink: #f7f3ff; --muted: #c4bbe0; --lilac: #b59aff; --violet: #7964e7; --pink: #ff91ba; --rose: #f46cad;
+        --bg0: #110e1b; --bg1: #1d1631;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg0); }
+      #root {
+        position: relative; width: 100%; height: 100%; overflow: hidden; color: var(--ink);
+        font-family: "Inter", "Noto Sans JP", sans-serif; font-weight: 500;
+      }
+      .clip { position: absolute; inset: 0; }
+      .display { font-family: "Inter Display", "Noto Sans JP", sans-serif; }
+      .ja { font-family: "Noto Sans JP", sans-serif; font-weight: 700; }
+      em { font-style: normal; color: var(--pink); }
+
+      /* ---------- background ---------- */
+      #bg {
+        background:
+          radial-gradient(900px 620px at 88% 6%, rgba(244, 108, 173, 0.20), transparent 70%),
+          radial-gradient(1100px 760px at 6% 104%, rgba(121, 100, 231, 0.26), transparent 70%),
+          linear-gradient(160deg, var(--bg1) 0%, #151024 55%, var(--bg0) 100%);
+      }
+
+      /* ---------- feature scenes ---------- */
+      .head { position: absolute; left: 240px; top: 38px; width: 1180px; height: 120px; }
+      .head > div { position: absolute; left: 0; top: 0; opacity: 0; }
+      .eyebrow { font-weight: 600; font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--lilac); }
+      .title { margin-top: 8px; font-weight: 800; font-size: 58px; line-height: 70px; white-space: nowrap; }
+      .win {
+        position: absolute; left: 240px; top: 172px; width: 1440px; height: 810px; overflow: hidden;
+        border-radius: 18px; background: #0c0a12;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 36px 90px rgba(0, 0, 0, 0.55);
+      }
+      .cam { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; transform-origin: 0 0; }
+      .cam img { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; opacity: 0; z-index: 0; }
+      /* Rings, the click ripple and the cursor stay above screenshots shown after them. */
+      .ring {
+        position: absolute; z-index: 2; border: 2.5px solid var(--pink); border-radius: 9px; opacity: 0;
+        box-shadow: 0 0 0 3px rgba(255, 145, 186, 0.25), 0 0 18px rgba(255, 145, 186, 0.5);
+      }
+      .cursor { position: absolute; z-index: 4; left: 0; top: 0; width: 22px; height: 33px; opacity: 0; }
+      .ripple {
+        position: absolute; z-index: 3; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; opacity: 0;
+        border: 3px solid var(--pink); background: rgba(255, 145, 186, 0.22);
+      }
+      .callout { position: absolute; left: 240px; top: 998px; width: 1440px; text-align: center; opacity: 0; }
+      .callout > span {
+        display: inline-block; padding: 9px 30px 11px; border-radius: 999px; white-space: nowrap;
+        background: rgba(28, 22, 46, 0.92); border: 1.5px solid rgba(181, 154, 255, 0.45);
+        font-weight: 600; font-size: 32px; line-height: 40px; color: var(--ink);
+      }
+      .grid {
+        position: absolute; left: 50px; top: 172px; width: 1820px; height: 810px;
+        display: grid; grid-template-columns: repeat(5, 340px); column-gap: 30px; row-gap: 40px;
+        align-content: center;
+      }
+      .tile { opacity: 0; }
+      .tile .pic {
+        position: relative; width: 340px; height: 255px; overflow: hidden; border-radius: 12px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 18px 40px rgba(0, 0, 0, 0.5);
+      }
+      .tile img { position: absolute; }
+      .tile .name { margin-top: 12px; text-align: center; font-weight: 600; font-size: 24px; color: var(--muted); white-space: nowrap; }
+
+      /* ---------- title and end cards ---------- */
+      .logo { position: absolute; opacity: 0; background: url("assets/hachidori-icon.svg") center / contain no-repeat; }
+      #introLogo { left: 840px; top: 132px; width: 240px; height: 240px; }
+      #introName {
+        position: absolute; left: 0; right: 0; top: 396px; text-align: center; opacity: 0;
+        font-weight: 800; font-size: 156px; line-height: 170px; letter-spacing: -0.01em;
+      }
+      #introTag { position: absolute; left: 0; right: 0; top: 584px; text-align: center; opacity: 0; font-size: 46px; color: var(--muted); }
+      #introChips { position: absolute; left: 0; right: 0; top: 694px; display: flex; justify-content: center; gap: 22px; }
+      .chip {
+        opacity: 0; padding: 12px 30px; border-radius: 999px; font-weight: 600; font-size: 32px; white-space: nowrap;
+        background: rgba(255, 255, 255, 0.06); border: 1.5px solid rgba(255, 145, 186, 0.5);
+      }
+      #outroLogo { left: 870px; top: 96px; width: 180px; height: 180px; }
+      #outroHead {
+        position: absolute; left: 0; right: 0; top: 300px; text-align: center; opacity: 0;
+        font-weight: 800; font-size: 104px; line-height: 116px;
+      }
+      #outroLinks { position: absolute; left: 260px; top: 468px; width: 1400px; display: flex; flex-direction: column; gap: 26px; }
+      .link {
+        opacity: 0; padding: 22px 36px; border-radius: 22px;
+        background: rgba(255, 255, 255, 0.06); border: 1.5px solid rgba(181, 154, 255, 0.4);
+      }
+      .link .k { font-weight: 600; font-size: 26px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lilac); }
+      .link .u { margin-top: 6px; font-weight: 600; font-size: 36px; line-height: 46px; white-space: nowrap; }
+      .link .u.long { font-size: 28px; }
+      #outroFoot { position: absolute; left: 0; right: 0; top: 880px; text-align: center; opacity: 0; font-size: 28px; color: var(--muted); }
+
+      /* ---------- brand and progress bar ---------- */
+      #brand { position: absolute; right: 240px; top: 56px; display: flex; align-items: center; gap: 14px; opacity: 0; }
+      #brand .mark { width: 48px; height: 48px; background: url("assets/hachidori-icon.svg") center / contain no-repeat; }
+      #brand span { font-family: "Inter Display", sans-serif; font-weight: 700; font-size: 32px; }
+      #ptrack { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: rgba(255, 255, 255, 0.10); }
+      #pfill { position: absolute; inset: 0; transform-origin: 0 50%; background: linear-gradient(90deg, var(--rose), var(--lilac)); }
+      .ptick { position: absolute; top: 0; width: 3px; height: 8px; background: rgba(255, 255, 255, 0.55); }
+    </style>
+  </head>
+  <body>
+    <!-- Scene windows. Keep each data-start / data-duration equal to its SC entry in the script. -->
+    <div id="root" data-composition-id="main" data-start="0" data-duration="59.3" data-width="1920" data-height="1080" data-fps="30">
+      <div id="bg" class="clip" data-start="0" data-duration="59.3" data-track-index="0"></div>
+
+      <section id="intro" class="clip" data-start="0" data-duration="3.9" data-track-index="1">
+        <div id="introLogo" class="logo" role="img" aria-label="Hachidori hummingbird logo"></div>
+        <div id="introName" class="display">Hachidori</div>
+        <div id="introTag">The blazing-fast Japanese pop-up dictionary for Chrome</div>
+        <div id="introChips">
+          <span class="chip">Hover lookups</span>
+          <span class="chip">One-click Anki cards</span>
+          <span class="chip">Free &amp; open source</span>
+        </div>
+      </section>
+
+      <section id="speed" class="clip" data-start="3.6" data-duration="6.8" data-track-index="2"></section>
+      <section id="lookup" class="clip" data-start="10.1" data-duration="13" data-track-index="3"></section>
+      <section id="anki" class="clip" data-start="22.8" data-duration="9" data-track-index="4"></section>
+      <section id="custom" class="clip" data-start="31.5" data-duration="9" data-track-index="5"></section>
+      <section id="blur" class="clip" data-start="40.2" data-duration="7.5" data-track-index="6"></section>
+      <section id="themes" class="clip" data-start="47.4" data-duration="7.5" data-track-index="7"></section>
+
+      <section id="outro" class="clip" data-start="54.6" data-duration="4.7" data-track-index="8">
+        <div id="outroLogo" class="logo" role="img" aria-label="Hachidori hummingbird logo"></div>
+        <div id="outroHead" class="display">Get Hachidori</div>
+        <div id="outroLinks">
+          <div class="link"><div class="k">Chrome Web Store</div><div class="u long">chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe</div></div>
+          <div class="link"><div class="k">Source, docs and releases</div><div class="u">github.com/bee-san/hachidori</div></div>
+        </div>
+        <div id="outroFoot">Free and open source (GPL-3.0-or-later) · Made with HyperFrames</div>
+      </section>
+
+      <div id="hud" class="clip" data-start="0" data-duration="59.3" data-track-index="9">
+        <div id="brand"><div class="mark"></div><span>Hachidori</span></div>
+        <div id="ptrack"><div id="pfill"></div></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const C = window.HACHIDORI_CAPTURES;
+        const FPS = 30;
+        // Scene windows in seconds, [start, end]; neighbours overlap by 0.3 s for the crossfade.
+        const SC = { intro: [0, 3.9], speed: [3.6, 10.4], lookup: [10.1, 23.1], anki: [22.8, 31.8],
+          custom: [31.5, 40.5], blur: [40.2, 47.7], themes: [47.4, 54.9], outro: [54.6, 59.3] };
+        const DUR = 59.3;
+        const VW = C.viewport.width, VH = C.viewport.height;   // capture viewport in CSS px (shot at 2x)
+        const WIN = { w: 1440, h: 810 };
+        const BASE = WIN.w / VW;                                // the whole viewport fills the window
+        const MAX_SCALE = C.viewport.deviceScaleFactor;         // past this the screenshots would be upscaled
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        const vars = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        const PREVIEW = vars.preview === true;
+        const motion = (d) => (PREVIEW ? 0 : d);   // camera moves and screenshot crossfades
+
+        const fail = (message) => { throw new Error(message); };
+        for (const [id, [a, b]] of Object.entries(SC)) {
+          const node = document.getElementById(id);
+          if (Number(node.dataset.start) !== a || Math.abs(Number(node.dataset.duration) - (b - a)) > 1e-6) fail(`${id}: data-start/duration differ from SC`);
+        }
+        const make = (tag, cls, parent, html) => {
+          const node = document.createElement(tag);
+          if (cls) node.className = cls;
+          if (html !== undefined) node.innerHTML = html;
+          parent.appendChild(node);
+          return node;
+        };
+        const shot = (name) => C.shots[name] || fail(`No capture named ${name}; run ../capture/capture.mjs`);
+        const box = (name, key) => (key === "popup" ? shot(name).popups[0] : shot(name).marks[key]) || fail(`${name} has no ${key} box`);
+        const ink = (name, key) => box(name, key).inner || fail(`${name} ${key} has no text`);
+        const union = (...rects) => {
+          const x = Math.min(...rects.map((r) => r.x)), y = Math.min(...rects.map((r) => r.y));
+          return { x, y, width: Math.max(...rects.map((r) => r.x + r.width)) - x, height: Math.max(...rects.map((r) => r.y + r.height)) - y };
+        };
+        const grow = (r, dx, dy = dx) => ({ x: r.x - dx, y: r.y - dy, width: r.width + 2 * dx, height: r.height + 2 * dy });
+        const middle = (r) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+        // Camera that fits a capture-space rectangle into the window, kept inside the screenshot.
+        function view(r) {
+          if (!r) return { x: 0, y: 0, scale: BASE };
+          const scale = Math.min(MAX_SCALE, Math.max(BASE, Math.min(WIN.w / r.width, WIN.h / r.height)));
+          const c = middle(r);
+          const x = Math.min(0, Math.max(WIN.w - scale * VW, WIN.w / 2 - scale * c.x));
+          const y = Math.min(0, Math.max(WIN.h - scale * VH, WIN.h / 2 - scale * c.y));
+          return { x, y, scale };
+        }
+        const images = [];
+        const image = (parent, file) => {
+          const img = make("img", "", parent);
+          img.src = `assets/captures/${file}`;
+          img.alt = "";
+          images.push(img);
+          return img;
+        };
+
+        // One feature scene: a header, a window onto the screenshots, callouts under it.
+        function scene(id, build) {
+          const [a, b] = SC[id];
+          const root = document.getElementById(id);
+          const head = make("div", "head", root);
+          const win = make("div", "win", root);
+          const cam = make("div", "cam", win);
+          cam.setAttribute("data-layout-allow-overflow", "");
+          gsap.set(cam, { x: 0, y: 0, scale: BASE });
+          let top = null, title = null, cursor = null, ripple = null, at = { x: 0, y: 0 };
+          const T = (t) => a + t;
+          const api = {
+            win, root,
+            title(t, eyebrow, html) {
+              const node = make("div", "", head, `<div class="eyebrow">${eyebrow}</div><div class="title display">${html}</div>`);
+              tl.fromTo(node, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, T(t + (title ? 0.3 : 0.2)));
+              if (title) tl.to(title, { opacity: 0, y: -14, duration: 0.25, ease: "power2.in" }, T(t));
+              title = node;
+            },
+            show(t, name, fade = 0.3) {
+              const img = image(cam, shot(name).file);
+              if (!top) tl.set(img, { opacity: 1 }, T(t));
+              else {
+                tl.fromTo(img, { opacity: 0 }, { opacity: 1, duration: motion(fade), ease: "none", immediateRender: false }, T(t));
+                tl.set(top, { opacity: 0 }, T(t + motion(fade)));
+              }
+              top = img;
+            },
+            look(t, r, d = 0.9) { tl.to(cam, { ...view(r), duration: motion(d), ease: "power2.inOut" }, T(t)); },
+            ring(t0, t1, r) {
+              const g = grow(r, 6, 4);
+              const node = make("div", "ring", cam);
+              Object.assign(node.style, { left: `${g.x}px`, top: `${g.y}px`, width: `${g.width}px`, height: `${g.height}px` });
+              tl.fromTo(node, { opacity: 0, scale: 1.12 }, { opacity: 1, scale: 1, duration: 0.35, ease: "power2.out" }, T(t0));
+              tl.to(node, { opacity: 0, duration: 0.3 }, T(t1 - 0.3));
+            },
+            say(t0, t1, html) {
+              const node = make("div", "callout", root, `<span>${html}</span>`);
+              tl.fromTo(node, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, T(t0));
+              tl.to(node, { opacity: 0, duration: 0.3 }, Math.min(T(t1) - 0.3, b - 0.6));
+            },
+            point(t, p) {
+              if (!cursor) {
+                ripple = make("div", "ripple", cam);
+                cursor = make("div", "cursor", cam,
+                  '<svg viewBox="0 0 22 33" width="22" height="33"><path d="M1.5 1.5 V26.5 L7.7 20.6 L11.7 30.4 L15.9 28.6 L11.9 19 H20 Z" fill="#fff" stroke="#14111c" stroke-width="1.7" stroke-linejoin="round"/></svg>');
+              }
+              tl.set(cursor, { x: p.x, y: p.y }, T(t));
+              tl.to(cursor, { opacity: 1, duration: 0.2 }, T(t));
+              at = p;
+            },
+            move(t, p, d = 0.7) { tl.to(cursor, { x: p.x, y: p.y, duration: d, ease: "power2.inOut" }, T(t)); at = p; },
+            click(t) {
+              tl.fromTo(ripple, { x: at.x, y: at.y, scale: 0.3, opacity: 0.95 }, { scale: 1.5, opacity: 0, duration: 0.5, ease: "power2.out", immediateRender: false }, T(t));
+              tl.to(cursor, { scale: 0.86, duration: 0.08, yoyo: true, repeat: 1, transformOrigin: "0 0" }, T(t));
+            },
+            hideCursor(t) { tl.to(cursor, { opacity: 0, duration: 0.2 }, T(t)); },
+          };
+          // In: the window crossfades over the previous scene. Out: words leave first.
+          tl.fromTo(root, { opacity: 0 }, { opacity: 1, duration: motion(0.3), ease: "none" }, a);
+          build(api);
+          tl.to(title, { opacity: 0, y: -14, duration: 0.3, ease: "power2.in" }, b - 0.6);
+          return api;
+        }
+
+        // ---------- progress bar and brand ----------
+        gsap.set("#pfill", { scaleX: 0 });
+        tl.fromTo("#pfill", { scaleX: 0 }, { scaleX: 1, duration: DUR, ease: "none" }, 0);
+        const ptrack = document.getElementById("ptrack");
+        ["speed", "lookup", "anki", "custom", "blur", "themes", "outro"].forEach((id) => {
+          make("div", "ptick", ptrack).style.left = `${((SC[id][0] + 0.3) / DUR) * 1920 - 1.5}px`;
+        });
+        tl.fromTo("#brand", { opacity: 0 }, { opacity: 1, duration: 0.5 }, SC.speed[0] + 0.3);
+        tl.to("#brand", { opacity: 0, duration: 0.4 }, SC.outro[0]);
+
+        // ---------- title card ----------
+        tl.fromTo("#introLogo", { opacity: 0, scale: 0.6, rotation: -8 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.8, ease: "back.out(1.6)" }, 0.15);
+        tl.fromTo("#introName", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.5);
+        tl.fromTo("#introTag", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.9);
+        gsap.utils.toArray("#introChips .chip").forEach((chip, i) =>
+          tl.fromTo(chip, { opacity: 0, y: 24, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.7)" }, 1.4 + i * 0.15));
+        tl.to(["#introLogo", "#introName", "#introTag", "#introChips .chip"], { opacity: 0, y: -30, duration: 0.35, ease: "power2.in", stagger: 0.03 }, SC.intro[1] - 0.75);
+
+        // ---------- 01 · speed ----------
+        const jitendex = /^Imported (.+?) in ([\d.]+) seconds?: ([\d,]+) terms/u.exec(box("import-2-done", "firstStatus").text) || fail("No import result line");
+        const dictionaryName = jitendex[1].replace(/\s*\[[^\]]*\]$/u, "").replace(/\.org$/u, "");
+        scene("speed", (s) => {
+          tl.fromTo(s.win, { y: 60 }, { y: 0, duration: 0.7, ease: "power3.out" }, SC.speed[0]);
+          s.title(0, "01 · Speed", "Import dictionaries in <em>seconds</em>");
+          s.show(0, "import-0-empty");
+          s.say(0.5, 1.8, "Add Yomitan ZIPs, or MDX dictionaries (experimental)");
+          s.show(1.3, "import-1-running");
+          s.ring(1.5, 2.7, box("import-1-running", "state"));
+          s.say(2.0, 3.4, `${C.imports.length} dictionaries, one after another`);
+          s.show(2.7, "import-2-done");
+          const row = box("import-2-done", "first"), line = ink("import-2-done", "firstStatus");
+          s.look(3.0, grow({ x: row.x, y: row.y, width: line.x + line.width - row.x, height: row.height }, 24, 30));
+          s.ring(3.9, 6.8, line);
+          s.say(3.7, 6.8, `${dictionaryName}: ${jitendex[3]} terms in ${jitendex[2]} seconds`);
+        });
+
+        // ---------- 02 · lookups ----------
+        // Written out so tools/fonts.sh can subset the Japanese font; checked against the capture.
+        const DEINFLECTION = "食べたかった → 食べる";
+        if (box("lookup-1-popup", "deinflection").text !== DEINFLECTION) fail(`The popup now shows "${box("lookup-1-popup", "deinflection").text}"; update DEINFLECTION`);
+        scene("lookup", (s) => {
+          s.title(0, "02 · Lookups", "Point at a word to <em>look it up</em>");
+          s.show(0, "lookup-0-page");
+          s.point(0.4, shot("lookup-0-page").pointer);
+          s.say(0.5, 2.6, "Works on the pages you already read");
+          s.move(0.6, shot("lookup-1-popup").pointer, 0.8);
+          s.show(1.5, "lookup-1-popup", 0.2);
+          s.look(1.8, grow(union(box("lookup-1-popup", "word"), box("lookup-1-popup", "popup")), 20));
+          s.ring(2.8, 4.9, box("lookup-1-popup", "deinflection"));
+          s.say(2.8, 4.9, `Conjugations undone: <span class="ja">${DEINFLECTION}</span>`);
+          s.ring(5.0, 6.7, union(box("lookup-1-popup", "stats"), box("lookup-1-popup", "pitch")));
+          s.say(5.0, 6.7, "Pitch accent, frequency and how often you’ve looked it up");
+          s.move(6.6, shot("lookup-3-kanji").pointer, 0.6);
+          s.click(7.3);
+          s.show(7.4, "lookup-3-kanji", 0.25);
+          s.say(7.5, 9.2, "Click a kanji for its readings and meanings");
+          s.title(9.2, "02 · Lookups", "…even <em>inside text boxes</em>");
+          s.hideCursor(9.2);
+          s.look(9.2, null, 0.7);
+          s.show(9.3, "input-0-page", 0.35);
+          s.point(9.6, shot("input-0-page").pointer);
+          s.say(9.5, 13, "Look words up while you write a comment or a search");
+          s.move(9.8, shot("input-1-popup").pointer, 0.7);
+          s.show(10.6, "input-1-popup", 0.2);
+          s.look(10.8, grow(union(box("input-1-popup", "textarea"), box("input-1-popup", "popup")), 20));
+        });
+
+        // ---------- 03 · Anki ----------
+        const note = C.anki.note || fail("No Anki note was captured");
+        const sent = [["Sentence", "sentence"], ["PitchCategories", "pitch"], ["Frequency", "frequency"], ["Picture", "a screenshot"]]
+          .filter(([field]) => note.fields[field]).map(([, label]) => label);
+        const listed = sent.length > 1 ? `${sent.slice(0, -1).join(", ")} and ${sent.at(-1)}` : sent.join("");
+        scene("anki", (s) => {
+          s.title(0, "03 · Anki", "Make Anki cards in <em>one click</em>");
+          s.show(0, "anki-0-settings");
+          const setup = union(box("anki-0-settings", "status"), box("anki-0-settings", "find"));
+          s.look(0.3, { x: 250, y: setup.y - 150, width: 980, height: setup.height + 300 });
+          s.ring(1.1, 2.7, box("anki-0-settings", "status"));
+          s.say(0.4, 2.7, `Finds your ${note.modelName}, Lapis or Senren note type in Anki`);
+          s.show(2.7, "anki-1-mapping");
+          s.look(2.7, { x: 250, y: 0, width: 980, height: 560 }, 0.8);
+          s.say(2.9, 4.7, "…and maps its fields for you");
+          s.show(4.7, "anki-2-ready");
+          s.look(4.7, grow(box("anki-2-ready", "popup"), 40, 30), 0.8);
+          s.point(4.9, shot("anki-2-ready").pointer);
+          s.say(5.0, 6.8, "Then press + on any word");
+          s.move(5.6, shot("anki-4-added").pointer, 0.7);
+          s.click(6.4);
+          s.show(6.5, "anki-4-added", 0.2);
+          s.ring(6.8, 9, box("anki-4-added", "feedback"));
+          s.say(6.9, 9, `Added, with the ${listed}`);
+        });
+
+        // ---------- 04 · personal dictionary ----------
+        scene("custom", (s) => {
+          const word = box("custom-0-selected", "word");
+          const y = word.y + word.height / 2;
+          s.title(0, "04 · Personal dictionary", "Add the words <em>no dictionary has</em>");
+          s.show(0, "lookup-0-page");
+          s.point(0.3, shot("lookup-0-page").pointer);
+          s.say(0.4, 2.1, "A name your dictionaries don’t know?");
+          s.move(0.5, { x: word.x + 3, y }, 0.7);
+          s.move(1.3, shot("custom-0-selected").pointer, 0.45);
+          s.show(1.8, "custom-0-selected", 0.2);
+          s.look(2.0, grow(union(word, box("custom-0-selected", "popup")), 20));
+          s.ring(2.6, 3.8, box("custom-0-selected", "notice"));
+          s.say(2.3, 3.8, "Select it, then press the pencil");
+          s.move(3.0, shot("custom-1-form").pointer, 0.6);
+          s.click(3.7);
+          s.show(3.8, "custom-1-form", 0.2);
+          s.show(4.5, "custom-2-typing", 0.15);
+          s.show(5.1, "custom-3-typed", 0.15);
+          s.say(4.0, 5.9, "Write your own reading and definition");
+          s.move(5.5, shot("custom-4-saved").pointer, 0.5);
+          s.click(6.1);
+          s.show(6.2, "custom-4-saved", 0.25);
+          s.ring(6.5, 9, box("custom-4-saved", "entry"));
+          s.say(6.4, 9, "Saved: it’s in every lookup from now on");
+        });
+
+        // ---------- 05 · lookup blur ----------
+        const count = Number((/\d+/u.exec(box("blur-0-blurred", "stats").text) || fail("No lookup count on the blurred popup"))[0]);
+        const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th"}`;
+        scene("blur", (s) => {
+          s.title(0, "05 · Lookup blur", "Looked it up again? <em>Recall it first</em>");
+          s.show(0, "blur-0-blurred");
+          s.point(0, shot("blur-0-blurred").pointer);
+          s.look(0.4, grow(box("blur-0-blurred", "popup"), 30, 24));
+          s.ring(1.3, 3.7, box("blur-0-blurred", "stats"));
+          s.say(0.5, 3.7, `On your ${ordinal(count)} lookup, the meaning blurs`);
+          s.show(3.7, "blur-1-revealed", 0.6);
+          s.say(3.9, 5.7, "It clears after a few seconds, or as soon as you hover");
+          s.say(5.8, 7.5, "Blur by lookup count, mature Anki cards or frequency");
+        });
+
+        // ---------- 06 · themes ----------
+        const themes = Object.values(C.shots).filter((s) => s.theme);
+        scene("themes", (s) => {
+          s.title(0, "06 · Themes", "Make the popup <em>yours</em>");
+          s.show(0, "theme-0-store");
+          s.look(0.3, grow(union(box("theme-0-store", "store"), box("theme-0-store", "preview")), 16));
+          s.say(0.4, 2.6, "Design settings with a live preview");
+          tl.to(s.win, { opacity: 0, scale: 0.97, duration: motion(0.4), ease: "power2.in" }, SC.themes[0] + 2.4);
+          const grid = make("div", "grid", s.root);
+          themes.forEach((theme, i) => {
+            const tile = make("div", "tile", grid);
+            const pic = make("div", "pic", tile);
+            const r = theme.popups[0];
+            const k = 340 / r.width;
+            const img = image(pic, theme.file);
+            Object.assign(img.style, { width: `${VW * k}px`, height: `${VH * k}px`, left: `${-r.x * k}px`, top: `${-r.y * k}px` });
+            make("div", "name", tile).textContent = theme.label;
+            tl.fromTo(tile, { opacity: 0, y: 30, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.5)" }, SC.themes[0] + 2.7 + i * 0.09);
+          });
+          s.say(3.0, 7.5, `${C.themes.palettes} colour palettes, plus new layouts in the experimental Theme Store`);
+          tl.to(".tile", { opacity: 0, duration: 0.35 }, SC.themes[1] - 0.5);
+        });
+
+        // ---------- end card ----------
+        const o = SC.outro[0];
+        tl.fromTo("#outroLogo", { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.7, ease: "back.out(1.6)" }, o + 0.2);
+        tl.fromTo("#outroHead", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, o + 0.45);
+        gsap.utils.toArray("#outroLinks .link").forEach((link, i) =>
+          tl.fromTo(link, { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, o + 0.8 + i * 0.2));
+        tl.fromTo("#outroFoot", { opacity: 0 }, { opacity: 1, duration: 0.6 }, o + 1.4);
+
+        // Register once the fonts and every screenshot are decoded, so frame one is final.
+        const faces = ['500 32px "Inter"', '600 32px "Inter"', '700 32px "Inter Display"', '800 58px "Inter Display"', '700 32px "Noto Sans JP"'];
+        Promise.all([
+          ...faces.map((face) => document.fonts.load(face, face.includes("Noto") ? "食べる" : "Hachidori")),
+          ...[...document.images].map((img) => img.decode()),
+          Object.assign(new Image(), { src: "assets/hachidori-icon.svg" }).decode(),
+        ]).then(() => document.fonts.ready).then(() => {
+          window.__timelines["main"] = tl;
+          if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+        });
+      })();
+    </script>
+  </body>
+</html>
