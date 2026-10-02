@@ -123,8 +123,8 @@ The keys are the renderer-owned controls, tagged `data-design-setting` in
 `settings.html`: `popupOpacityPercent`, `popupToolbarPosition`, `popupColumns`,
 `glossaryLayoutMode`, `popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
 `showFrequencyDictionaryNames`, `compactFrequencyNumbers`, `averageFrequency`,
-`showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `showPitchAccentBadge`,
-`showPitchAccentDictionaryNames`, `showPitchAccentText`, `showPitchAccentPosition`,
+`showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `pitchAccentFuriganaStyle`,
+`showPitchAccentBadge`, `showPitchAccentDictionaryNames`, `showPitchAccentText`, `showPitchAccentPosition`,
 `showPitchAccentGraph`, `hidePopupGrammarTags`, `showCompactDefinitionSummary`,
 `compactDefinitionSummaryCount`, `compactDefinitionSummaryDictionary` and
 `customButtons`. Core applies Theme, Width, Height, Scale, Highlight the word on

@@ -119,6 +119,7 @@ const APPEARANCE_CHOICES = [
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
   { key: "imageHoverPreview", id: "opt-image-hover-preview" },
   { key: "glossaryLayoutMode", id: "opt-glossary-layout" },
+  { key: "pitchAccentFuriganaStyle", id: "opt-pitch-furigana-style" },
   { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
   { key: "definitionBlurFrequencyOrder", id: "opt-blur-frequency-order", values: DEFINITION_BLUR_FREQUENCY_ORDERS },
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
@@ -1551,6 +1552,12 @@ function renderMetadataControls() {
   renderDefinitionBlurControls();
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
     "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
+  // Like the dictionary picker, a focused style keeps its draft until blur.
+  const furiganaStyle = element("opt-pitch-furigana-style");
+  if (furiganaStyle !== document.activeElement) {
+    furiganaStyle.disabled = !options.showPitchAccentFurigana;
+    furiganaStyle.value = options.pitchAccentFuriganaStyle;
+  }
 }
 
 function renderPopupImageSources() {
@@ -3483,7 +3490,7 @@ function attachHandlers() {
       if (event.target.id === "opt-blur-frequency-dictionary") renderDefinitionBlurFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-kanji-dictionary") renderKanjiChoices();
-      if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
+      if (event.target.id === "opt-pitch-dictionary" || event.target.id === "opt-pitch-furigana-style") renderMetadataControls();
       if (event.target.closest("#definition-blur-settings")) {
         renderDefinitionBlurControls();
       }

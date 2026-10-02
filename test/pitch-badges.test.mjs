@@ -93,6 +93,33 @@ test("a dictionary's accents share one group and a string pattern reads as its d
     .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`), ["low:rise", "high:drop"]);
 });
 
+test("the overline furigana style draws the headword with the pronunciation list's Yomitan text", t => {
+  const f = fixture(t);
+  const [group] = f.render(result("食べる", "たべる", [pitch("NHK", 2)]), { pitchAccentFuriganaStyle: "overline" });
+  const expression = f.popup.querySelector(".gsm-hoshidicts-expression");
+  const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
+  const contours = [...expression.querySelectorAll(".gsm-hoshidicts-pitch-contour")];
+  const segments = contours.map(levels);
+  assert.deepEqual(segments, [["た:low>high"], ["べ:high>low", "る:low>low"]]);
+  assert.deepEqual(segments.flat(), levels(group.querySelector(".pronunciation")), "the same levels as the list");
+  assert.ok(contours.every(contour => contour.dataset.pitchStyle === "overline"));
+  assert.equal(expression.querySelectorAll(".gsm-hoshidicts-pitch-mora").length, 0);
+  assert.equal(expression.querySelectorAll(".pronunciation-mora > .pronunciation-mora-line").length, 3);
+  const reading = expression.querySelector(".gsm-hoshidicts-pitch-reading");
+  assert.equal(reading.dataset.pitchPosition, "2");
+  assert.equal(reading.dataset.pitchDictionary, "NHK");
+  assert.equal(reading.title, "NHK · Pitch accent 2");
+  f.view.updateDictionaryPresentation({ pitchAccentFuriganaStyle: "contour" });
+  assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-mora")]
+    .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`), ["low:rise", "high:drop", "low:"]);
+  assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card,
+    "a style switch keeps the definitions");
+  // 見る [1] drops at the segment boundary: み, the first segment's last mora, hooks.
+  f.render(result("見る", "みる", [pitch("NHK", 1)]), { pitchAccentFuriganaStyle: "overline" });
+  assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-contour")]
+    .map(levels), [["み:high>low"], ["る:low>low"]]);
+});
+
 test("the text, position and graph toggles update an open popup without replacing definitions", t => {
   const f = fixture(t);
   f.render(RESULT);

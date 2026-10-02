@@ -858,6 +858,12 @@ async function popupReader(page, depth = 0) {
         // its outer corner is notched: its border image fills the mora's
         // padding box and reaches out by its own borders, the lines' width.
         const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
+        // The overline furigana style draws the pitch list's Yomitan text
+        // instead: a line over each high mora and a hook where the pitch
+        // drops, both in the popup's text colour.
+        const overlines = [...(expression?.querySelectorAll('[data-pitch-style="overline"]'
+          + ' > .pronunciation-mora[data-pitch="high"] > .pronunciation-mora-line') ?? [])]
+          .map(line => view.getComputedStyle(line));
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -930,6 +936,10 @@ async function popupReader(page, depth = 0) {
               return stroke.top === "0px" && stroke.bottom === "0px" && stroke.borderImageOutset === "1 0"
                 && stroke.borderTopWidth === style.borderTopWidth && stroke.borderBottomWidth === style.borderBottomWidth;
             }),
+            overlines: overlines.length,
+            hooks: overlines.filter(line => line.borderRightStyle === "solid").length,
+            overlinesInTextColour: overlines.every(line => line.borderTopStyle === "solid"
+              && line.borderTopColor === view.getComputedStyle(this).color),
           },
         };
       }`,
@@ -1532,6 +1542,8 @@ async function popupReader(page, depth = 0) {
               .filter(tag => tag.getClientRects().length === 0).map(tag => tag.dataset.dictionary),
             pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
             ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
+            rubyStyles: [...this.querySelectorAll(".gsm-hoshidicts-pitch-contour")]
+              .map(node => node.dataset.pitchStyle ?? "contour"),
             ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
             ipaFits: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].every(node => {
               const body = node.getBoundingClientRect();
@@ -8509,7 +8521,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
 
 async function checkPopupMetadata(browser, settings, tab, popup) {
   const controls = ["opt-frequency-names", "opt-frequency-compact", "opt-average-frequency", "opt-pitch-furigana",
-    "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags", "opt-popup-width",
+    "opt-pitch-dictionary", "opt-pitch-furigana-style", "opt-pitch-badge", "opt-grammar-tags", "opt-popup-width",
     "opt-popup-toolbar"];
   const original = await readSettingsControls(settings, controls);
   const originalAlias = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState"))
@@ -8616,6 +8628,22 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && contourState.furiganaAlignment.contourTopSpread < 0.5 && contourState.furiganaAlignment.baseTextSpread < 0.5
       && contourState.furiganaAlignment.transitions === 2 && contourState.furiganaAlignment.transitionsCoverLines
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
+    // 食べる [2] in Overline: one line, over べ, ending in the downstep hook.
+    const furiganaStyle = style => expectMetadata(value => value.rubyStyles.length === 2
+      && value.rubyStyles.every(current => current === style));
+    await editSettingsControls(settings, { "opt-pitch-furigana-style": "overline" });
+    const overline = await furiganaStyle("overline");
+    const overlineState = (await popup.state())?.furiganaAlignment;
+    await editSettingsControls(settings, { "opt-pitch-furigana-style": "contour" });
+    const contourAgain = await furiganaStyle("contour");
+    const overlineKept = await popup.retainedControls();
+    evidence.push(overline.sameCards && contourAgain.sameCards && overline.metadata.ruby.includes("hachidori-fixture")
+      && overlineState?.pitchRubies === 2 && overlineState.transitions === 0
+      && overlineState.overlines === 1 && overlineState.hooks === 1 && overlineState.overlinesInTextColour
+      && overlineState.pitchCentring <= 1 && overlineState.contourGap <= 1
+      && overlineState.contourTopSpread < 0.5 && overlineState.baseTextSpread < 0.5
+      && overlineKept.sameForm && overlineKept.mounted && overlineKept.draft === "Keep the metadata draft"
+      && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
       await expectMetadata(value => value.frequencyTagsUniform);
@@ -8648,7 +8676,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await tab.keyboard.press("Escape");
   }
   check("Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
-    evidence.length === 7 && evidence.every(Boolean), JSON.stringify(evidence));
+    evidence.length === 8 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
 async function checkHoverHitTesting(tab, popup) {
