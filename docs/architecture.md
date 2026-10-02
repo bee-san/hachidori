@@ -1084,6 +1084,27 @@ disabled sources fall back to another usable pitch source. A committed rename
 follows the stable package ID, and actual removal clears the selection in the
 same background options/state write. Turning contour off remembers the source.
 
+**Show pitch accent colours** (#458, off by default as in jp-mining-note)
+colours by accent group: 平板 heiban blue, 頭高 atamadaka red, 中高 nakadaka
+orange, 尾高 odaka green and 起伏 kifuku purple. `HDGlossary.pitchAccentCategory`
+ports Yomitan's `getPitchCategory` with `isNonNounVerbOrAdjective`, and
+`{pitch-accent-categories}` uses the same helper, so the popup and the card
+agree: a downstep on a `v1`, `v5`, `vk`, `vs`, `vz` or `adj-i` term that is not
+also `vs` and `n` is kifuku, and a pattern counts its first downstep. The
+headword's `.gsm-hoshidicts-expression` carries `data-pitch-category` from the
+pitch its furigana uses (the pitch accent dictionary first, then the first pitch
+that fits the reading), whether or not the contour is drawn, and each badge's
+`li.pronunciation` carries its own. The switch only sets
+`data-hoshidicts-pitch-colors` on the popup host: CSS then colours the headword,
+its kanji links and furigana lines (the contour, or the Overline style's line
+and hook), and each badge's overline, hook and graph.
+The reading kana, badge text and dictionary tag keep their colours. A headword
+waits for blurred definitions to be revealed, a focused kanji in a coloured
+headword shows a 2 px outline, and forced colours use system colours. The
+`--hoshidicts-pitch-{heiban,atamadaka,nakadaka,odaka,kifuku}` variables are
+`light-dark()` pairs that keep 3:1 on every palette's cards, header and popup
+body; Custom CSS may override them. Other renderers do not declare the setting.
+
 Live metadata changes replace only changed metadata rows or expression ruby,
 without another lookup, media request or glossary fill. Note drafts, full cards,
 definition tags and deinflection disclosures keep their identity and state.
@@ -2079,14 +2100,14 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
-dark, 23 light, one high-contrast), strict option validation, and the 31 Design
+dark, 23 light, one high-contrast), strict option validation, and the 32 Design
 reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, pitch
 contour/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, the Contour
 furigana pitch style, and frequency
-names/abbreviation/averages, the pitch graph and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
+names/abbreviation/averages, the pitch graph, pitch accent colours and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
 The default renderer's density comes from `--hd-*` custom properties declared on
 `.gsm-hoshidicts-popup` in `render/reader.css` (spacing steps, header, content

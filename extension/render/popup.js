@@ -127,6 +127,10 @@
         // switch keeps open views, Note drafts and listeners.
         if (options.glossaryLayoutMode === "compact") host.dataset.hoshidictsGlossaryLayout = "compact";
         else delete host.dataset.hoshidictsGlossaryLayout;
+        // Colouring is CSS over the group each headword and badge carries, so a
+        // switch keeps open views, Note drafts and focus.
+        if (options.showPitchAccentColors === true) host.dataset.hoshidictsPitchColors = "on";
+        else delete host.dataset.hoshidictsPitchColors;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
           ["popupScalePercent", "scale", "%"],
@@ -684,7 +688,7 @@
     list.dataset.count = String(pitches.length);
     pitches.forEach((pitch, index) => {
       const item = createPronunciationPitchAccent(documentRef, reading, pitch, { text: display.showPitchAccentText,
-        position: display.showPitchAccentPosition, graph: display.showPitchAccentGraph });
+        position: display.showPitchAccentPosition, graph: display.showPitchAccentGraph, wordClasses: display.wordClasses });
       item.classList.add("gsm-hoshidicts-tag-pitch");
       item.dataset.index = String(index);
       item.dataset.dictionary = group.dictionary;
@@ -3055,6 +3059,8 @@
           showPitchAccentText: context.showPitchAccentText !== false,
           showPitchAccentPosition: context.showPitchAccentPosition !== false,
           showPitchAccentGraph: context.showPitchAccentGraph === true,
+          // Kifuku needs the term's word classes; no option changes a group.
+          wordClasses: parseTagList(result.term.rules),
         };
         const reading = String(result.term.reading || result.term.expression || "").trim();
         const groups = documentRef.createElement("ol");
@@ -3285,9 +3291,10 @@
       expression.lang = "ja";
       const expressionText = String(result.term.expression || "").trim();
       const readingText = String(result.term.reading || "").trim();
+      const wordClasses = parseTagList(result.term.rules);
       function populateRuby() {
         expression.replaceChildren();
-        appendExpressionRuby(
+        const category = appendExpressionRuby(
           documentRef,
           expression,
           expressionText,
@@ -3298,8 +3305,13 @@
             groups: result.term.pitches,
             dictionary: pitchAccentFuriganaDictionary,
             style: pitchAccentFuriganaStyle,
+            wordClasses,
           }
         );
+        // The group of the furigana's pitch: CSS colours it only while the
+        // Show pitch accent colours host attribute is set.
+        if (category) expression.dataset.pitchCategory = category;
+        else delete expression.dataset.pitchCategory;
       }
       populateRuby();
       expression.setAttribute(
@@ -3354,7 +3366,10 @@
           const style = context.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour";
           if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary
             && style === pitchAccentFuriganaStyle) return false;
-          const appearanceChanged = enabled !== showPitchAccentFurigana || enabled;
+          // The style shows only on a drawn contour, but the dictionary also
+          // picks the headword's pitch group, so it rebuilds with the contour off.
+          const appearanceChanged = enabled !== showPitchAccentFurigana || enabled
+            || dictionary !== pitchAccentFuriganaDictionary;
           // A kanji button is part of this ruby. Keep its identity until blur;
           // Note, disclosure and glossary focus need no such deferral.
           if (appearanceChanged && expression.contains(popup.getRootNode().activeElement)) return null;

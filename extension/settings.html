@@ -794,11 +794,16 @@
                   <span>Show pitch in furigana</span>
                   <input id="opt-pitch-furigana" type="checkbox" />
                 </label>
+                <label class="lookup-enable" data-design-setting="showPitchAccentColors">
+                  <span>Show pitch accent colours</span>
+                  <input id="opt-pitch-colors" type="checkbox" />
+                </label>
+                <p class="field-hint" data-design-setting="showPitchAccentColors">Colours the headword and pitch lines by accent group, as jp-mining-note does: <span lang="ja">平板</span> blue, <span lang="ja">頭高</span> red, <span lang="ja">中高</span> orange, <span lang="ja">尾高</span> green, <span lang="ja">起伏</span> purple.</p>
                 <div class="fields">
                   <label class="field" data-design-setting="pitchAccentFuriganaDictionary">
                     <span class="field-label">Pitch accent dictionary</span>
                     <select id="opt-pitch-dictionary"></select>
-                    <span class="field-hint">Falls back to the first available pitch pattern.</span>
+                    <span class="field-hint">Used by the furigana and colours. Falls back to the first available pitch pattern.</span>
                   </label>
                   <label class="field" data-design-setting="pitchAccentFuriganaStyle">
                     <span class="field-label">Furigana pitch style</span>

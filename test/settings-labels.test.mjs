@@ -76,6 +76,7 @@ const TOGGLE_CONTROLS = {
   showPitchAccentText: "opt-pitch-text",
   showPitchAccentPosition: "opt-pitch-position",
   showPitchAccentGraph: "opt-pitch-graph",
+  showPitchAccentColors: "opt-pitch-colors",
   // Stored inverted: the checkbox is on while the tags are shown.
   hidePopupGrammarTags: "opt-grammar-tags",
 };

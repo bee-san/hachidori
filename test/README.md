@@ -142,7 +142,19 @@ text, with the list's levels, a hook at a segment-boundary drop and a live
 switch back to the contour; the
 text, position and graph switches updating an open popup without replacing
 definitions; the nasal and devoice marks; and alias renames and the dictionary
-name switch applied live.
+name switch applied live. It also pins each headword's and badge's
+`data-pitch-category` (jp-mining-note's 平板, 頭高, 中高, 尾高 and 起伏 examples,
+the `v5` kifuku rule and an `LHL` pattern), the headword following the pitch
+accent dictionary while each badge keeps its own group, and the group staying
+set and live with the furigana contour off.
+
+`node --test test/pitch-accent-colors.test.mjs` parses `reader.css` and checks
+the five **Show pitch accent colours** groups against every registered palette:
+3:1 against base-100 and base-200, and against the popup body and the header at
+the default 85% opacity over a white or a black page, plus an RGB distance of at
+least 45 between the groups in each colour scheme and the 2 px focus outline on
+a coloured kanji. `oklch()` palette values are converted with CSS Color 4's
+OKLab matrices. It needs no external dependency.
 
 `node --test test/yomitan-parity.test.mjs` checks the renderer against
 Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the

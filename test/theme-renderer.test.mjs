@@ -371,6 +371,7 @@ const DESIGN_FLIPS = [
 const DESIGN_PROBES = {
   popupOpacityPercent: probe => probe.css.includes("--gsm-hoshidicts-popup-opacity"),
   glossaryLayoutMode: probe => probe.css.includes("data-hoshidicts-glossary-layout"),
+  showPitchAccentColors: probe => probe.css.includes("data-hoshidicts-pitch-colors"),
   popupToolbarPosition: probe => probe.toolbarPosition === "bottom",
   popupColumns: probe => probe.columnReads > 0,
   popupImageSource: probe => probe.images > 0,

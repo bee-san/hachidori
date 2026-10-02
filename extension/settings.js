@@ -107,6 +107,7 @@ const METADATA_FIELDS = [
   { key: "compactFrequencyNumbers", id: "opt-frequency-compact" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
+  { key: "showPitchAccentColors", id: "opt-pitch-colors" },
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
   { key: "showPitchAccentDictionaryNames", id: "opt-pitch-names" },
   { key: "showPitchAccentText", id: "opt-pitch-text" },
@@ -1550,8 +1551,9 @@ function renderMetadataControls() {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
   }
   renderDefinitionBlurControls();
+  // The dictionary picks the furigana's pitch, which also gives the headword's colour.
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
-    "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
+    "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana || options.showPitchAccentColors);
   // Like the dictionary picker, a focused style keeps its draft until blur.
   const furiganaStyle = element("opt-pitch-furigana-style");
   if (furiganaStyle !== document.activeElement) {
