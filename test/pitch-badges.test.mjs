@@ -193,6 +193,10 @@ test("the headword and each badge carry their pitch accent group, contour or not
   assert.deepEqual(badges(), ["heiban", "atamadaka"]);
   f.render(RESULT, { pitchAccentFuriganaDictionary: "Daijirin" });
   assert.equal(headword().dataset.pitchCategory, "atamadaka");
+  // The Overline style's line and hook sit inside the same coloured headword.
+  f.render(RESULT, { pitchAccentFuriganaStyle: "overline" });
+  assert.ok(headword().querySelector(".pronunciation-mora-line"));
+  assert.equal(headword().dataset.pitchCategory, "heiban");
   // Colours do not need the contour, and the dictionary still chooses the group.
   f.render(RESULT, { showPitchAccentFurigana: false });
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-ruby"), null);
