@@ -96,6 +96,7 @@ changed; "—" means the key was already unambiguous.
 | `compactFrequencyNumbers` | Design › Frequency labels | `#opt-frequency-compact` | Abbreviate large numbers (51.5k) | Abbreviate large frequency numbers | — |
 | `showPitchAccentFurigana` | Design › Pitch accent | `#opt-pitch-furigana` | Show pitch in furigana | same | — |
 | `pitchAccentFuriganaDictionary` | Design › Pitch accent | `#opt-pitch-dictionary` | Pitch accent dictionary | — | Was "Preferred dictionary" |
+| `pitchAccentFuriganaStyle` | Design › Pitch accent | `#opt-pitch-furigana-style` | Furigana pitch style | — | — |
 | `showPitchAccentBadge` | Design › Pitch accent | `#opt-pitch-badge` | Show pitch badges | same | — |
 | `showPitchAccentDictionaryNames` | Design › Pitch accent | `#opt-pitch-names` | Show pitch dictionary names | same | Was "Show dictionary names" |
 | `showPitchAccentText` | Design › Pitch accent | `#opt-pitch-text` | Show pitch accent text | same | — |

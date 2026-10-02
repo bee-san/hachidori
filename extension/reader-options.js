@@ -147,6 +147,9 @@
     compactFrequencyNumbers: false,
     showPitchAccentFurigana: true,
     pitchAccentFuriganaDictionary: "",
+    // How the headword's furigana draws its pitch: "contour" (a line over high
+    // morae and under low ones) or "overline" (the pitch list's Yomitan text).
+    pitchAccentFuriganaStyle: "contour",
     showPitchAccentBadge: true,
     // Yomitan labels every pronunciation group with its dictionary.
     showPitchAccentDictionaryNames: true,
@@ -192,6 +195,7 @@
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
   // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
   const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
+  const PITCH_ACCENT_FURIGANA_STYLES = ["contour", "overline"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
     { label: "Automatic", ids: ["auto"] },
@@ -213,8 +217,8 @@
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
-    "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge",
-    "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
+    "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle",
+    "showPitchAccentBadge", "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
     "hidePopupGrammarTags",
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
@@ -602,6 +606,7 @@
     definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
     imageHoverPreview: new Set(IMAGE_HOVER_PREVIEWS),
     glossaryLayoutMode: new Set(GLOSSARY_LAYOUT_MODES),
+    pitchAccentFuriganaStyle: new Set(PITCH_ACCENT_FURIGANA_STYLES),
   };
 
   function normaliseField(key, value) {
@@ -788,7 +793,7 @@
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
-    GLOSSARY_LAYOUT_MODES,
+    GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,

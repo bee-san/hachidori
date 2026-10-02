@@ -682,6 +682,15 @@
         selectedPitch.dictionary,
         `Pitch accent ${downstep}`,
       ].filter(Boolean).join(" · ");
+      // "overline": the pitch list's own Yomitan text, built once for the
+      // whole reading so each mora keeps its word-level pitch and next pitch
+      // (見る [1] hooks み at the segment boundary), then shared out to the
+      // segments. Nasal and devoice marks stay in the list: a nasal mark
+      // rewrites the kana.
+      const overlineMorae = pitchOptions.style === "overline"
+        ? [...createPronunciationText(documentRef, pitchedMorae.map((mora) => mora.text),
+            pitchAccentPositions(selectedPitch.pitch), [], []).children]
+        : null;
       let moraIndex = 0;
       for (const segment of segments) {
         const ruby = documentRef.createElement("ruby");
@@ -701,15 +710,20 @@
 
         const contour = documentRef.createElement("span");
         contour.className = "gsm-hoshidicts-pitch-contour";
-        for (const mora of pitchedMorae.slice(moraIndex, moraIndex + segment.moraCount)) {
-          const span = documentRef.createElement("span");
-          span.className = "gsm-hoshidicts-pitch-mora";
-          span.dataset.pitchLevel = mora.level;
-          if (mora.transition) {
-            span.dataset.pitchTransition = mora.transition;
+        if (overlineMorae) {
+          contour.dataset.pitchStyle = "overline";
+          contour.append(...overlineMorae.slice(moraIndex, moraIndex + segment.moraCount));
+        } else {
+          for (const mora of pitchedMorae.slice(moraIndex, moraIndex + segment.moraCount)) {
+            const span = documentRef.createElement("span");
+            span.className = "gsm-hoshidicts-pitch-mora";
+            span.dataset.pitchLevel = mora.level;
+            if (mora.transition) {
+              span.dataset.pitchTransition = mora.transition;
+            }
+            span.textContent = mora.text;
+            contour.appendChild(span);
           }
-          span.textContent = mora.text;
-          contour.appendChild(span);
         }
         moraIndex += segment.moraCount;
         rt.appendChild(contour);

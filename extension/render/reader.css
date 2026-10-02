@@ -1790,6 +1790,18 @@ html[data-hoshidicts-theme="girlypop"],
   content: "";
 }
 
+/* Design → Pitch accent → Furigana pitch style "overline": the pitch list's
+   Yomitan text (.pronunciation-mora and its line, display-pronunciation.css
+   below) in the headword's reading. Each mora fills its share of the segment,
+   as a contour mora does, so the overline runs on unbroken over kanji. The
+   reading's line height is 1, so the padding gives the line the room above the
+   kana that the list's 1.5 line height gives it. */
+.gsm-hoshidicts-pitch-contour[data-pitch-style="overline"] > .pronunciation-mora {
+  flex: 1 1 auto;
+  padding-top: 0.3em;
+  text-align: center;
+}
+
 .gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-expression rt,
 .gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-expression rt {
   filter: blur(5px);

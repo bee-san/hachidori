@@ -1042,7 +1042,14 @@ built. A string pattern such as `"LHL"`, which hoshidicts delivers beside a
 placeholder position of 0, is read with Yomitan's `isMoraPitchHigh` and
 `getDownstepPositions`, so it shows `[2]` like the integer form, in the badges,
 the furigana contour and the Anki pitch markers alike. `reading [n]` stays in
-every accent's tooltip and accessibility label. Turning dictionary names off
+every accent's tooltip and accessibility label. **Furigana pitch style** picks
+the headword's notation. Contour, the default, draws a line over high morae,
+under low ones and a stroke at each rise and drop in the pitch colour. Overline
+builds the reading's morae once with the badges' `createPronunciationText` and
+shares them out to the furigana segments, so the headword shows the badges'
+line over high morae and downstep hook in the text colour, with the same levels;
+nasal and devoice marks, `[n]` and the graph stay in the badges. The style is
+disabled while the furigana pitch is off. Turning dictionary names off
 removes the tags. IPA shows transcriptions without source-name labels. Tooltips and
 accessibility labels retain source attribution, and visible pitch names and
 labels follow dictionary aliases in place. Unfilled tags, pitch names, pitch
@@ -2072,12 +2079,13 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns AUTO plus the audited 42-palette grouped catalogue (18
-dark, 23 light, one high-contrast), strict option validation, and the 30 Design
+dark, 23 light, one high-contrast), strict option validation, and the 31 Design
 reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, pitch
-contour/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, and frequency
+contour/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, the Contour
+furigana pitch style, and frequency
 names/abbreviation/averages, the pitch graph and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
 The default renderer's density comes from `--hd-*` custom properties declared on

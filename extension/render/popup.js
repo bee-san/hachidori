@@ -25,8 +25,8 @@
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
   const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
-    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "showPitchAccentDictionaryNames",
-    "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "showPitchAccentBadge",
+    "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
 
   // Shared keyboard semantics for rich cards and direct text definitions.
   function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
@@ -3263,6 +3263,7 @@
         summaryMedia = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
+        pitchAccentFuriganaStyle = "contour",
         onBack = null,
         onClose = null,
         noteControls = null,
@@ -3296,6 +3297,7 @@
             enabled: showPitchAccentFurigana,
             groups: result.term.pitches,
             dictionary: pitchAccentFuriganaDictionary,
+            style: pitchAccentFuriganaStyle,
           }
         );
       }
@@ -3349,13 +3351,16 @@
           const enabled = context.showPitchAccentFurigana !== false;
           const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
             ? context.pitchAccentFuriganaDictionary : null;
-          if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary) return false;
+          const style = context.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour";
+          if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary
+            && style === pitchAccentFuriganaStyle) return false;
           const appearanceChanged = enabled !== showPitchAccentFurigana || enabled;
           // A kanji button is part of this ruby. Keep its identity until blur;
           // Note, disclosure and glossary focus need no such deferral.
           if (appearanceChanged && expression.contains(popup.getRootNode().activeElement)) return null;
           showPitchAccentFurigana = enabled;
           pitchAccentFuriganaDictionary = dictionary;
+          pitchAccentFuriganaStyle = style;
           if (appearanceChanged) populateRuby();
           return appearanceChanged;
         },
@@ -3478,6 +3483,8 @@
             typeof renderContext.pitchAccentFuriganaDictionary === "string"
               ? renderContext.pitchAccentFuriganaDictionary
               : null,
+          pitchAccentFuriganaStyle:
+            renderContext.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour",
           onBack: resultIndex === 0 ? renderContext.onBack : null,
           onClose: resultIndex === 0 ? renderContext.onClose : null,
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,

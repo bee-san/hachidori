@@ -800,6 +800,14 @@
                     <select id="opt-pitch-dictionary"></select>
                     <span class="field-hint">Falls back to the first available pitch pattern.</span>
                   </label>
+                  <label class="field" data-design-setting="pitchAccentFuriganaStyle">
+                    <span class="field-label">Furigana pitch style</span>
+                    <select id="opt-pitch-furigana-style">
+                      <option value="contour">Contour (over high, under low)</option>
+                      <option value="overline">Overline, like the pitch list (Yomitan)</option>
+                    </select>
+                    <span class="field-hint">Overline draws the headword's pitch as the pitch accents below it do: a line over high morae and a hook where the pitch drops.</span>
+                  </label>
                 </div>
                 <label class="lookup-enable" data-design-setting="showPitchAccentBadge">
                   <span>Show pitch badges</span>
