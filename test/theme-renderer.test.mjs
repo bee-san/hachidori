@@ -195,11 +195,12 @@ test("JL renders one block per dictionary, binds each shown block to its own def
 function beeFixture(t, overrides = {}) {
   const dom = environment(), { window } = dom, { document } = window;
   const popup = document.createElement("div"); document.body.append(popup);
+  const components = { ...window.HDPopup, ...window.HDGlossary };
   const view = bee.createView({ document, window, popup, positionPopup() {},
-    components: { ...window.HDPopup, ...window.HDGlossary },
+    components,
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary, ...overrides });
   t.after(() => { view.destroy(); window.close(); });
-  return { popup, view, window };
+  return { popup, view, window, components };
 }
 const beeResult = { ...results[0], term: { ...results[0].term, glossaries: [
   { ...results[0].term.glossaries[0], definitionTags: "v1 vt ★" }, { dictionary: "second", glossary: '["meal"]', definitionTags: "n" },
@@ -221,7 +222,7 @@ test("Bee keeps All results accessible alongside named groups and restores an ex
   assert.deepEqual(blocks.map(node => node.hidden), [false, true]);
   assert.equal(bound.miningActions.length, 1);
   const saved = f.view.captureTermView();
-  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved });
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved, onDictionaryTabSelected(value) { selected = value; } });
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 1);
   const all = f.popup.querySelector(".jl-tab");
   all.click();
@@ -518,4 +519,50 @@ test("each theme implements exactly the Design settings its catalogue entry decl
     assert.deepEqual((await designSettingsUsed(entry.slug)).sort(), [...declared].sort(),
       `${entry.slug} uses exactly the Design settings it declares`);
   }
+});
+
+test("Bee reuses per-result metadata and repaints only changed frequency inputs", t => {
+  const f = beeFixture(t);
+  let frequencyCalls = 0, pitchCalls = 0;
+  for (const [name, record] of [["createFrequencyTags", () => frequencyCalls++], ["buildPitchAccentMorae", () => pitchCalls++]]) {
+    const original = f.components[name];
+    f.components[name] = (...args) => { record(); return original(...args); };
+  }
+  const result = { ...beeResult, term: { ...beeResult.term,
+    frequencies: [{ dictionary: "Ranks", frequencies: [{ value: 1200, displayValue: null }] }],
+    pitches: [{ dictionary: "Pitch", pitches: [{ position: 2 }] }],
+  } };
+  const context = { ...beeContext, showFrequencyDictionaryNames: true,
+    dictionaryPresentation: [...beeContext.dictionaryPresentation, { title: "Ranks", displayName: "Rank source", frequencyMode: "rank-based" }] };
+  f.view.renderResults([result], { query: "食べる" }, context);
+  const chips = [...f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")];
+  assert.equal(chips.length, 2);
+  assert.equal(frequencyCalls, 1, "derive frequencies once for the result's two dictionaries");
+  assert.equal(pitchCalls, 1, "derive pitch once for the result's two dictionaries");
+  assert.notEqual(chips[0], chips[1], "each dictionary owns its frequency DOM");
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  const form = f.popup.querySelector("form");
+  form.elements.definition.value = "Keep my draft";
+  const glossary = f.popup.querySelector(".bee-rich-content");
+  for (const change of [{}, { pitchAccentFuriganaStyle: "overline" }, {
+    dictionaryPresentation: context.dictionaryPresentation.map(item => item.title === "test" ? { ...item, displayName: "Words" } : item),
+  }]) {
+    f.view.updateDictionaryPresentation({ ...context, ...change });
+    assert.ok(chips.every((chip, index) => chip === f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")[index]),
+      "unchanged, pitch-only and non-frequency alias updates retain exact frequency nodes");
+  }
+  const renamed = { ...context, dictionaryPresentation: context.dictionaryPresentation.map(item =>
+    item.title === "Ranks" ? { ...item, displayName: "New source" } : item) };
+  f.view.updateDictionaryPresentation(renamed);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-source").textContent, "New source");
+  assert.equal(chips[0].isConnected, false, "frequency aliases repaint");
+  f.view.updateDictionaryPresentation({ ...renamed, compactFrequencyNumbers: true });
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-value").textContent, "1.2k");
+  f.view.updateDictionaryPresentation({ ...renamed, averageFrequency: true });
+  assert.equal(f.popup.querySelector('[data-frequency-average="rank-based"] .gsm-hoshidicts-frequency-source').textContent, "Avg rank");
+  f.view.updateDictionaryPresentation({ ...renamed, showFrequencyDictionaryNames: false });
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-source"), null);
+  assert.equal(f.popup.querySelector(".bee-rich-content"), glossary);
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Keep my draft");
 });
