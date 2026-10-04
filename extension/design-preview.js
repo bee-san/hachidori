@@ -208,8 +208,8 @@
     if (HDReaderOptions.popupRenderer(options.popupTheme) === "bee"
         && !dictionaryTabGroups.some(group => group.dictionaries.some(title => sampleDictionaries.includes(title)))) {
       dictionaryTabGroups.push(
-        { id: "sample-definitions", name: "Definitions", dictionaries: [sampleDictionaries[0], "Sample collocations"] },
-        { id: "sample-examples", name: "Examples", dictionaries: [sampleDictionaries[1], "Sample expressions"] },
+        { id: "sample-definitions", name: "Sample definitions", dictionaries: [sampleDictionaries[0], "Sample collocations"] },
+        { id: "sample-examples", name: "Sample examples", dictionaries: [sampleDictionaries[1], "Sample expressions"] },
       );
     }
     return { ...HDPopup.metadataOptions(options),

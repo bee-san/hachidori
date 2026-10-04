@@ -10,12 +10,13 @@ accents keep the translucent surface readable at the default opacity. Group
 tabs use JL's label-sized buttons and spacing in Bee's colours. Selected groups
 have an underline and keyboard focus has a visible violet outline.
 
-- **Group tabs:** only configured groups with results appear, in their saved
-  order. A group filters existing blocks in place and audio, mining and keyboard
-  actions follow its visible dictionaries. Without matching groups, all results
-  appear without a tab row. The Design preview supplies sample Definitions and
-  Examples groups when no configured group matches its sample. Back restores
-  the selected group.
+- **Group tabs:** All shows every result, followed by configured groups with
+  results in their saved order. A group filters existing blocks in place and
+  audio, mining and keyboard actions follow its visible dictionaries. Without
+  matching groups, all results appear without a tab row. The Design preview
+  labels its fallback groups Sample definitions and Sample examples. Back
+  restores an explicitly selected group; See links start in All. Presentation
+  changes preserve deliberate tab focus.
 - **Formatted definitions:** each dictionary block shows only the existing
   structured glossary renderer's lists, tables, furigana, links and images. JL's
   plain text and JMdict tag brackets (`[★, priority form] [n, adv]`) do not
@@ -25,8 +26,9 @@ have an underline and keyboard focus has a visible violet outline.
 - **Controls:** audio, Anki and the pencil sit together after the dictionary
   name as identical icon buttons, using Hachidori's outline icon set at one size
   in the text colour. All actions have the same four-pixel gap, including custom
-  buttons. Long dictionary names shrink with an ellipsis; hovering them shows
-  the full name. Every enabled control shows a pointer cursor. Back sits at the
+  buttons. Word and reading share the first row, frequencies wrap independently,
+  and the dictionary name shares a separate row with actions. Long names shrink
+  with an ellipsis; hovering them shows the full name. Every enabled control shows a pointer cursor. Back sits at the
   popup's upper left, including when Close is also available.
 - **Design settings:** compact glossaries, frequency dictionary names, compact
   frequency numbers, frequency averages and contour/overline pitch markings
@@ -40,14 +42,18 @@ have an underline and keyboard focus has a visible violet outline.
   text. Escape closes the form first; group presentation updates preserve drafts.
 - **Custom actions:** configured link and Anki-template buttons appear beside the
   existing controls. The first two stay inline, with the remainder in More
-  actions. Each mining button receives its own dictionary's definitions.
+  actions. Escape closes More actions and returns focus to its trigger before
+  closing a Note form or the popup. Selecting an action or pressing outside the
+  menu also closes it. Each mining button receives its own dictionary's definitions.
 - **Child lookups:** glossary words follow the page's hover or activation mode,
   including after clicking a dictionary disclosure. See links open the complete
   target with all dictionaries visible; the parent keeps its selected group.
 
 The theme shares JL's direct renderer and Default's lookup-action component.
 It builds its own popup and stylesheet. Sources and attribution are in
-`extension/vendor/themes/bee/`; `source.json` records the reviewed source revision.
+`extension/vendor/themes/bee/`; `source.json` records the upstream base revision.
+The bundled renderer also includes the locally reviewed layout, navigation and
+frequency-update refinements described here.
 
 ![Updated popup with JL group tabs and uniform actions](../assets/bee/bee-refined.png)
 ![Compact glossaries](../assets/bee/bee-compact.png)
@@ -65,7 +71,7 @@ It builds its own popup and stylesheet. Sources and attribution are in
 ## Validation
 
 The focused theme test uses the real extension, WASM importer and a local fake
-AnkiConnect. It checks the Store selection, group-only tabs, inline custom
+AnkiConnect. It checks the Store selection, All and group tabs, inline custom
 actions, formatted-only content, uniform action icons, Note/Escape, kanji,
 structured tables, loaded dictionary images and the enlarged image preview,
 plus switching back to Default. Forced-colour screenshots

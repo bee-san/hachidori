@@ -76,11 +76,18 @@ export function createView(options, enhanced = false) {
   }
   function onMenuPointerDown(event) {
     const path = event.composedPath();
+    // Document capture cannot see the production host's closed shadow tree.
+    // Its own root handles presses within that host, including sibling panes.
+    if (event.currentTarget === document && path.includes(popup.getRootNode().host)) return;
     for (const more of popup.querySelectorAll(".bee-more-actions[open]")) {
       if (!path.includes(more)) more.open = false;
     }
   }
-  if (enhanced) document.addEventListener("pointerdown", onMenuPointerDown, true);
+  const menuRoot = popup.getRootNode();
+  if (enhanced) {
+    document.addEventListener("pointerdown", onMenuPointerDown, true);
+    if (menuRoot !== document) menuRoot.addEventListener("pointerdown", onMenuPointerDown, true);
+  }
 
   function clear() {
     revision += 1;
@@ -135,12 +142,13 @@ export function createView(options, enhanced = false) {
         const tagsByResult = new Map();
         for (const { element, result } of frequencies) {
           let tags = tagsByResult.get(result);
-          if (!tags) {
+          if (tags) tags = tags.map(tag => tag.cloneNode(true));
+          else {
             tags = components.createFrequencyTags(document, result, context.dictionaryPresentation ?? [], Infinity,
               context.averageFrequency === true, context.showFrequencyDictionaryNames === true, context.compactFrequencyNumbers === true);
             tagsByResult.set(result, tags);
           }
-          element.replaceChildren(...tags.map(tag => tag.cloneNode(true)));
+          element.replaceChildren(...tags);
         }
         paintedFrequency = frequency;
       }
@@ -445,7 +453,8 @@ export function createView(options, enhanced = false) {
       }
       groupTabs = descriptors;
       if (focusedTab) {
-        const replacement = [...tabs.children].find(element => element.dataset.groupId === focused.dataset.groupId) || tabs.firstElementChild;
+        const replacement = [...tabs.children].find(element => element.dataset.groupId === focused.dataset.groupId)
+          || tabs.firstElementChild || entries.find(entry => !entry.hidden);
         replacement?.focus({ preventScroll: true });
       }
     }
@@ -568,7 +577,11 @@ export function createView(options, enhanced = false) {
       if (!enabled) highlighter?.clear();
       else if (activeSource) highlighter?.apply(activeSource.candidate, activeSource.matched);
     },
-    destroy() { clear(); document.removeEventListener("pointerdown", onMenuPointerDown, true); preview?.destroy(); popup.replaceChildren(); },
+    destroy() {
+      clear(); document.removeEventListener("pointerdown", onMenuPointerDown, true);
+      menuRoot.removeEventListener("pointerdown", onMenuPointerDown, true);
+      preview?.destroy(); popup.replaceChildren();
+    },
   };
 }
 export default { schema: 2, slug: "jl", contentMode: "text", createView };
