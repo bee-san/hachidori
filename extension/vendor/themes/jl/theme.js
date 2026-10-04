@@ -323,10 +323,7 @@ export function createView(options, enhanced = false) {
     if (groups.length) {
       const element = node("span", "jl-frequency");
       frequencies.push({ element, groups, result });
-      if (enhanced) {
-        const metadata = node("div", "bee-metadata");
-        metadata.append(element); line.append(metadata);
-      } else line.append(element);
+      line.append(element);
     }
     const actions = node("div", "gsm-hoshidicts-entry-actions");
     actions.setAttribute("role", "group");
