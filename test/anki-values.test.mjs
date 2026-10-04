@@ -203,11 +203,26 @@ test("frequency markers preserve configured order, mode-specific aggregates and 
     { dictionary: "Count", frequencyMode: "occurrence-based", frequencies: [{ value: 100, displayValue: null }] },
   ];
   assert.equal(await render(source, "{frequency-average-rank}|{frequency-harmonic-occurrence}|{single-frequency-number-rank}"), "20|100|20");
-  assert.equal(await render(source, "{frequencies}"), "<b>Rank</b>: 20㋕<br><b>Count</b>: 100");
+  assert.equal(await render(source, "{frequencies}"), '<ul style="text-align: left;"><li>Rank: 20㋕</li><li>Count: 100</li></ul>');
   assert.equal(await render(source, "{single-frequency-count}"), '<ul style="text-align: left;"><li>Count: 100</li></ul>');
   assert.equal(await render(request(), "{frequency-average-rank}|{frequency-average-occurrence}"), "9999999|0");
   source.term.frequencies[0].frequencies.push({ get value() { throw new Error("Aggregate must stop at the first positive frequency"); } });
   assert.equal(await render(source, "{frequency-average-rank}"), "20");
+});
+
+test("frequency lists match Yomitan's Anki shape, preserve every value and escape dictionary aliases", async () => {
+  const source = request({ dictionaryAliases: { Rank: "Rank <A & B>" } });
+  source.term.frequencies = [
+    { dictionary: "Empty", frequencies: [] },
+    { dictionary: "Rank", frequencies: [{ value: 10, displayValue: "20㋕" }, { value: 30, displayValue: "<30>" }] },
+    { dictionary: "Count", frequencies: [{ value: 100, displayValue: null }] },
+  ];
+  const rank = '<li>Rank &lt;A &amp; B&gt;: 20㋕</li><li>Rank &lt;A &amp; B&gt;: &lt;30&gt;</li>';
+  assert.equal(await render(source, "{frequencies}"), `<ul style="text-align: left;">${rank}<li>Count: 100</li></ul>`);
+  assert.equal(await render(source, "{single-frequency-rank}"), `<ul style="text-align: left;">${rank}</ul>`);
+  assert.equal(await render(request(), "{frequencies}"), "");
+  source.term.frequencies = [{ dictionary: "Empty", frequencies: [] }];
+  assert.equal(await render(source, "{frequencies}"), "");
 });
 
 test("single-frequency marker sanitization remains byte-for-byte compatible", async () => {

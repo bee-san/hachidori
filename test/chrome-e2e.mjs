@@ -53,6 +53,7 @@ import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-sce
 import { checkPopupResize } from "./chrome-popup-resize.mjs";
 import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { COMPACT_GLOSSARIES_CHECK, checkCompactGlossaries } from "./chrome-glossary-layout.mjs";
+import { STRUCTURED_TABLE_CHECK, checkStructuredTable } from "./chrome-structured-table.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
@@ -449,6 +450,7 @@ const PLANNED = [
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Compact summaries wrap without clipping and retain narrow toolbar access",
   COMPACT_GLOSSARIES_CHECK,
+  STRUCTURED_TABLE_CHECK,
   ACTION_ROW_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
@@ -13400,6 +13402,8 @@ async function main() {
   check("Compact summaries wrap without clipping and retain narrow toolbar access", true);
   await checkCompactGlossaries(browser);
   check(COMPACT_GLOSSARIES_CHECK, true);
+  await checkStructuredTable(browser);
+  check(STRUCTURED_TABLE_CHECK, true);
   await checkActionRow(browser);
   check(ACTION_ROW_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);
