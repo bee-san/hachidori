@@ -211,7 +211,7 @@ test("frequency markers preserve configured order, mode-specific aggregates and 
 });
 
 test("frequency lists match Yomitan's Anki shape, preserve every value and escape dictionary aliases", async () => {
-  const source = request({ dictionaryAliases: { Rank: "Rank <A & B>" } });
+  const source = request({ dictionaryAliases: { Rank: "Rank <A & B>" }, frequencyDictionaries: ["Rank", "Count"] });
   source.term.frequencies = [
     { dictionary: "Empty", frequencies: [] },
     { dictionary: "Rank", frequencies: [{ value: 10, displayValue: "20㋕" }, { value: 30, displayValue: "<30>" }] },
