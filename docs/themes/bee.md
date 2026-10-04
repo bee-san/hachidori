@@ -52,6 +52,7 @@ It builds its own popup and stylesheet. Sources and attribution are in
 ![Updated popup with JL group tabs and uniform actions](../assets/bee/bee-refined.png)
 ![Compact glossaries](../assets/bee/bee-compact.png)
 ![Back at the upper left](../assets/bee/bee-back.png)
+![Back keyboard focus stays inside the popup](../assets/bee/bee-back-focus.png)
 ![Sample groups in the Design preview](../assets/bee/bee-preview-groups.png)
 ![Long custom action labels at a narrow width](../assets/bee/bee-long-300.png)
 ![More actions at a narrow width](../assets/bee/bee-long-300-more.png)
@@ -74,6 +75,8 @@ default popup opacity composited over both white and black pages.
 
 ![Forced-colour light](../assets/bee/bee-refined-forced-light.png)
 ![Forced-colour dark](../assets/bee/bee-refined-forced-dark.png)
+![Back focus in forced-colour light](../assets/bee/bee-back-focus-forced-light.png)
+![Back focus in forced-colour dark](../assets/bee/bee-back-focus-forced-dark.png)
 
 ## Performance
 

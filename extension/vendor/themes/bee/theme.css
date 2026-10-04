@@ -31,6 +31,7 @@
   margin: 0; padding: 3px 8px; background: #f2d6ec;
   border: 1px solid #95618c; border-radius: 3px; font-size: 12px; line-height: 20px;
 }
+.gsm-hoshidicts-popup .gsm-hoshidicts-kanji-back:focus-visible { outline-offset: -2px; }
 .gsm-hoshidicts-popup .jl-tab {
   min-width: 0; max-width: 100%; margin: 0 0 2px 2px; padding: 3px 8px; background: #f2d6ec;
   border: 1px solid #95618c; border-radius: 3px;
