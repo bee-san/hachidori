@@ -91,7 +91,7 @@ and returns `renderResults`, `renderKanji`, `renderNotice`, `renderLookupFailure
 `clear`, `destroy`, `captureTermView`, `currentEntryIndex`, `focusEntry`,
 `setDefinitionBlurState`, `setLookupStats`, `setSourceHighlightEnabled`,
 `updateDictionaryPresentation`, and `scrollElement`. Rich-only methods such as
-masonry, image preview, toolbar/custom buttons, note closing and deferred
+masonry, image preview, toolbar/custom buttons, note closing, action-menu dismissal and deferred
 presentation updates are optional.
 
 `createDictionaryTabs` supplies the existing dictionary/group descriptors.

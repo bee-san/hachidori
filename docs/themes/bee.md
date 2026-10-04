@@ -55,7 +55,8 @@ It builds its own popup and stylesheet. Sources and attribution are in
 The bundled renderer also includes the locally reviewed layout, navigation and
 frequency-update refinements described here.
 
-![Updated popup with JL group tabs and uniform actions](../assets/bee/bee-refined.png)
+![All and group tabs with readable source and uniform actions](../assets/bee/bee-refined.png)
+![Readable source and three frequency sources at 300 pixels](../assets/bee/bee-readable-300.png)
 ![Compact glossaries](../assets/bee/bee-compact.png)
 ![Back at the upper left](../assets/bee/bee-back.png)
 ![Back keyboard focus stays inside the popup](../assets/bee/bee-back-focus.png)
