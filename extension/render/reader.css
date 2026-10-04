@@ -2895,6 +2895,14 @@ html[data-hoshidicts-theme="girlypop"],
   padding-left: var(--list-padding1);
 }
 
+.gloss-sc-details > .gloss-sc-table-container {
+  /* Include the disclosure indent in the scrollport: dictionary-authored
+     negative table margins (NHK-pitch) must not clip the first column. */
+  margin-left: calc(-1 * var(--list-padding1));
+  padding-left: var(--list-padding1);
+  max-width: none;
+}
+
 .gloss-sc-summary {
   list-style-position: outside;
   /* Hachidori: a disclosure reads as clickable. */
