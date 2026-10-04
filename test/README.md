@@ -88,6 +88,11 @@ member of a selector list prefixed, commas inside `:is()` and strings kept,
 rules inside `@media` prefixed, global rules dropped and no `@scope`. The Chrome
 suite checks the prefixed styles apply only inside their dictionary's item.
 
+`test/chrome-structured-table.mjs`, called by the Chrome suite, checks NHK-pitch's
+negative-margin disclosure tables at 320px and 560px popup widths: the first
+header glyph remains visible, and wide tables still scroll to their final column
+both inside and outside a disclosure.
+
 `node --test test/sentence.test.mjs` is the table-driven contract of
 `extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
 end, enclosing quotes and brackets left out, nested and preceding pairs kept
