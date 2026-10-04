@@ -1311,7 +1311,9 @@ never picks their Han forms. The glossary rules in `reader.css` follow Yomitan's
 dictionary's own styles still override them, with Yomitan's variable names mapped
 onto the popup palette. Hachidori keeps its per-dictionary cards, the monochrome
 image mask, table scrolling, failed-image labels and 1em-per-pixel image boxes at
-its 16px text. The Anki export keeps Yomitan's own Anki shape (one element bare,
+its 16px text. A disclosure table's scroller includes the disclosure indent, so
+dictionary-authored negative margins can extend into it without clipping the
+first column. The Anki export keeps Yomitan's own Anki shape (one element bare,
 several as a list) through the renderer's `layout: "anki"` option.
 
 Definition tags follow Yomitan's tag banks (#426). Tag, rule and kanji reading
@@ -2373,6 +2375,10 @@ across a settings change. A saved field that differs from the submitted value
 not skip deferred pronunciation; only a failed readback or a first field Anki
 did not save as submitted does, and enrichment still refuses to update a
 pronunciation field whose current value changed.
+
+The `{frequencies}` marker writes Yomitan's left-aligned `<ul>` with one `<li>`
+per frequency value. It shares the single-dictionary frequency formatter,
+including dictionary aliases and HTML escaping.
 
 Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. As in Yomitan's default Anki field templates, each
