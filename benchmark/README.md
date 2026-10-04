@@ -87,6 +87,31 @@ renderer timings and cumulative counts of Default view construction, rich glossa
 calls and dictionary-style application. These are separate from input-to-frame
 and complete-result measurements; see [the theme report](../docs/themes/benchmark.md).
 
+For Bee's repeated dictionary headers, `bee-renderer.mjs` measures production
+rendering and presentation updates with forced synchronous layout. It covers
+3 and 36 blocks, three named frequency sources, pitch, custom actions, eight
+senses per dictionary, and a group showing 12 of the 36 blocks. It compares
+unchanged, group-name and pitch-only updates, records chip identity and helper
+calls, and checks dictionary/glossary/visibility signatures across revisions.
+Frequency text, accessible labels and pitch morae also enter those signatures.
+The default is six fresh browser profiles, 20 excluded warmups and 100
+measurements per scenario/revision/profile (600 per scenario/revision). Both
+revisions render in independent shadow roots in one document and renderer
+process. Measured execution order reverses on every iteration; setup and
+scenario order reverse in odd profiles. The harness requires byte-identical
+shared production components, so each revision uses its own Bee module/CSS
+with the same shared helpers. `HACHIDORI_BEE_PROFILES` changes the profile count.
+
+```sh
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/bee-renderer.mjs /tmp/bee-renderer /path/to/before /path/to/after
+```
+
+These targeted timings exclude engine lookup, transport, runtime action binding,
+asynchronous media and paint. Pair them with the Bee-only hover harness for
+input-to-frame timings. The [Bee UI performance report](../docs/themes/bee-ui-performance.md)
+retains the compared revisions, setup, raw samples and limitations.
+
 Use `HACHIDORI_HOVER_SAMPLES` to change the profile count. Each profile also times
 1,000 production `resolveCandidate()` calls at a glyph, 1,000 at a point in
 the tile's padding, 20 CSS pixels left of the text, 1,000 at a word 600

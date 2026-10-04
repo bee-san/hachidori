@@ -1,0 +1,19 @@
+{
+  "purpose": "Diagnostic only: reuse hidden inline labels as shared icon elements, retain visible overflow labels and separate overflow icons.",
+  "javascript": {
+    "path": "extension/vendor/themes/jl/theme.js",
+    "find": "        for (const custom of buttons) {\n          let icon = custom.querySelector(\".bee-custom-action-icon\");\n          if (!icon) {\n            icon = node(\"span\", \"bee-custom-action-icon hd-icon\");\n            icon.setAttribute(\"aria-hidden\", \"true\");\n            // Shared actions keep their first child as the editable label.\n            custom.append(icon);\n          }\n          icon.dataset.icon = custom.dataset.customButtonType === \"anki\" ? \"document-add\" : \"open\";\n          if (custom.dataset.customButtonType === \"link\") {\n            custom.title = `Open ${custom.dataset.customButtonLabel}`;\n            custom.setAttribute(\"aria-label\", custom.title);\n          }\n        }\n",
+    "replace": "        for (const [index, custom] of buttons.entries()) {\n          const label = custom.firstElementChild;\n          let icon = custom.querySelector(\".bee-custom-action-icon\");\n          if (index < 2) {\n            if (icon && icon !== label) icon.remove();\n            icon = label;\n          } else if (icon === label) {\n            label.classList.remove(\"bee-custom-action-icon\", \"hd-icon\");\n            label.removeAttribute(\"aria-hidden\");\n            delete label.dataset.icon;\n            icon = null;\n          }\n          if (!icon) {\n            icon = node(\"span\", \"bee-custom-action-icon hd-icon\");\n            custom.append(icon);\n          }\n          icon.classList.add(\"bee-custom-action-icon\", \"hd-icon\");\n          icon.setAttribute(\"aria-hidden\", \"true\");\n          icon.dataset.icon = custom.dataset.customButtonType === \"anki\" ? \"document-add\" : \"open\";\n          if (custom.dataset.customButtonType === \"link\") {\n            custom.title = `Open ${custom.dataset.customButtonLabel}`;\n            custom.setAttribute(\"aria-label\", custom.title);\n          }\n        }\n"
+  },
+  "css": {
+    "path": "extension/vendor/themes/bee/theme.css",
+    "find": ".gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button > .gsm-hoshidicts-text-action-label { display: none; }",
+    "replace": ".gsm-hoshidicts-text-action-label.bee-custom-action-icon { font-size: 0; line-height: 0; }"
+  },
+  "expectedNodeReduction": "Two nodes per dictionary block, 72 nodes for 36 blocks. Number of masked icons unchanged.",
+  "requirements": [
+    "Apply only to an isolated diagnostic copy, not the repository.",
+    "Check live action reordering in both directions: label remains first, overflow labels are visible, and inline aria-hidden labels carry the icon.",
+    "Shared Anki readiness paints text on the label, preserving the icon class and data attributes. Native handlers and template datasets stay on the original button."
+  ]
+}

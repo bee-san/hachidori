@@ -195,11 +195,12 @@ test("JL renders one block per dictionary, binds each shown block to its own def
 function beeFixture(t, overrides = {}) {
   const dom = environment(), { window } = dom, { document } = window;
   const popup = document.createElement("div"); document.body.append(popup);
+  const components = { ...window.HDPopup, ...window.HDGlossary };
   const view = bee.createView({ document, window, popup, positionPopup() {},
-    components: { ...window.HDPopup, ...window.HDGlossary },
+    components,
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary, ...overrides });
   t.after(() => { view.destroy(); window.close(); });
-  return { popup, view, window };
+  return { popup, view, window, components };
 }
 const beeResult = { ...results[0], term: { ...results[0].term, glossaries: [
   { ...results[0].term.glossaries[0], definitionTags: "v1 vt ★" }, { dictionary: "second", glossary: '["meal"]', definitionTags: "n" },
@@ -208,21 +209,40 @@ const beeContext = { dictionaryPresentation: [{ title: "test", favorite: true },
   dictionaryTabGroups: [{ id: "first", name: "English", dictionaries: ["test"] },
     { id: "both", name: "Everything", dictionaries: ["test", "second"] }] };
 
-test("Bee shows only named groups, filters existing blocks, binds per-dictionary actions and restores Back", t => {
+test("Bee keeps All results accessible alongside named groups and restores an explicit group on Back", t => {
   let bound, selected;
   const f = beeFixture(t, { onResultsRendered(value) { bound = value; }, onResultsExpanded(value) { bound = value; } });
   f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, onDictionaryTabSelected(value) { selected = value; } });
-  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["English", "Everything"]);
-  assert.deepEqual(selected, { groupId: "first" });
-  assert.equal(bound.miningActions.length, 1);
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All", "English", "Everything"]);
+  assert.equal(selected, undefined, "a fresh lookup keeps the core's All selection");
+  assert.equal(bound.miningActions.length, 2, "All includes dictionaries outside the first group");
   const blocks = [...f.popup.querySelectorAll(".jl-entry")];
   f.popup.querySelectorAll(".jl-tab")[1].click();
-  assert.deepEqual(blocks.map(node => node.hidden), [false, false]);
+  assert.deepEqual(selected, { groupId: "first" });
+  assert.deepEqual(blocks.map(node => node.hidden), [false, true]);
+  assert.equal(bound.miningActions.length, 1);
+  const saved = f.view.captureTermView();
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved, onDictionaryTabSelected(value) { selected = value; } });
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 1);
+  const all = f.popup.querySelector(".jl-tab");
+  all.click();
+  assert.equal(selected, null);
+  all.focus();
+  f.view.updateDictionaryPresentation({ ...beeContext, ...saved, dictionaryTabGroups: [
+    { id: "first", name: "Renamed", dictionaries: ["test"] },
+  ] });
+  assert.equal(f.view.captureTermView().selectedDictionaryTab, null, "a previous group context cannot override All");
+  assert.equal(f.popup.ownerDocument.activeElement, f.popup.querySelector(".jl-tab"), "group updates retain deliberate tab focus");
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
   assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["test", "second"]);
   assert.equal(f.popup.querySelectorAll(".jl-spelling").length, 2, "retain JL's repeated headers");
-  const saved = f.view.captureTermView();
-  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved });
-  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, selectedDictionaryTab: null });
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2, "See links with null selection show all dictionaries");
+  f.popup.querySelector(".jl-tab").focus();
+  f.view.updateDictionaryPresentation({ ...beeContext, dictionaryTabGroups: [] });
+  assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0);
+  assert.equal(f.popup.ownerDocument.activeElement, f.popup.querySelector(".jl-entry"),
+    "removing the last group retains deliberate focus in a visible result");
   f.view.renderResults([beeResult], { query: "食べる" });
   assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0, "ungrouped dictionaries never become tabs");
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
@@ -285,6 +305,14 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   f.view.renderResults([beeResult], { query: "食べる" }, beeContext);
   assert.equal(f.popup.querySelector('[data-custom-button-id="anki"]').dataset.ankiTemplateId, "sentence");
   assert.equal(f.popup.querySelector('.bee-action-menu [data-custom-button-id="more"]').textContent, "More");
+  const action = id => f.popup.querySelector(`[data-custom-button-id="${id}"]`);
+  const originalIcons = buttons.map(({ id }) => action(id).querySelector(".bee-custom-action-icon"));
+  assert.deepEqual(originalIcons.map(icon => icon?.dataset.icon), ["open", "document-add", "open"],
+    "inline and overflow actions reuse the shared external-link and Anki icons");
+  assert.ok(originalIcons.every(icon => icon.classList.contains("hd-icon") && icon.getAttribute("aria-hidden") === "true"));
+  assert.equal(action("link").getAttribute("aria-label"), "Open Search");
+  assert.equal(action("link").title, "Open Search");
+  assert.equal(action("anki").getAttribute("aria-label"), "Send to Anki with Sentence");
   f.popup.querySelector('[data-custom-button-id="link"]').click();
   assert.equal(links[0].url, "https://example.test/%E9%A3%9F%E3%81%B9%E3%82%8B");
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -292,6 +320,51 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   assert.equal(form.elements.term.value, "食べる");
   assert.equal(form.elements.reading.value, "たべる");
   form.elements.definition.value = "My meaning";
+  f.view.setCustomButtons(buttons.map(value => ({ ...value, label: `${value.label} renamed` })));
+  assert.equal(action("link").firstElementChild.textContent, "Search renamed", "the shared label remains first for live updates");
+  assert.equal(action("link").getAttribute("aria-label"), "Open Search renamed");
+  assert.equal(action("anki").getAttribute("aria-label"), "Send to Anki with Sentence renamed");
+  assert.ok(originalIcons.every((icon, index) => icon === action(buttons[index].id).querySelector(".bee-custom-action-icon")),
+    "live renames reuse the existing icon nodes");
+  const originalActions = new Map(buttons.map(({ id }) => [id, action(id)]));
+  const labels = new Map(buttons.map(({ id }) => [id, action(id).firstElementChild]));
+  f.view.setCustomButtons([buttons[2], buttons[0], buttons[1]]);
+  assert.ok(buttons.every(({ id }) => action(id) === originalActions.get(id)
+    && action(id).firstElementChild === labels.get(id)), "reordering retains native action and shared label ownership");
+  assert.equal(action("more").querySelector(".bee-custom-action-icon"), labels.get("more"), "an action moved inline uses its existing label as its icon");
+  assert.equal(action("more").children.length, 1, "inline actions do not build a second decorative element");
+  assert.equal(labels.get("more").getAttribute("aria-hidden"), "true");
+  assert.notEqual(action("anki").querySelector(".bee-custom-action-icon"), labels.get("anki"), "an action moved to More keeps its visible label and separate icon");
+  assert.equal(labels.get("anki").classList.contains("hd-icon"), false);
+  assert.equal(labels.get("anki").getAttribute("aria-hidden"), null);
+  assert.equal(labels.get("anki").dataset.icon, undefined);
+  assert.equal(action("anki").dataset.ankiTemplateId, "sentence");
+  action("more").click();
+  assert.equal(links[1].url, "https://example.test/%E3%81%9F%E3%81%B9%E3%82%8B", "moving an action inline preserves its link handler and reading substitution");
+  f.view.setCustomButtons(buttons);
+  assert.equal(action("anki").querySelector(".bee-custom-action-icon"), labels.get("anki"), "moving back inline reuses the same shared label");
+  assert.equal(action("anki").children.length, 1);
+  assert.equal(labels.get("anki").getAttribute("aria-hidden"), "true");
+  assert.notEqual(action("more").querySelector(".bee-custom-action-icon"), labels.get("more"));
+  assert.equal(labels.get("more").getAttribute("aria-hidden"), null);
+  assert.equal(labels.get("more").dataset.icon, undefined);
+  assert.ok(buttons.every(({ id }) => action(id).querySelectorAll(".bee-custom-action-icon").length === 1));
+  f.view.setCustomButtons([
+    { id: "link", type: "anki", label: "Other card", templateId: "other" },
+    { id: "anki", type: "link", label: "Other site", url: "https://example.test/other" },
+    buttons[2],
+  ]);
+  assert.equal(action("link").querySelector(".bee-custom-action-icon").dataset.icon, "document-add");
+  assert.equal(action("link").dataset.ankiTemplateId, "other");
+  assert.equal(action("link").getAttribute("aria-label"), "Send to Anki with Other card");
+  assert.equal(action("anki").querySelector(".bee-custom-action-icon").dataset.icon, "open");
+  assert.equal(action("anki").dataset.ankiTemplateId, undefined);
+  assert.equal(action("anki").getAttribute("aria-label"), "Open Other site");
+  assert.ok(buttons.every(({ id }) => action(id).querySelectorAll(".bee-custom-action-icon").length === 1),
+    "type changes do not accumulate icons");
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "My meaning", "changing action labels and types preserves an open draft");
+  f.view.setCustomButtons(buttons);
   f.view.updateDictionaryPresentation({ ...beeContext, dictionaryTabGroups: [
     { id: "both", name: "All grouped", dictionaries: ["test", "second"] }] });
   assert.equal(form.hidden, false);
@@ -299,10 +372,76 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   assert.deepEqual(saves, [{ term: "食べる", reading: "たべる", definition: "My meaning" }]);
-  assert.equal(f.popup.querySelector(".jl-tab").textContent, "All grouped");
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All", "All grouped"]);
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   assert.equal(f.view.closeNoteForm(), true);
   assert.equal(form.hidden, true);
+});
+
+test("Bee dismisses More actions before Note and preserves the action and draft", async t => {
+  const links = [];
+  const f = beeFixture(t, { customButtons: [
+    { id: "one", type: "link", label: "One", url: "https://example.test/one" },
+    { id: "two", type: "link", label: "Two", url: "https://example.test/two" },
+    { id: "more", type: "link", label: "More", url: "https://example.test/%w" },
+  ], onCustomLinkClick(link) { links.push(link); } });
+  f.view.renderResults([beeResult], { query: "食べる" }, beeContext);
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  const form = f.popup.querySelector("form");
+  form.elements.definition.value = "Unfinished meaning";
+  const more = f.popup.querySelector(".bee-more-actions");
+  more.open = true;
+  more.querySelector("button").focus();
+  assert.equal(f.view.closeActionMenu(), true);
+  assert.equal(more.open, false);
+  assert.equal(f.popup.ownerDocument.activeElement, more.querySelector("summary"));
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Unfinished meaning");
+  assert.equal(f.view.closeActionMenu(), false, "a closed menu leaves Escape to Note or the popup");
+  more.open = true;
+  more.querySelector("button").click();
+  await Promise.resolve();
+  assert.equal(links[0].url, "https://example.test/%E9%A3%9F%E3%81%B9%E3%82%8B", "dismissing retains link activation");
+  assert.equal(more.open, false, "selecting an action dismisses its disclosure despite stopped bubbling");
+  more.open = true;
+  f.popup.querySelector(".jl-spelling").dispatchEvent(new f.window.Event("pointerdown", { bubbles: true }));
+  assert.equal(more.open, false, "pressing outside the menu dismisses it without discarding a Note draft");
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Unfinished meaning");
+  more.open = true;
+  f.view.renderNotice("No match", { query: "unknown" });
+  assert.equal(more.isConnected, false, "replacing results retires an open disclosure");
+  assert.equal(f.view.closeActionMenu(), false, "retired disclosures never consume Escape");
+});
+
+test("Bee More actions distinguishes inside and outside presses through a closed shadow root", async t => {
+  const dom = environment(), { window } = dom, { document } = window;
+  const shadow = document.getElementById("host").attachShadow({ mode: "closed" });
+  const popup = document.createElement("div"); shadow.append(popup);
+  const links = [];
+  const view = bee.createView({ document, window, popup, positionPopup() {},
+    components: { ...window.HDPopup, ...window.HDGlossary },
+    appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+    customButtons: ["one", "two", "more"].map(id => ({ id, type: "link", label: id, url: `https://example.test/${id}` })),
+    onCustomLinkClick(link) { links.push(link); },
+  });
+  t.after(() => { view.destroy(); window.close(); });
+  view.renderResults([beeResult], { query: "食べる" }, beeContext);
+  const more = popup.querySelector(".bee-more-actions"), action = more.querySelector("button");
+  const press = node => node.dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true }));
+  more.open = true;
+  press(action);
+  assert.equal(more.open, true, "a closed root hides internals from document capture but preserves an inside action press");
+  action.click();
+  await Promise.resolve();
+  assert.equal(links[0].url, "https://example.test/more");
+  assert.equal(more.open, false, "the action closes after activation");
+  more.open = true;
+  press(popup.querySelector(".jl-spelling"));
+  assert.equal(more.open, false, "another popup control is outside More even within the closed root");
+  more.open = true;
+  press(document.body);
+  assert.equal(more.open, false, "a page press outside the shadow host closes More");
 });
 
 test("switching after a retired lookup applies saved actions to the next renderer before a fresh lookup", async t => {
@@ -469,4 +608,59 @@ test("each theme implements exactly the Design settings its catalogue entry decl
     assert.deepEqual((await designSettingsUsed(entry.slug)).sort(), [...declared].sort(),
       `${entry.slug} uses exactly the Design settings it declares`);
   }
+});
+
+test("Bee reuses per-result metadata and repaints only changed frequency inputs", t => {
+  const f = beeFixture(t);
+  let frequencyCalls = 0, pitchCalls = 0;
+  for (const [name, record] of [["createFrequencyTags", () => frequencyCalls++], ["buildPitchAccentMorae", () => pitchCalls++]]) {
+    const original = f.components[name];
+    f.components[name] = (...args) => { record(); return original(...args); };
+  }
+  const result = { ...beeResult, term: { ...beeResult.term,
+    frequencies: [{ dictionary: "Ranks", frequencies: [{ value: 1200, displayValue: null }] }],
+    pitches: [{ dictionary: "Pitch", pitches: [{ position: 2 }] }],
+  } };
+  const context = { ...beeContext, showFrequencyDictionaryNames: true,
+    dictionaryPresentation: [...beeContext.dictionaryPresentation, { title: "Ranks", displayName: "Rank source", frequencyMode: "rank-based" }] };
+  f.view.renderResults([result], { query: "食べる" }, context);
+  const chips = [...f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")];
+  assert.equal(chips.length, 2);
+  assert.equal(frequencyCalls, 1, "derive frequencies once for the result's two dictionaries");
+  assert.equal(pitchCalls, 1, "derive pitch once for the result's two dictionaries");
+  assert.notEqual(chips[0], chips[1], "each dictionary owns its frequency DOM");
+  const labels = [...f.popup.querySelectorAll(".jl-dictionary")];
+  const labelText = labels.map(label => label.firstChild);
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  const form = f.popup.querySelector("form");
+  form.elements.definition.value = "Keep my draft";
+  const glossary = f.popup.querySelector(".bee-rich-content");
+  for (const change of [{}, { pitchAccentFuriganaStyle: "overline" }]) {
+    f.view.updateDictionaryPresentation({ ...context, ...change });
+    assert.ok(labels.every((label, index) => label.firstChild === labelText[index]),
+      "unchanged and pitch-only updates retain dictionary label text nodes");
+    assert.ok(chips.every((chip, index) => chip === f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")[index]),
+      "unchanged and pitch-only updates retain exact frequency nodes");
+  }
+  f.view.updateDictionaryPresentation({ ...context, dictionaryPresentation: context.dictionaryPresentation.map(item =>
+    item.title === "test" ? { ...item, displayName: "Words" } : item) });
+  const renamedLabel = labels.find(label => label.dataset.dictionary === "test");
+  assert.equal(renamedLabel.textContent, "Words");
+  assert.equal(renamedLabel.title, "Words", "dictionary aliases update visible labels and tooltips");
+  assert.ok(chips.every((chip, index) => chip === f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")[index]),
+    "non-frequency aliases retain exact frequency nodes");
+  const renamed = { ...context, dictionaryPresentation: context.dictionaryPresentation.map(item =>
+    item.title === "Ranks" ? { ...item, displayName: "New source" } : item) };
+  f.view.updateDictionaryPresentation(renamed);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-source").textContent, "New source");
+  assert.equal(chips[0].isConnected, false, "frequency aliases repaint");
+  f.view.updateDictionaryPresentation({ ...renamed, compactFrequencyNumbers: true });
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-value").textContent, "1.2k");
+  f.view.updateDictionaryPresentation({ ...renamed, averageFrequency: true });
+  assert.equal(f.popup.querySelector('[data-frequency-average="rank-based"] .gsm-hoshidicts-frequency-source').textContent, "Avg rank");
+  f.view.updateDictionaryPresentation({ ...renamed, showFrequencyDictionaryNames: false });
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-frequency-source"), null);
+  assert.equal(f.popup.querySelector(".bee-rich-content"), glossary);
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Keep my draft");
 });

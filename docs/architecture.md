@@ -668,6 +668,11 @@ movement does not cancel it. Dictionary links, clicked kanji, the depth limit an
 protected Note drafts behave the same in every mode. The option is kept local to
 a linked overlay.
 
+Glossary scanning continues when a disclosure, link or action button keeps
+focus. Editing fields and protected Note drafts still pause scanning. Internal
+dictionary links look up their complete target and start with all dictionaries
+visible; Back preserves the parent popup's selected tab.
+
 Disabled readers do not create pointer scan timers. Activation-gated readers
 remember the pointer but do not scan or schedule until the key is held. Modifier
 flags handle entering a tab while holding Shift/Control/Alt/Meta; a printable

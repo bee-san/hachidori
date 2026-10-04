@@ -1,0 +1,35 @@
+{
+  "purpose": "Private diagnostic: remove Bee word wrapper and reuse existing JL top flex row.",
+  "javascript": {
+    "path": "extension/vendor/themes/jl/theme.js",
+    "replacements": [
+      {
+        "find": "  function topLine(result, dictionary, candidate, context) {\n    const term = result.term;\n    const line = node(\"div\", \"jl-top\");\n    const word = enhanced ? node(\"div\", \"bee-word\") : line;\n    if (enhanced) line.append(word);\n    const reading = term.reading && term.reading !== term.expression ? term.reading : \"\";\n    const expression = spelling(result, candidate);\n    word.append(expression);\n    if (reading) word.append(pitchMarker(node(\"span\", \"jl-reading\"), reading, term, context));\n    // Without a reading JL marks the spelling itself, which only works for kana.\n    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);\n    const audio = components.createAudioControl(document, term.expression);\n    // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.\n    if (!enhanced) line.append(audio.element);\n    const steps = components.deinflectionSteps(result);\n    const matched = result.matched || \"\";\n    const process = steps.length ? `\uff5e${steps.map(step => step.name).join(\"\u2192\")}` : \"\";\n    // JL shows the matched text, then any deconjugation, unless it is just the word.\n    if (process || (matched && matched !== term.expression && matched !== term.reading)) {\n      word.append(node(\"span\", \"jl-deconj\", [matched, process].filter(Boolean).join(\" \")));\n    }\n    const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);\n    if (enhanced) for (const group of groups) frequencyDictionaries.add(group.dictionary);\n    if (groups.length) {\n      const element = node(\"span\", \"jl-frequency\");\n      frequencies.push({ element, groups, result });\n      line.append(element);\n    }\n    const actions = node(\"div\", \"gsm-hoshidicts-entry-actions\");\n    actions.setAttribute(\"role\", \"group\");\n    actions.setAttribute(\"aria-label\", \"Entry actions\");\n    if (enhanced) actions.append(audio.element);\n    if (enhanced) {\n      const sourceActions = node(\"div\", \"bee-source-actions\");\n      sourceActions.append(dictionaryLabel(dictionary), actions); line.append(sourceActions);\n    } else line.append(dictionaryLabel(dictionary), actions);\n    return { line, audio, actions };\n  }\n",
+        "replace": "  function topLine(result, dictionary, candidate, context) {\n    const term = result.term;\n    const line = node(\"div\", \"jl-top\");\n    const reading = term.reading && term.reading !== term.expression ? term.reading : \"\";\n    const expression = spelling(result, candidate);\n    line.append(expression);\n    if (reading) line.append(pitchMarker(node(\"span\", \"jl-reading\"), reading, term, context));\n    // Without a reading JL marks the spelling itself, which only works for kana.\n    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);\n    const audio = components.createAudioControl(document, term.expression);\n    // JL puts audio after the reading; Bee groups it with the Anki and pencil buttons.\n    if (!enhanced) line.append(audio.element);\n    const steps = components.deinflectionSteps(result);\n    const matched = result.matched || \"\";\n    const process = steps.length ? `\uff5e${steps.map(step => step.name).join(\"\u2192\")}` : \"\";\n    // JL shows the matched text, then any deconjugation, unless it is just the word.\n    if (process || (matched && matched !== term.expression && matched !== term.reading)) {\n      line.append(node(\"span\", \"jl-deconj\", [matched, process].filter(Boolean).join(\" \")));\n    }\n    const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);\n    if (enhanced) for (const group of groups) frequencyDictionaries.add(group.dictionary);\n    if (groups.length) {\n      const element = node(\"span\", \"jl-frequency\");\n      frequencies.push({ element, groups, result });\n      line.append(element);\n    }\n    const actions = node(\"div\", \"gsm-hoshidicts-entry-actions\");\n    actions.setAttribute(\"role\", \"group\");\n    actions.setAttribute(\"aria-label\", \"Entry actions\");\n    if (enhanced) actions.append(audio.element);\n    if (enhanced) {\n      const sourceActions = node(\"div\", \"bee-source-actions\");\n      sourceActions.append(dictionaryLabel(dictionary), actions); line.append(sourceActions);\n    } else line.append(dictionaryLabel(dictionary), actions);\n    return { line, audio, actions };\n  }\n"
+      },
+      {
+        "find": "      if (enhanced) {\n        const word = node(\"div\", \"bee-word\"); word.append(kanjiWord); line.append(word, sourceActions);\n      } else line.append(kanjiWord);",
+        "replace": "      line.append(kanjiWord);\n      if (enhanced) line.append(sourceActions);"
+      }
+    ]
+  },
+  "css": {
+    "path": "extension/vendor/themes/bee/theme.css",
+    "replacements": [
+      {
+        "find": ".bee-word { display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; }\n",
+        "replace": ""
+      },
+      {
+        "find": ".bee-word > :is(.jl-spelling, .jl-reading, .jl-deconj)",
+        "replace": ".jl-top > :is(.jl-spelling, .jl-reading, .jl-deconj)"
+      }
+    ]
+  },
+  "expectedNodeReduction": "One element and one flex layout per dictionary block; 36 fewer elements for 36 blocks.",
+  "requirements": [
+    "Apply only to diagnostic copies until geometry reviewed.",
+    "Keep source/actions on coherent full row.",
+    "Compare spelling, reading, frequencies and source/action rectangles at 560/420/300; inspect long spelling/reading/deconjugation."
+  ]
+}

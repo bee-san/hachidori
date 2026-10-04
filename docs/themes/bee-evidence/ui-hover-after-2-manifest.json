@@ -1,0 +1,47 @@
+{
+  "revision": "909204321688542bae7b1cec66b69a8f1f91ccdd",
+  "node": "v22.23.1",
+  "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+  "logicalCpus": 14,
+  "load": [
+    2.54,
+    1.96,
+    2.02
+  ],
+  "settings": {
+    "hoverEnabled": true,
+    "lookupMode": "hover",
+    "popupNestingMaxDepth": 2,
+    "popupWidthPx": 520,
+    "popupHeightPx": 500,
+    "popupColumns": 1,
+    "maxResults": 32,
+    "definitionBlurCountEnabled": false,
+    "showCompactDefinitionSummary": true,
+    "compactDefinitionSummaryCount": 3,
+    "popupTheme": "bee"
+  },
+  "words": [
+    "食べる",
+    "漢字",
+    "深層"
+  ],
+  "extensionSha256": "7cf1d68c4dc9c863946937cde0cf4ceea681951305f773528737d39b194685cf",
+  "samples": 1,
+  "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
+  "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
+  "probeSha256": "7dbcf878aa797a26ff4a7df0420b80692d738392f28b53cbe26b4a761b8adb1a",
+  "harnessSha256": "0de3954406201903213190eb0bab8bf4caa18240ac2dd1c5e0a25fec364e598c",
+  "archives": [
+    {
+      "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-hover-fixture.zip",
+      "bytes": 631,
+      "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
+    },
+    {
+      "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-senses.zip",
+      "bytes": 912,
+      "sha256": "190d78a71ae8f636b5c21739313989cc124ddaadbaff50c48847d4c601b4a26e"
+    }
+  ]
+}

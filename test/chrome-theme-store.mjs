@@ -270,9 +270,9 @@ try {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options.revision, options: { imageHoverPreview: "all", customButtons: [
-        { id: "search", type: "link", label: "Search", url: "https://example.test/%w" },
-        { id: "template", type: "anki", label: "My card", templateId: "default" },
-        { id: "extra", type: "link", label: "Another search", url: "https://example.test/%r" },
+        { id: "search", type: "link", label: "Custom button", url: "https://example.test/%w" },
+        { id: "template", type: "anki", label: "Custom button", templateId: "default" },
+        { id: "extra", type: "link", label: "Custom button", url: "https://example.test/%r" },
       ] } });
     if (!reply.ok) throw new Error(reply.error);
   });
@@ -294,7 +294,7 @@ try {
       menus: popup.querySelectorAll(".bee-more-actions").length,
       defaultStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))) };
   });
-  assert.deepEqual(bee.tabs, ["English", "Study"]);
+  assert.deepEqual(bee.tabs, ["All", "English", "Study"]);
   assert.ok(bee.rich > 0, "Bee shows formatted definitions immediately");
   assert.equal(bee.plain, 0, "Bee has no plain-text glossary");
   assert.equal(bee.disclosures, 0);
@@ -305,20 +305,34 @@ try {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const audio = getComputedStyle(popup.querySelector(".gsm-hoshidicts-audio-button"), "::before");
     const describe = style => ({ width: style.width, height: style.height, color: style.backgroundColor, mask: style.maskImage });
-    const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button"]
+    const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button",
+      '[data-custom-button-id="search"]', '[data-custom-button-id="template"]']
       .map(selector => popup.querySelector(selector));
     const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
       return { width: style.width, height: style.height, border: style.borderTopWidth, top: Math.round(rect.top) }; };
     const group = buttons[0].closest(".gsm-hoshidicts-entry-actions");
+    const iconRects = buttons.map(button => button.getBoundingClientRect()).sort((left, right) => left.left - right.left);
+    const gaps = iconRects.slice(1).map((rect, index) => rect.left - iconRects[index].right);
     const mineButton = popup.querySelector(".gsm-hoshidicts-mine-button"), savedState = mineButton.dataset.state;
     mineButton.dataset.state = "view-existing";
     const viewExistingColor = getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).backgroundColor;
     if (savedState === undefined) delete mineButton.dataset.state; else mineButton.dataset.state = savedState;
+    const more = popup.querySelector(".bee-more-actions"); more.open = true;
+    const overflow = more.querySelector("button"), overflowLabel = overflow.querySelector(".gsm-hoshidicts-text-action-label");
+    const menu = { label: overflowLabel.textContent, visible: overflowLabel.checkVisibility(),
+      icon: describe(getComputedStyle(overflow.querySelector(".bee-custom-action-icon"))),
+      border: getComputedStyle(overflow).borderTopWidth };
+    more.open = false;
     return { audio: describe(audio), viewExistingColor,
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
+      custom: buttons.slice(3).map(button => ({ ...describe(getComputedStyle(button.querySelector(".bee-custom-action-icon"))),
+        labelFontSize: getComputedStyle(button.querySelector(".gsm-hoshidicts-text-action-label")).fontSize,
+        labelAriaHidden: button.querySelector(".gsm-hoshidicts-text-action-label").getAttribute("aria-hidden"),
+        title: button.title, accessible: button.getAttribute("aria-label"),
+        iconName: button.querySelector(".bee-custom-action-icon").dataset.icon })), menu,
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
-      buttons: buttons.map(box), grouped: buttons.every(button => group.contains(button)),
+      buttons: buttons.map(box), gaps, grouped: buttons.every(button => group.contains(button)),
       order: [...group.querySelectorAll("button")].slice(0, 3).map(button => button.className.split(" ")[0]),
       cursors: [...popup.querySelectorAll("button:not(:disabled), summary")]
       .filter(node => node.matches("summary") || !node.closest("details:not([open])")).map(node => {
@@ -328,22 +342,77 @@ try {
         return node.contains(hit) ? getComputedStyle(hit).cursor : `${node.className} covered by ${hit?.className}`;
       }) };
   });
-  for (const icon of [icons.mine, icons.note]) {
+  for (const icon of [icons.mine, icons.note, ...icons.custom, icons.menu.icon]) {
     assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
   }
   assert.equal(icons.viewExistingColor, icons.audio.color, "the view-existing Anki book matches the other icons' colour");
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
-  assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
+  assert.deepEqual(icons.custom.map(icon => [icon.iconName, icon.labelFontSize, icon.labelAriaHidden, icon.title, icon.accessible]), [
+    ["open", "0px", "true", "Open Custom button", "Open Custom button"],
+    ["document-add", "0px", "true", "Send to Anki with Custom button", "Send to Anki with Custom button"],
+  ], "inline custom icons keep meaningful tooltip and accessible action names");
+  assert.ok(icons.custom.every(icon => icon.mask !== "none"), "custom actions use the existing shared icons");
+  assert.deepEqual([icons.menu.label, icons.menu.visible, icons.menu.border], ["Custom button", true, "0px"],
+    "More actions retains a readable icon and label row");
+  assert.ok(icons.grouped, "audio, Anki, pencil and custom icons share one actions group");
+  assert.ok(icons.gaps.every(gap => Math.abs(gap - 4) < 1), "all inline actions share a four-pixel gap");
   assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
   for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
   assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
   const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
-  assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
+  assert.ok(tabGeometry.every(rect => rect.width > 0), "group tabs size to their labels like JL");
   assert.equal(tabGeometry[0].height, tabGeometry[1].height);
   assert.equal(tabGeometry[0].top, tabGeometry[1].top);
-  assert.ok(Math.abs(tabGeometry[0].right - tabGeometry[1].left) < 1, "group tabs share an edge without gaps");
+  assert.ok(Math.abs(tabGeometry[1].left - tabGeometry[0].right - 2) < 1, "group tabs use JL's two-pixel spacing");
+  await settings.bringToFront();
+  const previewStored = await preview.evaluate(async () => {
+    const stored = await chrome.storage.local.get(["options", "dictionaryState"]);
+    return { ...stored, options: HDReaderOptions.normaliseOptions(stored.options) };
+  });
+  for (const width of [560, 300]) {
+    await preview.evaluate(({ width, stored }) => HDDesignPreview.update({ ...stored.options,
+      popupWidthPx: width, showFrequencyDictionaryNames: true }, { revision: stored.dictionaryState.revision + 1,
+      groups: [], dictionaries: [
+        { id: "preview-definition", title: "JMdict", enabled: true, termCount: 1 },
+        { id: "preview-frequency", title: "Anime frequency", enabled: true, frequencyCount: 1, frequencyMode: "rank-based" },
+      ] }), { width, stored: previewStored });
+    await preview.waitForFunction(() => document.getElementById("preview-host").shadowRoot
+      .querySelector(".jl-dictionary")?.textContent === "JMdict");
+    await preview.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelector(".jl-tab").focus());
+    await settings.keyboard.press("Tab");
+    const layout = await preview.evaluate(() => {
+      const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      const label = popup.querySelector(".jl-dictionary");
+      const actions = popup.querySelector(".bee-source-actions > .gsm-hoshidicts-entry-actions");
+      const rect = node => node.getBoundingClientRect().toJSON();
+      const first = popup.querySelector(".jl-tab"); first.focus();
+      const focus = getComputedStyle(first);
+      return { popup: rect(popup), dictionary: rect(label), actions: rect(actions),
+        labelWidth: label.clientWidth, labelScrollWidth: label.scrollWidth,
+        frequencies: [...popup.querySelectorAll(".jl-entry:first-child .gsm-hoshidicts-tag-frequency")].map(rect),
+        tabs: [...popup.querySelectorAll(".jl-tab")].map(node => node.textContent),
+        focus: { visible: first.matches(":focus-visible"), offset: focus.outlineOffset, width: focus.outlineWidth } };
+    });
+    assert.deepEqual(layout.tabs, ["All", "Sample definitions", "Sample examples"], "synthetic preview groups identify themselves as samples");
+    assert.equal(layout.labelWidth, layout.labelScrollWidth, `JMdict remains fully readable at ${width}px: ${JSON.stringify(layout)}`);
+    assert.ok(Math.abs(layout.dictionary.top + layout.dictionary.height / 2 - layout.actions.top - layout.actions.height / 2) < 1,
+      `dictionary and actions share a row at ${width}px`);
+    assert.ok(layout.dictionary.right <= layout.actions.left && layout.actions.right <= layout.popup.right,
+      `source and actions stay inside the popup at ${width}px`);
+    assert.equal(layout.frequencies.length, 3, "all three frequency sources remain present");
+    assert.ok(layout.frequencies.every(rect => rect.left >= layout.popup.left && rect.right <= layout.popup.right),
+      `frequency metadata wraps inside the popup at ${width}px`);
+    assert.deepEqual(layout.focus, { visible: true, offset: "-2px", width: "2px" }, "tab focus stays inset at the clipped popup edge");
+    // The iframe is scaled to fit; capture its visible stage rather than using
+    // an inner element's unscaled screenshot coordinates.
+    const previewFrame = await preview.frameElement();
+    await previewFrame.screenshot({ path: resolve(output, `bee-preview-layout-${width}.png`) });
+    await previewFrame.dispose();
+  }
+  await preview.evaluate(stored => HDDesignPreview.update(stored.options, stored.dictionaryState), previewStored);
+  await hover();
   const contrast = [];
   const checkBeeContrast = async () => {
     const checks = await tab.evaluate(() => {
@@ -384,6 +453,9 @@ try {
       for (const node of popup.querySelectorAll(".jl-tabs, .gsm-hoshidicts-text-action-button, input, textarea")) {
         if (node.getClientRects().length) check(node, "borderTopColor", 3, node.parentElement);
       }
+      for (const node of popup.querySelectorAll(".bee-custom-action-icon")) {
+        if (node.getClientRects().length) check(node, "backgroundColor", 3, node.parentElement);
+      }
       const mine = popup.querySelector(".gsm-hoshidicts-mine-button");
       const state = mine.dataset.state; mine.dataset.state = "duplicate";
       check(mine, "color", 3); mine.dataset.state = state;
@@ -404,24 +476,82 @@ try {
   await checkBeeContrast();
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
   await screenshot("bee");
+  const beeDesign = await settings.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const normalised = HDReaderOptions.normaliseOptions(options);
+    return { popupWidthPx: normalised.popupWidthPx, glossaryLayoutMode: normalised.glossaryLayoutMode };
+  });
+  const updateBeeDesign = patch => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  await updateBeeDesign({ popupWidthPx: 300 });
+  await hover();
+  await tab.waitForFunction(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    return !popup.hidden && popup.querySelector(".bee-more-actions") && popup.getBoundingClientRect().width <= 300;
+  });
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
+  await screenshot("bee-readable-300");
+  await tab.evaluate(() => {
+    const more = document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions");
+    more.open = true; more.querySelector("summary").focus();
+  });
+  await checkBeeContrast();
+  await screenshot("bee-readable-300-more");
+  await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions").open = false; });
+  await updateBeeDesign({ popupWidthPx: beeDesign.popupWidthPx, glossaryLayoutMode: "compact" });
+  await hover();
+  await tab.waitForFunction(() => document.querySelector("hachidori-host").dataset.hoshidictsGlossaryLayout === "compact");
+  await screenshot("bee-compact");
+  await updateBeeDesign(beeDesign);
+  await hover();
+  await tab.waitForFunction(() => !document.querySelector("hachidori-host").hasAttribute("data-hoshidicts-glossary-layout"));
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector("form:not([hidden])"));
   await checkBeeContrast();
   await screenshot("bee-note");
+  await tab.evaluate(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    popup.querySelector("form textarea").value = "Unfinished Bee meaning";
+    const more = popup.querySelector(".bee-more-actions");
+    more.open = true;
+    more.querySelector("summary").focus();
+  });
+  await tab.keyboard.press("Escape");
+  assert.deepEqual(await tab.evaluate(() => {
+    const shadow = document.querySelector("hachidori-host").shadowRoot;
+    const popup = shadow.querySelector(".gsm-hoshidicts-popup");
+    const more = popup.querySelector(".bee-more-actions");
+    return { menu: more.open, popup: popup.hidden, note: popup.querySelector("form").hidden,
+      draft: popup.querySelector("form textarea").value, focus: shadow.activeElement === more.querySelector("summary") };
+  }), { menu: false, popup: false, note: false, draft: "Unfinished Bee meaning", focus: true },
+  "the document-capture Escape handler closes More and restores focus before touching Note or popup");
   await tab.keyboard.press("Escape");
   assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), false,
     "Escape closes Bee's Note editor before closing its popup");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
   await screenshot("bee-kanji-rich");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").focus());
+  await screenshot("bee-back-focus");
+  const media = await tab.createCDPSession();
+  for (const scheme of ["dark", "light"]) {
+    await media.send("Emulation.setEmulatedMedia", { features: [
+      { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
+    await screenshot(`bee-back-focus-forced-${scheme}`);
+  }
+  await media.send("Emulation.setEmulatedMedia", { features: [] });
   const back = await tab.evaluate(() => {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const rect = element => { const { left, top, bottom, width } = element.getBoundingClientRect(); return { left, top, bottom, width }; };
     return { back: rect(popup.querySelector(".gsm-hoshidicts-kanji-back")), popup: rect(popup), tabs: rect(popup.querySelector(".jl-tabs")) };
   });
   assert.ok(back.back.left - back.popup.left < back.popup.width / 4, `kanji Back sits top left in Bee ${JSON.stringify(back)}`);
-  assert.ok(Math.abs(back.back.left - back.tabs.left) < 2, "kanji Back aligns with the tab row's left edge");
+  assert.ok(Math.abs(back.back.left - back.popup.left) <= 1, "kanji Back reaches the popup's left edge");
   assert.ok(back.back.bottom <= back.tabs.top, "kanji Back sits above the tab row");
   await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
   await tab.keyboard.press("Escape");
@@ -451,7 +581,6 @@ try {
   await hover();
   await checkBeeContrast();
   await screenshot("bee-structured-rich");
-  const media = await tab.createCDPSession();
   for (const scheme of ["dark", "light"]) {
     await media.send("Emulation.setEmulatedMedia", { features: [
       { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
@@ -474,7 +603,7 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee group-only tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
   console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();

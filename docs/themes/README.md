@@ -65,14 +65,17 @@ JL's `On:`, `Kun:` and `Statistics:` lines.
 ## Bee's Theme
 
 Bee's Theme puts Girlypop blush, magenta and violet colours on JL's typography, per-dictionary headers, inline
-audio/Anki controls and pitch marker. It adds tabs for configured dictionary
+audio/Anki controls and pitch marker. It adds All followed by tabs for configured dictionary
 groups with matching results, a pencil editor and custom actions beside each
 block, and shows each dictionary's formatted definition (markup and media) in
 place of JL's text and tag brackets. Audio, Anki and pencil sit together as one
 set of icon buttons, the kanji view's Back is top left, and hovering a glossary
 image shows Default's enlarged preview.
 With no matching groups, all results appear without a tab row. Extra custom
-actions go into More actions after the first two. See [details and measurements](bee.md).
+actions go into More actions after the first two. The Design preview includes
+explicitly labelled sample group tabs when no configured group matches. Compact glossaries,
+frequency names, compact numbers, averages and pitch notation style are
+available in Design. See [details and measurements](bee.md).
 
 ## Version 2 view contract
 
@@ -88,7 +91,7 @@ and returns `renderResults`, `renderKanji`, `renderNotice`, `renderLookupFailure
 `clear`, `destroy`, `captureTermView`, `currentEntryIndex`, `focusEntry`,
 `setDefinitionBlurState`, `setLookupStats`, `setSourceHighlightEnabled`,
 `updateDictionaryPresentation`, and `scrollElement`. Rich-only methods such as
-masonry, image preview, toolbar/custom buttons, note closing and deferred
+masonry, image preview, toolbar/custom buttons, note closing, action-menu dismissal and deferred
 presentation updates are optional.
 
 `createDictionaryTabs` supplies the existing dictionary/group descriptors.

@@ -1534,8 +1534,9 @@ cards, without changing the generated fixture files. Four Chrome projections
 cover All, ordered nonempty groups and an ungrouped favourite from the complete
 native result; ordinary contributors and grouped favourites receive no duplicate
 dictionary tabs. Warmed tab changes must issue no lookup, media or style
-requests. Linked-child, clicked-kanji and Back retain their semantic selection.
-Back restores an expanded, scrolled child with its prior tab, highlight and
+requests. Links open their exact target on All; a child's own tab selection
+survives clicked-kanji and Back while its parent keeps its selected tab.
+Back restores a complete, scrolled child with its prior tab, highlight and
 toolbar and identical dictionary cards, without another native lookup;
 its next Back still closes the child. Extension checks cover native-source fallback and
 terminal misses, cached versus changed-generation restoration, lazy IPA and
@@ -1547,10 +1548,11 @@ for protected Note forms and child anchors to retire before local projection.
 
 The same scenario saves columns one through four through Settings, compares
 actual card rectangles for shortest-column packing and non-overlap, then resets
-all one-column inline styles. Narrow/wide resizing, a held real PNG reply and
-genuine child Show more retain complete results, mounted drafts and anchors.
-Readiness includes the deferred generic-prefix definition before freezing the
-expanded DOM oracle. A nondefault column count also survives the existing full
+all one-column inline styles. Narrow/wide resizing and a held real PNG reply
+retain complete results, mounted drafts and anchors. Linked-child readiness
+requires the complete exact-target bodies before freezing the DOM oracle;
+resizing preserves those cards, the mounted Note draft and the parent anchor.
+A nondefault column count also survives the existing full
 browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
 `HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
 the Reading controls in light and dark themes.

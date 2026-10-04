@@ -9404,7 +9404,7 @@ async function main() {
       && noteContent.eventFirst?.request?.type === "hd_lookup"
       && noteContent.eventFirst.request.text === "\u5185\u90e8\u8a9e"
       && noteContent.eventFirst.request.maxResults === 7
-      && noteContent.eventFirst.request.scanLength === 9
+      && noteContent.eventFirst.request.scanLength === 3
       && noteContent.eventFirst.request.options?.frequencyDictionary === "Frequency A"
       && noteContent.eventFirst.request.options?.frequencyOrder === "descending"
       && noteContent.eventFirst.request.options?.primaryReading === "\u306a\u3044\u3076\u3054"
@@ -16304,7 +16304,7 @@ async function contentNoteStage() {
     const outcomes = [];
     for (const kind of ["term", "kanji"]) {
       for (const selection of [{ dictionary: "Generic" }, { groupId: "study" }, { favourites: true }]) {
-        const harness = await createHarness({ title: "Generic", kind });
+        const harness = await createHarness({ title: "Generic", kind }, { options: { scanLength: 2 } });
         await harness.initialLookup();
         const dictionaries = harness.driver.snapshot().dictionaries;
         const memberId = dictionaries[0].id;
@@ -16317,16 +16317,19 @@ async function contentNoteStage() {
         harness.emitState({ revision: 3, dictionaries,
           groups: [{ id: "study", name: "Latest group", dictionaryIds: [memberId] }] });
         harness.emitState({ revision: 2, dictionaries, groups: [] });
-        harness.reply(pending, { dictionaryCount: 1, results: [harness.term("child")] });
+        harness.reply(pending, { dictionaryCount: 1, results: [harness.term("ch"), harness.term("child")] });
         await operation;
         const child = harness.driver.viewRequest(1);
         const childContext = harness.render(1).context;
         const sameSelection = (value) => JSON.stringify(value) === JSON.stringify(selection);
-        const inherited = sameSelection(childContext.selectedDictionaryTab)
-          && child.selectedDictionaryTab !== parent.selectedDictionaryTab
+        const unfiltered = childContext.selectedDictionaryTab === null
+          && child.selectedDictionaryTab === null && sameSelection(parent.selectedDictionaryTab)
+          && pending.request.scanLength === 5
+          && harness.render(1).results.length === 1 && harness.render(1).results[0].matched === "child"
           && JSON.stringify(childContext.dictionaryTabGroups) === JSON.stringify([
             { id: "study", name: "Latest group", dictionaries: ["Generic"] },
           ]);
+        childContext.onDictionaryTabSelected(selection);
         const clicked = harness.callbacks(1).onKanjiClick("食");
         const request = harness.take(kind === "term" ? "hd_lookup_dictionary" : "hd_kanji");
         harness.reply(request, kind === "term"
@@ -16342,12 +16345,12 @@ async function contentNoteStage() {
           && sameSelection(child.selectedDictionaryTab) && sameSelection(parent.selectedDictionaryTab);
         const beforeBack = harness.sent.length;
         await clickedContext.onBack();
-        outcomes.push(inherited && copied && independent && harness.sent.length === beforeBack
+        outcomes.push(unfiltered && copied && independent && harness.sent.length === beforeBack
           && harness.driver.viewRequest(1) === child && sameSelection(harness.render(1).context.selectedDictionaryTab));
         harness.close();
       }
     }
-    return { "linked and clicked-kanji requests copy tab context and retain exact parent and Back selections": outcomes.every(Boolean) };
+    return { "internal links show all dictionaries while clicked-kanji and Back retain independently selected tabs": outcomes.every(Boolean) };
   }
 
   async function nestedLevelsCase() {
@@ -16583,7 +16586,9 @@ async function contentNoteStage() {
               return allowed;
             },
           });
-          view.renderResults(childRender.results, childRender.candidate, childRender.context);
+          childRender.context.onDictionaryTabSelected({ groupId: "g" });
+          view.renderResults(childRender.results, childRender.candidate,
+            { ...childRender.context, selectedDictionaryTab: { groupId: "g" } });
           const beforeFills = fills.length;
           detached.anchor.remove();
           parentSource.remove();
@@ -18280,18 +18285,19 @@ async function contentNoteStage() {
       && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
     const link = harness.internalLink({ query: "別の語", primaryReading: "べつ" });
     const linked = harness.take("hd_lookup");
-    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2, results: [harness.term("別")] });
+    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2,
+      results: [harness.term("別"), harness.term("別の語")] });
     await link;
     const linkedDescriptor = harness.driver.viewRequest(1);
     const linkKept = linked?.request.text === "別の語" && linked.request.options.primaryReading === "べつ"
-      && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
-      && harness.render(1)?.results[0].matched === "別"
+      && linked.request.scanLength === 3 && linkedDescriptor?.exactSelection === false
+      && harness.render(1)?.results[0].matched === "別の語"
       && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query;
-    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false, 1);
+    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別の語")], false, 1);
     harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
     const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
       && linkedRefresh.request.options.primaryReading === "べつ"
-      && harness.driver.viewRequest(1) === linkedDescriptor && harness.render(1)?.results[0].matched === "別"
+      && harness.driver.viewRequest(1) === linkedDescriptor && harness.render(1)?.results[0].matched === "別の語"
       && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query
       && harness.take("hd_lookup") === null;
     harness.close();
@@ -19626,6 +19632,17 @@ async function contentNoteStage() {
   }
 
   async function definitionTextLookupCase() {
+    function focusDisclosure(harness) {
+      const document = harness.popup.ownerDocument;
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Dictionary explanation";
+      details.append(summary);
+      harness.popup.append(details);
+      summary.focus();
+      return harness.popup.getRootNode().activeElement === summary;
+    }
+
     function appendGlossary(harness, text, depth = 0) {
       const document = harness.popup.ownerDocument;
       const glossary = document.createElement("div");
@@ -19643,6 +19660,7 @@ async function contentNoteStage() {
       await hover.initialLookup();
       const parent = hover.driver.viewRequest();
       const first = appendGlossary(hover, "食用語");
+      const focusedDisclosure = focusDisclosure(hover);
       const caretCalls = [];
       hover.popup.ownerDocument.caretPositionFromPoint = (_x, _y, options) => {
         caretCalls.push(options);
@@ -19779,6 +19797,7 @@ async function contentNoteStage() {
         deduplicated,
         depthLimited,
         explicitLink,
+        focusedDisclosure,
         glossaryOnly,
         japaneseOnly,
         mixedNumeral,
@@ -19824,6 +19843,7 @@ async function contentNoteStage() {
         });
         await activation.settle();
         const definition = appendGlossary(activation, "食用語");
+        const focusedActivationDisclosure = focusDisclosure(activation);
         activation.popup.ownerDocument.caretPositionFromPoint = () => ({
           offsetNode: definition.textNode,
           offset: 0,
@@ -19852,7 +19872,7 @@ async function contentNoteStage() {
           "definition text uses native closed-shadow caret scanning and preserves its parent popup":
             firstResult || firstDetails,
           "definition text inherits Japanese gating, depth limits and stationary activation":
-            gated && stationary?.request.text.startsWith("食用語"),
+            focusedActivationDisclosure && gated && stationary?.request.text.startsWith("食用語"),
           ...await definitionTriggerCases(),
         };
       } finally {
