@@ -4,9 +4,9 @@
   "cpu": "Intel(R) Core(TM) Ultra 7 165U",
   "logicalCpus": 14,
   "load": [
-    2.7,
-    2.84,
-    5.15
+    3.86,
+    2.97,
+    3.34
   ],
   "settings": {
     "hoverEnabled": true,

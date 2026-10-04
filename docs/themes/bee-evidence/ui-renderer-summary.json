@@ -1,22 +1,23 @@
 {
   "environment": {
-    "startedAt": "2026-10-04T10:27:02.316Z",
+    "startedAt": "2026-10-04T11:50:33.268Z",
     "platform": "linux",
     "release": "7.2.6-1-cachyos",
     "node": "v22.23.1",
     "cpu": "Intel(R) Core(TM) Ultra 7 165U",
     "logicalCpus": 14,
     "load": [
-      1.87,
-      2.68,
-      5.32
+      0.99,
+      2.19,
+      3.19
     ],
-    "profiles": 3,
+    "profiles": 6,
     "measurements": 100,
     "warmups": 20,
     "theme": "bee",
     "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
-    "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+    "order": "one fresh browser per profile; both revisions share one renderer process; reverse setup/scenario order in odd profiles and alternate measured checkout order every iteration",
+    "control": "Both views stay connected in independent shadow roots in one document. Shared production component sources must match byte-for-byte.",
     "chrome": "Chrome/153.0.8010.36"
   },
   "checkouts": [
@@ -53,46 +54,67 @@
           "retainedFrequency": false,
           "pitchRetainedFrequency": false,
           "render": {
-            "n": 300,
-            "median": 2.5,
-            "p95": 4.5
+            "n": 600,
+            "median": 3.400000000372529,
+            "p95": 5.099999999627471
           },
           "unchanged": {
-            "n": 300,
-            "median": 0.3000000002793968,
-            "p95": 0.6000000000931323
+            "n": 600,
+            "median": 0.5,
+            "p95": 0.8999999985098839
           },
           "groupRename": {
-            "n": 300,
-            "median": 0.39999999990686774,
-            "p95": 0.5
+            "n": 600,
+            "median": 0.5,
+            "p95": 0.6999999992549419
           },
           "pitchChange": {
-            "n": 300,
-            "median": 0.5,
-            "p95": 0.7000000001862645
+            "n": 600,
+            "median": 0.6999999992549419,
+            "p95": 1
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 3,
-              "unchanged": 0.5,
+              "render": 3.599999999627471,
+              "unchanged": 0.599999999627471,
               "groupRename": 0.5,
-              "pitchChange": 0.6999999997206032
+              "pitchChange": 0.7999999988824129
             },
             {
               "profile": 1,
-              "render": 1.7000000001862645,
-              "unchanged": 0.2999999998137355,
-              "groupRename": 0.2999999998137355,
-              "pitchChange": 0.39999999990686774
+              "render": 3.299999998882413,
+              "unchanged": 0.5,
+              "groupRename": 0.5,
+              "pitchChange": 0.6999999992549419
             },
             {
               "profile": 2,
-              "render": 2.5,
-              "unchanged": 0.3000000002793968,
-              "groupRename": 0.39999999990686774,
-              "pitchChange": 0.5
+              "render": 3.5,
+              "unchanged": 0.5,
+              "groupRename": 0.5,
+              "pitchChange": 0.7999999988824129
+            },
+            {
+              "profile": 3,
+              "render": 3.099999999627471,
+              "unchanged": 0.5,
+              "groupRename": 0.5,
+              "pitchChange": 0.6999999992549419
+            },
+            {
+              "profile": 4,
+              "render": 3.799999998882413,
+              "unchanged": 0.5,
+              "groupRename": 0.5,
+              "pitchChange": 0.7999999988824129
+            },
+            {
+              "profile": 5,
+              "render": 1.800000000745058,
+              "unchanged": 0.30000000074505806,
+              "groupRename": 0.3999999985098839,
+              "pitchChange": 0.40000000037252903
             }
           ]
         },
@@ -124,46 +146,67 @@
           "retainedFrequency": false,
           "pitchRetainedFrequency": false,
           "render": {
-            "n": 300,
-            "median": 22.399999999906868,
-            "p95": 34.6999999997206
+            "n": 600,
+            "median": 29.799999998882413,
+            "p95": 40.69999999925494
           },
           "unchanged": {
-            "n": 300,
-            "median": 4.100000000093132,
-            "p95": 5.7000000001862645
+            "n": 600,
+            "median": 5,
+            "p95": 6.5
           },
           "groupRename": {
-            "n": 300,
-            "median": 3.699999999953434,
-            "p95": 6
+            "n": 600,
+            "median": 5.199999999254942,
+            "p95": 7.900000000372529
           },
           "pitchChange": {
-            "n": 300,
-            "median": 4.300000000279397,
-            "p95": 10
+            "n": 600,
+            "median": 6.799999998882413,
+            "p95": 7.799999998882413
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 29.300000000046566,
-              "unchanged": 5.100000000093132,
-              "groupRename": 4.899999999906868,
-              "pitchChange": 7.350000000093132
+              "render": 35.549999999813735,
+              "unchanged": 5.199999999254942,
+              "groupRename": 5.200000001117587,
+              "pitchChange": 6.7999999998137355
             },
             {
               "profile": 1,
-              "render": 21.699999999953434,
-              "unchanged": 2.8999999999068677,
-              "groupRename": 2.8999999999068677,
-              "pitchChange": 3.7999999998137355
+              "render": 30.600000000558794,
+              "unchanged": 4.900000000372529,
+              "groupRename": 5.299999998882413,
+              "pitchChange": 7
             },
             {
               "profile": 2,
-              "render": 17.9000000001397,
-              "unchanged": 4.100000000093132,
-              "groupRename": 2.8999999999068677,
-              "pitchChange": 4.199999999720603
+              "render": 29.850000000558794,
+              "unchanged": 5,
+              "groupRename": 5.300000000745058,
+              "pitchChange": 7
+            },
+            {
+              "profile": 3,
+              "render": 29.5,
+              "unchanged": 4.799999998882413,
+              "groupRename": 5.199999999254942,
+              "pitchChange": 6.700000001117587
+            },
+            {
+              "profile": 4,
+              "render": 29.5,
+              "unchanged": 5.200000001117587,
+              "groupRename": 5.099999999627471,
+              "pitchChange": 6.800000000745058
+            },
+            {
+              "profile": 5,
+              "render": 18.40000000037253,
+              "unchanged": 3,
+              "groupRename": 3.699999999254942,
+              "pitchChange": 4
             }
           ]
         },
@@ -195,55 +238,76 @@
           "retainedFrequency": false,
           "pitchRetainedFrequency": false,
           "render": {
-            "n": 300,
-            "median": 12.5,
-            "p95": 41.89999999990687
+            "n": 600,
+            "median": 16,
+            "p95": 22.59999999962747
           },
           "unchanged": {
-            "n": 300,
-            "median": 2,
-            "p95": 3.1999999997206032
+            "n": 600,
+            "median": 2.400000000372529,
+            "p95": 2.800000000745058
           },
           "groupRename": {
-            "n": 300,
-            "median": 1.7000000001862645,
-            "p95": 2.3000000002793968
+            "n": 600,
+            "median": 2.5,
+            "p95": 3.099999999627471
           },
           "pitchChange": {
-            "n": 300,
-            "median": 2.25,
-            "p95": 3
+            "n": 600,
+            "median": 3.200000001117587,
+            "p95": 3.699999999254942
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 16.600000000093132,
-              "unchanged": 1.6000000000931323,
-              "groupRename": 1.6999999999534339,
-              "pitchChange": 2.2999999998137355
+              "render": 16.5,
+              "unchanged": 2.5,
+              "groupRename": 2.599999999627471,
+              "pitchChange": 3.400000000372529
             },
             {
               "profile": 1,
-              "render": 9.850000000093132,
-              "unchanged": 2.099999999627471,
-              "groupRename": 1.5999999998603016,
-              "pitchChange": 2
+              "render": 16.90000000037253,
+              "unchanged": 2.599999999627471,
+              "groupRename": 2.699999999254942,
+              "pitchChange": 3.399999998509884
             },
             {
               "profile": 2,
-              "render": 12.599999999860302,
-              "unchanged": 2.1000000000931323,
-              "groupRename": 2.1499999999068677,
-              "pitchChange": 2.6000000000931323
+              "render": 15.699999999254942,
+              "unchanged": 2.400000000372529,
+              "groupRename": 2.5,
+              "pitchChange": 3.199999999254942
+            },
+            {
+              "profile": 3,
+              "render": 16.399999999441206,
+              "unchanged": 2.599999999627471,
+              "groupRename": 2.600000001490116,
+              "pitchChange": 3.400000000372529
+            },
+            {
+              "profile": 4,
+              "render": 10.800000000745058,
+              "unchanged": 1.400000000372529,
+              "groupRename": 1.5,
+              "pitchChange": 1.8999999985098839
+            },
+            {
+              "profile": 5,
+              "render": 11,
+              "unchanged": 1.7000000001862645,
+              "groupRename": 1.900000000372529,
+              "pitchChange": 2.200000001117587
             }
           ]
         }
       ]
     },
     {
-      "path": "/tmp/hachidori-bee-ui-after-7cf27d9e",
-      "revision": "7cf27d9e566fb7809adb62c6a05080fa681e0022",
-      "extensionSha256": "fdbdcc41529c2a2f3c0a19baa10f12d6ca56d5b4cbef5031008a3628ceed8ab6",
+      "path": "/tmp/hachidori-bee-ui-after-7bd76589",
+      "revision": "7bd76589c30b3a03b19440ce2f57352218cfbae5",
+      "extensionSha256": "960a51529bbd6ac895ef38030dd1e29b24e1f560034aa543634d4708eb4139fe",
       "scenarios": [
         {
           "results": 1,
@@ -271,46 +335,67 @@
           "retainedFrequency": true,
           "pitchRetainedFrequency": true,
           "render": {
-            "n": 300,
-            "median": 1.8999999999068677,
-            "p95": 2.8999999999068677
+            "n": 600,
+            "median": 3.5,
+            "p95": 5.399999998509884
           },
           "unchanged": {
-            "n": 300,
-            "median": 0.09999999962747097,
-            "p95": 0.10000000009313226
+            "n": 600,
+            "median": 0,
+            "p95": 0.10000000149011612
           },
           "groupRename": {
-            "n": 300,
-            "median": 0.09999999962747097,
-            "p95": 0.10000000009313226
+            "n": 600,
+            "median": 0,
+            "p95": 0.09999999962747097
           },
           "pitchChange": {
-            "n": 300,
-            "median": 0.19999999972060323,
-            "p95": 0.2999999998137355
+            "n": 600,
+            "median": 0.2999999988824129,
+            "p95": 0.40000000037252903
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 1.8000000002793968,
-              "unchanged": 0.049999999813735485,
+              "render": 3.699999999254942,
+              "unchanged": 0,
               "groupRename": 0,
-              "pitchChange": 0.19999999972060323
+              "pitchChange": 0.30000000074505806
             },
             {
               "profile": 1,
-              "render": 1.7999999998137355,
+              "render": 3.400000000372529,
               "unchanged": 0,
               "groupRename": 0,
-              "pitchChange": 0.10000000009313226
+              "pitchChange": 0.2000000011175871
             },
             {
               "profile": 2,
-              "render": 2.6000000000931323,
-              "unchanged": 0.10000000009313226,
-              "groupRename": 0.10000000009313226,
-              "pitchChange": 0.20000000018626451
+              "render": 3.699999999254942,
+              "unchanged": 0,
+              "groupRename": 0,
+              "pitchChange": 0.2999999998137355
+            },
+            {
+              "profile": 3,
+              "render": 3.199999999254942,
+              "unchanged": 0,
+              "groupRename": 0,
+              "pitchChange": 0.2999999988824129
+            },
+            {
+              "profile": 4,
+              "render": 3.900000000372529,
+              "unchanged": 0,
+              "groupRename": 0,
+              "pitchChange": 0.30000000074505806
+            },
+            {
+              "profile": 5,
+              "render": 1.900000000372529,
+              "unchanged": 0,
+              "groupRename": 0,
+              "pitchChange": 0.19999999925494194
             }
           ]
         },
@@ -340,46 +425,67 @@
           "retainedFrequency": true,
           "pitchRetainedFrequency": true,
           "render": {
-            "n": 300,
-            "median": 20.75,
-            "p95": 26.5
+            "n": 600,
+            "median": 30.5,
+            "p95": 41.600000001490116
           },
           "unchanged": {
-            "n": 300,
-            "median": 0.6000000000931323,
-            "p95": 0.7000000001862645
+            "n": 600,
+            "median": 0.09999999962747097,
+            "p95": 0.19999999925494194
           },
           "groupRename": {
-            "n": 300,
-            "median": 0.5,
-            "p95": 0.7999999998137355
+            "n": 600,
+            "median": 0.09999999962747097,
+            "p95": 0.2000000011175871
           },
           "pitchChange": {
-            "n": 300,
-            "median": 1.6000000000931323,
-            "p95": 2
+            "n": 600,
+            "median": 2.100000001490116,
+            "p95": 2.5
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 20.5,
-              "unchanged": 0.6000000000931323,
-              "groupRename": 0.599999999627471,
-              "pitchChange": 1.8000000002793968
+              "render": 36.34999999962747,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 2.1000000005587935
             },
             {
               "profile": 1,
-              "render": 20.100000000093132,
-              "unchanged": 0.599999999627471,
-              "groupRename": 0.599999999627471,
-              "pitchChange": 1.3999999999068677
+              "render": 31.350000000558794,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 2.2000000001862645
             },
             {
               "profile": 2,
-              "render": 23.300000000046566,
-              "unchanged": 0.6000000000931323,
-              "groupRename": 0.5,
-              "pitchChange": 1.5
+              "render": 30.5,
+              "unchanged": 0,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 2.199999999254942
+            },
+            {
+              "profile": 3,
+              "render": 30.300000000745058,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 2.199999999254942
+            },
+            {
+              "profile": 4,
+              "render": 30.200000000186265,
+              "unchanged": 0,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 2.199999999254942
+            },
+            {
+              "profile": 5,
+              "render": 18.700000000186265,
+              "unchanged": 0,
+              "groupRename": 0.09999999962747097,
+              "pitchChange": 1.3999999985098839
             }
           ]
         },
@@ -409,46 +515,67 @@
           "retainedFrequency": true,
           "pitchRetainedFrequency": true,
           "render": {
-            "n": 300,
-            "median": 9.599999999860302,
-            "p95": 14
+            "n": 600,
+            "median": 16.5,
+            "p95": 20.800000000745058
           },
           "unchanged": {
-            "n": 300,
-            "median": 0.20000000018626451,
-            "p95": 0.39999999990686774
+            "n": 600,
+            "median": 0.09999999962747097,
+            "p95": 0.2000000011175871
           },
           "groupRename": {
-            "n": 300,
-            "median": 0.2999999998137355,
-            "p95": 0.5
+            "n": 600,
+            "median": 0.2999999988824129,
+            "p95": 0.40000000037252903
           },
           "pitchChange": {
-            "n": 300,
-            "median": 0.8999999999068677,
-            "p95": 1.1000000000931323
+            "n": 600,
+            "median": 1.099999999627471,
+            "p95": 1.300000000745058
           },
           "profileMedians": [
             {
               "profile": 0,
-              "render": 9,
-              "unchanged": 0.20000000018626451,
-              "groupRename": 0.2999999998137355,
-              "pitchChange": 0.8999999999068677
+              "render": 17.049999999813735,
+              "unchanged": 0.10000000149011612,
+              "groupRename": 0.30000000074505806,
+              "pitchChange": 1.199999999254942
             },
             {
               "profile": 1,
-              "render": 11.299999999813735,
-              "unchanged": 0.20000000018626451,
-              "groupRename": 0.2999999998137355,
-              "pitchChange": 0.7999999998137355
+              "render": 17.300000000745058,
+              "unchanged": 0.10000000055879354,
+              "groupRename": 0.30000000074505806,
+              "pitchChange": 1.1000000005587935
             },
             {
               "profile": 2,
-              "render": 9.400000000139698,
-              "unchanged": 0.2999999998137355,
-              "groupRename": 0.39999999990686774,
-              "pitchChange": 1
+              "render": 16.049999999813735,
+              "unchanged": 0.10000000149011612,
+              "groupRename": 0.30000000074505806,
+              "pitchChange": 1.099999999627471
+            },
+            {
+              "profile": 3,
+              "render": 16.90000000037253,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.30000000074505806,
+              "pitchChange": 1.199999999254942
+            },
+            {
+              "profile": 4,
+              "render": 11.049999999813735,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.19999999925494194,
+              "pitchChange": 0.6000000014901161
+            },
+            {
+              "profile": 5,
+              "render": 10.849999998696148,
+              "unchanged": 0.09999999962747097,
+              "groupRename": 0.19999999925494194,
+              "pitchChange": 0.7000000011175871
             }
           ]
         }

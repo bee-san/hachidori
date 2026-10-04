@@ -26,7 +26,7 @@ have an underline and keyboard focus has a visible violet outline.
 - **Controls:** audio, Anki and the pencil sit together after the dictionary
   name as identical icon buttons, using Hachidori's outline icon set at one size
   in the text colour. All actions have the same four-pixel gap, including custom
-  buttons. Word and reading share the first row, frequencies wrap independently,
+  buttons. Word and reading lead the header, frequencies wrap independently,
   and the dictionary name shares a separate row with actions. Long names shrink
   with an ellipsis; hovering them shows the full name. Every enabled control shows a pointer cursor. Back sits at the
   popup's upper left, including when Close is also available.
@@ -40,9 +40,11 @@ have an underline and keyboard focus has a visible violet outline.
 - **Personal dictionary:** each block's pencil opens the shared Term, Reading
   and Definition form beneath its header. Exact selections prefill the selected
   text. Escape closes the form first; group presentation updates preserve drafts.
-- **Custom actions:** configured link and Anki-template buttons appear beside the
-  existing controls. The first two stay inline, with the remainder in More
-  actions. Escape closes More actions and returns focus to its trigger before
+- **Custom actions:** buttons configured in Design → Custom buttons appear
+  beside the existing controls; an unconfigured theme has none. The first two
+  use external-link and add-card icons, with their names in hover titles and
+  accessible labels. More actions lists the remainder with icons and names.
+  Escape closes More actions and returns focus to its trigger before
   closing a Note form or the popup. Selecting an action or pressing outside the
   menu also closes it. Each mining button receives its own dictionary's definitions.
 - **Child lookups:** glossary words follow the page's hover or activation mode,
@@ -55,20 +57,19 @@ It builds its own popup and stylesheet. Sources and attribution are in
 The bundled renderer also includes the locally reviewed layout, navigation and
 frequency-update refinements described here.
 
+The screenshots configure optional actions named **Custom button** to show their
+icon and More menu placement. A new installation has no custom buttons.
+
 ![All and group tabs with readable source and uniform actions](../assets/bee/bee-refined.png)
-![Readable source and three frequency sources at 300 pixels](../assets/bee/bee-readable-300.png)
+![Readable dictionary source and icon actions at 300 pixels](../assets/bee/bee-readable-300.png)
 ![Compact glossaries](../assets/bee/bee-compact.png)
 ![Back at the upper left](../assets/bee/bee-back.png)
 ![Back keyboard focus stays inside the popup](../assets/bee/bee-back-focus.png)
 ![Sample groups in the Design preview](../assets/bee/bee-preview-groups.png)
 ![Complete Design preview at 300 pixels](../assets/bee/bee-preview-300.png)
-![Long custom action labels at a narrow width](../assets/bee/bee-long-300.png)
 ![More actions at a narrow width](../assets/bee/bee-long-300-more.png)
-![Child popup after holding the scan key](../assets/bee/bee-child-popup.png)
-![See link opens its target](../assets/bee/bee-see-link.png)
 ![Personal dictionary editor](../assets/bee/bee-note.png)
 ![Structured dictionary](../assets/bee/bee-structured-rich.png)
-![Enlarged image preview](../assets/bee/bee-image-preview.png)
 
 ## Validation
 
@@ -85,6 +86,8 @@ default popup opacity composited over both white and black pages.
 ![Forced-colour dark](../assets/bee/bee-refined-forced-dark.png)
 ![Back focus in forced-colour light](../assets/bee/bee-back-focus-forced-light.png)
 ![Back focus in forced-colour dark](../assets/bee/bee-back-focus-forced-dark.png)
+
+[45-palette contrast filmstrip](../assets/bee/theme-contrast.png).
 
 ## Performance
 

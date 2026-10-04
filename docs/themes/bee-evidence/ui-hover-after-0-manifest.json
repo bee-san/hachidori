@@ -1,12 +1,12 @@
 {
-  "revision": "7cf27d9e566fb7809adb62c6a05080fa681e0022",
+  "revision": "7bd76589c30b3a03b19440ce2f57352218cfbae5",
   "node": "v22.23.1",
   "cpu": "Intel(R) Core(TM) Ultra 7 165U",
   "logicalCpus": 14,
   "load": [
-    2.54,
-    2.82,
-    5.17
+    4.04,
+    2.97,
+    3.34
   ],
   "settings": {
     "hoverEnabled": true,
@@ -26,7 +26,7 @@
     "漢字",
     "深層"
   ],
-  "extensionSha256": "fdbdcc41529c2a2f3c0a19baa10f12d6ca56d5b4cbef5031008a3628ceed8ab6",
+  "extensionSha256": "960a51529bbd6ac895ef38030dd1e29b24e1f560034aa543634d4708eb4139fe",
   "samples": 1,
   "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
   "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",

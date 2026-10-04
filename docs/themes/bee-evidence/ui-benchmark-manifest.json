@@ -2,52 +2,65 @@
   "date": "2026-10-04",
   "onlyThemeBenchmarked": "bee",
   "beforeRevision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
-  "afterRevision": "7cf27d9e566fb7809adb62c6a05080fa681e0022",
+  "afterRevision": "7bd76589c30b3a03b19440ce2f57352218cfbae5",
   "environment": {
-    "startedAt": "2026-10-04T10:27:02.316Z",
+    "startedAt": "2026-10-04T11:50:33.268Z",
     "platform": "linux",
     "release": "7.2.6-1-cachyos",
     "node": "v22.23.1",
     "cpu": "Intel(R) Core(TM) Ultra 7 165U",
     "logicalCpus": 14,
     "load": [
-      1.87,
-      2.68,
-      5.32
+      0.99,
+      2.19,
+      3.19
     ],
-    "profiles": 3,
+    "profiles": 6,
     "measurements": 100,
     "warmups": 20,
     "theme": "bee",
     "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
-    "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+    "order": "one fresh browser per profile; both revisions share one renderer process; reverse setup/scenario order in odd profiles and alternate measured checkout order every iteration",
+    "control": "Both views stay connected in independent shadow roots in one document. Shared production component sources must match byte-for-byte.",
     "chrome": "Chrome/153.0.8010.36"
   },
   "renderer": {
     "harness": "benchmark/bee-renderer.mjs",
-    "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
-    "profilesPerRevision": 3,
+    "harnessSha256": "f5f04fae63b3b85456389e040394e3b2f2d671268dee2ba00a26237ee7a8d3cb",
+    "profilesPerRevision": 6,
     "warmupsPerCell": 20,
     "samplesPerCellPerProfile": 100,
-    "samplesPerScenarioPerRevision": 300,
-    "inputs": "1 or 12 results across 3 dictionaries; eight senses per dictionary; 3 named frequency sources, pitch position 2 and 3 custom link actions; popup 560x420; grouped case explicitly selects the first dictionary (12 visible of 36).",
-    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media."
+    "samplesPerScenarioPerRevision": 600,
+    "inputs": "1 or 12 results across three dictionaries; eight senses per dictionary; three named frequency sources; pitch position 2; link, Anki and link custom actions all labelled Custom button; popup 560 x 420; grouped case explicitly selects the first dictionary, showing 12 of 36 blocks.",
+    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+    "control": "One fresh renderer process per profile, both revisions in independent shadow roots. Every measured iteration alternates checkout order, and setup/scenario order reverses in odd profiles.",
+    "actionFixture": {
+      "labels": [
+        "Custom button",
+        "Custom button",
+        "Custom button"
+      ],
+      "types": [
+        "link",
+        "anki",
+        "link"
+      ],
+      "ankiTemplateId": "sentence"
+    },
+    "sharedProductionComponentSources": "Byte-identical reader-options.js, external-links.js, render/glossary.js and render/popup.js are required by the harness."
   },
   "hover": {
     "harness": "benchmark/hover-popup.mjs",
-    "profilesPerRevision": 6,
+    "profilesPerRevision": 3,
     "warmLookupsPerProfile": 24,
-    "warmLookupsPerRevision": 144,
-    "coldLookupsPerRevision": 6,
+    "warmLookupsPerRevision": 72,
+    "coldLookupsPerRevision": 3,
     "order": [
       "before-after",
       "after-before",
-      "before-after",
-      "after-before",
-      "before-after",
-      "after-before"
+      "before-after"
     ],
-    "boundary": "Production extension, MV3 worker and WASM path through first visible result and two stable frames; compact summaries enabled.",
+    "boundary": "Production extension, MV3 worker and WASM path through first visible result and two stable frames; compact summaries enabled; no configured custom buttons.",
     "fixtures": [
       {
         "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-hover-fixture.zip",
@@ -62,40 +75,361 @@
     ]
   },
   "limits": [
-    "Synthetic public fixtures, not a large installed dictionary library",
-    "Shared desktop; no CPU isolation. Final runs use alternating paired order and retain profile results/load.",
-    "No claimed general speedup for initial render or warm end-to-end hover. Frequency and pitch presentation updates remove measured unnecessary work.",
-    "Initial-render profile differences have mixed signs; one all-visible final profile is 5.4ms slower and one grouped profile 1.45ms slower, while other paired profiles are faster.",
-    "Cold first-display ranges remain noisy with six samples per revision; baseline hover has occasional desktop stalls.",
-    "Hidden-group glossaries and action sets are still fully constructed; no work is deferred beyond the measured renderer interval."
+    "Synthetic public fixtures, not a large installed dictionary library.",
+    "Shared desktop without CPU isolation. Alternating iteration order retains every measured sample and profile load.",
+    "Hidden-group glossaries and action sets are still fully constructed; no work is deferred beyond the measured renderer interval.",
+    "Final initial-render medians rise by 0.1 ms, 0.7 ms and 0.5 ms for 3 blocks, 36 visible blocks and 36 blocks with 12 visible. The 3-block and 36-visible paired medians rise in all six profiles. This is remaining header/action layout cost, not an initial speedup.",
+    "Warm end-to-end hover is not a claimed speedup. Final hover has three fresh profiles per revision and 72 warm lookups; cold has only three samples per revision.",
+    "Zero-millisecond presentation medians reflect the observed 0.1 ms timer quantization, not an absence of work.",
+    "Intermediate diagnostic workloads use three custom links labelled Search, Sentence and More. The final workload uses link, Anki and link actions all labelled Custom button. Their timings and different harness boundaries are not pooled.",
+    "Mask suppression hides glyphs and is not a valid product optimization. The loaded label-reuse diagnostic includes an unrelated eight-way WASM compile burst. All measured samples from indexed runs remain, including stalls."
   ],
   "artifacts": {
-    "ui-hover-after-0-manifest.json": "aaef538fd0115868c81db4ad0dbc5e57bb023c306a768a488818a95bcb8f06c8",
-    "ui-hover-after-0-raw.json.gz": "cc6ca2ff1b0f18d7307972813fbbb08184663c1bb845d634a7b9d0b4050562f3",
-    "ui-hover-after-1-manifest.json": "640e4c639bc88f5a6abd94ae136ffed61b6928aadf4b10752818be20958ed471",
-    "ui-hover-after-1-raw.json.gz": "005d03715dde9a53c303912e9027f747f719ba38f6d6ffc1e204a66d09b1087f",
-    "ui-hover-after-2-manifest.json": "0ce5b61ca32b05dbf36651742cf007e0a3cdc1003919460b25c65903008196b8",
-    "ui-hover-after-2-raw.json.gz": "37ecd3a5c645ea6b64618bc85349b3cf019a107107e72b380065a42edd37cf96",
-    "ui-hover-after-3-manifest.json": "026024de73ca340bb1bfaf681eecc21f3465c0db25b236fbf944247143a97ac1",
-    "ui-hover-after-3-raw.json.gz": "896dd71d29525c63f2a3823b4a9a473263d67383d9c844bd2eeba4046b49eeef",
-    "ui-hover-after-4-manifest.json": "61faa9c80538a0d25bd371a79dc05d816660ac166f0ec221d68d52b26b1b5e29",
-    "ui-hover-after-4-raw.json.gz": "c9fdaa8227991b11729a05367381a52f65a1e7fd1651b94d455b3bb4abef0a38",
-    "ui-hover-after-5-manifest.json": "37678179ed93207d4a34928ab27faf37a76a9a053928dcdb0e9d0d42660ffc63",
-    "ui-hover-after-5-raw.json.gz": "7ef2c70fd958114b8c9c8e456d18b1f3cb32e4a8fedf863c2624cede8a82fbac",
-    "ui-hover-before-0-manifest.json": "ffe0bfe57b9b116d27b271c4728acd9dcad591a60277f42861da248965107b3f",
-    "ui-hover-before-0-raw.json.gz": "98e9e6fb068423dea0037bc5a41454fd4b6d3d5286ab63a0fa192e0664b325a8",
-    "ui-hover-before-1-manifest.json": "b605ab0d2de944c4c5ab49a5c3ed449489c294abb378ee3e910ab3ede6ce0b3b",
-    "ui-hover-before-1-raw.json.gz": "ecefb59c33355fab9e6a0c36358a3200c2e75d6c05fe1e283b36cea9c4dc87a1",
-    "ui-hover-before-2-manifest.json": "d64106bf4d8d4d29fc426a113bd2f476d8e3b0a31fc0dcb23b969afe499af950",
-    "ui-hover-before-2-raw.json.gz": "7fe572fa6a02eebbf9e81bece71ffb6af651e50a5d6d940303b1692834adbeeb",
-    "ui-hover-before-3-manifest.json": "a3734f3a058191a42729176a3af77ebfaa680f05677b3baa05e21488b37dd088",
-    "ui-hover-before-3-raw.json.gz": "2dcedcefea98144905538362f8d8b332ab8fa186c6555abff2f56a8206a56288",
-    "ui-hover-before-4-manifest.json": "04aae97aa861031fa6166e44499cea00450eb66aa21e55db34df640334a3ce90",
-    "ui-hover-before-4-raw.json.gz": "35a01765627236308ff1b3c333c1490f35fbc733560946bac3dc576eaec2c273",
-    "ui-hover-before-5-manifest.json": "add2000112889b439bf31f34feeb90bee82f1f72871566e0c98d47e2198f6e47",
-    "ui-hover-before-5-raw.json.gz": "6ff4bd8a0d1dd601c160376b21aece2dcbf67d919c662b4c57b04b9bee195df5",
-    "ui-hover-summary.json": "6341f532909dd8fc7431888ec212645b46b109f1067367838764c692f7daa848",
-    "ui-renderer-raw.json.gz": "18f4be1a05702b76c1b4a05a1212a978aa27c3ab0179be5f2a9338c08feb1b3f",
-    "ui-renderer-summary.json": "ff8730b959f44ebf305a3f59055df66d426d975a615c4f7bea0769a4fee44171"
-  }
+    "ui-hover-after-0-manifest.json": "4d3467eaee0161c205ccea16c21448a67b0ee8cd0a6cfd42d38ca1613cd6055e",
+    "ui-hover-after-0-raw.json.gz": "e0eba3e5a74aea3116f7a250d1d16a57530b3ae04059ec3a3d946b7c2ae0ae7f",
+    "ui-hover-after-1-manifest.json": "e53a27e5ca60fdb380ae26c129505205f8fd11be22e654c0ce0b54618ea3ea83",
+    "ui-hover-after-1-raw.json.gz": "d66001627a5a209c85b663691ae82283c4dcff3721f048d21662f60d882ae715",
+    "ui-hover-after-2-manifest.json": "2b271126de5cc1eaa4a51eb23fc9ca2d2081031bc126a21fe04be5ea61a3af5b",
+    "ui-hover-after-2-raw.json.gz": "429d835ab95a1eceaae03f51b91d3fb91114b413b2244302153baff0c7dc4094",
+    "ui-hover-before-0-manifest.json": "78095bb402d2ea31336b7da71c61630f2b93524809441ce9f7ad661866b6fc81",
+    "ui-hover-before-0-raw.json.gz": "6542d8da37ab08b854be13edd6af5efbbc9c8ac65b152c17fc14823ae9530b85",
+    "ui-hover-before-1-manifest.json": "3e04cf246d4a7e347e542c0daa31b3d58e3202895ceab023c24546f2de1d3aec",
+    "ui-hover-before-1-raw.json.gz": "a8efabd6f199ba9a89faf35b24e3fb75eff85fcb653435aa4eb7473b3a29fdf9",
+    "ui-hover-before-2-manifest.json": "20b4d0400684b858d273f1db8991f4a2be4f83ad58e1d269ee294a0fead65835",
+    "ui-hover-before-2-raw.json.gz": "1f689cc1706a239b784cc083e2077d2c5018b233552d37b64fc01372b9a1594c",
+    "ui-hover-summary.json": "04e7c93368a9472b9b0abc3ef2ef1209597ed82ef0540bb5e92bb7c3be48a513",
+    "ui-investigation-722-hover-raw.json.gz": "abcfde4c095dd5c197feb73bd87491894e48fe032b230df20ab019630388a575",
+    "ui-investigation-722-interleaved-raw.json.gz": "6ce02b763055f6c2e2a230a420430fc1a9d4dac5c0dc4aebcd10d691c73e49a7",
+    "ui-investigation-722-sequential-raw.json.gz": "584c0c7778c7c6887340dba1480a08546940dd261fa0c184d48da59057f3999c",
+    "ui-investigation-icons-raw.json.gz": "fa9f0c09c99b5cd0acb532548f520f131accbcc2a8a3963facb5617efafada4e",
+    "ui-investigation-icons-reverse-raw.json.gz": "bef6b1c23f3effb5d728b05ac3dbc32cdc94e4826f73045f2e776bdb33ae99ec",
+    "ui-investigation-interleaved-harness.mjs.gz": "523adeaffac84a0af61013e1bbe376c08f363354e4e1ac18ca839dff08b9e4c6",
+    "ui-investigation-label-reuse-confirmation-raw.json.gz": "db980a4dbf5be267b0f6c6a6404b12c88b75513710097251ff7e838057e96dab",
+    "ui-investigation-label-reuse-loaded-raw.json.gz": "bdbab8699d048116044bdab45573d1010811b2c45617baff99589cbb95753d48",
+    "ui-investigation-label-reuse-patch.json": "6c6975f5c25e8cdb080638350b4a553322dd3321d9d913b549851fbd1b4aad47",
+    "ui-investigation-mask-patch.json": "8d569f99be25986c14019fe3c189b464e51e75bf29b349f2076009f39b36d214",
+    "ui-investigation-mask-raw.json.gz": "c21f55c0f1149920876629b051c15d096160e437051334ae517ee26c458a6119",
+    "ui-investigation-word-wrapper-patch.json": "bdadce8905d4fb0cd711106e5171aacf2ceb85eb4ee3318279740b20c3e7d651",
+    "ui-investigation-word-wrapper-raw.json.gz": "f48e24f7867f1c3c21737c40048e098f169e5389c4b048f006423cc2b713eb1b",
+    "ui-renderer-raw.json.gz": "c3d26bb83183afd9d8be00ed3b42f23504b968ff4eeed403a47a096a5859fc09",
+    "ui-renderer-summary.json": "0ad33bc757c699a69c4001a5b40537afbf0a041da15a00311fc8f42321a49e34"
+  },
+  "investigations": [
+    {
+      "artifact": "ui-investigation-icons-raw.json.gz",
+      "boundary": "Initial baseline 4cef versus icons f13: three fresh profile pairs, baseline first in the arguments.",
+      "environment": {
+        "startedAt": "2026-10-04T10:55:02.429Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          1.87,
+          1.8,
+          2.62
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-before-4cef3089",
+          "revision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+          "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-icons-reverse-raw.json.gz",
+      "boundary": "Second balanced baseline 4cef versus icons f13 batch: three fresh profile pairs, after first in the arguments.",
+      "environment": {
+        "startedAt": "2026-10-04T11:00:12.703Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          5.25,
+          3.14,
+          2.92
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-before-4cef3089",
+          "revision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+          "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-mask-raw.json.gz",
+      "boundary": "Both checkouts are f13. The second disables only custom icon masks and backgrounds while retaining 16 px boxes and DOM. Missing glyphs make this diagnostic unsuitable as product behavior.",
+      "environment": {
+        "startedAt": "2026-10-04T11:04:33.413Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          2.34,
+          3.55,
+          3.24
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "14f0ad5b25fbafea3ed0cb811f578f88cdb1a782f55df576aa0faae480fbda74",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-label-reuse-loaded-raw.json.gz",
+      "boundary": "f13 versus private inline-label reuse, with 72 fewer elements for 36 blocks. An external eight-way WASM compilation heavily contaminated timing.",
+      "environment": {
+        "startedAt": "2026-10-04T11:11:38.953Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          7.01,
+          6.86,
+          4.98
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-diagnostic-label-reuse",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8f40a59629a0966f4f65fda209bba7a89d52fb40ead086fec940c94712e56a7c"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-label-reuse-confirmation-raw.json.gz",
+      "boundary": "f13 versus private inline-label reuse, retaining the same 16 px masks. Fresh confirmation after the compiler window. External Chrome and Node activity appeared in the last grouped cell.",
+      "environment": {
+        "startedAt": "2026-10-04T11:18:58.685Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          6.3,
+          7.91,
+          6.34
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-after-f13aff4f",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8e9efb09f3e395b904dc416976129b0357a8e45ac4c2d403d2b405791977ce15"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-diagnostic-label-reuse",
+          "revision": "f13aff4fdc3b8f9395dc4a58834659f0921ab6eb",
+          "extensionSha256": "8f40a59629a0966f4f65fda209bba7a89d52fb40ead086fec940c94712e56a7c"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-722-sequential-raw.json.gz",
+      "boundary": "Baseline 4cef versus 722: six fresh sequential paired profiles, 600 samples per scenario per revision. The 3-block median increases in all six pairs; retained as earlier source evidence.",
+      "environment": {
+        "startedAt": "2026-10-04T11:27:11.890Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          1.61,
+          2.86,
+          4.44
+        ],
+        "profiles": 6,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-before-4cef3089",
+          "revision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+          "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-after-7222cac3",
+          "revision": "7222cac3310653d62f28b952c84e70f161c30a91",
+          "extensionSha256": "31820ec850da3b416e4355418aa10a1f047a1c9da24034f94ef5282b3572688e"
+        }
+      ],
+      "cells": 36
+    },
+    {
+      "artifact": "ui-investigation-722-interleaved-raw.json.gz",
+      "boundary": "Baseline 4cef versus 722: three fresh shared-renderer profiles with alternating iteration order. Confirms small initial-render cost while controlling scheduler differences.",
+      "environment": {
+        "startedAt": "2026-10-04T11:41:23.313Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          8.12,
+          5.25,
+          4.33
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "one fresh browser per profile; both revisions share one renderer process; reverse setup/scenario order in odd profiles and alternate measured checkout order every iteration",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "27c56489283b73f70427a9a4370be73f2492f48ef04cf6a083ede3cc44cff3de",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-before-4cef3089",
+          "revision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+          "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-after-7222cac3",
+          "revision": "7222cac3310653d62f28b952c84e70f161c30a91",
+          "extensionSha256": "31820ec850da3b416e4355418aa10a1f047a1c9da24034f94ef5282b3572688e"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-word-wrapper-raw.json.gz",
+      "boundary": "722 versus private word-wrapper removal: three shared-renderer profiles. Geometry approved separately, 36 fewer elements, and all signatures match.",
+      "environment": {
+        "startedAt": "2026-10-04T11:42:33.996Z",
+        "platform": "linux",
+        "release": "7.2.6-1-cachyos",
+        "node": "v22.23.1",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "logicalCpus": 14,
+        "load": [
+          4.63,
+          4.82,
+          4.25
+        ],
+        "profiles": 3,
+        "measurements": 100,
+        "warmups": 20,
+        "theme": "bee",
+        "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+        "order": "one fresh browser per profile; both revisions share one renderer process; reverse setup/scenario order in odd profiles and alternate measured checkout order every iteration",
+        "chrome": "Chrome/153.0.8010.36"
+      },
+      "harnessSha256": "27c56489283b73f70427a9a4370be73f2492f48ef04cf6a083ede3cc44cff3de",
+      "checkouts": [
+        {
+          "path": "/tmp/hachidori-bee-ui-after-7222cac3",
+          "revision": "7222cac3310653d62f28b952c84e70f161c30a91",
+          "extensionSha256": "31820ec850da3b416e4355418aa10a1f047a1c9da24034f94ef5282b3572688e"
+        },
+        {
+          "path": "/tmp/hachidori-bee-ui-diagnostic-no-word-wrapper",
+          "revision": "7222cac3310653d62f28b952c84e70f161c30a91",
+          "extensionSha256": "bd695e3a3fdf4e4f800ec9ad9ebaff2796293071878dcc1b905bc71c59f4074b"
+        }
+      ],
+      "cells": 18
+    },
+    {
+      "artifact": "ui-investigation-722-hover-raw.json.gz",
+      "boundary": "Earlier 722 production hover: six fresh profiles and 144 warm lookups per revision. Retained as diagnostic after later label-write, menu-query and wrapper refinements.",
+      "profilesPerRevision": 6,
+      "warmSamplesPerRevision": 144
+    }
+  ],
+  "investigationPatches": [
+    "ui-investigation-mask-patch.json",
+    "ui-investigation-label-reuse-patch.json",
+    "ui-investigation-word-wrapper-patch.json"
+  ],
+  "investigationHarness": "ui-investigation-interleaved-harness.mjs.gz"
 }

@@ -1,0 +1,7 @@
+{
+  "purpose": "Diagnostic only: disable custom action glyph masks, retaining DOM,16px boxes and JavaScript decoration. Missing glyphs make this invalid as product behavior.",
+  "harness": "benchmark/bee-renderer.mjs",
+  "find": "const style = document.createElement(\"style\"); style.textContent = `${css}\\n${icons}`;",
+  "replace": "const style = document.createElement(\"style\"); style.textContent = `${css}\\n${icons}` + (checkout === 1 ? \"\\n.bee-custom-action-icon { mask: none !important; background: transparent !important; }\" : \"\");",
+  "command": "Use the f13 checkout as both arguments; second checkout receives diagnostic mask override. The measured private harness also used an absolute file import for benchmark/system.mjs after being copied to /tmp."
+}
