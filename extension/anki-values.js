@@ -62,8 +62,10 @@ function frequencyAggregate(term, mode, harmonic) {
 }
 
 function frequencyHtml(request, groups = request.term.frequencies) {
-  const items = groups.flatMap(group => group.frequencies.map(value =>
-    `<li>${escape(alias(request, group.dictionary))}: ${escape(value.displayValue ?? value.value)}</li>`));
+  const items = groups.flatMap(group => {
+    const dictionary = escape(alias(request, group.dictionary));
+    return group.frequencies.map(value => `<li>${dictionary}: ${escape(value.displayValue ?? value.value)}</li>`);
+  });
   return items.length ? `<ul style="text-align: left;">${items.join("")}</ul>` : "";
 }
 
