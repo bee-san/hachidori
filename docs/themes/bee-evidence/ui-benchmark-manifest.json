@@ -1,0 +1,101 @@
+{
+  "date": "2026-10-04",
+  "onlyThemeBenchmarked": "bee",
+  "beforeRevision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+  "afterRevision": "7cf27d9e566fb7809adb62c6a05080fa681e0022",
+  "environment": {
+    "startedAt": "2026-10-04T10:27:02.316Z",
+    "platform": "linux",
+    "release": "7.2.6-1-cachyos",
+    "node": "v22.23.1",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "logicalCpus": 14,
+    "load": [
+      1.87,
+      2.68,
+      5.32
+    ],
+    "profiles": 3,
+    "measurements": 100,
+    "warmups": 20,
+    "theme": "bee",
+    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+    "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+    "chrome": "Chrome/153.0.8010.36"
+  },
+  "renderer": {
+    "harness": "benchmark/bee-renderer.mjs",
+    "harnessSha256": "a85ee7b2c2591eeb5ac62da7f1bc734a361015c88a0db34248fe7cae7414450f",
+    "profilesPerRevision": 3,
+    "warmupsPerCell": 20,
+    "samplesPerCellPerProfile": 100,
+    "samplesPerScenarioPerRevision": 300,
+    "inputs": "1 or 12 results across 3 dictionaries; eight senses per dictionary; 3 named frequency sources, pitch position 2 and 3 custom link actions; popup 560x420; grouped case explicitly selects the first dictionary (12 visible of 36).",
+    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media."
+  },
+  "hover": {
+    "harness": "benchmark/hover-popup.mjs",
+    "profilesPerRevision": 6,
+    "warmLookupsPerProfile": 24,
+    "warmLookupsPerRevision": 144,
+    "coldLookupsPerRevision": 6,
+    "order": [
+      "before-after",
+      "after-before",
+      "before-after",
+      "after-before",
+      "before-after",
+      "after-before"
+    ],
+    "boundary": "Production extension, MV3 worker and WASM path through first visible result and two stable frames; compact summaries enabled.",
+    "fixtures": [
+      {
+        "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-hover-fixture.zip",
+        "bytes": 631,
+        "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
+      },
+      {
+        "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-senses.zip",
+        "bytes": 912,
+        "sha256": "190d78a71ae8f636b5c21739313989cc124ddaadbaff50c48847d4c601b4a26e"
+      }
+    ]
+  },
+  "limits": [
+    "Synthetic public fixtures, not a large installed dictionary library",
+    "Shared desktop; no CPU isolation. Final runs use alternating paired order and retain profile results/load.",
+    "No claimed general speedup for initial render or warm end-to-end hover. Frequency and pitch presentation updates remove measured unnecessary work.",
+    "Initial-render profile differences have mixed signs; one all-visible final profile is 5.4ms slower and one grouped profile 1.45ms slower, while other paired profiles are faster.",
+    "Cold first-display ranges remain noisy with six samples per revision; baseline hover has occasional desktop stalls.",
+    "Hidden-group glossaries and action sets are still fully constructed; no work is deferred beyond the measured renderer interval."
+  ],
+  "artifacts": {
+    "ui-hover-after-0-manifest.json": "aaef538fd0115868c81db4ad0dbc5e57bb023c306a768a488818a95bcb8f06c8",
+    "ui-hover-after-0-raw.json.gz": "cc6ca2ff1b0f18d7307972813fbbb08184663c1bb845d634a7b9d0b4050562f3",
+    "ui-hover-after-1-manifest.json": "640e4c639bc88f5a6abd94ae136ffed61b6928aadf4b10752818be20958ed471",
+    "ui-hover-after-1-raw.json.gz": "005d03715dde9a53c303912e9027f747f719ba38f6d6ffc1e204a66d09b1087f",
+    "ui-hover-after-2-manifest.json": "0ce5b61ca32b05dbf36651742cf007e0a3cdc1003919460b25c65903008196b8",
+    "ui-hover-after-2-raw.json.gz": "37ecd3a5c645ea6b64618bc85349b3cf019a107107e72b380065a42edd37cf96",
+    "ui-hover-after-3-manifest.json": "026024de73ca340bb1bfaf681eecc21f3465c0db25b236fbf944247143a97ac1",
+    "ui-hover-after-3-raw.json.gz": "896dd71d29525c63f2a3823b4a9a473263d67383d9c844bd2eeba4046b49eeef",
+    "ui-hover-after-4-manifest.json": "61faa9c80538a0d25bd371a79dc05d816660ac166f0ec221d68d52b26b1b5e29",
+    "ui-hover-after-4-raw.json.gz": "c9fdaa8227991b11729a05367381a52f65a1e7fd1651b94d455b3bb4abef0a38",
+    "ui-hover-after-5-manifest.json": "37678179ed93207d4a34928ab27faf37a76a9a053928dcdb0e9d0d42660ffc63",
+    "ui-hover-after-5-raw.json.gz": "7ef2c70fd958114b8c9c8e456d18b1f3cb32e4a8fedf863c2624cede8a82fbac",
+    "ui-hover-before-0-manifest.json": "ffe0bfe57b9b116d27b271c4728acd9dcad591a60277f42861da248965107b3f",
+    "ui-hover-before-0-raw.json.gz": "98e9e6fb068423dea0037bc5a41454fd4b6d3d5286ab63a0fa192e0664b325a8",
+    "ui-hover-before-1-manifest.json": "b605ab0d2de944c4c5ab49a5c3ed449489c294abb378ee3e910ab3ede6ce0b3b",
+    "ui-hover-before-1-raw.json.gz": "ecefb59c33355fab9e6a0c36358a3200c2e75d6c05fe1e283b36cea9c4dc87a1",
+    "ui-hover-before-2-manifest.json": "d64106bf4d8d4d29fc426a113bd2f476d8e3b0a31fc0dcb23b969afe499af950",
+    "ui-hover-before-2-raw.json.gz": "7fe572fa6a02eebbf9e81bece71ffb6af651e50a5d6d940303b1692834adbeeb",
+    "ui-hover-before-3-manifest.json": "a3734f3a058191a42729176a3af77ebfaa680f05677b3baa05e21488b37dd088",
+    "ui-hover-before-3-raw.json.gz": "2dcedcefea98144905538362f8d8b332ab8fa186c6555abff2f56a8206a56288",
+    "ui-hover-before-4-manifest.json": "04aae97aa861031fa6166e44499cea00450eb66aa21e55db34df640334a3ce90",
+    "ui-hover-before-4-raw.json.gz": "35a01765627236308ff1b3c333c1490f35fbc733560946bac3dc576eaec2c273",
+    "ui-hover-before-5-manifest.json": "add2000112889b439bf31f34feeb90bee82f1f72871566e0c98d47e2198f6e47",
+    "ui-hover-before-5-raw.json.gz": "6ff4bd8a0d1dd601c160376b21aece2dcbf67d919c662b4c57b04b9bee195df5",
+    "ui-hover-summary.json": "6341f532909dd8fc7431888ec212645b46b109f1067367838764c692f7daa848",
+    "ui-renderer-raw.json.gz": "18f4be1a05702b76c1b4a05a1212a978aa27c3ab0179be5f2a9338c08feb1b3f",
+    "ui-renderer-summary.json": "ff8730b959f44ebf305a3f59055df66d426d975a615c4f7bea0769a4fee44171"
+  }
+}

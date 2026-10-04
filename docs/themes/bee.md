@@ -61,6 +61,7 @@ frequency-update refinements described here.
 ![Back at the upper left](../assets/bee/bee-back.png)
 ![Back keyboard focus stays inside the popup](../assets/bee/bee-back-focus.png)
 ![Sample groups in the Design preview](../assets/bee/bee-preview-groups.png)
+![Complete Design preview at 300 pixels](../assets/bee/bee-preview-300.png)
 ![Long custom action labels at a narrow width](../assets/bee/bee-long-300.png)
 ![More actions at a narrow width](../assets/bee/bee-long-300-more.png)
 ![Child popup after holding the scan key](../assets/bee/bee-child-popup.png)
@@ -86,6 +87,9 @@ default popup opacity composited over both white and black pages.
 ![Back focus in forced-colour dark](../assets/bee/bee-back-focus-forced-dark.png)
 
 ## Performance
+
+The latest UI refinements and Bee-only before/after measurements are in the
+[Bee UI performance report](bee-ui-performance.md).
 
 Measurements use the existing production hover harness with the same synthetic
 flat, 40-level structured and 24-sense entries. Bee's Theme now builds each

@@ -1,0 +1,458 @@
+{
+  "environment": {
+    "startedAt": "2026-10-04T10:27:02.316Z",
+    "platform": "linux",
+    "release": "7.2.6-1-cachyos",
+    "node": "v22.23.1",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "logicalCpus": 14,
+    "load": [
+      1.87,
+      2.68,
+      5.32
+    ],
+    "profiles": 3,
+    "measurements": 100,
+    "warmups": 20,
+    "theme": "bee",
+    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+    "order": "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles",
+    "chrome": "Chrome/153.0.8010.36"
+  },
+  "checkouts": [
+    {
+      "path": "/tmp/hachidori-bee-ui-before-4cef3089",
+      "revision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+      "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b",
+      "scenarios": [
+        {
+          "results": 1,
+          "grouped": false,
+          "blocks": 3,
+          "visibleBlocks": 3,
+          "nodes": 227,
+          "frequencyChips": 9,
+          "fixtureCharacters": 2667,
+          "signature": "2606c93df2acdce94bf11f4eec1af87eb3ddc20ff191b54f7662e65d940f5f2e",
+          "buildCounts": {
+            "pitchCalls": 3,
+            "actionCalls": 3,
+            "glossaryCalls": 17,
+            "groupCalls": 2,
+            "frequencyCalls": 3
+          },
+          "unchangedCounts": {
+            "frequencyCalls": 3,
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "frequencyCalls": 3,
+            "pitchCalls": 3,
+            "groupCalls": 1
+          },
+          "retainedFrequency": false,
+          "pitchRetainedFrequency": false,
+          "render": {
+            "n": 300,
+            "median": 2.5,
+            "p95": 4.5
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 0.3000000002793968,
+            "p95": 0.6000000000931323
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 0.39999999990686774,
+            "p95": 0.5
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 0.5,
+            "p95": 0.7000000001862645
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 3,
+              "unchanged": 0.5,
+              "groupRename": 0.5,
+              "pitchChange": 0.6999999997206032
+            },
+            {
+              "profile": 1,
+              "render": 1.7000000001862645,
+              "unchanged": 0.2999999998137355,
+              "groupRename": 0.2999999998137355,
+              "pitchChange": 0.39999999990686774
+            },
+            {
+              "profile": 2,
+              "render": 2.5,
+              "unchanged": 0.3000000002793968,
+              "groupRename": 0.39999999990686774,
+              "pitchChange": 0.5
+            }
+          ]
+        },
+        {
+          "results": 12,
+          "grouped": false,
+          "blocks": 36,
+          "visibleBlocks": 36,
+          "nodes": 2680,
+          "frequencyChips": 108,
+          "fixtureCharacters": 31995,
+          "signature": "62c1ee145d67d7628f4a4677f0be69126337e6c6340a801d9338322eeb627937",
+          "buildCounts": {
+            "pitchCalls": 36,
+            "actionCalls": 36,
+            "glossaryCalls": 204,
+            "groupCalls": 2,
+            "frequencyCalls": 36
+          },
+          "unchangedCounts": {
+            "frequencyCalls": 36,
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "frequencyCalls": 36,
+            "pitchCalls": 36,
+            "groupCalls": 1
+          },
+          "retainedFrequency": false,
+          "pitchRetainedFrequency": false,
+          "render": {
+            "n": 300,
+            "median": 22.399999999906868,
+            "p95": 34.6999999997206
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 4.100000000093132,
+            "p95": 5.7000000001862645
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 3.699999999953434,
+            "p95": 6
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 4.300000000279397,
+            "p95": 10
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 29.300000000046566,
+              "unchanged": 5.100000000093132,
+              "groupRename": 4.899999999906868,
+              "pitchChange": 7.350000000093132
+            },
+            {
+              "profile": 1,
+              "render": 21.699999999953434,
+              "unchanged": 2.8999999999068677,
+              "groupRename": 2.8999999999068677,
+              "pitchChange": 3.7999999998137355
+            },
+            {
+              "profile": 2,
+              "render": 17.9000000001397,
+              "unchanged": 4.100000000093132,
+              "groupRename": 2.8999999999068677,
+              "pitchChange": 4.199999999720603
+            }
+          ]
+        },
+        {
+          "results": 12,
+          "grouped": true,
+          "blocks": 36,
+          "visibleBlocks": 12,
+          "nodes": 2682,
+          "frequencyChips": 108,
+          "fixtureCharacters": 31995,
+          "signature": "8deaff057d54d203598976569d4262a55fd5e3f0d9be5f0aec2446511bc5c175",
+          "buildCounts": {
+            "pitchCalls": 36,
+            "actionCalls": 36,
+            "glossaryCalls": 204,
+            "groupCalls": 2,
+            "frequencyCalls": 36
+          },
+          "unchangedCounts": {
+            "frequencyCalls": 36,
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "frequencyCalls": 36,
+            "pitchCalls": 36,
+            "groupCalls": 1
+          },
+          "retainedFrequency": false,
+          "pitchRetainedFrequency": false,
+          "render": {
+            "n": 300,
+            "median": 12.5,
+            "p95": 41.89999999990687
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 2,
+            "p95": 3.1999999997206032
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 1.7000000001862645,
+            "p95": 2.3000000002793968
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 2.25,
+            "p95": 3
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 16.600000000093132,
+              "unchanged": 1.6000000000931323,
+              "groupRename": 1.6999999999534339,
+              "pitchChange": 2.2999999998137355
+            },
+            {
+              "profile": 1,
+              "render": 9.850000000093132,
+              "unchanged": 2.099999999627471,
+              "groupRename": 1.5999999998603016,
+              "pitchChange": 2
+            },
+            {
+              "profile": 2,
+              "render": 12.599999999860302,
+              "unchanged": 2.1000000000931323,
+              "groupRename": 2.1499999999068677,
+              "pitchChange": 2.6000000000931323
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/tmp/hachidori-bee-ui-after-7cf27d9e",
+      "revision": "7cf27d9e566fb7809adb62c6a05080fa681e0022",
+      "extensionSha256": "fdbdcc41529c2a2f3c0a19baa10f12d6ca56d5b4cbef5031008a3628ceed8ab6",
+      "scenarios": [
+        {
+          "results": 1,
+          "grouped": false,
+          "blocks": 3,
+          "visibleBlocks": 3,
+          "nodes": 233,
+          "frequencyChips": 9,
+          "fixtureCharacters": 2667,
+          "signature": "2606c93df2acdce94bf11f4eec1af87eb3ddc20ff191b54f7662e65d940f5f2e",
+          "buildCounts": {
+            "pitchCalls": 1,
+            "actionCalls": 3,
+            "glossaryCalls": 17,
+            "groupCalls": 2,
+            "frequencyCalls": 1
+          },
+          "unchangedCounts": {
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "pitchCalls": 1,
+            "groupCalls": 1
+          },
+          "retainedFrequency": true,
+          "pitchRetainedFrequency": true,
+          "render": {
+            "n": 300,
+            "median": 1.8999999999068677,
+            "p95": 2.8999999999068677
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 0.09999999962747097,
+            "p95": 0.10000000009313226
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 0.09999999962747097,
+            "p95": 0.10000000009313226
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 0.19999999972060323,
+            "p95": 0.2999999998137355
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 1.8000000002793968,
+              "unchanged": 0.049999999813735485,
+              "groupRename": 0,
+              "pitchChange": 0.19999999972060323
+            },
+            {
+              "profile": 1,
+              "render": 1.7999999998137355,
+              "unchanged": 0,
+              "groupRename": 0,
+              "pitchChange": 0.10000000009313226
+            },
+            {
+              "profile": 2,
+              "render": 2.6000000000931323,
+              "unchanged": 0.10000000009313226,
+              "groupRename": 0.10000000009313226,
+              "pitchChange": 0.20000000018626451
+            }
+          ]
+        },
+        {
+          "results": 12,
+          "grouped": false,
+          "blocks": 36,
+          "visibleBlocks": 36,
+          "nodes": 2752,
+          "frequencyChips": 108,
+          "fixtureCharacters": 31995,
+          "signature": "62c1ee145d67d7628f4a4677f0be69126337e6c6340a801d9338322eeb627937",
+          "buildCounts": {
+            "pitchCalls": 12,
+            "actionCalls": 36,
+            "glossaryCalls": 204,
+            "groupCalls": 2,
+            "frequencyCalls": 12
+          },
+          "unchangedCounts": {
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "pitchCalls": 12,
+            "groupCalls": 1
+          },
+          "retainedFrequency": true,
+          "pitchRetainedFrequency": true,
+          "render": {
+            "n": 300,
+            "median": 20.75,
+            "p95": 26.5
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 0.6000000000931323,
+            "p95": 0.7000000001862645
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 0.5,
+            "p95": 0.7999999998137355
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 1.6000000000931323,
+            "p95": 2
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 20.5,
+              "unchanged": 0.6000000000931323,
+              "groupRename": 0.599999999627471,
+              "pitchChange": 1.8000000002793968
+            },
+            {
+              "profile": 1,
+              "render": 20.100000000093132,
+              "unchanged": 0.599999999627471,
+              "groupRename": 0.599999999627471,
+              "pitchChange": 1.3999999999068677
+            },
+            {
+              "profile": 2,
+              "render": 23.300000000046566,
+              "unchanged": 0.6000000000931323,
+              "groupRename": 0.5,
+              "pitchChange": 1.5
+            }
+          ]
+        },
+        {
+          "results": 12,
+          "grouped": true,
+          "blocks": 36,
+          "visibleBlocks": 12,
+          "nodes": 2755,
+          "frequencyChips": 108,
+          "fixtureCharacters": 31995,
+          "signature": "8deaff057d54d203598976569d4262a55fd5e3f0d9be5f0aec2446511bc5c175",
+          "buildCounts": {
+            "pitchCalls": 12,
+            "actionCalls": 36,
+            "glossaryCalls": 204,
+            "groupCalls": 2,
+            "frequencyCalls": 12
+          },
+          "unchangedCounts": {
+            "groupCalls": 1
+          },
+          "pitchCounts": {
+            "pitchCalls": 12,
+            "groupCalls": 1
+          },
+          "retainedFrequency": true,
+          "pitchRetainedFrequency": true,
+          "render": {
+            "n": 300,
+            "median": 9.599999999860302,
+            "p95": 14
+          },
+          "unchanged": {
+            "n": 300,
+            "median": 0.20000000018626451,
+            "p95": 0.39999999990686774
+          },
+          "groupRename": {
+            "n": 300,
+            "median": 0.2999999998137355,
+            "p95": 0.5
+          },
+          "pitchChange": {
+            "n": 300,
+            "median": 0.8999999999068677,
+            "p95": 1.1000000000931323
+          },
+          "profileMedians": [
+            {
+              "profile": 0,
+              "render": 9,
+              "unchanged": 0.20000000018626451,
+              "groupRename": 0.2999999998137355,
+              "pitchChange": 0.8999999999068677
+            },
+            {
+              "profile": 1,
+              "render": 11.299999999813735,
+              "unchanged": 0.20000000018626451,
+              "groupRename": 0.2999999998137355,
+              "pitchChange": 0.7999999998137355
+            },
+            {
+              "profile": 2,
+              "render": 9.400000000139698,
+              "unchanged": 0.2999999998137355,
+              "groupRename": 0.39999999990686774,
+              "pitchChange": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
