@@ -208,21 +208,35 @@ const beeContext = { dictionaryPresentation: [{ title: "test", favorite: true },
   dictionaryTabGroups: [{ id: "first", name: "English", dictionaries: ["test"] },
     { id: "both", name: "Everything", dictionaries: ["test", "second"] }] };
 
-test("Bee shows only named groups, filters existing blocks, binds per-dictionary actions and restores Back", t => {
+test("Bee keeps All results accessible alongside named groups and restores an explicit group on Back", t => {
   let bound, selected;
   const f = beeFixture(t, { onResultsRendered(value) { bound = value; }, onResultsExpanded(value) { bound = value; } });
   f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, onDictionaryTabSelected(value) { selected = value; } });
-  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["English", "Everything"]);
-  assert.deepEqual(selected, { groupId: "first" });
-  assert.equal(bound.miningActions.length, 1);
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All", "English", "Everything"]);
+  assert.equal(selected, undefined, "a fresh lookup keeps the core's All selection");
+  assert.equal(bound.miningActions.length, 2, "All includes dictionaries outside the first group");
   const blocks = [...f.popup.querySelectorAll(".jl-entry")];
   f.popup.querySelectorAll(".jl-tab")[1].click();
-  assert.deepEqual(blocks.map(node => node.hidden), [false, false]);
-  assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["test", "second"]);
-  assert.equal(f.popup.querySelectorAll(".jl-spelling").length, 2, "retain JL's repeated headers");
+  assert.deepEqual(selected, { groupId: "first" });
+  assert.deepEqual(blocks.map(node => node.hidden), [false, true]);
+  assert.equal(bound.miningActions.length, 1);
   const saved = f.view.captureTermView();
   f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, ...saved });
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 1);
+  const all = f.popup.querySelector(".jl-tab");
+  all.click();
+  assert.equal(selected, null);
+  all.focus();
+  f.view.updateDictionaryPresentation({ ...beeContext, ...saved, dictionaryTabGroups: [
+    { id: "first", name: "Renamed", dictionaries: ["test"] },
+  ] });
+  assert.equal(f.view.captureTermView().selectedDictionaryTab, null, "a previous group context cannot override All");
+  assert.equal(f.popup.ownerDocument.activeElement, f.popup.querySelector(".jl-tab"), "group updates retain deliberate tab focus");
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
+  assert.deepEqual(bound.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["test", "second"]);
+  assert.equal(f.popup.querySelectorAll(".jl-spelling").length, 2, "retain JL's repeated headers");
+  f.view.renderResults([beeResult], { query: "食べる" }, { ...beeContext, selectedDictionaryTab: null });
+  assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2, "See links with null selection show all dictionaries");
   f.view.renderResults([beeResult], { query: "食べる" });
   assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0, "ungrouped dictionaries never become tabs");
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
@@ -299,10 +313,45 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   form.dispatchEvent(new f.window.Event("submit", { cancelable: true }));
   assert.deepEqual(saves, [{ term: "食べる", reading: "たべる", definition: "My meaning" }]);
-  assert.equal(f.popup.querySelector(".jl-tab").textContent, "All grouped");
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All", "All grouped"]);
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   assert.equal(f.view.closeNoteForm(), true);
   assert.equal(form.hidden, true);
+});
+
+test("Bee dismisses More actions before Note and preserves the action and draft", async t => {
+  const links = [];
+  const f = beeFixture(t, { customButtons: [
+    { id: "one", type: "link", label: "One", url: "https://example.test/one" },
+    { id: "two", type: "link", label: "Two", url: "https://example.test/two" },
+    { id: "more", type: "link", label: "More", url: "https://example.test/%w" },
+  ], onCustomLinkClick(link) { links.push(link); } });
+  f.view.renderResults([beeResult], { query: "食べる" }, beeContext);
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  const form = f.popup.querySelector("form");
+  form.elements.definition.value = "Unfinished meaning";
+  const more = f.popup.querySelector(".bee-more-actions");
+  more.open = true;
+  more.querySelector("button").focus();
+  assert.equal(f.view.closeActionMenu(), true);
+  assert.equal(more.open, false);
+  assert.equal(f.popup.ownerDocument.activeElement, more.querySelector("summary"));
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Unfinished meaning");
+  assert.equal(f.view.closeActionMenu(), false, "a closed menu leaves Escape to Note or the popup");
+  more.open = true;
+  more.querySelector("button").click();
+  await Promise.resolve();
+  assert.equal(links[0].url, "https://example.test/%E9%A3%9F%E3%81%B9%E3%82%8B", "dismissing retains link activation");
+  assert.equal(more.open, false, "selecting an action dismisses its disclosure despite stopped bubbling");
+  more.open = true;
+  f.popup.querySelector(".jl-spelling").dispatchEvent(new f.window.Event("pointerdown", { bubbles: true }));
+  assert.equal(more.open, false, "pressing outside the menu dismisses it without discarding a Note draft");
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "Unfinished meaning");
+  f.view.renderNotice("No match", { query: "unknown" });
+  assert.equal(more.open, false);
+  assert.equal(f.view.closeActionMenu(), false, "retired disclosures never consume Escape");
 });
 
 test("switching after a retired lookup applies saved actions to the next renderer before a fresh lookup", async t => {
