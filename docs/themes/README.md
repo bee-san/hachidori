@@ -72,7 +72,10 @@ place of JL's text and tag brackets. Audio, Anki and pencil sit together as one
 set of icon buttons, the kanji view's Back is top left, and hovering a glossary
 image shows Default's enlarged preview.
 With no matching groups, all results appear without a tab row. Extra custom
-actions go into More actions after the first two. See [details and measurements](bee.md).
+actions go into More actions after the first two. The Design preview includes
+sample group tabs when no configured group matches. Compact glossaries,
+frequency names, compact numbers, averages and pitch notation style are
+available in Design. See [details and measurements](bee.md).
 
 ## Version 2 view contract
 

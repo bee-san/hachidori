@@ -59,7 +59,8 @@ export function createView(options, enhanced = false) {
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
   // Design's pitch switch and dictionary, as the markers were last painted.
   let paintedPitch = "";
-  const pitchOptions = context => JSON.stringify([context.showPitchAccentFurigana !== false, context.pitchAccentFuriganaDictionary ?? ""]);
+  const pitchOptions = context => JSON.stringify([context.showPitchAccentFurigana !== false, context.pitchAccentFuriganaDictionary ?? "",
+    enhanced ? context.pitchAccentFuriganaStyle ?? "contour" : "contour"]);
   let customButtons = options.customButtons || [];
   const images = new Set();
   let pendingPresentation = null;
@@ -82,12 +83,13 @@ export function createView(options, enhanced = false) {
     if (context.restoreScrollTop) scroll.scrollTop = context.restoreScrollTop;
   }
   function navigation(context) {
+    if (enhanced && context.onBack) nav.append(button("gsm-hoshidicts-kanji-back", "Back", context.onBack));
     if (context.onClose) {
       const close = button("gsm-hoshidicts-popup-close", "x", context.onClose);
       close.title = "Close";
       close.setAttribute("aria-label", "Close");
       nav.append(close);
-    } else if (context.onBack) nav.append(button("gsm-hoshidicts-kanji-back", "Back", context.onBack));
+    } else if (!enhanced && context.onBack) nav.append(button("gsm-hoshidicts-kanji-back", "Back", context.onBack));
   }
   function setDefinitionBlurState(state) { scroll.dataset.definitionBlur = state; }
   function dictionaryLabel(dictionary) {
@@ -99,10 +101,16 @@ export function createView(options, enhanced = false) {
   function updateDictionaryPresentation(context, notify = true) {
     const names = new Map((context.dictionaryPresentation ?? []).map(item => [item.title, item.displayName || item.title]));
     const name = dictionary => names.get(dictionary) || dictionary;
-    for (const label of labels) label.textContent = name(label.dataset.dictionary);
+    for (const label of labels) {
+      label.textContent = name(label.dataset.dictionary);
+      if (enhanced) label.title = label.textContent;
+    }
     // JL: "#rank" with one frequency dictionary, "Name: rank, …" with several.
-    for (const { element, groups } of frequencies) {
-      element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
+    for (const { element, groups, result } of frequencies) {
+      if (enhanced) element.replaceChildren(...components.createFrequencyTags(document, result,
+        context.dictionaryPresentation ?? [], Infinity, context.averageFrequency === true,
+        context.showFrequencyDictionaryNames === true, context.compactFrequencyNumbers === true));
+      else element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
     }
     // Markers hold no controls, so a pitch option change repaints them in place
@@ -215,6 +223,7 @@ export function createView(options, enhanced = false) {
     const morae = context.showPitchAccentFurigana === false ? null
       : pitchMorae(text, pitches, context.pitchAccentFuriganaDictionary);
     element.textContent = morae ? "" : text;
+    if (enhanced) element.dataset.pitchStyle = context.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour";
     if (morae) appendMorae(element, morae);
   }
   // Painted while its block is still detached; updateDictionaryPresentation repaints it.
@@ -256,7 +265,7 @@ export function createView(options, enhanced = false) {
     const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);
     if (groups.length) {
       const element = node("span", "jl-frequency");
-      frequencies.push({ element, groups });
+      frequencies.push({ element, groups, result });
       line.append(element);
     }
     const actions = node("div", "gsm-hoshidicts-entry-actions");

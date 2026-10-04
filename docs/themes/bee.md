@@ -5,16 +5,17 @@ Enable **Advanced → Experimental features → Theme Store**, then open **Desig
 and select **Bee's Theme**.
 
 The theme puts Girlypop's blush, magenta and violet palette on JL's compact
-layout, typography and repeated header for each dictionary. Existing frequency
-text and pitch markings follow JL. Brighter text accents keep the translucent
-surface readable at the default opacity. Group tabs have equal widths and share
-one frame without gaps. Selected groups have an underline and keyboard focus
-has a visible violet outline.
+layout, typography and repeated header for each dictionary. Brighter text
+accents keep the translucent surface readable at the default opacity. Group
+tabs use JL's label-sized buttons and spacing in Bee's colours. Selected groups
+have an underline and keyboard focus has a visible violet outline.
 
 - **Group tabs:** only configured groups with results appear, in their saved
   order. A group filters existing blocks in place and audio, mining and keyboard
   actions follow its visible dictionaries. Without matching groups, all results
-  appear without a tab row. Back restores the selected group.
+  appear without a tab row. The Design preview supplies sample Definitions and
+  Examples groups when no configured group matches its sample. Back restores
+  the selected group.
 - **Formatted definitions:** each dictionary block shows only the existing
   structured glossary renderer's lists, tables, furigana, links and images. JL's
   plain text and JMdict tag brackets (`[★, priority form] [n, adv]`) do not
@@ -23,8 +24,14 @@ has a visible violet outline.
   service and link handlers retain request ownership.
 - **Controls:** audio, Anki and the pencil sit together after the dictionary
   name as identical icon buttons, using Hachidori's outline icon set at one size
-  in the text colour. Every enabled control shows a pointer cursor. In the
-  kanji view, Back sits top left, aligned with the group tabs.
+  in the text colour. All actions have the same four-pixel gap, including custom
+  buttons. Long dictionary names shrink with an ellipsis; hovering them shows
+  the full name. Every enabled control shows a pointer cursor. Back sits at the
+  popup's upper left, including when Close is also available.
+- **Design settings:** compact glossaries, frequency dictionary names, compact
+  frequency numbers, frequency averages and contour/overline pitch markings
+  use the same options as Default. Frequency changes update the open view
+  without rebuilding definitions or losing a Note draft.
 - **Image preview:** hovering or focusing a glossary image shows Default's
   enlarged copy beside the popup, following Design → Definitions → Image hover
   preview (Off, Large images only, All images).
@@ -34,12 +41,22 @@ has a visible violet outline.
 - **Custom actions:** configured link and Anki-template buttons appear beside the
   existing controls. The first two stay inline, with the remainder in More
   actions. Each mining button receives its own dictionary's definitions.
+- **Child lookups:** glossary words follow the page's hover or activation mode,
+  including after clicking a dictionary disclosure. See links open the complete
+  target with all dictionaries visible; the parent keeps its selected group.
 
 The theme shares JL's direct renderer and Default's lookup-action component.
 It builds its own popup and stylesheet. Sources and attribution are in
 `extension/vendor/themes/bee/`; `source.json` records the reviewed source revision.
 
-![Compact popup](../assets/bee/bee.png)
+![Updated popup with JL group tabs and uniform actions](../assets/bee/bee-refined.png)
+![Compact glossaries](../assets/bee/bee-compact.png)
+![Back at the upper left](../assets/bee/bee-back.png)
+![Sample groups in the Design preview](../assets/bee/bee-preview-groups.png)
+![Long custom action labels at a narrow width](../assets/bee/bee-long-300.png)
+![More actions at a narrow width](../assets/bee/bee-long-300-more.png)
+![Child popup after holding the scan key](../assets/bee/bee-child-popup.png)
+![See link opens its target](../assets/bee/bee-see-link.png)
 ![Personal dictionary editor](../assets/bee/bee-note.png)
 ![Structured dictionary](../assets/bee/bee-structured-rich.png)
 ![Enlarged image preview](../assets/bee/bee-image-preview.png)
@@ -55,8 +72,8 @@ cover the new layout in both light and dark system palettes. Browser assertions
 check WCAG AA text contrast (4.5:1) and control/focus contrast (3:1) with the
 default popup opacity composited over both white and black pages.
 
-![Forced-colour light](../assets/bee/bee-forced-light.png)
-![Forced-colour dark](../assets/bee/bee-forced-dark.png)
+![Forced-colour light](../assets/bee/bee-refined-forced-light.png)
+![Forced-colour dark](../assets/bee/bee-refined-forced-dark.png)
 
 ## Performance
 

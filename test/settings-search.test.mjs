@@ -241,8 +241,9 @@ test("Design shows the core controls and only the settings the selected theme de
     nazeka: [...CORE_DESIGN, "# Definitions", "Clicked-kanji dictionary"],
     jl: JL_DESIGN,
     bee: ["# Appearance", "Theme", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
-      "# Definitions", "Image source", "Image hover preview", "Clicked-kanji dictionary",
-      "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary", "# Custom buttons"],
+      "# Definitions", "Compact glossaries", "Image source", "Image hover preview", "Clicked-kanji dictionary",
+      "# Frequency labels", "Show frequency dictionary names", "Abbreviate large numbers (51.5k)", "Show frequency averages",
+      "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary", "Furigana pitch style", "# Custom buttons"],
     default: everything,
   };
   for (const [slug, controls] of Object.entries(expected)) {

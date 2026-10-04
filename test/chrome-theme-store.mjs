@@ -310,6 +310,8 @@ try {
     const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
       return { width: style.width, height: style.height, border: style.borderTopWidth, top: Math.round(rect.top) }; };
     const group = buttons[0].closest(".gsm-hoshidicts-entry-actions");
+    const iconRects = buttons.map(button => button.getBoundingClientRect()).sort((left, right) => left.left - right.left);
+    const gaps = iconRects.slice(1).map((rect, index) => rect.left - iconRects[index].right);
     const mineButton = popup.querySelector(".gsm-hoshidicts-mine-button"), savedState = mineButton.dataset.state;
     mineButton.dataset.state = "view-existing";
     const viewExistingColor = getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).backgroundColor;
@@ -318,7 +320,7 @@ try {
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
-      buttons: buttons.map(box), grouped: buttons.every(button => group.contains(button)),
+      buttons: buttons.map(box), gaps, grouped: buttons.every(button => group.contains(button)),
       order: [...group.querySelectorAll("button")].slice(0, 3).map(button => button.className.split(" ")[0]),
       cursors: [...popup.querySelectorAll("button:not(:disabled), summary")]
       .filter(node => node.matches("summary") || !node.closest("details:not([open])")).map(node => {
@@ -335,15 +337,16 @@ try {
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
   assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
+  assert.ok(icons.gaps.every(gap => Math.abs(gap - 4) < 1), "Anki, audio and pencil share a four-pixel gap");
   assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
   for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
   assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
   const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
-  assert.ok(Math.abs(tabGeometry[0].width - tabGeometry[1].width) < 1, "group tabs have equal widths despite different label lengths");
+  assert.ok(tabGeometry.every(rect => rect.width > 0), "group tabs size to their labels like JL");
   assert.equal(tabGeometry[0].height, tabGeometry[1].height);
   assert.equal(tabGeometry[0].top, tabGeometry[1].top);
-  assert.ok(Math.abs(tabGeometry[0].right - tabGeometry[1].left) < 1, "group tabs share an edge without gaps");
+  assert.ok(Math.abs(tabGeometry[1].left - tabGeometry[0].right - 2) < 1, "group tabs use JL's two-pixel spacing");
   const contrast = [];
   const checkBeeContrast = async () => {
     const checks = await tab.evaluate(() => {
@@ -421,7 +424,7 @@ try {
     return { back: rect(popup.querySelector(".gsm-hoshidicts-kanji-back")), popup: rect(popup), tabs: rect(popup.querySelector(".jl-tabs")) };
   });
   assert.ok(back.back.left - back.popup.left < back.popup.width / 4, `kanji Back sits top left in Bee ${JSON.stringify(back)}`);
-  assert.ok(Math.abs(back.back.left - back.tabs.left) < 2, "kanji Back aligns with the tab row's left edge");
+  assert.ok(Math.abs(back.back.left - back.popup.left) <= 1, "kanji Back reaches the popup's left edge");
   assert.ok(back.back.bottom <= back.tabs.top, "kanji Back sits above the tab row");
   await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
   await tab.keyboard.press("Escape");

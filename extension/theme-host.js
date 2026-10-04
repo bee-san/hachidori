@@ -89,6 +89,7 @@
       const settings = new Map();
       const components = { createLookupActions: window.HDPopup.createLookupActions,
         createDictionaryTabs: window.HDPopup.createDictionaryTabs,
+        createFrequencyTags: window.HDPopup.createFrequencyTags,
         glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
         buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae, pitchAccentPositions: window.HDGlossary.pitchAccentPositions,
         createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps,

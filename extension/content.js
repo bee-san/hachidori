@@ -2996,6 +2996,11 @@
     return popupHasFocus() && shadow.activeElement.matches(":focus-visible");
   }
 
+  function focusBlocksScan(level) {
+    return popupHasFocus() && (!level
+      || (isEditingElement(shadow.activeElement) && shadow.activeElement.localName !== "button"));
+  }
+
   function hasProtectedNote(fromDepth = 0) {
     for (let index = fromDepth; index < levels.length; index += 1) {
       if (levels[index].noteEditing || levels[index].pendingCustomAppends > 0) return true;
@@ -3293,7 +3298,8 @@
     noteGeneration(reply.generation, level);
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term
-        && (!request.exactSelection || result.matched === request.payload.text));
+        && (!(request.exactSelection || request.candidate.linkAnchor)
+          || result.matched === request.payload.text));
     if (results.length === 0) {
       return handleTermMiss(request, reply.dictionaryCount, token, level, replayOptions);
     }
@@ -3320,6 +3326,7 @@
   function runLookup(candidate, overrides = {}, level = rootLevel) {
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
     const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
+    const exactMatch = exactSelection || candidate.linkAnchor === true;
     return executeTermRequest({
       candidate,
       exactSelection,
@@ -3335,7 +3342,7 @@
             ? overrides.primaryReading
             : "",
         },
-        scanLength: exactSelection ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
+        scanLength: exactMatch ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
         text,
       },
       previous: overrides.previous ?? null,
@@ -3410,7 +3417,7 @@
     child.activeSignature = candidateSignature(candidate);
     const promise = runLookup(candidate, {
       primaryReading,
-      selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab,
+      selectedDictionaryTab: source === "link" ? null : level.currentViewRequest?.selectedDictionaryTab,
     }, child);
     const record = { promise, token: child.lookupToken };
     child[pendingKey] = record;
@@ -3732,7 +3739,7 @@
   function scanActivatedPointer() {
     const popupLevel = activePointerLevel(lastPointer);
     const keyGated = popupLevel ? definitionKeyGated() : options.lookupMode !== "hover";
-    if (keyGated && lastPointer && !hasProtectedNote() && !popupHasFocus()
+    if (keyGated && lastPointer && !hasProtectedNote() && !focusBlocksScan(popupLevel)
         && (!pointerInPopup || popupLevel)
         && !selectionDragActive
         && (popupLevel || !retainSelectedLookup())) {
@@ -3825,7 +3832,7 @@
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
     const popupLevel = activePointerLevel(pointer);
-    if (hasProtectedNote() || popupHasFocus()) {
+    if (hasProtectedNote() || focusBlocksScan(popupLevel)) {
       cancelCandidateScan();
       if (popupLevel) cancelPendingHover(popupLevel);
       clearHideTimer();
@@ -3910,7 +3917,7 @@
     pointerLevel = level;
     clearTransferTimer();
     clearHideTimer();
-    if (hasProtectedNote() || popupHasFocus()) {
+    if (hasProtectedNote() || focusBlocksScan(level)) {
       cancelPendingHover(level);
       clearScanTimer();
       return;
