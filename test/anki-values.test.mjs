@@ -21,6 +21,11 @@ test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16
   assert.equal(await render(request(), "{sentence-furigana}|{sentence-furigana-plain}"), "🍵 <b>食べます</b>。|🍵 <b>食べます</b>。");
 });
 
+test("{popup-selection-text} keeps the selection's line breaks, as Yomitan's getMedia does", async () => {
+  assert.equal(await render(request({ popupSelectionText: "to eat\n<to drink>" }), "{popup-selection-text}"),
+    "to eat<br>\n&lt;to drink&gt;");
+});
+
 test("{furigana} uses the engine's kanji-reading split and ignores one that does not spell the expression", async () => {
   const term = furigana => ({ ...request().term, expression: "好き嫌い", reading: "すききらい", furigana });
   const split = [{ text: "好", reading: "す" }, { text: "き", reading: "" }, { text: "嫌", reading: "きら" }, { text: "い", reading: "" }];
