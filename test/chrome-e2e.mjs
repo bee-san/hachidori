@@ -2581,7 +2581,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     // An internal link opens All even from Study. A child-local Study choice
     // then survives clicked-kanji → Back without changing its parent.
     await popup.dictionaryTabs("select", studyKey);
-    await tab.setViewport({ width: 1880, height: 240 });
+    await tab.setViewport({ width: 1880, height: 160 });
     const linked = await openChild();
     require(equal(linked.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
       dictionaries: entry.cards.map(card => card.dictionary) })), childExpected), "E8 linked All exact target");
@@ -2616,7 +2616,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
     }
     // The width follows Design live; the height is at most the Design value,
-    // because in this 240px window a child fits on neither side of its source
+    // because in this 160px window a child fits on neither side of its source
     // link and is shortened beside it rather than covering it (issue #360).
     const childBesideLink = async () => ({ ...await childState(), link: (await popup.nested())?.linkRect });
     const sizedBesideLink = (width, height) => value => value.rect.width === Math.min(width, value.viewport.width - 12)
