@@ -270,9 +270,9 @@ try {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options.revision, options: { imageHoverPreview: "all", customButtons: [
-        { id: "search", type: "link", label: "Jisho", url: "https://example.test/%w" },
-        { id: "template", type: "anki", label: "Sentence card", templateId: "default" },
-        { id: "extra", type: "link", label: "Reading search", url: "https://example.test/%r" },
+        { id: "search", type: "link", label: "Custom button", url: "https://example.test/%w" },
+        { id: "template", type: "anki", label: "Custom button", templateId: "default" },
+        { id: "extra", type: "link", label: "Custom button", url: "https://example.test/%r" },
       ] } });
     if (!reply.ok) throw new Error(reply.error);
   });
@@ -349,11 +349,11 @@ try {
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
   assert.deepEqual(icons.custom.map(icon => [icon.iconName, icon.labelFontSize, icon.labelAriaHidden, icon.title, icon.accessible]), [
-    ["open", "0px", "true", "Open Jisho", "Open Jisho"],
-    ["document-add", "0px", "true", "Send to Anki with Sentence card", "Send to Anki with Sentence card"],
+    ["open", "0px", "true", "Open Custom button", "Open Custom button"],
+    ["document-add", "0px", "true", "Send to Anki with Custom button", "Send to Anki with Custom button"],
   ], "inline custom icons keep meaningful tooltip and accessible action names");
   assert.ok(icons.custom.every(icon => icon.mask !== "none"), "custom actions use the existing shared icons");
-  assert.deepEqual([icons.menu.label, icons.menu.visible, icons.menu.border], ["Reading search", true, "0px"],
+  assert.deepEqual([icons.menu.label, icons.menu.visible, icons.menu.border], ["Custom button", true, "0px"],
     "More actions retains a readable icon and label row");
   assert.ok(icons.grouped, "audio, Anki, pencil and custom icons share one actions group");
   assert.ok(icons.gaps.every(gap => Math.abs(gap - 4) < 1), "all inline actions share a four-pixel gap");

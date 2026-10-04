@@ -325,12 +325,10 @@ export function createView(options, enhanced = false) {
   function topLine(result, dictionary, candidate, context) {
     const term = result.term;
     const line = node("div", "jl-top");
-    const word = enhanced ? node("div", "bee-word") : line;
-    if (enhanced) line.append(word);
     const reading = term.reading && term.reading !== term.expression ? term.reading : "";
     const expression = spelling(result, candidate);
-    word.append(expression);
-    if (reading) word.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
+    line.append(expression);
+    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
     // Without a reading JL marks the spelling itself, which only works for kana.
     else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);
     const audio = components.createAudioControl(document, term.expression);
@@ -341,7 +339,7 @@ export function createView(options, enhanced = false) {
     const process = steps.length ? `～${steps.map(step => step.name).join("→")}` : "";
     // JL shows the matched text, then any deconjugation, unless it is just the word.
     if (process || (matched && matched !== term.expression && matched !== term.reading)) {
-      word.append(node("span", "jl-deconj", [matched, process].filter(Boolean).join(" ")));
+      line.append(node("span", "jl-deconj", [matched, process].filter(Boolean).join(" ")));
     }
     const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);
     if (enhanced) for (const group of groups) frequencyDictionaries.add(group.dictionary);
@@ -521,9 +519,8 @@ export function createView(options, enhanced = false) {
       const line = node("div", "jl-top");
       const kanjiWord = node("span", "jl-spelling", kanji.character);
       const sourceActions = enhanced ? node("div", "bee-source-actions") : line;
-      if (enhanced) {
-        const word = node("div", "bee-word"); word.append(kanjiWord); line.append(word, sourceActions);
-      } else line.append(kanjiWord);
+      line.append(kanjiWord);
+      if (enhanced) line.append(sourceActions);
       sourceActions.append(dictionaryLabel(entry.dictionary));
       block.append(line);
       scroll.append(block);
