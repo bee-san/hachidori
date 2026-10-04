@@ -4,9 +4,9 @@
   "cpu": "Intel(R) Core(TM) Ultra 7 165U",
   "logicalCpus": 14,
   "load": [
-    3.71,
-    2.95,
-    3.33
+    2.5,
+    1.94,
+    2.02
   ],
   "settings": {
     "hoverEnabled": true,
@@ -26,7 +26,7 @@
     "漢字",
     "深層"
   ],
-  "extensionSha256": "ec5ac6c20835eae56a4fd302fd82b40d1c0c59e631f2403f6b8f84703a4fba6b",
+  "extensionSha256": "02501c35a1d66fd9dbebe8ccfe7f6712636e9323c38427f75ae50c5cf1e19ca8",
   "samples": 1,
   "warmups": "one alternating pair per fresh session, excluded; cold first-open separate",
   "threshold": "retain candidate only if warm blank duration improves by >= 5 ms and >= 25%; first/complete regression > 5 ms and 10% requires investigation",
@@ -34,12 +34,12 @@
   "harnessSha256": "0de3954406201903213190eb0bab8bf4caa18240ac2dd1c5e0a25fec364e598c",
   "archives": [
     {
-      "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-hover-fixture.zip",
+      "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-hover-fixture.zip",
       "bytes": 631,
       "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
     },
     {
-      "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-senses.zip",
+      "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-senses.zip",
       "bytes": 912,
       "sha256": "190d78a71ae8f636b5c21739313989cc124ddaadbaff50c48847d4c601b4a26e"
     }

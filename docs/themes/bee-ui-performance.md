@@ -1,12 +1,22 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Bee UI performance
 
-Measured only Bee on 2026-10-04, before
-`4cef3089760d3fbe74fa91545baf7f1512986dd6` and after
-`7bd76589c30b3a03b19440ce2f57352218cfbae5`. The before extension is identical
-to PR #466's reviewed `4aa58ca` extension. The final benchmark harness is
-committed at `f200fec2`; subsequent evidence commits keep the extension fixed.
-Theme Store card images are outside these renderer and hover measurements.
+Measured only Bee on 2026-10-04 at integration revision
+`909204321688542bae7b1cec66b69a8f1f91ccdd`, against the renderer and CSS from
+`4cef3089760d3fbe74fa91545baf7f1512986dd6` (matching PR #466's reviewed
+`4aa58ca` UI). **The baseline checkout is intentionally dirty:** only
+`hoshidicts.wasm`, `hoshidicts-threaded.wasm` and
+`hoshidicts-threaded-idbfs.wasm` are restored from engine revision
+`40768fb99827b0e9c7f3ec99cde2cbb14e98a438`. Both compared extensions use
+those identical engine bytes, isolating the Bee changes from PR #473's
+subsequent definition-order fix. This is not an unchanged baseline Git tree.
+
+The manifest records the three engine hashes and both full extension hashes:
+baseline `02501c35a1d66fd9dbebe8ccfe7f6712636e9323c38427f75ae50c5cf1e19ca8`;
+after `7cf1d68c4dc9c863946937cde0cf4ceea681951305f773528737d39b194685cf`.
+The benchmark harness is committed at `f200fec2`; subsequent evidence commits
+keep the extension fixed. Theme Store card images are outside these renderer
+and hover measurements.
 
 **Presentation updates remove repeated work; initial rendering has a small
 remaining cost for the clearer header and action icons.** The changes reuse
@@ -27,8 +37,10 @@ shared production components, while loading each revision's own Bee module
 and CSS. This controls the substantial scheduling differences seen between
 separate browser processes on this shared desktop.
 
-These timings include forced style/layout, excluding engine lookup, transport,
-runtime action binding, asynchronous media and paint. The fixture has 1 or 12
+These timings include forced style/layout at fixed popup geometry. The
+`positionPopup()` callback is a no-op, so popup positioning calculations are
+excluded, along with engine lookup, transport, runtime action binding,
+asynchronous media and paint. Production hover below includes positioning. The fixture has 1 or 12
 results across JMdict, Jitendex and Grammar dictionary. Each plain dictionary
 has eight sense rows; Jitendex has eight structured paragraphs. Each header has
 three named frequency sources and position-2 pitch. Three custom actions are
@@ -39,30 +51,30 @@ grouped case explicitly selects the first dictionary, so both revisions show
 
 | Work, milliseconds | Before median / p95 | After median / p95 |
 | --- | ---: | ---: |
-| Render 3 blocks | 3.40 / 5.10 | 3.50 / 5.40 |
-| Render 36 blocks, all visible | 29.80 / 40.70 | 30.50 / 41.60 |
-| Render 36 blocks, 12 visible | 16.00 / 22.60 | 16.50 / 20.80 |
-| Unchanged presentation, 3 blocks | 0.50 / 0.90 | 0.00 / 0.10 |
-| Unchanged presentation, 36 visible blocks | 5.00 / 6.50 | 0.10 / 0.20 |
-| Pitch-only presentation, 36 visible blocks | 6.80 / 7.80 | 2.10 / 2.50 |
-| Unchanged presentation, 12 of 36 visible | 2.40 / 2.80 | 0.10 / 0.20 |
-| Pitch-only presentation, 12 of 36 visible | 3.20 / 3.70 | 1.10 / 1.30 |
-| Rename a group, 12 of 36 visible | 2.50 / 3.10 | 0.30 / 0.40 |
+| Render 3 blocks | 2.30 / 3.40 | 2.40 / 3.40 |
+| Render 36 blocks, all visible | 24.30 / 38.50 | 24.90 / 37.10 |
+| Render 36 blocks, 12 visible | 12.80 / 19.80 | 13.20 / 19.40 |
+| Unchanged presentation, 3 blocks | 0.40 / 0.60 | 0.00 / 0.10 |
+| Unchanged presentation, 36 visible blocks | 3.60 / 5.40 | 0.00 / 0.20 |
+| Pitch-only presentation, 36 visible blocks | 5.50 / 7.50 | 1.80 / 2.50 |
+| Unchanged presentation, 12 of 36 visible | 2.00 / 3.00 | 0.10 / 0.20 |
+| Pitch-only presentation, 12 of 36 visible | 2.50 / 4.00 | 0.90 / 1.40 |
+| Rename a group, 12 of 36 visible | 2.10 / 3.20 | 0.30 / 0.50 |
 
-Zero-millisecond medians reflect the observed 0.1 ms timer quantization,
-rather than an absence of work. Unchanged and pitch-only 36-block updates
-improve in all six profiles. Initial rendering is approximately 0.1 ms slower
-for 3 blocks, 0.7 ms for 36 visible blocks and 0.5 ms for the grouped workload.
-The 3-block and 36-visible median increases occur in **all six paired
-profiles**, so this is a consistent modest UI cost, not a claimed initial
-speedup. The remaining header/action layout cost accompanies the new UI after
-removing the identified unnecessary construction, scans and writes.
+Zero-millisecond medians are below the observed 0.1 ms timer resolution;
+they do not mean zero work. Unchanged and pitch-only 36-block updates improve
+in all six profiles. Initial rendering is approximately 0.1 ms slower for
+3 blocks, 0.6 ms for 36 visible blocks and 0.4 ms for the grouped workload.
+The 3-block and 36-visible median increases occur in **five of six paired
+profiles**, with one small decrease each. The remaining header/action layout
+cost persists after removing the identified unnecessary construction, scans
+and writes; these measurements do not establish an initial-render speedup.
 
 | After minus before render median, ms | Profile 0 | Profile 1 | Profile 2 | Profile 3 | Profile 4 | Profile 5 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 3 blocks | +0.10 | +0.10 | +0.20 | +0.10 | +0.10 | +0.10 |
-| 36 blocks, all visible | +0.80 | +0.75 | +0.65 | +0.80 | +0.70 | +0.30 |
-| 36 blocks, 12 visible | +0.55 | +0.40 | +0.35 | +0.50 | +0.25 | −0.15 |
+| 3 blocks | +0.10 | +0.10 | -0.10 | +0.10 | +0.10 | +0.10 |
+| 36 blocks, all visible | +0.85 | +0.85 | +0.65 | -0.05 | +0.75 | +0.65 |
+| 36 blocks, 12 visible | +0.40 | 0.00 | +0.25 | -0.05 | +0.60 | +0.20 |
 
 For 12 results, initial frequency and pitch helper calls fall from **36 to 12**
 each. Unchanged and pitch-only updates make **zero frequency calls** and retain
@@ -84,20 +96,20 @@ links and Anki actions are exercised by the renderer fixture above.
 
 | Work, milliseconds | Before median / p95 | After median / p95 |
 | --- | ---: | ---: |
-| First visible warm result | 17.10 / 17.50 | 17.00 / 17.50 |
-| Complete stable warm result | 33.30 / 33.50 | 33.30 / 33.50 |
-| Synchronous warm renderer | 2.10 / 5.30 | 2.10 / 5.20 |
-| Blank interval during warm replacement | 0 / 0 | 0 / 0 |
+| First visible warm result | 17.05 / 17.60 | 17.10 / 17.50 |
+| Complete stable warm result | 33.40 / 33.50 | 33.40 / 33.50 |
+| Synchronous warm renderer | 2.10 / 5.40 | 2.10 / 5.30 |
+| Blank interval during warm replacement | 0.00 / 0.00 | 0.00 / 0.00 |
 
 Stable completion requires complete expected results and two stable frames;
-33.3 ms is not continuous rendering work. Warm end-to-end performance is
-unchanged at this precision; these figures do not demonstrate a hover speedup.
+33.4 ms is not continuous rendering work. Warm end-to-end results remain
+comparable; these figures do not demonstrate a hover speedup.
 All production assertions passed, including rapid-reply ordering, nested
 lookup, glyph/padding hit testing and bounded sentence extraction. Engine
 result signatures match across all six runs.
 
-Cold first display has only three samples per revision: before median 33.40 ms,
-range 30.9–42.1 ms; after median 33.60 ms, range 32.6–40.0 ms. This is insufficient
+Cold first display has only three samples per revision: before median 32.50 ms,
+range 31.0–38.7 ms; after median 34.70 ms, range 33.1–39.4 ms. This is insufficient
 to establish a cold speedup or a consistent startup regression.
 
 ## Retained investigations
@@ -118,10 +130,16 @@ by 0.35, 0.35 and 0.45 ms, with complete results and unchanged signatures.
 The final source includes that simplification and the removal of redundant
 label writes and the teardown menu query.
 
-These diagnostics use three links labelled Search/Sentence/More. The final
-fixture uses link/Anki/link, all labelled Custom button. Different source
-revisions, action fixtures and measurement boundaries are **not pooled** with
-the final results. All measured samples from the indexed runs, including stalls, remain;
+The earlier `7bd76589` primary renderer and all six hover runs, including their
+original report and manifest, are preserved in one additional diagnostic
+bundle. They used the previous engine; the integration runs above align both
+engines to the current main. Absolute renderer times across these runs are
+not interpreted as an engine improvement: that boundary excludes the engine.
+
+Most earlier diagnostics use three links labelled Search/Sentence/More. The
+final fixture and the retained 7bd primary fixture use link/Anki/link, all
+labelled Custom button. Different source revisions, action fixtures, engine
+bytes and measurement boundaries are **not pooled** with final results. All measured samples from the indexed runs, including stalls, remain;
 none were dropped from reported distributions.
 
 ## Reproduce and evidence
@@ -133,7 +151,11 @@ during the final measurements; unrelated desktop processes remained active.
 
 ```sh
 git worktree add --detach /tmp/bee-before 4cef3089760d3fbe74fa91545baf7f1512986dd6
-git worktree add --detach /tmp/bee-after 7bd76589c30b3a03b19440ce2f57352218cfbae5
+git worktree add --detach /tmp/bee-after 909204321688542bae7b1cec66b69a8f1f91ccdd
+git -C /tmp/bee-before restore --source=40768fb99827b0e9c7f3ec99cde2cbb14e98a438 -- \
+  extension/vendor/hoshidicts.wasm \
+  extension/vendor/hoshidicts-threaded.wasm \
+  extension/vendor/hoshidicts-threaded-idbfs.wasm
 export HACHIDORI_CHROME=/usr/bin/chromium
 export HACHIDORI_PUPPETEER=/path/to/puppeteer-core/lib/puppeteer/puppeteer-core.js
 HACHIDORI_BEE_PROFILES=6 node benchmark/bee-renderer.mjs \

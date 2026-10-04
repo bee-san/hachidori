@@ -2,18 +2,18 @@
   "date": "2026-10-04",
   "onlyThemeBenchmarked": "bee",
   "beforeRevision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
-  "afterRevision": "7bd76589c30b3a03b19440ce2f57352218cfbae5",
+  "afterRevision": "909204321688542bae7b1cec66b69a8f1f91ccdd",
   "environment": {
-    "startedAt": "2026-10-04T11:50:33.268Z",
+    "startedAt": "2026-10-04T12:11:10.617Z",
     "platform": "linux",
     "release": "7.2.6-1-cachyos",
     "node": "v22.23.1",
     "cpu": "Intel(R) Core(TM) Ultra 7 165U",
     "logicalCpus": 14,
     "load": [
-      0.99,
-      2.19,
-      3.19
+      1.47,
+      1.26,
+      1.85
     ],
     "profiles": 6,
     "measurements": 100,
@@ -32,7 +32,7 @@
     "samplesPerCellPerProfile": 100,
     "samplesPerScenarioPerRevision": 600,
     "inputs": "1 or 12 results across three dictionaries; eight senses per dictionary; three named frequency sources; pitch position 2; link, Anki and link custom actions all labelled Custom button; popup 560 x 420; grouped case explicitly selects the first dictionary, showing 12 of 36 blocks.",
-    "boundary": "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
+    "boundary": "Production renderer with fixed popup geometry plus forced synchronous layout. positionPopup is a no-op; excludes popup positioning calculations, engine lookup, transport, runtime action binding, asynchronous media and paint.",
     "control": "One fresh renderer process per profile, both revisions in independent shadow roots. Every measured iteration alternates checkout order, and setup/scenario order reverses in odd profiles.",
     "actionFixture": {
       "labels": [
@@ -60,15 +60,15 @@
       "after-before",
       "before-after"
     ],
-    "boundary": "Production extension, MV3 worker and WASM path through first visible result and two stable frames; compact summaries enabled; no configured custom buttons.",
+    "boundary": "Production extension, MV3 worker and WASM path including popup positioning through first visible result and two stable frames; compact summaries enabled; no configured custom buttons.",
     "fixtures": [
       {
-        "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-hover-fixture.zip",
+        "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-hover-fixture.zip",
         "bytes": 631,
         "sha256": "af1e84a2b6c4085e55c9ae27b7d0621729178f63d0a35d1acb74aca423134277"
       },
       {
-        "path": "/tmp/hachidori-bee-ui-before-4cef3089/docs/themes/bee-evidence/bee-senses.zip",
+        "path": "/tmp/hachidori-bee-ui-before-4cef-current-engine/docs/themes/bee-evidence/bee-senses.zip",
         "bytes": 912,
         "sha256": "190d78a71ae8f636b5c21739313989cc124ddaadbaff50c48847d4c601b4a26e"
       }
@@ -78,29 +78,31 @@
     "Synthetic public fixtures, not a large installed dictionary library.",
     "Shared desktop without CPU isolation. Alternating iteration order retains every measured sample and profile load.",
     "Hidden-group glossaries and action sets are still fully constructed; no work is deferred beyond the measured renderer interval.",
-    "Final initial-render medians rise by 0.1 ms, 0.7 ms and 0.5 ms for 3 blocks, 36 visible blocks and 36 blocks with 12 visible. The 3-block and 36-visible paired medians rise in all six profiles. This is remaining header/action layout cost, not an initial speedup.",
+    "Initial-render medians rise by 0.1 ms, 0.6 ms and 0.4 ms for 3 blocks, 36 visible blocks and 36 blocks with 12 visible. The 3-block and 36-visible paired medians rise in five of six profiles. This is remaining header/action layout cost, not an initial speedup.",
     "Warm end-to-end hover is not a claimed speedup. Final hover has three fresh profiles per revision and 72 warm lookups; cold has only three samples per revision.",
     "Zero-millisecond presentation medians reflect the observed 0.1 ms timer quantization, not an absence of work.",
-    "Intermediate diagnostic workloads use three custom links labelled Search, Sentence and More. The final workload uses link, Anki and link actions all labelled Custom button. Their timings and different harness boundaries are not pooled.",
-    "Mask suppression hides glyphs and is not a valid product optimization. The loaded label-reuse diagnostic includes an unrelated eight-way WASM compile burst. All measured samples from indexed runs remain, including stalls."
+    "Earlier diagnostics use different source revisions, action fixtures, engine bytes or harness boundaries. They are retained separately and are not pooled with the current engine-aligned integration results.",
+    "Mask suppression hides glyphs and is not a valid product optimization. The loaded label-reuse diagnostic includes an unrelated eight-way WASM compile burst. All measured samples from indexed runs remain, including stalls.",
+    "The baseline is intentionally dirty: only the three named WASM files are replaced with engine revision 40768fb99827b0e9c7f3ec99cde2cbb14e98a438. Both compared extensions use identical engine bytes; this isolates Bee changes and does not benchmark PR473."
   ],
   "artifacts": {
-    "ui-hover-after-0-manifest.json": "4d3467eaee0161c205ccea16c21448a67b0ee8cd0a6cfd42d38ca1613cd6055e",
-    "ui-hover-after-0-raw.json.gz": "e0eba3e5a74aea3116f7a250d1d16a57530b3ae04059ec3a3d946b7c2ae0ae7f",
-    "ui-hover-after-1-manifest.json": "e53a27e5ca60fdb380ae26c129505205f8fd11be22e654c0ce0b54618ea3ea83",
-    "ui-hover-after-1-raw.json.gz": "d66001627a5a209c85b663691ae82283c4dcff3721f048d21662f60d882ae715",
-    "ui-hover-after-2-manifest.json": "2b271126de5cc1eaa4a51eb23fc9ca2d2081031bc126a21fe04be5ea61a3af5b",
-    "ui-hover-after-2-raw.json.gz": "429d835ab95a1eceaae03f51b91d3fb91114b413b2244302153baff0c7dc4094",
-    "ui-hover-before-0-manifest.json": "78095bb402d2ea31336b7da71c61630f2b93524809441ce9f7ad661866b6fc81",
-    "ui-hover-before-0-raw.json.gz": "6542d8da37ab08b854be13edd6af5efbbc9c8ac65b152c17fc14823ae9530b85",
-    "ui-hover-before-1-manifest.json": "3e04cf246d4a7e347e542c0daa31b3d58e3202895ceab023c24546f2de1d3aec",
-    "ui-hover-before-1-raw.json.gz": "a8efabd6f199ba9a89faf35b24e3fb75eff85fcb653435aa4eb7473b3a29fdf9",
-    "ui-hover-before-2-manifest.json": "20b4d0400684b858d273f1db8991f4a2be4f83ad58e1d269ee294a0fead65835",
-    "ui-hover-before-2-raw.json.gz": "1f689cc1706a239b784cc083e2077d2c5018b233552d37b64fc01372b9a1594c",
-    "ui-hover-summary.json": "04e7c93368a9472b9b0abc3ef2ef1209597ed82ef0540bb5e92bb7c3be48a513",
+    "ui-hover-after-0-manifest.json": "21d5f53e18ec27daa7b35d50742a9689e267be820124ee6342fb5b1635170b7b",
+    "ui-hover-after-0-raw.json.gz": "c2409708d36cc0c8d0a6b2d4abb72483b6483d4cb14fb32df5be70c786a7a9d8",
+    "ui-hover-after-1-manifest.json": "24d3834b04a3ccf849232a1d1e5f22487743bf99e922a8ec51579d8d123801c7",
+    "ui-hover-after-1-raw.json.gz": "187aa13715a21cf25d65951d26825bb9f85797e43a8f90ff93f4858b90ae20fa",
+    "ui-hover-after-2-manifest.json": "ce9d1848062da08f43062ddd5d378ede5ddb945c7f69297ab3b931f8d4da65d0",
+    "ui-hover-after-2-raw.json.gz": "456b603fa86fc9eb46e9189f51a661c3178df5d993bf8a4e24e834aee153ba0a",
+    "ui-hover-before-0-manifest.json": "608df4000fe7b42d75d096b2142c789a16f5e85185ceca7b733fdc675618f7bc",
+    "ui-hover-before-0-raw.json.gz": "de8d9883fc7edc082336b0725f6b05b46d8160bc92d4ee47c6f91569c27a6213",
+    "ui-hover-before-1-manifest.json": "009711f71ef87bc9cb2e14783147c8804a6ac4913190fa24a1c54975f18a788a",
+    "ui-hover-before-1-raw.json.gz": "b3d465bedf0434ea42b9b7a8781bbb82c42c6e4ad54283206b6fa66dd57eec40",
+    "ui-hover-before-2-manifest.json": "2cc3165b43d11cec019ecaeb5b2452ca2d54ecb8bdbc6ccb1d4da0fe12a0391a",
+    "ui-hover-before-2-raw.json.gz": "e5c44f7e2ac057c1e5c2da8408f37da9724a6b0bb64b02b7bf45d72631cb1b7f",
+    "ui-hover-summary.json": "fd3d95e91b9b582662ca9c4021e21236bc09407a0fe0de12b72a0f49037321dd",
     "ui-investigation-722-hover-raw.json.gz": "abcfde4c095dd5c197feb73bd87491894e48fe032b230df20ab019630388a575",
     "ui-investigation-722-interleaved-raw.json.gz": "6ce02b763055f6c2e2a230a420430fc1a9d4dac5c0dc4aebcd10d691c73e49a7",
     "ui-investigation-722-sequential-raw.json.gz": "584c0c7778c7c6887340dba1480a08546940dd261fa0c184d48da59057f3999c",
+    "ui-investigation-7bd-primary-raw.json.gz": "9baa3355dbc0b163aa0f6424a24f8a221df002058b6d7b6ba593296954e846ab",
     "ui-investigation-icons-raw.json.gz": "fa9f0c09c99b5cd0acb532548f520f131accbcc2a8a3963facb5617efafada4e",
     "ui-investigation-icons-reverse-raw.json.gz": "bef6b1c23f3effb5d728b05ac3dbc32cdc94e4826f73045f2e776bdb33ae99ec",
     "ui-investigation-interleaved-harness.mjs.gz": "523adeaffac84a0af61013e1bbe376c08f363354e4e1ac18ca839dff08b9e4c6",
@@ -111,8 +113,8 @@
     "ui-investigation-mask-raw.json.gz": "c21f55c0f1149920876629b051c15d096160e437051334ae517ee26c458a6119",
     "ui-investigation-word-wrapper-patch.json": "bdadce8905d4fb0cd711106e5171aacf2ceb85eb4ee3318279740b20c3e7d651",
     "ui-investigation-word-wrapper-raw.json.gz": "f48e24f7867f1c3c21737c40048e098f169e5389c4b048f006423cc2b713eb1b",
-    "ui-renderer-raw.json.gz": "c3d26bb83183afd9d8be00ed3b42f23504b968ff4eeed403a47a096a5859fc09",
-    "ui-renderer-summary.json": "0ad33bc757c699a69c4001a5b40537afbf0a041da15a00311fc8f42321a49e34"
+    "ui-renderer-raw.json.gz": "808932ad779102ea7cfdb89317654d5c2cd0f04336f918f40622c31f837771c6",
+    "ui-renderer-summary.json": "4402fee2f697034d3e2ee7e6ee0c8f917d38dc80d036299acf0b6d002dec0bfe"
   },
   "investigations": [
     {
@@ -424,6 +426,16 @@
       "boundary": "Earlier 722 production hover: six fresh profiles and 144 warm lookups per revision. Retained as diagnostic after later label-write, menu-query and wrapper refinements.",
       "profilesPerRevision": 6,
       "warmSamplesPerRevision": 144
+    },
+    {
+      "artifact": "ui-investigation-7bd-primary-raw.json.gz",
+      "boundary": "Earlier 7bd primary measurements with the previous engine: six renderer profiles and three hover profiles per revision. Preserved without pooling with current engine-aligned integration results.",
+      "rendererProfiles": 6,
+      "rendererSamplesPerCasePerRevision": 600,
+      "hoverProfilesPerRevision": 3,
+      "hoverWarmSamplesPerRevision": 72,
+      "beforeRevision": "4cef3089760d3fbe74fa91545baf7f1512986dd6",
+      "afterRevision": "7bd76589c30b3a03b19440ce2f57352218cfbae5"
     }
   ],
   "investigationPatches": [
@@ -431,5 +443,34 @@
     "ui-investigation-label-reuse-patch.json",
     "ui-investigation-word-wrapper-patch.json"
   ],
-  "investigationHarness": "ui-investigation-interleaved-harness.mjs.gz"
+  "investigationHarness": "ui-investigation-interleaved-harness.mjs.gz",
+  "engineAlignment": {
+    "sourceRevision": "40768fb99827b0e9c7f3ec99cde2cbb14e98a438",
+    "files": [
+      {
+        "path": "extension/vendor/hoshidicts.wasm",
+        "bytes": 2714116,
+        "sha256": "b7d380dff156be59bdb24b3e7ee81399a5f4dc9f4456d8028e087d535521d0cf"
+      },
+      {
+        "path": "extension/vendor/hoshidicts-threaded.wasm",
+        "bytes": 2872089,
+        "sha256": "afbbdbe25a9d82316f92e4b86c0be3337f33b04b65d14a7bf3869cc80311c9bc"
+      },
+      {
+        "path": "extension/vendor/hoshidicts-threaded-idbfs.wasm",
+        "bytes": 2782285,
+        "sha256": "f6994a12b2fabc8811df487749a85f528ad42a3cfd1860b8820091eaae89ab59"
+      }
+    ],
+    "baselineWorkingTreeChanges": [
+      " M extension/vendor/hoshidicts-threaded-idbfs.wasm",
+      " M extension/vendor/hoshidicts-threaded.wasm",
+      " M extension/vendor/hoshidicts.wasm"
+    ],
+    "scope": "Only these three WASM files differ from the baseline Git revision. Both compared extensions use these exact engine bytes, isolating Bee theme changes from PR473."
+  },
+  "beforeWorkingTreeClean": false,
+  "beforeExtensionSha256": "02501c35a1d66fd9dbebe8ccfe7f6712636e9323c38427f75ae50c5cf1e19ca8",
+  "afterExtensionSha256": "7cf1d68c4dc9c863946937cde0cf4ceea681951305f773528737d39b194685cf"
 }
