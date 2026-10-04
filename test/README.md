@@ -614,6 +614,11 @@ What it proves, in order:
     `legacy_font.mdx` turns `<font size>` into `medium` and `x-large`, and its
     inline `font-size` wins over `size="5"`.
 
+The definition-order regression (#472) imports two small dictionaries and checks
+descending definition scores, stable ties, fractional and negative scores, tag
+ownership, dictionary priority and reordering, and selected-dictionary lookups
+through both mapped and paged storage. The JSON response shape stays unchanged.
+
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 - The `hdw_lookup` failure fallback is the literal

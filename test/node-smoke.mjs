@@ -1403,6 +1403,41 @@ check('a dictionary-scoped lookup retains shared frequency and pitch metadata', 
   eq(selectedLookup.results[0].term.pitches[0]?.dictionary, TITLE, 'pitch dictionary');
 });
 
+G('definition score order (#472)');
+
+check('definitions sort by score within each dictionary, keeping ties, tags and dictionary priority', () => {
+  const titles = ['definition-order-first', 'definition-order-second'];
+  const paths = titles.map(title => `/dicts/${title}`);
+  const terms = [
+    ['青タン', 'あおタン', 'hanafuda', '', -4, ['hanafuda'], 2723740, ''],
+    ['青タン', 'あおタン', 'colloquial', '', 0, ['bruise'], 2223970, ''],
+    ['青タン', 'あおタン', 'tie', '', 0, ['equal-score later row'], 3, ''],
+    ['青タン', 'あおタン', 'fraction-low', '', -0.75, ['lower fraction'], 4, ''],
+    ['青タン', 'あおタン', 'fraction-high', '', -0.25, ['higher fraction'], 5, ''],
+  ];
+  const expected = [terms[1], terms[2], terms[4], terms[3], terms[0]]
+    .map(row => [JSON.stringify(row[5]), row[2]]);
+  const secondTerms = [['青タン', 'あおタン', 'second', '', 100, ['second dictionary'], 6, '']];
+  for (const [index, title] of titles.entries()) {
+    const zipPath = `/work/${title}.zip`;
+    M.FS.writeFile(zipPath, buildTitledZip(title, { terms: index === 0 ? terms : secondTerms }));
+    ok(hdwImport(zipPath, '/dicts').success, lastError());
+  }
+  const project = term => term.glossaries.map(({ glossary, definitionTags }) => [glossary, definitionTags]);
+  const second = [[JSON.stringify(secondTerms[0][5]), secondTerms[0][2]]];
+  for (const paged of [0, 1]) {
+    reset();
+    paths.forEach(path => eq(addDict(path, 0, paged), 1, lastError()));
+    const response = lookup('青タン');
+    conforms(response, LOOKUP_RESPONSE, 'definition ordering response');
+    same(project(response.results[0].term), [...expected, ...second], `dictionary priority, paged=${paged}`);
+    eq(response.results[0].term.score, 100, 'merged score still keeps its maximum');
+    same(project(lookupDictionary('青タン', paths[0]).results[0].term), expected, 'selected dictionary');
+    eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify([...paths].reverse())]), 1, lastError());
+    same(project(lookup('青タン').results[0].term), [...second, ...expected], 'reordered dictionaries');
+  }
+});
+
 G('long keys beyond the scan length');
 
 const LONG_KEY_DIR = `/dicts/${LONG_KEY_TITLE}`;
