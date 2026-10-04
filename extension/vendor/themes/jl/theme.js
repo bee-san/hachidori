@@ -193,14 +193,25 @@ export function createView(options, enhanced = false) {
       onFormCreated(form) { host.insertBefore(form, host.children[1] || null); options.positionPopup(); },
       onClose: flushDictionaryPresentation,
       onButtonsUpdated(actions, buttons) {
-        for (const custom of buttons) {
+        for (const [index, custom] of buttons.entries()) {
+          // Inline icons reuse the shared label; More keeps its visible label.
+          const label = custom.firstElementChild;
           let icon = custom.querySelector(".bee-custom-action-icon");
+          if (index < 2) {
+            if (icon && icon !== label) icon.remove();
+            icon = label;
+          } else if (icon === label) {
+            label.classList.remove("bee-custom-action-icon", "hd-icon");
+            label.removeAttribute("aria-hidden");
+            delete label.dataset.icon;
+            icon = null;
+          }
           if (!icon) {
             icon = node("span", "bee-custom-action-icon hd-icon");
-            icon.setAttribute("aria-hidden", "true");
-            // Shared actions keep their first child as the editable label.
             custom.append(icon);
           }
+          icon.classList.add("bee-custom-action-icon", "hd-icon");
+          icon.setAttribute("aria-hidden", "true");
           icon.dataset.icon = custom.dataset.customButtonType === "anki" ? "document-add" : "open";
           if (custom.dataset.customButtonType === "link") {
             custom.title = `Open ${custom.dataset.customButtonLabel}`;
