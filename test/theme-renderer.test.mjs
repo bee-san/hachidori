@@ -326,6 +326,29 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   assert.equal(action("anki").getAttribute("aria-label"), "Send to Anki with Sentence renamed");
   assert.ok(originalIcons.every((icon, index) => icon === action(buttons[index].id).querySelector(".bee-custom-action-icon")),
     "live renames reuse the existing icon nodes");
+  const originalActions = new Map(buttons.map(({ id }) => [id, action(id)]));
+  const labels = new Map(buttons.map(({ id }) => [id, action(id).firstElementChild]));
+  f.view.setCustomButtons([buttons[2], buttons[0], buttons[1]]);
+  assert.ok(buttons.every(({ id }) => action(id) === originalActions.get(id)
+    && action(id).firstElementChild === labels.get(id)), "reordering retains native action and shared label ownership");
+  assert.equal(action("more").querySelector(".bee-custom-action-icon"), labels.get("more"), "an action moved inline uses its existing label as its icon");
+  assert.equal(action("more").children.length, 1, "inline actions do not build a second decorative element");
+  assert.equal(labels.get("more").getAttribute("aria-hidden"), "true");
+  assert.notEqual(action("anki").querySelector(".bee-custom-action-icon"), labels.get("anki"), "an action moved to More keeps its visible label and separate icon");
+  assert.equal(labels.get("anki").classList.contains("hd-icon"), false);
+  assert.equal(labels.get("anki").getAttribute("aria-hidden"), null);
+  assert.equal(labels.get("anki").dataset.icon, undefined);
+  assert.equal(action("anki").dataset.ankiTemplateId, "sentence");
+  action("more").click();
+  assert.equal(links[1].url, "https://example.test/%E3%81%9F%E3%81%B9%E3%82%8B", "moving an action inline preserves its link handler and reading substitution");
+  f.view.setCustomButtons(buttons);
+  assert.equal(action("anki").querySelector(".bee-custom-action-icon"), labels.get("anki"), "moving back inline reuses the same shared label");
+  assert.equal(action("anki").children.length, 1);
+  assert.equal(labels.get("anki").getAttribute("aria-hidden"), "true");
+  assert.notEqual(action("more").querySelector(".bee-custom-action-icon"), labels.get("more"));
+  assert.equal(labels.get("more").getAttribute("aria-hidden"), null);
+  assert.equal(labels.get("more").dataset.icon, undefined);
+  assert.ok(buttons.every(({ id }) => action(id).querySelectorAll(".bee-custom-action-icon").length === 1));
   f.view.setCustomButtons([
     { id: "link", type: "anki", label: "Other card", templateId: "other" },
     { id: "anki", type: "link", label: "Other site", url: "https://example.test/other" },
