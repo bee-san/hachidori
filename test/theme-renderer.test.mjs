@@ -305,6 +305,14 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   f.view.renderResults([beeResult], { query: "食べる" }, beeContext);
   assert.equal(f.popup.querySelector('[data-custom-button-id="anki"]').dataset.ankiTemplateId, "sentence");
   assert.equal(f.popup.querySelector('.bee-action-menu [data-custom-button-id="more"]').textContent, "More");
+  const action = id => f.popup.querySelector(`[data-custom-button-id="${id}"]`);
+  const originalIcons = buttons.map(({ id }) => action(id).querySelector(".bee-custom-action-icon"));
+  assert.deepEqual(originalIcons.map(icon => icon?.dataset.icon), ["open", "document-add", "open"],
+    "inline and overflow actions reuse the shared external-link and Anki icons");
+  assert.ok(originalIcons.every(icon => icon.classList.contains("hd-icon") && icon.getAttribute("aria-hidden") === "true"));
+  assert.equal(action("link").getAttribute("aria-label"), "Open Search");
+  assert.equal(action("link").title, "Open Search");
+  assert.equal(action("anki").getAttribute("aria-label"), "Send to Anki with Sentence");
   f.popup.querySelector('[data-custom-button-id="link"]').click();
   assert.equal(links[0].url, "https://example.test/%E9%A3%9F%E3%81%B9%E3%82%8B");
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -312,6 +320,28 @@ test("Bee reuses Note save/Escape and custom actions, retaining a draft through 
   assert.equal(form.elements.term.value, "食べる");
   assert.equal(form.elements.reading.value, "たべる");
   form.elements.definition.value = "My meaning";
+  f.view.setCustomButtons(buttons.map(value => ({ ...value, label: `${value.label} renamed` })));
+  assert.equal(action("link").firstElementChild.textContent, "Search renamed", "the shared label remains first for live updates");
+  assert.equal(action("link").getAttribute("aria-label"), "Open Search renamed");
+  assert.equal(action("anki").getAttribute("aria-label"), "Send to Anki with Sentence renamed");
+  assert.ok(originalIcons.every((icon, index) => icon === action(buttons[index].id).querySelector(".bee-custom-action-icon")),
+    "live renames reuse the existing icon nodes");
+  f.view.setCustomButtons([
+    { id: "link", type: "anki", label: "Other card", templateId: "other" },
+    { id: "anki", type: "link", label: "Other site", url: "https://example.test/other" },
+    buttons[2],
+  ]);
+  assert.equal(action("link").querySelector(".bee-custom-action-icon").dataset.icon, "document-add");
+  assert.equal(action("link").dataset.ankiTemplateId, "other");
+  assert.equal(action("link").getAttribute("aria-label"), "Send to Anki with Other card");
+  assert.equal(action("anki").querySelector(".bee-custom-action-icon").dataset.icon, "open");
+  assert.equal(action("anki").dataset.ankiTemplateId, undefined);
+  assert.equal(action("anki").getAttribute("aria-label"), "Open Other site");
+  assert.ok(buttons.every(({ id }) => action(id).querySelectorAll(".bee-custom-action-icon").length === 1),
+    "type changes do not accumulate icons");
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "My meaning", "changing action labels and types preserves an open draft");
+  f.view.setCustomButtons(buttons);
   f.view.updateDictionaryPresentation({ ...beeContext, dictionaryTabGroups: [
     { id: "both", name: "All grouped", dictionaries: ["test", "second"] }] });
   assert.equal(form.hidden, false);
