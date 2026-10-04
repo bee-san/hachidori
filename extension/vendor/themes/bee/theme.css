@@ -83,17 +83,20 @@
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button {
   display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; border: 0;
 }
-/* Audio, Anki and pencil sit together in one group as identical 22 px icon
- * buttons, using Hachidori's outline icon set at one size in the text colour. */
+/* Built-in and inline custom actions share 22 px buttons and 16 px icons
+ * from Hachidori's outline set, in the text colour. */
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button,
-.gsm-hoshidicts-popup .gsm-hoshidicts-note-button {
+.gsm-hoshidicts-popup .gsm-hoshidicts-note-button,
+.gsm-hoshidicts-popup .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button {
   display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
   flex: none; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 4px; color: inherit; cursor: pointer;
 }
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button::before,
 .gsm-hoshidicts-popup .gsm-hoshidicts-mine-icon,
-.gsm-hoshidicts-popup .gsm-hoshidicts-note-icon { width: 16px; height: 16px; }
-.gsm-hoshidicts-popup :is(.gsm-hoshidicts-audio-button, .gsm-hoshidicts-mine-button, .gsm-hoshidicts-note-button):is(:hover, [aria-expanded="true"]):not(:disabled) {
+.gsm-hoshidicts-popup .gsm-hoshidicts-note-icon,
+.gsm-hoshidicts-popup .bee-custom-action-icon { width: 16px; height: 16px; }
+.gsm-hoshidicts-popup :is(.gsm-hoshidicts-audio-button, .gsm-hoshidicts-mine-button, .gsm-hoshidicts-note-button,
+  .gsm-hoshidicts-text-action-button):is(:hover, [aria-expanded="true"]):not(:disabled) {
   background: color-mix(in srgb, #9a236c 16%, transparent);
 }
 /* Duplicate warnings stand out; "View existing notes in Anki" is an ordinary
@@ -127,14 +130,17 @@
 .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-entry-actions { display: contents; margin: 0; }
 .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-audio-control { flex: none; margin-left: 0; }
 .gsm-hoshidicts-popup .gsm-hoshidicts-text-action-button {
-  flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  box-sizing: border-box; height: 22px; padding: 0 4px; background: #f2d6ec; border: 1px solid #95618c;
-  border-radius: 3px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+  box-sizing: border-box; padding: 4px 6px; background: transparent; border: 0;
+  border-radius: 4px; font-size: 12px; text-align: left;
 }
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button > .gsm-hoshidicts-text-action-label { display: none; }
+.bee-custom-action-icon { order: -1; }
+.bee-action-menu .gsm-hoshidicts-text-action-label { overflow-wrap: anywhere; }
 .bee-more-actions { flex: none; font-size: 15px; }
 .bee-more-actions > summary { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; cursor: pointer; list-style: none; padding: 0; }
 .jl-nav { position: relative; }
-.bee-action-menu { position: absolute; z-index: 2; top: 100%; right: 0; box-sizing: border-box; width: max-content; max-width: min(280px, 100%); padding: 4px; background: #fbe9f5; border: 1px solid #95618c; display: flex; flex-wrap: wrap; gap: 4px; }
+.bee-action-menu { position: absolute; z-index: 2; top: 100%; right: 0; box-sizing: border-box; width: max-content; max-width: min(280px, 100%); padding: 4px; background: #fbe9f5; border: 1px solid #95618c; display: flex; flex-direction: column; gap: 2px; }
 .gsm-hoshidicts-note-form { display: grid; gap: 7px; margin: 8px 2px; padding: 8px; border: 1px solid #95618c; background: #fbe9f5; }
 .gsm-hoshidicts-note-field { display: grid; gap: 3px; font-size: 12px; color: #6442aa; }
 .gsm-hoshidicts-note-form input, .gsm-hoshidicts-note-form textarea {

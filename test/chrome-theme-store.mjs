@@ -270,9 +270,9 @@ try {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options.revision, options: { imageHoverPreview: "all", customButtons: [
-        { id: "search", type: "link", label: "Search", url: "https://example.test/%w" },
-        { id: "template", type: "anki", label: "My card", templateId: "default" },
-        { id: "extra", type: "link", label: "Another search", url: "https://example.test/%r" },
+        { id: "search", type: "link", label: "Jisho", url: "https://example.test/%w" },
+        { id: "template", type: "anki", label: "Sentence card", templateId: "default" },
+        { id: "extra", type: "link", label: "Reading search", url: "https://example.test/%r" },
       ] } });
     if (!reply.ok) throw new Error(reply.error);
   });
@@ -305,7 +305,8 @@ try {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const audio = getComputedStyle(popup.querySelector(".gsm-hoshidicts-audio-button"), "::before");
     const describe = style => ({ width: style.width, height: style.height, color: style.backgroundColor, mask: style.maskImage });
-    const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button"]
+    const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button",
+      '[data-custom-button-id="search"]', '[data-custom-button-id="template"]']
       .map(selector => popup.querySelector(selector));
     const box = button => { const style = getComputedStyle(button), rect = button.getBoundingClientRect();
       return { width: style.width, height: style.height, border: style.borderTopWidth, top: Math.round(rect.top) }; };
@@ -316,9 +317,19 @@ try {
     mineButton.dataset.state = "view-existing";
     const viewExistingColor = getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).backgroundColor;
     if (savedState === undefined) delete mineButton.dataset.state; else mineButton.dataset.state = savedState;
+    const more = popup.querySelector(".bee-more-actions"); more.open = true;
+    const overflow = more.querySelector("button"), overflowLabel = overflow.querySelector(".gsm-hoshidicts-text-action-label");
+    const menu = { label: overflowLabel.textContent, visible: overflowLabel.checkVisibility(),
+      icon: describe(getComputedStyle(overflow.querySelector(".bee-custom-action-icon"))),
+      border: getComputedStyle(overflow).borderTopWidth };
+    more.open = false;
     return { audio: describe(audio), viewExistingColor,
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
+      custom: buttons.slice(3).map(button => ({ ...describe(getComputedStyle(button.querySelector(".bee-custom-action-icon"))),
+        labelDisplay: getComputedStyle(button.querySelector(".gsm-hoshidicts-text-action-label")).display,
+        title: button.title, accessible: button.getAttribute("aria-label"),
+        iconName: button.querySelector(".bee-custom-action-icon").dataset.icon })), menu,
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
       buttons: buttons.map(box), gaps, grouped: buttons.every(button => group.contains(button)),
       order: [...group.querySelectorAll("button")].slice(0, 3).map(button => button.className.split(" ")[0]),
@@ -330,14 +341,21 @@ try {
         return node.contains(hit) ? getComputedStyle(hit).cursor : `${node.className} covered by ${hit?.className}`;
       }) };
   });
-  for (const icon of [icons.mine, icons.note]) {
+  for (const icon of [icons.mine, icons.note, ...icons.custom, icons.menu.icon]) {
     assert.deepEqual([icon.width, icon.height, icon.color], [icons.audio.width, icons.audio.height, icons.audio.color], JSON.stringify(icons));
   }
   assert.equal(icons.viewExistingColor, icons.audio.color, "the view-existing Anki book matches the other icons' colour");
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
-  assert.ok(icons.grouped, "audio, Anki and pencil share one actions group");
-  assert.ok(icons.gaps.every(gap => Math.abs(gap - 4) < 1), "Anki, audio and pencil share a four-pixel gap");
+  assert.deepEqual(icons.custom.map(icon => [icon.iconName, icon.labelDisplay, icon.title, icon.accessible]), [
+    ["open", "none", "Open Jisho", "Open Jisho"],
+    ["document-add", "none", "Send to Anki with Sentence card", "Send to Anki with Sentence card"],
+  ], "inline custom icons keep meaningful tooltip and accessible action names");
+  assert.ok(icons.custom.every(icon => icon.mask !== "none"), "custom actions use the existing shared icons");
+  assert.deepEqual([icons.menu.label, icons.menu.visible, icons.menu.border], ["Reading search", true, "0px"],
+    "More actions retains a readable icon and label row");
+  assert.ok(icons.grouped, "audio, Anki, pencil and custom icons share one actions group");
+  assert.ok(icons.gaps.every(gap => Math.abs(gap - 4) < 1), "all inline actions share a four-pixel gap");
   assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
   for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
   assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
@@ -434,6 +452,9 @@ try {
       for (const node of popup.querySelectorAll(".jl-tabs, .gsm-hoshidicts-text-action-button, input, textarea")) {
         if (node.getClientRects().length) check(node, "borderTopColor", 3, node.parentElement);
       }
+      for (const node of popup.querySelectorAll(".bee-custom-action-icon")) {
+        if (node.getClientRects().length) check(node, "backgroundColor", 3, node.parentElement);
+      }
       const mine = popup.querySelector(".gsm-hoshidicts-mine-button");
       const state = mine.dataset.state; mine.dataset.state = "duplicate";
       check(mine, "color", 3); mine.dataset.state = state;
@@ -454,6 +475,39 @@ try {
   await checkBeeContrast();
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
   await screenshot("bee");
+  const beeDesign = await settings.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const normalised = HDReaderOptions.normaliseOptions(options);
+    return { popupWidthPx: normalised.popupWidthPx, glossaryLayoutMode: normalised.glossaryLayoutMode };
+  });
+  const updateBeeDesign = patch => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  await updateBeeDesign({ popupWidthPx: 300 });
+  await hover();
+  await tab.waitForFunction(() => {
+    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    return !popup.hidden && popup.querySelector(".bee-more-actions") && popup.getBoundingClientRect().width <= 300;
+  });
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
+  await screenshot("bee-readable-300");
+  await tab.evaluate(() => {
+    const more = document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions");
+    more.open = true; more.querySelector("summary").focus();
+  });
+  await checkBeeContrast();
+  await screenshot("bee-readable-300-more");
+  await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions").open = false; });
+  await updateBeeDesign({ popupWidthPx: beeDesign.popupWidthPx, glossaryLayoutMode: "compact" });
+  await hover();
+  await tab.waitForFunction(() => document.querySelector("hachidori-host").dataset.hoshidictsGlossaryLayout === "compact");
+  await screenshot("bee-compact");
+  await updateBeeDesign(beeDesign);
+  await hover();
+  await tab.waitForFunction(() => !document.querySelector("hachidori-host").hasAttribute("data-hoshidicts-glossary-layout"));
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector("form:not([hidden])"));
@@ -481,6 +535,15 @@ try {
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
   await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
   await screenshot("bee-kanji-rich");
+  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").focus());
+  await screenshot("bee-back-focus");
+  const media = await tab.createCDPSession();
+  for (const scheme of ["dark", "light"]) {
+    await media.send("Emulation.setEmulatedMedia", { features: [
+      { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
+    await screenshot(`bee-back-focus-forced-${scheme}`);
+  }
+  await media.send("Emulation.setEmulatedMedia", { features: [] });
   const back = await tab.evaluate(() => {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const rect = element => { const { left, top, bottom, width } = element.getBoundingClientRect(); return { left, top, bottom, width }; };
@@ -517,7 +580,6 @@ try {
   await hover();
   await checkBeeContrast();
   await screenshot("bee-structured-rich");
-  const media = await tab.createCDPSession();
   for (const scheme of ["dark", "light"]) {
     await media.send("Emulation.setEmulatedMedia", { features: [
       { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
@@ -540,7 +602,7 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
   console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
