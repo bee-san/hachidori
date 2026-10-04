@@ -66,8 +66,23 @@ export function createView(options, enhanced = false) {
   let pendingPresentation = null;
   const shown = () => entries.filter(entry => !entry.hidden);
 
+  function closeActionMenu(restoreFocus = true) {
+    const open = [...popup.querySelectorAll(".bee-more-actions[open]")];
+    for (const more of open) more.open = false;
+    if (restoreFocus) open.at(-1)?.querySelector("summary").focus({ preventScroll: true });
+    return open.length > 0;
+  }
+  function onMenuPointerDown(event) {
+    const path = event.composedPath();
+    for (const more of popup.querySelectorAll(".bee-more-actions[open]")) {
+      if (!path.includes(more)) more.open = false;
+    }
+  }
+  if (enhanced) document.addEventListener("pointerdown", onMenuPointerDown, true);
+
   function clear() {
     revision += 1;
+    closeActionMenu(false);
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
@@ -155,6 +170,14 @@ export function createView(options, enhanced = false) {
         const summary = node("summary", "", "⋯");
         summary.setAttribute("aria-label", "More actions");
         const menu = node("div", "bee-action-menu");
+        // Shared link actions stop bubbling. Capture their activation and
+        // dismiss after the action handler runs, keeping its normal semantics.
+        const dismiss = event => {
+          if (event.button !== (event.type === "auxclick" ? 1 : 0) || !event.target.closest("button")) return;
+          queueMicrotask(() => { if (more.isConnected) { more.open = false; summary.focus({ preventScroll: true }); } });
+        };
+        menu.addEventListener("click", dismiss, true);
+        menu.addEventListener("auxclick", dismiss, true);
         menu.append(...buttons.slice(2)); more.append(summary, menu); actions.append(more);
       },
     });
@@ -246,10 +269,12 @@ export function createView(options, enhanced = false) {
   function topLine(result, dictionary, candidate, context) {
     const term = result.term;
     const line = node("div", "jl-top");
+    const word = enhanced ? node("div", "bee-word") : line;
+    if (enhanced) line.append(word);
     const reading = term.reading && term.reading !== term.expression ? term.reading : "";
     const expression = spelling(result, candidate);
-    line.append(expression);
-    if (reading) line.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
+    word.append(expression);
+    if (reading) word.append(pitchMarker(node("span", "jl-reading"), reading, term, context));
     // Without a reading JL marks the spelling itself, which only works for kana.
     else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);
     const audio = components.createAudioControl(document, term.expression);
@@ -260,19 +285,25 @@ export function createView(options, enhanced = false) {
     const process = steps.length ? `～${steps.map(step => step.name).join("→")}` : "";
     // JL shows the matched text, then any deconjugation, unless it is just the word.
     if (process || (matched && matched !== term.expression && matched !== term.reading)) {
-      line.append(node("span", "jl-deconj", [matched, process].filter(Boolean).join(" ")));
+      word.append(node("span", "jl-deconj", [matched, process].filter(Boolean).join(" ")));
     }
     const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);
     if (groups.length) {
       const element = node("span", "jl-frequency");
       frequencies.push({ element, groups, result });
-      line.append(element);
+      if (enhanced) {
+        const metadata = node("div", "bee-metadata");
+        metadata.append(element); line.append(metadata);
+      } else line.append(element);
     }
     const actions = node("div", "gsm-hoshidicts-entry-actions");
     actions.setAttribute("role", "group");
     actions.setAttribute("aria-label", "Entry actions");
     if (enhanced) actions.append(audio.element);
-    line.append(dictionaryLabel(dictionary), actions);
+    if (enhanced) {
+      const sourceActions = node("div", "bee-source-actions");
+      sourceActions.append(dictionaryLabel(dictionary), actions); line.append(sourceActions);
+    } else line.append(dictionaryLabel(dictionary), actions);
     return { line, audio, actions };
   }
   // JL joins one sense's glosses with "; ". Structured rows keep the text layout.
@@ -338,6 +369,7 @@ export function createView(options, enhanced = false) {
   function renderTabs(dictionaries, context) {
     if (enhanced) {
       groupContext = context; availableDictionaries = dictionaries;
+      tab = context.selectedDictionaryTab?.groupId ? { groupId: context.selectedDictionaryTab.groupId } : null;
       renderGroupTabs(dictionaries, context);
       return;
     }
@@ -356,9 +388,13 @@ export function createView(options, enhanced = false) {
   }
 
   function selectGroup(descriptor, notify) {
-    tab = descriptor ? { groupId: descriptor.groupId } : null;
+    const filtered = !!descriptor?.groupId;
+    if (notify || entries.some(entry => entry.hidden !== (filtered && !descriptor.dictionaries.has(entry.dataset.dictionary)))) {
+      closeActionMenu(false);
+    }
+    tab = filtered ? { groupId: descriptor.groupId } : null;
     for (const element of tabs.children) element.setAttribute("aria-pressed", String(element.dataset.groupId === descriptor?.groupId));
-    for (const entry of entries) entry.hidden = !!descriptor && !descriptor.dictionaries.has(entry.dataset.dictionary);
+    for (const entry of entries) entry.hidden = filtered && !descriptor.dictionaries.has(entry.dataset.dictionary);
     selected = Math.max(0, entries.findIndex(entry => !entry.hidden));
     if (notify) {
       scroll.scrollTop = 0;
@@ -367,19 +403,27 @@ export function createView(options, enhanced = false) {
     }
   }
   function renderGroupTabs(dictionaries, context, notify = false) {
-    const descriptors = components.createDictionaryTabs(dictionaries, context).tabs.filter(item => item.groupId);
-    const selectedGroup = (tab || context.selectedDictionaryTab)?.groupId;
+    const allAndGroups = components.createDictionaryTabs(dictionaries, context).tabs.filter(item => item.key === "all" || item.groupId);
+    const descriptors = allAndGroups.length > 1 ? allAndGroups : [];
+    const selectedGroup = tab?.groupId;
     const active = descriptors.find(item => item.groupId === selectedGroup) || descriptors[0];
     const previous = JSON.stringify(groupTabs.map(item => [item.groupId, item.label, [...item.dictionaries]]));
     const next = JSON.stringify(descriptors.map(item => [item.groupId, item.label, [...item.dictionaries]]));
     if (previous !== next) {
+      const focused = popup.getRootNode().activeElement;
+      const focusedTab = focused && tabs.contains(focused);
       tabs.replaceChildren();
       for (const descriptor of descriptors) {
         const element = button("jl-tab", descriptor.label, () => selectGroup(descriptor, true));
-        element.dataset.groupId = descriptor.groupId; element.title = descriptor.title;
+        if (descriptor.groupId) element.dataset.groupId = descriptor.groupId;
+        element.title = descriptor.title;
         tabs.append(element);
       }
       groupTabs = descriptors;
+      if (focusedTab) {
+        const replacement = [...tabs.children].find(element => element.dataset.groupId === focused.dataset.groupId) || tabs.firstElementChild;
+        replacement?.focus({ preventScroll: true });
+      }
     }
     const changed = tab?.groupId !== active?.groupId;
     selectGroup(active, false);
@@ -420,12 +464,17 @@ export function createView(options, enhanced = false) {
       if (entry.stats?.length) lines.push("Statistics:", ...entry.stats.map(stat => `${stat.name}: ${stat.value}`));
       const block = node("article", "jl-entry jl-kanji");
       const line = node("div", "jl-top");
-      line.append(node("span", "jl-spelling", kanji.character), dictionaryLabel(entry.dictionary));
+      const kanjiWord = node("span", "jl-spelling", kanji.character);
+      const sourceActions = enhanced ? node("div", "bee-source-actions") : line;
+      if (enhanced) {
+        const word = node("div", "bee-word"); word.append(kanjiWord); line.append(word, sourceActions);
+      } else line.append(kanjiWord);
+      sourceActions.append(dictionaryLabel(entry.dictionary));
       block.append(line);
       scroll.append(block);
       if (enhanced) {
         block.dataset.dictionary = entry.dictionary;
-        addTools(line, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
+        addTools(sourceActions, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
         formattedDefinition(block, [{ glossary: JSON.stringify(entry.definitions) }], entry.dictionary, context, block);
         entries.push(block);
       }
@@ -484,6 +533,7 @@ export function createView(options, enhanced = false) {
     setDefinitionBlurState, updateDictionaryPresentation, flushDictionaryPresentation,
     hideImagePreview() { preview?.hideImagePreview(); },
     closeNoteForm() { return tools.some(control => control.close()); },
+    closeActionMenu,
     setCustomButtons(value) {
       customButtons = value || [];
       for (const control of tools) control.setCustomButtons(customButtons);
@@ -494,7 +544,7 @@ export function createView(options, enhanced = false) {
       if (!enabled) highlighter?.clear();
       else if (activeSource) highlighter?.apply(activeSource.candidate, activeSource.matched);
     },
-    destroy() { clear(); preview?.destroy(); popup.replaceChildren(); },
+    destroy() { clear(); document.removeEventListener("pointerdown", onMenuPointerDown, true); preview?.destroy(); popup.replaceChildren(); },
   };
 }
 export default { schema: 2, slug: "jl", contentMode: "text", createView };

@@ -4201,7 +4201,7 @@
     }
   }
 
-  // Close keeps the reader's Escape order: an audio menu, then a Note form,
+  // Close keeps the reader's Escape order: an audio menu, then theme actions, then a Note form,
   // then the focused or deepest popup, then a pending lookup. Nothing closed
   // leaves the key to activation.
   function closeFromKeybind(event) {
@@ -4212,6 +4212,12 @@
     }
     if (rootLevel.popup && !rootLevel.popup.hidden) {
       const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
+      const menuOwner = focused || levels.at(-1);
+      if (!menuOwner.popup.inert && menuOwner.view?.closeActionMenu?.() === true) {
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
       const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
       const noteOwner = editing || focused || levels.at(-1);
       if (!noteOwner.popup.inert && noteOwner.view?.closeNoteForm?.() === true) {
