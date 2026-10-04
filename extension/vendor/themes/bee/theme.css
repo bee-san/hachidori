@@ -80,9 +80,6 @@
 .gsm-hoshidicts-audio-control { position: relative; display: inline-flex; margin-left: 3px; }
 .gsm-hoshidicts-entry-actions { display: inline-flex; margin-left: 3px; }
 .gsm-hoshidicts-entry-actions:empty { display: none; }
-.gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button {
-  display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; border: 0;
-}
 /* Built-in and inline custom actions share 22 px buttons and 16 px icons
  * from Hachidori's outline set, in the text colour. */
 .gsm-hoshidicts-popup .gsm-hoshidicts-audio-button, .gsm-hoshidicts-popup .gsm-hoshidicts-mine-button,
@@ -134,7 +131,7 @@
   box-sizing: border-box; padding: 4px 6px; background: transparent; border: 0;
   border-radius: 4px; font-size: 12px; text-align: left;
 }
-.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button > .gsm-hoshidicts-text-action-label { display: none; }
+.gsm-hoshidicts-text-action-label.bee-custom-action-icon { font-size: 0; }
 .bee-custom-action-icon { order: -1; }
 .bee-action-menu .gsm-hoshidicts-text-action-label { overflow-wrap: anywhere; }
 .bee-more-actions { flex: none; font-size: 15px; }

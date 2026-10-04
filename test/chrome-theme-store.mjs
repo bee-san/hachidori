@@ -327,7 +327,8 @@ try {
       mine: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon"))),
       note: describe(getComputedStyle(popup.querySelector(".gsm-hoshidicts-note-icon"))),
       custom: buttons.slice(3).map(button => ({ ...describe(getComputedStyle(button.querySelector(".bee-custom-action-icon"))),
-        labelDisplay: getComputedStyle(button.querySelector(".gsm-hoshidicts-text-action-label")).display,
+        labelFontSize: getComputedStyle(button.querySelector(".gsm-hoshidicts-text-action-label")).fontSize,
+        labelAriaHidden: button.querySelector(".gsm-hoshidicts-text-action-label").getAttribute("aria-hidden"),
         title: button.title, accessible: button.getAttribute("aria-label"),
         iconName: button.querySelector(".bee-custom-action-icon").dataset.icon })), menu,
       shared: getComputedStyle(popup.querySelector(".gsm-hoshidicts-mine-icon")).maskImage.includes("width%3D%2220%22"),
@@ -347,9 +348,9 @@ try {
   assert.equal(icons.viewExistingColor, icons.audio.color, "the view-existing Anki book matches the other icons' colour");
   assert.equal(icons.audio.width, "16px");
   assert.ok(icons.shared, "Anki icon comes from Hachidori's shared outline set");
-  assert.deepEqual(icons.custom.map(icon => [icon.iconName, icon.labelDisplay, icon.title, icon.accessible]), [
-    ["open", "none", "Open Jisho", "Open Jisho"],
-    ["document-add", "none", "Send to Anki with Sentence card", "Send to Anki with Sentence card"],
+  assert.deepEqual(icons.custom.map(icon => [icon.iconName, icon.labelFontSize, icon.labelAriaHidden, icon.title, icon.accessible]), [
+    ["open", "0px", "true", "Open Jisho", "Open Jisho"],
+    ["document-add", "0px", "true", "Send to Anki with Sentence card", "Send to Anki with Sentence card"],
   ], "inline custom icons keep meaningful tooltip and accessible action names");
   assert.ok(icons.custom.every(icon => icon.mask !== "none"), "custom actions use the existing shared icons");
   assert.deepEqual([icons.menu.label, icons.menu.visible, icons.menu.border], ["Reading search", true, "0px"],
