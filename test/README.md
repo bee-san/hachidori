@@ -343,10 +343,6 @@ fails if `git status` in the submodule comes back dirty.
 
 Run `node --test test/issue-template.test.mjs` for changes to issue templates or their enforcement workflow. This dependency-free suite uses the production validator and mocked GitHub issue calls to check completed and incomplete submissions, Markdown comments and code fences, the acknowledgement, closure feedback, and stale issue events. It never closes real issues. The Issue template workflow runs this check on relevant pull requests and pushes to `main`; its separate issue-event job enforces the template on opened, edited, and reopened issues.
 
-## `accessibility-review.test.mjs`
-
-Run `node --test test/accessibility-review.test.mjs` for changes to the accessibility review gate. It checks affected-file detection, exact-head owner approval, and the label/check decision using mocked GitHub calls. The workflow tests pull-request code with a read-only token; its review gate executes the default-branch script and posts the result to the pull request's head commit.
-
 ---
 
 ## `submodule-identity.mjs`
@@ -1533,8 +1529,9 @@ cards, without changing the generated fixture files. Four Chrome projections
 cover All, ordered nonempty groups and an ungrouped favourite from the complete
 native result; ordinary contributors and grouped favourites receive no duplicate
 dictionary tabs. Warmed tab changes must issue no lookup, media or style
-requests. Linked-child, clicked-kanji and Back retain their semantic selection.
-Back restores an expanded, scrolled child with its prior tab, highlight and
+requests. Links open their exact target on All; a child's own tab selection
+survives clicked-kanji and Back while its parent keeps its selected tab.
+Back restores a complete, scrolled child with its prior tab, highlight and
 toolbar and identical dictionary cards, without another native lookup;
 its next Back still closes the child. Extension checks cover native-source fallback and
 terminal misses, cached versus changed-generation restoration, lazy IPA and

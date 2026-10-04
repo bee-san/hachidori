@@ -18,4 +18,4 @@ List the checks you ran and their exact outcomes. Explain any relevant checks yo
 
 - [ ] I have read [CONTRIBUTING.md](https://github.com/bee-san/hachidori/blob/main/CONTRIBUTING.md).
 - [ ] I understand that the creator may decline this PR if it does not benefit them personally.
-- [ ] If this changes accessibility (colour, contrast, focus, keyboard, screen reader, motion, font size, themes or dictionary-image colouring), it carries the `accessibility` label and waits for @bee-san's review.
+- [ ] If this changes accessibility (colour, contrast, focus, keyboard, screen reader, motion, font size, themes or dictionary-image colouring), it carries the `accessibility` label, includes relevant contrast and keyboard checks, and provides screenshots of the affected palettes.

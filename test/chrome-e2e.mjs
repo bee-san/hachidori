@@ -461,7 +461,7 @@ const PLANNED = [
   "a grouped favourite uses only its group tab",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
-  "Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+  "Back restores complete linked results, exact tab, scroll, highlight and toolbar without lookup",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
   "Back restores focus to the exact clicked duplicate kanji",
@@ -2605,7 +2605,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
     const back = await until(childState, value => selectedReady(studyKey)(value)
       && value.entries.length === beforeBack.entries.length && !value.showMore
-      && Math.abs(value.scrollTop - beforeBack.scrollTop) < 1, "E13 expanded linked Back viewport");
+      && Math.abs(value.scrollTop - beforeBack.scrollTop) < 1, "E13 complete linked Back viewport");
     evidence.back = back.toolbar === beforeBack.toolbar
       && await child.dictionaryTabs("matches", beforeBack.entries)
       && equal(await highlights(), previousHighlights)
@@ -2888,7 +2888,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E8 scenario/cleanup failure");
   }
   if (failure) throw failure;
-  check("Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+  check("Back restores complete linked results, exact tab, scroll, highlight and toolbar without lookup",
     evidence.back === true, JSON.stringify(evidence.inheritance));
   check("Popup tabs project ordered groups and ungrouped favourites without another lookup",
     evidence.passed && evidence.projections.length === 4, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
@@ -3676,6 +3676,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       state => state.plain.includes(fixture.child));
     const definitionParent = await popup.state();
     const definitionChildLayout = await child.nested();
+    // The focused ancestor deliberately stayed focused while its definition
+    // opened a child. Escape must now target the deepest pane, not that ancestor.
+    await popup.nested("blur");
     const definitionClose = definitionChild?.closeControl;
     const definitionClosed = await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden();
     if (definitionClosed) {
@@ -3723,6 +3726,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     } finally {
       await tab.keyboard.up("Shift");
     }
+    await popup.nested("blur");
     if (activationChild) {
       await tab.keyboard.press("Escape");
       await child.waitForHidden();
@@ -3822,6 +3826,12 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       missingParent,
       missingSource,
     };
+    const linkParent = await popup.state();
+    const linkSourceHighlights = await highlights();
+    if (!popup.visible(linkParent) || !linkParent.plain.includes(fixture.query)
+        || JSON.stringify(linkSourceHighlights) !== JSON.stringify([fixture.query])) {
+      throw new Error(`Nested link setup lost its parent source: ${JSON.stringify({ linkParent, linkSourceHighlights })}`);
+    }
     await tab.evaluate(name => {
       window.__sourceAncestorRanges = [...CSS.highlights.get(name)];
     }, HIGHLIGHT_NAME);
