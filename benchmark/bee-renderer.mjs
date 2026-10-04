@@ -1,4 +1,4 @@
-// Production Bee rendering and presentation updates, with forced layout.
+// Paired production Bee rendering and presentation updates, with forced layout.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -11,9 +11,9 @@ import { pathToFileURL } from "node:url";
 import { directoryContentSha256 } from "./system.mjs";
 
 const [destination, ...checkouts] = process.argv.slice(2);
-assert.ok(destination && checkouts.length, "usage: bee-renderer.mjs OUTPUT BEFORE_CHECKOUT [AFTER_CHECKOUT]");
+assert.ok(destination && checkouts.length === 2, "usage: bee-renderer.mjs OUTPUT BEFORE_CHECKOUT AFTER_CHECKOUT");
 const output = resolve(destination), roots = checkouts.map(path => resolve(path));
-const profiles = Number(process.env.HACHIDORI_BEE_PROFILES ?? 3);
+const profiles = Number(process.env.HACHIDORI_BEE_PROFILES ?? 6);
 const measurements = Number(process.env.HACHIDORI_BEE_SAMPLES ?? 100), warmups = 20;
 assert.ok([profiles, measurements].every(value => Number.isSafeInteger(value) && value > 0));
 mkdirSync(output, { recursive: true });
@@ -39,29 +39,33 @@ await new Promise(done => server.listen(0, "127.0.0.1", done));
 const raw = { environment: { startedAt: new Date().toISOString(), platform: platform(), release: release(),
   node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length, load: loadavg(),
   profiles, measurements, warmups, theme: "bee", boundary: "Production renderer plus forced synchronous layout; excludes engine, transport, runtime action binding, paint and asynchronous media.",
-  order: "fresh browser per checkout/profile; reverse checkout and scenario order in odd profiles" },
+  order: "one fresh browser per profile; both revisions share one renderer process; reverse setup/scenario order in odd profiles and alternate measured checkout order every iteration",
+  control: "Both views stay connected in independent shadow roots in one document. Shared production component sources must match byte-for-byte." },
   harnessSha256: sha256(readFileSync(new URL(import.meta.url))),
   checkouts: roots.map(root => ({ path: root, revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     extensionSha256: directoryContentSha256(resolve(root, "extension")) })), cells: [] };
 const signatures = new Map();
+// Same-window comparison requires these unchanged shared production components.
+for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js"]) {
+  assert.equal(sha256(readFileSync(resolve(roots[0], "extension", file))), sha256(readFileSync(resolve(roots[1], "extension", file))), file);
+}
 try {
   for (let profile = 0; profile < profiles; profile++) {
     const order = roots.map((_, index) => index);
     if (profile % 2) order.reverse();
-    for (const checkout of order) {
-      const directory = mkdtempSync(resolve(tmpdir(), "hachidori-bee-renderer-"));
-      let browser;
-      try {
-        browser = await puppeteer.launch({ executablePath: process.env.HACHIDORI_CHROME, headless: true,
-          userDataDir: directory, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] });
-        raw.environment.chrome = await browser.version();
-        const page = await browser.newPage();
-        await page.setViewport({ width: 1200, height: 900 });
-        await page.goto(`http://127.0.0.1:${server.address().port}/${checkout}/`);
-        const scenarios = [{ results: 1, grouped: false }, { results: 12, grouped: false }, { results: 12, grouped: true }];
-        if (profile % 2) scenarios.reverse();
-        for (const scenario of scenarios) {
-          const cell = await page.evaluate(async ({ scenario, measurements, warmups, checkout }) => {
+    const directory = mkdtempSync(resolve(tmpdir(), "hachidori-bee-interleaved-"));
+    let browser;
+    try {
+      browser = await puppeteer.launch({ executablePath: process.env.HACHIDORI_CHROME, headless: true,
+        userDataDir: directory, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] });
+      raw.environment.chrome = await browser.version();
+      const page = await browser.newPage(); await page.setViewport({ width: 1200, height: 900 });
+      await page.goto(`http://127.0.0.1:${server.address().port}/${order[0]}/`);
+      const scenarios = [{ results: 1, grouped: false }, { results: 12, grouped: false }, { results: 12, grouped: true }];
+      if (profile % 2) scenarios.reverse();
+      for (const scenario of scenarios) {
+        for (const checkout of order) {
+          await page.evaluate(async ({ scenario, measurements, warmups, checkout }) => {
             const base = `/${checkout}/`;
             const [{ default: bee }, css, icons] = await Promise.all([import(`${base}vendor/themes/bee/theme.js`),
               fetch(`${base}vendor/themes/bee/theme.css`).then(response => response.text()), fetch(`${base}icons.css`).then(response => response.text())]);
@@ -96,7 +100,9 @@ try {
             const originalGlossary = window.HDGlossary.appendTextOnlyGlossary;
             const view = bee.createView({ document, window, popup, components, positionPopup() {}, getImageHoverPreview: () => "off",
               appendTextOnlyGlossary(...args) { if (counts) counts.glossaryCalls = (counts.glossaryCalls || 0) + 1; return originalGlossary(...args); },
-              customButtons: ["Search", "Sentence", "More"].map((label, index) => ({ id: `action-${index}`, type: "link", label, url: "https://example.test/%w" })) });
+              customButtons: [{ id: "link", type: "link", label: "Custom button", url: "https://example.test/%w" },
+                { id: "anki", type: "anki", label: "Custom button", templateId: "sentence" },
+                { id: "more", type: "link", label: "Custom button", url: "https://example.test/%r" }] });
             const layout = () => { popup.getBoundingClientRect(); view.scrollElement.scrollHeight; };
             const render = () => { view.renderResults(results, { query: "食べる" }, context); layout(); };
             counts = {}; render(); const buildCounts = counts;
@@ -124,28 +130,38 @@ try {
               if (metric === "render") render();
               else { view.updateDictionaryPresentation(updates[metric](index)); layout(); }
             }
-            for (const metric of ["render", "unchanged", "groupRename", "pitchChange"]) {
-              if (metric !== "render") render();
-              const values = [];
-              for (let index = 0; index < warmups + measurements; index++) {
-                const start = performance.now();
-                perform(metric, index);
-                if (index >= warmups) values.push(performance.now() - start);
-              }
-              cell[metric] = values;
-            }
-            view.destroy(); host.remove();
+            for (const metric of ["render", "unchanged", "groupRename", "pitchChange"]) cell[metric] = [];
+            window.beeStates ??= [];
+            window.beeStates.push({ checkout, cell, perform, render, destroy() { view.destroy(); host.remove(); } });
             return cell;
           }, { scenario, measurements, warmups, checkout });
-          const key = JSON.stringify(scenario), signature = sha256(cell.signature); delete cell.signature;
-          if (signatures.has(key)) assert.equal(signature, signatures.get(key), "dictionary, glossary, visibility, frequency and pitch signatures match across profiles and revisions");
-          else signatures.set(key, signature);
-          raw.cells.push({ profile, checkout, signature, load: loadavg(), ...cell });
-          writeFileSync(resolve(output, "raw.json"), JSON.stringify(raw, null, 2) + "\n");
-          console.log(JSON.stringify({ profile, checkout, ...scenario, render: distribution(cell.render), unchanged: distribution(cell.unchanged) }));
         }
-      } finally { await browser?.close(); rmSync(directory, { recursive: true, force: true }); }
-    }
+        const cells = await page.evaluate(({ profile, measurements, warmups }) => {
+          const states = window.beeStates;
+          for (const metric of ["render", "unchanged", "groupRename", "pitchChange"]) {
+            if (metric !== "render") for (const state of states) state.render();
+            for (let index = 0; index < warmups + measurements; index++) {
+              const paired = [...states].sort((a, b) => a.checkout - b.checkout);
+              if ((index + profile) % 2) paired.reverse();
+              for (const state of paired) {
+                const start = performance.now(); state.perform(metric, index);
+                if (index >= warmups) state.cell[metric].push(performance.now() - start);
+              }
+            }
+          }
+          const result = states.map(state => ({ checkout: state.checkout, ...state.cell }));
+          for (const state of states) state.destroy();
+          window.beeStates = []; return result;
+        }, { profile, measurements, warmups });
+        for (const cell of cells) {
+          const key = JSON.stringify(scenario), signature = sha256(cell.signature); delete cell.signature;
+          if (signatures.has(key)) assert.equal(signature, signatures.get(key)); else signatures.set(key, signature);
+          raw.cells.push({ profile, signature, load: loadavg(), ...cell });
+          console.log(JSON.stringify({ profile, checkout: cell.checkout, ...scenario, render: distribution(cell.render), unchanged: distribution(cell.unchanged) }));
+        }
+        writeFileSync(resolve(output, "raw.json"), JSON.stringify(raw, null, 2) + "\n");
+      }
+    } finally { await browser?.close(); rmSync(directory, { recursive: true, force: true }); }
   }
   const summary = raw.checkouts.map((checkout, index) => ({ ...checkout, scenarios: ["1:false", "12:false", "12:true"].map(key => {
     const cells = raw.cells.filter(cell => cell.checkout === index && `${cell.results}:${cell.grouped}` === key);

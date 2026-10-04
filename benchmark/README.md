@@ -94,8 +94,13 @@ senses per dictionary, and a group showing 12 of the 36 blocks. It compares
 unchanged, group-name and pitch-only updates, records chip identity and helper
 calls, and checks dictionary/glossary/visibility signatures across revisions.
 Frequency text, accessible labels and pitch morae also enter those signatures.
-The default is three fresh profiles per checkout, 20 excluded warmups and 100
-measurements per scenario; checkout order alternates between profiles.
+The default is six fresh browser profiles, 20 excluded warmups and 100
+measurements per scenario/revision/profile (600 per scenario/revision). Both
+revisions render in independent shadow roots in one document and renderer
+process. Measured execution order reverses on every iteration; setup and
+scenario order reverse in odd profiles. The harness requires byte-identical
+shared production components, so each revision uses its own Bee module/CSS
+with the same shared helpers. `HACHIDORI_BEE_PROFILES` changes the profile count.
 
 ```sh
 HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
