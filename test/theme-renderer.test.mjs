@@ -408,8 +408,9 @@ test("Bee dismisses More actions before Note and preserves the action and draft"
   assert.equal(more.open, false, "pressing outside the menu dismisses it without discarding a Note draft");
   assert.equal(form.hidden, false);
   assert.equal(form.elements.definition.value, "Unfinished meaning");
+  more.open = true;
   f.view.renderNotice("No match", { query: "unknown" });
-  assert.equal(more.open, false);
+  assert.equal(more.isConnected, false, "replacing results retires an open disclosure");
   assert.equal(f.view.closeActionMenu(), false, "retired disclosures never consume Escape");
 });
 
@@ -628,17 +629,26 @@ test("Bee reuses per-result metadata and repaints only changed frequency inputs"
   assert.equal(frequencyCalls, 1, "derive frequencies once for the result's two dictionaries");
   assert.equal(pitchCalls, 1, "derive pitch once for the result's two dictionaries");
   assert.notEqual(chips[0], chips[1], "each dictionary owns its frequency DOM");
+  const labels = [...f.popup.querySelectorAll(".jl-dictionary")];
+  const labelText = labels.map(label => label.firstChild);
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   const form = f.popup.querySelector("form");
   form.elements.definition.value = "Keep my draft";
   const glossary = f.popup.querySelector(".bee-rich-content");
-  for (const change of [{}, { pitchAccentFuriganaStyle: "overline" }, {
-    dictionaryPresentation: context.dictionaryPresentation.map(item => item.title === "test" ? { ...item, displayName: "Words" } : item),
-  }]) {
+  for (const change of [{}, { pitchAccentFuriganaStyle: "overline" }]) {
     f.view.updateDictionaryPresentation({ ...context, ...change });
+    assert.ok(labels.every((label, index) => label.firstChild === labelText[index]),
+      "unchanged and pitch-only updates retain dictionary label text nodes");
     assert.ok(chips.every((chip, index) => chip === f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")[index]),
-      "unchanged, pitch-only and non-frequency alias updates retain exact frequency nodes");
+      "unchanged and pitch-only updates retain exact frequency nodes");
   }
+  f.view.updateDictionaryPresentation({ ...context, dictionaryPresentation: context.dictionaryPresentation.map(item =>
+    item.title === "test" ? { ...item, displayName: "Words" } : item) });
+  const renamedLabel = labels.find(label => label.dataset.dictionary === "test");
+  assert.equal(renamedLabel.textContent, "Words");
+  assert.equal(renamedLabel.title, "Words", "dictionary aliases update visible labels and tooltips");
+  assert.ok(chips.every((chip, index) => chip === f.popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")[index]),
+    "non-frequency aliases retain exact frequency nodes");
   const renamed = { ...context, dictionaryPresentation: context.dictionaryPresentation.map(item =>
     item.title === "Ranks" ? { ...item, displayName: "New source" } : item) };
   f.view.updateDictionaryPresentation(renamed);
