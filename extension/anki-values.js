@@ -228,7 +228,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
         `<li class="pronunciation" data-pronunciation-type="phonetic-transcription">${escape(value)}</li>`);
       return items.length ? `<ul>${items.join("")}</ul>` : "";
     },
-    "popup-selection-text": () => escape(request.popupSelectionText), "search-query": () => escape(request.searchQuery),
+    // Yomitan's getMedia keeps a multi-line selection's breaks visible in the HTML field.
+    "popup-selection-text": () => escape(request.popupSelectionText).replaceAll("\n", "<br>\n"), "search-query": () => escape(request.searchQuery),
     "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence,
     // GSM falls back to highlighted text when its optional native tokenizer is
     // unavailable. There is no MeCab/native-helper dependency in the extension.
