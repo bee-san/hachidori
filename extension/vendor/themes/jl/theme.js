@@ -59,6 +59,8 @@ export function createView(options, enhanced = false) {
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
   // Design's pitch switch and dictionary, as the markers were last painted.
   let paintedPitch = "";
+  let paintedFrequency = "";
+  const frequencyDictionaries = new Set(), pitchByTerm = new Map();
   const pitchOptions = context => JSON.stringify([context.showPitchAccentFurigana !== false, context.pitchAccentFuriganaDictionary ?? "",
     enhanced ? context.pitchAccentFuriganaStyle ?? "contour" : "contour"]);
   let customButtons = options.customButtons || [];
@@ -87,6 +89,7 @@ export function createView(options, enhanced = false) {
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
     entries = []; bindings = []; labels = []; frequencies = []; markers = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
+    paintedFrequency = ""; frequencyDictionaries.clear(); pitchByTerm.clear();
     highlighter?.clear();
     preview?.hideImagePreview();
   }
@@ -121,11 +124,28 @@ export function createView(options, enhanced = false) {
       if (enhanced) label.title = label.textContent;
     }
     // JL: "#rank" with one frequency dictionary, "Name: rank, …" with several.
-    for (const { element, groups, result } of frequencies) {
-      if (enhanced) element.replaceChildren(...components.createFrequencyTags(document, result,
-        context.dictionaryPresentation ?? [], Infinity, context.averageFrequency === true,
-        context.showFrequencyDictionaryNames === true, context.compactFrequencyNumbers === true));
-      else element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
+    if (enhanced) {
+      // Lookup data stays fixed for this view. Only these presentation inputs
+      // affect its frequency chips; pitch/group changes leave the DOM intact.
+      const frequency = JSON.stringify([context.averageFrequency === true,
+        context.showFrequencyDictionaryNames === true, context.compactFrequencyNumbers === true,
+        (context.dictionaryPresentation ?? []).filter(item => frequencyDictionaries.has(item.title))
+          .map(({ title, displayName, frequencyMode }) => [title, displayName, frequencyMode])]);
+      if (frequency !== paintedFrequency) {
+        const tagsByResult = new Map();
+        for (const { element, result } of frequencies) {
+          let tags = tagsByResult.get(result);
+          if (!tags) {
+            tags = components.createFrequencyTags(document, result, context.dictionaryPresentation ?? [], Infinity,
+              context.averageFrequency === true, context.showFrequencyDictionaryNames === true, context.compactFrequencyNumbers === true);
+            tagsByResult.set(result, tags);
+          }
+          element.replaceChildren(...tags.map(tag => tag.cloneNode(true)));
+        }
+        paintedFrequency = frequency;
+      }
+    } else {
+      for (const { element, groups } of frequencies) element.textContent = groups.length === 1 ? `#${frequencyValue(groups[0])}`
         : groups.map(group => `${name(group.dictionary)}: ${frequencyValue(group)}`).join(", ");
     }
     // Markers hold no controls, so a pitch option change repaints them in place
@@ -133,6 +153,7 @@ export function createView(options, enhanced = false) {
     const pitch = pitchOptions(context);
     if (pitch !== paintedPitch) {
       paintedPitch = pitch;
+      pitchByTerm.clear();
       for (const marker of markers) paintPitch(marker, context);
     }
     if (enhanced) {
@@ -242,16 +263,18 @@ export function createView(options, enhanced = false) {
       parent.append(span);
     }
   }
-  function paintPitch({ element, text, pitches }, context) {
-    const morae = context.showPitchAccentFurigana === false ? null
-      : pitchMorae(text, pitches, context.pitchAccentFuriganaDictionary);
+  function paintPitch({ element, text, term }, context) {
+    const morae = enhanced && pitchByTerm.has(term) ? pitchByTerm.get(term)
+      : context.showPitchAccentFurigana === false ? null
+        : pitchMorae(text, term.pitches ?? [], context.pitchAccentFuriganaDictionary);
+    if (enhanced) pitchByTerm.set(term, morae);
     element.textContent = morae ? "" : text;
     if (enhanced) element.dataset.pitchStyle = context.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour";
     if (morae) appendMorae(element, morae);
   }
   // Painted while its block is still detached; updateDictionaryPresentation repaints it.
   function pitchMarker(element, text, term, context) {
-    const marker = { element, text, pitches: term.pitches ?? [] };
+    const marker = { element, text, term };
     markers.push(marker);
     paintPitch(marker, context);
     return element;
@@ -288,6 +311,7 @@ export function createView(options, enhanced = false) {
       word.append(node("span", "jl-deconj", [matched, process].filter(Boolean).join(" ")));
     }
     const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);
+    if (enhanced) for (const group of groups) frequencyDictionaries.add(group.dictionary);
     if (groups.length) {
       const element = node("span", "jl-frequency");
       frequencies.push({ element, groups, result });
