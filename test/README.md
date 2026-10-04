@@ -1543,10 +1543,11 @@ for protected Note forms and child anchors to retire before local projection.
 
 The same scenario saves columns one through four through Settings, compares
 actual card rectangles for shortest-column packing and non-overlap, then resets
-all one-column inline styles. Narrow/wide resizing, a held real PNG reply and
-genuine child Show more retain complete results, mounted drafts and anchors.
-Readiness includes the deferred generic-prefix definition before freezing the
-expanded DOM oracle. A nondefault column count also survives the existing full
+all one-column inline styles. Narrow/wide resizing and a held real PNG reply
+retain complete results, mounted drafts and anchors. Linked-child readiness
+requires the complete exact-target bodies before freezing the DOM oracle;
+resizing preserves those cards, the mounted Note draft and the parent anchor.
+A nondefault column count also survives the existing full
 browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
 `HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
 the Reading controls in light and dark themes.

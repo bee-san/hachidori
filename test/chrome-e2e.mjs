@@ -2830,11 +2830,11 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await popup.nested("remember");
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
-    await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
+    await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All exact linked child");
     const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2)
-      && completeChildBody(value), "E8 complete child expansion");
+      && completeChildBody(value), "E8 complete exact linked bodies");
     require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
-      dictionaries: entry.cards.map(card => card.dictionary) })), childExpected), "E8 expanded native expression/reading/dictionary order");
+      dictionaries: entry.cards.map(card => card.dictionary) })), childExpected), "E8 exact linked expression/reading/dictionary order");
     await child.dictionaryTabs("remember");
     await child.click(".gsm-hoshidicts-note-button");
     await child.writeNote({ definition: "E8 child holds its anchor through resize" });
@@ -2842,7 +2842,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const nestedResizeStart = (await requests()).length;
     for (const size of [{ width: 520, height: 740 }, { width: 1880, height: 960 }]) {
       await tab.setViewport(size);
-      const resized = await until(childState, value => value?.viewport.width === size.width && packed(value, 2), "E8 expanded child resize");
+      const resized = await until(childState, value => value?.viewport.width === size.width && packed(value, 2), "E8 complete linked child resize");
       const controls = await child.retainedControls();
       require(resized.sameCards && await child.dictionaryTabs("matches", expanded.entries)
         && (await popup.nested()).sameAnchor && controls.sameForm && controls.mounted
@@ -3229,11 +3229,26 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     // The primary header travels with the toolbar edge, which now follows the
     // child's placement, so summaries are matched by content rather than order.
-    await until(() => child.compactSummaries(), value => value.some(summary => summary.items[0] === "Text before the image."
-      && summary.image.length === 0), "E10 child late-image negative");
-    await until(() => child.compactSummaries(), value => value.length === 2
-      && value.some(summary => summary.items.length === 3), "E10 deferred headers use current preferences");
+    const linkedSummary = await until(() => child.compactSummaries(), value => value.length === 1
+      && equal(value[0].items, ["Text before the image."])
+      && value[0].image.length === 0, "E10 exact child late-image negative");
+    const linkedEntries = (await child.dictionaryTabs()).entries;
+    require(linkedEntries.length === 1 && linkedEntries[0].expression === fixture.child
+      && linkedEntries[0].aria === `${fixture.child}, ようやくご`, "E10 internal link excludes the shorter prefix");
     require(await child.click(".gsm-hoshidicts-popup-close") && await child.waitForHidden(), "E10 child close");
+
+    // Ordinary hover retains the native 要約 prefix. Its second header is
+    // appended after the initial result and must use the current source/count.
+    await show(fixture.child);
+    const deferredSummaries = await until(summaries, value => value.length === 2
+      && value.some(summary => equal(summary.items, ["Text before the image."]) && summary.image.length === 0)
+      && value.some(summary => summary.dictionary === fixture.illustrated
+        && equal(summary.items, ["短い説明", "使い方", "別の意味"])), "E10 deferred hover headers use current preferences");
+    const deferredEntries = (await popup.dictionaryTabs()).entries;
+    require(equal(deferredEntries.map(entry => [entry.expression, entry.aria]), [
+      [fixture.child, `${fixture.child}, ようやくご`], [fixture.query, `${fixture.query}, ようやく`],
+    ]), "E10 ordinary hover keeps the genuine prefix result for deferred rendering");
+    evidence.deferredHeaders = { linkedSummary, deferredSummaries };
 
     await show(fixture.broken);
     await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
