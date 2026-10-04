@@ -91,7 +91,6 @@ export function createView(options, enhanced = false) {
 
   function clear() {
     revision += 1;
-    closeActionMenu(false);
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
@@ -127,8 +126,9 @@ export function createView(options, enhanced = false) {
     const names = new Map((context.dictionaryPresentation ?? []).map(item => [item.title, item.displayName || item.title]));
     const name = dictionary => names.get(dictionary) || dictionary;
     for (const label of labels) {
-      label.textContent = name(label.dataset.dictionary);
-      if (enhanced) label.title = label.textContent;
+      const displayName = name(label.dataset.dictionary);
+      if (!enhanced || label.textContent !== displayName) label.textContent = displayName;
+      if (enhanced && label.title !== displayName) label.title = displayName;
     }
     // JL: "#rank" with one frequency dictionary, "Name: rank, …" with several.
     if (enhanced) {
