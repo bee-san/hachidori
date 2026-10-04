@@ -193,6 +193,20 @@ export function createView(options, enhanced = false) {
       onFormCreated(form) { host.insertBefore(form, host.children[1] || null); options.positionPopup(); },
       onClose: flushDictionaryPresentation,
       onButtonsUpdated(actions, buttons) {
+        for (const custom of buttons) {
+          let icon = custom.querySelector(".bee-custom-action-icon");
+          if (!icon) {
+            icon = node("span", "bee-custom-action-icon hd-icon");
+            icon.setAttribute("aria-hidden", "true");
+            // Shared actions keep their first child as the editable label.
+            custom.append(icon);
+          }
+          icon.dataset.icon = custom.dataset.customButtonType === "anki" ? "document-add" : "open";
+          if (custom.dataset.customButtonType === "link") {
+            custom.title = `Open ${custom.dataset.customButtonLabel}`;
+            custom.setAttribute("aria-label", custom.title);
+          }
+        }
         actions.querySelector(".bee-more-actions")?.remove();
         if (buttons.length <= 2) return;
         const more = node("details", "bee-more-actions");
