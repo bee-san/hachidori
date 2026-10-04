@@ -355,6 +355,36 @@ test("Bee dismisses More actions before Note and preserves the action and draft"
   assert.equal(f.view.closeActionMenu(), false, "retired disclosures never consume Escape");
 });
 
+test("Bee More actions distinguishes inside and outside presses through a closed shadow root", async t => {
+  const dom = environment(), { window } = dom, { document } = window;
+  const shadow = document.getElementById("host").attachShadow({ mode: "closed" });
+  const popup = document.createElement("div"); shadow.append(popup);
+  const links = [];
+  const view = bee.createView({ document, window, popup, positionPopup() {},
+    components: { ...window.HDPopup, ...window.HDGlossary },
+    appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+    customButtons: ["one", "two", "more"].map(id => ({ id, type: "link", label: id, url: `https://example.test/${id}` })),
+    onCustomLinkClick(link) { links.push(link); },
+  });
+  t.after(() => { view.destroy(); window.close(); });
+  view.renderResults([beeResult], { query: "食べる" }, beeContext);
+  const more = popup.querySelector(".bee-more-actions"), action = more.querySelector("button");
+  const press = node => node.dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true }));
+  more.open = true;
+  press(action);
+  assert.equal(more.open, true, "a closed root hides internals from document capture but preserves an inside action press");
+  action.click();
+  await Promise.resolve();
+  assert.equal(links[0].url, "https://example.test/more");
+  assert.equal(more.open, false, "the action closes after activation");
+  more.open = true;
+  press(popup.querySelector(".jl-spelling"));
+  assert.equal(more.open, false, "another popup control is outside More even within the closed root");
+  more.open = true;
+  press(document.body);
+  assert.equal(more.open, false, "a page press outside the shadow host closes More");
+});
+
 test("switching after a retired lookup applies saved actions to the next renderer before a fresh lookup", async t => {
   const dom = environment(), { window } = dom, { document } = window;
   t.after(() => window.close());
