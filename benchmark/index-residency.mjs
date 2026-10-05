@@ -138,17 +138,17 @@ async function sample(variant, repetition) {
     }, baseline ? null : desiredIndex);
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
-    if (!seeded) await page.evaluate(async (dictionaries, fileNames, origin) => {
+    if (!seeded) await page.evaluate(async (dictionaries, files, origin) => {
       // Each package's setup worker releases its fetch buffers and OPFS handles
       // before the next one. None of this untimed work survives into the sample.
       for (const dictionary of dictionaries) await new Promise((done, reject) => {
         const worker = new Worker(chrome.runtime.getURL("benchmark-seed-worker.js"));
         worker.onmessage = ({ data }) => { worker.terminate(); data.ok ? done() : reject(new Error(data.error)); };
         worker.onerror = error => { worker.terminate(); reject(new Error(error.message)); };
-        worker.postMessage({ dictionaries: [dictionary], fileNames, origin });
+        worker.postMessage({ dictionaries: [dictionary], files, origin });
       });
       await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries } });
-    }, fixture.dictionaries.map(({ directory, ...dictionary }) => dictionary), fixture.files.map(file => file.name), origin);
+    }, fixture.dictionaries.map(({ directory, ...dictionary }) => dictionary), fixture.files.map(({ name, bytes }) => ({ name, bytes })), origin);
     await browser.close(); browser = null;
     writeFileSync(offscreenFile, offscreenSource);
     if (!seeded) {
