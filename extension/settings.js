@@ -17,6 +17,8 @@ import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
+import { LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
+import { uploadDictionary } from "./linked-import.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
@@ -423,7 +425,7 @@ function updateAnkiSettings() {
   localAudioSetup.render();
 }
 
-// While linked, archives and backups belong to the host; the notices say so.
+// While linked, imported archives go to the host and backups belong to it; the notices say so.
 function renderSharingLink(value) {
   const wasLinked = sharingLinkedAddress !== null;
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
@@ -432,7 +434,6 @@ function renderSharingLink(value) {
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
   element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;
-  element("import-drop-zone").hidden = linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
   element("automatic-backups").hidden = linked;
   if (wasLinked && !linked) {
@@ -2788,14 +2789,22 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   // The decision happens before this URL exists, so Cancel cannot start a
   // native import, create a generation, or mutate persistent storage.
   const started = Date.now();
+  // A linked browser sends the archive to the host, which applies the same
+  // choice against its own library (the one mirrored here).
+  if (sharingLinkedAddress !== null) {
+    return importArchive(() => uploadDictionary({
+      blob: file, fileName: file.name, replace: importDecision.action === "replace",
+      send: (type, fields) => send(type, fields, LINKED_IMPORT_TARGET),
+    }), index, total, label, started);
+  }
   const blobUrl = URL.createObjectURL(file);
   try {
-    return await importArchive({
+    return await importArchive(() => send("hd_import", {
       blobUrl,
       fileName: file.name,
       ...request,
       importDecision,
-    }, index, total, label, started);
+    }), index, total, label, started);
   } finally {
     // The offscreen document has read the bytes by now; holding the URL any
     // longer just pins the file.
@@ -2803,7 +2812,7 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   }
 }
 
-async function importArchive(request, index, total, label, started) {
+async function importArchive(runImport, index, total, label, started) {
   const tick = () => {
     const elapsed = elapsedSince(started);
     setImportState(
@@ -2816,7 +2825,7 @@ async function importArchive(request, index, total, label, started) {
   const ticker = setInterval(tick, 1000);
 
   try {
-    const reply = await send("hd_import", request);
+    const reply = await runImport();
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
       // What an MDX import left out. Notes never turn a success into a
@@ -2948,6 +2957,9 @@ function isMddResourceOf(mdxName, name) {
 }
 
 function groupImportFiles(files) {
+  // An upload carries one archive, so a linked browser sends every file as a
+  // ZIP and the host explains why it refuses an .mdx or .mdd.
+  if (sharingLinkedAddress !== null) return files.map((file) => ({ kind: "zip", file }));
   const items = [];
   const resourceFiles = files.filter((file) => /\.mdd$/iu.test(file.name));
   const claimed = new Set();
@@ -2972,11 +2984,11 @@ async function importMdx(item, index, total) {
   const started = Date.now();
   const urls = [file, ...resources].map((entry) => URL.createObjectURL(entry));
   try {
-    return await importArchive({
+    return await importArchive(() => send("hd_import", {
       blobUrl: urls[0],
       fileName: file.name,
       resources: resources.map((resource, position) => ({ fileName: resource.name, blobUrl: urls[position + 1] })),
-    }, index, total, file.name, started);
+    }), index, total, file.name, started);
   } finally {
     for (const url of urls) URL.revokeObjectURL(url);
   }
