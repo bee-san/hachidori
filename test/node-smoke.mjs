@@ -36,6 +36,7 @@ import {
   TRAINED_TERMS,
   TRAINED_TITLE,
   TRAINING_SAMPLE_FLOOR,
+  buildDataDescriptorZip,
   buildEntryCountZip,
   buildEntryExpandedZip,
   buildFixtureZip,
@@ -981,6 +982,12 @@ check('compression ratios above the former cap are not rejected by a fixed limit
 
 check('a forged local/central size disagreement is refused', () =>
   rejectedWith(buildForgedSizeZip(), ARCHIVE_ERRORS.forgedSize, 'forged size'));
+
+check('entries that defer their sizes to data descriptors import like the fixture (#491)', () =>
+  acceptedWithoutResourceCap(buildDataDescriptorZip(), 'data descriptors'));
+
+check('a data-descriptor entry whose local header records other sizes is refused', () =>
+  rejectedWith(buildForgedSizeZip({ dataDescriptor: true }), ARCHIVE_ERRORS.forgedSize, 'forged descriptor size'));
 
 check('a deflate entry with no compressed data for its declared size is refused', () =>
   rejectedWith(buildTinyCompressedZip(), ARCHIVE_ERRORS.tinyCompressed, 'tiny compressed'));
