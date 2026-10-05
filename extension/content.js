@@ -2528,7 +2528,7 @@
     const entry = request?.lookupStats;
     const statistics = entry?.payload?.descriptor.generation === lookupStatsDescriptor.generation
       ? entry.payload.statistics : null;
-    const onItsWay = !entry || entry.needsRefresh || (entry.pending && !settled);
+    const onItsWay = Boolean(entry) && (entry.needsRefresh || (entry.pending && !settled));
     level.view.setLookupStats(level.lookupStatsElement, statistics, onItsWay);
   }
 
