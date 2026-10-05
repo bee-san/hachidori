@@ -100,16 +100,17 @@ function importInIsolatedWorker(request) {
   });
 }
 
-export function startEngineWorker({ createHoshidicts, storageBackend }) {
-  // offscreen.js picks the name; see engine-recycler.js.
-  const lowMemory = globalThis.name === LOW_MEMORY_WORKER_NAME;
+export function startEngineWorker({ createHoshidicts, storageBackend, threaded = true }) {
+  // offscreen.js picks the name; see engine-recycler.js. The single-thread
+  // build has no pool or import threading for Low memory mode to reduce.
+  const lowMemory = threaded && globalThis.name === LOW_MEMORY_WORKER_NAME;
   // Read by the -sPTHREAD_POOL_SIZE expression in wasm/CMakeLists.txt.
   if (lowMemory) globalThis.HACHIDORI_PTHREAD_POOL_SIZE = LOW_MEMORY_PTHREAD_POOL_SIZE;
   configureEngineService(requestHost, {
     createHoshidicts,
     storageBackend,
-    threaded: true,
-    lowRam: lowMemory,
+    threaded,
+    lowRam: !threaded || lowMemory,
     pagedDictionaries: lowMemory,
     reportProgress: reportEngineProgress,
     // Two IDBFS instances cannot share one store, so only direct OPFS can

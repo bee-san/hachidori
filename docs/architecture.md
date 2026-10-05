@@ -29,7 +29,9 @@ settings.html / content.js
                       │    └─ import-worker.js: a second instance per hd_import
                       ├─ no OPFS access handles: engine-worker-idbfs.js
                       │    └─ pthread Wasm + classic FS + IDBFS
-                      └─ fallback: engine-service.js
+                      ├─ no shared memory: engine-worker-local.js
+                      │    └─ single-thread Wasm + classic FS + IDBFS
+                      └─ no workers: engine-service.js in the document
                            └─ single-thread Wasm + IDBFS
 ```
 
@@ -71,7 +73,7 @@ archive, source-document, or background-storage-queue limit.
 
 If shared Wasm memory and workers are available but direct OPFS is not, `offscreen.js` starts `engine-worker-idbfs.js`: the same pthread engine on the classic Emscripten FS with IDBFS mounted at `/dicts`. Electron (the GameSentenceMiner host) is the known case: it exposes cross-origin isolation and shared memory but refuses OPFS sync access handles to `chrome-extension://` origins. Imports keep the bounded eight-thread worker group (Jitendex imports in about 1.6 s instead of 3.9 s single-threaded), and the offscreen document's own thread stays free for audio and Anki work during an import. `hd_status` reports `threaded: true` and `storageBackend: "idbfs"`.
 
-If shared Wasm memory or workers are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+If shared Wasm memory is unavailable (no cross-origin isolation) but workers are, `offscreen.js` starts `engine-worker-local.js`: the single-thread WebAssembly module in a dedicated worker, through the same `engine-worker-runtime.js` bridge as the pthread workers. Lookups and imports then run off the offscreen document's thread, and the worker can read IndexedDB Blob records by range with `FileReaderSync` (see [memory.md](memory.md)). Low memory mode does not apply to it, so it is never recycled. Only a host without workers loads the single-thread module in the document itself. Either way the build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
 
 Both IDBFS paths are intentionally explicit: `hd_status` reports `storageBackend: "idbfs"`, with `threaded: false` only for the single-thread runtime. The production benchmark rejects either when it is measuring the primary Hachidori path.
 

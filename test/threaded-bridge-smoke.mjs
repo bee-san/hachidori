@@ -10,7 +10,7 @@ const engineWorkers = [];
 const capabilityWorkers = [];
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-const ENGINE_WORKER_SCRIPT = /\/engine-worker(?:-idbfs)?\.js$/u;
+const ENGINE_WORKER_SCRIPT = /\/engine-worker(?:-idbfs|-local)?\.js$/u;
 
 class FakeWorker {
   static creationError = null;
@@ -510,6 +510,39 @@ try {
   mock.timers.reset();
 }
 
+// Workers without shared memory (no cross-origin isolation) run the
+// single-thread build in its own worker, and the recycler never replaces it.
+Object.defineProperty(globalThis, "crossOriginIsolated", { configurable: true, value: false });
+const workersBeforeLocal = engineWorkers.length;
+const capabilityWorkersBeforeLocal = capabilityWorkers.length;
+await import(`../extension/offscreen.js?worker-local=${Date.now()}`);
+relay = importedRuntime();
+const localWorkerStatus = request("hd_status", "worker-local-status");
+await tick();
+assert.equal(engineWorkers.length, workersBeforeLocal + 1);
+const localWorker = engineWorkers.at(-1);
+assert.match(localWorker.url, /\/engine-worker-local\.js$/u, "no shared memory selects the single-thread worker");
+assert.equal(localWorker.name, "hoshidicts-engine");
+assert.equal(capabilityWorkers.length, capabilityWorkersBeforeLocal, "no OPFS probe without shared memory");
+const localStatusRequest = localWorker.messages.find((message) => message.channel === "engine-request");
+localWorker.emit("message", {
+  channel: "engine-response", id: localStatusRequest.id,
+  response: { type: "hd_status_result", requestId: "worker-local-status", ok: true, ready: true, loading: false,
+    dictionaryCount: 0, generation: 1, storageBackend: "idbfs", threaded: false },
+});
+assert.deepEqual([(await localWorkerStatus.promise).storageBackend, (await localWorkerStatus.promise).threaded], ["idbfs", false]);
+mock.timers.enable({ apis: ["setTimeout"] });
+try {
+  relay({ target: "hoshidicts-offscreen", type: "hd_engine_config", relayed: true, lowMemoryMode: true },
+    { url: "background.js" }, () => {});
+  await tick();
+  mock.timers.tick(10_000);
+  await tick();
+  assert.equal(engineWorkers.length, workersBeforeLocal + 1, "Low memory mode never replaces the single-thread worker");
+} finally {
+  mock.timers.reset();
+}
+
 // Hold only the fallback service module. The production bridge is really imported;
 // real IDBFS/WASM behavior is covered by extension-smoke and chrome-fallback.
 const serviceLoad = Promise.withResolvers();
@@ -563,7 +596,8 @@ const hooks = registerHooks({
   },
 });
 try {
-  Object.defineProperty(globalThis, "crossOriginIsolated", { configurable: true, value: false });
+  // Without Worker the single-thread runtime runs in the document itself.
+  Object.defineProperty(globalThis, "Worker", { configurable: true, value: undefined });
   await import(`../extension/offscreen.js?fallback-bridge-smoke=${Date.now()}`);
   relay = importedRuntime();
   await serviceLoading.promise;
@@ -668,6 +702,7 @@ try {
   localRequests.shift().resolve({ type: "hd_lookup_result", ok: true });
   assert.equal((await healthy.promise).ok, true);
 } finally {
+  Object.defineProperty(globalThis, "Worker", { configurable: true, value: FakeWorker });
   serviceLoad.resolve();
   hooks.deregister();
   delete globalThis.bridgeFallbackFixture;
