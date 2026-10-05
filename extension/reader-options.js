@@ -68,6 +68,8 @@
   // Pressing only these codes records or matches a keybind with a null key.
   const KEYBIND_MODIFIER_CODES = new Set(["AltLeft", "AltRight", "ControlLeft", "ControlRight",
     "MetaLeft", "MetaRight", "ShiftLeft", "ShiftRight", "OSLeft", "OSRight"]);
+  // The modifiers a key press or wheel step holds, in stored keybind order.
+  const keybindModifiers = event => KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
   // A vertical wheel step is a keybind key: the reader matches it over a popup
   // and the Keys field records it.
   function keybindWheelKey(event) {
@@ -797,7 +799,7 @@
     DEFAULT_OPTIONS, RETIRED_OPTION_KEYS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_BUTTONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS,
     KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
-    keybindWheelKey,
+    keybindModifiers, keybindWheelKey,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     EXPERIMENTAL_FEATURES,
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,

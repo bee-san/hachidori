@@ -58,8 +58,8 @@ function renderScopes(row, action, bind) {
 export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources,
   getBrowserCommands, openBrowserShortcuts, browserShortcutsAvailable = true }) {
   const window = document.defaultView;
-  const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES,
-    KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS, keybindWheelKey } = window.HDReaderOptions;
+  const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES, KEYBIND_TOGGLE_OPTIONS,
+    AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS, keybindModifiers, keybindWheelKey } = window.HDReaderOptions;
   const actions = new Map(KEYBIND_ACTIONS.map(action => [action.id, action]));
   const list = document.getElementById("keybind-list");
   const rows = [];
@@ -72,7 +72,6 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     render();
   }
 
-  const heldModifiers = event => KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
   function assign(row, key, modifiers) {
     const bind = readKeybinds()[row.index];
     if (key !== bind.key || modifiers.join() !== bind.modifiers.join()) change(row, { key, modifiers });
@@ -85,14 +84,14 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     event.preventDefault();
     const code = event.code && event.code !== "Unidentified" && !KEYBIND_MODIFIER_CODES.has(event.code)
       ? event.code : readKeybinds()[row.index].key;
-    assign(row, code, heldModifiers(event));
+    assign(row, code, keybindModifiers(event));
   }
 
   // A wheel step with a modifier held over the field being set is a key; a
   // plain wheel still scrolls Settings.
   function captureWheel(row, event) {
     const key = keybindWheelKey(event);
-    const modifiers = heldModifiers(event);
+    const modifiers = keybindModifiers(event);
     if (key === null || modifiers.length === 0 || document.activeElement !== row.input) return;
     event.preventDefault();
     assign(row, key, modifiers);

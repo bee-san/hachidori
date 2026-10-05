@@ -37,11 +37,11 @@
   const {
     ACTIVATION_BUTTONS,
     DEFAULT_OPTIONS,
-    KEYBIND_MODIFIERS,
     KEYBIND_MODIFIER_CODES,
     clampOption,
     definitionBlurFrequencyEvidence,
     definitionBlurQualifies,
+    keybindModifiers,
     keybindWheelKey,
     normaliseActivationKey,
     projectContentOptions,
@@ -4345,7 +4345,6 @@
   // After Yomitan's HotkeyHandler: the physical key and the exact modifier set
   // select enabled keybinds whose scope applies; the first handled one wins.
   // A wheel step passes its own key and the popup it is over.
-  const keybindModifiers = event => KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
   function runKeybinds(event, level, key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code) {
     const modifiers = keybindModifiers(event);
     // A pending lookup counts as its popup: Escape has always cancelled one.
