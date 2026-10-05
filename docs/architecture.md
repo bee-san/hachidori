@@ -798,7 +798,7 @@ deepest visible popup. As in Yomitan, the current entry starts at the first entr
 and changes through navigation or a click on an entry. It also changes when
 scrolling changes the result the popup's header shows (below). Navigation reveals
 later entries through the existing Show more control. Entry navigation scrolls the
-target's own header just under the header. Dictionary navigation moves
+target's own header just under the popup's header. Dictionary navigation moves
 from the most visible glossary card to the nearest card from another dictionary.
 Add note, View notes and Back click the current entry's existing buttons, so
 duplicate and disabled behavior is unchanged. Audio replays without
@@ -815,9 +815,9 @@ pronunciation and custom Anki buttons, the personal-dictionary prefill and custo
 links then act on that result. A scroll event or a layout pass reads at most a
 few header edges. A Note form, a pending personal-dictionary save, a child popup
 or a focused custom Anki button holds the header until it is released. Keyboard
-focus on a control that leaves the header moves to the same control of the
-incoming result. Bundled renderers other than Default keep each header with its
-entry.
+focus on a control that leaves the header moves to the incoming result's Anki
+button, if the Anki button had it, or else its pronunciation button. Bundled
+renderers other than Default keep each header with its entry.
 
 The Keybinds section edits the list like Yomitan's key field: a key press
 replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
