@@ -3010,6 +3010,9 @@ async function readBackupStorage(raw = false) {
 
 function backupFileBlob(path, size) {
   const FS = engine.FS;
+  // A Blob-backed IDBFS file is already the Blob the archive needs.
+  const node = FS.lookupPath(path).node;
+  if (node.blob instanceof Blob && node.blob.size === size) return node.blob;
   const input = FS.open(path, "r");
   const parts = [];
   try {
