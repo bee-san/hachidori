@@ -222,3 +222,30 @@ test("the switch is unavailable with the single-thread engine while the readout 
   assert.equal(local.el("low-memory-mode-unavailable").hidden, false);
   assert.equal(local.el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
 });
+
+
+test("entry storage saves independently and low memory temporarily overrides its control", async t => {
+  const { window, el } = fixture(t);
+  await settle();
+  const select = el("opt-dictionary-entry-storage");
+  assert.equal(select.value, "auto");
+  assert.equal(select.disabled, false);
+  select.value = "resident";
+  select.dispatchEvent(new window.Event("change"));
+  await tick();
+  assert.equal(window.readOptions().dictionaryEntryStorage, "resident");
+  assert.equal(window.readOptions().lowMemoryMode, false);
+  assert.equal(JSON.stringify(window.readPending()), JSON.stringify({ dictionaryEntryStorage: "resident" }));
+  el("opt-low-memory-mode").click();
+  await tick();
+  assert.equal(select.disabled, true);
+  assert.equal(select.value, "resident", "the explicit resident preference is preserved");
+  el("opt-low-memory-mode").click();
+  await tick();
+  assert.equal(select.disabled, false);
+
+  const local = fixture(t, { threaded: false });
+  await local.window.pollStatus();
+  await settle();
+  assert.equal(local.el("dictionary-entry-storage").hidden, true);
+});

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Low memory mode before/after: imports one or more archives into a fresh
-// Chrome profile with the option off and on (alternating samples), and records
+// Entry storage and Low memory mode before/after: imports one or more archives
+// into a fresh Chrome profile under each --variants entry (alternating
+// samples; default resident,auto,low), and records
 // import wall time, the engine heap and process-tree RSS after the import
 // settles and, with the mode on, after the worker has been recycled, plus
 // hd_lookup latency. See docs/memory.md and benchmark/README.md.
@@ -9,6 +10,10 @@
 //   node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip \
 //     [--archive /path/to/another.zip ...] [--words words.txt] \
 //     --samples 3 --output benchmark/results/low-memory-mode.json
+//
+// Variants: resident (entries mapped, normal imports), auto (the default:
+// entries paged on direct OPFS, normal imports), paged, and low (Low memory
+// mode: paged entries, one import thread, recycled worker).
 //
 // Import time is the settings-page clock from file selection until hd_status
 // reports every imported package ready. Heap is hd_memory.heapBytes (WASM
@@ -66,6 +71,16 @@ const LOOKUPS = Number(argument("lookups", "200"));
 const TEXT = argument("text", "食べる");
 const WORDS_FILE = argument("words", null);
 const PASSES = Number(argument("passes", "2"));
+const VARIANT_OPTIONS = {
+  resident: { lowMemoryMode: false, dictionaryEntryStorage: "resident" },
+  auto: { lowMemoryMode: false, dictionaryEntryStorage: "auto" },
+  paged: { lowMemoryMode: false, dictionaryEntryStorage: "paged" },
+  low: { lowMemoryMode: true, dictionaryEntryStorage: "auto" },
+};
+const VARIANTS = argument("variants", "resident,auto,low").split(",");
+for (const variant of VARIANTS) {
+  if (!VARIANT_OPTIONS[variant]) throw new Error(`unknown variant ${variant}`);
+}
 const WORDS = WORDS_FILE === null ? null
   : readFileSync(resolve(WORDS_FILE), "utf8").split("\n").map((line) => line.trim()).filter(Boolean);
 
@@ -79,42 +94,50 @@ function sumRss(pid) {
   return processTreeSample(pid).rssBytes;
 }
 
-async function sample(puppeteer, lowMemoryMode, index) {
+async function sample(puppeteer, variant, index) {
+  const { lowMemoryMode, dictionaryEntryStorage } = VARIANT_OPTIONS[variant];
   const profile = `/tmp/hachidori-low-memory-bench-${process.pid}-${index}`;
   rmSync(profile, { recursive: true, force: true });
   mkdirSync(profile, { recursive: true });
-  const browser = await puppeteer.launch({
-    executablePath: CHROME,
-    headless: true,
-    userDataDir: profile,
-    args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-      `--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
-  });
-  try {
+  let browser = null;
+  let page = null;
+  // One Chrome process on the retained profile, with Settings open.
+  async function launch() {
+    browser = await puppeteer.launch({
+      executablePath: CHROME,
+      headless: true,
+      userDataDir: profile,
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+        `--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
+    });
     const target = await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().startsWith("chrome-extension://"), { timeout: 30_000 });
     const extensionId = new URL(target.url()).host;
     // The first-run startup page opens itself; close it so its installer does not compete.
-    for (const page of await browser.pages()) {
-      if (page.url().includes("startup.html")) await page.close();
+    for (const open of await browser.pages()) {
+      if (open.url().includes("startup.html")) await open.close();
     }
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.goto(`chrome-extension://${extensionId}/settings.html#advanced`, { waitUntil: "domcontentloaded" });
-    const engine = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({
-      target: "hoshidicts-offscreen", type, requestId: `bench-${type}`, ...fields,
-    }), type, fields);
-    // hd_status.lowMemory names the worker that is serving.
-    const waitReady = (lowMemory) => page.waitForFunction(async (expected) => {
-      const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-      return status?.ok && status.ready && !status.loading && status.lowMemory === expected ? status : false;
-    }, { timeout: 180_000, polling: 100 }, lowMemory).then((handle) => handle.jsonValue());
-    await waitReady(false);
-    if (lowMemoryMode) {
+  }
+  const engine = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen", type, requestId: `bench-${type}`, ...fields,
+  }), type, fields);
+  // hd_status names the configuration of the worker that is serving.
+  const waitReady = (lowMemory, storage, minimumCount = 0) => page.waitForFunction(async (lowMemory, storage, minimumCount) => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ok && status.ready && !status.loading && status.lowMemory === lowMemory
+      && (status.dictionaryEntryStorage ?? "auto") === storage && status.dictionaryCount >= minimumCount ? status : false;
+  }, { timeout: 600_000, polling: 100 }, lowMemory, storage, minimumCount).then((handle) => handle.jsonValue());
+  try {
+    await launch();
+    await waitReady(false, "auto");
+    if (lowMemoryMode || dictionaryEntryStorage !== "auto") {
       const options = await page.evaluate(async () => (await chrome.storage.local.get("options")).options ?? {});
-      await page.evaluate((baseRevision) => chrome.runtime.sendMessage({
-        target: "hoshidicts-worker", type: "hd_options_write", requestId: "bench-options", baseRevision, options: { lowMemoryMode: true },
-      }), options.revision ?? 0);
-      // The worker is replaced once idle and comes back in low memory mode.
-      await waitReady(true);
+      await page.evaluate((baseRevision, patch) => chrome.runtime.sendMessage({
+        target: "hoshidicts-worker", type: "hd_options_write", requestId: "bench-options", baseRevision, options: patch,
+      }), options.revision ?? 0, { lowMemoryMode, dictionaryEntryStorage });
+      // The idle worker is replaced with the requested configuration.
+      await waitReady(lowMemoryMode, dictionaryEntryStorage);
     }
     const beforeImport = await engine("hd_memory");
     const input = await page.$("#import-file");
@@ -131,6 +154,20 @@ async function sample(puppeteer, lowMemoryMode, index) {
     const importMs = performance.now() - importStarted;
     const afterImport = await engine("hd_memory");
     const rssAfterImport = sumRss(browser.process().pid);
+    const importedFiles = await page.evaluate(async () => {
+      // Logical sizes of each imported package's files in direct OPFS.
+      const sizes = {};
+      async function walk(directory, prefix) {
+        for await (const [name, handle] of directory.entries()) {
+          if (handle.kind === "directory") await walk(handle, `${prefix}${name}/`);
+          else if (/^(blobs\.bin|hash\.table|bloom\.filter|scan\.idx|media\.idx|dict\.zstd)$/.test(name)) {
+            sizes[name] = (sizes[name] ?? 0) + (await handle.getFile()).size;
+          }
+        }
+      }
+      try { await walk(await navigator.storage.getDirectory(), ""); } catch { return null; }
+      return sizes;
+    });
     let recycle = null;
     if (lowMemoryMode) {
       const recycleStarted = performance.now();
@@ -142,17 +179,33 @@ async function sample(puppeteer, lowMemoryMode, index) {
       recycle = { recycleMs: performance.now() - recycleStarted, heapBytes: memory.heapBytes, rssBytes: sumRss(browser.process().pid),
         dictionaryCount: recycled.dictionaryCount };
     }
+    // Restart Chrome on the retained profile: lookups and memory below are the
+    // restored engine with an empty page cache, not the import's high-water mark.
+    await browser.close();
+    const restartStarted = performance.now();
+    await launch();
+    const restored = await waitReady(lowMemoryMode, dictionaryEntryStorage, imported.dictionaryCount);
+    const restartMs = performance.now() - restartStarted;
+    const afterRestart = await engine("hd_memory");
+    const restart = { restartMs, heapBytes: afterRestart.heapBytes, rssBytes: sumRss(browser.process().pid),
+      pagedDictionaries: restored.pagedDictionaries ?? null,
+      residentBytes: afterRestart.dictionaries.reduce((sum, entry) => sum + entry.bytes, 0),
+      dictionaries: afterRestart.dictionaries.map(({ title, bytes, paged }) => ({ title, bytes, paged })) };
     const timeLookups = (texts, prefix, requireHit) => page.evaluate(async (texts, prefix, requireHit) => {
       const out = [];
       let hits = 0;
+      // FNV-1a over every reply's results, so variants can be compared exactly.
+      let hash = 0x811c9dc5;
       for (let i = 0; i < texts.length; i += 1) {
         const started = performance.now();
         const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", requestId: `${prefix}-${i}`, text: texts[i] });
         if (!reply?.ok || (requireHit && !reply.results?.length)) throw new Error(`lookup ${i} failed: ${JSON.stringify(reply)}`);
         out.push(performance.now() - started);
         if (reply.results?.length) hits += 1;
+        const text = JSON.stringify(reply.results ?? []);
+        for (let c = 0; c < text.length; c += 1) hash = Math.imul(hash ^ text.charCodeAt(c), 0x01000193) >>> 0;
       }
-      return { latencies: out, hits };
+      return { latencies: out, hits, resultHash: hash.toString(16) };
     }, texts, prefix, requireHit);
     let lookups;
     if (WORDS === null) {
@@ -165,21 +218,22 @@ async function sample(puppeteer, lowMemoryMode, index) {
       for (let pass = 0; pass < PASSES; pass += 1) passes.push(await timeLookups(WORDS, `bench-pass-${pass}`, false));
       const memory = await engine("hd_memory");
       lookups = {
-        words: WORDS.length, hits: passes[0].hits,
+        words: WORDS.length, hits: passes[0].hits, resultHashes: passes.map((pass) => pass.resultHash),
         passes: passes.map((pass) => distribution(pass.latencies)),
         firstPass: distribution(passes[0].latencies), secondPass: distribution(passes.at(-1).latencies),
         heapBytes: memory.heapBytes, pageCacheBytes: memory.pageCacheBytes ?? null,
       };
     }
     return {
-      lowMemoryMode, threaded: imported.threaded, storageBackend: imported.storageBackend,
+      variant, lowMemoryMode, dictionaryEntryStorage, threaded: imported.threaded, storageBackend: imported.storageBackend,
+      importedFiles,
       pagedDictionaries: imported.pagedDictionaries ?? null,
       heapBeforeImport: beforeImport.heapBytes, importMs, heapAfterImport: afterImport.heapBytes, rssAfterImport,
       residentBytes: afterImport.dictionaries.reduce((sum, entry) => sum + entry.bytes, 0),
-      recycle, lookups,
+      recycle, restart, lookups,
     };
   } finally {
-    await browser.close();
+    await browser?.close();
     rmSync(profile, { recursive: true, force: true });
   }
 }
@@ -198,20 +252,21 @@ async function main() {
   const chromeVersion = execFileSync(CHROME, ["--version"], { encoding: "utf8" }).trim();
   const rows = [];
   for (let index = 0; index < SAMPLES; index += 1) {
-    for (const lowMemoryMode of [false, true]) {
-      const row = await sample(puppeteer, lowMemoryMode, rows.length);
+    for (const variant of VARIANTS) {
+      const row = await sample(puppeteer, variant, rows.length);
       rows.push(row);
       const timing = row.lookups.passes
         ? row.lookups.passes.map((pass, index) => `pass ${index + 1} p50 ${pass.p50.toFixed(2)} p95 ${pass.p95.toFixed(2)} ms`).join(", ")
         : `lookup p50 ${row.lookups.medianMs.toFixed(2)} ms p95 ${row.lookups.p95Ms.toFixed(2)} ms`;
-      console.log(`${lowMemoryMode ? "on " : "off"} #${index + 1}: import ${row.importMs.toFixed(0)} ms; heap ${mb(row.heapAfterImport)}`
+      console.log(`${variant.padEnd(8)} #${index + 1}: import ${row.importMs.toFixed(0)} ms; heap ${mb(row.heapAfterImport)}`
         + ` rss ${mb(row.rssAfterImport)} after import${row.recycle ? `; heap ${mb(row.recycle.heapBytes)} rss ${mb(row.recycle.rssBytes)}`
-          + ` ${row.recycle.recycleMs.toFixed(0)} ms after recycle` : ""}; ${timing}`);
+          + ` ${row.recycle.recycleMs.toFixed(0)} ms after recycle` : ""}; restart ${row.restart.restartMs.toFixed(0)} ms heap ${mb(row.restart.heapBytes)}`
+        + ` resident ${mb(row.restart.residentBytes)}; ${timing}`);
     }
   }
   const result = { revision, chromeVersion, node: process.version,
     archives: ARCHIVES.map((path) => ({ path, bytes: readFileSync(path).byteLength })),
-    samples: SAMPLES, lookups: LOOKUPS, text: TEXT, words: WORDS_FILE, recordedAt: new Date().toISOString(), rows };
+    variants: VARIANTS, samples: SAMPLES, lookups: LOOKUPS, text: TEXT, words: WORDS_FILE, recordedAt: new Date().toISOString(), rows };
   mkdirSync(dirname(OUTPUT), { recursive: true });
   writeFileSync(OUTPUT, `${JSON.stringify(result, null, 2)}\n`);
   console.log(`\nwrote ${OUTPUT}`);
