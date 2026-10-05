@@ -495,6 +495,7 @@ const PLANNED = [
   "low memory mode imports single-threaded and recycles the import high-water mark",
   "low memory mode keeps only each dictionary's index in the heap",
   "turning low memory mode off restarts the full-pool worker",
+  "resident entry storage restores mapped entries independently of low memory mode",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "deep structured content renders while node-limit failures omit only their definition",
@@ -12450,7 +12451,7 @@ async function main() {
             audio: "audio-source-add", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
-            advanced: "opt-experimental-longKeyScan",
+            advanced: "opt-experimental-googleDocs",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
@@ -15041,7 +15042,8 @@ async function main() {
       && extensionTotal.reply.heapBytes === lowMemoryBefore.memory.heapBytes
       && extensionTotal.reply.bytes >= extensionTotal.reply.heapBytes
       && extensionTotal.reply.bytes - extensionTotal.reply.heapBytes < extensionTotal.reply.heapBytes
-      && lowMemoryBefore.status.pagedDictionaries === false
+      && lowMemoryBefore.status.pagedDictionaries === true
+      && lowMemoryBefore.status.dictionaryEntryStorage === "auto"
       && lowMemoryOptions?.lowMemoryMode === true
       && lowMemoryStatus?.threaded === true && lowMemoryStatus.storageBackend === "opfs"
       && lowMemoryStatus.pagedDictionaries === true,
@@ -15137,11 +15139,27 @@ async function main() {
     "turning low memory mode off restarts the full-pool worker",
     fullPoolOptions?.lowMemoryMode === false
       && fullPoolStatus?.threaded === true && fullPoolStatus.dictionaryCount === 1
-      && fullPoolStatus.pagedDictionaries === false
+      && fullPoolStatus.pagedDictionaries === true
       && fullPoolLookup.ok === true && fullPoolLookup.results[0]?.term.expression === "食べる"
-      && fullPoolMemory.dictionaries[0]?.paged === false && fullPoolMemory.pageCacheBytes === 0
-      && fullPoolMemory.dictionaries[0].bytes === indexBytes + lowMemorySizes["blobs.bin"],
+      && fullPoolMemory.dictionaries[0]?.paged === true
+      && fullPoolMemory.dictionaries[0].bytes === indexBytes,
     JSON.stringify({ status: fullPoolStatus, lookup: fullPoolLookup, memory: fullPoolMemory, lowMemoryMode: fullPoolOptions?.lowMemoryMode }),
+  );
+
+  await page.select("#opt-dictionary-entry-storage", "resident");
+  const residentStatus = await page.waitForFunction(async () => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ok && status.ready && !status.loading && status.dictionaryEntryStorage === "resident" ? status : false;
+  }, { timeout: 30_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => null);
+  const residentLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  const residentMemory = await engineRequest("hd_memory");
+  check(
+    "resident entry storage restores mapped entries independently of low memory mode",
+    residentStatus?.lowMemory === false && residentStatus.pagedDictionaries === false
+      && residentMemory.dictionaries[0]?.paged === false && residentMemory.pageCacheBytes === 0
+      && residentMemory.dictionaries[0].bytes === indexBytes + lowMemorySizes["blobs.bin"]
+      && residentLookup.ok === true && JSON.stringify(residentLookup.results) === JSON.stringify(fullPoolLookup.results),
+    JSON.stringify({ status: residentStatus, memory: residentMemory, lookup: residentLookup }),
   );
   await engineRequest("hd_remove", { title: lowMemoryTitle });
   await page.waitForFunction(async () => {

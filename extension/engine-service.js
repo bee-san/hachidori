@@ -123,9 +123,10 @@ let storageBackend = "memory";
 // pthread runtimes (OPFS or IDBFS) use the bounded worker group, unless the
 // low-memory worker asks for one thread too.
 let lowRam = true;
-// The low-memory worker also keeps only each dictionary's index in the heap
-// and reads its entries from disk as they are looked up (docs/memory.md).
+// Direct OPFS workers keep entries on disk by default, independently of the
+// import threading and recycler (docs/memory.md).
 let pagedDictionaries = false;
+let dictionaryEntryStorage = "auto";
 // Whether this is a pthread runtime, as hd_status reports it.
 let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
@@ -148,6 +149,7 @@ export function configureEngineService(request, options = {}) {
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
   pagedDictionaries = options.pagedDictionaries === true;
+  dictionaryEntryStorage = options.dictionaryEntryStorage ?? "auto";
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
@@ -1335,11 +1337,15 @@ function loadsPaged(path) {
   return pagedDictionaries || pagedPaths.has(path);
 }
 
-function addDictionaryKind(dictionary, kind) {
+// `validation` adds a disabled package only to prove the engine opens it, then
+// drops it: its entries are read on demand rather than copied into the heap,
+// which would only raise the worker's high-water mark (docs/memory.md). Its
+// index is still loaded and checked exactly as for lookup.
+function addDictionaryKind(dictionary, kind, { validation = false } = {}) {
   const add = (paged) => engine.ccall(
     "hdw_add_dict", "number", ["string", "number", "number"], [dictionary.path, kind, paged ? 1 : 0],
   ) === 1;
-  const paged = loadsPaged(dictionary.path);
+  const paged = validation || loadsPaged(dictionary.path);
   if (add(paged)) return true;
   // Only the index has to fit when the entries are read on demand.
   if (paged || !lastError().startsWith(OUT_OF_MEMORY) || !add(true)) return false;
@@ -1347,14 +1353,14 @@ function addDictionaryKind(dictionary, kind) {
   return true;
 }
 
-function addDictionaries(dictionaries, includeDisabled) {
+function addDictionaries(dictionaries, includeDisabled, options) {
   let loadedCount = 0;
   for (const dictionary of dictionaries) {
     if (!includeDisabled && dictionary.enabled === false) {
       continue;
     }
     for (const kindName of kindsForPackage(dictionary)) {
-      if (!addDictionaryKind(dictionary, KINDS.indexOf(kindName))) {
+      if (!addDictionaryKind(dictionary, KINDS.indexOf(kindName), options)) {
         throw new DictionaryLoadError(dictionary, kindName);
       }
       loadedCount += 1;
@@ -1454,7 +1460,7 @@ function reorderLoadedDictionaries(dictionaries) {
 function verifyDisabledPackagesInPlace(dictionaries) {
   for (const dictionary of dictionaries) {
     if (dictionary.enabled !== false || isVerified(dictionary)) continue;
-    addDictionaries([dictionary], true);
+    addDictionaries([dictionary], true, { validation: true });
     if (!engine.ccall("hdw_remove_dict", "number", ["string"], [dictionary.path])) return false;
     verifiedPackages.set(dictionary.path, packageKinds(dictionary));
   }
@@ -1533,7 +1539,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
     }
     resetEngine();
     try {
-      addDictionaries([dictionary], true);
+      addDictionaries([dictionary], true, { validation: true });
       verifiedPackages.set(dictionary.path, packageKinds(dictionary));
     } catch (error) {
       recordFailure(error);
@@ -3708,6 +3714,7 @@ const HANDLERS = {
       // demand (docs/memory.md).
       lowMemory: threaded && lowRam,
       pagedDictionaries,
+      dictionaryEntryStorage,
     };
   },
 

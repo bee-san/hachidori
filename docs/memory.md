@@ -1,28 +1,29 @@
 # Memory
 
-Hachidori keeps the installed dictionaries' text in memory while the engine
-runs, and reads their images from disk when they are shown. A library of large
-dictionaries can therefore take a gigabyte or more of RAM, where a dictionary
-extension that reads from IndexedDB on demand takes a few hundred megabytes.
-**Low memory mode** keeps only each dictionary's index in memory and reads the
-entries from disk as they are looked up. This page explains where the bytes
-go, what Settings shows about them, what Low memory mode does and costs, and
-what happens when the dictionaries do not fit.
+Hachidori keeps dictionary indexes in memory. On direct OPFS storage (normal
+Chrome installations), it reads entries and images from disk when needed by
+default. This avoids copying every installed definition into the WebAssembly
+heap while retaining all lookup results. Settings → Advanced → Memory →
+**Dictionary entries** can instead keep entries in memory for the fastest
+lookups. **Low memory mode** separately reduces import peak memory and returns
+unused engine memory after changes. This page explains the storage policies,
+the readout, their costs, and what happens when dictionaries do not fit.
 
 ## Why the engine is large
 
 The dictionary engine ([hoshidicts](https://github.com/bee-san/hoshidicts),
-compiled to WebAssembly) opens each installed dictionary's generated files with
+compiled to WebAssembly) opens each installed dictionary's index files with
 `mmap`: its index (`hash.table`, `bloom.filter` and, when present, `media.idx`,
-`scan.idx` and the trained `dict.zstd`) and its entries (`blobs.bin`). Natively
+`scan.idx` and the trained `dict.zstd`) and, with **Keep in memory** selected,
+its entries (`blobs.bin`). Natively
 that costs nothing until a page is touched. WebAssembly has no demand paging, so
 Emscripten emulates `mmap` by allocating the whole file inside the module's
 linear memory and copying the bytes in. Five things follow:
 
-- **Every entry of every installed dictionary is resident**, whether or not you
-  ever look a word up in it. A dictionary's share is the size of its index and
-  entry files, once however many kinds it loads as (term, frequency, pitch,
-  kanji): the kinds share one copy.
+- **Every loaded dictionary's index is resident.** Its entries are resident only
+  with **Keep in memory**, or the automatic policy on IDBFS hosts. Paged entries
+  use a shared 32 MiB cache instead. A dictionary's files are held once however
+  many kinds it loads as (term, frequency, pitch, kanji): the kinds share one copy.
 - **Images and other media are not.** `media.bin` is never copied in; the
   engine reads a file from OPFS (or IDBFS) when a popup or an Anki export asks
   for it, and the popup caches what it shows.
@@ -30,8 +31,8 @@ linear memory and copying the bytes in. Five things follow:
   indexes and, on the threaded engine, runs an eight-thread worker group. On
   direct OPFS that work happens in a separate import worker that is terminated
   afterwards, so its peak is returned to the browser and the engine's heap grows
-  only by the new dictionary's resident files; on IDBFS (Electron) the
-  import runs inside the engine and the memory that peak needs is kept for the
+  only by the new dictionary's index and entry-page cache by default; on IDBFS
+  (Electron) the import runs inside the engine and the memory that peak needs is kept for the
   life of the engine worker. Disabling or removing a dictionary frees its
   files inside the heap, but the heap itself stays at its high-water mark.
 - **IDBFS hosts mirror small files only.** Electron (GameSentenceMiner) and
@@ -46,7 +47,8 @@ linear memory and copying the bytes in. Five things follow:
   load completely; see [When dictionaries do not fit](#when-dictionaries-do-not-fit).
 
 With the five recommended dictionaries (75 MB of archives) the engine heap is
-about 320 MB after the import, and about 100 MB in Low memory mode (Chrome 152,
+about 320 MB with resident entries, and about 100 MB with paged entries in
+Low memory mode in the original benchmark (Chrome 152,
 direct OPFS; `benchmark/low-memory-mode.mjs`).
 
 ## Reading the numbers
@@ -77,11 +79,11 @@ including those, so its *Extension: Hachidori* row is normally larger than the
 extension total; the operating system's figures are larger still because they
 count the browser's shared libraries in every process.
 
-![Settings → Advanced → Memory with the engine total, the extension total and the Low memory mode switch](assets/memory-settings.png)
+![Settings → Advanced → Memory with the engine total, the extension total, the Dictionary entries selector and the Low memory mode switch](assets/memory-settings.png)
 
 Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
 package's resident files as described above. A package whose entries are read
-from disk (every package in Low memory mode, or one that did not fit) counts
+from disk (the OPFS default, every package in Low memory mode, or one that did not fit) counts
 only its index and says *(entries read from disk)*.
 
 ![A Library row's Details with its In memory line](assets/memory-library-details.png)
@@ -95,25 +97,60 @@ While the engine is busy or unreachable the readout shows an em dash rather than
 an error.
 
 The total is usually larger than the sum of the rows: the difference is the
-import high-water mark, the engine's own allocations and, in Low memory mode,
+import high-water mark, the engine's own allocations and, with paged entries,
 the cache of recently read entry pages (`hd_memory.pageCacheBytes`, at most
 32 MiB once a lookup returns). A text-only dictionary with tens of thousands of
 entries is a few tens of megabytes; the largest name dictionaries are several
 hundred.
+
+## Dictionary entry storage
+
+Settings → Advanced → Memory → **Dictionary entries** selects one policy:
+
+- **Automatic** (default): page entries on direct OPFS; retain resident entries
+  on IDBFS, where a paged read is a synchronous Blob read whose lookup cost has
+  not been measured. **Read from disk** pages there too.
+- **Read from disk**: page entries on either threaded backend.
+- **Keep in memory**: copy entries into the engine heap. A package that cannot
+  fit still falls back to paged entries as before.
+
+Paging reads `blobs.bin` through a shared cache: 4 KiB pages, 32 MiB for all
+packages together, least recently used first out. Every probe still reads its
+index in memory. A lookup that finds nothing reads no entry pages, and one that
+finds entries reads only their pages. Results are identical with paged and
+resident entries. A lookup keeps its pages until it returns, so the cache can
+exceed its budget while one runs.
+
+Measured with Jitendex (2026 release, 38.8 MB archive) and Pixiv Full
+(2026-10-05, 387 MB archive) on Chrome 152, direct OPFS, macOS arm64
+(`benchmark/low-memory-mode.mjs`, three alternating fresh profiles per
+policy, 4,550 lookups looked up twice after a full Chrome restart): the two
+packages' `blobs.bin` files total 569 MB and their index files 44 MB. With
+**Keep in memory** the heap is 698 MB; with **Automatic** it is 68 MB after
+loading and 98 MB once the cache has filled. The 4,550 lookups return identical
+results either way. Their median round trip goes from 2.2 ms to 2.6 ms, p95
+from 7.4 ms to 8.7 ms and p99 from 10.3 ms to 13.3 ms (medians of the three
+samples' first pass); the second pass costs about the same (2.0 to 2.5 ms
+median), because those lookups touch more than the 32 MiB cache holds. Imports take the same time
+(about 10 s for both archives) with either policy, against 26 s in Low memory
+mode.
+
+The policy does not change import threading, pthread pool size or automatic
+recycling after mutations. Changing it restarts the engine after two idle
+seconds, so the old heap is returned to the browser. Lookups during startup wait
+for the reloaded dictionaries. Existing installations without this option adopt
+Automatic on their next engine start; installed dictionaries need no reimport.
+The choice is preserved while Low memory mode forces paging, and applies again
+when that mode is turned off. The selector is unavailable with the single-thread
+compatibility engine.
 
 ## Low memory mode
 
 Settings → Advanced → Memory → **Low memory mode** (off by default) does three
 things:
 
-1. **Reads dictionary entries from disk.** The worker keeps each dictionary's
-   index in the heap and reads `blobs.bin` from OPFS (or IDBFS) through a page
-   cache: 4 KiB pages, 32 MiB for all dictionaries together, least recently
-   used first out. Every probe still reads the index in memory, so a lookup
-   that finds nothing reads nothing from disk, and one that does reads only the
-   pages holding the entries it finds. Results are identical with the mode on
-   and off. A lookup keeps the pages it read until it returns, so the cache can
-   exceed its budget while one runs.
+1. **Forces entries to be read from disk**, including when **Keep in memory**
+   was selected. On direct OPFS this matches the new automatic default.
 2. **Recycles the engine worker after changes.** Once an import, reimport,
    update, removal, enable/disable, custom-dictionary save or backup
    restore has settled and the engine has been idle for two seconds, the
@@ -129,10 +166,11 @@ things:
    starts with a two-thread pool (one importer thread plus the WasmFS OPFS
    proxy) instead of up to nine, and `hdw_import` runs in its low-RAM mode.
 
-Measured with the five recommended dictionaries on Chrome 152 (direct OPFS,
+The original resident-versus-Low-memory benchmark measured the five recommended
+dictionaries on Chrome 152 (direct OPFS,
 `benchmark/low-memory-mode.mjs`, 1,000 hovers over example sentences looked up
 two to five times over, round trips from the settings page, ten fresh profiles
-each way): the heap goes from about 320 MB to about 70 MB right after loading
+each way): the heap went from about 320 MB to about 70 MB right after loading
 (41 MB of index files) and about 100 MB once the cache has filled, and the
 median hover round trip from 3.5 ms to 3.9 ms (p95 10.7 ms to 11.7 ms). The first
 pass over the hovers, with the cache still empty, costs the same. On a shared
@@ -145,8 +183,9 @@ single-threaded instead of 1.6 s in the eight-thread group), and that
 dictionaries reload briefly after a change: hover lookups during that reload
 wait for the engine, and Settings shows *Starting the engine and loading
 dictionaries…* for the reload's duration (about 1 ms per MB of index files).
-Turning the mode on or off also recycles the worker once, so the pool size,
-the import threading and how the entries are read always match the option.
+Turning the mode on or off also recycles the worker once, so the pool size
+and the import threading always match the option; entry paging is otherwise
+controlled independently by the storage policy.
 
 On OPFS the engine keeps each paged `blobs.bin`, and each `media.bin`, open
 through a sync access handle, which locks the file for as long as its package
@@ -164,10 +203,23 @@ Implementation: hoshidicts `DictionaryStorage::Paged` (`src/blob_file.cpp`,
 engine-side state a later request still needs, such as a prepared backup, an
 exported archive URL or an open dictionary download) and the restart,
 `extension/engine-worker-runtime.js` reads the worker's name to size the
-pthread pool before the module starts and asks `engine-service.js` to load every
-package paged (`hd_status.pagedDictionaries`), and `background.js` answers
+pthread pool before the module starts and asks `engine-service.js` to apply the
+entry storage policy (`hd_status.dictionaryEntryStorage`,
+`hd_status.pagedDictionaries`), and `background.js` answers
 `hd_engine_config` for the offscreen document and pushes the option when it
 changes.
+
+## Disabled dictionaries
+
+A disabled dictionary is not loaded for lookups, but the engine still opens it
+once before a state that contains it is committed, at startup and whenever a
+new generation of it appears, so a broken package is reported rather than
+discovered when you enable it. That check loads the package with its entries
+read from disk whatever the entry setting, and drops it again: its index is
+loaded and checked as for lookup, but its `blobs.bin` is never copied into the
+heap, so a large disabled dictionary no longer raises the worker's high-water
+mark by the size of its entries. Enabling it later loads it the way every other
+enabled dictionary is loaded.
 
 ## When dictionaries do not fit
 
@@ -182,16 +234,16 @@ mode. A package whose index does not fit either is reported in
 `hd_status.failedDictionaries`. Nothing crashes: the other dictionaries keep
 working, Settings names the package that failed, and the fix is to turn on Low
 memory mode or to disable or remove the largest dictionaries until the rest
-fits. With Low memory mode on only the indexes count towards the limit, so on
-OPFS a library can hold several times 4 GiB of dictionary files.
+fits. With paged entries only the indexes and active cache count towards the
+limit, so on OPFS a library can hold several times 4 GiB of dictionary files.
 
 **Less than 4 GiB, but more than the operating system can keep resident.**
 Nothing in the engine can see this. The browser swaps, which shows up as
 hovers taking seconds, or the operating system kills the extension process;
 the service worker then recreates the offscreen document, which reloads every
 dictionary and hits the same wall. If Hachidori's memory is close to what your
-machine has free, turn on Low memory mode, or remove or disable the largest
-dictionaries.
+machine has free, choose Read from disk, turn on Low memory mode, or remove or
+disable the largest dictionaries.
 
 ## IDBFS files
 
