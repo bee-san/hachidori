@@ -208,8 +208,9 @@ dictionary files never are. Unloading a package writes nothing back.
 Measured with Jitendex and Pixiv Full on Chrome 152 with the threaded IDBFS
 engine forced (`benchmark/idbfs-restore.mjs`, macOS arm64): after a restart
 the extension measures 4 MB outside the engine heap instead of 592 MB, the
-engine heap is unchanged (690 MB with resident entries), restart to ready is
-faster, and lookups return identical results at the same speed.
+engine heap is unchanged (690 MB with resident entries), and 4,550 lookups
+return identical results. Restart, lookup and backup timings varied more with
+the machine's load than between the two versions.
 
 What remains:
 
