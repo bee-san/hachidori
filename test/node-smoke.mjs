@@ -483,11 +483,13 @@ async function loadPaddedCopy({ padded, kinds, paged, indexPaged = 0 }) {
     F.FS.writeFile(`${DICT_DIR}/${name}`, bytes);
   }
   const before = heapOf(F);
+  const allocatedBefore = JSON.parse(fcall('hdw_memory_stats', 'string', [], [])).liveAllocatedBytes;
   for (const kind of kinds) {
     eq(fcall('hdw_add_dict', 'number', ['string', 'number', 'number', 'number'], [DICT_DIR, kind, paged, indexPaged]), 1,
       `add kind ${kind}: ${fcall('hdw_last_error', 'string', [], [])}`);
   }
   const growth = heapOf(F) - before;
+  const allocationDelta = JSON.parse(fcall('hdw_memory_stats', 'string', [], [])).liveAllocatedBytes - allocatedBefore;
   const lookups = PARITY_WORDS.map((word) =>
     fcall('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], [word, 32, 16, '']));
   const kanjiJson = fcall('hdw_kanji', 'string', ['string'], ['食']);
@@ -495,15 +497,15 @@ async function loadPaddedCopy({ padded, kinds, paged, indexPaged = 0 }) {
   const mediaPtr = fcall('hdw_media_data', 'pointer', [], []);
   const mediaCopy = Uint8Array.from(F.HEAPU8.subarray(mediaPtr, mediaPtr + mediaLength));
   const pageCacheBytes = fcall('hdw_page_cache_bytes', 'number', [], []);
-  return { F, growth, lookups, kanjiJson, mediaCopy, pageCacheBytes };
+  return { F, growth, allocationDelta, lookups, kanjiJson, mediaCopy, pageCacheBytes };
 }
 
 const ALL_KINDS = Object.values(KINDS);
 const residentIndex = await loadPaddedCopy({ padded: 'hash.table', kinds: ALL_KINDS, paged: 1 });
 const pagedIndex = await loadPaddedCopy({ padded: 'hash.table', kinds: ALL_KINDS, paged: 1, indexPaged: 1 });
 check('paged hashes avoid the padded index allocation', () => {
-  eq(residentIndex.growth >= PAD_BYTES, true, 'resident hash allocation');
-  eq(pagedIndex.growth < PAD_BYTES, true, 'paged hash allocation');
+  eq(residentIndex.allocationDelta >= PAD_BYTES, true, 'resident hash allocation');
+  eq(pagedIndex.allocationDelta < PAD_BYTES, true, 'paged hash allocation');
 });
 check('paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results', () => {
   eq(JSON.stringify(pagedIndex.lookups), JSON.stringify(residentIndex.lookups), 'lookup structures and order');
