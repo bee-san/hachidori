@@ -402,7 +402,14 @@ async function persistFilesystem() {
     // Trim first: IDBFS stores each file as a view of its array, and a
     // structured clone of a view carries the whole backing buffer.
     trimMemfsFiles(DICT_ROOT);
-    await syncfs(false);
+    const stored = new Map();
+    pendingBlobPaths = stored;
+    try {
+      await syncfs(false);
+    } finally {
+      pendingBlobPaths = null;
+    }
+    await adoptPersistedBlobs(stored);
   }
 }
 
@@ -431,37 +438,191 @@ function speedUpMemfsGrowth() {
 // Uint8Array. Chromium serialises such a value through the renderer on every
 // put and deserialises it on every get, and the cost grew with the size of the
 // database (Electron: 400, 630 and 880 ms for three imports of 70–100 MB).
-// A Blob value is handed to the browser's blob storage once and read back with
-// one copy; the same three imports persist in 230, 280 and 340 ms, and restart
-// to ready loses about 300 ms. Files under 1 MiB stay arrays. Records of either
-// shape load; Blobs are only written where FileReaderSync can read them back.
+// A Blob value is handed to the browser's blob storage once; the same three
+// imports persist in 230, 280 and 340 ms. Files under 1 MiB stay arrays.
+//
+// A file whose record is a Blob is also not copied back into JavaScript: its
+// MEMFS node keeps the Blob (`node.blob`, contents null) and reads, `mmap` and
+// the IDBFS mirror read only the ranges they need with FileReaderSync. `mmap`
+// still copies the mapped bytes into the heap, as for any MEMFS file. A write
+// or a truncation reads the file into an ordinary array first. A freshly
+// imported file is swapped for its stored Blob only once the persistence that
+// wrote it has completed, so a failed sync still has the bytes to retry or
+// roll back. Records written as arrays by earlier versions still load as
+// arrays. FileReaderSync exists only in workers, so the single-thread engine
+// in the offscreen document keeps whole-file arrays.
 const IDBFS_BLOB_THRESHOLD = 1024 * 1024;
+// Bytes per FileReaderSync read: transfer-sized, not a limit on files.
+const BLOB_READ_CHUNK = 8 * 1024 * 1024;
+// Paths of files persisted as Blobs by the sync in flight, with the timestamp
+// they were stored at; adoptPersistedBlobs() swaps them in after it completes.
+let pendingBlobPaths = null;
+
+function blobBackedIdbfs() {
+  const FS = engine.FS;
+  const memfs = FS?.filesystems?.MEMFS;
+  const idbfs = FS?.filesystems?.IDBFS;
+  return FS && memfs?.ops_table?.file && idbfs && typeof FileReaderSync === "function" && typeof Blob === "function"
+    ? { FS, memfs, idbfs } : null;
+}
+
+function readBlobRange(blob, start, end, target, targetOffset) {
+  const reader = new FileReaderSync();
+  for (let offset = start; offset < end; offset += BLOB_READ_CHUNK) {
+    const bytes = new Uint8Array(reader.readAsArrayBuffer(blob.slice(offset, Math.min(end, offset + BLOB_READ_CHUNK))));
+    target.set(bytes, targetOffset + offset - start);
+  }
+}
+
+function backWithBlob(node, blob) {
+  node.blob = blob;
+  node.contents = null;
+  node.usedBytes = blob.size;
+}
+
+// Before a node's bytes change: give it an ordinary array of its contents.
+function materializeBlob(node) {
+  const blob = node.blob;
+  if (blob === undefined) return;
+  delete node.blob;
+  const contents = new Uint8Array(blob.size);
+  readBlobRange(blob, 0, blob.size, contents, 0);
+  node.contents = blob.size > 0 ? contents : null;
+  node.usedBytes = blob.size;
+}
 
 function storeLargeIdbfsFilesAsBlobs() {
-  const idbfs = engine.FS?.filesystems?.IDBFS;
-  if (typeof idbfs?.storeRemoteEntry !== "function" || typeof idbfs.loadRemoteEntry !== "function"
-      || typeof FileReaderSync !== "function" || typeof Blob !== "function") {
-    return;
-  }
-  const storeRemoteEntry = idbfs.storeRemoteEntry;
-  const loadRemoteEntry = idbfs.loadRemoteEntry;
+  const fs = blobBackedIdbfs();
+  if (fs === null) return;
+  const { FS, memfs, idbfs } = fs;
+  // Every MEMFS file shares these op tables, and an open stream keeps the
+  // table it was opened with, so the Blob paths are added to them rather than
+  // to individual nodes: a file opened as an array keeps working once it is
+  // backed by its Blob.
+  const stream = memfs.ops_table.file.stream;
+  const node = memfs.ops_table.file.node;
+  const { read, write, mmap, msync } = stream;
+  const setattr = node.setattr;
+  stream.read = (handle, buffer, offset, length, position) => {
+    const file = handle.node;
+    if (file.blob === undefined) return read(handle, buffer, offset, length, position);
+    if (position >= file.usedBytes) return 0;
+    const size = Math.min(file.usedBytes - position, length);
+    readBlobRange(file.blob, position, position + size,
+      new Uint8Array(buffer.buffer, buffer.byteOffset + offset, size), 0);
+    return size;
+  };
+  stream.write = (handle, ...rest) => {
+    materializeBlob(handle.node);
+    return write(handle, ...rest);
+  };
+  stream.mmap = (handle, length, position, prot, flags) => {
+    const file = handle.node;
+    if (file.blob === undefined) return mmap(handle, length, position, prot, flags);
+    // MEMFS allocates the mapping and copies a one-byte stand-in, which also
+    // refreshes the module's heap view after any growth; the range follows.
+    const mapped = mmap({ node: { mode: file.mode, contents: new Uint8Array(1) } }, length, 0, prot, flags);
+    const end = Math.min(file.usedBytes, position + length);
+    if (end > position) readBlobRange(file.blob, position, end, engine.HEAPU8, mapped.ptr);
+    return mapped;
+  };
+  // hoshidicts' unmap calls msync on every mapping. A mapping through a
+  // read-only descriptor cannot have changed, so nothing is written back:
+  // MEMFS would otherwise rewrite the identical bytes, touching the file's
+  // mtime (and so its next IDBFS sync), and a Blob-backed file would be read
+  // into an array first.
+  stream.msync = (handle, ...rest) => {
+    if ((handle.flags & 3) === 0) return 0;
+    materializeBlob(handle.node);
+    return msync(handle, ...rest);
+  };
+  node.setattr = (file, attr) => {
+    if (attr.size !== undefined && file.blob !== undefined) {
+      if (attr.size === 0) {
+        delete file.blob;
+        file.contents = null;
+        file.usedBytes = 0;
+      } else {
+        materializeBlob(file);
+      }
+    }
+    return setattr(file, attr);
+  };
+
+  const { storeRemoteEntry, storeLocalEntry, loadLocalEntry } = idbfs;
   idbfs.storeRemoteEntry = (store, path, entry, callback) => {
     if (entry?.contents instanceof Uint8Array && entry.contents.byteLength >= IDBFS_BLOB_THRESHOLD) {
       entry = { ...entry, contents: new Blob([entry.contents]) };
+      pendingBlobPaths?.set(path, entry.timestamp.getTime());
     }
     return storeRemoteEntry(store, path, entry, callback);
   };
-  idbfs.loadRemoteEntry = (store, path, callback) => loadRemoteEntry(store, path, (error, entry) => {
-    if (!error && entry?.contents instanceof Blob) {
-      try {
-        entry.contents = new Uint8Array(new FileReaderSync().readAsArrayBuffer(entry.contents));
-      } catch (readError) {
-        callback(readError);
-        return;
-      }
+  // Restoring a Blob record creates the file empty and backs it with the Blob.
+  idbfs.storeLocalEntry = (path, entry, callback) => {
+    if (!(entry?.contents instanceof Blob) || !FS.isFile(entry.mode)) {
+      return storeLocalEntry(path, entry, callback);
     }
-    callback(error, entry);
+    try {
+      FS.writeFile(path, new Uint8Array(0));
+      backWithBlob(FS.lookupPath(path).node, entry.contents);
+      FS.chmod(path, entry.mode);
+      FS.utime(path, entry.timestamp, entry.timestamp);
+    } catch (error) {
+      return callback(error);
+    }
+    return callback(null);
+  };
+  // A renamed Blob-backed file is stored again under its new path as the Blob.
+  idbfs.loadLocalEntry = (path, callback) => {
+    let file;
+    try {
+      file = FS.lookupPath(path).node;
+    } catch (error) {
+      return callback(error);
+    }
+    if (file.blob === undefined) return loadLocalEntry(path, callback);
+    return callback(null, { timestamp: new Date(file.mtime), mode: file.mode, contents: file.blob });
+  };
+}
+
+// After a successful sync, back each file it stored as a Blob with the record
+// read back from IndexedDB, unless the file changed since. Best effort: a file
+// left as an array is correct, only larger.
+async function adoptPersistedBlobs(paths) {
+  const fs = blobBackedIdbfs();
+  const db = fs?.idbfs.dbs?.[DICT_ROOT];
+  if (fs === null || db === undefined || paths.size === 0) return;
+  const records = await new Promise((resolve) => {
+    const found = new Map();
+    try {
+      const transaction = db.transaction([fs.idbfs.DB_STORE_NAME], "readonly");
+      const store = transaction.objectStore(fs.idbfs.DB_STORE_NAME);
+      for (const path of paths.keys()) {
+        const request = store.get(path);
+        request.onsuccess = () => found.set(path, request.result);
+      }
+      transaction.oncomplete = () => resolve(found);
+      transaction.onerror = transaction.onabort = (event) => {
+        event?.preventDefault?.();
+        resolve(new Map());
+      };
+    } catch {
+      resolve(new Map());
+    }
   });
+  for (const [path, timestamp] of paths) {
+    const blob = records.get(path)?.contents;
+    let file;
+    try {
+      file = fs.FS.lookupPath(path).node;
+    } catch {
+      continue;
+    }
+    if (blob instanceof Blob && fs.FS.isFile(file.mode) && file.blob === undefined
+        && file.mtime === timestamp && file.usedBytes === blob.size) {
+      backWithBlob(file, blob);
+    }
+  }
 }
 
 // Reallocate over-allocated classic-FS files under `root` to their exact size.

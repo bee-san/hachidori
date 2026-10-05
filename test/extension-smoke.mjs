@@ -9826,6 +9826,7 @@ async function main() {
 
   await isolatedImportStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb, trainedExpression });
   await pagedDictionariesStage({ createHoshidicts, offscreenChrome, storedDictionaryState, trainedExpression });
+  await blobBackedIdbfsStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb });
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
@@ -9980,6 +9981,182 @@ async function pagedDictionariesStage({ createHoshidicts, offscreenChrome, store
       && (await mapped.request("hd_status")).failedDictionaries.length === 0,
     JSON.stringify(removed),
   );
+}
+
+/* --------------------------------------------------- blob-backed IDBFS stage */
+
+// In a worker, IDBFS files persisted as Blobs stay Blobs in the MEMFS mirror:
+// restoration, reads, mmap and unload read only the ranges they need, and an
+// import's arrays are released once its persistence has completed. Node has no
+// FileReaderSync, so this stage supplies a synchronous Blob and reader and
+// counts what is read through them.
+async function blobBackedIdbfsStage({ createHoshidicts, offscreenChrome, storedDictionaryState, idb }) {
+  section("blob-backed IDBFS: Blob records stay Blobs and are read by range");
+  const NativeBlob = globalThis.Blob;
+  const reads = [];
+  class SyncBlob extends NativeBlob {
+    constructor(parts = [], options) {
+      super(parts, options);
+      const chunks = parts.map((part) => (part instanceof SyncBlob ? part.bytes
+        : ArrayBuffer.isView(part) ? new Uint8Array(part.buffer, part.byteOffset, part.byteLength)
+          : typeof part === "string" ? new TextEncoder().encode(part) : new Uint8Array(part)));
+      this.bytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        this.bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+    }
+    slice(start = 0, end = this.bytes.byteLength) {
+      return new SyncBlob([this.bytes.subarray(start, end)]);
+    }
+  }
+  globalThis.Blob = SyncBlob;
+  globalThis.FileReaderSync = class {
+    readAsArrayBuffer(blob) {
+      reads.push(blob.bytes.byteLength);
+      return blob.bytes.slice().buffer;
+    }
+  };
+  const services = [];
+  const startService = async (tag, options = {}) => {
+    const service = await import(
+      `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?blob-${tag}`
+    );
+    const handle = { module: null };
+    service.configureEngineService(
+      (message) => offscreenChrome.runtime.sendMessage(message),
+      {
+        createHoshidicts: async (...args) => {
+          handle.module = await createHoshidicts(...args);
+          return handle.module;
+        },
+        storageBackend: "idbfs",
+        lowRam: true,
+        ...options,
+      },
+    );
+    let counter = 0;
+    handle.request = (type, fields = {}) => {
+      counter += 1;
+      return service.handleEngineMessage({ type, requestId: `blob-${tag}-${counter}`, ...fields });
+    };
+    service.startEngine();
+    const deadline = Date.now() + 30000;
+    let status = await handle.request("hd_status");
+    while (!(status.ok && status.ready && !status.loading) && Date.now() < deadline) {
+      await new Promise((done) => setTimeout(done, 25));
+      status = await handle.request("hd_status");
+    }
+    handle.status = status;
+    services.push(handle);
+    return handle;
+  };
+  const node = (handle, path) => handle.module.FS.lookupPath(path).node;
+  try {
+    // Pseudo-random glosses, so blobs.bin stays above the 1 MiB Blob threshold.
+    let seed = 7;
+    const noise = () => Array.from({ length: 320 }, () => {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      return String.fromCharCode(97 + (seed % 26));
+    }).join("");
+    const title = "blob-backed-idbfs";
+    const terms = Array.from({ length: 16000 }, (_, index) =>
+      [`語${index}`, `ご${index}`, "", "", 0, [index === 0 ? "first word" : noise()], index, ""]);
+    const writer = await startService("writer");
+    const imported = await writer.request("hd_import", {
+      blobUrl: createObjectURL(buildTitledZip(title, { terms })), fileName: `${title}.zip`,
+    });
+    const record = (await storedDictionaryState()).dictionaries.find((entry) => entry.title === title);
+    const blobsPath = `${record?.path}/blobs.bin`;
+    const written = node(writer, blobsPath);
+    const writerLookup = JSON.stringify((await writer.request("hd_lookup", { text: "語0" })).results);
+    check(
+      "a persisted import releases its large arrays for the stored Blobs",
+      imported.ok === true && written.blob instanceof SyncBlob && written.contents === null
+        && written.usedBytes === written.blob.size && written.usedBytes > 1024 * 1024
+        && writerLookup.includes("first word"),
+      JSON.stringify({ imported, size: written.usedBytes, blob: written.blob?.constructor?.name }),
+    );
+
+    reads.length = 0;
+    const restored = await startService("restored");
+    const restoredNode = node(restored, blobsPath);
+    const restoredLookup = JSON.stringify((await restored.request("hd_lookup", { text: "語0" })).results);
+    const restoredMemory = await restored.request("hd_memory");
+    check(
+      "restoring IDBFS backs large files with their Blobs while mapped lookups stay identical",
+      restored.status.ready === true && restoredNode.blob instanceof SyncBlob && restoredNode.contents === null
+        && restoredLookup === writerLookup
+        && restoredMemory.dictionaries.find((row) => row.title === title)?.paged === false
+        && reads.every((bytes) => bytes <= 8 * 1024 * 1024),
+      JSON.stringify({ status: restored.status, reads: reads.length, restoredMemory }),
+    );
+
+    reads.length = 0;
+    const paged = await startService("paged", { pagedDictionaries: true });
+    const pagedLookup = JSON.stringify((await paged.request("hd_lookup", { text: "語0" })).results);
+    const pagedNode = node(paged, blobsPath);
+    check(
+      "paged reads of a Blob-backed file read pages, not the file",
+      pagedLookup === writerLookup && pagedNode.blob instanceof SyncBlob
+        && reads.length > 0 && Math.max(...reads) < pagedNode.usedBytes / 4,
+      JSON.stringify({ reads, size: pagedNode.usedBytes }),
+    );
+
+    // Unloading a read-only mapping must not write it back.
+    const readBefore = reads.reduce((sum, bytes) => sum + bytes, 0);
+    const state = await storedDictionaryState();
+    const unloaded = await restored.request("hd_apply_state", {
+      baseRevision: state.revision,
+      dictionaries: state.dictionaries.map((entry) => (entry.title === title ? { ...entry, enabled: false } : entry)),
+    });
+    check(
+      "unloading a mapped Blob-backed package leaves its file a Blob",
+      unloaded.ok === true && node(restored, blobsPath).blob instanceof SyncBlob
+        && node(restored, blobsPath).contents === null
+        && !(await restored.request("hd_memory")).dictionaries.some((row) => row.title === title)
+        && reads.reduce((sum, bytes) => sum + bytes, 0) - readBefore < node(restored, blobsPath).usedBytes,
+      JSON.stringify({ unloaded, readBefore, after: reads.reduce((sum, bytes) => sum + bytes, 0) }),
+    );
+
+    // A write reads the file into an array first and changes only what it writes.
+    const FS = paged.module.FS;
+    const scratch = `${record.path}/scratch.bin`;
+    FS.writeFile(scratch, new Uint8Array(2 * 1024 * 1024).fill(5));
+    FS.utime(scratch, 1, 1);
+    paged.module.FS.filesystems.IDBFS.storeLocalEntry(`${scratch}.copy`,
+      { mode: FS.stat(scratch).mode, timestamp: new Date(2), contents: new SyncBlob([FS.readFile(scratch)]) }, () => {});
+    const copy = node(paged, `${scratch}.copy`);
+    const lazyBefore = copy.blob instanceof SyncBlob;
+    const stream = FS.open(`${scratch}.copy`, "r+");
+    FS.write(stream, new Uint8Array([9, 9]), 0, 2, 10);
+    FS.close(stream);
+    const after = FS.readFile(`${scratch}.copy`);
+    FS.truncate(`${scratch}.copy`, 0);
+    check(
+      "writing to a Blob-backed file materializes it and keeps the rest of its bytes",
+      lazyBefore && copy.blob === undefined && after.byteLength === 2 * 1024 * 1024
+        && after[9] === 5 && after[10] === 9 && after[11] === 9 && after[12] === 5
+        && FS.stat(`${scratch}.copy`).size === 0,
+      JSON.stringify({ lazyBefore, size: after.byteLength }),
+    );
+    FS.unlink(`${scratch}.copy`);
+    FS.unlink(scratch);
+
+    const reenabled = await storedDictionaryState();
+    await restored.request("hd_apply_state", { baseRevision: reenabled.revision,
+      dictionaries: reenabled.dictionaries.map((entry) => ({ ...entry, enabled: entry.title === title ? true : entry.enabled })) });
+    const removed = await restored.request("hd_remove", { id: record.id, title });
+    check(
+      "a Blob-backed package is removed from IndexedDB with its files",
+      removed.ok === true && !idb.keys("/dicts").some((key) => key.startsWith(record.path)),
+      JSON.stringify({ removed }),
+    );
+  } finally {
+    globalThis.Blob = NativeBlob;
+    delete globalThis.FileReaderSync;
+  }
 }
 
 /* ------------------------------------------------------- isolated import stage */
