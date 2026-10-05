@@ -108,7 +108,7 @@ archive itself:
 1. `hd_import_begin` `{fileName, size, replace}` answers `{token, chunkBytes}`.
    `replace: true` replaces the dictionary with the archive's title (or its
    update source); `false` installs beside it under a numbered title. The host
-   refuses an empty archive, an `.mdx` or `.mdd`, and anything over 1 GiB.
+   refuses an empty archive and an `.mdx` or `.mdd`; there is no size limit.
 2. `hd_import_chunk` `{token, offset, data}` carries the next `chunkBytes` or
    fewer bytes as base64, in order from offset 0, and answers `{received}`.
    A chunk at any other offset ends the upload.

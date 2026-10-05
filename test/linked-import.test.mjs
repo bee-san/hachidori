@@ -10,7 +10,7 @@ const INSTALLED = {
   indexUrl: null, downloadUrl: null, isUpdatable: false,
 };
 
-function fixture({ maxBytes = 1024, chunkBytes = 4 } = {}) {
+function fixture({ chunkBytes = 4 } = {}) {
   const stored = new Map();
   const discarded = [];
   const timers = new Map();
@@ -30,7 +30,7 @@ function fixture({ maxBytes = 1024, chunkBytes = 4 } = {}) {
       imports.push({ bytes: stored.get(token), ...request });
       return { type: "hd_import_result", ok: true, report: { success: true, title: IDENTITY.title } };
     },
-    maxBytes, chunkBytes, idleMs: 1000,
+    chunkBytes, idleMs: 1000,
     randomToken: () => `token-${++nextToken}`,
     setTimer: (callback) => { const id = ++nextTimer; timers.set(id, callback); return id; },
     clearTimer: (id) => timers.delete(id),
@@ -53,9 +53,8 @@ test("a complete upload imports the reassembled bytes with the sender's replace 
   assert.equal(host.size(), 0);
 });
 
-test("uploads reject oversize, empty, MDX and unnamed archives at begin", () => {
-  const { host } = fixture({ maxBytes: 8 });
-  assert.throws(() => host.begin({ fileName: "big.zip", size: 9, replace: false }, "local"), /larger than/u);
+test("uploads reject empty, MDX and unnamed archives at begin", () => {
+  const { host } = fixture();
   assert.throws(() => host.begin({ fileName: "empty.zip", size: 0, replace: false }, "local"), /empty/u);
   assert.throws(() => host.begin({ fileName: "Dict.mdx", size: 4, replace: false }, "local"), /MDX/u);
   assert.throws(() => host.begin({ fileName: "../a.zip", size: 4, replace: false }, "local"), /file name/u);

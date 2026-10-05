@@ -13,9 +13,6 @@ import { dictionaryImportMatches, dictionaryImportTarget } from "./dictionary-im
 
 // Raw bytes per chunk: about 1.4 MB of base64 in one relay frame.
 export const UPLOAD_CHUNK_BYTES = 1024 * 1024;
-// An upload waits in the host's memory until commit, so the host bounds what a
-// remote sender may announce; common Yomitan archives are a few hundred MB.
-export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 // An upload with no chunk for this long is abandoned.
 export const UPLOAD_IDLE_MS = 2 * 60 * 1000;
 
@@ -25,10 +22,6 @@ function decodedLength(data) {
   if (!BASE64.test(data)) throw new Error("the dictionary upload chunk is not base64");
   const padding = data.endsWith("==") ? 2 : Number(data.endsWith("="));
   return data.length / 4 * 3 - padding;
-}
-
-function mebibytes(bytes) {
-  return `${Math.round(bytes / (1024 * 1024))} MiB`;
 }
 
 // The decision a person makes in the import dialog, made for a remote sender:
@@ -48,7 +41,7 @@ export function uploadImportDecision(identity, dictionaries, replace) {
 // `importUpload(token, { fileName, replace })` imports a complete upload and
 // returns the engine's import reply. Each upload belongs to the owner that began it.
 export function createUploadHost({
-  store, importUpload, maxBytes = MAX_UPLOAD_BYTES, idleMs = UPLOAD_IDLE_MS,
+  store, importUpload, idleMs = UPLOAD_IDLE_MS,
   chunkBytes = UPLOAD_CHUNK_BYTES, randomToken = () => crypto.randomUUID(),
   setTimer = setTimeout, clearTimer = clearTimeout,
 }) {
@@ -83,9 +76,6 @@ export function createUploadHost({
       throw new Error("MDX dictionaries cannot be sent to another Hachidori. Import them on that Hachidori itself.");
     }
     if (size <= 0) throw new Error(`${fileName} is empty.`);
-    if (size > maxBytes) {
-      throw new Error(`${fileName} is larger than the ${mebibytes(maxBytes)} the host accepts from another Hachidori.`);
-    }
     const token = randomToken();
     const session = { owner, fileName, size, replace, received: 0, busy: false, timer: null };
     sessions.set(token, session);
