@@ -123,6 +123,9 @@ async function sample(variant, repetition) {
   try {
     await launch();
     await page.waitForFunction(async () => (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).ready, { polling: 50, timeout: 120000 });
+    // Keep an owned benchmark profile off any relay running on the developer's
+    // computer. The disabled preference is preserved in the prepared profile.
+    assert.equal((await page.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable" }))).ok, true);
     const optionReply = await page.evaluate(async desiredIndex => {
       const options = (await chrome.storage.local.get("options")).options ?? {};
       return chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision ?? 0,
