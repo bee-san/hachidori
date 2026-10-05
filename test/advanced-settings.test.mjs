@@ -77,21 +77,10 @@ test("Advanced keeps dictionary experiments and discards removed media settings"
   assert.equal(el("experimental-empty").hidden, true);
 });
 
-test("the MDX dictionaries switch widens the import picker to .mdx and .mdd files", async t => {
-  const { window, el } = fixture(t);
-  const picker = el("import-file");
-  assert.equal(picker.accept, ".zip,application/zip");
-  assert.equal(el("import-file-label").textContent, "Choose ZIP files");
-  assert.match(el("import-drop-hint").textContent, /^Or drag and drop Yomitan ZIP files here\.$/u);
-
-  el("opt-experimental-mdxImport").click();
-  await tick();
-  assert.equal(window.readOptions().experimental.mdxImport, true);
-  assert.equal(picker.accept, ".zip,application/zip,.mdx,.mdd");
+test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch", t => {
+  const { el } = fixture(t);
+  assert.equal(el("import-file").accept, ".zip,application/zip,.mdx,.mdd");
   assert.equal(el("import-file-label").textContent, "Choose dictionary files");
   assert.match(el("import-drop-hint").textContent, /MDX dictionary with its MDD files/u);
-
-  el("opt-experimental-mdxImport").click();
-  await tick();
-  assert.equal(picker.accept, ".zip,application/zip", "turning the flag off narrows the picker again");
+  assert.equal(el("opt-experimental-mdxImport"), null);
 });

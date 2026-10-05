@@ -12,7 +12,9 @@ const {
 } = globalThis.HDReaderOptions;
 
 test("experimental features are registered with defaults that start off", () => {
-  assert.ok(!EXPERIMENTAL_FEATURES.some(feature => feature.id === "mediaMining"));
+  for (const retired of ["mediaMining", "longKeyScan", "mdxImport"]) {
+    assert.ok(!EXPERIMENTAL_FEATURES.some(feature => feature.id === retired));
+  }
   for (const feature of EXPERIMENTAL_FEATURES) {
     assert.equal(typeof feature.label, "string");
     assert.equal(typeof feature.description, "string");
@@ -26,10 +28,10 @@ test("experimental features are registered with defaults that start off", () => 
 });
 
 test("experimental patches accept only registered boolean flags", () => {
-  const complete = { ...DEFAULT_OPTIONS.experimental, mdxImport: true };
+  const complete = { ...DEFAULT_OPTIONS.experimental, googleDocs: true };
   assert.deepEqual(validateOptionsPatch({ experimental: complete }), { experimental: complete });
   // A complete record prevents a writer from silently dropping another flag.
-  for (const invalid of [null, [], "on", {}, { mdxImport: true }, { ...complete, mdxImport: "yes" },
+  for (const invalid of [null, [], "on", {}, { googleDocs: true }, { ...complete, googleDocs: "yes" },
     { ...complete, unknown: true }]) {
     assert.throws(() => validateOptionsPatch({ experimental: invalid }), /invalid reader option/);
   }
