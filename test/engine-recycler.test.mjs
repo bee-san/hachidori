@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEngineRecycler, RECYCLE_IDLE_MS } from "../extension/engine-recycler.js";
+import { createEngineRecycler, engineWorkerConfig, engineWorkerName, RECYCLE_IDLE_MS } from "../extension/engine-recycler.js";
 
 // A manual clock: timers fire only when the test advances time.
 function harness({ idle = true } = {}) {
@@ -11,9 +11,9 @@ function harness({ idle = true } = {}) {
   const state = { idle, restarts: [] };
   const recycler = createEngineRecycler({
     isIdle: () => state.idle,
-    restart: (lowMemory) => {
-      state.restarts.push({ lowMemory, at: now });
-      recycler.setRunning(lowMemory);
+    restart: (lowMemory, dictionaryEntryStorage) => {
+      state.restarts.push({ lowMemory, at: now, ...(dictionaryEntryStorage === "auto" ? {} : { dictionaryEntryStorage }) });
+      recycler.setRunning(lowMemory, dictionaryEntryStorage);
     },
     setTimer: (fn, ms) => {
       nextId += 1;
@@ -135,4 +135,36 @@ test("nothing is scheduled before the owner reports a running worker", () => {
   h.recycler.setRunning(false);
   h.advance(RECYCLE_IDLE_MS);
   assert.deepEqual(h.restarts, [{ lowMemory: true, at: 3 * RECYCLE_IDLE_MS }]);
+});
+
+
+test("automatic OPFS paging does not change import threading or IDBFS storage", () => {
+  assert.deepEqual(engineWorkerConfig(engineWorkerName(false), "opfs"), {
+    lowMemory: false, dictionaryEntryStorage: "auto", pagedDictionaries: true,
+  });
+  assert.deepEqual(engineWorkerConfig(engineWorkerName(false), "idbfs"), {
+    lowMemory: false, dictionaryEntryStorage: "auto", pagedDictionaries: false,
+  });
+  for (const backend of ["opfs", "idbfs"]) {
+    assert.equal(engineWorkerConfig(engineWorkerName(false, "resident"), backend).pagedDictionaries, false);
+    assert.equal(engineWorkerConfig(engineWorkerName(false, "paged"), backend).pagedDictionaries, true);
+    assert.deepEqual(engineWorkerConfig(engineWorkerName(true, "resident"), backend), {
+      lowMemory: true, dictionaryEntryStorage: "resident", pagedDictionaries: true,
+    }, "low memory overrides resident entries while retaining the preference");
+  }
+});
+
+test("changing only entry storage waits until idle and restarts with the same import mode", () => {
+  const h = harness({ idle: false });
+  h.recycler.setRunning(false);
+  h.recycler.setDesired(false, "resident");
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.deepEqual(h.restarts, []);
+  h.idle = true;
+  h.recycler.noteIdle();
+  h.advance(RECYCLE_IDLE_MS);
+  assert.deepEqual(h.restarts, [{ lowMemory: false, dictionaryEntryStorage: "resident", at: 3 * RECYCLE_IDLE_MS }]);
+  h.recycler.noteMutationSettled();
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.equal(h.restarts.length, 1, "resident policy alone does not recycle after imports");
 });

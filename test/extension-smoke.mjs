@@ -5800,6 +5800,7 @@ async function main() {
   let status = await request("hd_status");
   equal("hd_status replies with the contract-C envelope", Object.keys(status).sort(), [
     "dictionaryCount",
+    "dictionaryEntryStorage",
     "error",
     "failedDictionaries",
     "generation",
@@ -5905,18 +5906,25 @@ async function main() {
   const unrelatedWrite = await writeReaderOptions(lowMemoryWrite.options.revision, { scanLength: 20 });
   await new Promise((done) => setTimeout(done, 20));
   const pushesAfterUnrelated = enginePushes();
+  const entryStorageWrite = await writeReaderOptions(unrelatedWrite.options.revision, { dictionaryEntryStorage: "resident" });
+  for (let attempt = 0; attempt < 50 && enginePushes() === pushesAfterUnrelated; attempt += 1) {
+    await new Promise((done) => setTimeout(done, 2));
+  }
+  const residentConfig = await readEngineConfig(engineConfigSender);
   check(
     "hd_engine_config is read by the engine host only and pushed when the option changes",
     configFromPage?.ok === false
       && pushFromPage?.ok === false
-      && configOff?.ok === true && configOff.lowMemoryMode === false
+      && configOff?.ok === true && configOff.lowMemoryMode === false && configOff.dictionaryEntryStorage === "auto"
       && lowMemoryWrite.ok === true
       && configOn?.ok === true && configOn.lowMemoryMode === true
       && unrelatedWrite.ok === true
-      && pushesAfterUnrelated === pushesBefore + 1,
-    JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, pushesBefore, pushesAfterUnrelated }),
+      && pushesAfterUnrelated === pushesBefore + 1
+      && entryStorageWrite.ok === true && enginePushes() === pushesAfterUnrelated + 1
+      && residentConfig?.dictionaryEntryStorage === "resident" && residentConfig.lowMemoryMode === true,
+    JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, residentConfig, pushesBefore, pushesAfterUnrelated }),
   );
-  await writeReaderOptions(unrelatedWrite.options.revision, { lowMemoryMode: false, scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
+  await writeReaderOptions(entryStorageWrite.options.revision, { lowMemoryMode: false, dictionaryEntryStorage: "auto", scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
 
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);
