@@ -219,10 +219,10 @@ direction), the Settings → Advanced → Memory readout and each Library row's
 is busy or unreachable, the *Extension total* line from a stubbed
 `hd_memory_total` reply, a dash where it cannot be measured and never holding
 the engine line, a refresh on a new engine generation while Advanced is
-shown and when a row's Details opens, the switch saving
+shown and when a row's Details opens, the switches and entry-storage selector saving
 through the ordinary options queue, and the switch hidden with
 the single-thread engine, and a paged row's *(entries read from disk)*), and the
-`lowMemoryMode` option's normalisation. The
+`lowMemoryMode` and `dictionaryEntryStorage` options' normalisation. The
 memory settings suite uses the same external jsdom dependency. `node-smoke.mjs`
 records the heap after import and after `hdw_reset` and imports inside a
 two-thread pool. It also loads copies of the fixture into fresh modules with one
@@ -236,12 +236,17 @@ runs a worker configured as the low-memory one (every add paged, identical
 lookups, smaller rows, a filled page cache) and, with `hdw_add_dict` refusing a
 package the way a full heap does, checks that the package loads paged, and that
 one refused paged too is reported in `failedDictionaries` while the others load.
+`engine-recycler.test.mjs` checks automatic OPFS paging independently of import
+mode, IDBFS defaults, explicit resident storage, the low-memory override, and
+idle restarts when only the storage policy changes.
 `chrome-e2e.mjs` first requires the real extension total, with the engine
 heap counted once, then turns the mode on in a real Chrome, watches the worker recycle
 (the generation restarts from zero), imports in the strict two-thread pool,
 and checks that the heap dropped, lookups still hit, the package's row counts
 only its index files as sized in OPFS, the page cache filled within its budget
-and the readout renders; turning the mode off again counts `blobs.bin` again.
+and the readout renders. Turning the mode off retains paged OPFS entries with
+the full import pool; selecting resident entry storage counts `blobs.bin` again
+and produces identical lookup results.
 The hoshidicts `dictionary-storage` test covers the engine side natively.
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs

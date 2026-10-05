@@ -27,3 +27,18 @@ test("lowMemoryMode is not offered as a hotkey toggle", () => {
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("lowMemoryMode"));
   assert.ok(KEYBIND_TOGGLE_OPTIONS.includes("hoverEnabled"), "reader toggles stay");
 });
+
+
+test("dictionary entry storage defaults to automatic and validates explicit policies", () => {
+  assert.equal(DEFAULT_OPTIONS.dictionaryEntryStorage, "auto");
+  assert.equal(normaliseOptions({ lowMemoryMode: false }).dictionaryEntryStorage, "auto",
+    "existing installations adopt the OPFS default without rewriting stored options");
+  for (const value of ["auto", "paged", "resident"]) {
+    assert.equal(normaliseOptions({ dictionaryEntryStorage: value }).dictionaryEntryStorage, value);
+    assert.deepEqual(validateOptionsPatch({ dictionaryEntryStorage: value }), { dictionaryEntryStorage: value });
+  }
+  for (const value of [true, "disk", null]) {
+    assert.equal(normaliseOptions({ dictionaryEntryStorage: value }).dictionaryEntryStorage, "auto");
+    assert.throws(() => validateOptionsPatch({ dictionaryEntryStorage: value }), /invalid reader option/);
+  }
+});

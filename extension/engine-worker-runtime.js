@@ -9,7 +9,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { LOW_MEMORY_WORKER_NAME } from "./engine-recycler.js";
+import { engineWorkerConfig } from "./engine-recycler.js";
 import {
   configureEngineService,
   handleEngineMessage,
@@ -95,7 +95,7 @@ function importInIsolatedWorker(request) {
 
 export function startEngineWorker({ createHoshidicts, storageBackend }) {
   // offscreen.js picks the name; see engine-recycler.js.
-  const lowMemory = globalThis.name === LOW_MEMORY_WORKER_NAME;
+  const { lowMemory, dictionaryEntryStorage, pagedDictionaries } = engineWorkerConfig(globalThis.name, storageBackend);
   // Read by the -sPTHREAD_POOL_SIZE expression in wasm/CMakeLists.txt.
   if (lowMemory) globalThis.HACHIDORI_PTHREAD_POOL_SIZE = LOW_MEMORY_PTHREAD_POOL_SIZE;
   configureEngineService(requestHost, {
@@ -103,7 +103,8 @@ export function startEngineWorker({ createHoshidicts, storageBackend }) {
     storageBackend,
     threaded: true,
     lowRam: lowMemory,
-    pagedDictionaries: lowMemory,
+    pagedDictionaries,
+    dictionaryEntryStorage,
     reportProgress: reportEngineProgress,
     // Two IDBFS instances cannot share one store, so only direct OPFS can
     // import outside the engine.
