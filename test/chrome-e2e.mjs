@@ -55,6 +55,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { COMPACT_GLOSSARIES_CHECK, checkCompactGlossaries } from "./chrome-glossary-layout.mjs";
 import { STRUCTURED_TABLE_CHECK, checkStructuredTable } from "./chrome-structured-table.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
+import { DYNAMIC_HEADWORD_CHECK, checkDynamicHeadword } from "./chrome-dynamic-headword.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
@@ -452,6 +453,7 @@ const PLANNED = [
   COMPACT_GLOSSARIES_CHECK,
   STRUCTURED_TABLE_CHECK,
   ACTION_ROW_CHECK,
+  DYNAMIC_HEADWORD_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
@@ -13460,6 +13462,8 @@ async function main() {
   check(STRUCTURED_TABLE_CHECK, true);
   await checkActionRow(browser);
   check(ACTION_ROW_CHECK, true);
+  await checkDynamicHeadword(browser, { screenshotDirectory: process.env.HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS });
+  check(DYNAMIC_HEADWORD_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
