@@ -2593,8 +2593,8 @@ async function importAttemptOutcome(options) {
   try {
     const report = await importAttempt(options);
     return { report, failure: report.success ? null : report };
-  } catch (failure) {
-    return { failure };
+  } catch (error_) {
+    return { failure: error_ };
   }
 }
 
