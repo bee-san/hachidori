@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Benchmark setup only: persist the native importer's files before starting
-// the measured engine. Sync access avoids per-chunk writable-stream IPC.
+// the measured engine. Closing each stream persists it before startup.
 self.onmessage = async ({ data: { dictionaries, fileNames, origin } }) => {
   try {
     const root = await navigator.storage.getDirectory();
@@ -11,12 +11,9 @@ self.onmessage = async ({ data: { dictionaries, fileNames, origin } }) => {
         if (!response.ok) throw new Error(`fixture download ${response.status}`);
         const bytes = new Uint8Array(await response.arrayBuffer());
         const handle = await folder.getFileHandle(name, { create: true });
-        const access = await handle.createSyncAccessHandle();
-        try {
-          if (access.write(bytes, { at: 0 }) !== bytes.length) throw new Error("short fixture write");
-          access.truncate(bytes.length);
-          access.flush();
-        } finally { access.close(); }
+        const writable = await handle.createWritable();
+        await writable.write(bytes);
+        await writable.close();
       }
     }
     self.postMessage({ ok: true });
