@@ -1,0 +1,18 @@
+{
+  "corpora": [{
+    "id": "pixiv-full",
+    "archive": "${HACHIDORI_BENCH_DATA}/Pixiv_2026-10-05.zip",
+    "expectedSha256": "9d503b0892a5a777563ae317826f1bd4e3bac1e2a6e9382ef380b20494982a77",
+    "expectedReport": { "title": "Pixiv [2026-10-05]", "termCount": 776724, "metaCount": 0,
+      "frequencyCount": 0, "pitchCount": 0, "kanjiCount": 0, "mediaCount": 1 },
+    "expectedDictionaryCount": 1
+  }],
+  "queries": [
+    { "id": "pixiv-hit", "text": "ピクシブ", "expect": "hit", "expectedExpression": "ピクシブ" },
+    { "id": "miku-hit", "text": "初音ミク", "expect": "hit", "expectedExpression": "初音ミク" },
+    { "id": "negative", "text": "🫠🫨🪼", "expect": "miss" }
+  ],
+  "warmups": 1, "samples": 3, "lookupPasses": 2, "idleCheckMs": 0,
+  "seed": 20261005, "timeoutMs": 300000, "headless": true, "keepProfiles": false,
+  "allowNoSandbox": false
+}

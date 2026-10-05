@@ -71,7 +71,10 @@ function importInIsolatedWorker(request) {
       type: "module",
       name: "hoshidicts-import",
     });
+    let settled = false;
     const settle = (finish) => (value) => {
+      if (settled) return;
+      settled = true;
       worker.terminate();
       finish(value);
     };
@@ -84,12 +87,16 @@ function importInIsolatedWorker(request) {
     worker.addEventListener("message", (event) => {
       if (event.data?.channel !== "import-result") return;
       if (event.data.error === undefined) settle(resolve)(event.data.report);
-      else settle(reject)(new Error(event.data.error));
+      else settle(reject)(Object.assign(new Error(event.data.error), { errorCode: event.data.errorCode }));
     });
-    worker.postMessage({ channel: "import", ...request }, [
-      request.archive.buffer,
-      ...request.resources.map((resource) => resource.bytes.buffer),
-    ]);
+    try {
+      worker.postMessage({ channel: "import", ...request }, [
+        request.archive.buffer,
+        ...request.resources.map((resource) => resource.bytes.buffer),
+      ]);
+    } catch (error) {
+      settle(reject)(error);
+    }
   });
 }
 

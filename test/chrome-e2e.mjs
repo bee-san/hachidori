@@ -11365,7 +11365,7 @@ async function main() {
     runOutcome?.heading === "Some dictionaries could not be installed"
       && JSON.stringify(runOutcome.rows.map((row) => [row[0], row[1].replace(/\d+(\.\d+)? seconds/u, "N seconds")])) === JSON.stringify([
         ["jitendex", "Installed in N seconds"],
-        ["jmnedict", "Failed: could not read JMnedict.zip: HTTP 503"],
+        ["jmnedict", "Failed: JMnedict.zip: reading the archive failed. could not read JMnedict.zip: HTTP 503"],
         ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
         ["jiten", "Installed in N seconds"],
         ["bees-ultimate-grammar-dictionary", "Installed in N seconds"],
@@ -11388,7 +11388,7 @@ async function main() {
       && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
       && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
-      && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
+      && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "JMnedict.zip: reading the archive failed. could not read JMnedict.zip: HTTP 503"
       && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
       && afterRun.setupState.stage === "dictionaries"
       && JSON.stringify(installedTitles) === JSON.stringify(RECOMMENDED_DICTIONARIES.filter(({ sourceId }) => sourceId !== "jmnedict")
@@ -12213,6 +12213,7 @@ async function main() {
       && /\d+(?:\.\d)? seconds/u.test(batchUi.outcomes[0].text)
       && batchUi.outcomes[1].error === true
       && batchUi.outcomes[1].text.includes("Failed before import")
+      && batchUi.outcomes[1].text.includes("malformed-index.zip: reading dictionary metadata failed")
       && batchUi.outcomes[2].error === false
       && batchUi.outcomes[2].text.includes("Imported hachidori-fixture")
       && JSON.stringify(batchUi.outcomes.map(({ name }) => name)) === JSON.stringify([
