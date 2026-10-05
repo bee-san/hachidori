@@ -426,6 +426,8 @@ async function checkLinkedImport(hostPage, clientPage) {
   await reopenImport(clientPage);
   await clientPage.waitForFunction(() => document.getElementById("import-drop-zone").hidden === false, { timeout: 10_000, polling: 100 });
   const onView = await zone(clientPage);
+  await screenshot(hostPage, "sharing-imports.png");
+  await screenshot(clientPage, "sharing-linked-import.png", { section: "add-dictionaries", element: "add-dictionaries" });
   const before = fixtureEntry(await stored(hostPage, ["dictionaryState"]));
   await (await clientPage.$("#import-file")).uploadFile(FIXTURE);
   await clientPage.waitForFunction(() => document.getElementById("import-decision-dialog").open, { timeout: 15_000, polling: 100 });

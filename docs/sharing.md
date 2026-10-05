@@ -96,11 +96,15 @@ result through the usual storage batches. The link has no password, so anyone
 who can link can import while the switch is on; turning it off ends uploads
 already under way.
 
+![Settings → Sharing on the host, letting linked browsers import](assets/sharing-imports.png)
+
 On a linked browser, **Import dictionaries** shows the drop zone again while
 the host allows it. The browser still reads each archive's title first and asks
 whether to replace an installed dictionary with that title or add the archive
 separately; the host applies that choice to its own library. MDX dictionaries
 are imported on the host itself.
+
+![Import dictionaries on a linked browser whose host accepts uploads](assets/sharing-linked-import.png)
 
 An app sends four runtime messages to target `hachidori-linked-import`; a
 linked Hachidori forwards them to its host, and an unlinked one imports the
