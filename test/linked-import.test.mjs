@@ -96,7 +96,7 @@ test("abort, the idle timeout and a disconnect drop held uploads", async () => {
   await assert.rejects(host.chunk({ token: idle.token, offset: 0, data: base64("abcd") }, "remote:a"), /no longer open/u);
   const gone = host.begin({ fileName: "c.zip", size: 4, replace: true }, "remote:b");
   const kept = host.begin({ fileName: "d.zip", size: 4, replace: true }, "local");
-  host.dropOwner("remote:b");
+  host.dropWhere(owner => owner === "remote:b");
   assert.deepEqual(discarded, [aborted.token, idle.token, gone.token]);
   assert.equal(host.size(), 1);
   host.dropWhere(owner => owner !== "local");

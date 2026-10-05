@@ -221,7 +221,7 @@ function getSharingHost() {
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
     capabilities: hostCapabilities(),
-    clientClosed: clientId => uploadHost?.dropOwner(remoteUploadOwner(clientId)),
+    clientClosed: clientId => uploadHost?.dropWhere(owner => owner === remoteUploadOwner(clientId)),
   });
   return sharingHost;
 }

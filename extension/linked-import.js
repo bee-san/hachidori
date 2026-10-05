@@ -14,8 +14,8 @@ import { LINKED_IMPORT_OFF } from "./sharing-protocol.js";
 
 // Raw bytes per chunk: about 1.4 MB of base64 in one relay frame.
 export const UPLOAD_CHUNK_BYTES = 1024 * 1024;
-// The issue asks the host to bound what it holds for a remote sender. The
-// largest common Yomitan archives are a few hundred megabytes.
+// An upload waits in the host's memory until commit, so the host bounds what a
+// remote sender may announce; common Yomitan archives are a few hundred MB.
 export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 // An upload with no chunk for this long is abandoned.
 export const UPLOAD_IDLE_MS = 2 * 60 * 1000;
@@ -156,9 +156,6 @@ export function createUploadHost({
       return {};
     },
     // A client that disconnects, or every remote client once the setting is off.
-    dropOwner(owner) {
-      for (const [token, session] of sessions) if (session.owner === owner) drop(token);
-    },
     dropWhere(predicate) {
       for (const [token, session] of sessions) if (predicate(session.owner)) drop(token);
     },
