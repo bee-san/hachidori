@@ -749,13 +749,16 @@ full browser restart without reloading the engine.
 ### Keybinds
 
 `options.keybinds` copies yomitan-gsm's hotkey entries exactly: `action`,
-`argument`, `key` (a `KeyboardEvent.code`, or `null` for modifiers only),
-`modifiers`, `scopes` and `enabled`. Only actions that map onto an existing
-Hachidori control are offered. Close, entry and dictionary navigation, Back, Add
-note, View notes, Play audio, Play audio from source, Scan selected text, Scan
-text at selection and Toggle option are available. The defaults are Yomitan's
-keys for those actions: Escape, Alt+PageUp/PageDown (three entries),
-Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B, Alt+E, Alt+P and Alt+V.
+`argument`, `key` (a `KeyboardEvent.code`, `WheelUp`/`WheelDown` for a wheel
+step, or `null` for modifiers only), `modifiers`, `scopes` and `enabled`. Only
+actions that map onto an existing Hachidori control are offered. Close, entry
+and dictionary navigation, Back, Add note, View notes, Play audio, Play audio
+from source, Scan selected text, Scan text at selection and Toggle option are
+available. The defaults are Yomitan's keys for those actions: Escape,
+Alt+PageUp/PageDown (three entries), Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B,
+Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
+entry): Yomitan's popup moves one entry per Alt+wheel event outside its
+hotkeys, so here that gesture is an ordinary binding.
 
 Several Yomitan actions are omitted because Hachidori has no matching feature:
 
@@ -771,13 +774,24 @@ set as Yomitan's `HotkeyHandler` does. The first enabled binding in scope that
 handles the key prevents its default. Unmodified or Shift-only character keys
 stay with a focused text field, and auto-repeat remains ignored.
 
+A wheel step over a popup is matched the same way, with its vertical direction
+as the key, and acts on that popup rather than the deepest one, as Yomitan's
+per-popup wheel handler does; wheel steps over the page stay with the page. One
+notch presses the binding once, whatever its delta. A touchpad sends many small
+steps instead, so steps in one direction with the same modifiers, each under
+100 ms after the last, are one gesture: it presses the binding when it starts
+and again for every further 100 px of travel. A handled step is cancelled before
+it reaches anything else in the popup, so the pane does not also scroll and page
+wheel listeners never see it. An unhandled step keeps the popup's own wheel
+isolation, and Ctrl+wheel stays with the browser unless it is bound.
+
 Yomitan's popup scope means a popup that has focus. Hachidori's hover popup never
 takes focus, so here the popup scope means a popup is open or its lookup is
 pending. The page scope applies anywhere. Settings offers the scopes Yomitan's
 controller offers for each action. Toggle option adds the page scope, because no
 popup exists while lookups are off.
 
-Close keeps the reader's Escape order and event handling. Popup actions target the
+Close keeps the reader's Escape order and event handling. A key press acts on the
 deepest visible popup. As in Yomitan, the current entry starts at the first entry
 and changes only through navigation or a click on an entry. Navigation reveals
 later entries through the existing Show more control. Dictionary navigation moves
@@ -789,8 +803,10 @@ option writes one boolean through the revisioned options CAS.
 
 The Keybinds section edits the list like Yomitan's key field: a key press
 replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
-moves focus. Each row has Clear, Reset (the action's first default binding) and
-Remove. The section also has Add and Reset keybinds to defaults.
+moves focus. Turning the wheel with a modifier held over the focused field
+records that wheel step; a plain wheel still scrolls Settings. Each row has
+Clear, Reset (the action's first default binding) and Remove. The section also
+has Add and Reset keybinds to defaults.
 
 Yomitan's native browser shortcuts are manifest `commands` for the features
 Hachidori has:
