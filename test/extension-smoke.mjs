@@ -9989,6 +9989,68 @@ async function pagedDictionariesStage({ createHoshidicts, offscreenChrome, store
       && (await mapped.request("hd_status")).failedDictionaries.length === 0,
     JSON.stringify(removed),
   );
+
+  // A disabled package is validated with its entries read on demand, in both
+  // the startup and the incremental load, and enabling it then uses the active
+  // policy rather than the validation one.
+  const quiet = "disabled-validation";
+  const isQuiet = (path) => path.endsWith(`/${quiet}`);
+  const quietZip = (gloss) => createObjectURL(buildTitledZip(quiet, {
+    terms: [["静寂", "せいじゃく", "", "", 0, [gloss], 1, ""]],
+  }));
+  await mapped.request("hd_import", { blobUrl: quietZip("silence"), fileName: `${quiet}.zip` });
+  const withQuiet = await storedDictionaryState();
+  await mapped.request("hd_apply_state", {
+    baseRevision: withQuiet.revision,
+    dictionaries: withQuiet.dictionaries.map((entry) => (entry.title === quiet ? { ...entry, enabled: false } : entry)),
+  });
+  const restarted = await startService("disabled-validation-startup");
+  const startupAdds = restarted.adds.filter((add) => isQuiet(add.path));
+  const startupMemory = await restarted.request("hd_memory");
+  const disabledState = await storedDictionaryState();
+  restarted.adds.length = 0;
+  const enabledQuiet = await restarted.request("hd_apply_state", {
+    baseRevision: disabledState.revision,
+    dictionaries: disabledState.dictionaries.map((entry) => (entry.title === quiet ? { ...entry, enabled: true } : entry)),
+  });
+  const enableAdds = restarted.adds.filter((add) => isQuiet(add.path));
+  const enabledMemory = await restarted.request("hd_memory");
+  const enabledLookup = await restarted.request("hd_lookup", { text: "静寂" });
+  check(
+    "startup validates a disabled package paged, drops it, and enabling it maps its entries",
+    restarted.status.lastLoadPath === "full" && startupAdds.length > 0 && startupAdds.every((add) => add.paged === 1)
+      && restarted.adds.length === enableAdds.length
+      && !startupMemory.dictionaries.some((row) => row.title === quiet)
+      && startupMemory.dictionaries.every((row) => row.paged === false)
+      && enabledQuiet.ok === true && enableAdds.length > 0 && enableAdds.every((add) => add.paged === 0)
+      && enabledMemory.dictionaries.find((row) => row.title === quiet)?.paged === false
+      && enabledLookup.results.some((result) => result.term?.glossaries?.some((glossary) =>
+        JSON.stringify(glossary).includes("silence"))),
+    JSON.stringify({ status: restarted.status, startupAdds, startupMemory, enabledQuiet, enableAdds, enabledMemory }),
+  );
+
+  // An in-engine reimport rebuilds the set; the disabled package's new
+  // generation is validated paged there too.
+  const reenabledState = await storedDictionaryState();
+  await restarted.request("hd_apply_state", {
+    baseRevision: reenabledState.revision,
+    dictionaries: reenabledState.dictionaries.map((entry) => (entry.title === quiet ? { ...entry, enabled: false } : entry)),
+  });
+  restarted.adds.length = 0;
+  const reimported = await restarted.request("hd_import", { blobUrl: quietZip("stillness"), fileName: `${quiet}.zip` });
+  const reimportStatus = await restarted.request("hd_status");
+  const reimportAdds = restarted.adds.filter((add) => isQuiet(add.path));
+  const reimportState = await storedDictionaryState();
+  const reimportMemory = await restarted.request("hd_memory");
+  check(
+    "a full rebuild validates a disabled package's new generation paged and leaves it unloaded",
+    reimported.ok === true && reimportStatus.lastLoadPath === "full"
+      && reimportState.dictionaries.find((entry) => entry.title === quiet)?.enabled === false
+      && reimportAdds.length > 0 && reimportAdds.every((add) => add.paged === 1)
+      && !reimportMemory.dictionaries.some((row) => row.title === quiet)
+      && reimportStatus.failedDictionaries.length === 0,
+    JSON.stringify({ reimported, reimportStatus, reimportAdds, reimportMemory }),
+  );
 }
 
 /* --------------------------------------------------- blob-backed IDBFS stage */
@@ -10181,6 +10243,7 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
   );
   let stageEngine = null;
   const native = { resets: 0, adds: 0, removes: 0, reorders: 0, imports: 0 };
+  const addModes = [];
   const progress = [];
   let hold = null;
   let importerFailure = null;
@@ -10229,7 +10292,10 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
         module.ccall = (name, returnType, argumentTypes, argumentValues) => {
           const result = ccall(name, returnType, argumentTypes, argumentValues);
           if (name === "hdw_reset") native.resets += 1;
-          else if (name === "hdw_add_dict" && result) native.adds += 1;
+          else if (name === "hdw_add_dict" && result) {
+            native.adds += 1;
+            addModes.push({ path: argumentValues[0], paged: argumentValues[2] });
+          }
           else if (name === "hdw_remove_dict" && result) native.removes += 1;
           else if (name === "hdw_set_dict_order" && result) native.reorders += 1;
           else if (name === "hdw_import") native.imports += 1;
@@ -10404,6 +10470,31 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
       && JSON.stringify(generationRoots()) === JSON.stringify(rootsAfterRetry)
       && revisionOf(await request("hd_lookup", { text: query })) === "3",
     JSON.stringify({ exhausted, memoryAttempts, roots: generationRoots() }),
+  );
+
+  // Updating a disabled package publishes a generation this session never
+  // loaded; the in-place path validates it with entries read on demand.
+  const enabledState = await storedDictionaryState();
+  const disabledTarget = await request("hd_apply_state", {
+    baseRevision: enabledState.revision,
+    dictionaries: enabledState.dictionaries.map((entry) => (entry.title === title ? { ...entry, enabled: false } : entry)),
+  });
+  const beforeDisabledUpdate = snapshot();
+  addModes.length = 0;
+  const disabledUpdate = await request("hd_import", { blobUrl: createObjectURL(archive(4)), fileName: `${title}.zip` });
+  const disabledUpdateStatus = await request("hd_status");
+  const disabledUpdatePackage = (await storedDictionaryState()).dictionaries.find((entry) => entry.title === title);
+  const validationAdds = addModes.filter((add) => add.path === disabledUpdatePackage?.path);
+  check(
+    "an in-place load validates a disabled package's new generation paged without a reset and leaves it unloaded",
+    disabledTarget.ok === true && disabledUpdate.ok === true
+      && disabledUpdateStatus.lastLoadPath === "incremental"
+      && snapshot().resets === beforeDisabledUpdate.resets
+      && disabledUpdatePackage?.enabled === false && disabledUpdatePackage.path !== updatedPackage.path
+      && validationAdds.length > 0 && validationAdds.every((add) => add.paged === 1)
+      && (await memoryRow(title)).length === 0
+      && disabledUpdateStatus.failedDictionaries.length === 0,
+    JSON.stringify({ disabledTarget, disabledUpdate, disabledUpdateStatus, validationAdds, addModes }),
   );
   await request("hd_remove", { id: installedPackage.id, title });
 }

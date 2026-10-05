@@ -1337,11 +1337,15 @@ function loadsPaged(path) {
   return pagedDictionaries || pagedPaths.has(path);
 }
 
-function addDictionaryKind(dictionary, kind) {
+// `validation` adds a disabled package only to prove the engine opens it, then
+// drops it: its entries are read on demand rather than copied into the heap,
+// which would only raise the worker's high-water mark (docs/memory.md). Its
+// index is still loaded and checked exactly as for lookup.
+function addDictionaryKind(dictionary, kind, { validation = false } = {}) {
   const add = (paged) => engine.ccall(
     "hdw_add_dict", "number", ["string", "number", "number"], [dictionary.path, kind, paged ? 1 : 0],
   ) === 1;
-  const paged = loadsPaged(dictionary.path);
+  const paged = validation || loadsPaged(dictionary.path);
   if (add(paged)) return true;
   // Only the index has to fit when the entries are read on demand.
   if (paged || !lastError().startsWith(OUT_OF_MEMORY) || !add(true)) return false;
@@ -1349,14 +1353,14 @@ function addDictionaryKind(dictionary, kind) {
   return true;
 }
 
-function addDictionaries(dictionaries, includeDisabled) {
+function addDictionaries(dictionaries, includeDisabled, options) {
   let loadedCount = 0;
   for (const dictionary of dictionaries) {
     if (!includeDisabled && dictionary.enabled === false) {
       continue;
     }
     for (const kindName of kindsForPackage(dictionary)) {
-      if (!addDictionaryKind(dictionary, KINDS.indexOf(kindName))) {
+      if (!addDictionaryKind(dictionary, KINDS.indexOf(kindName), options)) {
         throw new DictionaryLoadError(dictionary, kindName);
       }
       loadedCount += 1;
@@ -1456,7 +1460,7 @@ function reorderLoadedDictionaries(dictionaries) {
 function verifyDisabledPackagesInPlace(dictionaries) {
   for (const dictionary of dictionaries) {
     if (dictionary.enabled !== false || isVerified(dictionary)) continue;
-    addDictionaries([dictionary], true);
+    addDictionaries([dictionary], true, { validation: true });
     if (!engine.ccall("hdw_remove_dict", "number", ["string"], [dictionary.path])) return false;
     verifiedPackages.set(dictionary.path, packageKinds(dictionary));
   }
@@ -1535,7 +1539,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
     }
     resetEngine();
     try {
-      addDictionaries([dictionary], true);
+      addDictionaries([dictionary], true, { validation: true });
       verifiedPackages.set(dictionary.path, packageKinds(dictionary));
     } catch (error) {
       recordFailure(error);
