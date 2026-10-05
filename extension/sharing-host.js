@@ -8,7 +8,7 @@
  */
 
 import {
-  API_CLIENT_ORIGIN, DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
+  DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
 } from "./sharing-protocol.js";
 
 export const SHARING_KEY = "sharing";
@@ -33,10 +33,9 @@ function relayAddresses(entries) {
 // this one. `clientClosed(clientId)` hears every client the relay or this host
 // drops.
 export function createSharingHost({
-  WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name, capabilities: initialCapabilities = SHARING_CAPABILITIES,
+  WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name, capabilities = SHARING_CAPABILITIES,
   clientClosed = () => {},
 }) {
-  let capabilities = [...initialCapabilities];
   const clients = new Map();
   let enabled = false;
   let configuredPort = DEFAULT_SHARING_PORT;
@@ -96,7 +95,7 @@ export function createSharingHost({
       return;
     }
     if (frame.kind === "hello") {
-      Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities, greeted: true });
+      Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
       sendTo(target, clientId, client,
@@ -223,17 +222,6 @@ export function createSharingHost({
         connect();
       } else if (listeningPort !== null) {
         post({ kind: "network", enabled: network });
-      }
-    },
-    // Clients that already said hello hear the new list at once; the relay's
-    // own API client never reads it.
-    setCapabilities(next) {
-      capabilities = [...next];
-      if (socket === null) return;
-      for (const [clientId, client] of clients) {
-        if (client.greeted && client.origin !== API_CLIENT_ORIGIN) {
-          sendTo(socket, clientId, client, { kind: "capabilities", capabilities });
-        }
       }
     },
     setDictionaries(count) {

@@ -103,9 +103,6 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
         entry.resolve(frame.response);
         return;
       }
-      case "capabilities":
-        if (host !== null) host = { ...host, capabilities: frame.capabilities };
-        return;
       case "storage":
         await applyBatch(frame.changes,
           () => socket === current && linkGeneration === currentGeneration);

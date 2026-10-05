@@ -194,13 +194,6 @@ const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_
 // What this install is called by the ones it shares with or links to.
 const SHARING_NAME = OVERLAY_MODE ? "GameSentenceMiner overlay" : browserName(globalThis.navigator);
 let sharingHost;
-// Settings → Sharing → Let linked browsers import dictionaries, stored as
-// `sharing.linkedImports`; the capability is advertised only while it is on.
-let linkedImportsAllowed = false;
-
-function hostCapabilities() {
-  return [...SHARING_CAPABILITIES, API_CAPABILITY, ...(linkedImportsAllowed ? [LINKED_IMPORT_CAPABILITY] : [])];
-}
 
 function dictionaryCount(state) {
   return Array.isArray(state?.dictionaries) ? state.dictionaries.length : 0;
@@ -220,14 +213,14 @@ function getSharingHost() {
     sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
-    capabilities: hostCapabilities(),
+    capabilities: [...SHARING_CAPABILITIES, API_CAPABILITY, LINKED_IMPORT_CAPABILITY],
     clientClosed: clientId => uploadHost?.dropWhere(owner => owner === remoteUploadOwner(clientId)),
   });
   return sharingHost;
 }
 
-// Uploads from this install's own pages are always accepted, like a drop into
-// Settings; those from a linked browser only while the setting is on.
+// Uploads come from this install's own pages or from a linked browser, and
+// each belongs to the one that began it.
 const UPLOAD_STORE_TARGET = "hachidori-upload-store";
 const LOCAL_UPLOAD_OWNER = "local";
 let uploadHost;
@@ -248,7 +241,6 @@ function getUploadHost() {
       append: (token, data, byteLength) => relayUpload("hd_upload_append", { token, data, byteLength }),
       discard: token => relayUpload("hd_upload_discard", { token }),
     },
-    allowed: owner => owner === LOCAL_UPLOAD_OWNER || linkedImportsAllowed,
     // Never hold the storage queue here: the engine commit calls back into it.
     importUpload: async (token, { fileName, replace }) => {
       const { identity } = await relayUpload("hd_upload_identity", { token });
@@ -274,12 +266,6 @@ async function answerUploadRequest(message, owner) {
       return { ...reply, type: "hd_import_commit_result", requestId: message.requestId };
     }
   }
-}
-
-function setLinkedImports(enabled) {
-  linkedImportsAllowed = enabled;
-  getSharingHost().setCapabilities(hostCapabilities());
-  if (!enabled) uploadHost?.dropWhere(owner => owner !== LOCAL_UPLOAD_OWNER);
 }
 
 // The relay's API asks like a linked browser; its lookups and renders go
@@ -403,7 +389,7 @@ function getSharingClient() {
 
 function sharingStatus() {
   const client = getSharingClient().status();
-  return { ...getSharingHost().status(), linkedImports: linkedImportsAllowed,
+  return { ...getSharingHost().status(),
     client: { ...client, display: client.address === null ? null : parseLinkAddress(client.address).display } };
 }
 
@@ -2739,12 +2725,6 @@ const SHARING_HANDLERS = {
     await writeSharingConfig({ host: null });
     return { sharing: sharingStatus() };
   },
-  async hd_sharing_linked_imports(message) {
-    const enabled = message.enabled === true;
-    await writeSharingConfig({ linkedImports: enabled });
-    setLinkedImports(enabled);
-    return { sharing: sharingStatus() };
-  },
 };
 
 // Settings, or an app driving this install, uploads a dictionary archive. A
@@ -2785,7 +2765,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // does not. Turning sharing off stores `host: null`; linking stores it off.
 async function initialiseSharing() {
   const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY]);
-  if (stored[SHARING_KEY]?.linkedImports === true) setLinkedImports(true);
   const host = stored[SHARING_KEY]?.host;
   if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) {
     getSharingHost().enable({ port: host?.port, network: host?.network === true, dictionaries: dictionaryCount(stored[DICTIONARY_STATE_KEY]) });

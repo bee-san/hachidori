@@ -87,24 +87,19 @@ disconnected then.
 
 ### Imports from linked browsers
 
-**Let linked browsers import dictionaries** is off by default. While it is on,
-a linked browser can add a Yomitan ZIP to this Hachidori, and so can an app
+A linked browser can add a Yomitan ZIP to this Hachidori, and so can an app
 that drives a linked Hachidori, such as SubMiner sending its character
 dictionary when a new show starts. The archive is imported exactly as if it had
 been dropped into this browser's Settings, and every linked browser sees the
-result through the usual storage batches. The link has no password, so anyone
-who can link can import while the switch is on; turning it off ends uploads
-already under way.
+result through the usual storage batches.
 
-![Settings → Sharing on the host, letting linked browsers import](assets/sharing-imports.png)
+On a linked browser, **Import dictionaries** sends each ZIP to the host. The
+browser still reads the archive's title first and asks whether to replace an
+installed dictionary with that title or add the archive separately; the host
+applies that choice to its own library. MDX dictionaries are imported on the
+host itself.
 
-On a linked browser, **Import dictionaries** shows the drop zone again while
-the host allows it. The browser still reads each archive's title first and asks
-whether to replace an installed dictionary with that title or add the archive
-separately; the host applies that choice to its own library. MDX dictionaries
-are imported on the host itself.
-
-![Import dictionaries on a linked browser whose host accepts uploads](assets/sharing-linked-import.png)
+![Import dictionaries on a linked browser](assets/sharing-linked-import.png)
 
 An app sends four runtime messages to target `hachidori-linked-import`; a
 linked Hachidori forwards them to its host, and an unlinked one imports the
@@ -122,13 +117,11 @@ archive itself:
 4. `hd_import_abort` `{token}` drops an upload. The host also drops one after
    two minutes without a chunk and when its browser disconnects.
 
-The host advertises `linked-import-v1` in its hello only while the switch is
-on, and tells linked browsers at once when it changes. A linked browser refuses
-the requests itself while its host does not advertise it; a host whose switch
-is off refuses them with *Imports from linked clients are turned off on the
-host.* The bytes wait in the host's offscreen document until commit, where they
-go through the ordinary import path: the same archive validation, the same
-revisioned commit and the same report.
+A host that accepts uploads advertises `linked-import-v1` in its hello; a
+linked browser refuses the requests itself against an older host. The bytes
+wait in the host's offscreen document until commit, where they go through the
+ordinary import path: the same archive validation, the same revisioned commit
+and the same report.
 
 ### The port
 
@@ -175,8 +168,7 @@ After linking, the page reloads, and from then on:
   addresses refer to the host computer;
 - the Import and Backup sections show that archives and backups belong to the
   host; recommended dictionaries can still be installed from here, and ZIP
-  files can be imported from here when the host
-  [allows it](#imports-from-linked-browsers).
+  files imported here are [sent to the host](#imports-from-linked-browsers).
 
 ![Settings → Sharing on a linked browser, using the shared Hachidori](assets/sharing-linked.png)
 
@@ -234,8 +226,8 @@ runtime needs nothing beyond the WebSocket.
   selected Template ID is allowed through existing-setup checks, and a missing
   Template fails visibly instead of falling back to the first one.
 
-Backups happen on the host, and so do local-file imports unless the host lets
-linked browsers [send them](#imports-from-linked-browsers). Pronunciation playback and
+Backups happen on the host, and local-file imports from a linked browser are
+[sent to it](#imports-from-linked-browsers). Pronunciation playback and
 external links run in each browser. During mining, URL pronunciation providers
 run on the host while browser speech, screenshots and continuous-capture
 ownership stay in the reading browser. Their explicitly submitted final media
@@ -330,9 +322,8 @@ and runs its relay with its API, which is asked for lookups, Anki fields,
 card formats, tokenizing and a dictionary download over HTTP. The second browser links,
 looks a word up, edits shared state, runs Settings discovery/setup checks, captures a page-local JPEG and
 mines it through a mocked host AnkiConnect while a healthy client endpoint
-remains unused. With the host's import switch on, the linked browser's Settings
-then replaces the host's fixture with an uploaded copy and looks a word up in
-it; with the switch off, its drop zone is hidden and uploads are refused. The suite also
+remains unused. The linked browser's Settings then replaces the host's fixture
+with an uploaded copy and looks a word up in it. The suite also
 rejects a stale generation and host Anki failure, survives the host closing
 and relaunching, unlinks back to its own state, and links again through this
 machine's network address until the host stops sharing on the network.

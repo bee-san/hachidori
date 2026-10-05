@@ -17,7 +17,7 @@ import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
-import { LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
+import { LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
 import { uploadDictionary } from "./linked-import.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
@@ -203,8 +203,6 @@ let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
 let sharingLinkedAddress = null;
-// Whether that Hachidori currently accepts dictionary uploads.
-let linkedImportAvailable = false;
 let backupController;
 let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
@@ -354,7 +352,6 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
-  if (activeSection === "add-dictionaries") void refreshLinkedImport();
   if (activeSection === "advanced") refreshAdvancedMemory();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
@@ -428,43 +425,20 @@ function updateAnkiSettings() {
   localAudioSetup.render();
 }
 
-// While linked, archives and backups belong to the host; the notices say so.
+// While linked, imported archives go to the host and backups belong to it; the notices say so.
 function renderSharingLink(value) {
   const wasLinked = sharingLinkedAddress !== null;
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
   const linked = sharingLinkedAddress !== null;
   localAudioSetup?.render();
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
-  if (!linked) linkedImportAvailable = false;
-  renderLinkedImport();
+  element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
   element("automatic-backups").hidden = linked;
   if (wasLinked && !linked) {
     void backupController?.refreshAutomaticBackups();
   }
-  if (linked) void refreshLinkedImport();
-}
-
-function renderLinkedImport() {
-  const linked = sharingLinkedAddress !== null;
-  element("sharing-import-notice").hidden = !linked || linkedImportAvailable;
-  element("sharing-import-remote-notice").hidden = !linked || !linkedImportAvailable;
-  element("import-drop-zone").hidden = linked && !linkedImportAvailable;
-}
-
-// The host advertises uploads while its setting is on; ask again whenever the
-// import section opens, since the host can change it at any time.
-async function refreshLinkedImport() {
-  if (sharingLinkedAddress === null) return;
-  try {
-    const reply = await send("hd_sharing_status", {}, SHARING_TARGET);
-    const capabilities = reply.ok ? reply.sharing?.client?.host?.capabilities ?? [] : [];
-    linkedImportAvailable = sharingLinkedAddress !== null && capabilities.includes(LINKED_IMPORT_CAPABILITY);
-  } catch {
-    linkedImportAvailable = false;
-  }
-  renderLinkedImport();
 }
 
 // Save the pinned release through a blob download, including in Electron hosts.

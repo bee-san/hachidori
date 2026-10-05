@@ -84,7 +84,7 @@ test("a request from a retired relay client cannot reply into a replacement sess
   }]);
 });
 
-test("a capability change reaches greeted browsers, and a closed client is reported", async () => {
+test("a closed client is reported, including every client of a lost relay socket", async () => {
   Socket.instances.length = 0;
   const closed = [];
   const host = createSharingHost({
@@ -95,28 +95,15 @@ test("a capability change reaches greeted browsers, and a closed client is repor
     sharedKey: () => true,
     version: "1.0.0",
     name: "Chrome",
-    capabilities: ["a"],
     clientClosed: clientId => closed.push(clientId),
   });
   host.enable({ port: 8771, dictionaries: 1 });
   const socket = Socket.instances[0];
-  socket.receive({ kind: "listening", port: 8771 });
-  socket.receive({ kind: "client-open", clientId: "browser", address: "127.0.0.1", origin: "chrome-extension://x" });
-  socket.receive({ kind: "client-open", clientId: "api", address: "127.0.0.1", origin: "relay://yomitan-api" });
-  socket.receive({ kind: "client-open", clientId: "quiet", address: "127.0.0.1", origin: "chrome-extension://y" });
-  for (const clientId of ["browser", "api"]) {
-    socket.receive(clientFrame(clientId, { kind: "hello", protocol: 1, version: "1", name: "B" }));
+  for (const clientId of ["first", "second", "third"]) {
+    socket.receive({ kind: "client-open", clientId, address: "127.0.0.1" });
   }
-  await tick();
-  socket.sent.length = 0;
-  host.setCapabilities(["a", "linked-import-v1"]);
-  assert.deepEqual(socket.sent.map(frame => [frame.clientId, JSON.parse(frame.text)]),
-    [["browser", { kind: "capabilities", capabilities: ["a", "linked-import-v1"] }]]);
-  socket.receive(clientFrame("quiet", { kind: "hello", protocol: 1, version: "1", name: "Q" }));
-  await tick();
-  assert.deepEqual(JSON.parse(socket.sent.at(-1).text).capabilities, ["a", "linked-import-v1"]);
-
-  socket.receive({ kind: "client-close", clientId: "browser" });
+  socket.receive({ kind: "client-close", clientId: "first" });
+  socket.receive({ kind: "client-close", clientId: "first" });
   socket.close();
-  assert.deepEqual(closed, ["browser", "api", "quiet"]);
+  assert.deepEqual(closed, ["first", "second", "third"]);
 });

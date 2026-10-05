@@ -288,18 +288,3 @@ test("a linked browser shows what it uses, cannot share itself, and unlinks with
   assert.deepEqual(f.reloads, [true]);
   assert.equal(f.el("sharing-host").disabled, false);
 });
-
-test("the host's import switch is off by default and saves through Sharing", async t => {
-  const f = fixture(t);
-  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ dictionaries: 3, connected: true, linkedImports: false }) });
-  f.controller.start();
-  await settle();
-  assert.equal(f.el("sharing-host-imports").checked, false);
-  assert.equal(f.el("sharing-host-imports").disabled, false);
-
-  f.replies.hd_sharing_linked_imports = ({ enabled }) => ({ ok: true, sharing: status({ dictionaries: 3, connected: true, linkedImports: enabled }) });
-  f.toggle("sharing-host-imports", true);
-  await settle();
-  assert.deepEqual(f.requests.at(-1), { type: "hd_sharing_linked_imports", enabled: true });
-  assert.equal(f.el("sharing-host-imports").checked, true);
-});

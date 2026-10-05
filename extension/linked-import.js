@@ -10,7 +10,6 @@
 
 import { encodeBase64 } from "./base64.js";
 import { dictionaryImportMatches, dictionaryImportTarget } from "./dictionary-import.js";
-import { LINKED_IMPORT_OFF } from "./sharing-protocol.js";
 
 // Raw bytes per chunk: about 1.4 MB of base64 in one relay frame.
 export const UPLOAD_CHUNK_BYTES = 1024 * 1024;
@@ -47,10 +46,9 @@ export function uploadImportDecision(identity, dictionaries, replace) {
 
 // `store` keeps the bytes: append(token, base64, byteLength), discard(token).
 // `importUpload(token, { fileName, replace })` imports a complete upload and
-// returns the engine's import reply. `allowed(owner)` is checked on every
-// request, so turning the setting off stops uploads already under way.
+// returns the engine's import reply. Each upload belongs to the owner that began it.
 export function createUploadHost({
-  store, importUpload, allowed, maxBytes = MAX_UPLOAD_BYTES, idleMs = UPLOAD_IDLE_MS,
+  store, importUpload, maxBytes = MAX_UPLOAD_BYTES, idleMs = UPLOAD_IDLE_MS,
   chunkBytes = UPLOAD_CHUNK_BYTES, randomToken = () => crypto.randomUUID(),
   setTimer = setTimeout, clearTimer = clearTimeout,
 }) {
@@ -74,15 +72,10 @@ export function createUploadHost({
     if (session === undefined || session.owner !== owner) {
       throw new Error("The dictionary upload is no longer open on the host. Import it again.");
     }
-    if (!allowed(owner)) {
-      drop(token);
-      throw new Error(LINKED_IMPORT_OFF);
-    }
     return session;
   }
 
   function begin({ fileName, size, replace }, owner) {
-    if (!allowed(owner)) throw new Error(LINKED_IMPORT_OFF);
     if (fileName === "" || fileName === "." || fileName === ".." || /[/\\\0]/u.test(fileName)) {
       throw new Error("The dictionary upload has no usable file name.");
     }
@@ -155,7 +148,7 @@ export function createUploadHost({
       if (sessions.get(token)?.owner === owner) drop(token);
       return {};
     },
-    // A client that disconnects, or every remote client once the setting is off.
+    // Every upload of a client that disconnected.
     dropWhere(predicate) {
       for (const [token, session] of sessions) if (predicate(session.owner)) drop(token);
     },

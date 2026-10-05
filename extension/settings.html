@@ -201,8 +201,7 @@
             <h1 id="import-heading" tabindex="-1">Import dictionaries</h1>
             <p class="hint">Yomitan ZIP files, stored on this device.</p>
           </div>
-          <p class="field-hint sharing-linked-notice" id="sharing-import-notice" hidden>Dictionaries live on the linked Hachidori: import ZIP files there. Recommended dictionaries can still be installed from here, and <a href="#sharing">Sharing</a> lets you unlink to use this browser’s own dictionaries again.</p>
-          <p class="field-hint sharing-linked-notice" id="sharing-import-remote-notice" hidden>Dictionaries live on the linked Hachidori: ZIP files you import here are sent to it and installed there.</p>
+          <p class="field-hint sharing-linked-notice" id="sharing-import-notice" hidden>Dictionaries live on the linked Hachidori: ZIP files you import here are sent to it and installed there.</p>
           <div
             class="import-drop-zone"
             id="import-drop-zone"
@@ -1124,7 +1123,7 @@
         </section>
         <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
           <div class="card-head">
-            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address import upload">Sharing</h1>
+            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
             <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
           <output id="sharing-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
@@ -1140,8 +1139,6 @@
             <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
             <label class="lookup-enable"><span>Also with my other computers</span><input id="sharing-host-network" type="checkbox" disabled></label>
             <p class="field-hint">Over Tailscale or your home network. Anyone on that network could reach it, so leave it off on public Wi-Fi.</p>
-            <label class="lookup-enable"><span>Let linked browsers import dictionaries</span><input id="sharing-host-imports" type="checkbox" disabled></label>
-            <p class="field-hint">Linked browsers, and apps such as SubMiner that use one, can then add Yomitan ZIP files to this Hachidori and replace dictionaries with the same title. The link has no password, so anyone who can link can import.</p>
             <div id="sharing-host-addresses" hidden>
               <p class="field-hint" id="sharing-host-addresses-note"></p>
               <ul id="sharing-host-address-list" class="sharing-addresses"></ul>

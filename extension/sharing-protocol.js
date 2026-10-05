@@ -26,12 +26,10 @@ export const API_CAPABILITY = "hoshidicts-api-v1";
 export const API_CLIENT_ORIGIN = "relay://yomitan-api";
 export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support host-owned Anki mining. Update it and try again.";
 export const MAX_LINKED_ANKI_FRAME_BYTES = 16 * 1024 * 1024;
-// A host advertises this only while Settings → Sharing lets linked browsers
-// import dictionaries; the archive then travels as a chunked upload.
+// A host that accepts dictionary archives from linked browsers as a chunked upload.
 export const LINKED_IMPORT_CAPABILITY = "linked-import-v1";
 export const LINKED_IMPORT_TARGET = "hachidori-linked-import";
-export const LINKED_IMPORT_OFF = "Imports from linked clients are turned off on the host.";
-export const LINKED_IMPORT_UNSUPPORTED = "The linked Hachidori does not accept dictionary imports. Turn on \u201cLet linked browsers import dictionaries\u201d under Settings \u2192 Sharing there, or update it.";
+export const LINKED_IMPORT_UNSUPPORTED = "The linked Hachidori does not accept dictionary imports. Update it and try again.";
 export const LINKED_IMPORT_REQUESTS = new Set([
   "hd_import_begin", "hd_import_chunk", "hd_import_commit", "hd_import_abort",
 ]);
@@ -325,8 +323,6 @@ export function parseHostFrame(text) {
     case "storage":
       if (!frame.changes || typeof frame.changes !== "object" || Array.isArray(frame.changes)) throw new Error("malformed sharing storage frame");
       return { kind: "storage", changes: frame.changes };
-    case "capabilities":
-      return { kind: "capabilities", capabilities: parseCapabilities(frame.capabilities) };
     case "ping":
       return { kind: "ping" };
     case "bye":

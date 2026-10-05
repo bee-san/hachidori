@@ -141,16 +141,16 @@ test("an obsolete host reply cannot settle a request owned by the replacement li
   client.unlink();
 });
 
-test("a host that turns uploads on mid-link is used without reconnecting", async () => {
-  const { client, socket } = await linked([]);
+test("a dictionary upload goes only to a host that accepts it", async () => {
   const upload = { target: "hachidori-linked-import", type: "hd_import_begin", requestId: "begin" };
-  await assert.rejects(client.forward(upload, { capability: "linked-import-v1", unsupported: "uploads are off" }),
-    /uploads are off/u);
-  socket.receive({ kind: "capabilities", capabilities: ["linked-import-v1"] });
-  await Promise.resolve();
-  const reply = client.forward(upload, { capability: "linked-import-v1", unsupported: "uploads are off" });
-  const sent = socket.sent.at(-1);
+  const options = { capability: "linked-import-v1", unsupported: "uploads unsupported" };
+  const older = await linked([]);
+  await assert.rejects(older.client.forward(upload, options), /uploads unsupported/u);
+  assert.equal(older.socket.sent.some(frame => frame.kind === "request"), false);
+  const current = await linked(["linked-import-v1"]);
+  const reply = current.client.forward(upload, options);
+  const sent = current.socket.sent.at(-1);
   assert.equal(sent.message.type, "hd_import_begin");
-  socket.receive({ kind: "reply", id: sent.id, response: { ok: true, token: "t" } });
+  current.socket.receive({ kind: "reply", id: sent.id, response: { ok: true, token: "t" } });
   assert.deepEqual(await reply, { ok: true, token: "t" });
 });

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { decodeBase64 } from "../extension/base64.js";
 import { createUploadHost, uploadDictionary, uploadImportDecision } from "../extension/linked-import.js";
-import { LINKED_IMPORT_OFF } from "../extension/sharing-protocol.js";
 
 const IDENTITY = { title: "SubMiner Characters", revision: "2", indexUrl: null, downloadUrl: null };
 const INSTALLED = {
@@ -11,7 +10,7 @@ const INSTALLED = {
   indexUrl: null, downloadUrl: null, isUpdatable: false,
 };
 
-function fixture({ allowed = () => true, maxBytes = 1024, chunkBytes = 4 } = {}) {
+function fixture({ maxBytes = 1024, chunkBytes = 4 } = {}) {
   const stored = new Map();
   const discarded = [];
   const timers = new Map();
@@ -31,7 +30,7 @@ function fixture({ allowed = () => true, maxBytes = 1024, chunkBytes = 4 } = {})
       imports.push({ bytes: stored.get(token), ...request });
       return { type: "hd_import_result", ok: true, report: { success: true, title: IDENTITY.title } };
     },
-    allowed, maxBytes, chunkBytes, idleMs: 1000,
+    maxBytes, chunkBytes, idleMs: 1000,
     randomToken: () => `token-${++nextToken}`,
     setTimer: (callback) => { const id = ++nextTimer; timers.set(id, callback); return id; },
     clearTimer: (id) => timers.delete(id),
@@ -52,18 +51,6 @@ test("a complete upload imports the reassembled bytes with the sender's replace 
   assert.deepEqual(imports, [{ bytes: [...Buffer.from("PK\u0003\u0004zz")], fileName: "characters.zip", replace: true }]);
   assert.deepEqual(discarded, [token]);
   assert.equal(host.size(), 0);
-});
-
-test("the host refuses uploads while its setting is off, including one already under way", async () => {
-  let on = false;
-  const { host, discarded } = fixture({ allowed: owner => owner === "local" || on });
-  assert.throws(() => host.begin({ fileName: "a.zip", size: 4, replace: true }, "remote:a"), { message: LINKED_IMPORT_OFF });
-  assert.equal(typeof host.begin({ fileName: "a.zip", size: 4, replace: true }, "local").token, "string");
-  on = true;
-  const { token } = host.begin({ fileName: "a.zip", size: 4, replace: true }, "remote:a");
-  on = false;
-  await assert.rejects(host.chunk({ token, offset: 0, data: base64("abcd") }, "remote:a"), { message: LINKED_IMPORT_OFF });
-  assert.deepEqual(discarded, [token]);
 });
 
 test("uploads reject oversize, empty, MDX and unnamed archives at begin", () => {
@@ -132,8 +119,8 @@ test("the sender slices a Blob into ordered chunks and aborts after a refusal", 
     send: async (type, fields) => {
       sent.push(type);
       if (type === "hd_import_begin") return { ok: true, token: "t", chunkBytes: 2 };
-      if (type === "hd_import_chunk") return { ok: false, error: LINKED_IMPORT_OFF };
+      if (type === "hd_import_chunk") return { ok: false, error: "refused" };
       return { ok: true };
-    } }), { message: LINKED_IMPORT_OFF });
+    } }), { message: "refused" });
   assert.deepEqual(sent, ["hd_import_begin", "hd_import_chunk", "hd_import_abort"]);
 });

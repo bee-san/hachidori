@@ -258,8 +258,3 @@ test("dictionary uploads forward to the host, rebuilt from the fields each step 
   }
 });
 
-test("a host can change its capabilities on an open link", () => {
-  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "capabilities", capabilities: ["linked-import-v1"] })),
-    { kind: "capabilities", capabilities: ["linked-import-v1"] });
-  assert.throws(() => parseHostFrame(JSON.stringify({ kind: "capabilities", capabilities: [""] })), /capabilities/u);
-});
