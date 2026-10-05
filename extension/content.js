@@ -2518,7 +2518,9 @@
     } });
   }
 
-  function paintLookupStatistics(request, level) {
+  // A count on its way keeps its slot's place, so its arrival moves nothing.
+  // Once its request settles without one, the slot hides.
+  function paintLookupStatistics(request, level, settled = false) {
     if (!options.showLookupCounts) {
       if (level.lookupStatsElement) level.lookupStatsElement.hidden = true;
       return;
@@ -2528,7 +2530,8 @@
     const entry = request?.lookupStats;
     const statistics = entry?.payload?.descriptor.generation === lookupStatsDescriptor.generation
       ? entry.payload.statistics : null;
-    level.view.setLookupStats(level.lookupStatsElement, statistics);
+    const onItsWay = Boolean(entry) && (entry.needsRefresh || (entry.pending && !settled));
+    level.view.setLookupStats(level.lookupStatsElement, statistics, onItsWay);
   }
 
   function adoptLookupStatsDescriptor(descriptor, changes = {}) {
@@ -2585,13 +2588,16 @@
           && payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision;
       }
       if (request.lookupStats === entry) {
-        paintLookupStatistics(request, level);
+        paintLookupStatistics(request, level, true);
         settleDefinitionBlur(request, level, currentLookupCount(entry));
       }
     }).catch(error => {
       // A lost reply may follow a committed increment. Never retry the write.
       console.debug("hachidori: lookup statistics unavailable", error);
-      if (request.lookupStats === entry) settleDefinitionBlur(request, level, null);
+      if (request.lookupStats === entry) {
+        paintLookupStatistics(request, level, true);
+        settleDefinitionBlur(request, level, null);
+      }
     }).finally(() => {
       entry.pending = false;
       if (request.lookupStats === entry && entry.needsRefresh) refreshLookupStatistics(request, level);

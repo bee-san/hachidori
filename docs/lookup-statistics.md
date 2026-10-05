@@ -11,11 +11,14 @@ are independent visits; native kanji entries are not term lookups. Tabs,
 expansion, Back, and Note refresh reuse the original visit. A lost statistics
 reply is never retried as an increment.
 
-The All tab shows the primary result's count. A dictionary/group projection may
-display another expression, so it does not borrow that count. Definitions do
-not wait for storage: counts arrive independently, guarded by the current
-request and committed statistics namespace. Statistics changes do not reload
-dictionaries or invalidate lookup results.
+The All tab shows the primary result's count, after its frequency tags. A
+dictionary/group projection may display another expression, so it does not
+borrow that count. Definitions do not wait for storage: counts arrive
+independently, guarded by the current request and committed statistics
+namespace. Until a count arrives its place is kept, as wide as a two-digit
+count, so its arrival never moves the tags and a count up to 99 does not move
+the definitions either. Statistics changes do not reload dictionaries or
+invalidate lookup results.
 
 ![Local lookup history controls](assets/lookup-statistics-settings.png)
 

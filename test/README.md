@@ -1872,6 +1872,14 @@ accessibility snapshot reads list items without a bar. The bar must reach 3:1
 against the card in every palette, and switching back restores the exact card
 heights.
 
+`chrome-lookup-count-layout.mjs` renders the primary entry the same way at every
+even popup width from 280 to 600 px, with no, four and four named frequency tags
+(#486). A count on its way keeps a place after the tags and paints nothing;
+painting counts from 0 to 99 leaves the tags, the count and the first definition
+card exactly where they were, and longer counts still never move the tags. A
+count that will not arrive keeps no place, and the accessibility snapshot exposes
+only the painted count, still before the tags.
+
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
   fixture's bold span is bold through a style object), so the structured-content

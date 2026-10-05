@@ -15369,7 +15369,7 @@ async function contentNoteStage() {
           callbacks.popup.dataset.definitionBlurState = record.blurState;
           return record.blurState;
         },
-        setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },
+        setLookupStats(element, payload, pending = false) { record.lookupStatistics = payload; element.hidden = !payload && !pending; },
         setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
       };
       popupRecords.set(callbacks.popup, record);
@@ -15760,6 +15760,7 @@ async function contentNoteStage() {
       "accepted primary views record once across tabs, expansion, Note refresh and Back": false,
       "internal links and clicked-kanji terms record independently while misses and stale replies do not": false,
       "statistics reject obsolete namespace replies and never retry a failed increment": false,
+      "a count on its way keeps its slot until it paints, and a count that will not arrive hides it": false,
     };
     const harness = await createHarness(undefined, { holdLookupStats: true });
     const records = () => harness.sent.filter(request => request.type === "hd_lookup_stats_record");
@@ -15916,6 +15917,28 @@ async function contentNoteStage() {
         offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
         && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
     } finally { hidden.close(); }
+    // The slot keeps the count's place from the first render (#486), so its
+    // arrival moves nothing; a count that will not arrive takes the place away.
+    const kept = await createHarness(null, { holdLookupStats: true });
+    try {
+      const slot = () => kept.popup.querySelector(".gsm-hoshidicts-lookup-stats");
+      const onItsWay = () => slot()?.hidden === false && kept.lookupStatistics() === null;
+      await kept.initialLookup();
+      const counted = kept.take("hd_lookup_stats_record");
+      const keptFirst = onItsWay();
+      if (counted) kept.reply(counted, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: counted.request.term, reading: counted.request.reading, lookupCount: 3 } });
+      await kept.settle();
+      const painted = slot()?.hidden === false && kept.lookupStatistics()?.lookupCount === 3;
+      await kept.initialLookup();
+      const lost = kept.take("hd_lookup_stats_record");
+      const keptAgain = onItsWay();
+      if (lost) kept.reply(lost, { error: "lost reply" }, false);
+      await kept.settle();
+      outcomes["a count on its way keeps its slot until it paints, and a count that will not arrive hides it"] =
+        (Boolean(counted) && keptFirst && painted && Boolean(lost) && keptAgain && slot()?.hidden === true)
+        || { counted: Boolean(counted), keptFirst, painted, lost: Boolean(lost), keptAgain, hidden: slot()?.hidden };
+    } finally { kept.close(); }
     return outcomes;
   }
 
