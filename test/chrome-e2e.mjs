@@ -12212,6 +12212,7 @@ async function main() {
       && /\d+(?:\.\d)? seconds/u.test(batchUi.outcomes[0].text)
       && batchUi.outcomes[1].error === true
       && batchUi.outcomes[1].text.includes("Failed before import")
+      && batchUi.outcomes[1].text.includes("malformed-index.zip: reading dictionary metadata failed")
       && batchUi.outcomes[2].error === false
       && batchUi.outcomes[2].text.includes("Imported hachidori-fixture")
       && JSON.stringify(batchUi.outcomes.map(({ name }) => name)) === JSON.stringify([

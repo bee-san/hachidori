@@ -560,8 +560,13 @@ bool looks_like_mdict(const std::string &path) {
 bool peek_title(const std::string &zip_path, std::string &title,
                 std::string &error) {
   Zip zip;
+  errno = 0;
   if (!zip.open(std::filesystem::path{zip_path})) {
-    error = zip.error.empty() ? "failed to open zip" : zip.error;
+    if (errno == ENOMEM) {
+      error = "not enough memory to read the dictionary archive";
+    } else {
+      error = zip.error.empty() ? "failed to open zip" : zip.error;
+    }
     return false;
   }
   const int index_entry = zip.find("index.json");
