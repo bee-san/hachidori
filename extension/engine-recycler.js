@@ -27,8 +27,7 @@ export function engineWorkerName(lowMemory, dictionaryEntryStorage = "auto") {
 
 export function engineWorkerConfig(name, storageBackend) {
   const lowMemory = name === LOW_MEMORY_WORKER_NAME || name.startsWith(`${LOW_MEMORY_WORKER_NAME}:`);
-  const dictionaryEntryStorage = name.endsWith(":paged") ? "paged"
-    : name.endsWith(":resident") ? "resident" : "auto";
+  const dictionaryEntryStorage = ["paged", "resident"].find((storage) => name.endsWith(`:${storage}`)) ?? "auto";
   return {
     lowMemory,
     dictionaryEntryStorage,
