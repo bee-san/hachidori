@@ -1,3 +1,4 @@
+import { actualIndexPolicy, planIndexStorage, RESIDENT_HASH_BUDGET_BYTES } from "./dictionary-index-storage.js";
 import { encodeBase64 } from "./base64.js";
 import { readDebugLog, recordDebugFailure } from "./debug-log.js";
 import {
@@ -128,6 +129,8 @@ let lowRam = true;
 // import threading and recycler (docs/memory.md).
 let pagedDictionaries = false;
 let dictionaryEntryStorage = "auto";
+let dictionaryIndexStorage = "auto";
+let indexPagedPaths = new Set();
 // Whether this is a pthread runtime, as hd_status reports it.
 let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
@@ -151,6 +154,7 @@ export function configureEngineService(request, options = {}) {
   lowRam = options.lowRam !== false;
   pagedDictionaries = options.pagedDictionaries === true;
   dictionaryEntryStorage = options.dictionaryEntryStorage ?? "auto";
+  dictionaryIndexStorage = options.dictionaryIndexStorage ?? "auto";
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
@@ -1349,14 +1353,16 @@ function loadsPaged(path) {
 // `validation` adds a disabled package only to prove the engine opens it, then
 // drops it: its entries are read on demand rather than copied into the heap,
 // which would only raise the worker's high-water mark (docs/memory.md). Its
-// index is still loaded and checked exactly as for lookup.
+// hash header is checked without mapping the table under a paged policy.
 function addDictionaryKind(dictionary, kind, { validation = false } = {}) {
+  const indexPaged = indexPagedPaths.has(dictionary.path)
+    || (validation && indexPolicy() !== "resident");
   const add = (paged) => engine.ccall(
-    "hdw_add_dict", "number", ["string", "number", "number"], [dictionary.path, kind, paged ? 1 : 0],
+    "hdw_add_dict", "number", ["string", "number", "number", "number"], [dictionary.path, kind, paged ? 1 : 0, indexPaged ? 1 : 0],
   ) === 1;
   const paged = validation || loadsPaged(dictionary.path);
   if (add(paged)) return true;
-  // Only the index has to fit when the entries are read on demand.
+// Only the selected resident files have to fit when entries are paged.
   if (paged || !lastError().startsWith(OUT_OF_MEMORY) || !add(true)) return false;
   pagedPaths.add(dictionary.path);
   return true;
@@ -1418,6 +1424,7 @@ function trackLoaded(dictionaries, manifest = dictionaries) {
     path: dictionary.path,
     kinds: packageKinds(dictionary),
     paged: loadsPaged(dictionary.path),
+    indexPaged: engine.ccall("hdw_hash_index_paged", "number", ["string"], [dictionary.path]) === 1,
   }));
   for (const entry of loadedPackages) verifiedPackages.set(entry.path, entry.kinds);
   loadedManifest = new Map(manifest.map(dictionary => [dictionary.path, {
@@ -1489,7 +1496,7 @@ function loadDictionariesIncrementally(dictionaries) {
   const present = new Map(loadedPackages.map((entry) => [entry.path, entry.kinds]));
   try {
     for (const entry of loadedPackages) {
-      if (wanted.get(entry.path) === entry.kinds) continue;
+      if (wanted.get(entry.path) === entry.kinds && entry.indexPaged === indexPagedPaths.has(entry.path)) continue;
       if (!engine.ccall("hdw_remove_dict", "number", ["string"], [entry.path])) return null;
       present.delete(entry.path);
     }
@@ -1521,6 +1528,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
       throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
     }
   }
+  indexPagedPaths = planIndexStorage(dictionaries, indexPolicy(), hashTableBytes);
   const incremental = loadDictionariesIncrementally(dictionaries);
   if (incremental !== null) {
     lastLoadPath = "incremental";
@@ -3713,6 +3721,8 @@ const HANDLERS = {
       ready,
       loading: busy > 0 || stagingImports > 0,
       dictionaryCount,
+      registeredKindCount: dictionaryCount,
+      packageCount: (loadedPackages ?? []).length,
       failedDictionaries: loadFailures,
       lastLoadPath,
       generation,
@@ -3724,6 +3734,9 @@ const HANDLERS = {
       lowMemory: threaded && lowRam,
       pagedDictionaries,
       dictionaryEntryStorage,
+      dictionaryIndexStorage,
+      hashIndexStorage: indexPolicy(),
+      residentHashBudgetBytes: indexPolicy() === "budget" ? RESIDENT_HASH_BUDGET_BYTES : null,
     };
   },
 
@@ -3744,8 +3757,9 @@ const HANDLERS = {
       id: entry.id,
       title: entry.title,
       path: entry.path,
-      bytes: residentBytes(entry),
+      ...residentFiles(entry),
       paged: entry.paged,
+      hashIndexStorage: entry.indexPaged ? "paged" : "resident",
     }));
     // Growth on an engine pthread reaches this thread's HEAPU8 view only once
     // some glue touches the heap; a stat does (see writeFileBytes).
@@ -3753,27 +3767,44 @@ const HANDLERS = {
     return {
       heapBytes: engine.HEAPU8.byteLength,
       pageCacheBytes: engine.ccall("hdw_page_cache_bytes", "number", [], []),
+      pageCacheBudgetBytes: 32 * 1024 * 1024,
+      ...JSON.parse(engine.ccall("hdw_memory_stats", "string", [], [])),
+      dictionaryIndexStorage,
+      hashIndexStorage: indexPolicy(),
+      residentHashBudgetBytes: indexPolicy() === "budget" ? RESIDENT_HASH_BUDGET_BYTES : null,
+      packageCount: dictionaries.length,
+      registeredKindCount: dictionaryCount,
       dictionaries,
     };
   },
 };
 
 // The files query.cpp keeps in the heap for a loaded package: its index, which
-// every probe reads, and blobs.bin unless the package is paged. dict.zstd is
+// every probe reads, resident hash tables, and blobs.bin unless the package is paged. dict.zstd is
 // read into a zstd dictionary, which holds the same bytes, and scan.idx is
 // mapped only for a package loaded as a term dictionary.
-const INDEX_FILES = ["hash.table", "bloom.filter", "media.idx", "dict.zstd"];
+const INDEX_FILES = ["bloom.filter", "media.idx", "dict.zstd"];
 
-function residentBytes(entry) {
+function indexPolicy() {
+  return actualIndexPolicy(dictionaryIndexStorage, storageBackend, threaded && lowRam);
+}
+
+function fileBytes(path, name) {
+  const file = `${path}/${name}`;
+  return exists(file) ? engine.FS.stat(file).size : 0;
+}
+
+function hashTableBytes(path) { return fileBytes(path, "hash.table"); }
+
+function residentFiles(entry) {
   const names = [...INDEX_FILES];
-  if (!entry.paged) names.push("blobs.bin");
   if (entry.kinds.split(",").includes("term")) names.push("scan.idx");
-  let bytes = 0;
-  for (const name of names) {
-    const file = `${entry.path}/${name}`;
-    if (exists(file)) bytes += engine.FS.stat(file).size;
-  }
-  return bytes;
+  const otherResidentBytes = names.reduce((bytes, name) => bytes + fileBytes(entry.path, name), 0);
+  const hashBytes = hashTableBytes(entry.path);
+  const residentHashBytes = entry.indexPaged ? 0 : hashBytes;
+  const residentEntryBytes = entry.paged ? 0 : fileBytes(entry.path, "blobs.bin");
+  return { hashBytes, residentHashBytes, otherResidentBytes, residentEntryBytes,
+    bytes: residentHashBytes + otherResidentBytes + residentEntryBytes };
 }
 
 function failurePayload(type) {

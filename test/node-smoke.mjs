@@ -300,6 +300,10 @@ const markerOf = (entries) => MARKER_FILES.find((m) => entries.includes(m));
 // logical /dicts path.
 M.FS.mkdir('/work');
 G('hdw_init_storage');
+check('native import exceptions keep their decoding and release helpers', () => {
+  eq(typeof M.getExceptionMessage, 'function', 'getExceptionMessage');
+  eq(typeof M.decrementExceptionRefcount, 'function', 'decrementExceptionRefcount');
+});
 check('memory storage initializes /dicts', () => {
   eq(initStorage(0), 1, `storage init failed: ${lastError()}`);
   ok(Array.isArray(M.FS.readdir('/dicts')), '/dicts was not created');
@@ -451,14 +455,27 @@ check('the fixture carries every file the loader reads', () => {
 // how often. Padding past the records changes no lookup.
 const PAD_BYTES = 16 * 1024 * 1024;
 const PARITY_WORDS = ['食べる', '食べたかった', '漢字', 'ありがとう', '読む', '食', 'みつからない'];
-async function loadPaddedCopy({ padded, kinds, paged }) {
+async function loadPaddedCopy({ padded, kinds, paged, indexPaged = 0 }) {
   const F = await createHoshidicts();
   const fcall = (name, ret, types, args) => F.ccall(name, ret, types, args);
   eq(fcall('hdw_init_storage', 'number', ['number'], [0]), 1, 'fresh module storage');
   F.FS.mkdir(DICT_DIR);
   for (const name of entriesOf(DICT_DIR)) {
     let bytes = M.FS.readFile(`${DICT_DIR}/${name}`);
-    if (name === padded) {
+    if (name === padded && name === 'hash.table') {
+      const old = Buffer.from(bytes);
+      const capacity = old.readUInt32LE(0) + PAD_BYTES / 16;
+      const grown = Buffer.alloc(4 + capacity * 16);
+      grown.writeUInt32LE(capacity);
+      for (let at = 4; at < old.length; at += 16) {
+        const hash = old.readBigUInt64LE(at);
+        if (hash === 0n) continue;
+        let pos = Number(hash % BigInt(capacity));
+        while (grown.readBigUInt64LE(4 + pos * 16) !== 0n) pos = (pos + 1) % capacity;
+        old.copy(grown, 4 + pos * 16, at, at + 16);
+      }
+      bytes = grown;
+    } else if (name === padded) {
       const grown = new Uint8Array(bytes.length + PAD_BYTES);
       grown.set(bytes);
       bytes = grown;
@@ -467,7 +484,7 @@ async function loadPaddedCopy({ padded, kinds, paged }) {
   }
   const before = heapOf(F);
   for (const kind of kinds) {
-    eq(fcall('hdw_add_dict', 'number', ['string', 'number', 'number'], [DICT_DIR, kind, paged]), 1,
+    eq(fcall('hdw_add_dict', 'number', ['string', 'number', 'number', 'number'], [DICT_DIR, kind, paged, indexPaged]), 1,
       `add kind ${kind}: ${fcall('hdw_last_error', 'string', [], [])}`);
   }
   const growth = heapOf(F) - before;
@@ -482,6 +499,28 @@ async function loadPaddedCopy({ padded, kinds, paged }) {
 }
 
 const ALL_KINDS = Object.values(KINDS);
+const residentIndex = await loadPaddedCopy({ padded: 'hash.table', kinds: ALL_KINDS, paged: 1 });
+const pagedIndex = await loadPaddedCopy({ padded: 'hash.table', kinds: ALL_KINDS, paged: 1, indexPaged: 1 });
+check('paged hashes avoid the padded index allocation', () => {
+  eq(residentIndex.growth >= PAD_BYTES, true, 'resident hash allocation');
+  eq(pagedIndex.growth < PAD_BYTES, true, 'paged hash allocation');
+});
+check('paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results', () => {
+  eq(JSON.stringify(pagedIndex.lookups), JSON.stringify(residentIndex.lookups), 'lookup structures and order');
+  eq(pagedIndex.kanjiJson, residentIndex.kanjiJson, 'kanji');
+  eq(JSON.stringify([...pagedIndex.mediaCopy]), JSON.stringify([...residentIndex.mediaCopy]), 'media');
+});
+check('entry and hash pages use one cache and unload together', () => {
+  const F = pagedIndex.F;
+  const stats = JSON.parse(F.ccall('hdw_memory_stats', 'string', [], []));
+  eq(stats.entries.bytes + stats.indexes.bytes, pagedIndex.pageCacheBytes, 'combined cache accounting');
+  eq(stats.indexes.reads > 0, true, 'index storage reads');
+  eq(F.ccall('hdw_hash_index_paged', 'number', ['string'], [DICT_DIR]), 1, 'actual index storage');
+  eq(F.ccall('hdw_remove_dict', 'number', ['string'], [DICT_DIR]), 4, 'all kinds removed');
+  eq(F.ccall('hdw_page_cache_bytes', 'number', [], []), 0, 'cached generation released');
+});
+for (const copy of [residentIndex, pagedIndex]) if (copy.F.PThread) copy.F.PThread.terminateAllThreads();
+
 const sharedCopy = await loadPaddedCopy({ padded: 'blobs.bin', kinds: ALL_KINDS, paged: 0 });
 const sharedResident = fileBytes(sharedCopy.F, DICT_DIR, [...INDEX_FILES, 'blobs.bin']);
 console.log(`  four kinds, blobs.bin padded: resident ${sharedResident}, heap growth ${sharedCopy.growth}`);

@@ -73,11 +73,10 @@ target_link_options(hoshidicts_wasm PRIVATE
     -sEXPORT_NAME=createHoshidicts
     -sENVIRONMENT=web,worker,node
     -sALLOW_MEMORY_GROWTH=1
-    -sEXPORT_EXCEPTION_HANDLING_HELPERS=1
     -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB
     -sFORCE_FILESYSTEM=1
-    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_remove_dict,_hdw_set_dict_order,_hdw_lookup,_hdw_lookup_dictionary,_hdw_kanji,_hdw_styles,_hdw_tags,_hdw_media,_hdw_media_data,_hdw_page_cache_bytes,_hdw_last_error
+    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_remove_dict,_hdw_set_dict_order,_hdw_lookup,_hdw_lookup_dictionary,_hdw_kanji,_hdw_styles,_hdw_tags,_hdw_media,_hdw_media_data,_hdw_page_cache_bytes,_hdw_memory_stats,_hdw_hash_index_paged,_hdw_last_error
 )
 
 # The pool is sized when the module starts: the bounded import worker group
@@ -97,11 +96,11 @@ endif()
 if(HACHIDORI_PTHREADS AND HACHIDORI_WASMFS)
   target_link_options(hoshidicts_wasm PRIVATE
       -sWASMFS=1
-      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore,getExceptionMessage,decrementExceptionRefcount
   )
 else()
   target_link_options(hoshidicts_wasm PRIVATE
       -lidbfs.js
-      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore,getExceptionMessage,decrementExceptionRefcount
   )
 endif()

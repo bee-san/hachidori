@@ -14,6 +14,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <malloc.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -44,6 +45,9 @@
 // Not an anonymous namespace: glaze's field-name reflection takes the address of
 // an `extern const T` sentinel, which requires T to have external linkage.
 namespace hdw {
+
+struct WireCacheActivity { size_t bytes; uint64_t hits; uint64_t reads; uint64_t readBytes; };
+struct WireMemoryStats { WireCacheActivity entries; WireCacheActivity indexes; size_t liveAllocatedBytes; size_t allocatorFreeBytes; };
 
 constexpr size_t MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
 constexpr size_t MAX_GLOSSARY_BYTES = 8 * 1024 * 1024;
@@ -500,7 +504,8 @@ std::string rejected_dictionary(const char* kind, const std::string& dict_path) 
   if (errno == ENOMEM) {
     return std::string{"not enough memory to load "} + kind + " dictionary: " + dict_path;
   }
-  return std::string{kind} + " dictionary rejected: " + dict_path;
+  return std::string{kind} + " dictionary rejected: " + dict_path
+      + (engine().query.last_error().empty() ? "" : ": " + engine().query.last_error());
 }
 
 uint64_t meta_count(const SummaryMetaCount &counts, const std::string &mode) {
@@ -969,7 +974,7 @@ EMSCRIPTEN_KEEPALIVE void hdw_reset(void) {
   }
 }
 
-EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind, int paged) {
+EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind, int paged, int index_paged) {
   clear_error();
   if (path == nullptr || *path == '\0') {
     set_error("empty dictionary path");
@@ -990,29 +995,30 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind, int paged) {
     // (DictionaryStorage in hoshidicts/query.hpp). A kind added after another
     // kind of the same package shares that kind's files either way.
     const DictionaryStorage storage = paged != 0 ? DictionaryStorage::Paged : DictionaryStorage::Mapped;
+    const auto index_storage = index_paged != 0 ? DictionaryIndexStorage::Paged : DictionaryIndexStorage::Mapped;
     errno = 0;
     switch (kind) {
       case 0:
-        if (!e.query.add_term_dict(dict_path, storage)) {
+        if (!e.query.add_term_dict(dict_path, storage, index_storage)) {
           set_error(rejected_dictionary("term", dict_path));
           return 0;
         }
         e.term_paths.push_back(dict_path);
         break;
       case 1:
-        if (!e.query.add_freq_dict(dict_path, storage)) {
+        if (!e.query.add_freq_dict(dict_path, storage, index_storage)) {
           set_error(rejected_dictionary("frequency", dict_path));
           return 0;
         }
         break;
       case 2:
-        if (!e.query.add_pitch_dict(dict_path, storage)) {
+        if (!e.query.add_pitch_dict(dict_path, storage, index_storage)) {
           set_error(rejected_dictionary("pitch", dict_path));
           return 0;
         }
         break;
       default:
-        if (!e.query.add_kanji_dict(dict_path, storage)) {
+        if (!e.query.add_kanji_dict(dict_path, storage, index_storage)) {
           set_error(rejected_dictionary("kanji", dict_path));
           return 0;
         }
@@ -1254,6 +1260,22 @@ EMSCRIPTEN_KEEPALIVE double hdw_page_cache_bytes(void) {
   } catch (...) {
     return 0;
   }
+}
+
+// The existing payload counter now includes both files using the same cache.
+EMSCRIPTEN_KEEPALIVE const char* hdw_memory_stats(void) {
+  static std::string out;
+  const auto stats = engine().query.page_cache_statistics();
+  const auto allocated = mallinfo();
+  const WireMemoryStats wire{{stats.entries.bytes, stats.entries.hits, stats.entries.reads, stats.entries.read_bytes},
+                   {stats.indexes.bytes, stats.indexes.hits, stats.indexes.reads, stats.indexes.read_bytes},
+                   static_cast<size_t>(allocated.uordblks), static_cast<size_t>(allocated.fordblks)};
+  (void)glz::write_json(wire, out);
+  return out.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE int hdw_hash_index_paged(const char* path) {
+  return path != nullptr && engine().query.hash_index_paged(path) ? 1 : 0;
 }
 
 }  // extern "C"

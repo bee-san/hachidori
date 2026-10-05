@@ -8,8 +8,8 @@ export function planIndexStorage(dictionaries, storage, hashBytes, budget = RESI
   const paged = new Set();
   if (storage === "resident") return paged;
   const unique = new Map(dictionaries.filter(item => item.enabled !== false).map(item => [item.path, item]));
-  const candidates = [...unique.values()].map(item => ({ ...item, bytes: hashBytes(item.path) }));
-  candidates.sort((a, b) => a.bytes - b.bytes || String(a.id).localeCompare(String(b.id), "en"));
+  const candidates = [...unique.values()].map(item => ({ id: item.id, path: item.path, bytes: hashBytes(item.path) }));
+  candidates.sort((a, b) => a.bytes - b.bytes || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   let remaining = storage === "paged" ? 0 : budget;
   for (const item of candidates) {
     if (storage !== "paged" && item.bytes <= remaining) remaining -= item.bytes;

@@ -249,3 +249,16 @@ test("entry storage saves independently and low memory temporarily overrides its
   await settle();
   assert.equal(local.el("dictionary-entry-storage").hidden, true);
 });
+
+
+test("memory separates the index budget, shared cache and entry-paging label", async t => {
+  const memory = { ok: true, heapBytes: 64 * 1048576, hashIndexStorage: "budget", dictionaryIndexStorage: "auto",
+    residentHashBudgetBytes: 32 * 1048576, pageCacheBytes: 2 * 1048576,
+    dictionaries: DICTIONARIES.map((item, index) => ({ id: item.id, bytes: 1048576, paged: true,
+      hashIndexStorage: index ? "resident" : "paged", residentHashBytes: index ? 1048576 : 0 })) };
+  const { el, rowMemory } = fixture(t, { memory });
+  await settle();
+  assert.match(el("memory-indexes").textContent, /1.0 MB resident.*32.0 MB budget; 1 read from disk.*requested: Automatic.*2.0 MB/);
+  assert.match(rowMemory(DICTIONARIES[0].id), /entries and hash index read from disk/);
+  assert.match(rowMemory(DICTIONARIES[1].id), /entries read from disk/);
+});
