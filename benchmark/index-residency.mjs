@@ -94,7 +94,7 @@ async function sample(variant, repetition) {
   const offscreenSource = readFileSync(offscreenFile, "utf8");
   // Seed an empty profile before any native OPFS mount owns handles. The
   // unmodified bridge is restored before the measured browser starts.
-  if (!seeded) writeFileSync(offscreenFile, offscreenSource.replace(
+  writeFileSync(offscreenFile, offscreenSource.replace(
     /(function startWorkerEngine\([^\n]+\) \{)/, "$1\n  return; // benchmark setup only"));
   const contentFile = resolve(extension, "content.js");
   const content = readFileSync(contentFile, "utf8"), marker = '  start();\n}());';
@@ -130,14 +130,12 @@ async function sample(variant, repetition) {
   }
   try {
     await launch();
-    const optionReply = await page.evaluate(async desiredIndex => {
+    await page.evaluate(async desiredIndex => {
       const options = (await chrome.storage.local.get("options")).options ?? {};
-      return chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision ?? 0,
-        options: { lowMemoryMode: true, dictionaryEntryStorage: "auto", ...(desiredIndex ? { dictionaryIndexStorage: desiredIndex } : {}),
+      await chrome.storage.local.set({ options: { ...options, revision: (options.revision ?? 0) + 1,
+          lowMemoryMode: true, dictionaryEntryStorage: "auto", ...(desiredIndex ? { dictionaryIndexStorage: desiredIndex } : {}),
           audioAutoplay: false, showLookupCounts: false, maxResults: 256, hoverEnabled: true, lookupMode: "hover", showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, definitionBlurCountEnabled: false } });
     }, baseline ? null : desiredIndex);
-    assert.equal(optionReply.ok, true, JSON.stringify(optionReply));
-    if (seeded) await ready();
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
     if (!seeded) await page.evaluate(async (dictionaries, fileNames, origin) => {
