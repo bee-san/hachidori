@@ -2307,6 +2307,15 @@ after resize or media load.
 The final edge is resolved once, avoiding an intermediate Top move before an
 Automatic root's actual placement is known.
 
+The toolbar is the popup's whole header: the headword with its furigana and
+deinflection, the compact summary and the actions, plus the dictionary tabs
+when a group or favourite adds them. An Automatic popup that opens above its
+word therefore shows the headword last, next to the word. Readers look for
+the headword rather than the toolbar, so Settings names the control
+**Headword and toolbar position** and its hint says what Automatic and Top do
+(#484). **Top** keeps the headword first in both placements, as Yomitan
+shows it.
+
 An unchanged edge never reorders controls. A changed edge keeps the toolbar
 and Note form adjacent in DOM and visual order. If a tab, Note field, or glossary
 link has focus, only unfocused immediate siblings move around its owner: the

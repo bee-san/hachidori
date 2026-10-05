@@ -58,7 +58,7 @@ changed; "—" means the key was already unambiguous.
 | `hidePopupOnCursorExitDelayMs` | Reading › Popup closing | `#opt-hide-on-cursor-exit-delay` | Delay after leaving the popup | — | Was "Delay" |
 | `popupNestingMaxDepth` | Reading › Results | `#opt-popup-nesting-depth` | Maximum child popups | — | — |
 | `popupTheme` | Design › Appearance / Theme Store | `#opt-popup-theme` | Theme | — | Not audited further: theme work is out of scope for #401 |
-| `popupToolbarPosition` | Design › Appearance | `#opt-popup-toolbar` | Toolbar position | — | — |
+| `popupToolbarPosition` | Design › Appearance | `#opt-popup-toolbar` | Headword and toolbar position | — | Was "Toolbar position". The row it moves carries the headword, so Top is how to keep the headword at the top (#484); "header" is a search keyword |
 | `customPopupCss` | Design › Custom CSS | `#opt-custom-popup-css` | Popup stylesheet | — | — |
 | `customPopupJavascript` | Design › Custom CSS | `#opt-custom-popup-javascript` | Custom JavaScript | — | — |
 | `customLinks` | Design › Custom buttons | (derived) | — | — | Legacy projection of link `customButtons` |

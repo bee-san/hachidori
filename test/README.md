@@ -118,7 +118,8 @@ one or several glyph boxes, and a drag on into the next OCR block.
 `node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
 settings search, keyboard navigation, disclosure focus and draft preservation,
 including "highlight", "selection" and "custom dictionary" finding **Use the
-personal dictionary**, plus the toolbar toggle and revision conflicts. Search uses
+personal dictionary** and "headword" and "header" finding **Headword and
+toolbar position**, plus the toolbar toggle and revision conflicts. Search uses
 the same external jsdom dependency described below. The toolbar tests do not
 start a recording session.
 
