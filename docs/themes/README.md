@@ -104,9 +104,11 @@ custom-button layout. Core still binds mining to the returned actions container.
 - Term rendering supplies arrays of `{button,result}` audio bindings and
   `{actions,feedback,result}` mining bindings through `onResultsRendered`, with
   a `lookupStats` slot (or `null` when the theme omits counts). Core paints counts
-  and binds current-request actions. When the shown entries change without a new
-  render, `onResultsExpanded` announces the arrays again, as Default's Show more
-  and JL's tabs do; keybinds index the announced entries.
+  with `setLookupStats(slot, statistics, pending)`; while `pending`, a count is on
+  its way and the view keeps its place. Core also binds current-request actions.
+  When the shown entries change without a new render, `onResultsExpanded`
+  announces the arrays again, as Default's Show more and JL's tabs do; keybinds
+  index the announced entries.
 - `updateDictionaryPresentation` edits dictionary labels without rebuilding
   definitions. Blur updates edit state only. A new lookup replaces content;
   Back carries scroll state. Default retains its existing incremental renderer.
