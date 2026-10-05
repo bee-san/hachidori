@@ -171,8 +171,9 @@ export async function uploadDictionary({ blob, fileName, replace, send }) {
   if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0) throw new Error("The linked Hachidori sent an invalid upload chunk size.");
   try {
     for (let offset = 0; offset < blob.size; offset += chunkBytes) {
-      const bytes = new Uint8Array(await blob.slice(offset, offset + chunkBytes).arrayBuffer());
-      await checked("hd_import_chunk", { token, offset, data: encodeBase64(bytes) }); // NOSONAR: offsets must arrive in order
+      // Offsets must arrive in order, so each chunk waits for the last.
+      const bytes = new Uint8Array(await blob.slice(offset, offset + chunkBytes).arrayBuffer()); // NOSONAR
+      await checked("hd_import_chunk", { token, offset, data: encodeBase64(bytes) }); // NOSONAR
     }
   } catch (error) {
     await Promise.resolve(send("hd_import_abort", { token })).catch(() => {});

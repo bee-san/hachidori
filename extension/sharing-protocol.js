@@ -273,12 +273,12 @@ export function allowLinkedImportRequest(message) {
     case "hd_import_begin":
       if (typeof message.fileName !== "string" || message.fileName.length > 255
           || !Number.isSafeInteger(message.size) || typeof message.replace !== "boolean") {
-        throw new Error("malformed dictionary upload request");
+        throw new TypeError("malformed dictionary upload request");
       }
       return { ...base, fileName: message.fileName, size: message.size, replace: message.replace };
     case "hd_import_chunk":
       if (!Number.isSafeInteger(message.offset) || typeof message.data !== "string") {
-        throw new Error("malformed dictionary upload chunk");
+        throw new TypeError("malformed dictionary upload chunk");
       }
       return { ...base, token: uploadToken(message.token), offset: message.offset, data: message.data };
     default:
