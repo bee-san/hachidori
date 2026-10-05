@@ -2339,9 +2339,11 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 /* The count arrives after the frequency tags have painted, so it is shown
-   after them and never moves them; screen readers still meet it first. While
-   it is on its way its place is kept, unpainted, at least a two-digit count
-   wide, so a count up to 99 does not move the definitions either. */
+   after them and never moves them; screen readers still meet it first. It
+   has the tags' height and baseline, so whether it shares their line or not
+   their line stays put. While it is on its way its place is kept, unpainted,
+   at least a two-digit count wide, so a count up to 99 does not move the
+   definitions either. */
 .gsm-hoshidicts-lookup-stats {
   display: inline-block;
   order: 1;
@@ -2354,7 +2356,7 @@ html[data-hoshidicts-theme="girlypop"],
   font-size: var(--hd-font-label);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.2;
   text-align: center;
 }
 
