@@ -29,7 +29,9 @@ settings.html / content.js
                       │    └─ import-worker.js: a second instance per hd_import
                       ├─ no OPFS access handles: engine-worker-idbfs.js
                       │    └─ pthread Wasm + classic FS + IDBFS
-                      └─ fallback: engine-service.js
+                      ├─ no shared memory: engine-worker-local.js
+                      │    └─ single-thread Wasm + classic FS + IDBFS
+                      └─ no workers: engine-service.js in the document
                            └─ single-thread Wasm + IDBFS
 ```
 
@@ -71,7 +73,7 @@ archive, source-document, or background-storage-queue limit.
 
 If shared Wasm memory and workers are available but direct OPFS is not, `offscreen.js` starts `engine-worker-idbfs.js`: the same pthread engine on the classic Emscripten FS with IDBFS mounted at `/dicts`. Electron (the GameSentenceMiner host) is the known case: it exposes cross-origin isolation and shared memory but refuses OPFS sync access handles to `chrome-extension://` origins. Imports keep the bounded eight-thread worker group (Jitendex imports in about 1.6 s instead of 3.9 s single-threaded), and the offscreen document's own thread stays free for audio and Anki work during an import. `hd_status` reports `threaded: true` and `storageBackend: "idbfs"`.
 
-If shared Wasm memory or workers are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
+If shared Wasm memory is unavailable (no cross-origin isolation) but workers are, `offscreen.js` starts `engine-worker-local.js`: the single-thread WebAssembly module in a dedicated worker, through the same `engine-worker-runtime.js` bridge as the pthread workers. Lookups and imports then run off the offscreen document's thread, and the worker can read IndexedDB Blob records by range with `FileReaderSync` (see [memory.md](memory.md)). Low memory mode does not apply to it, so it is never recycled. Only a host without workers loads the single-thread module in the document itself. Either way the build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
 
 Both IDBFS paths are intentionally explicit: `hd_status` reports `storageBackend: "idbfs"`, with `threaded: false` only for the single-thread runtime. The production benchmark rejects either when it is measuring the primary Hachidori path.
 
@@ -749,13 +751,16 @@ full browser restart without reloading the engine.
 ### Keybinds
 
 `options.keybinds` copies yomitan-gsm's hotkey entries exactly: `action`,
-`argument`, `key` (a `KeyboardEvent.code`, or `null` for modifiers only),
-`modifiers`, `scopes` and `enabled`. Only actions that map onto an existing
-Hachidori control are offered. Close, entry and dictionary navigation, Back, Add
-note, View notes, Play audio, Play audio from source, Scan selected text, Scan
-text at selection and Toggle option are available. The defaults are Yomitan's
-keys for those actions: Escape, Alt+PageUp/PageDown (three entries),
-Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B, Alt+E, Alt+P and Alt+V.
+`argument`, `key` (a `KeyboardEvent.code`, `WheelUp`/`WheelDown` for a wheel
+step, or `null` for modifiers only), `modifiers`, `scopes` and `enabled`. Only
+actions that map onto an existing Hachidori control are offered. Close, entry
+and dictionary navigation, Back, Add note, View notes, Play audio, Play audio
+from source, Scan selected text, Scan text at selection and Toggle option are
+available. The defaults are Yomitan's keys for those actions: Escape,
+Alt+PageUp/PageDown (three entries), Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B,
+Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
+entry): Yomitan's popup moves one entry per Alt+wheel event outside its
+hotkeys, so here that gesture is an ordinary binding.
 
 Several Yomitan actions are omitted because Hachidori has no matching feature:
 
@@ -771,13 +776,24 @@ set as Yomitan's `HotkeyHandler` does. The first enabled binding in scope that
 handles the key prevents its default. Unmodified or Shift-only character keys
 stay with a focused text field, and auto-repeat remains ignored.
 
+A wheel step over a popup is matched the same way, with its vertical direction
+as the key, and acts on that popup rather than the deepest one, as Yomitan's
+per-popup wheel handler does; wheel steps over the page stay with the page. One
+notch presses the binding once, whatever its delta. A touchpad sends many small
+steps instead, so steps in one direction with the same modifiers, each under
+100 ms after the last, are one gesture: it presses the binding when it starts
+and again for every further 100 px of travel. A handled step is cancelled before
+it reaches anything else in the popup, so the pane does not also scroll and page
+wheel listeners never see it. An unhandled step keeps the popup's own wheel
+isolation, and Ctrl+wheel stays with the browser unless it is bound.
+
 Yomitan's popup scope means a popup that has focus. Hachidori's hover popup never
 takes focus, so here the popup scope means a popup is open or its lookup is
 pending. The page scope applies anywhere. Settings offers the scopes Yomitan's
 controller offers for each action. Toggle option adds the page scope, because no
 popup exists while lookups are off.
 
-Close keeps the reader's Escape order and event handling. Popup actions target the
+Close keeps the reader's Escape order and event handling. A key press acts on the
 deepest visible popup. As in Yomitan, the current entry starts at the first entry
 and changes through navigation or a click on an entry. It also changes when
 scrolling changes the result the popup's header shows (below). Navigation reveals
@@ -805,8 +821,10 @@ entry.
 
 The Keybinds section edits the list like Yomitan's key field: a key press
 replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
-moves focus. Each row has Clear, Reset (the action's first default binding) and
-Remove. The section also has Add and Reset keybinds to defaults.
+moves focus. Turning the wheel with a modifier held over the focused field
+records that wheel step; a plain wheel still scrolls Settings. Each row has
+Clear, Reset (the action's first default binding) and Remove. The section also
+has Add and Reset keybinds to defaults.
 
 Yomitan's native browser shortcuts are manifest `commands` for the features
 Hachidori has:

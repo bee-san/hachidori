@@ -35,10 +35,13 @@ linear memory and copying the bytes in. Five things follow:
   (Electron) the import runs inside the engine and the memory that peak needs is kept for the
   life of the engine worker. Disabling or removing a dictionary frees its
   files inside the heap, but the heap itself stays at its high-water mark.
-- **IDBFS hosts hold a second copy.** Electron (GameSentenceMiner) and
+- **IDBFS hosts mirror small files only.** Electron (GameSentenceMiner) and
   Chrome without OPFS sync access handles keep the dictionary files in
-  IndexedDB and mirror them into the WebAssembly filesystem, so every file,
-  media included, also exists in JavaScript memory.
+  IndexedDB and mirror them into the WebAssembly filesystem. Files of 1 MiB or
+  more are stored as Blobs, and the mirror keeps the Blob rather than a copy
+  of its bytes: a read, a page of paged entries or a media file reads only its
+  range, and `mmap` copies the mapped range straight into the heap. See
+  [IDBFS files](#idbfs-files).
 - **The heap is capped at 4 GiB** (`-sMAXIMUM_MEMORY=4GB` in
   `wasm/CMakeLists.txt`). A library whose resident files exceed that cannot
   load completely; see [When dictionaries do not fit](#when-dictionaries-do-not-fit).
@@ -105,7 +108,8 @@ hundred.
 Settings → Advanced → Memory → **Dictionary entries** selects one policy:
 
 - **Automatic** (default): page entries on direct OPFS; retain resident entries
-  on IDBFS, whose JavaScript filesystem mirror already holds the whole file.
+  on IDBFS, where a paged read is a synchronous Blob read whose lookup cost has
+  not been measured. **Read from disk** pages there too.
 - **Read from disk**: page entries on either threaded backend.
 - **Keep in memory**: copy entries into the engine heap. A package that cannot
   fit still falls back to paged entries as before.
@@ -241,10 +245,43 @@ dictionary and hits the same wall. If Hachidori's memory is close to what your
 machine has free, choose Read from disk, turn on Low memory mode, or remove or
 disable the largest dictionaries.
 
+## IDBFS files
+
+The IDBFS engines keep each generated file as an IndexedDB record. Files of
+1 MiB or more are written as Blobs. On restart, and once the sync that wrote a
+freshly imported file has completed, the file's MEMFS node holds that Blob
+instead of a JavaScript array, and every access reads only what it needs
+with `FileReaderSync`: lookups through the page cache read 4 KiB pages,
+media reads their range, a mapped file is read into the heap in 8 MiB steps,
+and a backup adds the Blob to its archive as it is. A file is read into an
+array only if something writes to it or truncates it, which generated
+dictionary files never are. Unloading a package writes nothing back.
+
+Measured with Jitendex and Pixiv Full on Chrome 152 with the threaded IDBFS
+engine forced (`benchmark/idbfs-restore.mjs`, macOS arm64): after a restart
+the extension measures 4 MB outside the engine heap instead of 592 MB, the
+engine heap is unchanged (690 MB with resident entries), and 4,550 lookups
+return identical results. Restart, lookup and backup timings varied more with
+the machine's load than between the two versions.
+
+What remains:
+
+- **Records written by earlier versions as arrays stay arrays.** Files under
+  1 MiB, and large files written before Blob storage, load as before. A large
+  legacy file becomes a Blob only when it is written again, which for a
+  dictionary means a reimport or update.
+- **A freshly imported file stays an array until its sync completes**, so an
+  import's peak still holds it in JavaScript memory, and a failed sync keeps
+  the array for the retry.
+- **`FileReaderSync` exists only in workers.** Every engine runs in a worker
+  where the browser has workers, including the single-thread engine for
+  hosts without cross-origin isolation; only a host without workers runs the
+  engine in the offscreen document, with whole-file arrays.
+- Each read is a synchronous Blob read on the engine's thread, which costs
+  more than reading an array.
+
 ## Deferred
 
-On IDBFS hosts the MEMFS mirror still holds every file in JavaScript memory;
-reading IndexedDB records on demand would need an IDBFS backend of its own.
 Which pages stay resident is decided by the cache alone; keeping common words or
 the first-ranked dictionaries warm is investigated in
 [#344](https://github.com/bee-san/hachidori/issues/344). Further out, the
