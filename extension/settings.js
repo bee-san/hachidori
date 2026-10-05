@@ -475,7 +475,6 @@ function renderExperimentalSettings() {
     document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
     element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
   }
-  renderImportPicker();
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.
   if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
@@ -510,17 +509,6 @@ function refreshMemorySettings() {
 function refreshAdvancedMemory() {
   refreshMemorySettings();
   void memorySettings().refreshExtensionTotal();
-}
-
-// With the MDX dictionaries flag on, the picker and drop zone also take .mdx
-// and .mdd files; off, they take Yomitan ZIP files as before.
-function renderImportPicker() {
-  const mdx = options.experimental.mdxImport === true;
-  element("import-file").accept = mdx ? ".zip,application/zip,.mdx,.mdd" : ".zip,application/zip";
-  element("import-file-label").textContent = mdx ? "Choose dictionary files" : "Choose ZIP files";
-  element("import-drop-hint").textContent = mdx
-    ? "Or drag and drop Yomitan ZIP files, or an MDX dictionary with its MDD files, here."
-    : "Or drag and drop Yomitan ZIP files here.";
 }
 
 function updateBackupSettings() {
@@ -2971,9 +2959,7 @@ function isMddResourceOf(mdxName, name) {
 function groupImportFiles(files) {
   // An upload carries one archive, so a linked browser sends every file as a
   // ZIP and the host explains why it refuses an .mdx or .mdd.
-  if (options.experimental.mdxImport !== true || sharingLinkedAddress !== null) {
-    return files.map((file) => ({ kind: "zip", file }));
-  }
+  if (sharingLinkedAddress !== null) return files.map((file) => ({ kind: "zip", file }));
   const items = [];
   const resourceFiles = files.filter((file) => /\.mdd$/iu.test(file.name));
   const claimed = new Set();

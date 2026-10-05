@@ -13016,7 +13016,7 @@ async function settingsBatchImportStage() {
   return result;
 }
 
-// With the MDX dictionaries flag on, a dropped batch groups each .mdx with the
+// A dropped batch groups each .mdx with the
 // .mdd files named after its stem into one hd_import carrying `resources`,
 // still imports ZIPs on their own, and reports an .mdd without its .mdx.
 async function settingsMdxImportStage() {
@@ -13071,8 +13071,7 @@ async function settingsMdxImportStage() {
     storage: {
       local: {
         async get() {
-          return { options: { kanjiClickDictionary: "",
-            experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, mdxImport: true } } };
+          return { options: { kanjiClickDictionary: "" } };
         },
       },
       onChanged: { addListener() {} },
@@ -18865,13 +18864,10 @@ async function contentNoteStage() {
 
   // The engine finds dictionary keys longer than the scan length only if it is
   // handed enough text: each package row carries the longest key its long-key
-  // index lists, and while the experimental Long dictionary entries flag is on
-  // the reader collects that many code points plus eight for an inflected
-  // ending while still requesting options.scanLength. Off, it collects
-  // options.scanLength whatever the packages list.
+  // index lists, and the reader collects that many code points plus eight for
+  // an inflected ending while still requesting options.scanLength.
   async function longKeyWindowCase() {
-    const experimental = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, longKeyScan: true };
-    const harness = await createHarness(undefined, { options: { experimental } });
+    const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
     window.Range.prototype.getClientRects = () => [{ left: 0, top: 0, right: 20, bottom: 20 }];
     const document = window.document;
@@ -18909,18 +18905,11 @@ async function contentNoteStage() {
     harness.driver.onMouseMove({ target: block, clientX: 10, clientY: 10 });
     await harness.settle();
     const request = harness.take("hd_lookup");
-
-    harness.emitOptions({ scanLength: 9, experimental: { ...experimental, longKeyScan: false } });
-    const flagOff = length(scan());
-    harness.emitOptions({ scanLength: 9, experimental });
-    const flagBackOn = length(scan());
     harness.close();
     return { "the reader hands the engine the longest indexed key plus eight while requesting its own scan length":
       plain === 9 && withLongKeys === 45 && disabledLongKeys === 9 && capped === 256 && frequencyOnly === 9
         && shorterThanScan === 9 && request?.request.scanLength === 9 && Array.from(request?.request.text ?? "").length === 45
-        || { plain, withLongKeys, disabledLongKeys, capped, frequencyOnly, shorterThanScan, request: request?.request && { scanLength: request.request.scanLength, textLength: Array.from(request.request.text).length } },
-      "the long-key window applies only while the Long dictionary entries flag is on":
-        flagOff === 9 && flagBackOn === 45 || { flagOff, flagBackOn } };
+        || { plain, withLongKeys, disabledLongKeys, capped, frequencyOnly, shorterThanScan, request: request?.request && { scanLength: request.request.scanLength, textLength: Array.from(request.request.text).length } } };
   }
 
   async function hoverGlyphCase() {

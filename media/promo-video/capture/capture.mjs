@@ -332,10 +332,10 @@ try {
     return status?.ok && status.ready && !status.loading;
   }), Boolean, "engine ready");
   // Hover lookups (Reading → Activation: No key) with the Hachidori palette;
-  // MDX import and the Theme Store are Settings → Advanced → Experimental features.
+  // the Theme Store is under Settings → Advanced → Experimental features.
   const experimental = await settings.evaluate(() => ({
     ...Object.fromEntries(HDReaderOptions.EXPERIMENTAL_FEATURES.map(feature => [feature.id, false])),
-    mdxImport: true, themeStore: true }));
+    themeStore: true }));
   await writeOptions({ popupTheme: "default", lookupMode: "hover", experimental });
   await settings.reload();
   await settings.waitForSelector("#import-file");
