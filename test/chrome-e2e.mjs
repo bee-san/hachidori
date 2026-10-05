@@ -12450,7 +12450,7 @@ async function main() {
             audio: "audio-source-add", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
-            advanced: "opt-experimental-longKeyScan",
+            advanced: "opt-experimental-googleDocs",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
