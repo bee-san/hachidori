@@ -17,6 +17,8 @@ import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
+import { LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
+import { uploadDictionary } from "./linked-import.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
@@ -201,6 +203,8 @@ let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
 let sharingLinkedAddress = null;
+// Whether that Hachidori currently accepts dictionary uploads.
+let linkedImportAvailable = false;
 let backupController;
 let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
@@ -350,6 +354,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
+  if (activeSection === "add-dictionaries") void refreshLinkedImport();
   if (activeSection === "advanced") refreshAdvancedMemory();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
@@ -430,14 +435,36 @@ function renderSharingLink(value) {
   const linked = sharingLinkedAddress !== null;
   localAudioSetup?.render();
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
-  element("sharing-import-notice").hidden = !linked;
+  if (!linked) linkedImportAvailable = false;
+  renderLinkedImport();
   element("sharing-backup-notice").hidden = !linked;
-  element("import-drop-zone").hidden = linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
   element("automatic-backups").hidden = linked;
   if (wasLinked && !linked) {
     void backupController?.refreshAutomaticBackups();
   }
+  if (linked) void refreshLinkedImport();
+}
+
+function renderLinkedImport() {
+  const linked = sharingLinkedAddress !== null;
+  element("sharing-import-notice").hidden = !linked || linkedImportAvailable;
+  element("sharing-import-remote-notice").hidden = !linked || !linkedImportAvailable;
+  element("import-drop-zone").hidden = linked && !linkedImportAvailable;
+}
+
+// The host advertises uploads while its setting is on; ask again whenever the
+// import section opens, since the host can change it at any time.
+async function refreshLinkedImport() {
+  if (sharingLinkedAddress === null) return;
+  try {
+    const reply = await send("hd_sharing_status", {}, SHARING_TARGET);
+    const capabilities = reply.ok ? reply.sharing?.client?.host?.capabilities ?? [] : [];
+    linkedImportAvailable = sharingLinkedAddress !== null && capabilities.includes(LINKED_IMPORT_CAPABILITY);
+  } catch {
+    linkedImportAvailable = false;
+  }
+  renderLinkedImport();
 }
 
 // Save the pinned release through a blob download, including in Electron hosts.
@@ -2800,14 +2827,22 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   // The decision happens before this URL exists, so Cancel cannot start a
   // native import, create a generation, or mutate persistent storage.
   const started = Date.now();
+  // A linked browser sends the archive to the host, which applies the same
+  // choice against its own library (the one mirrored here).
+  if (sharingLinkedAddress !== null) {
+    return importArchive(() => uploadDictionary({
+      blob: file, fileName: file.name, replace: importDecision.action === "replace",
+      send: (type, fields) => send(type, fields, LINKED_IMPORT_TARGET),
+    }), index, total, label, started);
+  }
   const blobUrl = URL.createObjectURL(file);
   try {
-    return await importArchive({
+    return await importArchive(() => send("hd_import", {
       blobUrl,
       fileName: file.name,
       ...request,
       importDecision,
-    }, index, total, label, started);
+    }), index, total, label, started);
   } finally {
     // The offscreen document has read the bytes by now; holding the URL any
     // longer just pins the file.
@@ -2815,7 +2850,7 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   }
 }
 
-async function importArchive(request, index, total, label, started) {
+async function importArchive(runImport, index, total, label, started) {
   const tick = () => {
     const elapsed = elapsedSince(started);
     setImportState(
@@ -2828,7 +2863,7 @@ async function importArchive(request, index, total, label, started) {
   const ticker = setInterval(tick, 1000);
 
   try {
-    const reply = await send("hd_import", request);
+    const reply = await runImport();
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
       // What an MDX import left out. Notes never turn a success into a
@@ -2960,7 +2995,9 @@ function isMddResourceOf(mdxName, name) {
 }
 
 function groupImportFiles(files) {
-  if (options.experimental.mdxImport !== true) {
+  // An upload carries one archive, so a linked browser sends every file as a
+  // ZIP and the host explains why it refuses an .mdx or .mdd.
+  if (options.experimental.mdxImport !== true || sharingLinkedAddress !== null) {
     return files.map((file) => ({ kind: "zip", file }));
   }
   const items = [];
@@ -2987,11 +3024,11 @@ async function importMdx(item, index, total) {
   const started = Date.now();
   const urls = [file, ...resources].map((entry) => URL.createObjectURL(entry));
   try {
-    return await importArchive({
+    return await importArchive(() => send("hd_import", {
       blobUrl: urls[0],
       fileName: file.name,
       resources: resources.map((resource, position) => ({ fileName: resource.name, blobUrl: urls[position + 1] })),
-    }, index, total, file.name, started);
+    }), index, total, file.name, started);
   } finally {
     for (const url of urls) URL.revokeObjectURL(url);
   }

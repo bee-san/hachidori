@@ -140,6 +140,10 @@ export function createSharingSettingsController({
     const wantsNetwork = sharing?.network?.enabled === true;
     if (network.checked !== wantsNetwork) network.checked = wantsNetwork;
     network.disabled = pending || !enabled || isLinked;
+    const imports = element("sharing-host-imports");
+    const allowsImports = sharing?.linkedImports === true;
+    if (imports.checked !== allowsImports) imports.checked = allowsImports;
+    imports.disabled = pending || sharing === null || isLinked;
     element("sharing-addon").hidden = hosting() || isLinked;
     element("sharing-addon-download").disabled = pending;
     const port = element("sharing-host-port");
@@ -268,6 +272,9 @@ export function createSharingSettingsController({
   });
   element("sharing-host-network").addEventListener("change", (event) => {
     void run(() => send("hd_sharing_host_enable", { port: sharing?.port ?? portValue(), network: event.target.checked }));
+  });
+  element("sharing-host-imports").addEventListener("change", (event) => {
+    void run(() => send("hd_sharing_linked_imports", { enabled: event.target.checked }));
   });
   element("sharing-host-port").addEventListener("input", () => {
     portDraft = element("sharing-host-port").value;
