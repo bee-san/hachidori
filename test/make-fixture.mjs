@@ -46,28 +46,42 @@ function zipEntry(name, data, method) {
   return { name: utf8(name), raw, body, method: chosen, crc: crc32(raw) >>> 0 };
 }
 
-function buildZip(entries) {
+// With dataDescriptors, every entry is written the way a streaming writer
+// writes it: general-purpose bit 3 set, zero CRC and sizes in the local header,
+// and the real values in a signed data descriptor after the data (APPNOTE
+// 4.3.9, 4.4.4). The central directory is the same either way.
+function buildZip(entries, { dataDescriptors = false } = {}) {
   const chunks = [];
   const records = [];
   let offset = 0;
+  const flags = dataDescriptors ? 0x0808 : 0x0800; // UTF-8 names, plus bit 3
 
   for (const e of entries) {
     const lfh = Buffer.alloc(30);
     lfh.writeUInt32LE(0x04034b50, 0);
     lfh.writeUInt16LE(20, 4); // version needed
-    lfh.writeUInt16LE(0x0800, 6); // UTF-8 name flag
+    lfh.writeUInt16LE(flags, 6);
     lfh.writeUInt16LE(e.method, 8);
     lfh.writeUInt16LE(0, 10); // mod time
     lfh.writeUInt16LE(0x21, 12); // mod date: 2000-01-01
-    lfh.writeUInt32LE(e.crc, 14);
-    lfh.writeUInt32LE(e.body.length, 18);
-    lfh.writeUInt32LE(e.raw.length, 22);
+    lfh.writeUInt32LE(dataDescriptors ? 0 : e.crc, 14);
+    lfh.writeUInt32LE(dataDescriptors ? 0 : e.body.length, 18);
+    lfh.writeUInt32LE(dataDescriptors ? 0 : e.raw.length, 22);
     lfh.writeUInt16LE(e.name.length, 26);
     lfh.writeUInt16LE(0, 28); // extra length; zip.cpp adds it to data_offset
 
     records.push({ ...e, lfhOffset: offset });
     chunks.push(lfh, e.name, e.body);
     offset += lfh.length + e.name.length + e.body.length;
+    if (dataDescriptors) {
+      const descriptor = Buffer.alloc(16);
+      descriptor.writeUInt32LE(0x08074b50, 0);
+      descriptor.writeUInt32LE(e.crc, 4);
+      descriptor.writeUInt32LE(e.body.length, 8);
+      descriptor.writeUInt32LE(e.raw.length, 12);
+      chunks.push(descriptor);
+      offset += descriptor.length;
+    }
   }
 
   const cdStart = offset;
@@ -76,7 +90,7 @@ function buildZip(entries) {
     cdh.writeUInt32LE(0x02014b50, 0);
     cdh.writeUInt16LE(20, 4); // version made by
     cdh.writeUInt16LE(20, 6); // version needed
-    cdh.writeUInt16LE(0x0800, 8); // UTF-8 name flag
+    cdh.writeUInt16LE(flags, 8);
     cdh.writeUInt16LE(e.method, 10);
     cdh.writeUInt16LE(0, 12);
     cdh.writeUInt16LE(0x21, 14);
@@ -121,7 +135,7 @@ function forgeZip(entries, { eocdEntries } = {}) {
     const lfh = Buffer.alloc(30);
     lfh.writeUInt32LE(0x04034b50, 0);
     lfh.writeUInt16LE(20, 4);
-    lfh.writeUInt16LE(0x0800, 6);
+    lfh.writeUInt16LE(e.flags ?? 0x0800, 6);
     lfh.writeUInt16LE(e.method ?? STORE, 8);
     lfh.writeUInt16LE(0, 10);
     lfh.writeUInt16LE(0x21, 12);
@@ -142,7 +156,7 @@ function forgeZip(entries, { eocdEntries } = {}) {
     cdh.writeUInt32LE(0x02014b50, 0);
     cdh.writeUInt16LE(20, 4);
     cdh.writeUInt16LE(20, 6);
-    cdh.writeUInt16LE(0x0800, 8);
+    cdh.writeUInt16LE(e.flags ?? 0x0800, 8);
     cdh.writeUInt16LE(e.method ?? STORE, 10);
     cdh.writeUInt16LE(0, 12);
     cdh.writeUInt16LE(0x21, 14);
@@ -525,6 +539,13 @@ export function fixtureEntries() {
 
 export function buildFixtureZip() {
   return buildZip(fixtureEntries());
+}
+
+// The same fixture as a streaming writer lays it out, every size deferred to a
+// data descriptor: the shape of the Nipponica archive in #491, whose term
+// banks, index.json and styles.css leave zero sizes in their local headers.
+export function buildDataDescriptorZip() {
+  return buildZip(fixtureEntries(), { dataDescriptors: true });
 }
 
 // The fixture with a different declared title, and optionally with the term bank
@@ -1168,13 +1189,16 @@ export async function buildRatioZip(ratio) {
 }
 
 // A deflate entry whose local and central uncompressed sizes disagree; the
-// parser cannot trust either without the other agreeing.
-export function buildForgedSizeZip() {
+// parser cannot trust either without the other agreeing. With dataDescriptor
+// the entry also sets general-purpose bit 3, which lets a local header leave
+// its sizes zero but not record different ones.
+export function buildForgedSizeZip({ dataDescriptor = false } = {}) {
   const entries = hostileBaseEntries();
   const stream = deflateRawSync(utf8('x'), { level: 9 });
   entries.push({
     name: 'term_bank_1.json',
     method: DEFLATE,
+    flags: dataDescriptor ? 0x0808 : 0x0800,
     body: stream,
     crc: 0,
     lfhCompressed: stream.length,
