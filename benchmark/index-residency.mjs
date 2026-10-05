@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Real Chrome/threaded OPFS. Native importer output is installed once into
-// each profile, then restored without reimport under alternating policies.
+// each fresh profile, then restored without reimport under alternating policies.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
@@ -26,8 +26,6 @@ const probe = readFileSync(resolve(repo, "benchmark/hover-popup-probe.js"), "utf
 // A temporary public key keeps the extension origin stable across profile
 // copies and both revisions. It never changes the production manifest.
 const publicKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({ type: "spki", format: "der" }).toString("base64");
-const seedDirectory = mkdtempSync(resolve(tmpdir(), "hachidori-index-seed-"));
-let seeded = false;
 mkdirSync(output, { recursive: true });
 const allowed = new Map();
 allowed.set("/replace.zip", resolve(arg("fixture"), "replace.zip"));
@@ -75,7 +73,6 @@ async function sample(variant, repetition) {
   assert.equal(background.split(hostConfig).length, 2);
   writeFileSync(backgroundFile, background.replace(hostConfig, "  const host = null;"));
   cpSync(resolve(repo, "benchmark/index-residency-seed.js"), resolve(extension, "benchmark-seed-worker.js"));
-  if (seeded) cpSync(resolve(seedDirectory, "profile"), resolve(directory, "profile"), { recursive: true });
   const policyFile = resolve(extension, "dictionary-index-storage.js");
   if (/^\d+$/.test(variant)) {
     const original = readFileSync(policyFile, "utf8");
@@ -138,7 +135,7 @@ async function sample(variant, repetition) {
     }, baseline ? null : desiredIndex);
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
-    if (!seeded) await page.evaluate(async (dictionaries, files, origin) => {
+    await page.evaluate(async (dictionaries, files, origin) => {
       // Each package's setup worker releases its fetch buffers and OPFS handles
       // before the next one. None of this untimed work survives into the sample.
       for (const dictionary of dictionaries) await new Promise((done, reject) => {
@@ -151,10 +148,6 @@ async function sample(variant, repetition) {
     }, fixture.dictionaries.map(({ directory, ...dictionary }) => dictionary), fixture.files.map(({ name, bytes }) => ({ name, bytes })), origin);
     await browser.close(); browser = null;
     writeFileSync(offscreenFile, offscreenSource);
-    if (!seeded) {
-      cpSync(resolve(directory, "profile"), resolve(seedDirectory, "profile"), { recursive: true });
-      seeded = true;
-    }
     console.log(`${variant} #${repetition+1}: installed profile prepared`);
     const loadStarted = performance.now();
     await launch();
@@ -331,5 +324,4 @@ try {
   writeFileSync(resolve(output, "results.json"), JSON.stringify({ definition, rows }, null, 2));
 } finally {
   await new Promise(done => server.close(done));
-  rmSync(seedDirectory, { recursive: true, force: true });
 }
