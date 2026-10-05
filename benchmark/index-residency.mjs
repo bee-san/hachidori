@@ -96,7 +96,6 @@ async function sample(variant, repetition) {
   assert.equal(content.split(marker).length, 2);
   writeFileSync(contentFile, content.replace(marker, `${probe}\n${marker}`));
   let browser, page, id;
-  const diagnostics = [];
 
   const desiredIndex = baseline ? "resident" : variant === "resident" || variant === "paged" ? variant : "auto";
   const request = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields }), type, fields);
@@ -104,14 +103,6 @@ async function sample(variant, repetition) {
     browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true,
       userDataDir: resolve(directory, "profile"), protocolTimeout: 600000,
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
-    browser.on("targetcreated", async target => {
-      try {
-        const session = await target.createCDPSession();
-        session.on("Runtime.exceptionThrown", event => diagnostics.push(event.exceptionDetails.exception?.description ?? event.exceptionDetails.text));
-        session.on("Runtime.consoleAPICalled", event => { if (event.type === "error") diagnostics.push(event.args.map(arg => arg.value ?? arg.description).join(" ")); });
-        await session.send("Runtime.enable");
-      } catch {}
-    });
     const target = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().startsWith("chrome-extension://"));
     id = new URL(target.url()).host;
     page = await browser.newPage();
@@ -320,7 +311,7 @@ async function sample(variant, repetition) {
       + ` warm p50 ${passes[1].roundTrip.median.toFixed(2)} / p95 ${passes[1].roundTrip.p95.toFixed(2)} ms; parity ${passes[0].resultHash}`);
     return row;
   } catch (error) {
-    console.error(JSON.stringify({ error: String(error), diagnostics, status: await request("hd_status").catch(() => null) }, null, 2));
+    console.error(JSON.stringify({ error: String(error) }, null, 2));
     throw error;
   } finally { await browser?.close(); rmSync(directory, { recursive: true, force: true }); }
 }
