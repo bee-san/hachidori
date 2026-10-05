@@ -90,7 +90,11 @@ async function sample(variant, repetition) {
   source = source.replace('termLookupReply(json, "hdw_lookup")', '{ ...termLookupReply(json, "hdw_lookup"), nativeMs }');
   writeFileSync(serviceFile, source);
   const offscreenFile = resolve(extension, "offscreen.js");
-  writeFileSync(offscreenFile, `${readFileSync(offscreenFile, "utf8")}\nglobalThis.__benchmarkStopEngine = () => worker.terminate();\n`);
+  const offscreenSource = readFileSync(offscreenFile, "utf8");
+  // Seed an empty profile before any native OPFS mount owns handles. The
+  // unmodified bridge is restored before the measured browser starts.
+  if (!seeded) writeFileSync(offscreenFile, offscreenSource.replace(
+    /(function startWorkerEngine\([^\n]+\) \{)/, "$1\n  return; // benchmark setup only"));
   const contentFile = resolve(extension, "content.js");
   const content = readFileSync(contentFile, "utf8"), marker = '  start();\n}());';
   assert.equal(content.split(marker).length, 2);
@@ -120,7 +124,7 @@ async function sample(variant, repetition) {
   }
   try {
     await launch();
-    await page.waitForFunction(async () => (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).ready, { polling: 50, timeout: 120000 });
+    if (seeded) await page.waitForFunction(async () => (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).ready, { polling: 50, timeout: 120000 });
     const optionReply = await page.evaluate(async desiredIndex => {
       const options = (await chrome.storage.local.get("options")).options ?? {};
       return chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision ?? 0,
@@ -128,16 +132,7 @@ async function sample(variant, repetition) {
           audioAutoplay: false, showLookupCounts: false, maxResults: 256, hoverEnabled: true, lookupMode: "hover", showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, definitionBlurCountEnabled: false } });
     }, baseline ? null : desiredIndex);
     assert.equal(optionReply.ok, true, JSON.stringify(optionReply));
-    await ready(seeded ? fixture.packages : 0);
-    if (!seeded) {
-      // Setup writes must not compete with the mounted WasmFS OPFS handles.
-      // The measured engine starts only after these files are persisted.
-      const offscreen = await browser.waitForTarget(target => target.url().endsWith("/offscreen.html"));
-      const session = await offscreen.createCDPSession();
-      const stopped = await session.send("Runtime.evaluate", { expression: "__benchmarkStopEngine()" });
-      assert.equal(stopped.exceptionDetails, undefined);
-      await session.detach();
-    }
+    if (seeded) await ready();
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
     if (!seeded) await page.evaluate(async (dictionaries, fileNames, origin) => {
@@ -152,6 +147,7 @@ async function sample(variant, repetition) {
       await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries } });
     }, fixture.dictionaries.map(({ directory, ...dictionary }) => dictionary), fixture.files.map(file => file.name), origin);
     await browser.close(); browser = null;
+    writeFileSync(offscreenFile, offscreenSource);
     if (!seeded) {
       cpSync(resolve(directory, "profile"), resolve(seedDirectory, "profile"), { recursive: true });
       seeded = true;
