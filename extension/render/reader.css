@@ -1404,15 +1404,12 @@ html[data-hoshidicts-theme="girlypop"],
   column-gap: 6px;
 }
 
-/* Starts at zero and grows to its natural width, so it stays beside the
-   lookup count and wraps its own tags; only a tag too wide for that space
-   moves it below. */
+/* Keeps its natural width, so the lookup count after it never changes how its
+   tags wrap: they wrap only when they do not fit on a line by themselves. */
 .gsm-hoshidicts-primary-metadata-capsule {
   display: flex;
-  flex: 1 1 0;
   flex-wrap: wrap;
   align-items: baseline;
-  max-width: max-content;
   margin: var(--hd-space-2) 0 0;
   color: var(--text-color-light1);
   font-size: var(--hd-font-label);
@@ -2341,8 +2338,13 @@ html[data-hoshidicts-theme="girlypop"],
   color: var(--hoshidicts-danger);
 }
 
+/* The count arrives after the frequency tags have painted, so it is shown
+   after them and never moves them; screen readers still meet it first. While
+   it is on its way its place is kept, unpainted, at least a two-digit count
+   wide, so a count up to 99 does not move the definitions either. */
 .gsm-hoshidicts-lookup-stats {
   display: inline-block;
+  order: 1;
   margin: var(--hd-space-2) 0 0;
   padding: var(--hd-space-1) var(--hd-space-3);
   border: 1px solid var(--hoshidicts-border);
@@ -2353,6 +2355,25 @@ html[data-hoshidicts-theme="girlypop"],
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   line-height: 1.3;
+  text-align: center;
+}
+
+/* The kept count, zero-height, sets the least width. Its line overlaps the
+   count's, so both give the pill the same baseline. */
+.gsm-hoshidicts-lookup-stats::before {
+  display: block;
+  height: 0;
+  visibility: hidden;
+  content: attr(data-placeholder);
+}
+
+/* On its way: the kept count's line holds the place and nothing paints. */
+.gsm-hoshidicts-lookup-stats:empty {
+  visibility: hidden;
+}
+
+.gsm-hoshidicts-lookup-stats:empty::before {
+  height: auto;
 }
 
 .gsm-hoshidicts-lookup-stats[hidden] {

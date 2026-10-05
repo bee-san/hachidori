@@ -2927,14 +2927,16 @@
       return sourceHighlightEnabled;
     }
 
-    function setLookupStats(element, payload) {
+    // A count on its way (pending) keeps the slot's place, unpainted, so its
+    // arrival moves nothing. With neither a count nor one on its way, it hides.
+    function setLookupStats(element, payload, pending = false) {
       const lookedUp = formatLookupCount(
         "Looked up",
         payload && payload.lookupCount
       );
       element.textContent = lookedUp ?? "";
-      element.hidden = lookedUp === null;
-      if (!element.hidden) {
+      element.hidden = lookedUp === null && !pending;
+      if (lookedUp !== null) {
         positionPopup();
       }
     }
@@ -3525,6 +3527,9 @@
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.setAttribute("role", "status");
           lookupStats.setAttribute("aria-live", "polite");
+          // The stylesheet shows the count after the tags, at least this wide:
+          // the place a count up to 99 keeps while it is on its way.
+          lookupStats.dataset.placeholder = formatLookupCount("Looked up", 99);
           lookupStats.hidden = true;
           primaryMetadataRow.appendChild(lookupStats);
         }

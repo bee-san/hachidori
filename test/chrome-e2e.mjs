@@ -1573,9 +1573,10 @@ async function popupReader(page, depth = 0) {
               && capsuleRect.top >= entryRect.top - 1 && capsuleRect.bottom <= entryRect.bottom + 1),
             // Same row: baseline-aligned tags sit a little lower than the
             // lookup pill's top, so overlap is the row test, not equal tops.
+            // The count arrives later, so it follows the tags (#486).
             besideLookupCount: Boolean(capsuleRect && lookupCountRect && !metadataCapsule.hidden
               && capsuleRect.top < lookupCountRect.bottom && capsuleRect.bottom > lookupCountRect.top
-              && capsuleRect.left >= lookupCountRect.right),
+              && lookupCountRect.left >= capsuleRect.right),
             plain: Boolean(capsuleStyle
               && capsuleStyle.borderTopStyle === "none"
               && capsuleStyle.backgroundColor === "rgba(0, 0, 0, 0)"),
