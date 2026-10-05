@@ -12,12 +12,14 @@
 import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js";
 import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
+import { decodeBase64 } from "./base64.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const AUDIO_TARGET = "hachidori-audio";
 const ANKI_TARGET = "hachidori-anki-render";
 const SETUP_TARGET = "hachidori-setup";
+const UPLOAD_STORE_TARGET = "hachidori-upload-store";
 let audioService, ankiService, audioRepository, setupInstaller;
 function getAudioRepository() {
   audioRepository ??= import("./audio-repository.js").then(module => module.createAudioRepository({
@@ -525,6 +527,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return installer.attach(message.sourceIds, { recordSetup: message.recordSetup === true });
   }).then(
     (result) => sendResponse({ type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, error: null, ...result }),
+    (error) => sendResponse(failedResponse(message, describe(error))),
+  );
+  return true;
+});
+
+// Dictionary uploads from another Hachidori (linked-import.js): the service
+// worker validates each chunk and its owner; this document holds the bytes
+// until commit hands them to the engine as an ordinary local import.
+const uploads = new Map();
+let uploadIdentity = null;
+
+function uploadedArchive(token) {
+  const parts = uploads.get(token);
+  if (parts === undefined) throw new Error("The dictionary upload is no longer held on the host. Import it again.");
+  return new Blob(parts);
+}
+
+async function answerUpload(message) {
+  switch (message.type) {
+    case "hd_upload_append": {
+      const bytes = decodeBase64(message.data);
+      if (bytes.byteLength !== message.byteLength) throw new Error("the dictionary upload chunk did not decode to its length");
+      if (!uploads.has(message.token)) uploads.set(message.token, []);
+      uploads.get(message.token).push(new Blob([bytes]));
+      return {};
+    }
+    case "hd_upload_discard":
+      uploads.delete(message.token);
+      return {};
+    // A restarted service worker no longer knows the uploads held here.
+    case "hd_upload_reset":
+      uploads.clear();
+      return {};
+    case "hd_upload_identity":
+      uploadIdentity ??= import("./dictionary-import-archive.js");
+      return { identity: await (await uploadIdentity).readDictionaryArchiveIdentity(uploadedArchive(message.token)) };
+    case "hd_upload_import": {
+      const blobUrl = URL.createObjectURL(uploadedArchive(message.token));
+      try {
+        return await new Promise((resolve) => dispatchEngine({
+          target: TARGET, type: "hd_import", requestId: message.requestId ?? null,
+          blobUrl, fileName: message.fileName, importDecision: message.importDecision,
+        }, resolve));
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }
+    default:
+      throw new Error(`unknown upload request type ${JSON.stringify(message.type)}`);
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== UPLOAD_STORE_TARGET || message.relayed !== true) return false;
+  answerUpload(message).then(
+    (result) => sendResponse(message.type === "hd_upload_import" ? result
+      : { type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, error: null, ...result }),
     (error) => sendResponse(failedResponse(message, describe(error))),
   );
   return true;

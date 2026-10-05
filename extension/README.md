@@ -106,7 +106,9 @@ the service worker and both engine runtimes run the same code.
   and `backup-settings.js` the manual and automatic restore controls.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
-  worker; `sharing-settings.js` is the Settings section. `anki-addon.js` pins
+  worker; `sharing-settings.js` is the Settings section. `linked-import.js`
+  sends a dictionary archive to a host in chunks and, on the host, holds the
+  upload until it imports it ([docs/sharing.md](../docs/sharing.md#imports-from-linked-browsers)). `anki-addon.js` pins
   and downloads the compatible `.ankiaddon` release from
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.

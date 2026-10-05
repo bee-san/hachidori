@@ -83,3 +83,27 @@ test("a request from a retired relay client cannot reply into a replacement sess
     response: { ok: true, type: "fresh" },
   }]);
 });
+
+test("a closed client is reported, including every client of a lost relay socket", async () => {
+  Socket.instances.length = 0;
+  const closed = [];
+  const host = createSharingHost({
+    WebSocket: Socket,
+    alarms: { clear() {}, create() {} },
+    dispatch: async () => ({ ok: true }),
+    readSnapshot: async () => ({ dictionaryState: { dictionaries: [{}] } }),
+    sharedKey: () => true,
+    version: "1.0.0",
+    name: "Chrome",
+    clientClosed: clientId => closed.push(clientId),
+  });
+  host.enable({ port: 8771, dictionaries: 1 });
+  const socket = Socket.instances[0];
+  for (const clientId of ["first", "second", "third"]) {
+    socket.receive({ kind: "client-open", clientId, address: "127.0.0.1" });
+  }
+  socket.receive({ kind: "client-close", clientId: "first" });
+  socket.receive({ kind: "client-close", clientId: "first" });
+  socket.close();
+  assert.deepEqual(closed, ["first", "second", "third"]);
+});

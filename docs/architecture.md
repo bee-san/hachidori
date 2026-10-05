@@ -120,8 +120,7 @@ reuses its intact input bytes and retries single-threaded. Failed rollback and
 unknown commit outcomes are never retried, and a second failure stops the import
 with explicit recovery advice. No archive-size limit is imposed.
 
-While the experimental **MDX dictionaries** flag (`options.experimental.mdxImport`)
-is on, the same picker and drop zone also take MDict files. Settings groups one
+The same picker and drop zone also take MDict files. Settings groups one
 `.mdx` with the `.mdd` files named after its stem (`Dict.mdd`, `Dict.1.mdd`, …,
 case-insensitively), sends them as one `hd_import` whose `resources` list the
 MDD blob URLs, and reports a `.mdd` without its `.mdx` instead of importing it.
@@ -831,11 +830,9 @@ past `scanLength` only when the processed text begins like one of those keys, up
 to that key's length plus eight code points for an inflected ending; other text
 keeps the cost of `scanLength`. `packageFromIndex` records the longest such key
 on the package row as `longKeyLength` (0 for packages imported before the index
-existed). While the experimental **Long dictionary entries** flag
-(`options.experimental.longKeyScan`) is on, the reader collects
-`max(scanLength, longKeyLength + 8)` code points of page text across enabled
-term packages, capped at 256, while still requesting `scanLength`; with the flag
-off it collects `scanLength` as before, so the engine never sees a longer key.
+existed). The reader collects `max(scanLength, longKeyLength + 8)` code points
+of page text across enabled term packages, capped at 256, while still
+requesting `scanLength`.
 Scans shorter than eight code points never extend, so a clicked-kanji lookup
 stays one character.
 
