@@ -16,6 +16,7 @@ const repo = resolve(import.meta.dirname, "..");
 const fixture = JSON.parse(readFileSync(resolve(arg("fixture"), "fixture.json"), "utf8"));
 const output = resolve(arg("output"));
 const samples = Number(arg("samples", "3"));
+const measureTotal = arg("measure-total", "false") === "true";
 const variants = arg("variants", "resident,16,32,64,paged").split(",");
 const before = arg("before", null);
 const baseExtension = resolve(repo, "extension");
@@ -53,7 +54,7 @@ const rows = [];
 const definition = { revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(),
   extensionSha256: directoryContentSha256(baseExtension), beforeExtensionSha256: before ? directoryContentSha256(resolve(before, "extension")) : null,
   node: process.version, chrome: execFileSync(chrome, ["--version"], { encoding: "utf8" }).trim(),
-  environment: hostSnapshot(), fixture, samples, variants, before,
+  environment: hostSnapshot(), fixture, samples, variants, before, measureTotal,
   boundary: "fresh engine; cache includes header/startup warmup pages; OS cache is uncontrolled; engine ccall includes serialization/glue; round trip excludes CDP and rendering" };
 writeFileSync(resolve(output, "definition.json"), JSON.stringify(definition, null, 2));
 
@@ -116,7 +117,12 @@ async function sample(variant, repetition) {
   }
   async function ready(count = fixture.packages) {
     return page.waitForFunction(async (count, desiredIndex) => {
-      const s = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+      // A startup message can lose its reply while Chrome activates/replaces
+      // extension contexts. Retry observations; never retry a mutation.
+      let timer;
+      const s = await Promise.race([chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+        new Promise(done => { timer = setTimeout(() => done(null), 1000); })]);
+      clearTimeout(timer);
       if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
       return s?.ok && s.ready && !s.loading && s.lowMemory && s.dictionaryCount === count*4
         && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
@@ -124,7 +130,6 @@ async function sample(variant, repetition) {
   }
   try {
     await launch();
-    if (seeded) await page.waitForFunction(async () => (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).ready, { polling: 50, timeout: 120000 });
     const optionReply = await page.evaluate(async desiredIndex => {
       const options = (await chrome.storage.local.get("options")).options ?? {};
       return chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision ?? 0,
@@ -301,6 +306,16 @@ async function sample(variant, repetition) {
         await page.evaluate(palette => { document.documentElement.dataset.hoshidictsTheme = palette; }, palette);
         await (await page.$("#memory-settings")).screenshot({ path: resolve(output, `screenshots/memory-${palette}.png`) });
       }
+    }
+    // Optional browser-wide snapshot after all timing and UI checks. Chrome's
+    // GC-based measurement can take seconds; retain an unavailable result if
+    // it does not answer in this benchmark's observation window.
+    if (measureTotal) {
+      let timer;
+      row.extensionTotal = await Promise.race([request("hd_memory_total"), new Promise(done => {
+        timer = setTimeout(() => done({ ok: false, error: "measurement did not answer within 30 seconds" }), 30000);
+      })]);
+      clearTimeout(timer);
     }
     appendJsonlDurable(resolve(output, "raw.jsonl"), row);
     console.log(`${variant} #${repetition+1}: heap ${(fresh.heapBytes/1048576).toFixed(1)} MiB;`
