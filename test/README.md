@@ -578,7 +578,10 @@ What it proves, in order:
    must complete import, reload from the installed files, and answer a lookup. The
    expanded-size fixtures carry valid raw-deflate streams while keeping their
    physical ZIPs small. Structurally inconsistent local and central headers and
-   impossible zero-byte deflate streams remain rejected.
+   impossible zero-byte deflate streams remain rejected. A copy of the fixture
+   whose local headers leave their sizes zero for a data descriptor (general-
+   purpose bit 3, as streaming writers produce) imports like the original, while
+   a bit-3 local header that records different sizes is still rejected.
 7. **`hdw_reset`** — every dictionary dropped (lookup, kanji, styles and media all
    return their empty forms), then reloaded from the same MEMFS directory.
 8. **Import staging.** `dictionary_importer::import` builds its output directory
