@@ -51,7 +51,6 @@ export async function checkLookupCountLayout(browser) {
           expression: "食べる", reading: "たべる", rules: "v1", score: 0, frequencies: values, pitches: [],
           glossaries: [{ dictionary: "JMdict", definitionTags: "v1", glossary: JSON.stringify(["to eat", "to live on (e.g. a salary)"]) }],
         } }], candidate, { showFrequencyDictionaryNames: names });
-        return slot;
       };
       const box = node => {
         const { x, y, width, height } = node.getBoundingClientRect();
