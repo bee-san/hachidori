@@ -103,6 +103,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
         entry.resolve(frame.response);
         return;
       }
+      case "capabilities":
+        if (host !== null) host = { ...host, capabilities: frame.capabilities };
+        return;
       case "storage":
         await applyBatch(frame.changes,
           () => socket === current && linkGeneration === currentGeneration);
@@ -150,7 +153,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
   // A request made while disconnected waits for one connection attempt; a
   // request in flight has no deadline, because a forwarded install can take
   // minutes and the socket closing rejects it anyway.
-  function forward(message, { capability = null, mutation = false, onSent = null } = {}) {
+  function forward(message, {
+    capability = null, unsupported = LINKED_ANKI_UNSUPPORTED, mutation = false, onSent = null,
+  } = {}) {
     return new Promise((resolve, reject) => {
       const id = ++nextId;
       const requestGeneration = linkGeneration;
@@ -160,7 +165,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
           return;
         }
         if (capability !== null && !host?.capabilities.includes(capability)) {
-          reject(new Error(LINKED_ANKI_UNSUPPORTED));
+          reject(new Error(unsupported));
           return;
         }
         const text = JSON.stringify({ kind: "request", id, message });

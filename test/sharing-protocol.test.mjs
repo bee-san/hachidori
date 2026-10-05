@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
-  MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
-  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
   parseClientFrame, parseHostFrame,
@@ -230,4 +230,36 @@ test("linked Anki submissions have one 16 MiB UTF-8 frame limit", () => {
     target: "hachidori-anki", type: "hd_anki_submit", clientMedia: { screenshot: { data: exact } },
   } });
   assert.throws(() => parseClientFrame(oversized), /16 MiB frame limit/u);
+});
+
+test("dictionary uploads forward to the host, rebuilt from the fields each step needs", () => {
+  for (const type of ["hd_import_begin", "hd_import_chunk", "hd_import_commit", "hd_import_abort"]) {
+    assert.equal(forwardableRequest({ target: LINKED_IMPORT_TARGET, type }), true, type);
+    assert.equal(mutatingForwardedRequest({ target: LINKED_IMPORT_TARGET, type }), type === "hd_import_commit", type);
+  }
+  assert.equal(forwardableRequest({ target: LINKED_IMPORT_TARGET, type: "hd_import" }), false);
+  assert.deepEqual(allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, type: "hd_import_begin", requestId: "b",
+    fileName: "characters.zip", size: 19_000_000, replace: true, importDecision: { action: "install" } }),
+  { target: LINKED_IMPORT_TARGET, type: "hd_import_begin", requestId: "b", fileName: "characters.zip", size: 19_000_000, replace: true });
+  assert.deepEqual(allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, type: "hd_import_chunk", requestId: 2,
+    token: "abc-1", offset: 0, data: "UEs=", blobUrl: "blob:x" }),
+  { target: LINKED_IMPORT_TARGET, type: "hd_import_chunk", requestId: 2, token: "abc-1", offset: 0, data: "UEs=" });
+  assert.deepEqual(allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, type: "hd_import_commit", token: "abc-1", replace: false }),
+    { target: LINKED_IMPORT_TARGET, type: "hd_import_commit", requestId: null, token: "abc-1" });
+  for (const bad of [
+    { type: "hd_import_begin", fileName: "a.zip", size: "4", replace: true },
+    { type: "hd_import_begin", fileName: "a.zip", size: 4 },
+    { type: "hd_import_chunk", token: "abc", offset: -0.5, data: "" },
+    { type: "hd_import_commit", token: "../x" },
+    { type: "hd_import_abort" },
+    { type: "hd_import" },
+  ]) {
+    assert.throws(() => allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, ...bad }), /dictionary upload/u, bad.type);
+  }
+});
+
+test("a host can change its capabilities on an open link", () => {
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "capabilities", capabilities: ["linked-import-v1"] })),
+    { kind: "capabilities", capabilities: ["linked-import-v1"] });
+  assert.throws(() => parseHostFrame(JSON.stringify({ kind: "capabilities", capabilities: [""] })), /capabilities/u);
 });

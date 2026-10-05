@@ -140,3 +140,17 @@ test("an obsolete host reply cannot settle a request owned by the replacement li
   assert.deepEqual(await lookup, { ok: true, results: ["current"] });
   client.unlink();
 });
+
+test("a host that turns uploads on mid-link is used without reconnecting", async () => {
+  const { client, socket } = await linked([]);
+  const upload = { target: "hachidori-linked-import", type: "hd_import_begin", requestId: "begin" };
+  await assert.rejects(client.forward(upload, { capability: "linked-import-v1", unsupported: "uploads are off" }),
+    /uploads are off/u);
+  socket.receive({ kind: "capabilities", capabilities: ["linked-import-v1"] });
+  await Promise.resolve();
+  const reply = client.forward(upload, { capability: "linked-import-v1", unsupported: "uploads are off" });
+  const sent = socket.sent.at(-1);
+  assert.equal(sent.message.type, "hd_import_begin");
+  socket.receive({ kind: "reply", id: sent.id, response: { ok: true, token: "t" } });
+  assert.deepEqual(await reply, { ok: true, token: "t" });
+});

@@ -26,6 +26,15 @@ export const API_CAPABILITY = "hoshidicts-api-v1";
 export const API_CLIENT_ORIGIN = "relay://yomitan-api";
 export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support host-owned Anki mining. Update it and try again.";
 export const MAX_LINKED_ANKI_FRAME_BYTES = 16 * 1024 * 1024;
+// A host advertises this only while Settings → Sharing lets linked browsers
+// import dictionaries; the archive then travels as a chunked upload.
+export const LINKED_IMPORT_CAPABILITY = "linked-import-v1";
+export const LINKED_IMPORT_TARGET = "hachidori-linked-import";
+export const LINKED_IMPORT_OFF = "Imports from linked clients are turned off on the host.";
+export const LINKED_IMPORT_UNSUPPORTED = "The linked Hachidori does not accept dictionary imports. Turn on \u201cLet linked browsers import dictionaries\u201d under Settings \u2192 Sharing there, or update it.";
+export const LINKED_IMPORT_REQUESTS = new Set([
+  "hd_import_begin", "hd_import_chunk", "hd_import_commit", "hd_import_abort",
+]);
 const HOST_PATH = "/host";
 const LINK_PATH = "/link";
 
@@ -51,6 +60,7 @@ export const FORWARDED_REQUESTS = {
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),
   "hachidori-anki": LINKED_ANKI_REQUESTS,
+  [LINKED_IMPORT_TARGET]: LINKED_IMPORT_REQUESTS,
 };
 
 const MUTATING_FORWARDED_REQUESTS = {
@@ -63,6 +73,7 @@ const MUTATING_FORWARDED_REQUESTS = {
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),
   "hachidori-anki": new Set(["hd_anki_submit"]),
+  [LINKED_IMPORT_TARGET]: new Set(["hd_import_commit"]),
 };
 
 export function forwardableRequest(message) {
@@ -243,6 +254,40 @@ export function allowLinkedAnkiSetupRequest(message) {
   };
 }
 
+function requestIdOf(message) {
+  return typeof message.requestId === "string" || Number.isFinite(message.requestId) ? message.requestId : null;
+}
+
+function uploadToken(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9-]{1,64}$/u.test(value)) throw new Error("malformed dictionary upload token");
+  return value;
+}
+
+// A linked browser is untrusted at the host boundary: rebuild each upload
+// request from the fields it needs. Sizes and offsets are byte counts.
+export function allowLinkedImportRequest(message) {
+  if (!message || typeof message !== "object" || message.target !== LINKED_IMPORT_TARGET
+      || !LINKED_IMPORT_REQUESTS.has(message.type)) {
+    throw new Error("unsupported dictionary upload request");
+  }
+  const base = { target: LINKED_IMPORT_TARGET, type: message.type, requestId: requestIdOf(message) };
+  switch (message.type) {
+    case "hd_import_begin":
+      if (typeof message.fileName !== "string" || message.fileName.length > 255
+          || !Number.isSafeInteger(message.size) || typeof message.replace !== "boolean") {
+        throw new Error("malformed dictionary upload request");
+      }
+      return { ...base, fileName: message.fileName, size: message.size, replace: message.replace };
+    case "hd_import_chunk":
+      if (!Number.isSafeInteger(message.offset) || typeof message.data !== "string") {
+        throw new Error("malformed dictionary upload chunk");
+      }
+      return { ...base, token: uploadToken(message.token), offset: message.offset, data: message.data };
+    default:
+      return { ...base, token: uploadToken(message.token) };
+  }
+}
+
 // A frame a client sends to the host.
 export function parseClientFrame(text) {
   const frame = parseJsonObject(text);
@@ -280,6 +325,8 @@ export function parseHostFrame(text) {
     case "storage":
       if (!frame.changes || typeof frame.changes !== "object" || Array.isArray(frame.changes)) throw new Error("malformed sharing storage frame");
       return { kind: "storage", changes: frame.changes };
+    case "capabilities":
+      return { kind: "capabilities", capabilities: parseCapabilities(frame.capabilities) };
     case "ping":
       return { kind: "ping" };
     case "bye":

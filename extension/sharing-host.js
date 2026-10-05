@@ -8,7 +8,7 @@
  */
 
 import {
-  DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
+  API_CLIENT_ORIGIN, DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
 } from "./sharing-protocol.js";
 
 export const SHARING_KEY = "sharing";
@@ -30,10 +30,13 @@ function relayAddresses(entries) {
 // with the same reply object a runtime sender would receive. `readSnapshot()`
 // returns the shared storage keys as stored. `sharedKey(key)` says whether a
 // storage change belongs to the mirror. `name` is what linked browsers call
-// this one.
+// this one. `clientClosed(clientId)` hears every client the relay or this host
+// drops.
 export function createSharingHost({
-  WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name, capabilities = SHARING_CAPABILITIES,
+  WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name, capabilities: initialCapabilities = SHARING_CAPABILITIES,
+  clientClosed = () => {},
 }) {
+  let capabilities = [...initialCapabilities];
   const clients = new Map();
   let enabled = false;
   let configuredPort = DEFAULT_SHARING_PORT;
@@ -93,7 +96,7 @@ export function createSharingHost({
       return;
     }
     if (frame.kind === "hello") {
-      Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities });
+      Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities, greeted: true });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
       sendTo(target, clientId, client,
@@ -137,7 +140,7 @@ export function createSharingHost({
         return;
       }
       case "client-close":
-        clients.delete(message.clientId);
+        if (clients.delete(message.clientId)) clientClosed(message.clientId);
         return;
       case "client-text":
         void handleClientText(target, message.clientId, String(message.text));
@@ -182,9 +185,15 @@ export function createSharingHost({
       socket = null;
       listeningPort = null;
       networkState = { active: false, addresses: [], error: null };
-      clients.clear();
+      clearClients();
       if (enabled) scheduleRetry();
     };
+  }
+
+  function clearClients() {
+    const closed = [...clients.keys()];
+    clients.clear();
+    for (const clientId of closed) clientClosed(clientId);
   }
 
   function dropSocket() {
@@ -192,7 +201,7 @@ export function createSharingHost({
     socket = null;
     listeningPort = null;
     networkState = { active: false, addresses: [], error: null };
-    clients.clear();
+    clearClients();
     previous?.close();
   }
 
@@ -214,6 +223,17 @@ export function createSharingHost({
         connect();
       } else if (listeningPort !== null) {
         post({ kind: "network", enabled: network });
+      }
+    },
+    // Clients that already said hello hear the new list at once; the relay's
+    // own API client never reads it.
+    setCapabilities(next) {
+      capabilities = [...next];
+      if (socket === null) return;
+      for (const [clientId, client] of clients) {
+        if (client.greeted && client.origin !== API_CLIENT_ORIGIN) {
+          sendTo(socket, clientId, client, { kind: "capabilities", capabilities });
+        }
       }
     },
     setDictionaries(count) {
