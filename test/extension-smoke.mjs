@@ -21925,9 +21925,77 @@ async function contentNoteStage() {
     return result;
   }
 
+  // Yomitan's Alt+wheel entry moves, as Alt+WheelDown/WheelUp keybinds: one
+  // press per notch, a touchpad's small steps gathered into notches, acting on
+  // the popup under the pointer and leaving the page nothing to scroll.
+  async function wheelKeybindCase() {
+    const result = {};
+    const wheel = (harness, target, deltaY, timeStamp, init = { altKey: true }) => {
+      const window = harness.popup.ownerDocument.defaultView;
+      const event = new window.WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true, composed: true, ...init });
+      Object.defineProperty(event, "timeStamp", { value: timeStamp });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const defaults = await createHarness();
+    try {
+      const window = defaults.popup.ownerDocument.defaultView;
+      let pageWheels = 0;
+      window.document.body.addEventListener("wheel", () => { pageWheels += 1; });
+      await defaults.initialLookup();
+      const moves = (depth = 0) => defaults.entryFocus(depth).length;
+      const notch = wheel(defaults, defaults.popup, 4, 1000) && moves() === 1;
+      let swallowed = true;
+      for (let step = 1; step < 25; step += 1) swallowed = wheel(defaults, defaults.popup, 4, 1000 + step * 10) && swallowed;
+      const gathered = swallowed && moves() === 1;
+      const nextNotch = wheel(defaults, defaults.popup, 4, 1250) && moves() === 2;
+      const afterPause = wheel(defaults, defaults.popup, 4, 1400) && moves() === 3;
+      const reversed = wheel(defaults, defaults.popup, -4, 1410) && moves() === 4;
+      const travelled = wheel(defaults, defaults.popup, -300, 1420) && moves() === 7;
+      const directions = JSON.stringify(defaults.entryFocus().map(target => target.offset)) === "[1,1,1,-1,-1,-1,-1]";
+      wheel(defaults, defaults.popup, 100, 1600, {});
+      const zoom = !wheel(defaults, defaults.popup, 100, 1800, { ctrlKey: true });
+      const unbound = moves() === 7;
+      const link = defaults.internalLink({ query: "child", primaryReading: "reading" });
+      defaults.reply(defaults.take("hd_lookup"), { dictionaryCount: 1, results: [defaults.term("child")] });
+      await link;
+      const child = defaults.driver.popupAt(1);
+      const childOnly = Boolean(child) && wheel(defaults, child, 4, 2000) && moves(1) === 1 && moves() === 7;
+      const parentOwn = wheel(defaults, defaults.popup, 4, 2010) && moves() === 8 && moves(1) === 1;
+      result["Alt+wheel keybinds press once per notch, gather touchpad steps and act on the popup under the pointer"] =
+        (notch && gathered && nextNotch && afterPause && reversed && travelled && directions && unbound && zoom
+          && childOnly && parentOwn && pageWheels === 0)
+        || { notch, gathered, nextNotch, afterPause, reversed, travelled, directions, unbound, zoom, childOnly, parentOwn,
+          pageWheels, focus: defaults.entryFocus(), childFocus: child ? defaults.entryFocus(1) : null };
+    } finally {
+      defaults.close();
+    }
+
+    const bind = (action, key, modifiers, extra = {}) =>
+      ({ action, argument: "", key, modifiers, scopes: ["popup"], enabled: true, ...extra });
+    const custom = await createHarness(undefined, { options: { keybinds: [
+      bind("firstEntry", "WheelDown", ["ctrl"]),
+      bind("nextEntry", "WheelDown", ["alt"], { argument: "1", enabled: false }),
+    ] } });
+    try {
+      await custom.initialLookup();
+      const remapped = wheel(custom, custom.popup, 100, 1000, { ctrlKey: true })
+        && JSON.stringify(custom.entryFocus()) === JSON.stringify(["first"]);
+      wheel(custom, custom.popup, 100, 1200);
+      wheel(custom, custom.popup, -100, 1400);
+      const zoom = !wheel(custom, custom.popup, -100, 1600, { ctrlKey: true });
+      const unbound = custom.entryFocus().length === 1;
+      result["custom wheel keybinds follow their modifiers and enablement, and unbound wheels keep scrolling"] =
+        (remapped && zoom && unbound) || { remapped, zoom, unbound, focus: custom.entryFocus() };
+    } finally {
+      custom.close();
+    }
+    return result;
+  }
+
   return {
     callbacksWired,
-    keybinds: await keybindCase(),
+    keybinds: { ...await keybindCase(), ...await wheelKeybindCase() },
     popupVisibility: await popupVisibilityCase(),
     fullscreenHost: await fullscreenHostCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },

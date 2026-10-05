@@ -37,11 +37,12 @@
   const {
     ACTIVATION_BUTTONS,
     DEFAULT_OPTIONS,
-    KEYBIND_MODIFIERS,
     KEYBIND_MODIFIER_CODES,
     clampOption,
     definitionBlurFrequencyEvidence,
     definitionBlurQualifies,
+    keybindModifiers,
+    keybindWheelKey,
     normaliseActivationKey,
     projectContentOptions,
   } = globalThis.HDReaderOptions;
@@ -2374,6 +2375,7 @@
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
     }, { capture: true, passive: true });
+    popup.addEventListener("wheel", (event) => onPopupWheelKeybind(event, level), { capture: true, passive: false });
     popup.addEventListener("wheel", onPopupWheel, { passive: false });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener("mouseleave", (event) => onPopupLeave(event, level));
@@ -3009,6 +3011,36 @@
       if (levels[index].noteEditing || levels[index].pendingCustomAppends > 0) return true;
     }
     return false;
+  }
+
+  // Wheel keybinds, after Yomitan's Alt+wheel entry moves: a wheel step's
+  // direction is its key, matched like a key press and acted on by the popup
+  // under the pointer. One notch presses the binding once. A touchpad's stream
+  // of small steps in one direction presses it when the stream starts and again
+  // for each further notch's worth of travel, rather than once per event. A
+  // handled step goes no further, so neither the pane nor the page scrolls; an
+  // unhandled one reaches the popup's wheel isolation below.
+  const WHEEL_NOTCH_PX = 100;
+  const WHEEL_GESTURE_GAP_MS = 100;
+  let wheelGesture = null;
+
+  function onPopupWheelKeybind(event, level) {
+    const key = keybindWheelKey(event);
+    if (disposed || key === null) return;
+    const signature = [key, ...keybindModifiers(event)].join();
+    const continuing = wheelGesture?.level === level && wheelGesture.signature === signature
+      && event.timeStamp - wheelGesture.timeStamp < WHEEL_GESTURE_GAP_MS;
+    const travel = continuing ? wheelGesture.travel + Math.abs(event.deltaY) : WHEEL_NOTCH_PX;
+    const presses = Math.floor(travel / WHEEL_NOTCH_PX);
+    let handled = continuing;
+    for (let press = 0; press < presses; press += 1) handled = runKeybinds(event, level, key) || handled;
+    if (!handled) {
+      wheelGesture = null;
+      return;
+    }
+    wheelGesture = { level, signature, timeStamp: event.timeStamp, travel: travel % WHEEL_NOTCH_PX };
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // The popup's wheel belongs to the popup. Readers such as ttu turn pages from
@@ -4261,7 +4293,8 @@
     return true;
   }
 
-  function runKeybindAction({ action, argument }, event) {
+  function runKeybindAction({ action, argument }, event,
+    level = levels.findLast((item) => item.popup && !item.popup.hidden)) {
     if (action === "close") return closeFromKeybind(event);
     if (action === "scanSelectedText" || action === "scanTextAtSelection") {
       if (!options.hoverEnabled) return false;
@@ -4278,7 +4311,6 @@
         options: { [argument]: !options[argument] } }, WORKER_TARGET).catch(() => {});
       return true;
     }
-    const level = levels.findLast((item) => item.popup && !item.popup.hidden);
     if (!level?.view || level.popup.inert) return false;
     const entry = level.view.currentEntryIndex();
     switch (action) {
@@ -4318,9 +4350,9 @@
 
   // After Yomitan's HotkeyHandler: the physical key and the exact modifier set
   // select enabled keybinds whose scope applies; the first handled one wins.
-  function runKeybinds(event) {
-    const key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code;
-    const modifiers = KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
+  // A wheel step passes its own key and the popup it is over.
+  function runKeybinds(event, level, key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code) {
+    const modifiers = keybindModifiers(event);
     // A pending lookup counts as its popup: Escape has always cancelled one.
     const popupScope = Boolean(rootLevel.popup && !rootLevel.popup.hidden)
       || pendingCandidateLookup !== null || activeSelectionCandidate !== null;
@@ -4331,7 +4363,7 @@
           || bind.key !== key || bind.modifiers.join() !== modifiers.join()
           || !(bind.scopes.includes("web") || (popupScope && bind.scopes.includes("popup")))
           || (characterInput && textFieldFocused())) continue;
-      if (runKeybindAction(bind, event) === false) continue;
+      if (runKeybindAction(bind, event, level) === false) continue;
       if (bind.action !== "close") event.preventDefault();
       return true;
     }
