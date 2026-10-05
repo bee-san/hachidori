@@ -1362,7 +1362,7 @@ function addDictionaryKind(dictionary, kind, { validation = false } = {}) {
   ) === 1;
   const paged = validation || loadsPaged(dictionary.path);
   if (add(paged)) return true;
-// Only the selected resident files have to fit when entries are paged.
+  // Only the selected resident files have to fit when entries are paged.
   if (paged || !lastError().startsWith(OUT_OF_MEMORY) || !add(true)) return false;
   pagedPaths.add(dictionary.path);
   return true;
