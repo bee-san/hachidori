@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      HACHIDORI_BENCH_DATA: ${{ runner.temp }}/hachidori-pixiv-data
+      HACHIDORI_BENCH_DATA: ${{ github.workspace }}/test/tmp/pixiv-data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -75,7 +75,7 @@ jobs:
       - run: npm ci --prefix test/tooling
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: ${{ runner.temp }}/hachidori-pixiv-data
+          path: test/tmp/pixiv-data
           key: pixiv-full-2026-10-05-9d503b0892a5a777
       - name: Download the pinned full Pixiv archive
         run: |
@@ -88,7 +88,10 @@ jobs:
         with:
           path: test/tmp/browsers
           key: chrome-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('test/tooling/package.json') }}
-      - run: npm --prefix test/tooling run install:chrome
+      - name: Install the pinned Chrome and its Linux dependencies
+        run: |
+          npm --prefix test/tooling run install:chrome
+          sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
       - name: Import, look up, and restore full Pixiv in fresh Chrome profiles
         run: |
           export HACHIDORI_PUPPETEER="$(node -p "require.resolve('puppeteer-core', { paths: ['./test/tooling'] })")"
