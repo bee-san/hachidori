@@ -1,5 +1,74 @@
 # Browser benchmark
 
+## Hash index residency
+
+`index-residency.mjs` compares the previous resident engine, the rebuilt resident
+control, 16/32/64 MiB aggregate budgets, and fully paged hashes on threaded OPFS.
+Use Node 22 and the locked Chrome/Puppeteer tooling described below. Build the
+pinned native engine with its CLI and benchmark enabled, then generate fixtures:
+
+```sh
+cmake -S third_party/hoshidicts -B /tmp/index-native -DCMAKE_BUILD_TYPE=Release \
+  -DHOSHIDICTS_CLI=ON -DHOSHIDICTS_BENCHMARK=ON -DHOSHIDICTS_TESTS=ON
+cmake --build /tmp/index-native --parallel 8
+node benchmark/index-residency-fixture.mjs /tmp/index-small /path/to/hoshidicts 20 2
+node benchmark/index-residency-fixture.mjs /tmp/index-many /path/to/hoshidicts 200000 58
+node benchmark/index-residency-fixture.mjs /tmp/index-large /path/to/hoshidicts 1600000 1
+mkdir -p /path/to/before
+git archive 991c48cd4c7ed65b946a4b42e7a5d7e5a770ddd1 extension | tar -x -C /path/to/before
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/index-residency.mjs --fixture /tmp/index-many \
+    --output /tmp/index-many-results --before /path/to/before --samples 3 \
+    --variants baseline,resident,16,32,64,paged
+node benchmark/index-residency-native.mjs /path/to/benchmark-lookup \
+  /tmp/index-many /tmp/index-many-native
+```
+
+Run the browser matrix for the small and large fixtures too (the report records
+their variant lists). Output directories must be fresh. Each repetition reverses
+the policy order, seeds a fresh profile with the same native files, and restarts Chrome before
+timing startup, two full lookup passes and real pointer hovers. Complete ordered
+results, kanji, inflection, dictionary selection and media must match. Each sample
+also disables/re-enables packages, restarts with disabled packages, reimports,
+waits for the idle worker replacement, and removes a package. The first 32 MiB
+sample checks all three Settings choices and saves both palettes after timing.
+
+Fixtures contain synthetic Japanese terms and production importer output. The
+58-package fixture repeats those terms under distinct canonical titles; it is
+a demanding all-package-hit shape, not the reporter's private collection. The
+temporary setup workers write and close the installed files before measurement.
+Setup stores the chosen options before the native engine starts; real Settings
+writes are checked separately after timing. The temporary extension has a
+stable public key, disables relay hosting, adds
+the existing hover probe, and clocks the native WASM call. Numerical budget
+variants change only its budget constant. Production bundles and formats remain
+unchanged between candidate policies. Pure C++ timings come from the pinned
+engine's existing `benchmark-lookup`, extended with paged-hash and JSON options.
+
+`definition.json` records source fingerprints, fixture file/archive checksums,
+environment and boundaries; `raw.jsonl` retains each completed sample. Native
+timings exclude serialization; WASM call timings include it; round trips exclude
+rendering; hovers include the first and complete rendered results. Process RSS
+can count shared pages repeatedly, OS caches are uncontrolled, and startup has
+already touched header and warmup pages. See the
+[measured report](../docs/benchmarks/index-residency.md).
+
+To count the fixed corpus's exact-hit hash pages (a lower bound that excludes
+additional prefixes, Bloom false positives and entry pages):
+
+```sh
+c++ -std=c++20 -O2 -Ithird_party/hoshidicts/external/xxHash \
+  benchmark/index-working-set.cpp -o /tmp/index-working-set
+/tmp/index-working-set '/tmp/index-many/Index residency synthetic 00/hash.table' \
+  /tmp/index-many/words.txt
+```
+
+Multiply that page count by 4 KiB and the package count for this repeated-term
+fixture. `--measure-total true` adds a separate, untimed final
+`hd_memory_total` snapshot; it records an unavailable result after 30 seconds if
+Chrome's GC-based API has not replied. Do not compare its observation time with
+lookup or startup timings.
+
 This framework measures the production Chrome-extension path rather than the
 Node/MEMFS smoke-test path.
 

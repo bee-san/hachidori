@@ -1,28 +1,31 @@
 # Memory
 
-Hachidori keeps dictionary indexes in memory. On direct OPFS storage (normal
+Hachidori can keep dictionary hash indexes in memory or read them on demand. On direct OPFS storage (normal
 Chrome installations), it reads entries and images from disk when needed by
 default. This avoids copying every installed definition into the WebAssembly
 heap while retaining all lookup results. Settings → Advanced → Memory →
 **Dictionary entries** can instead keep entries in memory for the fastest
-lookups. **Low memory mode** separately reduces import peak memory and returns
-unused engine memory after changes. This page explains the storage policies,
+lookups. **Dictionary hash indexes** selects hash residency. In **Low memory mode**,
+Automatic keeps small hashes within one shared budget and pages the rest.
+Low memory mode also reduces import peak memory and returns unused engine
+memory after changes. This page explains the storage policies,
 the readout, their costs, and what happens when dictionaries do not fit.
 
 ## Why the engine is large
 
 The dictionary engine ([hoshidicts](https://github.com/bee-san/hoshidicts),
-compiled to WebAssembly) opens each installed dictionary's index files with
-`mmap`: its index (`hash.table`, `bloom.filter` and, when present, `media.idx`,
-`scan.idx` and the trained `dict.zstd`) and, with **Keep in memory** selected,
-its entries (`blobs.bin`). Natively
+compiled to WebAssembly) opens each installed dictionary's resident files with
+`mmap`: `bloom.filter` and, when present, `media.idx`, `scan.idx` and the trained
+`dict.zstd`, plus `hash.table` when its hash policy keeps it resident and
+`blobs.bin` when its entry policy keeps entries resident. Natively
 that costs nothing until a page is touched. WebAssembly has no demand paging, so
 Emscripten emulates `mmap` by allocating the whole file inside the module's
 linear memory and copying the bytes in. Five things follow:
 
-- **Every loaded dictionary's index is resident.** Its entries are resident only
+- **Small metadata stays resident; hash tables follow the selected policy.**
+  Its entries are resident only
   with **Keep in memory**, or the automatic policy on IDBFS hosts. Paged entries
-  use a shared 32 MiB cache instead. A dictionary's files are held once however
+  use a shared 32 MiB cache together with paged hashes instead. A dictionary's files are held once however
   many kinds it loads as (term, frequency, pitch, kanji): the kinds share one copy.
 - **Images and other media are not.** `media.bin` is never copied in; the
   engine reads a file from OPFS (or IDBFS) when a popup or an Anki export asks
@@ -31,7 +34,7 @@ linear memory and copying the bytes in. Five things follow:
   indexes and, on the threaded engine, runs an eight-thread worker group. On
   direct OPFS that work happens in a separate import worker that is terminated
   afterwards, so its peak is returned to the browser and the engine's heap grows
-  only by the new dictionary's index and entry-page cache by default; on IDBFS
+  only by the new dictionary's resident files and shared page cache; on IDBFS
   (Electron) the import runs inside the engine and the memory that peak needs is kept for the
   life of the engine worker. Disabling or removing a dictionary frees its
   files inside the heap, but the heap itself stays at its high-water mark.
@@ -79,12 +82,16 @@ including those, so its *Extension: Hachidori* row is normally larger than the
 extension total; the operating system's figures are larger still because they
 count the browser's shared libraries in every process.
 
-![Settings → Advanced → Memory with the engine total, the extension total, the Dictionary entries selector and the Low memory mode switch](assets/memory-settings.png)
+![Settings → Advanced → Memory, including independent entry and hash storage, on the light palette](assets/index-residency-memory-light.png)
+
+![The same Memory controls on the dark palette](assets/index-residency-memory-dark.png)
 
 Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
 package's resident files as described above. A package whose entries are read
 from disk (the OPFS default, every package in Low memory mode, or one that did not fit) counts
-only its index and says *(entries read from disk)*.
+only its resident files and says which of its entries and hash index are
+read from disk. The hash readout separately shows the requested policy,
+resident hash bytes, budget and paged package count.
 
 ![A Library row's Details with its In memory line](assets/memory-library-details.png)
 
@@ -98,7 +105,7 @@ an error.
 
 The total is usually larger than the sum of the rows: the difference is the
 import high-water mark, the engine's own allocations and, with paged entries,
-the cache of recently read entry pages (`hd_memory.pageCacheBytes`, at most
+the cache of recently read entry and hash pages (`hd_memory.pageCacheBytes`, at most
 32 MiB once a lookup returns). A text-only dictionary with tens of thousands of
 entries is a few tens of megabytes; the largest name dictionaries are several
 hundred.
@@ -115,8 +122,8 @@ Settings → Advanced → Memory → **Dictionary entries** selects one policy:
   fit still falls back to paged entries as before.
 
 Paging reads `blobs.bin` through a shared cache: 4 KiB pages, 32 MiB for all
-packages together, least recently used first out. Every probe still reads its
-index in memory. A lookup that finds nothing reads no entry pages, and one that
+packages together, least recently used first out. The hash policy is independent
+of entry storage. A lookup that finds nothing reads no entry pages, and one that
 finds entries reads only their pages. Results are identical with paged and
 resident entries. A lookup keeps its pages until it returns, so the cache can
 exceed its budget while one runs.
@@ -144,6 +151,39 @@ The choice is preserved while Low memory mode forces paging, and applies again
 when that mode is turned off. The selector is unavailable with the single-thread
 compatibility engine.
 
+## Dictionary hash storage
+
+On the threaded direct OPFS backend, **Dictionary hash indexes** selects:
+
+- **Automatic** (default): retain hashes outside Low memory mode. In Low memory
+  mode, keep hashes within one aggregate 32 MiB resident budget, sorted by file
+  size then stable package ID, and page the rest. Each enabled package counts
+  once, regardless of how many dictionary kinds it supplies.
+- **Read from disk**: page every hash table through the existing entry cache.
+- **Keep in memory**: retain every hash table, including in Low memory mode.
+
+The 32 MiB resident budget is separate from the shared 32 MiB page-cache budget.
+Neither excludes packages or limits results. Filters, scan metadata, media offsets
+and trained compression dictionaries stay resident. The installed format stays
+the same; changing the policy uses the existing idle worker restart and needs no
+reimport. Import threading continues to follow Low memory mode.
+
+The selector is hidden on IDBFS and single-thread hosts, which keep resident
+hashes until their read cost is measured. Stored preferences remain intact.
+The [Chrome benchmark](benchmarks/index-residency.md) compares 16, 32 and 64 MiB,
+resident and fully paged controls on synthetic small, 58-package and large-index
+libraries. It records the memory/latency tradeoff and its limits.
+
+For diagnostics, `hd_memory` separates `hashBytes`, `residentHashBytes`,
+`otherResidentBytes` and `residentEntryBytes` for each package. `pageCacheBytes`
+remains the combined cache payload; `entries` and `indexes` split its bytes,
+hits, page reads and actual bytes read. `liveAllocatedBytes` and
+`allocatorFreeBytes` come from the native allocator. They distinguish live heap
+allocations and reusable allocator space from `heapBytes`, the WASM capacity;
+none is a physical process-memory measurement. Status keeps `dictionaryCount`
+as registered kinds for compatibility, and adds `registeredKindCount` and
+`packageCount` explicitly.
+
 ## Low memory mode
 
 Settings → Advanced → Memory → **Low memory mode** (off by default) does three
@@ -156,7 +196,7 @@ things:
    restore has settled and the engine has been idle for two seconds, the
    offscreen document terminates the engine worker and starts a new one, which
    reloads the installed dictionaries from OPFS (or IDBFS). The new worker's
-   heap holds only the index files: on IDBFS that gives the import high-water
+   heap holds the selected resident files and cache: on IDBFS that gives the import high-water
    mark back to the browser, and on OPFS (where the import worker already
    returned it) whatever the swaps of replaced generations left in the heap.
    A pure reorder uses the already loaded native set and
@@ -215,8 +255,9 @@ A disabled dictionary is not loaded for lookups, but the engine still opens it
 once before a state that contains it is committed, at startup and whenever a
 new generation of it appears, so a broken package is reported rather than
 discovered when you enable it. That check loads the package with its entries
-read from disk whatever the entry setting, and drops it again: its index is
-loaded and checked as for lookup, but its `blobs.bin` is never copied into the
+read from disk whatever the entry setting, and drops it again. When the hash
+policy pages files, validation also reads only the hash header through the
+shared cache. Its `blobs.bin` is never copied into the
 heap, so a large disabled dictionary no longer raises the worker's high-water
 mark by the size of its entries. Enabling it later loads it the way every other
 enabled dictionary is loaded.

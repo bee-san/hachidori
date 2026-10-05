@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // A residency budget, never a limit on the packages or results we load.
-// Chosen from the OPFS comparisons in docs/benchmarks/index-residency.md.
+// Provisional target; benchmark progress is in docs/benchmarks/index-residency.md.
 export const RESIDENT_HASH_BUDGET_BYTES = 32 * 1024 * 1024;
 
 export function planIndexStorage(dictionaries, storage, hashBytes, budget = RESIDENT_HASH_BUDGET_BYTES) {
