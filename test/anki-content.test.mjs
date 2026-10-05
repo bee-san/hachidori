@@ -685,6 +685,65 @@ test("built-in and custom Anki buttons keep independent Template status, preflig
     .map(call => call.fields.request.templateId), ["sentence", "default"]);
 });
 
+// Issue #488: the Default renderer shows one result's actions in the shared
+// lookup toolbar and names that result as the owner of its custom buttons.
+test("custom Anki buttons in a shared toolbar mine the item a renderer names as their owner", async t => {
+  const calls = [];
+  const f = fixture(t, handlesBatches(handlesAnkiView(async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    const templateId = fields.templateId ?? fields.request?.templateId;
+    if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [],
+      configKey: `key-${templateId}`, cached: false };
+    if (type === "hd_anki_status") return { available: true, configKey: `key-${templateId}` };
+    if (type === "hd_anki_preflight_batch") return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
+    if (type === "hd_anki_submit") return { state: "added", noteId: 7, warnings: [] };
+    throw new Error(`Unexpected ${type}`);
+  })));
+  const document = f.items[0].actions.ownerDocument;
+  const toolbar = document.createElement("div");
+  const custom = toolbar.appendChild(document.createElement("button"));
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "mine-sentence";
+  custom.dataset.ankiTemplateId = "sentence";
+  custom.dataset.customButtonLabel = "Mine sentence";
+  f.items[0].actions.after(toolbar);
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  f.controller.update(globalThis.HDReaderOptions.normaliseOptions({
+    anki: { url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Basic", fields: { ...base.fields, expression: "Front" } },
+      { ...base, id: "sentence", name: "Sentence", model: "Sentence", fields: { ...base.fields, sentence: "Front" } },
+    ] },
+    customButtons: [{ id: "mine-sentence", type: "anki", label: "Mine sentence", templateId: "sentence" }],
+  }));
+  // Plain items, as popup.js binds them.
+  const items = f.items.slice(0, 2).map(({ actions, feedback, result }) => ({ actions, feedback, result }));
+  const add = item => item.actions.querySelector(".gsm-hoshidicts-mine-button");
+  const own = index => items.forEach((item, position) => { item.customActions = position === index ? toolbar : null; });
+  const submitted = () => calls.filter(call => call.type === "hd_anki_submit")
+    .map(call => [call.fields.request.templateId, call.fields.request.term.expression]);
+  own(0);
+  f.controller.bind(items, f.context);
+  await until(() => items.every(item => add(item)?.dataset.state === "ready") && custom.dataset.state === "ready");
+  custom.click();
+  await until(() => custom.dataset.state === "success");
+  // A successful add checks every record again; let that finish first.
+  for (let n = 0; n < 20; n++) await tick();
+  const builtInChecks = () => calls.filter(call => call.type === "hd_anki_preflight_batch"
+    && call.fields.requests.some(request => request.templateId === "default")).length;
+  const checksBefore = builtInChecks();
+  const firstAdd = add(items[1]);
+  own(1);
+  f.controller.bind(items, f.context);
+  await until(() => custom.dataset.state === "ready");
+  for (let n = 0; n < 20; n++) await tick();
+  assert.equal(builtInChecks(), checksBefore, "moving the custom buttons does not check the built-in buttons again");
+  assert.equal(add(items[1]), firstAdd, "the built-in buttons keep their records");
+  custom.click();
+  await until(() => custom.dataset.state === "success");
+  assert.deepEqual(submitted(), [["sentence", "猫"], ["sentence", "犬"]]);
+});
+
 test("a custom Anki button whose Template was removed stays visible and reports the missing identity", async t => {
   const calls = [];
   const f = fixture(t, async (type, fields = {}) => {
