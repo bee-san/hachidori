@@ -266,10 +266,14 @@ function probeDirectOpfs() {
 }
 
 // "opfs": pthread worker on direct OPFS; "threaded-idbfs": pthread worker on
-// IDBFS; "local": single-thread IDBFS runtime on this document.
+// IDBFS; "worker-local": single-thread IDBFS runtime in a dedicated worker;
+// "local": the same runtime on this document, for hosts without Worker.
 async function selectEngine() {
-  if (!CAN_THREAD || typeof globalThis.Worker !== "function") {
+  if (typeof globalThis.Worker !== "function") {
     return "local";
+  }
+  if (!CAN_THREAD) {
+    return "worker-local";
   }
   if (typeof navigator.storage?.getDirectory !== "function") {
     console.warn("hoshidicts: the origin private file system is unavailable, using threaded IDBFS");
@@ -361,11 +365,15 @@ async function readEngineConfig() {
 
 // A pushed change can arrive while either startup read is still pending.
 let pushedEngineConfig = null;
+// Only the pthread workers have a Low memory mode or entry policy to switch to.
+let recyclable = false;
 const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedConfig]) => {
   const { lowMemoryMode: lowMemory, dictionaryEntryStorage } = pushedEngineConfig ?? storedConfig;
   lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
-  lastEngineStatus.threaded = mode !== "local";
+  lastEngineStatus.threaded = mode !== "local" && mode !== "worker-local";
   if (mode === "local") return startLocalEngine();
+  if (mode === "worker-local") return startWorkerEngine("./engine-worker-local.js", false);
+  recyclable = true;
   recycler.setDesired(lowMemory, dictionaryEntryStorage);
   return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js", lowMemory, dictionaryEntryStorage);
 }).catch(failEngine);
@@ -374,11 +382,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== TARGET || message.type !== "hd_engine_config" || message.relayed !== true
       || sender.id !== chrome.runtime.id || sender.url !== expectedBackgroundUrl(chrome)
       || sender.tab !== undefined) return false;
-  // With the local engine there is no worker to replace, and the recycler never
-  // learns of a running one; Settings hides the switch when threaded is false.
+  // The single-thread engines have no Low memory mode or entry policy to
+  // switch to: in the document the recycler never learns of a running worker,
+  // and the single-thread worker is never desired in another mode. Settings
+  // hides the Low memory switch when threaded is false.
   pushedEngineConfig = { lowMemoryMode: message.lowMemoryMode === true,
     dictionaryEntryStorage: message.dictionaryEntryStorage ?? "auto" };
-  recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage);
+  if (recyclable) recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
   return true;
 });

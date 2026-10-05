@@ -100,18 +100,21 @@ function importInIsolatedWorker(request) {
   });
 }
 
-export function startEngineWorker({ createHoshidicts, storageBackend }) {
-  // offscreen.js picks the name; see engine-recycler.js.
-  const { lowMemory, dictionaryEntryStorage, pagedDictionaries } = engineWorkerConfig(globalThis.name, storageBackend);
+export function startEngineWorker({ createHoshidicts, storageBackend, threaded = true }) {
+  // offscreen.js picks the name; see engine-recycler.js. The single-thread
+  // build has no pool or import threading for Low memory mode to reduce, and
+  // keeps resident entries like the document engine.
+  const config = engineWorkerConfig(globalThis.name, storageBackend);
+  const lowMemory = threaded && config.lowMemory;
   // Read by the -sPTHREAD_POOL_SIZE expression in wasm/CMakeLists.txt.
   if (lowMemory) globalThis.HACHIDORI_PTHREAD_POOL_SIZE = LOW_MEMORY_PTHREAD_POOL_SIZE;
   configureEngineService(requestHost, {
     createHoshidicts,
     storageBackend,
-    threaded: true,
-    lowRam: lowMemory,
-    pagedDictionaries,
-    dictionaryEntryStorage,
+    threaded,
+    lowRam: !threaded || lowMemory,
+    pagedDictionaries: threaded && config.pagedDictionaries,
+    dictionaryEntryStorage: threaded ? config.dictionaryEntryStorage : "auto",
     reportProgress: reportEngineProgress,
     // Two IDBFS instances cannot share one store, so only direct OPFS can
     // import outside the engine.
