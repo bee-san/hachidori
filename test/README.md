@@ -194,11 +194,17 @@ with opposite polarity. It also rejects a sidebar item without a link. It uses
 the same external jsdom dependency.
 
 `node --test test/keybind-settings.test.mjs` checks Yomitan's default keybinds for
-supported actions, keybind normalisation and strict option patches, key
-combination capture, action/argument/scope editing, Clear, Reset, Remove, Add and
+supported actions plus the Alt+wheel rows, keybind normalisation and strict option
+patches, key combination capture, wheel steps recorded only with a modifier over
+the focused field, action/argument/scope editing, Clear, Reset, Remove, Add and
 Reset to defaults. It uses the same external jsdom dependency. The extension smoke
 suite drives the content script's keybind dispatch and the real popup view's entry
-navigation. `audio-content.test.mjs` covers keybind audio playback. The keybind
+navigation. Its wheel cases press a binding once per notch, gather a touchpad's
+small steps into notches, start again after a pause or a reversal, act on the
+popup under the pointer, and leave unbound and Ctrl wheels to the existing
+scrolling. The Chrome suite moves one entry per real Alt+wheel step without
+scrolling the pane or the page. `audio-content.test.mjs` covers keybind audio
+playback. The keybind
 settings suite also lists Chrome's browser shortcuts and refreshes them when the
 window regains focus, while proving an overlay disables only that Chrome-owned
 shortcut manager and leaves page/popup keybind editing available.

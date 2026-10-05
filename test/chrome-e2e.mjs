@@ -422,6 +422,7 @@ const PLANNED = [
   "vertical hover hits glyphs and rejects the surrounding padding",
   "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
+  "Alt+wheel over the popup moves one entry per step without scrolling the pane or the page",
   "hovering an inflected verb shows a popup",
   "the reader opens a popup for Japanese text inside a same-origin iframe",
   "the popup paints above a fullscreen player and returns to body on exit",
@@ -13403,6 +13404,79 @@ async function main() {
   check("wheel over the popup scrolls neither the page nor its body wheel listeners",
     wheeled !== null && wheeled.visible && wheeled.pageWheels === 0 && wheeled.after === wheeled.before,
     JSON.stringify({ wheelRect, wheeled }));
+
+  // Yomitan's Alt+wheel moves one entry per wheel step. The default
+  // Alt+WheelDown/WheelUp keybinds do the same, for a touchpad-sized step
+  // too, where a plain wheel would scroll the pane 30 px. The second entry
+  // needs two results; the checks below read one.
+  const writeMaxResults = maxResults => page.evaluate(async value => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options?.revision ?? 0, options: { maxResults: value } });
+    if (!reply.ok) throw new Error(reply.error);
+    return options?.maxResults ?? 32;
+  }, maxResults);
+  const readerMaxResults = await writeMaxResults(2);
+  await tab.evaluate(() => {
+    document.body.style.minHeight = "400vh";
+    window.__pageWheels = 0;
+    document.body.addEventListener("wheel", window.__countPageWheel = () => { window.__pageWheels += 1; });
+    // Read once dispatch has finished, so this sees what the popup decided.
+    window.__altWheelsCancelled = [];
+    window.addEventListener("wheel", window.__recordAltWheel = event => {
+      if (event.altKey) setTimeout(() => window.__altWheelsCancelled.push(event.defaultPrevented));
+    }, true);
+  });
+  const readAltWheelPane = () => tab.evaluate(() => {
+    const scroll = document.querySelector("hachidori-host")?.shadowRoot
+      ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+    if (!scroll) return null;
+    const origin = scroll.getBoundingClientRect().top - scroll.scrollTop;
+    return { scrollTop: scroll.scrollTop, maxScroll: scroll.scrollHeight - scroll.clientHeight,
+      offsets: [...scroll.querySelectorAll(":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry")]
+        .map(entry => entry.getBoundingClientRect().top - origin),
+      rect: scroll.getBoundingClientRect().toJSON(), pageY: window.scrollY, pageWheels: window.__pageWheels,
+      cancelled: [...window.__altWheelsCancelled] };
+  });
+  const altWheelScrolledTo = top => tab.waitForFunction(value => {
+    const scroll = document.querySelector("hachidori-host")?.shadowRoot
+      ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+    return scroll && Math.abs(scroll.scrollTop - value) <= 1;
+  }, { timeout: 2000 }, top).catch(() => null);
+  const altWheelPopup = await hover("#verb", { accept: state => state.text.includes("unrelated term-dictionary definition") });
+  const altWheelStart = altWheelPopup === null ? null : await readAltWheelPane();
+  let altWheeled = null;
+  if (altWheelStart) {
+    await popup.dictionaryTabs("scroll", 0);
+    // The pane's left padding: a scrollable target with no glyph to scan.
+    await tab.mouse.move(altWheelStart.rect.left + 3, altWheelStart.rect.top + altWheelStart.rect.height / 2);
+    const second = Math.min(altWheelStart.offsets[1] ?? 0, altWheelStart.maxScroll);
+    await tab.keyboard.down("Alt");
+    await tab.mouse.wheel({ deltaY: 30 });
+    await altWheelScrolledTo(second);
+    const down = await readAltWheelPane();
+    await tab.mouse.wheel({ deltaY: -30 });
+    await altWheelScrolledTo(0);
+    await new Promise(done => setTimeout(done, 300));
+    const up = await readAltWheelPane();
+    await tab.keyboard.up("Alt");
+    altWheeled = { start: altWheelStart, second, down, up, visible: await popup.waitForVisible(1000) !== null };
+  }
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.evaluate(() => {
+    document.body.removeEventListener("wheel", window.__countPageWheel);
+    window.removeEventListener("wheel", window.__recordAltWheel, true);
+    document.body.style.minHeight = "";
+    window.scrollTo(0, 0);
+  });
+  await writeMaxResults(readerMaxResults);
+  check("Alt+wheel over the popup moves one entry per step without scrolling the pane or the page",
+    altWheeled !== null && altWheeled.visible && altWheeled.start.offsets.length >= 2 && altWheeled.second > 31
+      && Math.abs(altWheeled.down?.scrollTop - altWheeled.second) <= 1 && altWheeled.up?.scrollTop <= 1
+      && altWheeled.up.cancelled.length === 2 && altWheeled.up.cancelled.every(Boolean)
+      && altWheeled.up.pageY === altWheeled.start.pageY && altWheeled.up.pageWheels === altWheeled.start.pageWheels,
+    JSON.stringify(altWheeled));
 
   const verb = await hover("#verb");
   check("hovering an inflected verb shows a popup", verb !== null,
