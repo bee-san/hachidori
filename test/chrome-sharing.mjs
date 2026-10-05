@@ -96,8 +96,10 @@ const CHECKS = [
   "a failed add-on download reports the error, saves no file, and enables retry",
   "overlapping Sharing actions from two Settings tabs preserve local personal entries, settings and dictionary files",
   "the relay's /ankiCardFormats answers the host's saved Anki Template without its AnkiConnect address or key, and /ankiFields renders every marker it names",
+  "with the host's import switch on, the linked browser's Settings sends a ZIP that replaces the host's dictionary of that title and answers lookups; off, the drop zone is hidden and uploads are refused",
   "a real linked overlay keeps local preferences through host edits, disconnection, restart and Unlink and explains mining capabilities",
 ];
+const LINKED_IMPORT_CHECK = CHECKS[13];
 const results = [];
 const diagnostics = [];
 
@@ -395,6 +397,70 @@ async function importFixture(page) {
 
 // Sharing is on by default on the standard port; the suite moves it to the
 // test relay's port through the same message the switch sends.
+async function linkedImportAdvertised(page, wanted) {
+  return until(async () => {
+    const capabilities = (await sharingStatus(page))?.sharing?.client?.host?.capabilities ?? [];
+    return capabilities.includes("linked-import-v1") === wanted ? capabilities : null;
+  }, `the host to ${wanted ? "advertise" : "withdraw"} linked imports`, 15_000);
+}
+
+async function reopenImport(page) {
+  await showSection(page, "sharing");
+  await showSection(page, "add-dictionaries");
+}
+
+async function checkLinkedImport(hostPage, clientPage) {
+  const fixtureEntry = state => state.dictionaryState?.dictionaries?.find(entry => entry.title === "hachidori-fixture");
+  const zone = page => page.evaluate(() => ({
+    zone: document.getElementById("import-drop-zone").hidden,
+    notice: document.getElementById("sharing-import-notice").hidden,
+    remote: document.getElementById("sharing-import-remote-notice").hidden,
+  }));
+  // Mining left another tab in front; the file chooser and dialog need this one.
+  await clientPage.bringToFront();
+  await reopenImport(clientPage);
+  const offView = await zone(clientPage);
+  const refused = await message(clientPage, "hachidori-linked-import", "hd_import_begin", { fileName: "a.zip", size: 4, replace: true });
+  const enabled = await message(hostPage, "hachidori-sharing", "hd_sharing_linked_imports", { enabled: true });
+  const advertised = await linkedImportAdvertised(clientPage, true);
+  await reopenImport(clientPage);
+  await clientPage.waitForFunction(() => document.getElementById("import-drop-zone").hidden === false, { timeout: 10_000, polling: 100 });
+  const onView = await zone(clientPage);
+  const before = fixtureEntry(await stored(hostPage, ["dictionaryState"]));
+  await (await clientPage.$("#import-file")).uploadFile(FIXTURE);
+  await clientPage.waitForFunction(() => document.getElementById("import-decision-dialog").open, { timeout: 15_000, polling: 100 });
+  await clientPage.click("#import-decision-dialog button[value=replace]");
+  const importState = await until(async () => {
+    const text = await clientPage.evaluate(() => (document.querySelector("#import-state")?.textContent || "").trim());
+    return text.startsWith("Finished") ? text : null;
+  }, "the linked import to finish", 120_000);
+  const hostState = await stored(hostPage, ["dictionaryState"]);
+  const after = fixtureEntry(hostState);
+  const mirrored = fixtureEntry(await until(async () => {
+    const value = await stored(clientPage, ["dictionaryState"]);
+    return fixtureEntry(value)?.path === after?.path ? value : null;
+  }, "the replaced dictionary to reach the linked browser", 15_000));
+  const looked = await lookup(clientPage);
+  const disabled = await message(hostPage, "hachidori-sharing", "hd_sharing_linked_imports", { enabled: false });
+  const withdrawn = await linkedImportAdvertised(clientPage, false);
+  await reopenImport(clientPage);
+  const hiddenAgain = await zone(clientPage);
+  check(LINKED_IMPORT_CHECK,
+    offView.zone && !offView.notice && offView.remote
+      && refused?.ok === false && refused.error.includes("does not accept dictionary imports")
+      && enabled?.ok === true && enabled.sharing.linkedImports === true && advertised.includes("linked-import-v1")
+      && !onView.zone && onView.notice && !onView.remote
+      && importState === "Finished 1 of 1 archive — 1 imported, 0 failed."
+      && before && after && after.id === before.id && after.path !== before.path
+      && hostState.dictionaryState.dictionaries.filter(entry => entry.title.startsWith("hachidori-fixture")).length === 1
+      && mirrored?.path === after.path
+      && looked?.ok === true && looked.results?.[0]?.deinflected === "食べる"
+      && disabled?.ok === true && disabled.sharing.linkedImports === false && !withdrawn.includes("linked-import-v1")
+      && hiddenAgain.zone && !hiddenAgain.notice,
+    JSON.stringify({ offView, refused, enabled: enabled?.sharing?.linkedImports, advertised, onView, importState, before, after,
+      looked: { ok: looked?.ok, error: looked?.error }, disabled: disabled?.sharing?.linkedImports, withdrawn, hiddenAgain }));
+}
+
 async function enableSharing(page) {
   const reply = await message(page, "hachidori-sharing", "hd_sharing_host_enable", { port: PORT });
   if (!reply?.ok) throw new Error(`sharing could not be enabled: ${reply?.error}`);
@@ -1008,6 +1074,8 @@ try {
       hostKeys: [...new Set(hostAnki.state.calls.map(call => call.key))],
       clientCalls: clientAnki.state.calls.map(call => call.action),
     }));
+
+  await checkLinkedImport(hostPage, clientPage);
 
   await hostBrowser.close();
   hostBrowser = null;
