@@ -3010,9 +3010,12 @@ async function readBackupStorage(raw = false) {
 
 function backupFileBlob(path, size) {
   const FS = engine.FS;
-  // A Blob-backed IDBFS file is already the Blob the archive needs.
-  const node = FS.lookupPath(path).node;
-  if (node.blob instanceof Blob && node.blob.size === size) return node.blob;
+  // A Blob-backed IDBFS file is already the Blob the archive needs. Only the
+  // classic FS has the node to ask; WasmFS has no lookupPath.
+  if (storageBackend === "idbfs") {
+    const { blob } = FS.lookupPath(path).node;
+    if (blob instanceof Blob && blob.size === size) return blob;
+  }
   const input = FS.open(path, "r");
   const parts = [];
   try {
