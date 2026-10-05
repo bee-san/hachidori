@@ -66,6 +66,13 @@ async function sample(variant, repetition) {
   const manifestFile = resolve(extension, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
   writeFileSync(manifestFile, JSON.stringify({ ...manifest, key: publicKey }));
+  // An owned benchmark copy must not claim a relay on the developer's machine.
+  // Apply the same disabled host configuration to both revisions before startup.
+  const backgroundFile = resolve(extension, "background.js");
+  const background = readFileSync(backgroundFile, "utf8");
+  const hostConfig = "  const host = stored[SHARING_KEY]?.host;";
+  assert.equal(background.split(hostConfig).length, 2);
+  writeFileSync(backgroundFile, background.replace(hostConfig, "  const host = null;"));
   cpSync(resolve(repo, "benchmark/index-residency-seed.js"), resolve(extension, "benchmark-seed-worker.js"));
   if (seeded) cpSync(resolve(seedDirectory, "profile"), resolve(directory, "profile"), { recursive: true });
   const policyFile = resolve(extension, "dictionary-index-storage.js");
@@ -123,9 +130,6 @@ async function sample(variant, repetition) {
   try {
     await launch();
     await page.waitForFunction(async () => (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).ready, { polling: 50, timeout: 120000 });
-    // Keep an owned benchmark profile off any relay running on the developer's
-    // computer. The disabled preference is preserved in the prepared profile.
-    assert.equal((await page.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable" }))).ok, true);
     const optionReply = await page.evaluate(async desiredIndex => {
       const options = (await chrome.storage.local.get("options")).options ?? {};
       return chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision ?? 0,
