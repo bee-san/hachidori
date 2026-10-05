@@ -24,9 +24,11 @@ import { API_REQUESTS, createApiHost } from "./api-host.js";
 import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
   API_CAPABILITY, FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES,
-  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
+  LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_TARGET, LINKED_IMPORT_UNSUPPORTED,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   browserName, forwardableRequest, mutatingForwardedRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
+import { createUploadHost, uploadImportDecision } from "./linked-import.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
@@ -192,6 +194,13 @@ const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_
 // What this install is called by the ones it shares with or links to.
 const SHARING_NAME = OVERLAY_MODE ? "GameSentenceMiner overlay" : browserName(globalThis.navigator);
 let sharingHost;
+// Settings → Sharing → Let linked browsers import dictionaries, stored as
+// `sharing.linkedImports`; the capability is advertised only while it is on.
+let linkedImportsAllowed = false;
+
+function hostCapabilities() {
+  return [...SHARING_CAPABILITIES, API_CAPABILITY, ...(linkedImportsAllowed ? [LINKED_IMPORT_CAPABILITY] : [])];
+}
 
 function dictionaryCount(state) {
   return Array.isArray(state?.dictionaries) ? state.dictionaries.length : 0;
@@ -211,9 +220,66 @@ function getSharingHost() {
     sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
-    capabilities: [...SHARING_CAPABILITIES, API_CAPABILITY],
+    capabilities: hostCapabilities(),
+    clientClosed: clientId => uploadHost?.dropOwner(remoteUploadOwner(clientId)),
   });
   return sharingHost;
+}
+
+// Uploads from this install's own pages are always accepted, like a drop into
+// Settings; those from a linked browser only while the setting is on.
+const UPLOAD_STORE_TARGET = "hachidori-upload-store";
+const LOCAL_UPLOAD_OWNER = "local";
+let uploadHost;
+
+function remoteUploadOwner(clientId) {
+  return `remote:${clientId}`;
+}
+
+async function relayUpload(type, fields) {
+  const reply = await relay({ target: UPLOAD_STORE_TARGET, type, requestId: `upload-${crypto.randomUUID()}`, ...fields });
+  if (!reply?.ok) throw new Error(reply?.error || "The dictionary upload could not be stored.");
+  return reply;
+}
+
+function getUploadHost() {
+  uploadHost ??= createUploadHost({
+    store: {
+      append: (token, data, byteLength) => relayUpload("hd_upload_append", { token, data, byteLength }),
+      discard: token => relayUpload("hd_upload_discard", { token }),
+    },
+    allowed: owner => owner === LOCAL_UPLOAD_OWNER || linkedImportsAllowed,
+    // Never hold the storage queue here: the engine commit calls back into it.
+    importUpload: async (token, { fileName, replace }) => {
+      const { identity } = await relayUpload("hd_upload_identity", { token });
+      const dictionaries = (await readDictionaryStorage()).state?.dictionaries ?? [];
+      return relay({
+        target: UPLOAD_STORE_TARGET, type: "hd_upload_import", token, fileName,
+        importDecision: uploadImportDecision(identity, dictionaries, replace),
+        requestId: `uploaded-import-${crypto.randomUUID()}`,
+      });
+    },
+  });
+  return uploadHost;
+}
+
+async function answerUploadRequest(message, owner) {
+  const host = getUploadHost();
+  switch (message.type) {
+    case "hd_import_begin": return workerReply(message, host.begin(message, owner));
+    case "hd_import_chunk": return workerReply(message, await host.chunk(message, owner));
+    case "hd_import_abort": return workerReply(message, host.abort(message, owner));
+    default: {
+      const reply = await host.commit(message, owner);
+      return { ...reply, type: "hd_import_commit_result", requestId: message.requestId };
+    }
+  }
+}
+
+function setLinkedImports(enabled) {
+  linkedImportsAllowed = enabled;
+  getSharingHost().setCapabilities(hostCapabilities());
+  if (!enabled) uploadHost?.dropWhere(owner => owner !== LOCAL_UPLOAD_OWNER);
 }
 
 // The relay's API asks like a linked browser; its lookups and renders go
@@ -337,12 +403,14 @@ function getSharingClient() {
 
 function sharingStatus() {
   const client = getSharingClient().status();
-  return { ...getSharingHost().status(), client: { ...client, display: client.address === null ? null : parseLinkAddress(client.address).display } };
+  return { ...getSharingHost().status(), linkedImports: linkedImportsAllowed,
+    client: { ...client, display: client.address === null ? null : parseLinkAddress(client.address).display } };
 }
 
 function forwardToHost(message, capability = null) {
   return getSharingClient().forward(message, {
     capability,
+    unsupported: capability === LINKED_IMPORT_CAPABILITY ? LINKED_IMPORT_UNSUPPORTED : LINKED_ANKI_UNSUPPORTED,
     mutation: mutatingForwardedRequest(message),
   }).catch(error => failureReply(message, error));
 }
@@ -2519,6 +2587,8 @@ async function dispatchSharedRequest(message, clientId, capabilities = []) {
       case "hachidori-anki": return await trackAnkiOperation(
         () => answerAnkiRequest(allowLinkedAnkiRequest(message), sender, true),
       );
+      case LINKED_IMPORT_TARGET:
+        return await answerUploadRequest(allowLinkedImportRequest(message), remoteUploadOwner(clientId));
       default: throw new Error(`unsupported shared request target ${JSON.stringify(message.target)}`);
     }
   } catch (error) {
@@ -2669,7 +2739,24 @@ const SHARING_HANDLERS = {
     await writeSharingConfig({ host: null });
     return { sharing: sharingStatus() };
   },
+  async hd_sharing_linked_imports(message) {
+    const enabled = message.enabled === true;
+    await writeSharingConfig({ linkedImports: enabled });
+    setLinkedImports(enabled);
+    return { sharing: sharingStatus() };
+  },
 };
+
+// Settings, or an app driving this install, uploads a dictionary archive. A
+// linked install sends it to the host; otherwise this one imports it.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== LINKED_IMPORT_TARGET) return false;
+  sharingReady.then(() => (sharingLinked
+    ? forwardToHost(allowLinkedImportRequest(message), LINKED_IMPORT_CAPABILITY)
+    : answerUploadRequest(allowLinkedImportRequest(message), LOCAL_UPLOAD_OWNER)))
+    .then(sendResponse, error => sendResponse(failureReply(message, error)));
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== SHARING_TARGET) return false;
@@ -2698,6 +2785,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // does not. Turning sharing off stores `host: null`; linking stores it off.
 async function initialiseSharing() {
   const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY]);
+  if (stored[SHARING_KEY]?.linkedImports === true) setLinkedImports(true);
   const host = stored[SHARING_KEY]?.host;
   if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) {
     getSharingHost().enable({ port: host?.port, network: host?.network === true, dictionaries: dictionaryCount(stored[DICTIONARY_STATE_KEY]) });
