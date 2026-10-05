@@ -108,7 +108,8 @@ hundred.
 Settings → Advanced → Memory → **Dictionary entries** selects one policy:
 
 - **Automatic** (default): page entries on direct OPFS; retain resident entries
-  on IDBFS, whose JavaScript filesystem mirror already holds the whole file.
+  on IDBFS, where a paged read is a synchronous Blob read whose lookup cost has
+  not been measured. **Read from disk** pages there too.
 - **Read from disk**: page entries on either threaded backend.
 - **Keep in memory**: copy entries into the engine heap. A package that cannot
   fit still falls back to paged entries as before.
