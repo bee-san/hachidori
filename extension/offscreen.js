@@ -10,7 +10,7 @@
  */
 
 import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js";
-import { ENGINE_WORKER_NAME, LOW_MEMORY_WORKER_NAME, createEngineRecycler } from "./engine-recycler.js";
+import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
 
@@ -111,9 +111,9 @@ const held = new Set();
 // dictionary change, or when the stored option no longer matches the worker.
 const recycler = createEngineRecycler({
   isIdle: () => pending.size === 0 && held.size === 0,
-  restart: (lowMemory) => {
+  restart: (lowMemory, dictionaryEntryStorage) => {
     worker.terminate();
-    startWorkerEngine(workerScript, lowMemory);
+    startWorkerEngine(workerScript, lowMemory, dictionaryEntryStorage);
   },
 });
 
@@ -285,13 +285,13 @@ async function selectEngine() {
 
 // The name tells engine-worker-runtime.js which pthread pool and import
 // threading to start with; see docs/memory.md.
-function startWorkerEngine(script, lowMemory) {
+function startWorkerEngine(script, lowMemory, dictionaryEntryStorage) {
   workerScript = script;
   worker = new Worker(new URL(script, import.meta.url), {
     type: "module",
-    name: lowMemory ? LOW_MEMORY_WORKER_NAME : ENGINE_WORKER_NAME,
+    name: engineWorkerName(lowMemory, dictionaryEntryStorage),
   });
-  recycler.setRunning(lowMemory);
+  recycler.setRunning(lowMemory, dictionaryEntryStorage);
   worker.addEventListener("error", (event) => failEngine(event.error || event.message));
   worker.addEventListener("messageerror", () => failEngine("the engine worker sent an unreadable message"));
   worker.onmessage = (event) => {
@@ -351,22 +351,23 @@ function startLocalEngine() {
 async function readEngineConfig() {
   try {
     const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_engine_config" });
-    return reply?.ok === true && reply.lowMemoryMode === true;
+    return { lowMemoryMode: reply?.ok === true && reply.lowMemoryMode === true,
+      dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto" };
   } catch (error) {
     console.warn(`hoshidicts: could not read the engine configuration: ${describe(error)}`);
-    return false;
+    return { lowMemoryMode: false, dictionaryEntryStorage: "auto" };
   }
 }
 
 // A pushed change can arrive while either startup read is still pending.
-let pushedLowMemoryMode = null;
-const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedLowMemory]) => {
-  const lowMemory = pushedLowMemoryMode ?? storedLowMemory;
+let pushedEngineConfig = null;
+const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedConfig]) => {
+  const { lowMemoryMode: lowMemory, dictionaryEntryStorage } = pushedEngineConfig ?? storedConfig;
   lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
   lastEngineStatus.threaded = mode !== "local";
   if (mode === "local") return startLocalEngine();
-  recycler.setDesired(lowMemory);
-  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js", lowMemory);
+  recycler.setDesired(lowMemory, dictionaryEntryStorage);
+  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js", lowMemory, dictionaryEntryStorage);
 }).catch(failEngine);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -375,8 +376,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       || sender.tab !== undefined) return false;
   // With the local engine there is no worker to replace, and the recycler never
   // learns of a running one; Settings hides the switch when threaded is false.
-  pushedLowMemoryMode = message.lowMemoryMode === true;
-  recycler.setDesired(pushedLowMemoryMode);
+  pushedEngineConfig = { lowMemoryMode: message.lowMemoryMode === true,
+    dictionaryEntryStorage: message.dictionaryEntryStorage ?? "auto" };
+  recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
   return true;
 });
