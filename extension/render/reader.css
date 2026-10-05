@@ -1354,6 +1354,18 @@ html[data-hoshidicts-theme="girlypop"],
   margin-left: auto;
 }
 
+/* While a later result is shown, the first result's own headword and buttons
+   stay mounted but hidden, and the shown result's row joins the lookup row. */
+.gsm-hoshidicts-headword[hidden],
+.gsm-hoshidicts-primary-header[data-shown-result] > .gsm-hoshidicts-entry-actions
+  > :is(.gsm-hoshidicts-mine-button, .gsm-hoshidicts-audio-control) {
+  display: none;
+}
+
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-entry-actions {
+  display: contents;
+}
+
 .gsm-hoshidicts-note-button:focus-visible,
 .gsm-hoshidicts-note-form input:focus-visible,
 .gsm-hoshidicts-note-form textarea:focus-visible,
@@ -1681,7 +1693,7 @@ html[data-hoshidicts-theme="girlypop"],
   overflow-wrap: anywhere;
 }
 
-.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection),
+.gsm-hoshidicts-entry-header:has(> .gsm-hoshidicts-headword:not([hidden]) > .gsm-hoshidicts-deinflection),
 .gsm-hoshidicts-kanji-navigation:has(.gsm-hoshidicts-deinflection) {
   align-items: flex-start;
 }
@@ -1689,7 +1701,8 @@ html[data-hoshidicts-theme="girlypop"],
 /* An icon-only toolbar now shares the headword's line; keep it beside the
    word rather than at the foot of an expanded trace, where the result
    chrome's max-height would scroll it out of reach. */
-.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection[open]) > .gsm-hoshidicts-entry-actions {
+.gsm-hoshidicts-entry-header:has(> .gsm-hoshidicts-headword:not([hidden]) > .gsm-hoshidicts-deinflection[open])
+  > .gsm-hoshidicts-entry-actions {
   /* start, not flex-start: the row wraps in reverse. */
   align-self: start;
 }
