@@ -117,6 +117,20 @@ finds entries reads only their pages. Results are identical with paged and
 resident entries. A lookup keeps its pages until it returns, so the cache can
 exceed its budget while one runs.
 
+Measured with Jitendex (2026 release, 38.8 MB archive) and Pixiv Full
+(2026-10-05, 387 MB archive) on Chrome 152, direct OPFS, macOS arm64
+(`benchmark/low-memory-mode.mjs`, three alternating fresh profiles per
+policy, 4,550 lookups looked up twice after a full Chrome restart): the two
+packages' `blobs.bin` files total 569 MB and their index files 44 MB. With
+**Keep in memory** the heap is 698 MB; with **Automatic** it is 68 MB after
+loading and 98 MB once the cache has filled. The 4,550 lookups return identical
+results either way. Their median round trip goes from 2.2 ms to 2.6 ms, p95
+from 7.4 ms to 8.7 ms and p99 from 10.3 ms to 13.3 ms (medians of the three
+samples' first pass); the second pass costs about the same (2.0 to 2.5 ms
+median), because those lookups touch more than the 32 MiB cache holds. Imports take the same time
+(about 10 s for both archives) with either policy, against 26 s in Low memory
+mode.
+
 The policy does not change import threading, pthread pool size or automatic
 recycling after mutations. Changing it restarts the engine after two idle
 seconds, so the old heap is returned to the browser. Lookups during startup wait
