@@ -57,6 +57,82 @@ jobs:
           path: test/tmp/ci/
           retention-days: 7
 
+  pixiv:
+    name: Pixiv full import and restart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HACHIDORI_BENCH_DATA: ${{ github.workspace }}/test/tmp/pixiv-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - run: npm ci --prefix test/tooling
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: test/tmp/pixiv-data
+          key: pixiv-full-2026-10-05-9d503b0892a5a777
+      - name: Download the pinned full Pixiv archive
+        run: |
+          mkdir -p "$HACHIDORI_BENCH_DATA"
+          archive="$HACHIDORI_BENCH_DATA/Pixiv_2026-10-05.zip"
+          if [ ! -f "$archive" ]; then
+            curl --fail --location --retry 3 'https://github.com/MarvNC/pixiv-yomitan/releases/download/2026-10-05/Pixiv_2026-10-05.zip' --output "$archive"
+          fi
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: test/tmp/browsers
+          key: chrome-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('test/tooling/package.json') }}
+      - name: Install the pinned Chrome and its Linux dependencies
+        run: |
+          npm --prefix test/tooling run install:chrome
+          sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
+      - name: Import, look up, and restore full Pixiv in fresh Chrome profiles
+        run: |
+          export HACHIDORI_PUPPETEER="$(node -p "require.resolve('puppeteer-core', { paths: ['./test/tooling'] })")"
+          export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
+          node benchmark/run.mjs --config benchmark/pixiv-full.json --output test/tmp/ci/pixiv-full --allow-no-sandbox
+          node benchmark/low-memory-mode.mjs --archive "$HACHIDORI_BENCH_DATA/Pixiv_2026-10-05.zip" --text 'ピクシブ' --lookups 2 --samples 1 --output test/tmp/ci/pixiv-full/low-memory.json
+      - name: Read SonarCloud pull request findings directly
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.request, urllib.parse
+          root = pathlib.Path('test/tmp/ci/pixiv-full')
+          common = {'pullRequest': os.environ['PR_NUMBER']}
+          endpoints = {
+            'issues': ('issues/search', {'componentKeys': 'bee-san_hachidori', 'resolved': 'false', 'ps': 100}),
+            'hotspots': ('hotspots/search', {'projectKey': 'bee-san_hachidori', 'ps': 100}),
+            'measures': ('measures/component', {'component': 'bee-san_hachidori', 'metricKeys': 'new_duplicated_lines_density,new_duplicated_lines'}),
+          }
+          for name, (endpoint, params) in endpoints.items():
+            url = 'https://sonarcloud.io/api/' + endpoint + '?' + urllib.parse.urlencode(common | params)
+            with urllib.request.urlopen(url, timeout=30) as response:
+              result = json.load(response)
+            (root / ('sonar-' + name + '.json')).write_text(json.dumps(result, indent=2))
+            print(name + ': ' + json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pixiv-full-import
+          path: |
+            test/tmp/ci/pixiv-full/report.md
+            test/tmp/ci/pixiv-full/summary.json
+            test/tmp/ci/pixiv-full/validation.json
+            test/tmp/ci/pixiv-full/raw.jsonl
+            test/tmp/ci/pixiv-full/low-memory.json
+            test/tmp/ci/pixiv-full/sonar-*.json
+            test/tmp/ci/pixiv-full/runs/*/diagnostics.log
+          retention-days: 7
+
   release-package:
     name: Release package
     runs-on: ubuntu-24.04
@@ -92,6 +168,7 @@ jobs:
         suite: [chrome-e2e, chrome-sharing, chrome-fallback, chrome-overlay, chrome-theme-contrast]
     env:
       HACHIDORI_ALLOW_NO_SANDBOX: '1'
+      HACHIDORI_IMPORT_SCREENSHOT: ${{ github.workspace }}/test/tmp/ci/dictionary-import-error.png
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -118,7 +195,9 @@ jobs:
         if: matrix.suite == 'chrome-e2e'
         with:
           name: popup-scale-screenshots
-          path: test/tmp/popup-scale/*.png
+          path: |
+            test/tmp/popup-scale/*.png
+            test/tmp/ci/dictionary-import-error.png
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: matrix.suite == 'chrome-theme-contrast'

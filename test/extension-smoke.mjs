@@ -4665,6 +4665,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const dictionaryImport = readFileSync(resolve(EXTENSION, "dictionary-import.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const importErrors = readFileSync(resolve(EXTENSION, "dictionary-import-errors.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
@@ -4682,6 +4684,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createActivationSettings \} from "\.\/activation-settings\.js";\s*/u, "")
     .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/dictionary-import-errors\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
@@ -4709,7 +4712,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -9996,11 +9999,24 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
   const progress = [];
   let hold = null;
   let importerFailure = null;
+  let memoryFailures = 0;
+  const memoryAttempts = [];
   let failedRoot = null;
   let conflictCas = false;
   let casConflicts = 0;
   const isolatedImport = async (request) => {
     if (hold !== null) await hold;
+    if (memoryFailures > 0) {
+      memoryFailures -= 1;
+      memoryAttempts.push(request.lowRam);
+      failedRoot = request.generationRoot;
+      stageEngine.FS.mkdirTree(`${failedRoot}/partial`);
+      stageEngine.FS.writeFile(`${failedRoot}/partial/blobs.bin`, new Uint8Array(16));
+      // The real worker owns and detaches these bytes, even when it fails.
+      structuredClone(request.archive, { transfer: [request.archive.buffer] });
+      throw new Error("std::bad_alloc");
+    }
+    if (memoryAttempts.length > 0) memoryAttempts.push(request.lowRam);
     if (importerFailure !== null) {
       // A worker that died mid-import leaves whatever it had written.
       failedRoot = request.generationRoot;
@@ -10009,7 +10025,7 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
       throw importerFailure;
     }
     return service.importDictionaryArchive(stageEngine, request.archive, request.generationRoot,
-      request.lowRam, request.fileName, request.expectedArchiveBytes, request.resources);
+      request.lowRam, request.fileName, request.expectedArchiveBytes, { resources: request.resources, backend: "opfs" });
   };
   service.configureEngineService(
     async (message) => {
@@ -10037,7 +10053,7 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
         return module;
       },
       storageBackend: "idbfs",
-      lowRam: true,
+      lowRam: false,
       reportProgress: (event) => progress.push(structuredClone(event)),
       isolatedImport,
     },
@@ -10170,6 +10186,39 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
       && JSON.stringify(generationRoots()) === JSON.stringify(rootsAfter)
       && (await request("hd_status")).ok === true,
     JSON.stringify({ conflicted, casConflicts, beforeConflict, afterConflict, conflictLookup: revisionOf(conflictLookup), roots: generationRoots() }),
+  );
+
+  memoryFailures = 1;
+  const beforeRetry = snapshot();
+  const generationBeforeRetry = (await request("hd_status")).generation;
+  const recovered = await request("hd_import", { blobUrl: createObjectURL(archive(3)), fileName: "Pixiv.zip" });
+  const recoveredState = await storedDictionaryState();
+  const rootsAfterRetry = generationRoots();
+  check(
+    "an isolated memory failure restages detached bytes and retries once before publishing one generation",
+    recovered.ok === true && memoryAttempts.join() === "false,true"
+      && snapshot().resets === beforeRetry.resets
+      && snapshot().imports === beforeRetry.imports + 1
+      && recoveredState.revision === updatedState.revision + 1
+      && revisionOf(await request("hd_lookup", { text: query })) === "3"
+      && (await request("hd_status")).generation === generationBeforeRetry + 1
+      && !stageEngine.FS.analyzePath(failedRoot).exists
+      && progress.some(event => event.phase === "installing" && event.retry === true),
+    JSON.stringify({ recovered, memoryAttempts, beforeRetry, after: snapshot(), recoveredState, rootsAfterRetry }),
+  );
+  memoryAttempts.length = 0;
+  memoryFailures = 2;
+  const exhausted = await request("hd_import", { blobUrl: createObjectURL(archive(3)), fileName: "Pixiv.zip" });
+  check(
+    "a repeated memory failure stops after one retry with useful errors and keeps the committed dictionary",
+    exhausted.ok === false && exhausted.errorCode === "import-memory"
+      && /Pixiv\.zip.*reduced memory/u.test(exhausted.error)
+      && exhausted.report?.error === exhausted.error
+      && memoryAttempts.join() === "false,true"
+      && JSON.stringify(await storedDictionaryState()) === JSON.stringify(recoveredState)
+      && JSON.stringify(generationRoots()) === JSON.stringify(rootsAfterRetry)
+      && revisionOf(await request("hd_lookup", { text: query })) === "3",
+    JSON.stringify({ exhausted, memoryAttempts, roots: generationRoots() }),
   );
   await request("hd_remove", { id: installedPackage.id, title });
 }

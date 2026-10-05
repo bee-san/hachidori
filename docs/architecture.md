@@ -103,6 +103,22 @@ Settings row uses to say *Updating…*.
 
 Multiple selected local archives remain separate transactions. Settings runs
 them sequentially, keeps an outcome for each file, and continues after a failure.
+Staging checks the returned memory mapping before copying archive bytes, and a
+cleanup failure cannot replace the original write error. Native exceptions from
+filesystem calls are decoded with the module's exception helpers; their storage
+is released and the shadow stack restored before the module is used again.
+Errors include the archive name and failed stage, with advice for memory or disk
+quota failures, and the failed import report carries the same error as the reply.
+
+A memory failure gets one reduced-memory retry after the failed transaction has
+rolled back. Direct OPFS starts a fresh import worker with one importer thread
+and stages the archive and any MDD resources on disk in its new, uncommitted
+generation instead of keeping the input file in MEMFS as well as its mapping.
+Transferred bytes are read again before the retry and their length is checked;
+the normal metadata review and commit revalidation still apply. The IDBFS path
+reuses its intact input bytes and retries single-threaded. Failed rollback and
+unknown commit outcomes are never retried, and a second failure stops the import
+with explicit recovery advice. No archive-size limit is imposed.
 
 While the experimental **MDX dictionaries** flag (`options.experimental.mdxImport`)
 is on, the same picker and drop zone also take MDict files. Settings groups one

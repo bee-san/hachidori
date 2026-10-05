@@ -31,6 +31,7 @@ import {
   dictionaryImportTarget,
 } from "./dictionary-import.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
+import { dictionaryImportError, isImportMemoryError, nativeImportCall } from "./dictionary-import-errors.js";
 // HDGlossary.parseTagList: the one U+0020 tag splitter the renderer, Anki and
 // the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
@@ -1972,6 +1973,48 @@ async function consumeResponse(response, consume, onProgress = null) {
 const PROT_READ_WRITE = 0x1 | 0x2;
 const MAP_SHARED = 0x01;
 
+function stagingMemoryError(bytes) {
+  return Object.assign(new Error(`Could not allocate ${bytes} bytes to stage the archive.`), { errorCode: "import-memory" });
+}
+
+function mappedFileHeap(module, path, mapping, bytes) {
+  // WasmFS can return an unsigned -ENOMEM pointer. It must never reach a
+  // typed-array copy or munmap. Glue refreshes views after memory growth.
+  if (!Number.isSafeInteger(mapping?.ptr) || mapping.ptr <= 0 || mapping.ptr + bytes > 0x100000000) {
+    throw stagingMemoryError(bytes);
+  }
+  let heap = module.HEAPU8;
+  if (heap.byteLength < mapping.ptr + bytes) {
+    nativeImportCall(module, () => module.FS.stat(path));
+    heap = module.HEAPU8;
+  }
+  if (mapping.ptr + bytes > heap.byteLength) throw stagingMemoryError(bytes);
+  return heap;
+}
+
+function finishFileWrite(operation, failure) {
+  try { operation(); }
+  catch (error) { if (failure === null) throw error; }
+}
+
+function writeMappedFile(module, stream, path, data) {
+  const { FS } = module;
+  const call = (operation) => nativeImportCall(module, operation);
+  call(() => FS.ftruncate(stream.fd, data.byteLength));
+  const mapping = call(() => FS.mmap(stream, data.byteLength, 0, PROT_READ_WRITE, MAP_SHARED));
+  const heap = mappedFileHeap(module, path, mapping, data.byteLength);
+  let failure = null;
+  try {
+    heap.set(data, mapping.ptr);
+    call(() => FS.msync(stream, mapping.ptr, 0, data.byteLength, MAP_SHARED));
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    finishFileWrite(() => call(() => FS.munmap(mapping.ptr, data.byteLength)), failure);
+  }
+}
+
 // Writes one buffer as the whole file of `module`'s filesystem. WasmFS's
 // FS.write copies from JavaScript
 // one byte at a time (about 25 ns per byte: a full second for the 39 MiB
@@ -1982,11 +2025,13 @@ const MAP_SHARED = 0x01;
 // its FS.write is already a typed-array copy, so it takes the direct path.
 function writeFileBytes(module, path, data) {
   const { FS } = module;
-  const stream = FS.open(path, "w+");
+  const call = (operation) => nativeImportCall(module, operation);
+  const stream = call(() => FS.open(path, "w+"));
+  let failure = null;
   try {
     if (data.byteLength === 0 || typeof FS.mmap !== "function" || typeof FS.munmap !== "function") {
       for (let offset = 0; offset < data.byteLength;) {
-        const written = FS.write(stream, data, offset, data.byteLength - offset);
+        const written = call(() => FS.write(stream, data, offset, data.byteLength - offset));
         if (!(written > 0)) {
           throw new Error(`could not write ${path}`);
         }
@@ -1994,24 +2039,12 @@ function writeFileBytes(module, path, data) {
       }
       return;
     }
-    FS.ftruncate(stream.fd, data.byteLength);
-    const mapping = FS.mmap(stream, data.byteLength, 0, PROT_READ_WRITE, MAP_SHARED);
-    try {
-      // Module.HEAPU8 is swapped out after memory growth only once some glue
-      // touches the heap; FS.stat does, so a view too short for the mapping is
-      // refreshed before the copy.
-      let heap = module.HEAPU8;
-      if (heap.byteLength < mapping.ptr + data.byteLength) {
-        FS.stat(path);
-        heap = module.HEAPU8;
-      }
-      heap.set(data, mapping.ptr);
-      FS.msync(stream, mapping.ptr, 0, data.byteLength, MAP_SHARED);
-    } finally {
-      FS.munmap(mapping.ptr, data.byteLength);
-    }
+    writeMappedFile(module, stream, path, data);
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
-    FS.close(stream);
+    finishFileWrite(() => call(() => FS.close(stream)), failure);
   }
 }
 
@@ -2066,9 +2099,9 @@ export async function stageImportArchive(response, onProgress = null) {
   return collectResponse(response, onProgress);
 }
 
-function removeStagedFile(FS, path) {
+function removeStagedFile(module, path) {
   try {
-    FS.unlink(path);
+    nativeImportCall(module, () => module.FS.unlink(path));
   } catch (error) {
     // Never written, or already gone.
   }
@@ -2076,14 +2109,15 @@ function removeStagedFile(FS, path) {
 
 // Where the archive is staged. A Yomitan ZIP has a fixed scratch name; an MDX
 // keeps its own name inside IMPORT_MDX_DIR with its MDD files beside it.
-function importStagingPaths(fileName, resources) {
+function importStagingPaths(fileName, resources, diskRoot = null) {
   if (resources.length === 0 && !isMdxFileName(fileName)) {
-    return { directory: null, archivePath: IMPORT_ZIP, resourcePaths: [] };
+    return { directory: diskRoot, archivePath: diskRoot === null ? IMPORT_ZIP : `${diskRoot}/.hdw-archive.zip`, resourcePaths: [] };
   }
+  const directory = diskRoot === null ? IMPORT_MDX_DIR : `${diskRoot}/.hdw-mdx`;
   return {
-    directory: IMPORT_MDX_DIR,
-    archivePath: `${IMPORT_MDX_DIR}/${fileName}`,
-    resourcePaths: resources.map((resource) => `${IMPORT_MDX_DIR}/${resource.fileName}`),
+    directory,
+    archivePath: `${directory}/${fileName}`,
+    resourcePaths: resources.map((resource) => `${directory}/${resource.fileName}`),
   };
 }
 
@@ -2097,17 +2131,15 @@ export async function importDictionaryArchive(
   importLowRam,
   fileName,
   expectedArchiveBytes = null,
-  resources = [],
+  { resources = [], backend = "memory" } = {},
 ) {
   const { FS } = module;
-  const { directory, archivePath, resourcePaths } = importStagingPaths(fileName, resources);
+  const diskRoot = importLowRam && backend === "opfs" ? generationRoot : null;
+  const { directory, archivePath, resourcePaths } = importStagingPaths(fileName, resources, diskRoot);
+  let phase = "staging the archive";
   try {
     if (directory !== null) {
-      try {
-        FS.mkdir(directory);
-      } catch (error) {
-        // Left by an interrupted import; its files are overwritten below.
-      }
+      nativeImportCall(module, () => FS.mkdirTree(directory));
     }
     const archiveBytes = await streamResponseToFile(module, archiveSource, archivePath);
     if (archiveBytes === 0) {
@@ -2117,16 +2149,18 @@ export async function importDictionaryArchive(
       throw new Error(`${fileName} changed while it was staged`);
     }
     resources.forEach((resource, index) => {
+      phase = `staging ${resource.fileName}`;
       writeFileBytes(module, resourcePaths[index], resource.bytes);
     });
+    phase = "compiling dictionary banks";
     const report = normaliseReport(
       parseJson(
-        module.ccall(
+        nativeImportCall(module, () => module.ccall(
           "hdw_import",
           "string",
           ["string", "string", "number"],
           [archivePath, generationRoot, importLowRam ? 1 : 0],
-        ),
+        )),
         "hdw_import",
       ),
     );
@@ -2137,13 +2171,18 @@ export async function importDictionaryArchive(
       report.success = false;
       report.error = `${fileName} declares no dictionary title`;
     }
+    if (!report.success) {
+      report.error = dictionaryImportError(report.error || "The engine returned no import error.", fileName, phase).message;
+    }
     return report;
+  } catch (error) {
+    throw dictionaryImportError(error, fileName, phase);
   } finally {
-    removeStagedFile(FS, archivePath);
-    for (const path of resourcePaths) removeStagedFile(FS, path);
+    removeStagedFile(module, archivePath);
+    for (const path of resourcePaths) removeStagedFile(module, path);
     if (directory !== null) {
       try {
-        FS.rmdir(directory);
+        nativeImportCall(module, () => FS.rmdir(directory));
       } catch (error) {
         // Never created, or already gone.
       }
@@ -2457,7 +2496,7 @@ async function runImportTransaction(
       importLowRam,
       fileName,
       expectedArchiveBytes,
-      resources,
+      { resources, backend: storageBackend },
     );
   } catch (error) {
     await rollbackImportedGeneration(generationRoot, error);
@@ -2498,6 +2537,9 @@ async function runIsolatedImportTransaction(
       expectedArchiveBytes,
       resources,
     });
+    if (!report || typeof report.success !== "boolean") {
+      throw new Error("The import worker returned no valid import report.");
+    }
   } catch (error) {
     await serialise(() => discardImportingRoot(generationRoot));
     throw error;
@@ -2522,6 +2564,69 @@ async function discardImportingRoot(generationRoot) {
   } catch (error) {
     console.warn(`hoshidicts: could not discard the failed dictionary generation: ${describe(error)}`);
   }
+}
+
+async function importAttempt({ request, staged, resources, installing, reducedMemory, revalidate, commit }) {
+  if (isolatedImport !== null) {
+    await reportProgress?.(installing);
+    return runIsolatedImportTransaction(
+      staged.bytes, request.fileName, reducedMemory,
+      async (root, report) => commit(await revalidate())(root, report),
+      staged.byteLength, resources,
+    );
+  }
+  return serialise(async () => {
+    requireEngine();
+    const checked = await revalidate();
+    // Acknowledge the read lock before resetting the live engine.
+    await reportProgress?.({ ...installing, fallback: "memory" });
+    return runImportTransaction(staged.bytes, request.fileName, reducedMemory, commit(checked), staged.byteLength, resources);
+  });
+}
+
+function canRetryImport(failure, reducedMemory) {
+  return !reducedMemory && isImportMemoryError(failure)
+    && !(failure instanceof UnknownDictionaryStateCommitError) && reloadError === null;
+}
+
+async function importAttemptOutcome(options) {
+  try {
+    const report = await importAttempt(options);
+    return { report, failure: report.success ? null : report };
+  } catch (error_) {
+    return { failure: error_ };
+  }
+}
+
+function finishImportOutcome({ report, failure }, fileName, retried) {
+  if (failure === null) return report;
+  const phase = retried ? "retrying with reduced memory" : "importing the dictionary";
+  const error = dictionaryImportError(failure, fileName, phase);
+  if (retried) error.message += " The reduced-memory retry also failed.";
+  if (report === undefined) throw error;
+  report.error = error.message;
+  report.errorCode = error.errorCode;
+  return report;
+}
+
+async function importWithRecovery(options) {
+  const { request, staged, onDownload } = options;
+  const reducedMemory = request.importLowRam;
+  const first = await importAttemptOutcome({ ...options, reducedMemory });
+  if (!canRetryImport(first.failure, reducedMemory)) {
+    return finishImportOutcome(first, request.fileName, false);
+  }
+  // The failed transaction has rolled back. OPFS retries once in a fresh
+  // worker with one importer thread and disk-backed input staging.
+  if (staged.bytes.byteLength === 0) {
+    staged.bytes = (await stageImportArchive(await fetchImportArchive(request), onDownload)).bytes;
+    if (staged.bytes.byteLength !== staged.byteLength) throw new Error(`${request.fileName} changed before the import retry`);
+  }
+  const resources = options.resources.some(resource => resource.bytes.byteLength === 0)
+    ? await stageImportResources(request) : options.resources;
+  const retry = await importAttemptOutcome({ ...options, resources,
+    installing: { ...options.installing, retry: true }, reducedMemory: true });
+  return finishImportOutcome(retry, request.fileName, true);
 }
 
 class CustomCommitRejectedError extends Error {
@@ -3215,8 +3320,12 @@ const HANDLERS = {
     }
     stagingImports += 1;
     const requestId = message.requestId ?? null;
+    let phase = "checking the import request";
+    let name = text(message.fileName) || "The dictionary archive";
     try {
       const stagedRequest = await prepareImportRequest(message);
+      name = stagedRequest.fileName;
+      phase = "reading the archive";
       const response = await fetchImportArchive(stagedRequest);
       const onDownload = reportProgress === null ? null : (event) => {
         try {
@@ -3232,7 +3341,7 @@ const HANDLERS = {
         throw new Error(`${stagedRequest.fileName} is empty`);
       }
       const stagedResources = await stageImportResources(stagedRequest);
-      const { fileName, importLowRam } = stagedRequest;
+      const { fileName } = stagedRequest;
       const installing = {
         requestId,
         phase: "installing",
@@ -3259,37 +3368,14 @@ const HANDLERS = {
         );
       const replyFor = (report) => (report.success
         ? { report }
-        : { ok: false, error: report.error || `${fileName} could not be imported`, report });
+        : { ok: false, error: report.error || `${fileName} could not be imported`, report,
+          errorCode: report.errorCode || (isImportMemoryError(report) ? "import-memory" : "import-failed") });
 
-      if (isolatedImport !== null) {
-        await reportProgress?.(installing);
-        return replyFor(await runIsolatedImportTransaction(
-          staged.bytes,
-          fileName,
-          importLowRam,
-          async (generationRoot, importedReport) => commit(await revalidate())(generationRoot, importedReport),
-          staged.byteLength,
-          stagedResources,
-        ));
-      }
-
-      return await serialise(async () => {
-        requireEngine();
-        const request = await revalidate();
-        // The native importer has no progress callback, and this runtime has
-        // no isolated importer, so the archive is imported inside the live
-        // engine's memory. Awaiting this transition lets the offscreen bridge
-        // reject new reads before hdw_reset unloads the committed dictionaries.
-        await reportProgress?.({ ...installing, fallback: "memory" });
-        return replyFor(await runImportTransaction(
-          staged.bytes,
-          fileName,
-          importLowRam,
-          commit(request),
-          staged.byteLength,
-          stagedResources,
-        ));
-      });
+      phase = "importing the dictionary";
+      return replyFor(await importWithRecovery({ request: stagedRequest, staged, resources: stagedResources,
+        installing, revalidate, commit, onDownload }));
+    } catch (error) {
+      throw dictionaryImportError(error, name, phase);
     } finally {
       stagingImports -= 1;
     }
@@ -3523,7 +3609,7 @@ function failurePayload(type) {
 
 function engineFailureReply(type, requestId, error) {
   const description = describe(error);
-  let errorCode = error === bootError ? "engine-start-failed" : null;
+  let errorCode = error === bootError ? "engine-start-failed" : error?.errorCode ?? null;
   if (errorCode === null && description === "the dictionary engine is still starting") {
     errorCode = "engine-starting";
   }
@@ -3531,6 +3617,7 @@ function engineFailureReply(type, requestId, error) {
     type: `${type}_result`, requestId, ok: false, error: description,
     ...(errorCode === null ? {} : { errorCode }),
     generation, ...failurePayload(type),
+    ...(type === "hd_import" ? { report: emptyReport(description) } : {}),
   });
 }
 

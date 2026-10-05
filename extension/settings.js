@@ -50,6 +50,7 @@ import {
 } from "./custom-dictionary.js";
 import { SETUP_STATE_KEY, normaliseSetupState, setupIncomplete } from "./setup-state.js";
 import { readDictionaryArchiveIdentity } from "./dictionary-import-archive.js";
+import { dictionaryImportError } from "./dictionary-import-errors.js";
 import {
   describeRevisionComparison,
   dictionaryImportMatches,
@@ -2773,7 +2774,7 @@ async function importFile(file, index, total, request = {}, label = file.name) {
     identity = await readDictionaryArchiveIdentity(file);
   } catch (error) {
     updateImportResult(index, {
-      text: `Failed before import: ${describe(error)}`,
+      text: `Failed before import: ${dictionaryImportError(error, file.name, "reading dictionary metadata").message}`,
       tone: "error",
     });
     return "failed";
@@ -2840,14 +2841,14 @@ async function importArchive(request, index, total, label, started) {
       });
       return notes.length > 0 ? "imported-with-notes" : "imported";
     }
-    const reason = reply.error ?? report.error ?? "The engine gave no reason.";
+    const reason = dictionaryImportError(reply.error || report.error || "The engine gave no reason.", label, "importing the dictionary").message;
     updateImportResult(index, {
       text: `Failed after ${importDuration(started)}: ${reason}`,
       tone: "error",
     });
   } catch (error) {
     updateImportResult(index, {
-      text: `Failed after ${importDuration(started)}: ${describe(error)}`,
+      text: `Failed after ${importDuration(started)}: ${dictionaryImportError(error, label, "requesting the import").message}`,
       tone: "error",
     });
   } finally {
@@ -2906,7 +2907,16 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   let cancelled = 0;
   try {
     for (const [index, item] of items.entries()) {
-      const outcome = await importOne(item, index, items.length);
+      let outcome;
+      try {
+        outcome = await importOne(item, index, items.length); // NOSONAR: each import reviews and commits the state left by the previous item
+      } catch (error) {
+        updateImportResult(index, {
+          text: dictionaryImportError(error, describeItem(item).name, "preparing the import").message,
+          tone: "error",
+        });
+        continue;
+      }
       if (outcome === "imported" || outcome === "imported-with-notes") {
         imported += 1;
         if (outcome === "imported-with-notes") withNotes += 1;
