@@ -93,6 +93,21 @@ negative-margin disclosure tables at 320px and 560px popup widths: the first
 header glyph remains visible, and wide tables still scroll to their final column
 both inside and outside a disclosure.
 
+`test/chrome-dynamic-headword.mjs`, called by the Chrome suite, renders four
+results, three for 明日, through the production renderer, stylesheet and Anki
+controller. Scrolling past あす's own header must show あす in the popup's
+header, with the top and bottom toolbars and at 125% scale, without moving any
+glossary card. The header keeps one row of Anki, pronunciation, Note and custom
+Anki buttons, and its Anki and custom Anki clicks mine あす. Focus on the leaving
+pronunciation button moves to あす's, and a focused custom Anki button holds the
+header until focus leaves it. Go to next entry leaves みょうにち's header under the
+pinned one. The accessibility tree names the hidden first headword nowhere.
+`HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS` names a directory for its screenshots.
+The extension smoke suite's jsdom stage for the same change checks node identity,
+the held Note draft, navigation that cannot reach its target, and Back's
+disclosure order. `test/anki-content.test.mjs` checks that a renderer can name
+the result that owns the shared custom Anki buttons.
+
 `node --test test/sentence.test.mjs` is the table-driven contract of
 `extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
 end, enclosing quotes and brackets left out, nested and preceding pairs kept

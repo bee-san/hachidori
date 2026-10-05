@@ -27,7 +27,9 @@ those saved settings or other tabs.
 The popup action row is one non-wrapping keyboard and visual group: a nested
 Close or Back control first, then Anki, pronunciation, personal-dictionary
 edit, and custom buttons in saved order. A custom button opens a URL template
-or mines with a chosen Anki Template. Actions share a 32-pixel height and a
+or mines with a chosen Anki Template. The Default renderer's header shows the
+result being read, so its Anki, pronunciation and custom buttons act on the
+result whose definitions are at the top. Actions share a 32-pixel height and a
 4-pixel gap. An icon-only row takes its natural width, so the compact summary
 sits beside the headword; a row with labelled custom buttons shares the line
 from a fixed basis and truncates the labels. At narrow popup widths the whole action row scrolls horizontally
