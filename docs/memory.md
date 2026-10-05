@@ -76,7 +76,7 @@ including those, so its *Extension: Hachidori* row is normally larger than the
 extension total; the operating system's figures are larger still because they
 count the browser's shared libraries in every process.
 
-![Settings → Advanced → Memory with the engine total, the extension total and the Low memory mode switch](assets/memory-settings.png)
+![Settings → Advanced → Memory with the engine total, the extension total, the Dictionary entries selector and the Low memory mode switch](assets/memory-settings.png)
 
 Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
 package's resident files as described above. A package whose entries are read
