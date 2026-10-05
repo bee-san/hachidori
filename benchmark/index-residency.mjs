@@ -279,11 +279,26 @@ async function sample(variant, repetition) {
       disableMs, enableMs, disabledRestartMs, disabledMemory, afterEnable,
       reimport, afterReimport, recycleMs, afterRecycle, removeMs, afterRemove,
       rssWarm: processTreeSample(browser.process().pid).rssBytes };
-    appendJsonlDurable(resolve(output, "raw.jsonl"), row);
     // Advanced starts Chrome's asynchronous memory measurement. Keep it
     // outside setup and timings, where GC would interfere with OPFS writes.
     if (variant === "32" && repetition === 0) {
       await page.goto(`chrome-extension://${id}/settings.html#advanced`);
+      await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident"));
+      const expected = (await request("hd_lookup", { text: "食べる", maxResults: 256 })).results;
+      row.uiControls = {};
+      for (const policy of ["paged", "resident", "auto"]) {
+        await page.select("#opt-dictionary-index-storage", policy);
+        await page.waitForFunction(async policy => {
+          const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+          return status?.ready && !status.loading && status.dictionaryIndexStorage === policy;
+        }, { timeout: 120000, polling: 50 }, policy);
+        const memory = await request("hd_memory");
+        assert.ok(memory.dictionaries.every(item => item.paged));
+        if (policy !== "auto") assert.ok(memory.dictionaries.every(item => item.hashIndexStorage === policy));
+        assert.deepEqual((await request("hd_lookup", { text: "食べる", maxResults: 256 })).results, expected);
+        row.uiControls[policy] = { heapBytes: memory.heapBytes, residentHashBytes: memory.dictionaries.reduce((sum, item) => sum + item.residentHashBytes, 0) };
+      }
+      await page.reload();
       await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident"));
       mkdirSync(resolve(output, "screenshots"), { recursive: true });
       for (const palette of ["light", "dark"]) {
@@ -291,6 +306,7 @@ async function sample(variant, repetition) {
         await (await page.$("#memory-settings")).screenshot({ path: resolve(output, `screenshots/memory-${palette}.png`) });
       }
     }
+    appendJsonlDurable(resolve(output, "raw.jsonl"), row);
     console.log(`${variant} #${repetition+1}: heap ${(fresh.heapBytes/1048576).toFixed(1)} MiB;`
       + ` warm p50 ${passes[1].roundTrip.median.toFixed(2)} / p95 ${passes[1].roundTrip.p95.toFixed(2)} ms; parity ${passes[0].resultHash}`);
     return row;
