@@ -466,10 +466,13 @@ function blobBackedIdbfs() {
     ? { FS, memfs, idbfs } : null;
 }
 
+// MEMFS stream operations return synchronously to the native caller, so the
+// asynchronous Blob#arrayBuffer() cannot be used here.
 function readBlobRange(blob, start, end, target, targetOffset) {
   const reader = new FileReaderSync();
   for (let offset = start; offset < end; offset += BLOB_READ_CHUNK) {
-    const bytes = new Uint8Array(reader.readAsArrayBuffer(blob.slice(offset, Math.min(end, offset + BLOB_READ_CHUNK))));
+    const chunk = blob.slice(offset, Math.min(end, offset + BLOB_READ_CHUNK));
+    const bytes = new Uint8Array(reader.readAsArrayBuffer(chunk)); // NOSONAR: must be synchronous, see above
     target.set(bytes, targetOffset + offset - start);
   }
 }
