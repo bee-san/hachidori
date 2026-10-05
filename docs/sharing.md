@@ -85,6 +85,46 @@ allow it. The relay returns to this computer alone when the switch goes off or
 the sharing browser closes, and the browsers linked over the network are
 disconnected then.
 
+### Imports from linked browsers
+
+A linked browser can add a Yomitan ZIP to this Hachidori, and so can an app
+that drives a linked Hachidori, such as SubMiner sending its character
+dictionary when a new show starts. The archive is imported exactly as if it had
+been dropped into this browser's Settings, and every linked browser sees the
+result through the usual storage batches.
+
+On a linked browser, **Import dictionaries** sends each ZIP to the host. The
+browser still reads the archive's title first and asks whether to replace an
+installed dictionary with that title or add the archive separately; the host
+applies that choice to its own library. MDX dictionaries are imported on the
+host itself.
+
+![Import dictionaries on a linked browser](assets/sharing-linked-import.png)
+
+An app sends four runtime messages to target `hachidori-linked-import`; a
+linked Hachidori forwards them to its host, and an unlinked one imports the
+archive itself:
+
+1. `hd_import_begin` `{fileName, size, replace}` answers `{token, chunkBytes}`.
+   `replace: true` replaces the dictionary with the archive's title (or its
+   update source); `false` installs beside it under a numbered title. The host
+   refuses an empty archive and an `.mdx` or `.mdd`; there is no size limit.
+2. `hd_import_chunk` `{token, offset, data}` carries the next `chunkBytes` or
+   fewer bytes as base64, in order from offset 0, and answers `{received}`.
+   A chunk at any other offset ends the upload.
+3. `hd_import_commit` `{token}` imports the archive and answers the same
+   `report` or `error` a local import does. While another dictionary change runs, it
+   answers `errorCode: "engine-mutating"` and keeps the upload, so commit the
+   same token again.
+4. `hd_import_abort` `{token}` drops an upload. The host also drops one after
+   two minutes without a chunk and when its browser disconnects.
+
+A host that accepts uploads advertises `linked-import-v1` in its hello; a
+linked browser refuses the requests itself against an older host. The bytes
+wait in the host's offscreen document until commit, where they go through the
+ordinary import path: the same archive validation, the same revisioned commit
+and the same report.
+
 ### The port
 
 Everything on one computer uses port 8771. Change it only if something else
@@ -129,7 +169,8 @@ After linking, the page reloads, and from then on:
   sent; URL pronunciation providers run on the host, so their `localhost`
   addresses refer to the host computer;
 - the Import and Backup sections show that archives and backups belong to the
-  host; recommended dictionaries can still be installed from here.
+  host; recommended dictionaries can still be installed from here, and ZIP
+  files imported here are [sent to the host](#imports-from-linked-browsers).
 
 ![Settings → Sharing on a linked browser, using the shared Hachidori](assets/sharing-linked.png)
 
@@ -187,7 +228,8 @@ runtime needs nothing beyond the WebSocket.
   selected Template ID is allowed through existing-setup checks, and a missing
   Template fails visibly instead of falling back to the first one.
 
-Local-file imports and backups happen on the host. Pronunciation playback and
+Backups happen on the host, and local-file imports from a linked browser are
+[sent to it](#imports-from-linked-browsers). Pronunciation playback and
 external links run in each browser. During mining, URL pronunciation providers
 run on the host while browser speech, screenshots and continuous-capture
 ownership stay in the reading browser. Their explicitly submitted final media
@@ -260,8 +302,9 @@ on this computer only unless **Also with my other computers** is on.
 ## Tests
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
-test/anki-client-media.test.mjs test/sharing-settings.test.mjs
-test/anki-addon.test.mjs` checks the wire contract, capability fallback,
+test/linked-import.test.mjs test/anki-client-media.test.mjs
+test/sharing-settings.test.mjs test/anki-addon.test.mjs` checks the wire
+contract, linked uploads and their refusals, capability fallback,
 Anki request allowlists and media limits, covers the Settings section with
 jsdom, and verifies pinned binary downloads, HTTP/network failures, progress
 across polls and retry. The relay's raw-socket, packaging, slow-peer and
@@ -281,7 +324,8 @@ and runs its relay with its API, which is asked for lookups, Anki fields,
 card formats, tokenizing and a dictionary download over HTTP. The second browser links,
 looks a word up, edits shared state, runs Settings discovery/setup checks, captures a page-local JPEG and
 mines it through a mocked host AnkiConnect while a healthy client endpoint
-remains unused. The suite also
+remains unused. The linked browser's Settings then replaces the host's fixture
+with an uploaded copy and looks a word up in it. The suite also
 rejects a stale generation and host Anki failure, survives the host closing
 and relaunching, unlinks back to its own state, and links again through this
 machine's network address until the host stops sharing on the network.

@@ -31,10 +31,6 @@
   const EXPERIMENTAL_FEATURES = [
     { id: "themeStore", label: "Theme Store",
       description: "Try Default, Nazeka, Plain and JL popup layouts in Design." },
-    { id: "longKeyScan", label: "Long dictionary entries",
-      description: "Find dictionary entries longer than the scan length. The reader collects more page text only when an installed dictionary lists such entries, and the engine reads further only when the text starts like one of them." },
-    { id: "mdxImport", label: "MDX dictionaries",
-      description: "Import MDict .mdx dictionaries, with their .mdd resource files, from Add dictionaries. Choose the .mdx and its .mdd files together." },
     { id: "googleDocs", label: "Google Docs",
       description: "Look up words in Google Docs. Asks Google Docs to expose its text to Hachidori, which Google may change or remove without notice; the sentence is the hovered run of text." },
     { id: "smallerAnkiCards", label: "Smaller Anki cards",
