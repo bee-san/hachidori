@@ -166,6 +166,18 @@ package paged (`hd_status.pagedDictionaries`), and `background.js` answers
 `hd_engine_config` for the offscreen document and pushes the option when it
 changes.
 
+## Disabled dictionaries
+
+A disabled dictionary is not loaded for lookups, but the engine still opens it
+once before a state that contains it is committed, at startup and whenever a
+new generation of it appears, so a broken package is reported rather than
+discovered when you enable it. That check loads the package with its entries
+read from disk whatever the entry setting, and drops it again: its index is
+loaded and checked as for lookup, but its `blobs.bin` is never copied into the
+heap, so a large disabled dictionary no longer raises the worker's high-water
+mark by the size of its entries. Enabling it later loads it the way every other
+enabled dictionary is loaded.
+
 ## When dictionaries do not fit
 
 There are two failure regimes.
