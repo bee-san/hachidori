@@ -20,6 +20,7 @@ test("default keybinds keep Yomitan's keys for the actions Hachidori supports an
     "Escape close", "Alt + PageUp previousEntry 3", "Alt + PageDown nextEntry 3", "Alt + End lastEntry",
     "Alt + Home firstEntry", "Alt + ArrowUp previousEntry 1", "Alt + ArrowDown nextEntry 1",
     "Alt + B historyBackward", "Alt + E addNote", "Alt + P playAudio", "Alt + V viewNotes",
+    "Alt + WheelUp previousEntry 1", "Alt + WheelDown nextEntry 1",
   ]);
   assert.ok(DEFAULT_OPTIONS.keybinds.every(bind => bind.enabled && bind.scopes.join() === "popup"));
   assert.deepEqual(plain(normaliseOptions({}).keybinds), plain(DEFAULT_OPTIONS.keybinds));
@@ -74,22 +75,28 @@ function fixture(t, { browserShortcutsAvailable = true } = {}) {
     control(index, "input").dispatchEvent(event);
     return event.defaultPrevented;
   }
+  function wheel(index, init) {
+    const event = new window.WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
+    control(index, "input").dispatchEvent(event);
+    return event.defaultPrevented;
+  }
   function choose(node, value) {
     node.value = value;
     node.dispatchEvent(new window.Event(node.type === "number" ? "input" : "change", { bubbles: true }));
   }
   t.after(() => window.close());
-  return { window, document, controller, rows, row, control, press, choose, browser,
+  return { window, document, controller, rows, row, control, press, wheel, choose, browser,
     get keybinds() { return keybinds; }, get writes() { return writes; },
     receive(value) { keybinds = value; controller.render(); } };
 }
 
 test("keybind rows capture Yomitan-style key combinations and edit actions, arguments and scopes", t => {
   const f = fixture(t);
-  assert.equal(f.rows().length, 11);
+  assert.equal(f.rows().length, 13);
   assert.equal(f.control(0, "input").value, "Escape");
   assert.equal(f.control(0, "action").value, "close");
   assert.equal(f.control(8, "input").value, "Alt + E");
+  assert.equal(f.control(12, "input").value, "Alt + WheelDown");
 
   assert.equal(f.press(8, { key: "r", code: "KeyR", altKey: true, shiftKey: true }), true);
   assert.deepEqual(plain(f.keybinds[8]), { ...plain(DEFAULT_OPTIONS.keybinds[8]), key: "KeyR", modifiers: ["alt", "shift"] });
@@ -102,6 +109,21 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], [null, "alt"], "modifier-only input is kept");
   f.control(8, "reset").click();
   assert.deepEqual(plain(f.keybinds[8]), plain(DEFAULT_OPTIONS.keybinds[8]));
+
+  // A wheel step is a key while a modifier is held over the field being set.
+  assert.equal(f.wheel(8, { deltaY: 100, altKey: true }), false, "an unselected Keys field leaves the wheel alone");
+  f.control(8, "input").focus();
+  assert.equal(f.wheel(8, { deltaY: 100 }), false, "a plain wheel still scrolls Settings");
+  assert.equal(f.wheel(8, { deltaX: 100, altKey: true }), false, "a sideways wheel names no key");
+  assert.deepEqual(plain(f.keybinds[8]), plain(DEFAULT_OPTIONS.keybinds[8]));
+  assert.equal(f.wheel(8, { deltaY: 4, altKey: true }), true);
+  assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["WheelDown", "alt"]);
+  assert.equal(f.control(8, "input").value, "Alt + WheelDown");
+  assert.equal(f.wheel(8, { deltaY: -100, ctrlKey: true }), true);
+  assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["WheelUp", "ctrl"]);
+  f.press(8, { key: "e", code: "KeyE", altKey: true });
+  assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["KeyE", "alt"], "a key press replaces a wheel step");
+  f.control(8, "input").blur();
 
   f.choose(f.control(8, "action"), "nextEntry");
   assert.deepEqual([f.keybinds[8].action, f.keybinds[8].argument, f.keybinds[8].scopes.join()], ["nextEntry", "1", "popup"]);
@@ -133,7 +155,7 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   f.control(8, "enabled-input").click();
   assert.equal(f.keybinds[8].enabled, false);
   f.control(0, "remove").click();
-  assert.equal(f.rows().length, 10);
+  assert.equal(f.rows().length, 12);
   assert.equal(f.keybinds[0].action, "previousEntry");
   assert.equal(f.document.activeElement.id, "keybind-add");
   assert.equal(f.row(0).querySelector(".keybind-number").textContent, "Keybind 1");
@@ -143,15 +165,15 @@ test("keybind lists add blank rows, show an empty state and reset to the default
   const f = fixture(t);
   f.document.getElementById("keybind-add").click();
   assert.deepEqual(plain(f.keybinds.at(-1)), { action: "", argument: "", key: null, modifiers: [], scopes: ["popup"], enabled: true });
-  assert.equal(f.document.activeElement, f.control(11, "input"));
-  assert.equal(f.control(11, "input").value, "");
-  assert.ok([...f.row(11).querySelectorAll(".keybind-scope")].every(scope => scope.hidden), "None offers no scope");
+  assert.equal(f.document.activeElement, f.control(13, "input"));
+  assert.equal(f.control(13, "input").value, "");
+  assert.ok([...f.row(13).querySelectorAll(".keybind-scope")].every(scope => scope.hidden), "None offers no scope");
   f.receive([]);
   assert.equal(f.rows().length, 0);
   assert.equal(f.document.getElementById("keybind-empty").hidden, false);
   f.document.getElementById("keybind-reset-all").click();
   assert.deepEqual(plain(f.keybinds), plain(DEFAULT_OPTIONS.keybinds));
-  assert.equal(f.rows().length, 11);
+  assert.equal(f.rows().length, 13);
   assert.equal(f.document.getElementById("keybind-empty").hidden, true);
   f.control(0, "clear").click();
   assert.equal(DEFAULT_OPTIONS.keybinds[0].key, "Escape", "editing never mutates the defaults");
