@@ -11,6 +11,9 @@ self.onmessage = async ({ data: { dictionaries, fileNames, origin } }) => {
         if (!response.ok) throw new Error(`fixture download ${response.status}`);
         const bytes = new Uint8Array(await response.arrayBuffer());
         const handle = await folder.getFileHandle(name, { create: true });
+        // Creating the native importer's empty marker already persists it.
+        // Chrome can leave a zero-byte writable-stream write unsettled.
+        if (bytes.length === 0) continue;
         const writable = await handle.createWritable();
         await writable.write(bytes);
         await writable.close();
