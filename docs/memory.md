@@ -273,9 +273,10 @@ What remains:
 - **A freshly imported file stays an array until its sync completes**, so an
   import's peak still holds it in JavaScript memory, and a failed sync keeps
   the array for the retry.
-- **`FileReaderSync` exists only in workers.** The threaded IDBFS engine runs
-  in a worker; the single-thread engine in the offscreen document keeps
-  whole-file arrays.
+- **`FileReaderSync` exists only in workers.** Every engine runs in a worker
+  where the browser has workers, including the single-thread engine for
+  hosts without cross-origin isolation; only a host without workers runs the
+  engine in the offscreen document, with whole-file arrays.
 - Each read is a synchronous Blob read on the engine's thread, which costs
   more than reading an array.
 
