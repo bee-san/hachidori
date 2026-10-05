@@ -13434,9 +13434,12 @@ async function main() {
       ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
     if (!scroll) return null;
     const origin = scroll.getBoundingClientRect().top - scroll.scrollTop;
+    // Where entry navigation lands: a later entry's own header slides under
+    // the pinned one (#488).
     return { scrollTop: scroll.scrollTop, maxScroll: scroll.scrollHeight - scroll.clientHeight,
       offsets: [...scroll.querySelectorAll(":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry")]
-        .map(entry => entry.getBoundingClientRect().top - origin),
+        .map((entry, index) => (index === 0 ? entry.getBoundingClientRect().top
+          : entry.querySelector(":scope > .gsm-hoshidicts-entry-header").getBoundingClientRect().bottom) - origin),
       rect: scroll.getBoundingClientRect().toJSON(), pageY: window.scrollY, pageWheels: window.__pageWheels,
       cancelled: [...window.__altWheelsCancelled] };
   });
