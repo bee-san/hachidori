@@ -10025,7 +10025,7 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
       throw importerFailure;
     }
     return service.importDictionaryArchive(stageEngine, request.archive, request.generationRoot,
-      request.lowRam, request.fileName, request.expectedArchiveBytes, request.resources);
+      request.lowRam, request.fileName, request.expectedArchiveBytes, { resources: request.resources, backend: "opfs" });
   };
   service.configureEngineService(
     async (message) => {

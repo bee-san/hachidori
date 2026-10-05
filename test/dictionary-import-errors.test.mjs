@@ -78,7 +78,7 @@ test("reduced-memory OPFS import stages input under its uncommitted generation a
     assert.equal(args[2], 1);
     return JSON.stringify({ success: true, title: "Pixiv" });
   } };
-  const report = await importDictionaryArchive(module, new Uint8Array(8), "/dicts/new", true, "Pixiv.zip", 8, [], "opfs");
+  const report = await importDictionaryArchive(module, new Uint8Array(8), "/dicts/new", true, "Pixiv.zip", 8, { backend: "opfs" });
   assert.equal(report.success, true);
   assert.deepEqual(paths, ["/dicts/new", "/dicts/new/.hdw-archive.zip"]);
   assert.deepEqual(deleted, ["/dicts/new/.hdw-archive.zip"]);

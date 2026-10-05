@@ -43,7 +43,8 @@ export function dictionaryImportError(error, fileName, phase) {
     advice = "Retry the import; if it still fails, report this filename and stage together with your browser and Hachidori versions.";
   }
   if (memory) detail = `The browser could not allocate enough memory. ${detail}`;
-  return new DictionaryImportError(`${fileName}: ${phase} failed. ${detail}${advice ? ` ${advice}` : ""}`, errorCode, error);
+  const guidance = advice ? ` ${advice}` : "";
+  return new DictionaryImportError(`${fileName}: ${phase} failed. ${detail}${guidance}`, errorCode, error);
 }
 
 // FS methods can throw a C++ exception before the guarded hdw_import call.
@@ -58,7 +59,7 @@ export function nativeImportCall(module, operation) {
     let description = "The WebAssembly engine threw an exception without a description.";
     try {
       const [type, message] = module.getExceptionMessage(error);
-      description = `${type}${message ? `: ${message}` : ""}`;
+      description = message ? `${type}: ${message}` : type;
     } finally {
       module.decrementExceptionRefcount(error);
     }

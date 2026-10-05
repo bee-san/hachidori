@@ -97,6 +97,7 @@ jobs:
           export HACHIDORI_PUPPETEER="$(node -p "require.resolve('puppeteer-core', { paths: ['./test/tooling'] })")"
           export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
           node benchmark/run.mjs --config benchmark/pixiv-full.json --output test/tmp/ci/pixiv-full --allow-no-sandbox
+          node benchmark/low-memory-mode.mjs --archive "$HACHIDORI_BENCH_DATA/Pixiv_2026-10-05.zip" --text 'ピクシブ' --lookups 2 --samples 1 --output test/tmp/ci/pixiv-full/low-memory.json
       - name: Read SonarCloud pull request findings directly
         if: github.event_name == 'pull_request'
         env:
@@ -127,6 +128,7 @@ jobs:
             test/tmp/ci/pixiv-full/summary.json
             test/tmp/ci/pixiv-full/validation.json
             test/tmp/ci/pixiv-full/raw.jsonl
+            test/tmp/ci/pixiv-full/low-memory.json
             test/tmp/ci/pixiv-full/sonar-*.json
             test/tmp/ci/pixiv-full/runs/*/diagnostics.log
           retention-days: 7

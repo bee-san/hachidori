@@ -35,8 +35,7 @@ globalThis.onmessage = async (event) => { // NOSONAR: only the engine worker hol
       request.lowRam,
       request.fileName,
       request.expectedArchiveBytes,
-      request.resources,
-      "opfs",
+      { resources: request.resources, backend: "opfs" },
     );
     globalThis.postMessage({ channel: "import-result", report });
   } catch (error) {

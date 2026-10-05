@@ -2909,7 +2909,7 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
     for (const [index, item] of items.entries()) {
       let outcome;
       try {
-        outcome = await importOne(item, index, items.length);
+        outcome = await importOne(item, index, items.length); // NOSONAR: each import reviews and commits the state left by the previous item
       } catch (error) {
         updateImportResult(index, {
           text: dictionaryImportError(error, describeItem(item).name, "preparing the import").message,

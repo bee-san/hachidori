@@ -1980,7 +1980,7 @@ function stagingMemoryError(bytes) {
 function mappedFileHeap(module, path, mapping, bytes) {
   // WasmFS can return an unsigned -ENOMEM pointer. It must never reach a
   // typed-array copy or munmap. Glue refreshes views after memory growth.
-  if (!Number.isSafeInteger(mapping?.ptr) || mapping.ptr <= 0 || mapping.ptr + bytes > 0x1_0000_0000) {
+  if (!Number.isSafeInteger(mapping?.ptr) || mapping.ptr <= 0 || mapping.ptr + bytes > 0x100000000) {
     throw stagingMemoryError(bytes);
   }
   let heap = module.HEAPU8;
@@ -2131,8 +2131,7 @@ export async function importDictionaryArchive(
   importLowRam,
   fileName,
   expectedArchiveBytes = null,
-  resources = [],
-  backend = "memory",
+  { resources = [], backend = "memory" } = {},
 ) {
   const { FS } = module;
   const diskRoot = importLowRam && backend === "opfs" ? generationRoot : null;
@@ -2497,8 +2496,7 @@ async function runImportTransaction(
       importLowRam,
       fileName,
       expectedArchiveBytes,
-      resources,
-      storageBackend,
+      { resources, backend: storageBackend },
     );
   } catch (error) {
     await rollbackImportedGeneration(generationRoot, error);
@@ -2591,37 +2589,44 @@ function canRetryImport(failure, reducedMemory) {
     && !(failure instanceof UnknownDictionaryStateCommitError) && reloadError === null;
 }
 
-async function importWithRecovery({ request, staged, resources, installing, revalidate, commit, onDownload }) {
-  let reducedMemory = request.importLowRam;
-  let retried = false;
-  for (;;) {
-    let report;
-    let failure;
-    try {
-      report = await importAttempt({ request, staged, resources, installing: { ...installing, retry: retried },
-        reducedMemory, revalidate, commit });
-      if (report.success) return report;
-      failure = report;
-    } catch (error) {
-      failure = error;
-    }
-    if (!canRetryImport(failure, reducedMemory)) {
-      const error = dictionaryImportError(failure, request.fileName, retried ? "retrying with reduced memory" : "importing the dictionary");
-      if (retried) error.message += " The reduced-memory retry also failed.";
-      if (report === undefined) throw error;
-      report.error = error.message;
-      return report;
-    }
-    // The failed transaction has rolled back. OPFS retries in a fresh worker
-    // with one importer thread and disk-backed input staging.
-    reducedMemory = true;
-    retried = true;
-    if (staged.bytes.byteLength === 0) {
-      staged.bytes = (await stageImportArchive(await fetchImportArchive(request), onDownload)).bytes;
-      if (staged.bytes.byteLength !== staged.byteLength) throw new Error(`${request.fileName} changed before the import retry`);
-    }
-    if (resources.some(resource => resource.bytes.byteLength === 0)) resources = await stageImportResources(request);
+async function importAttemptOutcome(options) {
+  try {
+    const report = await importAttempt(options);
+    return { report, failure: report.success ? null : report };
+  } catch (failure) {
+    return { failure };
   }
+}
+
+function finishImportOutcome({ report, failure }, fileName, retried) {
+  if (failure === null) return report;
+  const phase = retried ? "retrying with reduced memory" : "importing the dictionary";
+  const error = dictionaryImportError(failure, fileName, phase);
+  if (retried) error.message += " The reduced-memory retry also failed.";
+  if (report === undefined) throw error;
+  report.error = error.message;
+  report.errorCode = error.errorCode;
+  return report;
+}
+
+async function importWithRecovery(options) {
+  const { request, staged, onDownload } = options;
+  const reducedMemory = request.importLowRam;
+  const first = await importAttemptOutcome({ ...options, reducedMemory });
+  if (!canRetryImport(first.failure, reducedMemory)) {
+    return finishImportOutcome(first, request.fileName, false);
+  }
+  // The failed transaction has rolled back. OPFS retries once in a fresh
+  // worker with one importer thread and disk-backed input staging.
+  if (staged.bytes.byteLength === 0) {
+    staged.bytes = (await stageImportArchive(await fetchImportArchive(request), onDownload)).bytes;
+    if (staged.bytes.byteLength !== staged.byteLength) throw new Error(`${request.fileName} changed before the import retry`);
+  }
+  const resources = options.resources.some(resource => resource.bytes.byteLength === 0)
+    ? await stageImportResources(request) : options.resources;
+  const retry = await importAttemptOutcome({ ...options, resources,
+    installing: { ...options.installing, retry: true }, reducedMemory: true });
+  return finishImportOutcome(retry, request.fileName, true);
 }
 
 class CustomCommitRejectedError extends Error {
@@ -3364,7 +3369,7 @@ const HANDLERS = {
       const replyFor = (report) => (report.success
         ? { report }
         : { ok: false, error: report.error || `${fileName} could not be imported`, report,
-          errorCode: isImportMemoryError(report) ? "import-memory" : "import-failed" });
+          errorCode: report.errorCode || (isImportMemoryError(report) ? "import-memory" : "import-failed") });
 
       phase = "importing the dictionary";
       return replyFor(await importWithRecovery({ request: stagedRequest, staged, resources: stagedResources,
