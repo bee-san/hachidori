@@ -4326,9 +4326,12 @@
       case "historyBackward":
         return clickKeybindControl(level.popup.querySelector(".gsm-hoshidicts-kanji-back"));
       case "addNote":
-      case "viewNotes":
-        return clickKeybindControl(level.entryMining?.[entry]?.actions.querySelector(
-          `.gsm-hoshidicts-mine-button[data-action="${action === "addNote" ? "add" : "view"}"]`));
+      case "viewNotes": {
+        // The entry's own button: the lookup row may also hold a shown result's row.
+        const state = action === "addNote" ? "add" : "view";
+        return clickKeybindControl([...(level.entryMining?.[entry]?.actions.children ?? [])]
+          .find(child => child.matches(`.gsm-hoshidicts-mine-button[data-action="${state}"]`)));
+      }
       case "playAudio":
       case "playAudioFromSource": {
         const button = level.entryAudio?.[entry]?.button;

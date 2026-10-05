@@ -22488,6 +22488,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results: lookup.results });
   keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  await dynamicHeadwordRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
 
   const glossary = lookup.results[0].term.glossaries[0];
   const noteResults = [
@@ -23458,6 +23459,7 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
 
 // jsdom has no layout: entries and cards sit at fixed content offsets and move
 // with the stubbed scroller, which starts 100px down the page and is 200px tall.
+// A later entry's own 20px header opens it; navigation lands just below it.
 function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
   const popup = document.createElement("div");
   document.body.appendChild(popup);
@@ -23478,13 +23480,15 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
   Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop, set: value => { scrollTop = value; } });
   scroller.scrollTo = ({ top, behavior }) => { scrolls.push({ top, behavior }); scrollTop = top; };
   const place = (node, offset, height) => Object.defineProperty(node, "getBoundingClientRect", { configurable: true,
-    value: () => ({ top: 100 + offset - scrollTop, bottom: 100 + offset + height - scrollTop }) });
+    value: () => ({ top: 100 + offset - scrollTop, bottom: 100 + offset + height - scrollTop, height }) });
   scroller.getBoundingClientRect = () => ({ top: 100, bottom: 300 });
   const glossary = result.term.glossaries[0];
   const entry = (expression, dictionaries) => ({ ...result, matched: expression,
     term: { ...result.term, expression, glossaries: dictionaries.map(dictionary => ({ ...glossary, dictionary })) } });
   const layout = () => [...scroller.querySelectorAll(".gsm-hoshidicts-entry")].forEach((node, index) => {
     place(node, index * 300, 280);
+    const header = node.querySelector(":scope > .gsm-hoshidicts-entry-header");
+    if (header) place(header, index * 300, 20);
     [...node.querySelectorAll(".gsm-hoshidicts-glossary-card")].forEach((card, cardIndex) => place(card, index * 300 + 20 + cardIndex * 90, 80));
   });
   try {
@@ -23493,9 +23497,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
     const initial = view.currentEntryIndex() === 0 && scroller.querySelectorAll(".gsm-hoshidicts-entry").length === 1;
     const moved = view.focusEntry({ offset: 1 });
     layout();
-    const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
+    const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 320
       && scrolls.at(-1).behavior === "instant";
-    const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
+    const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 620;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
     scrollTop = 30; // Beta is now the most visible card of the first entry.
     const nextDictionary = view.focusEntry({ dictionary: 1 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 620;
@@ -23512,6 +23516,123 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
         && scrolls.every(scroll => scroll.behavior === "instant"),
       JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
         expanded, scrolls, current: view.currentEntryIndex() }));
+  } finally { view.destroy(); popup.remove(); }
+}
+
+// Issue #488: the pinned header shows the result being read. Three 明日 results
+// sit 300px apart in the same stubbed layout; later results' own 20px headers
+// open their articles, and the reader starts 100px down a 200px scroller.
+async function dynamicHeadwordRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const bound = [];
+  const layouts = new Set();
+  let editing = false;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    onNoteEditingChange: value => { editing = value; },
+    // As content.js: a Note draft holds the view.
+    canProjectDictionaryPresentation: () => !editing,
+    onResultsRendered: rendered => bound.push(rendered),
+    onResultsExpanded: rendered => bound.push(rendered),
+    queueMasonry: callback => layouts.add(callback),
+    customButtons: [{ id: "sentence", type: "anki", label: "Sentence card", templateId: "sentence" }],
+  });
+  const scroller = view.scrollElement;
+  let scrollTop = 0;
+  Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop, set: value => { scrollTop = value; } });
+  scroller.scrollTo = ({ top }) => { scrollTop = top; };
+  scroller.getBoundingClientRect = () => ({ top: 100, bottom: 300, height: 200 });
+  const place = (node, offset, height) => Object.defineProperty(node, "getBoundingClientRect", { configurable: true,
+    value: () => ({ top: 100 + offset - scrollTop, bottom: 100 + offset + height - scrollTop, height }) });
+  const articles = () => [...scroller.querySelectorAll(".gsm-hoshidicts-entry")];
+  const layout = () => articles().forEach((node, index) => {
+    place(node, index * 300, 280);
+    const header = node.querySelector(":scope > .gsm-hoshidicts-entry-header");
+    if (header) place(header, index * 300, 20);
+  });
+  const scrollTo = top => { scrollTop = top; scroller.dispatchEvent(new window.Event("scroll")); };
+  const reading = (expression, value, definition) => ({ ...result, matched: "明日", deinflected: "明日", trace: [],
+    term: { ...result.term, expression, reading: value, rules: "", furigana: null,
+      glossaries: [{ ...result.term.glossaries[0], glossary: JSON.stringify([definition]) }] } });
+  const results = [reading("明日", "あした", "tomorrow"), reading("明日", "あす", "tomorrow (formal)"),
+    reading("明日", "みょうにち", "tomorrow (business)")];
+  // あす alone carries a trace, so its headword holds the only later disclosure.
+  results[1] = { ...results[1], matched: "明日は", deinflected: "明日", trace: [{ name: "particle", description: "" }] };
+  const header = () => popup.querySelector(".gsm-hoshidicts-primary-header");
+  const visibleReading = () => [...header().querySelectorAll(":scope > .gsm-hoshidicts-headword")]
+    .filter(node => !node.hidden).map(node => node.querySelector("rt")?.textContent ?? "").join("|");
+  try {
+    view.renderResults(results, candidate, { expandAll: true, definitionBlurState: "blurred", lookupStatsSlot: true });
+    layout();
+    const [rendered] = bound;
+    const toolbar = header().querySelector(":scope > .gsm-hoshidicts-entry-actions");
+    const asuHeader = articles()[1].querySelector(":scope > .gsm-hoshidicts-entry-header");
+    const asuHeadword = asuHeader.querySelector(".gsm-hoshidicts-headword");
+    const asuRow = rendered.miningActions[1].actions;
+    const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const stats = popup.querySelector(".gsm-hoshidicts-lookup-stats");
+    const firstAudio = rendered.audioButtons[0].button;
+    const initial = visibleReading() === "あした" && view.currentEntryIndex() === 0
+      && rendered.miningActions[0].customActions === toolbar && rendered.miningActions[1].customActions === null;
+
+    // あした's header button has focus when あす's own header scrolls away.
+    firstAudio.focus();
+    scrollTo(330);
+    const shown = visibleReading() === "あす" && header().contains(asuHeadword) && toolbar.contains(asuRow)
+      && toolbar.contains(rendered.audioButtons[1].button) && asuHeader.style.height === "20px"
+      && asuHeader.childElementCount === 0 && header().dataset.shownResult === "1";
+    const followed = view.currentEntryIndex() === 1 && rendered.miningActions[1].customActions === toolbar
+      && rendered.miningActions[0].customActions === null && bound.length === 2 && bound[1].miningActions === rendered.miningActions;
+    const focusMoved = popup.ownerDocument.activeElement === rendered.audioButtons[1].button;
+    const retained = cards.every((card, index) => popup.querySelectorAll(".gsm-hoshidicts-glossary-card")[index] === card)
+      && popup.querySelector(".gsm-hoshidicts-lookup-stats") === stats && popup.dataset.definitionBlurState === "blurred";
+
+    // The Note form opens with the shown result and holds the header.
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector(".gsm-hoshidicts-note-form");
+    const prefilled = form.querySelector(".gsm-hoshidicts-note-reading").value === "あす";
+    form.querySelector(".gsm-hoshidicts-note-definition").value = "draft";
+    scrollTo(640);
+    const held = visibleReading() === "あす" && form.querySelector(".gsm-hoshidicts-note-definition").value === "draft";
+    form.querySelector(".gsm-hoshidicts-note-cancel").click();
+    view.flushDictionaryPresentation();
+    const caughtUp = visibleReading() === "みょうにち" && asuHeader.contains(asuHeadword) && asuHeader.style.height === ""
+      && view.currentEntryIndex() === 2;
+
+    // Back keeps disclosures in fresh order while みょうにち is shown, then the
+    // restored scroll shows it again.
+    asuHeadword.querySelector(".gsm-hoshidicts-deinflection").open = true;
+    const prior = view.captureTermView();
+    view.renderResults(results, candidate, { ...prior, expandAll: true });
+    const restarted = visibleReading() === "あした" && !header().dataset.shownResult;
+    await new Promise(done => window.setTimeout(done, 0));
+    const restoredOpen = articles()[1].querySelector(".gsm-hoshidicts-deinflection")?.open === true;
+    layout();
+    for (const callback of layouts) callback();
+    layouts.clear();
+    const restoredShown = scrollTop === 640 && visibleReading() === "みょうにち";
+
+    // Navigation shows its target; one that cannot reach the top stays current.
+    scrollTo(0);
+    const next = bound.at(-1);
+    view.focusEntry({ offset: 1 });
+    const navigated = scrollTop === 320 && visibleReading() === "あす" && view.currentEntryIndex() === 1
+      && next.miningActions[1].customActions === header().querySelector(":scope > .gsm-hoshidicts-entry-actions");
+    scroller.scrollTo = ({ top }) => { scrollTop = Math.min(top, 400); };
+    view.focusEntry("last");
+    const unreachable = scrollTop === 400 && visibleReading() === "あす" && view.currentEntryIndex() === 2;
+    scrollTo(0);
+    const back = visibleReading() === "あした" && view.currentEntryIndex() === 0 && !header().dataset.shownResult
+      && articles()[1].querySelector(":scope > .gsm-hoshidicts-entry-header").style.height === "";
+    check("the pinned header moves the shown result's own headword and actions in, holds for a Note draft and restores them",
+      initial && shown && followed && focusMoved && retained && prefilled && held && caughtUp && restarted
+        && restoredOpen && restoredShown && navigated && unreachable && back,
+      JSON.stringify({ initial, shown, followed, focusMoved, retained, prefilled, held, caughtUp, restarted,
+        restoredOpen, restoredShown, navigated, unreachable, back, reading: visibleReading(), current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }
 }
 

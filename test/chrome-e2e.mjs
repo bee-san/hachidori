@@ -55,6 +55,7 @@ import { checkCompactSummaryLayout } from "./chrome-compact-summary.mjs";
 import { COMPACT_GLOSSARIES_CHECK, checkCompactGlossaries } from "./chrome-glossary-layout.mjs";
 import { STRUCTURED_TABLE_CHECK, checkStructuredTable } from "./chrome-structured-table.mjs";
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
+import { DYNAMIC_HEADWORD_CHECK, checkDynamicHeadword } from "./chrome-dynamic-headword.mjs";
 import { LOOKUP_COUNT_LAYOUT_CHECK, checkLookupCountLayout } from "./chrome-lookup-count-layout.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
@@ -454,6 +455,7 @@ const PLANNED = [
   COMPACT_GLOSSARIES_CHECK,
   STRUCTURED_TABLE_CHECK,
   ACTION_ROW_CHECK,
+  DYNAMIC_HEADWORD_CHECK,
   LOOKUP_COUNT_LAYOUT_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
@@ -13435,9 +13437,12 @@ async function main() {
       ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
     if (!scroll) return null;
     const origin = scroll.getBoundingClientRect().top - scroll.scrollTop;
+    // Where entry navigation lands: a later entry's own header slides under
+    // the pinned one (#488).
     return { scrollTop: scroll.scrollTop, maxScroll: scroll.scrollHeight - scroll.clientHeight,
       offsets: [...scroll.querySelectorAll(":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry")]
-        .map(entry => entry.getBoundingClientRect().top - origin),
+        .map((entry, index) => (index === 0 ? entry.getBoundingClientRect().top
+          : entry.querySelector(":scope > .gsm-hoshidicts-entry-header").getBoundingClientRect().bottom) - origin),
       rect: scroll.getBoundingClientRect().toJSON(), pageY: window.scrollY, pageWheels: window.__pageWheels,
       cancelled: [...window.__altWheelsCancelled] };
   });
@@ -13537,6 +13542,8 @@ async function main() {
   check(STRUCTURED_TABLE_CHECK, true);
   await checkActionRow(browser);
   check(ACTION_ROW_CHECK, true);
+  await checkDynamicHeadword(browser, { screenshotDirectory: process.env.HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS });
+  check(DYNAMIC_HEADWORD_CHECK, true);
   await checkLookupCountLayout(browser);
   check(LOOKUP_COUNT_LAYOUT_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);

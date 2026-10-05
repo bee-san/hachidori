@@ -795,13 +795,29 @@ popup exists while lookups are off.
 
 Close keeps the reader's Escape order and event handling. A key press acts on the
 deepest visible popup. As in Yomitan, the current entry starts at the first entry
-and changes only through navigation or a click on an entry. Navigation reveals
-later entries through the existing Show more control. Dictionary navigation moves
+and changes through navigation or a click on an entry. It also changes when
+scrolling changes the result the popup's header shows (below). Navigation reveals
+later entries through the existing Show more control. Entry navigation scrolls the
+target's own header just under the popup's header. Dictionary navigation moves
 from the most visible glossary card to the nearest card from another dictionary.
 Add note, View notes and Back click the current entry's existing buttons, so
 duplicate and disabled behavior is unchanged. Audio replays without
 the click toggle, or plays the first choice from the selected source. Toggle
 option writes one boolean through the revisioned options CAS.
+
+The Default popup's header shows the result being read: the last result whose
+own header has scrolled above the definitions, or the first result (#488). In
+Yomitan every entry's header scrolls with its entry; Hachidori's header stays
+where it is, so the shown result's own headword and action row move into it,
+the same bound nodes, and the first result's stay there hidden. The emptied
+header keeps its height, so no definition moves. The header's Anki,
+pronunciation and custom Anki buttons, the personal-dictionary prefill and custom
+links then act on that result. A scroll event or a layout pass reads at most a
+few header edges. A Note form, a pending personal-dictionary save, a child popup
+or a focused custom Anki button holds the header until it is released. Keyboard
+focus on a control that leaves the header moves to the incoming result's Anki
+button, if the Anki button had it, or else its pronunciation button. Bundled
+renderers other than Default keep each header with its entry.
 
 The Keybinds section edits the list like Yomitan's key field: a key press
 replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
