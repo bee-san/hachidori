@@ -123,9 +123,10 @@ let storageBackend = "memory";
 // pthread runtimes (OPFS or IDBFS) use the bounded worker group, unless the
 // low-memory worker asks for one thread too.
 let lowRam = true;
-// The low-memory worker also keeps only each dictionary's index in the heap
-// and reads its entries from disk as they are looked up (docs/memory.md).
+// Direct OPFS workers keep entries on disk by default, independently of the
+// import threading and recycler (docs/memory.md).
 let pagedDictionaries = false;
+let dictionaryEntryStorage = "auto";
 // Whether this is a pthread runtime, as hd_status reports it.
 let threaded = false;
 // Optional sink for import download/installation phases, keyed by request ID.
@@ -148,6 +149,7 @@ export function configureEngineService(request, options = {}) {
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
   pagedDictionaries = options.pagedDictionaries === true;
+  dictionaryEntryStorage = options.dictionaryEntryStorage ?? "auto";
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
@@ -3538,6 +3540,7 @@ const HANDLERS = {
       // demand (docs/memory.md).
       lowMemory: threaded && lowRam,
       pagedDictionaries,
+      dictionaryEntryStorage,
     };
   },
 

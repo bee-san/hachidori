@@ -2323,6 +2323,15 @@ after resize or media load.
 The final edge is resolved once, avoiding an intermediate Top move before an
 Automatic root's actual placement is known.
 
+The toolbar is the popup's whole header: the headword with its furigana and
+deinflection, the compact summary and the actions, plus the dictionary tabs
+when a group or favourite adds them. An Automatic popup that opens above its
+word therefore shows the headword last, next to the word. Readers look for
+the headword rather than the toolbar, so Settings names the control
+**Headword and toolbar position** and its hint says what Automatic and Top do
+(#484). **Top** keeps the headword first in both placements, as Yomitan
+shows it.
+
 An unchanged edge never reorders controls. A changed edge keeps the toolbar
 and Note form adjacent in DOM and visual order. If a tab, Note field, or glossary
 link has focus, only unfocused immediate siblings move around its owner: the
@@ -2754,7 +2763,7 @@ uncertain write leaves it for inspection and an explicit retry.
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
-The engine holds each loaded dictionary's index and entry files (`blobs.bin`) in WebAssembly linear memory once, however many kinds it loads as (Emscripten emulates `mmap` by copying), and that memory never shrinks; media (`media.bin`) is read from the file when `hd_media` asks for it. On direct OPFS an import's high-water mark belongs to the terminated `import-worker.js` instance and is returned to the browser; the engine's heap grows only by the new generation's resident files. On IDBFS the import runs inside the engine, so its high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's resident bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded and loads every package paged: only its index stays in the heap and `blobs.bin` is read through a bounded page cache (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`, `hdw_add_dict`'s `paged` argument). Any worker loads a package paged when it does not fit in the heap mapped. [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
+The engine holds each loaded dictionary's index files in WebAssembly linear memory once, however many kinds it loads as (Emscripten emulates `mmap` by copying), and that memory never shrinks. Direct OPFS workers default to paged entries (`blobs.bin`) through the existing shared page cache; `options.dictionaryEntryStorage` selects `auto` (OPFS paged, IDBFS resident), `paged`, or `resident` independently of import threading and low-memory recycling; changing the policy restarts the idle worker. Existing stored options adopt `auto` without reimporting dictionaries; media (`media.bin`) is read from the file when `hd_media` asks for it. On direct OPFS an import's high-water mark belongs to the terminated `import-worker.js` instance and is returned to the browser; the engine's heap grows only by the new generation's resident files. On IDBFS the import runs inside the engine, so its high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's resident bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded and loads every package paged: only its index stays in the heap and `blobs.bin` is read through a bounded page cache (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`, `hdw_add_dict`'s `paged` argument). Any worker loads a package paged when it does not fit in the heap mapped. [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
@@ -2823,10 +2832,10 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
-| `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) that reads every package's entries from disk (`pagedDictionaries`); while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
+| `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) and its entry storage policy (`dictionaryEntryStorage`) and whether every package's entries are read from disk (`pagedDictionaries`); while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report the engine heap size, the paged entries' cache (`pageCacheBytes`), and each loaded package's resident bytes (its index files and, unless it is `paged`, its entries, once however many native kinds it loads as); see [memory.md](memory.md) |
 | `hd_memory_total` | Answered by the offscreen document itself, outside the engine queue: `performance.measureUserAgentSpecificMemory()` over the document and its workers, with the engine heap (`heapBytes`, from `hd_memory`) counted once rather than once per engine thread; `bytes` is `null` where the API is unavailable; see [memory.md](memory.md) |
-| `hd_engine_config` | Read `options.lowMemoryMode` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when the stored option changes |
+| `hd_engine_config` | Read `options.lowMemoryMode` and `options.dictionaryEntryStorage` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when the stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
 | `hd_state_read` | Read revisioned dictionary state through the service worker |

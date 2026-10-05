@@ -174,6 +174,7 @@
     // Recycle the engine worker after dictionary changes and import on one
     // thread; see docs/memory.md. Not a reader behaviour, so no hotkey toggle.
     lowMemoryMode: false,
+    dictionaryEntryStorage: "auto",
     keybinds: DEFAULT_KEYBINDS,
   };
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
@@ -605,6 +606,7 @@
 
   // Enumerated options fall back to their default outside the listed values.
   const ENUMERATED_OPTIONS = {
+    dictionaryEntryStorage: new Set(["auto", "paged", "resident"]),
     lookupMode: new Set(LOOKUP_MODES),
     definitionLookupMode: new Set(DEFINITION_LOOKUP_MODES),
     popupTheme: POPUP_THEME_IDS,
