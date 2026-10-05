@@ -489,6 +489,9 @@ function renderLowMemoryMode() {
   element("opt-low-memory-mode-help").hidden = !available;
   element("low-memory-mode-unavailable").hidden = available;
   element("opt-low-memory-mode").checked = options.lowMemoryMode;
+  element("dictionary-entry-storage").hidden = !available;
+  element("opt-dictionary-entry-storage").value = options.dictionaryEntryStorage;
+  element("opt-dictionary-entry-storage").disabled = options.lowMemoryMode;
 }
 
 function memorySettings() {
@@ -3413,6 +3416,11 @@ function attachHandlers() {
   });
   element("opt-low-memory-mode").addEventListener("change", (event) => {
     options.lowMemoryMode = event.target.checked;
+    renderLowMemoryMode();
+    writeOptions();
+  });
+  element("opt-dictionary-entry-storage").addEventListener("change", (event) => {
+    options.dictionaryEntryStorage = event.target.value;
     writeOptions();
   });
   element("opt-audio-autoplay").addEventListener("change", (event) => {

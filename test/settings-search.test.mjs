@@ -164,6 +164,24 @@ test("highlight, selection and custom dictionary searches find the personal dict
   assert.equal(f.el("custom-dictionary").hidden, false);
 });
 
+// Issue #484: the toolbar row carries the headword, so a reader who wants it
+// back at the top of an above-word popup searches for the headword.
+test("headword and header searches find the control that moves the headword", t => {
+  const f = fixture(t);
+  for (const words of ["headword", "header", "headword top", "toolbar"]) {
+    f.query(words);
+    const result = f.match("Headword and toolbar position");
+    assert.ok(result, `"${words}" finds the control`);
+    assert.equal(result.querySelector("small").textContent, "Design › Appearance");
+    const hint = result.querySelector("span").textContent;
+    assert.match(hint, /at the bottom when the popup opens above it/u);
+    assert.match(hint, /Top keeps them at the top/u);
+    result.click();
+    assert.equal(f.el("design").hidden, false);
+    assert.equal(f.document.activeElement, f.el("opt-popup-toolbar"));
+  }
+});
+
 test("unmatched markup query remains plain text and clearing restores the active page", t => {
   const f = fixture(t, "design");
   f.query('<img src=x onerror="alert(1)">');

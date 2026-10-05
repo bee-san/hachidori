@@ -307,22 +307,31 @@ explicitly skipped on other platforms. Its Linux assertions remain unchanged;
 the other framework tests, including the current-account Chrome cache fixture,
 also run on macOS. This does not add non-Linux process metrics to the runner.
 
-## Low memory mode
+## Entry storage and Low memory mode
 
-`low-memory-mode.mjs` alternates fresh-profile samples with
-[Low memory mode](../docs/memory.md) off and on: the archives imported together
-through Settings' real file input, the import wall time (file selection to ready
-status), the engine heap (`hd_memory.heapBytes`) and the summed Chrome
-process-tree RSS right after the import settles and, with the mode on, again
-after the worker has been recycled, then `hd_lookup` round trips. Without
-`--words` one text is looked up repeatedly (median and p95); with `--words` a
-file of lookup texts, one per line, is looked up `--passes` times (default 2),
-recording each pass's distribution, the page cache and the heap after the last.
-Peak import RSS is not sampled; the standard runner above does that.
+`low-memory-mode.mjs` alternates fresh-profile samples across `--variants`
+(default `resident,auto,low`): Settings → Advanced → Memory → **Dictionary
+entries** set to *Keep in memory* (`resident`), *Automatic* (`auto`, paged on
+direct OPFS) or *Read from disk* (`paged`), each with normal imports, and Low
+memory mode (`low`). Each sample imports the archives together through
+Settings' real file input and records the import wall time (file selection to
+ready status), the engine heap (`hd_memory.heapBytes`), the logical size of the
+imported files in OPFS and the summed Chrome process-tree RSS right after the
+import settles (and, with Low memory mode, again after the worker has been
+recycled). It then restarts Chrome on the retained profile and records the
+restart-to-ready time, the heap and each package's resident bytes and paging
+before any lookup, so the lookups meet an empty page cache. Without `--words`
+one text is looked up repeatedly (median and p95); with `--words` a file of
+lookup texts, one per line, is looked up `--passes` times (default 2),
+recording each pass's distribution, an FNV-1a hash of every reply's results
+(identical across variants when lookups are unchanged), the page cache and the
+heap after the last. RSS needs Linux `/proc` and reads 0 elsewhere. Peak import
+RSS is not sampled; the standard runner above does that.
 
 ```sh
 node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip \
-  [--archive /path/to/jmnedict.zip ...] [--words hovers.txt --passes 5] \
+  [--archive /path/to/pixiv.zip ...] [--words hovers.txt --passes 5] \
+  [--variants resident,auto,paged,low] \
   --samples 3 --output benchmark/results/low-memory-mode.json
 ```
 
