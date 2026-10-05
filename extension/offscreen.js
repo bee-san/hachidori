@@ -554,6 +554,10 @@ async function answerUpload(message) {
     case "hd_upload_discard":
       uploads.delete(message.token);
       return {};
+    // A restarted service worker no longer knows the uploads held here.
+    case "hd_upload_reset":
+      uploads.clear();
+      return {};
     case "hd_upload_identity":
       uploadIdentity ??= import("./dictionary-import-archive.js");
       return { identity: await (await uploadIdentity).readDictionaryArchiveIdentity(uploadedArchive(message.token)) };
@@ -566,7 +570,6 @@ async function answerUpload(message) {
         }, resolve));
       } finally {
         URL.revokeObjectURL(blobUrl);
-        uploads.delete(message.token);
       }
     }
     default:

@@ -236,9 +236,15 @@ async function relayUpload(type, fields) {
 }
 
 function getUploadHost() {
-  uploadHost ??= createUploadHost({
+  if (uploadHost) return uploadHost;
+  // Bytes left by an earlier worker belong to sessions this one never saw.
+  const reset = relayUpload("hd_upload_reset", {}).catch(() => {});
+  uploadHost = createUploadHost({
     store: {
-      append: (token, data, byteLength) => relayUpload("hd_upload_append", { token, data, byteLength }),
+      append: async (token, data, byteLength) => {
+        await reset;
+        return relayUpload("hd_upload_append", { token, data, byteLength });
+      },
       discard: token => relayUpload("hd_upload_discard", { token }),
     },
     // Never hold the storage queue here: the engine commit calls back into it.
