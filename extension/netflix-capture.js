@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { encodeBase64 } from "./base64.js";
-import { GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.js";
+import { GIF_MAX_FPS, GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.js";
 
 // Experimental Netflix mining's recorder. netflix-recorder.html runs this in a
 // hidden extension frame inside the Netflix tab while the page replays one
@@ -20,9 +20,8 @@ import { GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.
 export const SENTENCE_PAD_MS = 250;
 // How long the last captured audio has to arrive after the page's replay ends.
 const DRAIN_TIMEOUT_MS = 500;
-// The video track is sampled no faster than this while recording, which also
-// caps the GIF's own rate.
-const VIDEO_SAMPLE_SPACING_MS = 1000 / 10;
+// The video track is sampled no faster than the GIF's own rate while recording.
+const VIDEO_SAMPLE_SPACING_MS = 1000 / GIF_MAX_FPS;
 
 // Wall-clock minus media time while the line played at 1×: the median of the
 // page's (wall ms, media ms) pairs, so a stale pair from the seek cannot move it.
@@ -203,7 +202,7 @@ function rasterise(current, frame, window) {
 // Keeps the video track's frames while the line plays, thinned at capture time
 // to VIDEO_SAMPLE_SPACING_MS by their own timestamps (the replay runs at 1×, so
 // timestamp spacing is media-time spacing). Each kept frame is rasterised to
-// RGBA at once and its VideoFrame closed; its wall time is placed on finish.
+// RGBA at once, its VideoFrame closed, and placed on the wall clock as it arrives.
 function readVideo(current, window) {
   return current.videoReader.read().then(({ done, value }) => {
     if (done) return undefined;

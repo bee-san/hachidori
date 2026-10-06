@@ -2159,9 +2159,10 @@ async function captureSenderViewport(sender) {
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). While the
 // page replays one subtitle line, a hidden recorder frame in the Netflix tab
 // (netflix-recorder.html) records the tab: `start` lets that frame open its
-// tab-capture stream, `finish` has it cut the line out and gives the WAV to
-// the Anki worker to hold for the note, `cancel` stops it. The frame connects
-// on a port; the worker holds no media itself and only the WAV reaches Anki.
+// tab-capture stream, `finish` has it cut the line out and gives its WAV and
+// GIF to the Anki worker to hold for the note, `cancel` stops it. The frame
+// connects on a port; the worker holds no media itself and only the WAV and
+// GIF reach Anki.
 const NETFLIX_TARGET = "hachidori-netflix";
 const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
