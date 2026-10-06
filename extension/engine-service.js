@@ -240,17 +240,21 @@ function boundedText(value, label, maxBytes, cString = true) {
   return result;
 }
 
+// The engine's ranking options, the same for a hover lookup and a segment.
+function lookupOptionsJson(options) {
+  return JSON.stringify({
+    frequencyDictionary: boundedText(options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
+    frequencyOrder: FREQUENCY_ORDERS.includes(options?.frequencyOrder) ? options.frequencyOrder : "auto",
+    primaryReading: boundedText(options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+  });
+}
+
 function lookupArguments(message) {
   return [
     boundedText(message.text, "lookup text", MAX_LOOKUP_TEXT_BYTES),
     clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
     clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
-    JSON.stringify({
-      frequencyDictionary: boundedText(message.options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
-        ? message.options.frequencyOrder : "auto",
-      primaryReading: boundedText(message.options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
-    }),
+    lookupOptionsJson(message.options),
   ];
 }
 
@@ -3414,17 +3418,13 @@ const HANDLERS = {
     requireEngine();
     const chunks = Array.isArray(message.chunks) ? message.chunks : [];
     const scanLength = clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH);
-    const options = JSON.stringify({
-      frequencyDictionary: boundedText(message.options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder) ? message.options.frequencyOrder : "auto",
-      primaryReading: boundedText(message.options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
-    });
+    const options = lookupOptionsJson(message.options);
     const segments = [];
     for (const chunk of chunks) {
       const chunkText = boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES);
       // One chunk per serialised turn: a queued hd_lookup waiting behind this
       // batch gets the engine between chunks (the engine is not reentrant), so
-      // the sequential await is the point rather than an accident. NOSONAR
+      // the sequential await is the point rather than an accident.
       const spans = await serialise(async () => { // NOSONAR: per-chunk yield is intentional
         await ensureLoaded();
         if (chunkText === "") return [];
