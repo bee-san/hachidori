@@ -84,10 +84,25 @@ const vtt = `WEBVTT\n\n1\n00:00:02.000 --> 00:00:03.600 position:50.00%,middle a
 // while Hachidori's recorder frame was in the page (the tab is muted then).
 const page = `<!doctype html><meta charset="utf-8"><title>Netflix fixture</title>
 <style>body{margin:0;background:#000;color:#fff;font:40px sans-serif}
-.player-timedtext{position:absolute;left:0;right:0;top:300px;text-align:center}</style>
+.player-timedtext{position:absolute;left:0;right:0;top:300px;text-align:center}
+#motion{position:absolute;left:0;top:0;width:1200px;height:260px;display:block}</style>
 <div class="watch-video"><video preload="auto"></video>
+<canvas id="motion" width="1200" height="260"></canvas>
 <div class="player-timedtext"><div class="player-timedtext-text-container"><span>朝ごはんを</span><br><span id="word">食べたかった</span></div></div></div>
 <script>
+// A moving coloured band so the captured tab has visibly changing frames: the
+// GIF of the replay must then decode with more than one frame.
+const motion = document.getElementById("motion");
+const paint = motion.getContext("2d");
+function animate(now) {
+  paint.fillStyle = "#102040";
+  paint.fillRect(0, 0, motion.width, motion.height);
+  const x = (now / 4) % (motion.width + 200) - 100;
+  paint.fillStyle = \`hsl(\${(now / 10) % 360}, 80%, 55%)\`;
+  paint.fillRect(x, 40, 180, 180);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
 const video = document.querySelector("video");
 const native = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
 const evidence = window.__fixture = { seeks: [], calls: [], directWrites: 0, profiles: null };
@@ -218,7 +233,7 @@ try {
         anki: { ...HDReaderOptions.DEFAULT_OPTIONS.anki, url: ankiUrl, model: "Basic", captureScreenshot: false,
           duplicateBehavior: "new",
           fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
-            Back: { value: "{sentence}<br>{sentence-audio}", overwriteMode: "overwrite" } } } } });
+            Back: { value: "{sentence}<br>{sentence-audio}<br>{gif}", overwriteMode: "overwrite" } } } } });
     if (!reply.ok) throw new Error(reply.error);
   }, `http://127.0.0.1:${anki.address().port}`);
 
@@ -285,6 +300,16 @@ try {
   console.log(`clip ${(count / rate).toFixed(3)} s at ${rate} Hz; beep at ${found.toFixed(1)} ms, expected ${expected} ms`);
   assert.ok(first >= 0 && Math.abs(found - expected) <= 125, `the beep is within 125 ms (${found} vs ${expected})`);
   assert.ok(Math.abs(count / rate * 1000 - (CUE.endMs - CUE.startMs + 2 * PAD_MS)) <= 50, "the clip is the cue with its pads");
+  // The {gif} field holds the line's animated GIF: it decodes with more than
+  // one frame, from the moving band the fixture painted while the line played.
+  const gifFile = /<img src="(hachidori-gif-[0-9a-f-]{36}\.gif)">/u.exec(note.fields.Back)?.[1];
+  assert.ok(gifFile, `the note references the line's GIF: ${note.fields.Back}`);
+  const gif = Buffer.from(media.get(gifFile), "base64");
+  assert.equal(gif.toString("ascii", 0, 6), "GIF89a", "the stored GIF has a GIF89a header");
+  let gifFrames = 0;
+  for (let index = 0; index < gif.length - 1; index++) if (gif[index] === 0x21 && gif[index + 1] === 0xf9) gifFrames++;
+  console.log(`gif ${(gif.length / 1024).toFixed(1)} KiB, ${gifFrames} frames`);
+  assert.ok(gifFrames > 1, `the GIF decodes with more than one frame (${gifFrames})`);
   const evidence = await tab.evaluate(() => {
     const video = document.querySelector("video");
     return { ...window.__fixture, currentTime: video.currentTime, paused: video.paused, rate: video.playbackRate };
