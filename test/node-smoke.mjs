@@ -300,9 +300,6 @@ const lookupDictionary = (text, path, maxResults = 32, scanLength = 16, options 
     [text, path, maxResults, scanLength, options],
   ),
 );
-const segmentRaw = (text, scanLength = 16, options = '') =>
-  call('hdw_segment', 'string', ['string', 'number', 'string'], [text, scanLength, options]);
-const segment = (...args) => JSON.parse(segmentRaw(...args));
 const kanji = (character) => JSON.parse(call('hdw_kanji', 'string', ['string'], [character]));
 const styles = () => JSON.parse(call('hdw_styles', 'string', [], []));
 const tags = () => JSON.parse(call('hdw_tags', 'string', [], []));
