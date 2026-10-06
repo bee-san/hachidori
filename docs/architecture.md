@@ -2140,7 +2140,8 @@ operations before an offscreen-startup retry can dispatch them. Popup requests
 use the enabled persisted sources, not caller-provided URLs. Offscreen lazily
 imports the player; audio never acquires the dictionary mutation lock.
 
-The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
+The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together, and
+USER_MEDIA for experimental Netflix mining's tab recording. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
 audio's 30-second idle window. URL playback fetches without credentials.
 Candidate fallback includes actual decoding/playback failures. Speech waits for
@@ -2695,6 +2696,131 @@ whether the picture includes protected video:
   restart. Hachidori's capture is the same call, so that setting applies to it
   too. Neither that remedy nor Netflix itself has been tested for Hachidori.
 
+### Netflix mining (experimental)
+
+Settings → Advanced → Experimental features → **Netflix mining**
+(`options.experimental.netflixMining`, off by default) gives notes mined from a
+Netflix subtitle the line's own audio and the whole line as the sentence. It is
+Netflix only, and every part fails closed: a note that cannot get its line is
+added with its other fields and a warning.
+
+**Scripts.** While the flag is on, `netflix.js` registers two scripts for
+`https://www.netflix.com/*` at `document_start`, top frame only because Netflix
+reaches `/watch/<id>` by navigating inside one document: `netflix-page.js` in
+the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`
+with `netflix-content.js` beside the manifest's content scripts. The worker
+applies the flag at startup and on every options change, serialised like the
+Google Docs flag; turning it off unregisters both. A Netflix tab that was open
+when the switch changed needs a reload, and the reader also checks the switch
+itself, so a page that still has the scripts does nothing once it is off.
+
+**Subtitles.** The page script adapts Subadub's two hooks (MIT, see
+`distribution/THIRD_PARTY_NOTICES.md`). `JSON.stringify` finds the manifest
+request's list of profile names by searching rather than by property name and
+adds `webvtt-lssdh-ios8` once, so Netflix lists a WebVTT download for each text
+track; only a non-empty list of strings named `profiles` or holding a known
+profile counts, a visited set lets a cyclic value reach the original
+`JSON.stringify` and its own `TypeError`, and any inspection failure leaves the
+call exactly as Netflix made it. `JSON.parse` reads a `result` with `movieId`
+and `textTracks`, and only on a `/watch/` page, so browse-page previews fetch
+nothing. Forced-narrative, "Off", image-based and non-Japanese tracks are
+skipped. The page fetches each remaining track's WebVTT download, or its TTML,
+IMSC or DFXP download when there is no WebVTT, and posts
+`{ kind: "subtitle", movieId, trackId, closedCaptions, format, text }`; a movie
+without a usable Japanese track posts `{ kind: "status", subtitles }` with
+`image`, `none` or `failed`. Posts are `hachidori-netflix-page` DOM events whose
+detail is a JSON string, so nothing but plain data crosses between the worlds.
+The page keeps what it posted for the watched movie and the latest manifest's
+movie (the next episode Netflix prepares) so a reader that missed them can ask
+again with a `resend` command.
+
+`netflix-content.js` checks every post's shape before using it, since any
+script on the page can dispatch the same events, and parses the text with
+`netflix-subtitles.js`: WebVTT, and TTML through the platform's XML parser with
+tick, clock, offset and frame times, `dur`, container offsets, `<br>` and ruby
+styles. Both produce `{ startMs, endMs, text }` cues of plain text without
+direction marks, tags or ruby readings; nothing is rendered as HTML. It keeps
+one timeline per movie. A new `/watch/<id>` drops the previous movie's timeline
+and ignores its late posts, while a prepared next episode's timeline is kept.
+With Japanese and Japanese [CC] tracks, the first line found in only one of
+them chooses that track for the episode.
+
+**The line.** When the root popup opens for page text inside
+`.player-timedtext`, the content script records an observation: the movie, the
+`<video>`'s time and the text of the hovered subtitle container and of the
+hovered line, without ruby readings. It is taken at that moment so a note added
+after the line has gone still records it, and resolved when the mining request
+is built: the cue must be the only one active within ±500 ms of that time whose
+text, compared NFC and without spaces, line breaks or direction marks, contains
+the container's text, or else the hovered line's. The request gains
+`netflix: { cue: { movieId, startMs, endMs } }`, or
+`netflix: { unavailable: reason }` naming why there is no cue (no timing for
+the episode, image subtitles, no Japanese track, an unreadable file, no match or
+several). For the root lookup, `sentence` and `matchOffset` become the whole
+cue, its lines joined without a separator as Japanese subtitles wrap, with the
+match at the reader's sentence found inside it; when that sentence is not in the
+cue exactly once, the reader's own sentence is kept. Nested lookups inherit the
+cue but keep their own sentence.
+
+**Anki.** `{sentence-audio}` renders `[sound:hachidori-sentence-audio-<uuid>.wav]`
+once a recording is held and stored, and is refused in the first field like
+`{screenshot}`. For a recognised Kiku or Lapis note type a blank
+`SentenceAudio`, and for Senren a blank `sentenceAudio`, receive
+`{sentence-audio}` in a Netflix request's copy of the templates only, as the
+removed media mining did; saved templates and a filled field are never changed.
+The switch is part of the checked configuration, so toggling it between
+preflight and Add refuses the stale Add. Preflight adds `sentenceAudio: true`
+when a Netflix request's mapping contains the marker; without that key the
+reader records nothing.
+
+**Recording.** After the screenshot, the reader sends `hd_netflix_capture_start`
+with the cue. The worker requires the switch, a top-frame sender in the active
+tab at a `https://www.netflix.com/watch/` address whose exact document still
+answers `hd_anki_document`, and stops any earlier recording. It asks
+`chrome.tabCapture.getMediaStreamId({ targetTabId })` for the asking tab; Chrome
+grants that only on a tab where the user has invoked Hachidori, by its toolbar
+button or one of its keyboard shortcuts, and the grant lasts across Netflix's
+same-site navigation. Without it the reply is `{ unavailable: "grant" }`. The
+offscreen document (reason `USER_MEDIA`) opens the stream with `getUserMedia`,
+plays it on through an `AudioContext` because a captured tab goes quiet, and
+records mono PCM through `netflix-capture-worklet.js`, numbered by context frame
+and placed on the wall clock (`performance.timeOrigin + performance.now()`). A
+recording nobody finishes stops itself a minute after the cue's length.
+
+With Hachidori's overlays concealed, the reader asks the page to replay the
+cue. Writing `<video>.currentTime` makes Netflix stop with error M7375, so the
+page seeks through Netflix's player API
+(`netflix.appContext.state.playerApp.getAPI().videoPlayer`), to 250 ms before
+the cue and 2 s earlier again if the seek lands past that, plays at 1×, and
+reports `(wall ms, media ms)` pairs every 25 ms until 250 ms after the cue. It
+then restores the position, paused state and speed, each step independently.
+`hd_netflix_capture_finish` has the offscreen document flush the worklet, stop
+every track, take the median wall-minus-media offset of the pairs, and cut the
+PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent; otherwise
+it is encoded as a 16-bit mono WAV (the removed recorder's encoder). The worker
+holds it like the screenshot: one pending recording, stored with
+`storeMediaFile` inside the queued write, its fields emptied and a warning added
+when the upload is refused, released after an authoritative no-write, deleted
+after a definitively rejected write, kept after an uncertain one, and discarded
+by token (`hd_anki_screenshot_discard`, which releases either kind) when the
+reader abandons the submission. A
+replay that fails cancels the recording with `hd_netflix_capture_cancel`.
+
+**Warnings.** No timing (with its reason), no capture grant (click the toolbar
+button once on the tab, or add notes with the **Add the current popup entry to
+Anki** shortcut), a silent recording (a muted video or protected playback;
+turning off Chrome's graphics acceleration can help), a missing Netflix player
+or an unfinished replay are each a `Sentence audio:` warning on the added note.
+A browser linked to another Hachidori records nothing: its worker marks a
+Netflix request's linked preflight replies `netflixLinked`, and the reader warns
+instead. No DRM workaround is attempted, and black pictures are not detected.
+
+Netflix's subtitle data, the profile name and the player API are Netflix's
+private interfaces and may change without notice; when they do, notes keep their
+text and screenshot and say why they have no line audio. Nothing of Netflix is
+stored: timelines live in the page's memory, the recording in the offscreen
+document's, and only the final WAV reaches Anki.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,
@@ -2978,6 +3104,9 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_updates_install` | Recheck and install the requested available managed packages |
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
+| `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
+| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue, finish it into a held WAV for the note, or cancel it ([Netflix mining](#netflix-mining-experimental)) |
+| `hd_netflix_record_start`, `hd_netflix_record_finish`, `hd_netflix_record_cancel` | The worker's relay of those to the offscreen recorder, which accepts them from the worker only |
 
 ## Build outputs
 

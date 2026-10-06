@@ -115,6 +115,17 @@ changing and may be removed:
   `{conjugation}` for that information. A Jitendex note shrinks to about a
   quarter of its size. Notes already in Anki are not changed. The behaviour
   follows the Compact HTML Cleanup Anki add-on.
+- **Netflix mining** — Migaku-style sentence cards from Netflix. Hover a word
+  in a Japanese subtitle on `netflix.com/watch/…` and add it: the sentence is the
+  whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
+  audio. Kiku, Lapis and Senren use their blank sentence-audio field
+  automatically. Hachidori reads Netflix's own subtitle files for the timing
+  (adapted from Subadub) and replays the line once to record it, then returns to
+  where you were. Chrome lets it record a tab only after you click Hachidori's
+  toolbar button once on that tab, or add notes with its **Add the current popup
+  entry to Anki** shortcut. Netflix may change its data without notice, and
+  protected playback can record as silence; the note is then added without the
+  audio and says why.
 
 
 # Opinionated
@@ -140,6 +151,8 @@ The logo pack and six visual novel backgrounds were supplied by bee-san. See the
 assets and their copyright declaration.
 
 Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
+
+The experimental Netflix mining's subtitle hooks are adapted from [Subadub](https://github.com/rsimmons/subadub) by Russel Simmons, under the MIT licence ([notice](distribution/licenses/subadub-LICENSE)).
 
 Headword furigana use the kanji readings of [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). This file is the property of the [Electronic Dictionary Research and Development Group](https://www.edrdg.org/), and is used in conformance with the Group's [licence](https://www.edrdg.org/edrdg/licence.html). The readings in `extension/vendor/kanjidic/` remain under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 

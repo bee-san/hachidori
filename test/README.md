@@ -361,6 +361,29 @@ named toolbar actions, current word/reading/sentence expansion, background-tab
 clicks, live editing without replacing cards or Note drafts, and stale-control
 navigation rejection.
 
+`node --test test/netflix.test.mjs test/netflix-subtitles.test.mjs test/netflix-page.test.mjs
+test/netflix-content.test.mjs test/netflix-capture.test.mjs` covers experimental
+Netflix mining without contacting Netflix. The flag starts off and registers
+the main-world and reader scripts for Netflix's top frame only while on; the
+manifest asks for `tabCapture`, never injects them itself, and the offscreen
+document adds the `USER_MEDIA` reason. Synthetic WebVTT and TTML files in
+`test/data/netflix/` (lines written for these tests, no Netflix subtitles) parse
+to exact cue times and plain text, and cue matching covers whole and partial
+lines, the ±500 ms tolerance, overlapping cues and repeated lines. The page
+script runs in a `vm` context with fake `JSON`, `fetch` and Netflix's player:
+the profile is added once, unrelated values stringify and parse byte-identically,
+a cyclic value still throws its `TypeError`, forced, "Off", image and
+non-Japanese tracks are skipped, and a replay seeks through the player API,
+plays at 1× and restores position, pause and speed without writing
+`currentTime`. A jsdom watch page checks pinning, the whole-cue sentence, reasons
+for a missing cue, post validation, the episode reset and the [CC] track choice.
+The recorder's trim, median clock fit, silence detection and WAV encoding run
+on synthetic PCM through fake media APIs. `anki-mining`, `anki-worker`,
+`anki-values` and `anki-content` cover the request-only preset routing, the
+held WAV's storage lifecycle, the `{sentence-audio}` value and the reader's
+warnings. Real Netflix playback, Chrome's capture grant and protected video are
+not covered by any automated suite.
+
 The lower-level checks can also be run individually in this order. Node suites
 use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
 `puppeteer-core`; the launcher above supplies the locked tooling automatically.
