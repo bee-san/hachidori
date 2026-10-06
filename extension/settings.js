@@ -17,6 +17,7 @@ import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { collectDebugInfo, debugInfoBlob, debugInfoFilename } from "./debug-info.js";
+import { captureDebugLog } from "./debug-log.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
 import { uploadDictionary } from "./linked-import.js";
@@ -66,6 +67,7 @@ const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const SHARING_TARGET = "hachidori-sharing";
+const ANKI_TARGET = "hachidori-anki";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
 const OPTION_SECTIONS = {
   lookup: "Reading",
@@ -457,12 +459,16 @@ function renderSharingLink(value) {
 async function downloadDebugInfo() {
   const button = element("debug-info-download");
   button.disabled = true;
-  setSectionStatus("debug-info-status", "Collecting debug info…", "working");
+  setSectionStatus("debug-info-status", "Collecting debug info… This can take up to half a minute.", "working");
   try {
-    const report = await collectDebugInfo({ chrome, window, send, workerTarget: WORKER_TARGET, context: {
-      overlayMode: OVERLAY_MODE, hostCapabilities: HOST_CAPABILITIES, miningCapabilities: MINING_CAPABILITIES,
-      linkedTo: sharingLinkedAddress, effectiveOptions: options,
-    } });
+    const report = await collectDebugInfo({ chrome, window, send,
+      targets: { worker: WORKER_TARGET, sharing: SHARING_TARGET, anki: ANKI_TARGET }, context: {
+        overlayMode: OVERLAY_MODE, hostCapabilities: HOST_CAPABILITIES, miningCapabilities: MINING_CAPABILITIES,
+        linkedTo: sharingLinkedAddress, activeSection, lastEngineStatus, effectiveOptions: options,
+        busy: { importing, installingRecommended, updating, removing, committing, customLoading, customSaving,
+          backingUp, pendingDictionaryCommits, savingOptions: savingOptions !== null },
+        statuses: Object.fromEntries(Object.keys(SECTION_STATUSES).map(id => [id, element(id).textContent])),
+      } });
     downloadBlob(document, debugInfoBlob(report), debugInfoFilename(new Date(report.generatedAt)));
     setSectionStatus("debug-info-status", "Debug info downloaded.", "ready", true);
   } catch (error) {
@@ -3960,6 +3966,8 @@ function renderMiningCapabilityHelp() {
 }
 
 async function start() {
+  // Get debug info includes this page's own recent warnings and errors.
+  captureDebugLog(window, { context: "settings" });
   configureBrowserUi();
   renderMiningCapabilityHelp();
   element("custom-buttons-settings").disabled = false;
