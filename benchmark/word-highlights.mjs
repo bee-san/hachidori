@@ -46,6 +46,11 @@ const variants = [
 const SESSIONS = Number(process.env.HACHIDORI_WORD_SESSIONS ?? 3);
 const HOVERS = Number(process.env.HACHIDORI_WORD_HOVERS ?? 20);
 const LINES = Number(process.env.HACHIDORI_WORD_LINES ?? 2000);
+// "block": the lines in one block, <br>-separated, as Aozora Bunko lays a
+// novel out. "paragraphs": one <p> per line, as news sites and texthookers do,
+// so a scroll brings new blocks into view and their segmentation starts at once.
+const LAYOUT = process.env.HACHIDORI_WORD_LAYOUT ?? "block";
+if (!["block", "paragraphs"].includes(LAYOUT)) throw new Error("HACHIDORI_WORD_LAYOUT is block or paragraphs");
 const TARGETS = ["地震", "天気"];
 
 // Distinct lines from the reference sentences, numbered in kanji so no two
@@ -59,6 +64,7 @@ const lines = Array.from({ length: LINES }, (_, index) => {
 });
 const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>
 body { font: 22px/1.8 serif; margin: 0; padding: 110px 40px 40px; }
+p { margin: 0; }
 #targets { position: fixed; inset: 0 0 auto 0; height: 70px; padding: 10px 40px; background: #fff; font-size: 32px; }
 </style><script>
 window.__longTasks = [];
@@ -66,7 +72,7 @@ new PerformanceObserver(list => { for (const entry of list.getEntries()) window.
   .observe({ type: "longtask", buffered: true });
 </script></head><body>
 <div id="targets">${TARGETS.map((word, index) => `<span id="t${index}">${word}</span>`).join("　")}</div>
-<div id="novel">${lines.join("<br>\n")}</div>
+<div id="novel">${LAYOUT === "block" ? lines.join("<br>\n") : lines.map(line => `<p>${line}</p>`).join("\n")}</div>
 </body></html>`;
 
 const cards = new Map([[1, TARGETS[0]], [2, TARGETS[1]]]);
@@ -247,7 +253,7 @@ try {
   server.close();
 }
 const report = { chrome: chromeBuild, node: process.version, cpu: cpus()[0].model, logicalCpus: cpus().length,
-  load: loadavg(), archives, lines: LINES, sessions: SESSIONS, hovers: HOVERS,
+  load: loadavg(), archives, layout: LAYOUT, lines: LINES, sessions: SESSIONS, hovers: HOVERS,
   variants: Object.fromEntries(variants.map(({ name }) => {
     const own = runs.filter(run => run.variant === name);
     const pool = key => own.flatMap(run => run[key]);

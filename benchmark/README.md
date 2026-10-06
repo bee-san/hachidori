@@ -272,9 +272,12 @@ above measures end to end.
 ### Word highlighting end to end
 
 `word-highlights.mjs` measures word highlighting in the real extension and
-Chrome on a long novel-like page: one block of `<br>`-separated lines (2,000 by
-default, `HACHIDORI_WORD_LINES`), as Aozora Bunko lays a novel out, built from
-the segmentation reference lines, under a fixed header holding two hover words.
+Chrome on a long page of lines built from the segmentation reference lines
+(2,000 by default, `HACHIDORI_WORD_LINES`), under a fixed header holding two
+hover words. `HACHIDORI_WORD_LAYOUT=block` (the default) puts them in one block
+of `<br>`-separated lines, as Aozora Bunko lays a novel out; `paragraphs` gives
+each line its own `<p>`, as news sites and texthookers do, so the blocks a
+scroll reveals are segmented at once rather than after the 100 ms recheck.
 AnkiConnect is a local fake whose index gives those words cards, so status is
 available and no real Anki is contacted. Each session imports the given
 dictionaries into a fresh profile and reports:
