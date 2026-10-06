@@ -119,13 +119,16 @@ changing and may be removed:
   in a Japanese subtitle on `netflix.com/watch/…` and add it: the sentence is the
   whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
   audio. Kiku, Lapis and Senren use their blank sentence-audio field
-  automatically. Hachidori reads Netflix's own subtitle files for the timing
+  automatically. A field mapped to `{gif}` gets a short looping GIF of the line;
+  off Netflix, with the switch off, or when a GIF cannot be made, it is the page
+  screenshot instead, so a `Picture` field mapped to `{gif}` still gets a
+  picture everywhere. Hachidori reads Netflix's own subtitle files for the timing
   (adapted from Subadub) and replays the line once to record it, muted, then
   returns to where you were. Chrome lets it record a tab only after you click Hachidori's
   toolbar button once on that tab, or add notes with its **Add the current popup
   entry to Anki** shortcut. Netflix may change its data without notice, and
-  protected playback can record as silence; the note is then added without the
-  audio and says why. While you hover a subtitle line the video pauses, and it
+  protected playback can record as silence or black frames; the note is then
+  added without that media and says why. While you hover a subtitle line the video pauses, and it
   plays on once the pointer has left the line and Hachidori's popup, unless you
   played, paused or skipped it yourself in the meantime. Adding a note leaves it
   paused until the line is recorded and the pointer has left.

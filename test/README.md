@@ -381,7 +381,7 @@ clicks, live editing without replacing cards or Note drafts, and stale-control
 navigation rejection.
 
 `node --test test/netflix.test.mjs test/netflix-subtitles.test.mjs test/netflix-page.test.mjs
-test/netflix-content.test.mjs test/netflix-capture.test.mjs` covers experimental
+test/netflix-content.test.mjs test/netflix-capture.test.mjs test/netflix-gif.test.mjs` covers experimental
 Netflix mining without contacting Netflix. The flag starts off and registers
 the main-world and reader scripts for Netflix's top frame only while on; the
 manifest asks for `tabCapture`, never injects them itself, and exposes only
@@ -408,10 +408,14 @@ recorded (whose replay's play and seeks keep the pause), after a new
 played on asks the page to keep it paused, and it resumes only once the
 recorder has stopped and the pointer has left.
 The recorder frame's sample clock, trim, median clock fit, silence detection
-and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
+and WAV encoding run on synthetic blocks through fake media APIs; with a `{gif}`
+field it also opens the video track, downscales the frames to 480 px wide and
+encodes a looping GIF of the cue window that decodes with more than one frame,
+and `netflix-gif.test.mjs` covers the frame selection, per-frame delays and the
+GIF89a header and loop marker on their own. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
-held WAV's storage lifecycle, the `{sentence-audio}` value and the reader's
-warnings. The extension smoke suite keeps a recorder port only for the recorder
+held WAV's and GIF's storage lifecycle, the `{sentence-audio}` and `{gif}`
+values with the GIF's screenshot fallback, and the reader's warnings. The extension smoke suite keeps a recorder port only for the recorder
 page framed in a Netflix watch tab while the switch is on. Real Netflix playback, Chrome's capture grant and protected video are
 not covered by any automated suite.
 
@@ -419,8 +423,9 @@ not covered by any automated suite.
 mines a fixture page served at a Netflix watch address through the real popup
 into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
 player and in-tab recording must store a WAV whose beep lies within 125 ms of
-its place, with the viewer's position, pause and speed restored and
-`currentTime` written only by the player. It then plays the fixture from inside
+its place, and a looping GIF of the line (from an animated element on the
+fixture page) that decodes with more than one frame, with the viewer's
+position, pause and speed restored and `currentTime` written only by the player. It then plays the fixture from inside
 the cue: hovering the line must pause it through the player and moving away
 resume it without a seek; a second note added during that pause must be
 recorded with the pause still in force afterwards and resumed on leaving; a

@@ -2800,6 +2800,17 @@ preflight and Add refuses the stale Add. Preflight adds `sentenceAudio: true`
 when a Netflix request's mapping contains the marker; without that key the
 reader records nothing.
 
+`{gif}` renders `<img src="hachidori-gif-<uuid>.gif">` when a GIF of the line
+is held and stored, and otherwise the screenshot's `<img>`, so off Netflix,
+with the switch off, or when a GIF cannot be made a `{gif}` field still gets the
+viewport picture. Because of that fallback a mapped `{gif}` makes
+`ankiCaptureRequirements` require the screenshot as well, and preflight adds
+`gif: true` on a Netflix request whose mapping contains the marker. `{gif}` is
+refused in the first field and is hidden from the marker picker while Netflix
+mining is off, like `{sentence-audio}`; a saved mapping stays valid and renders
+as the screenshot. Both markers and the preset note types are left otherwise
+unchanged.
+
 **Recording.** After the screenshot, the reader adds a hidden recorder frame,
 `netflix-recorder.html`, to the Netflix page (outside Netflix's app root) and
 sends `hd_netflix_capture_start` with the cue. The worker requires the switch, a
@@ -2821,10 +2832,15 @@ engine, which puts it in another process than the service worker (its
 stream with `getUserMedia` and reads it with `MediaStreamTrackProcessor`,
 placing each `AudioData` block on the wall clock
 (`performance.timeOrigin + performance.now()`) by counting samples from the
-first block's timestamp, as the removed recorder did. Chrome mutes a captured
-tab, so the replay is silent. A recording nobody finishes stops itself a minute
-after the cue's length, and removing the frame or closing its port stops it at
-once.
+first block's timestamp, as the removed recorder did. When a `{gif}` field
+needs it, the `record` request also sets `gif`, so the frame asks for the
+stream's video track too and reads it with a second `MediaStreamTrackProcessor`:
+it draws each `VideoFrame` into an `OffscreenCanvas` at most 480 px wide, reads
+back its RGBA and closes the frame at once, keeping no more than ten frames a
+second by the frames' own timestamps and placing each on the same wall clock.
+Chrome mutes a captured tab, so the replay is silent. A recording nobody
+finishes stops itself a minute after the cue's length, and removing the frame
+or closing its port stops it at once.
 
 With Hachidori's overlays concealed, the reader asks the page to replay the
 cue. Writing `<video>.currentTime` makes Netflix stop with error M7375, so the
@@ -2839,12 +2855,19 @@ video paused (see **Hover pause**).
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
 otherwise it is encoded as a 16-bit mono WAV (the removed recorder's encoder)
-and passed to the worker on the port. The worker holds it like the screenshot:
+and passed to the worker on the port. When video was captured, the frame places
+the kept frames by the same offset, keeps those inside the cue's own window
+(not padded), and encodes a looping GIF of them with the pinned MIT encoder
+gifenc (`extension/vendor/gifenc.js`, see `distribution/THIRD_PARTY_NOTICES.md`),
+each frame's delay the gap to the next and the loop set to repeat forever; a GIF
+it cannot make is simply absent, so `{gif}` falls back to the screenshot. The
+GIF is passed to the worker beside the WAV, even when the audio was silent. The
+worker holds each like the screenshot:
 one pending recording, stored with `storeMediaFile` inside the queued write,
 its fields emptied and a warning added when the upload is refused, released
 after an authoritative no-write, deleted after a definitively rejected write,
 kept after an uncertain one, and discarded by token
-(`hd_anki_screenshot_discard`, which releases either kind) when the reader
+(`hd_anki_screenshot_discard`, which releases any kind) when the reader
 abandons the submission. A replay that fails cancels the recording with
 `hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
 
