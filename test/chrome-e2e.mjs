@@ -6131,10 +6131,13 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const player = await tab.evaluate(async () => {
     const canvas = Object.assign(document.createElement("canvas"), { width: 160, height: 90 });
     const context = canvas.getContext("2d");
-    const paint = setInterval(() => {
+    const fill = () => {
       context.fillStyle = "rgb(0, 200, 80)";
       context.fillRect(0, 0, canvas.width, canvas.height);
-    }, 20);
+    };
+    // Painted before recording starts, so no frame comes from a blank canvas.
+    fill();
+    const paint = setInterval(fill, 20);
     const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
     const chunks = [];
     recorder.ondataavailable = event => chunks.push(event.data);
