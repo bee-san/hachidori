@@ -516,6 +516,7 @@ check('entry and hash pages use one cache and unload together', () => {
   const F = pagedIndex.F;
   const stats = JSON.parse(F.ccall('hdw_memory_stats', 'string', [], []));
   eq(stats.entries.bytes + stats.indexes.bytes, pagedIndex.pageCacheBytes, 'combined cache accounting');
+  eq(stats.pageCacheBudgetBytes, 32 * 1024 * 1024, 'shared cache budget');
   eq(stats.indexes.reads > 0, true, 'index storage reads');
   eq(F.ccall('hdw_hash_index_paged', 'number', ['string'], [DICT_DIR]), 1, 'actual index storage');
   eq(F.ccall('hdw_remove_dict', 'number', ['string'], [DICT_DIR]), 4, 'all kinds removed');

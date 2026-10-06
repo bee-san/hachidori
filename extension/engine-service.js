@@ -3767,7 +3767,6 @@ const HANDLERS = {
     return {
       heapBytes: engine.HEAPU8.byteLength,
       pageCacheBytes: engine.ccall("hdw_page_cache_bytes", "number", [], []),
-      pageCacheBudgetBytes: 32 * 1024 * 1024,
       ...JSON.parse(engine.ccall("hdw_memory_stats", "string", [], [])),
       dictionaryIndexStorage,
       hashIndexStorage: indexPolicy(),

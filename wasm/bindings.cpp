@@ -47,7 +47,13 @@
 namespace hdw {
 
 struct WireCacheActivity { size_t bytes; uint64_t hits; uint64_t reads; uint64_t readBytes; };
-struct WireMemoryStats { WireCacheActivity entries; WireCacheActivity indexes; size_t liveAllocatedBytes; size_t allocatorFreeBytes; };
+struct WireMemoryStats {
+  WireCacheActivity entries;
+  WireCacheActivity indexes;
+  size_t pageCacheBudgetBytes;
+  size_t liveAllocatedBytes;
+  size_t allocatorFreeBytes;
+};
 
 constexpr size_t MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
 constexpr size_t MAX_GLOSSARY_BYTES = 8 * 1024 * 1024;
@@ -1262,7 +1268,9 @@ EMSCRIPTEN_KEEPALIVE double hdw_page_cache_bytes(void) {
   }
 }
 
-// The existing payload counter now includes both files using the same cache.
+// The shared page cache split into entry and hash pages (hdw_page_cache_bytes
+// is their sum), the budget of Engine's default-constructed query, and the
+// allocator's live and free bytes inside the heap.
 EMSCRIPTEN_KEEPALIVE const char* hdw_memory_stats(void) {
   static std::string out;
   const auto stats = engine().query.page_cache_statistics();
@@ -1270,6 +1278,7 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_memory_stats(void) {
   const auto allocated = mallinfo();  // NOSONAR(cpp:S1874)
   const WireMemoryStats wire{{stats.entries.bytes, stats.entries.hits, stats.entries.reads, stats.entries.read_bytes},
                    {stats.indexes.bytes, stats.indexes.hits, stats.indexes.reads, stats.indexes.read_bytes},
+                   PageCacheOptions{}.budget_bytes,
                    static_cast<size_t>(allocated.uordblks), static_cast<size_t>(allocated.fordblks)};
   (void)glz::write_json(wire, out);
   return out.c_str();
