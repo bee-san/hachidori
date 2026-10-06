@@ -39,26 +39,29 @@ export function selectGifFrames(frames, { startMs, endMs }) {
   }));
 }
 
-// GIF delays are in centiseconds; the encoder rounds the millisecond delay.
-export const gifDelayCentiseconds = delayMs => Math.max(1, Math.round(delayMs / 10));
-
-// A looping GIF of the kept frames. Each entry is { data (RGBA Uint8ClampedArray
-// or Uint8Array of width*height*4), delayMs }. A per-frame 256-colour palette
-// keeps scene changes clean; gifenc writes the loop marker from the first frame.
+// A looping GIF of the kept frames. Each entry is { data (width*height*4 RGBA,
+// as getImageData returns it), delayMs }. The line's frames share one 256-colour
+// palette, quantised from all of them at once: gifenc's quantiser costs nearly
+// as much for one detailed video frame as for the whole line, so a palette per
+// frame made a few seconds of anime take seconds to encode while the note
+// waited. The palette is the GIF's global colour table, written with the first
+// frame, as is the loop marker.
 export function encodeLoopingGif(entries, width, height) {
-  if (!Array.isArray(entries) || entries.length === 0) throw new Error("A GIF needs at least one frame.");
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
-    throw new Error("The GIF dimensions are invalid.");
-  }
+  const pixels = width * height;
+  const rgba = new Uint8Array(entries.length * pixels * 4);
+  entries.forEach(({ data }, index) => {
+    // A resize during the replay changes the canvas between frames.
+    if (data.length !== pixels * 4) throw new Error("A GIF frame is not width×height RGBA.");
+    rgba.set(data, index * pixels * 4);
+  });
+  const palette = quantize(rgba, 256);
+  const indexed = applyPalette(rgba, palette);
   const gif = GIFEncoder();
-  for (const { data, delayMs } of entries) {
-    const rgba = data instanceof Uint8Array ? data : new Uint8Array(data.buffer ?? data);
-    if (rgba.length !== width * height * 4) throw new Error("A GIF frame is not width×height RGBA.");
-    const palette = quantize(rgba, 256);
-    const indexed = applyPalette(rgba, palette);
+  entries.forEach(({ delayMs }, index) => {
     // gifenc's `delay` is milliseconds; it writes round(delay / 10) centiseconds.
-    gif.writeFrame(indexed, width, height, { palette, delay: delayMs, repeat: 0 });
-  }
+    gif.writeFrame(indexed.subarray(index * pixels, (index + 1) * pixels), width, height,
+      { ...(index === 0 ? { palette } : {}), delay: delayMs, repeat: 0 });
+  });
   gif.finish();
   return gif.bytes();
 }

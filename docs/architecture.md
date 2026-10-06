@@ -2859,7 +2859,11 @@ and passed to the worker on the port. When video was captured, the frame places
 the kept frames by the same offset, keeps those inside the cue's own window
 (not padded), and encodes a looping GIF of them with the pinned MIT encoder
 gifenc (`extension/vendor/gifenc.js`, see `distribution/THIRD_PARTY_NOTICES.md`),
-each frame's delay the gap to the next and the loop set to repeat forever; a GIF
+each frame's delay the gap to the next and the loop set to repeat forever. The
+frames share one 256-colour palette quantised from all of them: gifenc's
+quantiser costs nearly as much for one detailed frame as for the whole line, so
+a palette per frame took 7–9 s for a 4 s line of anime-style frames against
+about 0.7 s for one. A GIF
 it cannot make is simply absent, so `{gif}` falls back to the screenshot. The
 GIF is passed to the worker beside the WAV, even when the audio was silent. The
 worker holds each like the screenshot:
