@@ -106,6 +106,11 @@
     lookupMode: "activationSticky",
     activationKey: "Shift",
     definitionLookupMode: "inherit",
+    // Reading → Activation: how long a lookup that needs no key waits for the
+    // pointer to rest on one word (0 looks up at once), and the same wait in a
+    // popup's definitions, where null follows the page's.
+    scanDelayMs: 0,
+    definitionScanDelayMs: null,
     popupHideDelayMs: 160,
     // Yomitan's scanning.hidePopupOnCursorExit and hidePopupOnCursorExitDelay.
     hidePopupOnCursorExit: false,
@@ -184,6 +189,8 @@
   const NUMBER_RANGES = {
     scanLength: [1, 64],
     maxResults: [1, 256],
+    scanDelayMs: [0, 5000],
+    definitionScanDelayMs: [0, 5000],
     popupHideDelayMs: [0, 5000],
     hidePopupOnCursorExitDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
@@ -623,6 +630,8 @@
   };
 
   function normaliseField(key, value) {
+    // Same as page delay is null, not a copy of the page value.
+    if (key === "definitionScanDelayMs" && value === null) return null;
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
@@ -706,7 +715,8 @@
   }
 
   // Keys an older stored record or backup may still carry. `modifier` and
-  // `definitionBlurEnabled` migrate; `hoverDelayMs` was never adjustable and is dropped.
+  // `definitionBlurEnabled` migrate; `hoverDelayMs` was never adjustable and is
+  // dropped rather than read as `scanDelayMs`.
   const RETIRED_OPTION_KEYS = ["modifier", "definitionBlurEnabled", "hoverDelayMs"];
 
   // `definitionBlurEnabled` was renamed; the new key wins when both are present.
@@ -743,6 +753,7 @@
     if (key === "experimental") return validExperimental(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
+    if (key === "definitionScanDelayMs") return raw === null || (typeof raw === "number" && raw === normalized);
     if (key === "keybinds") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((bind, index) => raw[index] && typeof raw[index] === "object" && JSON.stringify(bind)
         === JSON.stringify(Object.fromEntries(Object.keys(bind).map(field => [field, raw[index][field]]))));
