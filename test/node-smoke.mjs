@@ -2165,6 +2165,28 @@ check('frequency breaks a tie between two-word splits in the selected order', ()
   eq(scall('hdw_last_error', 'string', [], []), '', 'no error');
 });
 
+check('the copula forms and conjunctions a dictionary lists whole are function words', () => {
+  // Jitendex has headwords for the copula's past and presumptive forms and for
+  // conjunctions built on it, so a span lands on だった rather than on だ. A
+  // small dictionary of those headwords is added for this check only.
+  const title = 'segmentation-copula';
+  const words = ['だった', 'だろう', 'だろ', 'でしょう', 'でしょ', 'だけど', 'だったら', 'それでは'];
+  const report = simport(buildTitledZip(title, {
+    terms: words.map((word, index) => [word, word, '', '', 0, [`copula ${word}`], index, '']),
+  }), '/dicts');
+  ok(report.success, `copula import failed: ${report.error}`);
+  eq(segAdd(title, 0), 1, `copula add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+  try {
+    for (const word of words) {
+      const span = segmentS(`雨${word}`, 16).spans.find((candidate) => candidate.start === 1);
+      eq(span?.length, word.length, `${word} is one span`);
+      eq(span?.functionWord, true, `${word} is a function word`);
+    }
+  } finally {
+    eq(scall('hdw_remove_dict', 'number', ['string'], [`/dicts/${title}`]), 1, 'copula remove_dict');
+  }
+});
+
 check('segment rejects text above the 4 KiB lookup limit', () => {
   const tooLong = 'あ'.repeat(1500);
   const response = JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [tooLong, 16, '']));
