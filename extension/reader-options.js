@@ -37,6 +37,8 @@
       description: "Write compact definitions to new Anki notes: dictionary stylesheets, classes and wrappers are left out, keeping the text, line breaks, lists, tables, furigana and images. Notes already in Anki are not changed." },
     { id: "netflixMining", label: "Netflix mining",
       description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice, and replays the line once to record it. Reload Netflix after turning this on. Protected video can make the audio silent or the GIF black." },
+    { id: "wordHighlighting", label: "Word highlighting", section: "word-highlighting",
+      description: "Mark the Japanese words on every page by their Anki status: unknown, learning or known. Your dictionaries split the page into words on this computer, and the status comes from Hachidori's copy of your Anki index, so opening a page never contacts Anki." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -61,6 +63,8 @@
     // Yomitan offers this only inside its popup. Hachidori's popup cannot
     // exist while lookups are off, so the page scope can turn them back on.
     { id: "toggleOption", label: "Toggle option", argument: "option", scopes: ["popup", "web"] },
+    // Hachidori's own: shows or hides the word highlights (#520) of the page.
+    { id: "toggleWordHighlights", label: "Toggle word highlights", scopes: ["web"] },
   ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,
@@ -150,6 +154,13 @@
     definitionBlurThreshold: 5,
     definitionBlurReveal: "timed",
     definitionBlurDelayMs: 5000,
+    // Reading → Word highlighting (#520, experimental): marks the page's words
+    // by their Anki status. Its switches and style stay while it is off.
+    wordHighlightEnabled: false,
+    wordHighlightUnknown: true,
+    wordHighlightLearning: true,
+    wordHighlightKnown: false,
+    wordHighlightStyle: "underline",
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
@@ -187,8 +198,12 @@
     dictionaryIndexStorage: "auto",
     keybinds: DEFAULT_KEYBINDS,
   };
+  // Word highlighting's switches stay with its experimental Settings section;
+  // a page shows or hides its marks with Toggle word highlights instead.
+  const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "wordHighlightEnabled", "wordHighlightUnknown",
+    "wordHighlightLearning", "wordHighlightKnown"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
-    .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && key !== "lowMemoryMode");
+    .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {
     scanLength: [1, 64],
     maxResults: [1, 256],
@@ -218,6 +233,8 @@
   // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
   const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
   const PITCH_ACCENT_FURIGANA_STYLES = ["contour", "overline"];
+  // How a word highlight marks its word: a line under it, its text, or its background.
+  const WORD_HIGHLIGHT_STYLES = ["underline", "color", "background"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
     { label: "Automatic", ids: ["auto"] },
@@ -631,6 +648,7 @@
     imageHoverPreview: new Set(IMAGE_HOVER_PREVIEWS),
     glossaryLayoutMode: new Set(GLOSSARY_LAYOUT_MODES),
     pitchAccentFuriganaStyle: new Set(PITCH_ACCENT_FURIGANA_STYLES),
+    wordHighlightStyle: new Set(WORD_HIGHLIGHT_STYLES),
   };
 
   function normaliseField(key, value) {
@@ -822,7 +840,7 @@
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
-    GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES,
+    GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,
