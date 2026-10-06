@@ -393,6 +393,16 @@ test("a new /watch/ page drops the resume, and nothing pauses while the reader h
   f.media("play");
   f.move(ON_LINE);
   assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
+  // Nor when the popup that held the pause closes on the next episode.
+  f.popup(true);
+  f.move(AWAY);
+  f.navigate("/watch/81000003");
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
+  await settle();
+  f.media("play");
+  f.move(ON_LINE);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause", "pause"]);
   // Turned off with its pause in force, it resumes nothing and pauses nothing.
   f.netflix.setHoverPause(false);
   f.popup(true);
@@ -401,5 +411,9 @@ test("a new /watch/ page drops the resume, and nothing pauses while the reader h
   f.media("play");
   f.move(ON_LINE);
   f.move(AWAY);
-  assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause", "pause"]);
+  // Back on, the next line entered pauses again.
+  f.netflix.setHoverPause(true);
+  f.move(ON_LINE);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause", "pause", "pause"]);
 });
