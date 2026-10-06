@@ -9,5 +9,16 @@
     "licenses": [
       "LICENSE"
     ]
+  },
+  {
+    "name": "gifenc",
+    "revision": "1.0.3",
+    "version": "1.0.3",
+    "url": "https://registry.npmjs.org/gifenc/-/gifenc-1.0.3.tgz",
+    "sha256": "29470c10132cd66ecac3b4da025b57ab9ec35df6e40215947f22eb2f14a128d4",
+    "strip_prefix": "package/",
+    "licenses": [
+      "LICENSE.md"
+    ]
   }
 ]

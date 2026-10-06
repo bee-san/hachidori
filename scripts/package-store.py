@@ -136,6 +136,8 @@ def main():
             upload[f"licenses/{dependency['name']}/{name}"] = entries[name]
         if dependency["name"] == "zipjs" and entries["dist/zip-core-external.min.js"][0] != upload["vendor/zip.js"][0]:
             raise ValueError("Pinned zip.js source no longer matches the shipped runtime.")
+        if dependency["name"] == "gifenc" and entries["dist/gifenc.esm.js"][0] != upload["vendor/gifenc.js"][0]:
+            raise ValueError("Pinned gifenc source no longer matches the shipped runtime.")
 
     sources["SOURCE_REVISIONS.json"] = (json_bytes({"repositories": revisions, "dependencies": dependencies}), 0o100644)
     source_name = stem + "-source.zip"
