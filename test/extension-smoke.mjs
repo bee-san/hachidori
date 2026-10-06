@@ -6376,19 +6376,41 @@ async function main() {
     JSON.stringify({ ok: segmentBatch.ok, error: segmentBatch.error,
       a: headwords(segA), b: headwords(segB), c: segC?.spans?.length }),
   );
-  // A lookup interleaves with a segment batch: both complete and the lookup is
-  // not blocked behind the batch (hd_segment yields the engine per chunk).
-  const [interleavedSegment, interleavedLookup] = await Promise.all([
-    request("hd_segment", { chunks: [{ id: "x", text: "読む" }, { id: "y", text: "食べる" }], scanLength: 16,
-      options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" } }),
-    request("hd_lookup", { text: "漢字", maxResults: 32, scanLength: 16,
-      options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" } }),
-  ]);
+  // A hover that arrives while a chunk is being segmented runs before the
+  // batch's next chunk, because hd_segment takes one engine turn per chunk.
+  // The lookup is queued from inside the first chunk's native call, the moment
+  // a hover could arrive; a batch run as one queued job would segment both
+  // chunks first.
+  const nativeOrder = [];
+  let lookupDuringChunk = null;
+  const segmentingCcall = observedEngine.ccall;
+  observedEngine.ccall = (name, returnType, argumentTypes, argumentValues) => {
+    if (name === "hdw_segment") {
+      nativeOrder.push(argumentValues[0]);
+      lookupDuringChunk ??= engineService.handleEngineMessage({
+        type: "hd_lookup", requestId: "lookup-during-segment", text: "漢字", maxResults: 32, scanLength: 16,
+      });
+    } else if (name === "hdw_lookup") {
+      nativeOrder.push(name);
+    }
+    return segmentingCcall(name, returnType, argumentTypes, argumentValues);
+  };
+  let interleavedSegment = null;
+  try {
+    interleavedSegment = await engineService.handleEngineMessage({
+      type: "hd_segment", requestId: "segment-around-lookup", scanLength: 16,
+      chunks: [{ id: "x", text: "読む" }, { id: "y", text: "食べる" }],
+    });
+  } finally {
+    observedEngine.ccall = segmentingCcall;
+  }
+  const interleavedLookup = await lookupDuringChunk;
   check(
-    "a hover lookup completes alongside a segment batch",
-    interleavedSegment.ok === true && interleavedSegment.segments?.length === 2
-      && interleavedLookup.ok === true && interleavedLookup.results?.[0]?.term?.expression === "漢字",
-    JSON.stringify({ segment: interleavedSegment.ok, lookup: interleavedLookup.results?.[0]?.term?.expression }),
+    "a hover that arrives during a segment chunk runs before the batch's next chunk",
+    interleavedSegment?.ok === true && interleavedSegment.segments?.length === 2
+      && interleavedLookup?.ok === true && interleavedLookup.results?.[0]?.term?.expression === "漢字"
+      && JSON.stringify(nativeOrder) === JSON.stringify(["読む", "hdw_lookup", "食べる"]),
+    JSON.stringify({ nativeOrder, segment: interleavedSegment?.ok, lookup: interleavedLookup?.results?.[0]?.term?.expression }),
   );
 
   // An MDict dictionary: the .mdx plus its .mdd travel as blob URLs, the engine
