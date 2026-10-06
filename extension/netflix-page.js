@@ -313,6 +313,18 @@
     } else if (command?.type === "replay" && typeof command.id === "string"
         && [command.startMs, command.endMs, command.padMs].every(Number.isFinite) && command.startMs <= command.endMs) {
       void replay(command);
+    } else if ((command?.type === "pause" || command?.type === "resume") && !replaying) {
+      // Hovering a subtitle pauses through the player like the replay, which
+      // owns the player until it has restored the viewer's state.
+      const player = netflixPlayer();
+      const video = mainVideo();
+      if (player === null || video === null) return;
+      try {
+        if (command.type === "pause") pause(player, video);
+        else play(player, video).catch(() => {});
+      } catch {
+        // Netflix's player stays as it was.
+      }
     }
   });
 }());
