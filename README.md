@@ -120,9 +120,10 @@ changing and may be removed:
   whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
   audio. Kiku, Lapis and Senren use their blank sentence-audio field
   automatically. A field mapped to `{gif}` gets a short looping GIF of the line;
-  off Netflix, with the switch off, or when a GIF cannot be made, it is the page
-  screenshot instead, so a `Picture` field mapped to `{gif}` still gets a
-  picture everywhere. Hachidori reads Netflix's own subtitle files for the timing
+  off Netflix or with the switch off it is the page screenshot instead, so a
+  `Picture` field mapped to `{gif}` still gets a picture everywhere, and a
+  Netflix line that cannot be recorded also gets the screenshot, with a note
+  saying why. Hachidori reads Netflix's own subtitle files for the timing
   (adapted from Subadub) and replays the line once to record it, muted, then
   returns to where you were. Chrome lets it record a tab only after you click Hachidori's
   toolbar button once on that tab, or add notes with its **Add the current popup

@@ -2905,12 +2905,16 @@ for the viewer's.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to
-Anki** shortcut), a silent recording (a muted video or protected playback;
-turning off Chrome's graphics acceleration can help), a missing Netflix player
-or an unfinished replay are each a `Sentence audio:` warning on the added note.
-A browser linked to another Hachidori records nothing: its worker marks a
-Netflix request's linked preflight replies `netflixLinked`, and the reader warns
-instead. No DRM workaround is attempted, and black pictures are not detected.
+Anki** shortcut), a missing Netflix player or an unfinished replay are each a
+warning on the added note, named for the media its fields map: `Sentence
+audio:`, `GIF:` or `Sentence audio and GIF:`. A silent recording (a muted video
+or protected playback; turning off Chrome's graphics acceleration can help) is a
+`Sentence audio:` warning, and a recording that made no GIF a `GIF:` one, while
+the field gets the screenshot. A browser linked to another Hachidori records
+nothing: its worker marks a Netflix request's linked preflight replies
+`netflixLinked`, and the reader adds a `Netflix mining:` warning instead, since
+the host never sees the cue and so cannot say which media are mapped. No DRM
+workaround is attempted, and black pictures are not detected.
 
 Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their

@@ -415,7 +415,9 @@ and `netflix-gif.test.mjs` covers the frame selection, per-frame delays and the
 GIF89a header and loop marker on their own. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
 held WAV's and GIF's storage lifecycle, the `{sentence-audio}` and `{gif}`
-values with the GIF's screenshot fallback, and the reader's warnings. The extension smoke suite keeps a recorder port only for the recorder
+values with the GIF's screenshot fallback, and the reader's warnings, named for
+the mapped media (a `{gif}`-only note included) and given for any linked Netflix
+note. The extension smoke suite keeps a recorder port only for the recorder
 page framed in a Netflix watch tab while the switch is on. Real Netflix playback, Chrome's capture grant and protected video are
 not covered by any automated suite.
 
