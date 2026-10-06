@@ -1973,6 +1973,9 @@ const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
 // click-time repair or the 30-minute refresh (#520). The index is derived
 // state, so this is a signal, not stored data; the content script fetches the
 // current statuses itself. A linked browser relays its host's revision here.
+// `revision` is null when the evidence itself changed (another Template
+// source, or linking to or unlinking from a host): earlier revisions then
+// belong to other rows and cannot be compared with later ones.
 function broadcastWordStatus(revision) {
   if (typeof chrome.tabs?.query !== "function") return;
   void (async () => {
@@ -1995,19 +1998,28 @@ function broadcastWordStatus(revision) {
   })();
 }
 
-function indexRowRevision(value) {
-  return value?.version === 1 && Number.isInteger(value.rowRevision) ? value.rowRevision : 0;
+function indexRevision(value, key) {
+  return value?.version === 1 && Number.isInteger(value[key]) ? value[key] : 0;
 }
 
 // A local index change broadcasts to this install's own tabs and, while
 // hosting, to every linked browser. A linked install leaves its own suspended
 // index alone and relays the host's revision through the client callback.
+// A source change keeps the row revision but answers from other rows (none
+// until its first pull), so it is announced without one.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[ANKI_INDEX_KEY]) return;
-  const next = indexRowRevision(changes[ANKI_INDEX_KEY].newValue);
-  if (next === indexRowRevision(changes[ANKI_INDEX_KEY].oldValue)) return;
-  if (!sharingLinked) broadcastWordStatus(next);
-  sharingHost?.wordStatusChanged(next);
+  const { oldValue, newValue } = changes[ANKI_INDEX_KEY];
+  let revision;
+  if (indexRevision(newValue, "configurationRevision") !== indexRevision(oldValue, "configurationRevision")) {
+    revision = null;
+  } else if (indexRevision(newValue, "rowRevision") !== indexRevision(oldValue, "rowRevision")) {
+    revision = indexRevision(newValue, "rowRevision");
+  } else {
+    return;
+  }
+  if (!sharingLinked) broadcastWordStatus(revision);
+  sharingHost?.wordStatusChanged(revision);
 });
 
 async function applyAnkiIndexRole() {

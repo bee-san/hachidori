@@ -3970,6 +3970,31 @@ async function ankiWordStatusStage() {
       && ankiConnect.length === 0,
     JSON.stringify({ hostReply, sent: toReader(), ankiConnect }));
 
+  // Another Template source keeps the row revision but none of its rows, so
+  // pages and linked browsers are told without one, then again by its pull.
+  const linkedBroadcasts = () => (host?.sent ?? []).filter(frame => frame.kind === "broadcast")
+    .map(frame => JSON.parse(frame.text)).filter(frame => frame.kind === "word-status");
+  const beforeSource = broadcasts.length;
+  const storedOptions = storage.raw.get("options");
+  const sourceWrite = await bus.sendMessage("word-status-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "word-status-source", baseRevision: storedOptions.revision, options: { anki: {
+      ...globalThis.HDReaderOptions.normaliseOptions(storedOptions).anki, duplicateScope: "all" } } });
+  await settle(() => broadcasts.length >= beforeSource + 2 && refreshes.length === 2);
+  const sourceChanged = broadcasts.slice(beforeSource).map(entry => entry.message.revision);
+  const unavailable = await ask({ headwords: ["食べる"] }, "source-word-status");
+  refreshes[1]?.([["猫", true, [13]]]);
+  await settle(() => broadcasts.length >= beforeSource + 4);
+  const pulled = await ask({ headwords: ["食べる", "猫"] }, "pulled-word-status");
+  check("another Template source is announced to every reading tab and linked browser without a revision",
+    sourceWrite.ok === true && JSON.stringify(sourceChanged) === JSON.stringify([null, null])
+      && unavailable.ok === true && unavailable.revision === 1 && unavailable.statuses === null
+      && JSON.stringify(broadcasts.slice(beforeSource + 2).map(entry => entry.message.revision)) === JSON.stringify([2, 2])
+      && pulled.revision === 2 && JSON.stringify(pulled.statuses) === JSON.stringify(["unknown", "known"])
+      && JSON.stringify(linkedBroadcasts()) === JSON.stringify([
+        { kind: "word-status", revision: null }, { kind: "word-status", revision: 2 }])
+      && ankiConnect.length === 0,
+    JSON.stringify({ sourceWrite, sourceChanged, unavailable, pulled, broadcasts, linked: linkedBroadcasts() }));
+
   // A linked reading browser forwards the page's batch once and returns the
   // host's reply; its own index and Anki service are never consulted.
   const clientBus = makeBus(), clientStorage = makeStorage();

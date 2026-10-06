@@ -333,7 +333,10 @@ export function parseHostFrame(text) {
       if (!frame.changes || typeof frame.changes !== "object" || Array.isArray(frame.changes)) throw new Error("malformed sharing storage frame");
       return { kind: "storage", changes: frame.changes };
     case "word-status":
-      return { kind: "word-status", revision: Number.isInteger(frame.revision) ? frame.revision : 0 };
+      if (frame.revision !== null && !(Number.isSafeInteger(frame.revision) && frame.revision >= 0)) {
+        throw new Error("malformed sharing word-status frame");
+      }
+      return { kind: "word-status", revision: frame.revision };
     case "ping":
       return { kind: "ping" };
     case "bye":

@@ -107,7 +107,10 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "reply", id: "a", response: { ok: true } })), { kind: "reply", id: "a", response: { ok: true } });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "storage", changes: { options: null } })), { kind: "storage", changes: { options: null } });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "word-status", revision: 7 })), { kind: "word-status", revision: 7 });
-  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "word-status" })), { kind: "word-status", revision: 0 });
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "word-status", revision: null })), { kind: "word-status", revision: null });
+  for (const revision of [undefined, -1, 1.5, "7"]) {
+    assert.throws(() => parseHostFrame(JSON.stringify({ kind: "word-status", revision })), /malformed sharing word-status frame/u);
+  }
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "ping" })), { kind: "ping" });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "bye", reason: "old" })), { kind: "bye", reason: "old" });
   assert.throws(() => parseHostFrame(JSON.stringify({ kind: "storage", changes: [] })), /malformed sharing storage frame/u);
