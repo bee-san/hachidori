@@ -425,7 +425,7 @@
         const result = await send("hd_anki_submit", { request: prepared });
         // These replies confirm that no note was written. Release the export
         // even if its popup retired while Anki was checking the submission.
-        if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
+        if (["duplicate", "invalid"].includes(result.state)) await discardScreenshot(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
         await handleSubmissionFailure(record, error, writeSent, owns);
