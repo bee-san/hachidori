@@ -22,10 +22,10 @@ that costs nothing until a page is touched. WebAssembly has no demand paging, so
 Emscripten emulates `mmap` by allocating the whole file inside the module's
 linear memory and copying the bytes in. Five things follow:
 
-- **Small metadata stays resident; hash tables follow the selected policy.**
-  Its entries are resident only
-  with **Keep in memory**, or the automatic policy on IDBFS hosts. Paged entries
-  use a shared 32 MiB cache together with paged hashes instead. A dictionary's files are held once however
+- **Every loaded dictionary's small index files are resident.** Its hash table
+  is resident unless the hash policy reads it from disk, and its entries only
+  with **Keep in memory**, or the automatic policy on IDBFS hosts. Paged hashes
+  and entries share one 32 MiB cache instead. A dictionary's files are held once however
   many kinds it loads as (term, frequency, pitch, kanji): the kinds share one copy.
 - **Images and other media are not.** `media.bin` is never copied in; the
   engine reads a file from OPFS (or IDBFS) when a popup or an Anki export asks
@@ -180,7 +180,8 @@ had left it. A library whose hashes fit the budget is unchanged.
 
 For diagnostics, `hd_memory` separates `hashBytes`, `residentHashBytes`,
 `otherResidentBytes` and `residentEntryBytes` for each package. `pageCacheBytes`
-remains the combined cache payload; `entries` and `indexes` split its bytes,
+remains the combined cache payload and `pageCacheBudgetBytes` its budget;
+`entries` and `indexes` split its bytes,
 hits, page reads and actual bytes read. `liveAllocatedBytes` and
 `allocatorFreeBytes` come from the native allocator. They distinguish live heap
 allocations and reusable allocator space from `heapBytes`, the WASM capacity;
@@ -194,7 +195,10 @@ Settings → Advanced → Memory → **Low memory mode** (off by default) does t
 things:
 
 1. **Forces entries to be read from disk**, including when **Keep in memory**
-   was selected. On direct OPFS this matches the new automatic default.
+   was selected. On direct OPFS this matches the new automatic default. With
+   **Automatic** hash indexes on direct OPFS it also keeps only the smallest
+   hash tables in memory, within a 32 MiB budget, and reads the rest from disk
+   (see [Dictionary hash storage](#dictionary-hash-storage)).
 2. **Recycles the engine worker after changes.** Once an import, reimport,
    update, removal, enable/disable, custom-dictionary save or backup
    restore has settled and the engine has been idle for two seconds, the
@@ -231,8 +235,8 @@ Turning the mode on or off also recycles the worker once, so the pool size
 and the import threading always match the option; entry paging is otherwise
 controlled independently by the storage policy.
 
-On OPFS the engine keeps each paged `blobs.bin`, and each `media.bin`, open
-through a sync access handle, which locks the file for as long as its package
+On OPFS the engine keeps each paged `blobs.bin` and `hash.table`, and each
+`media.bin`, open through a sync access handle, which locks the file for as long as its package
 is loaded. A worker that opens a file another context still holds reads it
 through a slower `Blob` instead of failing.
 

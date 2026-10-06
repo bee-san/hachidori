@@ -284,7 +284,14 @@ package the way a full heap does, checks that the package loads paged, and that
 one refused paged too is reported in `failedDictionaries` while the others load.
 `engine-recycler.test.mjs` checks automatic OPFS paging independently of import
 mode, IDBFS defaults, explicit resident storage, the low-memory override, and
-idle restarts when only the storage policy changes.
+idle restarts when only the storage policy changes, the hash-index policy
+included. `node --test test/dictionary-index-storage.test.mjs` checks the
+aggregate hash budget: the smallest hash tables stay resident first, ties go by
+stable package ID, each enabled package counts once and disabled packages not
+at all, and the plan only chooses which hashes are paged, never which packages
+load. Automatic budgets only on low-memory direct OPFS. `node-smoke.mjs` also pads a copy's `hash.table`: paged,
+it adds no allocation of that size and every term, kanji and media answer is
+identical, and its pages share the entries' cache and leave with the package.
 `chrome-e2e.mjs` first requires the real extension total, with the engine
 heap counted once, then turns the mode on in a real Chrome, watches the worker recycle
 (the generation restarts from zero), imports in the strict two-thread pool,
@@ -292,8 +299,11 @@ and checks that the heap dropped, lookups still hit, the package's row counts
 only its index files as sized in OPFS, the page cache filled within its budget
 and the readout renders. Turning the mode off retains paged OPFS entries with
 the full import pool; selecting resident entry storage counts `blobs.bin` again
-and produces identical lookup results.
-The hoshidicts `dictionary-storage` test covers the engine side natively.
+and produces identical lookup results. Choosing **Read from disk** for hash
+indexes restarts the idle worker with the hash paged through the shared cache
+and identical lookups, and **Keep in memory** brings it back.
+The hoshidicts `dictionary-storage` and `paged-hash` tests cover the engine side
+natively.
 
 `node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
 test/sharing-host.test.mjs
