@@ -46,6 +46,9 @@
     "playready-h264mpl31-dash", "playready-h264hpl30-dash", "playready-h264hpl31-dash",
     "vp9-profile0-L30-dash-cenc", "vp9-profile0-L31-dash-cenc", "dfxp-ls-sdh", "simplesdh", "nflx-cmisc",
     "BIF240", "BIF320"]);
+  // What a profile list looks like in JSON: the key Subadub looks for, or one
+  // of its profile names. Profile names are letters, digits and hyphens.
+  const PROFILE_MARKER = new RegExp(`"profiles":\\s*\\[|"(?:${[...NETFLIX_PROFILES].join("|")})"`, "u");
   // Text downloads netflix-subtitles.js reads, in order of preference.
   const DOWNLOADS = [[WEBVTT_PROFILE, "webvtt"], ["imsc1.1", "ttml"], ["dfxp-ls-sdh", "ttml"], ["simplesdh", "ttml"]];
   const POLL_MS = 25;
@@ -151,11 +154,17 @@
   }
 
   JSON.stringify = function stringify() {
+    const text = Reflect.apply(originalStringify, this, arguments);
+    // Most of Netflix's calls carry no profile list. One scan of their output
+    // decides, so only the manifest request is searched and written again.
+    if (typeof text !== "string" || !PROFILE_MARKER.test(text)) return text;
     try {
       const profiles = profileList(arguments[0]);
-      if (profiles !== null && !profiles.includes(WEBVTT_PROFILE)) profiles.unshift(WEBVTT_PROFILE);
+      if (profiles === null || profiles.includes(WEBVTT_PROFILE)) return text;
+      profiles.unshift(WEBVTT_PROFILE);
     } catch {
       // A value Hachidori cannot inspect is stringified exactly as Netflix asked.
+      return text;
     }
     return Reflect.apply(originalStringify, this, arguments);
   };

@@ -2717,10 +2717,14 @@ itself, so a page that still has the scripts does nothing once it is off.
 `distribution/THIRD_PARTY_NOTICES.md`). `JSON.stringify` finds the manifest
 request's list of profile names by searching rather than by property name and
 adds `webvtt-lssdh-ios8` once, so Netflix lists a WebVTT download for each text
-track; only a non-empty list of strings named `profiles` or holding a known
-profile counts, a visited set lets a cyclic value reach the original
-`JSON.stringify` and its own `TypeError`, and any inspection failure leaves the
-call exactly as Netflix made it. `JSON.parse` reads a `result` with `movieId`
+track. Only a call whose own output names a `profiles` list or a known profile
+is searched and stringified again; every other call returns the original
+output untouched (about 0.5–0.8 µs extra on a small object and 0.05–0.08 ms on a
+5,000-node one in Node 22, against 4 ms for searching every value). Only a
+non-empty list of strings named `profiles` or holding a known profile counts, a
+visited set keeps the search finite on a cyclic value (which the original
+`JSON.stringify` rejects with its own `TypeError` first), and any inspection
+failure leaves the call exactly as Netflix made it. `JSON.parse` reads a `result` with `movieId`
 and `textTracks`, and only on a `/watch/` page, so browse-page previews fetch
 nothing. Forced-narrative, "Off", image-based and non-Japanese tracks are
 skipped. The page fetches each remaining track's WebVTT download, or its TTML,

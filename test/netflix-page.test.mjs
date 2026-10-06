@@ -53,6 +53,9 @@ test("the stringify hook adds the WebVTT profile once and leaves every other val
   const second = evaluate("JSON.stringify(request)");
   assert.equal(first, '{"url":"/manifest","params":{"profiles":["webvtt-lssdh-ios8","heaac-2-dash","playready-h264mpl30-dash"]}}');
   assert.equal(second, first, "the profile is added only once");
+  // Netflix may indent the request; the list is still found.
+  context.indented = evaluate('({ params: { profiles: ["unlisted-profile"] } })');
+  assert.equal(evaluate("JSON.stringify(indented, null, 1)"), '{\n "params": {\n  "profiles": [\n   "webvtt-lssdh-ios8",\n   "unlisted-profile"\n  ]\n }\n}');
   // A list found by its profile names rather than its key, as Subadub does.
   context.renamed = evaluate('({ a: { b: [["x"], { list: ["simplesdh"] }] } })');
   assert.equal(evaluate("JSON.stringify(renamed)"), '{"a":{"b":[["x"],{"list":["webvtt-lssdh-ios8","simplesdh"]}]}}');
