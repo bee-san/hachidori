@@ -2375,8 +2375,8 @@
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
-      recordNetflixLine: (cue, templateId) => window.HDNetflix.record(cue, {
-        send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId }),
+      recordNetflixLine: (cue, templateId, options) => window.HDNetflix.record(cue, {
+        send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId, ...options }),
     });
     mining.update(options, optionsStorageRevision >= 0);
     audio ??= window.HDAudio.createAudioController({ window, popupRect,

@@ -800,7 +800,7 @@ test("a submission Anki answers as a duplicate or invalid releases its screensho
 test("a Netflix note records its line concealed after the screenshot, and a missing line is a warning, never a failure", async t => {
   const calls = [], concealed = [], recordings = [];
   let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true };
-  let recorded = async () => ({ token: "line-a", filename: "hachidori-sentence-audio-a.wav" });
+  let recorded = async () => ({ audio: { token: "line-a", filename: "hachidori-sentence-audio-a.wav" }, gif: null });
   let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
   let submittedRequest = null;
   const f = fixture(t, async (type, { request } = {}) => {

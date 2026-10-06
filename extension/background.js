@@ -2291,7 +2291,7 @@ async function startNetflixRecording(message, sender) {
   });
   let started;
   try {
-    started = await askRecorder(port, { type: "record", targetTabId: tab.id,
+    started = await askRecorder(port, { type: "record", targetTabId: tab.id, gif: message.gif === true,
       limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS }, "started");
   } catch (error) {
     if (netflixRecording === recording) stopNetflixRecording();
@@ -2316,8 +2316,13 @@ async function finishNetflixRecording(message, sender) {
   } finally {
     if (netflixRecording === recording) stopNetflixRecording();
   }
-  if (clip.silent === true) return { unavailable: "silent" };
-  return getAnkiMining().sentenceAudio(clip.data, message.templateId);
+  const mining = getAnkiMining();
+  // The GIF, when the recorder made one, is held like the WAV: on its own token
+  // for the {gif} field, independent of whether the audio was silent.
+  const gif = typeof clip.gif === "string" ? await mining.gifImage(clip.gif, message.templateId) : null;
+  const audio = clip.silent === true ? { unavailable: "silent" }
+    : await mining.sentenceAudio(clip.data, message.templateId);
+  return { audio, gif };
 }
 
 function cancelNetflixRecording(message, sender) {

@@ -183,18 +183,18 @@ test("recording starts the capture, has the page replay the cue, then finishes o
     const frames = [...f.window.document.querySelectorAll("iframe")];
     frameDuring.push(frames.map(frame => [frame.src, frame.style.getPropertyValue("display"), frame.getAttribute("aria-hidden")]));
     if (type === "hd_netflix_capture_start") return { sessionId: "s1", padMs: 250 };
-    if (type === "hd_netflix_capture_finish") return { token: "t1", filename: "hachidori-sentence-audio-a.wav" };
+    if (type === "hd_netflix_capture_finish") return { audio: { token: "t1", filename: "hachidori-sentence-audio-a.wav" }, gif: null };
     return {};
   };
   const frameDuring = [];
   assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default" }),
-    { token: "t1", filename: "hachidori-sentence-audio-a.wav" });
+    { audio: { token: "t1", filename: "hachidori-sentence-audio-a.wav" }, gif: null });
   // The hidden recorder frame is in the page for the recording only.
   assert.deepEqual(frameDuring, [[["chrome-extension://hachidori/netflix-recorder.html", "none", "true"]],
     [["chrome-extension://hachidori/netflix-recorder.html", "none", "true"]]]);
   assert.equal(f.window.document.querySelectorAll("iframe").length, 0);
   assert.deepEqual(sent, [
-    ["hd_netflix_capture_start", { cue }],
+    ["hd_netflix_capture_start", { cue, gif: false }],
     ["hd_netflix_capture_finish", { sessionId: "s1", anchors: [[5000, 950], [5100, 1050]], templateId: "default" }],
   ]);
   const replay = f.commands.find(command => command.type === "replay");
@@ -215,6 +215,20 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   assert.deepEqual(sent, ["hd_netflix_capture_start"]);
   await assert.rejects(f.netflix.record(cue, { send: async () => ({}), templateId: "default" }), /did not start/u);
   assert.equal(f.window.document.querySelectorAll("iframe").length, 0, "a failed start removes the recorder frame");
+
+  // With gif set, the recorder is asked for the video track too, and the GIF
+  // the finish returns is passed through beside the audio.
+  sent.length = 0;
+  replyToReplay = command => ({ kind: "replay", id: command.id, ok: true, anchors: [[5000, 950], [5100, 1050]] });
+  const gifSend = async (type, fields) => {
+    sent.push([type, JSON.parse(JSON.stringify(fields))]);
+    if (type === "hd_netflix_capture_start") return { sessionId: "s2", padMs: 250 };
+    if (type === "hd_netflix_capture_finish") return { audio: { token: "t2", filename: "a.wav" }, gif: { token: "g2", filename: "hachidori-gif-a.gif" } };
+    return {};
+  };
+  assert.deepEqual(await f.netflix.record(cue, { send: gifSend, templateId: "default", gif: true }),
+    { audio: { token: "t2", filename: "a.wav" }, gif: { token: "g2", filename: "hachidori-gif-a.gif" } });
+  assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, gif: true }]);
 });
 
 // Where the fixture's two lines are drawn: a gap between them, inside

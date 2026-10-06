@@ -10,7 +10,7 @@ import {
 
 // A note that was definitively not written leaves no media of its own behind.
 async function releaseCapturedMedia({ writeResources, invoke }) {
-  const filenames = [writeResources?.screenshotFilename, writeResources?.sentenceAudioFilename]
+  const filenames = [writeResources?.screenshotFilename, writeResources?.sentenceAudioFilename, writeResources?.gifFilename]
     .filter(filename => typeof filename === "string" && filename !== "");
   await Promise.all(filenames.map(filename => invoke("deleteMediaFile", { filename }, 10_000).catch(() => undefined)));
 }
@@ -24,6 +24,9 @@ const CAPTURED_MEDIA = {
   "sentence-audio": { requestKey: "sentenceAudio", resourceKey: "sentenceAudioFilename", label: "Sentence audio",
     reference: filename => `[sound:${filename}]`,
     replaced: "the recorded line was replaced before this note was saved." },
+  gif: { requestKey: "gif", resourceKey: "gifFilename", label: "GIF",
+    reference: filename => `<img src="${filename}">`,
+    replaced: "the recorded GIF was replaced before this note was saved." },
 };
 
 export function createAnkiWorkerService({
@@ -75,7 +78,7 @@ export function createAnkiWorkerService({
   // One pending item of each kind at a time: a later capture supersedes an
   // earlier one, and a note that is written consumes it. Nothing is uploaded
   // until then, so a rejected note leaves no unreferenced media in Anki.
-  const pendingMedia = { screenshot: null, "sentence-audio": null };
+  const pendingMedia = { screenshot: null, "sentence-audio": null, gif: null };
   let screenshotRequestToken = null;
 
   // Stored inside the queued write, once the generation, configuration and
@@ -125,10 +128,12 @@ export function createAnkiWorkerService({
   async function storePendingScreenshot(context) {
     const screenshot = await storePendingMedia("screenshot", context);
     const sentenceAudio = await storePendingMedia("sentence-audio", context);
+    const gif = await storePendingMedia("gif", context);
     return {
-      warnings: [screenshot.warning, sentenceAudio.warning].filter(Boolean),
+      warnings: [screenshot.warning, sentenceAudio.warning, gif.warning].filter(Boolean),
       ...(screenshot.filename ? { screenshotFilename: screenshot.filename } : {}),
       ...(sentenceAudio.filename ? { sentenceAudioFilename: sentenceAudio.filename } : {}),
+      ...(gif.filename ? { gifFilename: gif.filename } : {}),
     };
   }
 
@@ -273,6 +278,24 @@ export function createAnkiWorkerService({
     return { token: held.token, filename: held.filename };
   }
 
+  // Experimental Netflix mining: the animated GIF of the subtitle line the
+  // reader just had replayed and recorded. Held here and stored only inside
+  // the note's write, exactly like the screenshot and the WAV.
+  async function gifImage(data, templateId) {
+    const options = await readOptions();
+    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
+      throw new Error("The selected Anki Template is no longer available.");
+    }
+    // GIF87a/GIF89a both base64-encode to the "R0lG" prefix.
+    if (decodedBase64Length(data) === null || !data.startsWith("R0lG")) {
+      throw new Error("The recording produced no GIF image.");
+    }
+    const held = { token: crypto.randomUUID(), filename: `hachidori-gif-${crypto.randomUUID()}.gif`, data };
+    pendingMedia.gif = held;
+    return { token: held.token, filename: held.filename };
+  }
+
   // An abandoned or definitively rejected submission releases only its own
   // pending bytes; uploaded media has a separate write-outcome cleanup path.
   // Tokens are unique across kinds, so one discard serves every capture.
@@ -289,6 +312,7 @@ export function createAnkiWorkerService({
       if (["duplicate", "invalid"].includes(result.state)) {
         discardScreenshot(request.screenshot);
         discardScreenshot(request.sentenceAudio);
+        discardScreenshot(request.gif);
       }
       return result;
     } catch (error) {
@@ -296,6 +320,7 @@ export function createAnkiWorkerService({
       // a rejection here confirms that its note write never happened.
       discardScreenshot(request.screenshot);
       discardScreenshot(request.sentenceAudio);
+      discardScreenshot(request.gif);
       throw error;
     }
   }
@@ -392,7 +417,7 @@ export function createAnkiWorkerService({
 
   return { ...mining, preflightClient, preflightClientSpeech, submit: submitRequest, submitClient,
     clientMedia, settleClientMedia,
-    screenshot, discardScreenshot, sentenceAudio, async maturity(request) {
+    screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
       const options = await readOptions();
       return { mature: options.definitionBlurAnkiMature === true

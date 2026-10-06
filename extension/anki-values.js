@@ -254,6 +254,12 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     // terms as the screenshot.
     "sentence-audio": () => request.sentenceAudio?.filename && !request.captureUnavailable?.includes("sentence-audio")
       ? `[sound:${escape(request.sentenceAudio.filename)}]` : "",
+    // Experimental Netflix mining: the line's animated GIF when one was
+    // recorded, otherwise the viewport screenshot's <img>. Off Netflix, with
+    // the switch off, or on a recording failure there is no GIF, so a Picture
+    // field mapped to {gif} still gets the screenshot.
+    gif: () => request.gif?.filename && !request.captureUnavailable?.includes("gif")
+      ? `<img src="${escape(request.gif.filename)}">` : table.screenshot(),
   };
   const values = new Map();
   let glossaries, frequencies;

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { encodeBase64 } from "./base64.js";
+import { GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.js";
 
 // Experimental Netflix mining's recorder. netflix-recorder.html runs this in a
 // hidden extension frame inside the Netflix tab while the page replays one
 // subtitle line: it records the tab's audio from a chrome.tabCapture stream,
 // then cuts the line out of it by the media times the page reported and
-// encodes a mono WAV for Anki. Only that WAV leaves the frame.
+// encodes a mono WAV for Anki. When a field is mapped to {gif}, it also records
+// the stream's video track and encodes a looping GIF of the line. Only the WAV
+// and the GIF leave the frame.
 //
 // The frame, not the offscreen document, opens the stream: a tab stream ID is
 // usable only in the process of the context that asked for it, and the
@@ -17,6 +20,9 @@ import { encodeBase64 } from "./base64.js";
 export const SENTENCE_PAD_MS = 250;
 // How long the last captured audio has to arrive after the page's replay ends.
 const DRAIN_TIMEOUT_MS = 500;
+// The video track is sampled no faster than this while recording, which also
+// caps the GIF's own rate.
+const VIDEO_SAMPLE_SPACING_MS = 1000 / 10;
 
 // Wall-clock minus media time while the line played at 1×: the median of the
 // page's (wall ms, media ms) pairs, so a stale pair from the seek cannot move it.
@@ -156,6 +162,67 @@ function readStream(current) {
   });
 }
 
+// Places a VideoFrame's timestamp on the same wall clock the audio uses: a
+// timestamp is in the page's time (performance.timeOrigin) on current Chrome
+// and in a raw monotonic clock on older builds; the first frame decides which,
+// as the audio clock does.
+export function createVideoFrameClock({ timeOrigin, now }) {
+  let domainMs = null;
+  return {
+    wallMs(timestampUs) {
+      const rawMs = timestampUs / 1000;
+      if (domainMs === null) {
+        const arrival = now();
+        domainMs = Math.abs(timeOrigin + rawMs - arrival) < 1000 ? timeOrigin : arrival - rawMs;
+      }
+      return domainMs + rawMs;
+    },
+  };
+}
+
+// Draws a VideoFrame into a reusable canvas at most GIF_MAX_WIDTH wide and reads
+// its RGBA back, so the VideoFrame can be closed at once rather than kept in
+// memory. Returns null before the frame's size is known.
+function rasterise(current, frame, window) {
+  const width = frame.displayWidth || frame.codedWidth;
+  const height = frame.displayHeight || frame.codedHeight;
+  if (!width || !height) return null;
+  const scale = Math.min(1, GIF_MAX_WIDTH / width);
+  const outWidth = Math.max(1, Math.round(width * scale));
+  const outHeight = Math.max(1, Math.round(height * scale));
+  if (current.canvas === null || current.gifWidth !== outWidth || current.gifHeight !== outHeight) {
+    current.canvas = new window.OffscreenCanvas(outWidth, outHeight);
+    current.context = current.canvas.getContext("2d", { willReadFrequently: true });
+    current.gifWidth = outWidth;
+    current.gifHeight = outHeight;
+  }
+  current.context.drawImage(frame, 0, 0, outWidth, outHeight);
+  return current.context.getImageData(0, 0, outWidth, outHeight).data;
+}
+
+// Keeps the video track's frames while the line plays, thinned at capture time
+// to VIDEO_SAMPLE_SPACING_MS by their own timestamps (the replay runs at 1×, so
+// timestamp spacing is media-time spacing). Each kept frame is rasterised to
+// RGBA at once and its VideoFrame closed; its wall time is placed on finish.
+function readVideo(current, window) {
+  return current.videoReader.read().then(({ done, value }) => {
+    if (done) return undefined;
+    try {
+      const timestampMs = value.timestamp / 1000;
+      if (current.lastVideoMs === null || timestampMs - current.lastVideoMs >= VIDEO_SAMPLE_SPACING_MS - 1) {
+        const data = rasterise(current, value, window);
+        if (data !== null) {
+          current.lastVideoMs = timestampMs;
+          current.frames.push({ timestampUs: value.timestamp, data });
+        }
+      }
+    } finally {
+      value.close();
+    }
+    return readVideo(current, window);
+  });
+}
+
 export function createNetflixRecorder(window, {
   now = () => window.performance.timeOrigin + window.performance.now(),
 } = {}) {
@@ -164,6 +231,7 @@ export function createNetflixRecorder(window, {
   function stop(current) {
     window.clearTimeout(current.timer);
     current.reader?.cancel().catch(() => {});
+    current.videoReader?.cancel().catch(() => {});
     for (const track of current.stream?.getTracks() ?? []) track.stop();
     current.waiter?.resolve();
     if (session === current) session = null;
@@ -172,13 +240,16 @@ export function createNetflixRecorder(window, {
   // Opens this tab's stream and starts placing its samples. Chrome hands a
   // stream ID only to an extension the user invoked on the tab, and the ID is
   // used here, in the context that asked for it.
-  async function start({ targetTabId, limitMs }) {
+  async function start({ targetTabId, limitMs, gif = false }) {
     if (!Number.isSafeInteger(targetTabId) || !Number.isFinite(limitMs) || limitMs <= 0) {
       throw new Error("The Netflix recording request is invalid.");
     }
     if (session !== null) stop(session);
     const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null, waiter: null,
-      clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
+      clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }),
+      // Video is captured only when a {gif} field needs it.
+      gif, videoReader: null, frames: [], lastVideoMs: null, canvas: null, context: null, gifWidth: 0, gifHeight: 0,
+      videoClock: createVideoFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
     session = current;
     try {
       let streamId;
@@ -193,11 +264,16 @@ export function createNetflixRecorder(window, {
       }
       current.stream = await window.navigator.mediaDevices.getUserMedia({
         audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
-        video: false,
+        video: gif ? { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } } : false,
       });
       const [track] = current.stream.getAudioTracks();
       current.reader = new window.MediaStreamTrackProcessor({ track }).readable.getReader();
       readStream(current).catch(() => {});
+      const [videoTrack] = gif ? current.stream.getVideoTracks() : [];
+      if (videoTrack) {
+        current.videoReader = new window.MediaStreamTrackProcessor({ track: videoTrack }).readable.getReader();
+        readVideo(current, window).catch(() => {});
+      }
       // A recording nobody finishes still ends, which gives the tab its sound back.
       current.timer = window.setTimeout(() => stop(current), limitMs);
     } catch (error) {
@@ -221,6 +297,23 @@ export function createNetflixRecorder(window, {
     });
   }
 
+  // The looping GIF of the line, from the frames kept while it played, in the
+  // cue's own window. A GIF the encoder cannot make is simply absent: the note
+  // falls back to the screenshot, like any other capture failure.
+  function encodeGif(current, { startMs, endMs, offset }) {
+    if (!current.gif || current.frames.length === 0 || current.gifWidth === 0) return undefined;
+    const placed = current.frames.map(frame => ({ data: frame.data,
+      mediaMs: current.videoClock.wallMs(frame.timestampUs) - offset }));
+    const entries = selectGifFrames(placed, { startMs, endMs });
+    if (entries.length === 0) return undefined;
+    try {
+      return encodeBase64(encodeLoopingGif(entries.map(entry => ({ data: entry.frame.data, delayMs: entry.delayMs })),
+        current.gifWidth, current.gifHeight));
+    } catch {
+      return undefined;
+    }
+  }
+
   async function finish({ startMs, endMs, anchors }) {
     const current = session;
     if (current?.reader == null) throw new Error("The recording of this line was replaced or stopped.");
@@ -231,11 +324,12 @@ export function createNetflixRecorder(window, {
       stop(current);
     }
     if (offset === null) throw new Error("Netflix did not play the line, so nothing was recorded.");
+    const gif = encodeGif(current, { startMs, endMs, offset });
     const samples = clipSamples(current.chunks, { originMs: current.clock.originMs, sampleRate: current.sampleRate,
       startMs: startMs - SENTENCE_PAD_MS + offset, endMs: endMs + SENTENCE_PAD_MS + offset });
     if (samples === null) throw new Error("No audio was recorded while the line played.");
-    if (isSilent(samples)) return { silent: true };
-    return { silent: false, data: encodeBase64(encodeMonoWav(samples, current.sampleRate)) };
+    if (isSilent(samples)) return { silent: true, ...(gif ? { gif } : {}) };
+    return { silent: false, data: encodeBase64(encodeMonoWav(samples, current.sampleRate)), ...(gif ? { gif } : {}) };
   }
 
   return { start, finish, stop: () => { if (session !== null) stop(session); } };
