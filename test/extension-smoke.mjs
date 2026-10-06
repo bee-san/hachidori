@@ -6349,6 +6349,48 @@ async function main() {
   );
   await request("hd_remove", { id: longKeyPackage?.id, title: LONG_KEY_TITLE });
 
+  // hd_segment (#520): a batch of text chunks, each split into the words a
+  // hover would show, through the real background -> offscreen -> engine path.
+  // The reply keeps one entry per chunk with its id, every span carries a
+  // candidate headword and a function-word flag, and offsets are UTF-16 units
+  // inside the chunk.
+  const segmentBatch = await request("hd_segment", {
+    chunks: [{ id: "a", text: "食べる" }, { id: "b", text: "漢字を読む" }, { id: "c", text: "。、" }],
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const segA = segmentBatch.segments?.find((segment) => segment.id === "a");
+  const segB = segmentBatch.segments?.find((segment) => segment.id === "b");
+  const segC = segmentBatch.segments?.find((segment) => segment.id === "c");
+  const headwords = (segment) => segment?.spans?.map((span) => span.candidates?.[0]?.expression) ?? [];
+  check(
+    "hd_segment splits a batch of chunks into spans, keyed by chunk id",
+    segmentBatch.ok === true
+      && segmentBatch.segments?.length === 3
+      && headwords(segA).includes("食べる")
+      && segA.spans[0].start === 0 && segA.spans[0].length === 3
+      && typeof segA.spans[0].functionWord === "boolean"
+      && Array.isArray(segA.spans[0].candidates)
+      && headwords(segB).includes("漢字") && headwords(segB).includes("読む")
+      && Array.isArray(segC.spans) && segC.spans.length === 0,
+    JSON.stringify({ ok: segmentBatch.ok, error: segmentBatch.error,
+      a: headwords(segA), b: headwords(segB), c: segC?.spans?.length }),
+  );
+  // A lookup interleaves with a segment batch: both complete and the lookup is
+  // not blocked behind the batch (hd_segment yields the engine per chunk).
+  const [interleavedSegment, interleavedLookup] = await Promise.all([
+    request("hd_segment", { chunks: [{ id: "x", text: "読む" }, { id: "y", text: "食べる" }], scanLength: 16,
+      options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" } }),
+    request("hd_lookup", { text: "漢字", maxResults: 32, scanLength: 16,
+      options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" } }),
+  ]);
+  check(
+    "a hover lookup completes alongside a segment batch",
+    interleavedSegment.ok === true && interleavedSegment.segments?.length === 2
+      && interleavedLookup.ok === true && interleavedLookup.results?.[0]?.term?.expression === "漢字",
+    JSON.stringify({ segment: interleavedSegment.ok, lookup: interleavedLookup.results?.[0]?.term?.expression }),
+  );
+
   // An MDict dictionary: the .mdx plus its .mdd travel as blob URLs, the engine
   // service stages them side by side under their own names so the importer
   // finds the resource file, and the result is an ordinary package whose media

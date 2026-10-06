@@ -95,7 +95,9 @@ const MEDIA_TYPES = {
 // revalidation and native installation phase.
 // Dictionary download reads serve an archive already built by its open, so
 // they need no turn in the queue either.
-const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_debug_log", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
+// Segmentation is unqueued too: its handler serialises one engine turn per
+// chunk itself (hd_segment), so queued lookups run between a page's chunks.
+const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_debug_log", "hd_backup_release", "hd_import", "hd_segment", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -3403,6 +3405,39 @@ const HANDLERS = {
     return withFurigana(withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup"), message)));
   },
 
+  // Segment a batch of text chunks into the words a hover would show (#520).
+  // Each chunk is one engine turn through serialise(), so a reader's queued
+  // hd_lookup runs between chunks rather than waiting for the whole page: a
+  // batch yields the engine as often as it has chunks. The handler is UNQUEUED
+  // so it never holds the queue while awaiting its own per-chunk turns.
+  async hd_segment(message) {
+    requireEngine();
+    const chunks = Array.isArray(message.chunks) ? message.chunks : [];
+    const scanLength = clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH);
+    const options = JSON.stringify({
+      frequencyDictionary: boundedText(message.options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
+      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder) ? message.options.frequencyOrder : "auto",
+      primaryReading: boundedText(message.options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+    });
+    const segments = [];
+    for (const chunk of chunks) {
+      const chunkText = boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES);
+      // One chunk per serialised turn: a queued hd_lookup waiting behind this
+      // batch gets the engine between chunks (the engine is not reentrant).
+      const spans = await serialise(async () => {
+        await ensureLoaded();
+        if (chunkText === "") return [];
+        const json = engine.ccall("hdw_segment", "string", ["string", "number", "string"], [chunkText, scanLength, options]);
+        throwIfEngineFailed("hdw_segment");
+        const parsed = parseJson(json, "hdw_segment");
+        if (!Array.isArray(parsed?.spans)) throw new Error("hdw_segment returned a malformed response");
+        return parsed.spans;
+      });
+      segments.push({ id: chunk?.id ?? null, spans });
+    }
+    return { segments };
+  },
+
   async hd_lookup_dictionary(message) {
     await ensureLoaded();
     const args = lookupArguments(message);
@@ -3811,6 +3846,8 @@ function failurePayload(type) {
     case "hd_lookup":
     case "hd_lookup_dictionary":
       return { results: [], dictionaryCount: 0 };
+    case "hd_segment":
+      return { segments: [] };
     case "hd_kanji":
       return { kanji: null };
     case "hd_styles":
