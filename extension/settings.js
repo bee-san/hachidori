@@ -91,6 +91,7 @@ const STATUS_RETRY_MS = 5000;
 const NUMBER_FIELDS = [
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
+  { key: "scanDelayMs", id: "opt-scan-delay" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
   { key: "hidePopupOnCursorExitDelayMs", id: "opt-hide-on-cursor-exit-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
@@ -1773,6 +1774,27 @@ function renderActivationControls() {
   const childPopups = element("opt-definition-lookup-mode");
   childPopups.querySelector('option[value="activation"]').textContent = `Hold ${activationLabel(options.activationKey)}`;
   if (childPopups !== document.activeElement) childPopups.value = options.definitionLookupMode;
+  renderScanDelayControls();
+}
+
+// Only lookups that need no key wait for the pointer to rest: page lookups
+// with No key, and definitions that follow them. Same as page delay is stored
+// as null, so it keeps following later page delay edits.
+function renderScanDelayControls() {
+  const hover = options.lookupMode === "hover";
+  const custom = options.definitionScanDelayMs !== null;
+  for (const [id, hidden] of [["opt-scan-delay-row", !hover],
+    ["opt-definition-scan-delay-row", !hover || options.definitionLookupMode !== "inherit"],
+    ["opt-definition-scan-delay-custom", !custom]]) {
+    const row = element(id);
+    // Hiding a focused control can emit blur before its pending change.
+    if (!hidden || !row.contains(document.activeElement)) row.hidden = hidden;
+  }
+  const mode = element("opt-definition-scan-delay-mode");
+  mode.querySelector('option[value="inherit"]').textContent = `Same as page delay (${options.scanDelayMs} ms)`;
+  if (mode !== document.activeElement) mode.value = custom ? "custom" : "inherit";
+  const delay = element("opt-definition-scan-delay");
+  if (delay !== document.activeElement) delay.value = String(options.definitionScanDelayMs ?? options.scanDelayMs);
 }
 
 function renderOptions() {
@@ -3607,6 +3629,18 @@ function attachHandlers() {
   element("opt-lookup-sticky").addEventListener("change", writeActivation);
   element("opt-definition-lookup-mode").addEventListener("change", (event) => {
     options.definitionLookupMode = DEFINITION_LOOKUP_MODES.includes(event.target.value) ? event.target.value : "inherit";
+    renderScanDelayControls();
+    writeOptions();
+  });
+  element("opt-definition-scan-delay-mode").addEventListener("change", (event) => {
+    // Custom starts from the page delay it was following.
+    options.definitionScanDelayMs = event.target.value === "custom" ? options.scanDelayMs : null;
+    renderScanDelayControls();
+    writeOptions();
+  });
+  element("opt-definition-scan-delay").addEventListener("change", (event) => {
+    options.definitionScanDelayMs = clampOption("definitionScanDelayMs", event.target.value);
+    event.target.value = String(options.definitionScanDelayMs);
     writeOptions();
   });
 
@@ -3662,6 +3696,7 @@ function attachHandlers() {
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
       if (event.target.id === "opt-hide-on-cursor-exit-delay") renderCursorExitControls();
+      if (event.target.closest("#opt-scan-delay-row, #opt-definition-scan-delay-row")) renderScanDelayControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];
       const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);

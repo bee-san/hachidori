@@ -2090,14 +2090,16 @@ textarea {
   flex: 0 0 auto;
 }
 .frequency-order-controls,
-.activation-input-controls {
+.activation-input-controls,
+.scan-delay-controls {
   display: flex;
   gap: 8px;
   width: 100%;
   flex-wrap: wrap;
 }
 .frequency-order-controls select,
-.activation-input-controls select {
+.activation-input-controls select,
+.scan-delay-controls select {
   min-width: 0;
   flex: 1 1 180px;
 }
