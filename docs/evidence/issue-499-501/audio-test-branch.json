@@ -1,0 +1,75 @@
+{
+  "results": {
+    "Audio URL (custom), list URL + valid key": {
+      "type": "hd_audio_test_result",
+      "requestId": "d355c51e-7f11-46ab-be12-c1157c4bb03c",
+      "ok": false,
+      "error": "This Audio URL returned a Yomitan audio list, not a recording. Set this source's type to Yomitan JSON in Audio Settings.",
+      "ms": 34
+    },
+    "Yomitan JSON (custom-json), list URL + valid key": {
+      "type": "hd_audio_test_result",
+      "requestId": "68b3b563-ae88-4c70-ae50-fb64bb71f1f5",
+      "ok": true,
+      "status": "success",
+      "sourceId": "ultimate",
+      "candidate": {
+        "url": "http://127.0.0.1:35713/audio/get/nhk16/%E8%81%9E%E3%81%8F.mp3?apiKey=patron-key",
+        "name": "NHK16 聞く",
+        "index": 0
+      },
+      "ms": 1144
+    },
+    "Yomitan JSON (custom-json), list URL + wrong key": {
+      "type": "hd_audio_test_result",
+      "requestId": "62d8cfab-f8cf-478a-a8fa-362c5c1fee09",
+      "ok": false,
+      "error": "The pronunciation list returned HTTP 403.",
+      "ms": 4
+    },
+    "Audio URL (custom), direct recording URL": {
+      "type": "hd_audio_test_result",
+      "requestId": "543d57d2-d85e-4a77-b311-1f058ab9350f",
+      "ok": true,
+      "status": "success",
+      "sourceId": "ultimate",
+      "candidate": {
+        "url": "http://127.0.0.1:35713/audio/get/nhk16/x.mp3?apiKey=patron-key",
+        "name": "",
+        "index": 0
+      },
+      "ms": 1075
+    },
+    "Yomitan JSON (custom-json), direct recording URL": {
+      "type": "hd_audio_test_result",
+      "requestId": "20ae6883-bf78-41b3-8646-7128f37d7eb0",
+      "ok": false,
+      "error": "The pronunciation list is not JSON (audio/mpeg). If this URL plays a recording itself, set this source's type to Audio URL in Audio Settings.",
+      "ms": 4
+    },
+    "Audio URL (custom), HTML page with HTTP 200": {
+      "type": "hd_audio_test_result",
+      "requestId": "a580a524-6bbc-4353-a735-8914dec90636",
+      "ok": false,
+      "error": "The browser could not decode the recording (MEDIA_ERR_SRC_NOT_SUPPORTED: PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed). The provider sent 71 bytes of text/html.",
+      "ms": 5
+    },
+    "Audio URL (custom), recording URL + wrong key": {
+      "type": "hd_audio_test_result",
+      "requestId": "cfb3540d-e0f9-40c1-849f-be96955f8ab5",
+      "ok": false,
+      "error": "The recording returned HTTP 403.",
+      "ms": 3
+    }
+  },
+  "requests": [
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=patron-key",
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=patron-key",
+    "/audio/get/nhk16/%E8%81%9E%E3%81%8F.mp3?apiKey=patron-key",
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=wrong",
+    "/audio/get/nhk16/x.mp3?apiKey=patron-key",
+    "/audio/get/nhk16/x.mp3?apiKey=patron-key",
+    "/page",
+    "/audio/get/nhk16/x.mp3?apiKey=wrong"
+  ]
+}

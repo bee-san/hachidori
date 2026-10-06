@@ -1,0 +1,75 @@
+{
+  "results": {
+    "Audio URL (custom), list URL + valid key": {
+      "type": "hd_audio_test_result",
+      "requestId": "dacf458e-9883-42d1-b7e8-a330c6991612",
+      "ok": false,
+      "error": "The pronunciation could not be decoded or played.",
+      "ms": 26
+    },
+    "Yomitan JSON (custom-json), list URL + valid key": {
+      "type": "hd_audio_test_result",
+      "requestId": "6958ad1b-c0e5-4c61-92c8-01fd39ab9ac1",
+      "ok": true,
+      "status": "success",
+      "sourceId": "ultimate",
+      "candidate": {
+        "url": "http://127.0.0.1:37683/audio/get/nhk16/%E8%81%9E%E3%81%8F.mp3?apiKey=patron-key",
+        "name": "NHK16 聞く",
+        "index": 0
+      },
+      "ms": 1138
+    },
+    "Yomitan JSON (custom-json), list URL + wrong key": {
+      "type": "hd_audio_test_result",
+      "requestId": "d843286e-c40b-4443-995e-953f47341104",
+      "ok": false,
+      "error": "Audio provider returned HTTP 403.",
+      "ms": 3
+    },
+    "Audio URL (custom), direct recording URL": {
+      "type": "hd_audio_test_result",
+      "requestId": "852bd794-7955-457a-900d-58a2a55360e2",
+      "ok": true,
+      "status": "success",
+      "sourceId": "ultimate",
+      "candidate": {
+        "url": "http://127.0.0.1:37683/audio/get/nhk16/x.mp3?apiKey=patron-key",
+        "name": "",
+        "index": 0
+      },
+      "ms": 1074
+    },
+    "Yomitan JSON (custom-json), direct recording URL": {
+      "type": "hd_audio_test_result",
+      "requestId": "34a755c7-12f4-4cea-8e9e-5247859239cd",
+      "ok": false,
+      "error": "Unexpected token 'I', \"ID3\u0004\u0000\u0000\u0000\u0000\u0000\"\"... is not valid JSON",
+      "ms": 3
+    },
+    "Audio URL (custom), HTML page with HTTP 200": {
+      "type": "hd_audio_test_result",
+      "requestId": "107f05e2-7381-4dd6-906c-d735e7d34f96",
+      "ok": false,
+      "error": "The pronunciation could not be decoded or played.",
+      "ms": 4
+    },
+    "Audio URL (custom), recording URL + wrong key": {
+      "type": "hd_audio_test_result",
+      "requestId": "c97fc53f-c1f5-48e4-b7ae-347d0ccaed4f",
+      "ok": false,
+      "error": "Audio provider returned HTTP 403.",
+      "ms": 2
+    }
+  },
+  "requests": [
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=patron-key",
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=patron-key",
+    "/audio/get/nhk16/%E8%81%9E%E3%81%8F.mp3?apiKey=patron-key",
+    "/audio/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&apiKey=wrong",
+    "/audio/get/nhk16/x.mp3?apiKey=patron-key",
+    "/audio/get/nhk16/x.mp3?apiKey=patron-key",
+    "/page",
+    "/audio/get/nhk16/x.mp3?apiKey=wrong"
+  ]
+}
