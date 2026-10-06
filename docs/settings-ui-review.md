@@ -52,7 +52,9 @@ changed; "—" means the key was already unambiguous.
 | `lookupMode` | Reading › Activation | `#opt-activation-key` (No key = `hover`), `#opt-lookup-sticky` | Activation key or button; Keep the popup open after releasing the key or button | — | Three stored fields (`hoverEnabled`, `lookupMode`, `activationKey`) drive one visible concept; kept, since #349/#355 designed this mapping |
 | `activationKey` | Reading › Activation | `#opt-activation-key` | Activation key or button | — | See `lookupMode` |
 | `definitionLookupMode` | Reading › Activation | `#opt-definition-lookup-mode` | Child popups | — | — |
-| ~~`hoverDelayMs`~~ | — | none | — | — | **Removed.** It always normalised to 0 and had no control. Older records and backups are accepted and drop it |
+| `scanDelayMs` | Reading › Activation | `#opt-scan-delay` | Hover scan delay | — | Added in #502; shown for No key |
+| `definitionScanDelayMs` | Reading › Activation | `#opt-definition-scan-delay-mode`, `#opt-definition-scan-delay` | Definition hover delay | — | Added in #503; null is Same as page delay |
+| ~~`hoverDelayMs`~~ | — | none | — | — | **Removed.** It always normalised to 0 and had no control. Older records and backups are accepted and drop it; `scanDelayMs` does not read it |
 | `popupHideDelayMs` | Reading › Popup closing | `#opt-hide-delay` | Grace period to reach the popup | — | Was "Hide delay" under Scanning, away from the cursor-exit delay it resembles |
 | `hidePopupOnCursorExit` | Reading › Popup closing | `#opt-hide-on-cursor-exit` | Hide popup on cursor exit | same | Group renamed from Cursor exit |
 | `hidePopupOnCursorExitDelayMs` | Reading › Popup closing | `#opt-hide-on-cursor-exit-delay` | Delay after leaving the popup | — | Was "Delay" |
