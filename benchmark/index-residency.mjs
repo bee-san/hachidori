@@ -18,6 +18,11 @@ const fixture = JSON.parse(readFileSync(resolve(arg("fixture"), "fixture.json"),
 const output = resolve(arg("output"));
 const samples = Number(arg("samples", "3"));
 const measureTotal = arg("measure-total", "false") === "true";
+// OS-cold samples evict the seeded profile from the OS page cache before the
+// measured launch. tmpfs pages cannot be evicted: point TMPDIR at a disk.
+const osCold = arg("os-cold", "false") === "true";
+const profileFilesystem = execFileSync("stat", ["-f", "-c", "%T", tmpdir()], { encoding: "utf8" }).trim();
+assert.ok(!osCold || profileFilesystem !== "tmpfs", "--os-cold needs TMPDIR on a block-device filesystem");
 const variants = arg("variants", "resident,16,32,64,paged").split(",");
 // The baseline is a previous revision's unmodified extension/: a directory
 // that contains it (--before), or a commit to extract it from (--before-ref).
@@ -103,8 +108,8 @@ const definition = { revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd:
   defaultBudgetMiB: Number(readFileSync(resolve(baseExtension, "dictionary-index-storage.js"), "utf8")
     .match(/RESIDENT_HASH_BUDGET_BYTES = (\d+) \* 1024 \* 1024;/)[1]),
   node: process.version, chrome: execFileSync(chrome, ["--version"], { encoding: "utf8" }).trim(),
-  environment: hostSnapshot(), fixture, samples, variants, before, measureTotal, profileDirectory: tmpdir(),
-  boundary: "fresh engine; cache includes header/startup warmup pages; OS cache is uncontrolled; engine ccall includes serialization/glue; round trip excludes CDP and rendering; RSS peak sampled every 100 ms from launch to the end of the warm pass" };
+  environment: hostSnapshot(), fixture, samples, variants, before, measureTotal, osCold, profileDirectory: tmpdir(), profileFilesystem,
+  boundary: `fresh engine; cache includes header/startup warmup pages; ${osCold ? "profile files evicted from the OS page cache before launch" : "OS cache is uncontrolled"}; engine ccall includes serialization/glue; round trip excludes CDP and rendering; RSS peak sampled every 100 ms from launch to the end of the warm pass` };
 writeFileSync(resolve(output, "definition.json"), JSON.stringify(definition, null, 2));
 
 async function sample(variant, repetition) {
@@ -207,6 +212,17 @@ async function sample(variant, repetition) {
       files: (files ?? fixture.files).map(({ name, bytes }) => ({ name, bytes })) })), origin);
     await browser.close(); browser = null;
     writeFileSync(offscreenFile, offscreenSource);
+    let profileCachedBytes = null;
+    if (osCold) {
+      const files = readdirSync(directory, { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile()).map(entry => resolve(entry.parentPath, entry.name));
+      for (const file of files) {
+        execFileSync("sync", [file]);
+        execFileSync("dd", [`if=${file}`, "iflag=nocache", "count=0", "status=none"]);
+      }
+      profileCachedBytes = execFileSync("fincore", ["--bytes", "--noheadings", "--output", "RES", ...files], { encoding: "utf8" })
+        .split("\n").filter(Boolean).reduce((sum, line) => sum + Number(line), 0);
+    }
     console.log(`${variant} #${repetition+1}: installed profile prepared`);
     const loadStarted = performance.now();
     await launch();
@@ -332,7 +348,7 @@ async function sample(variant, repetition) {
     const removeMs = performance.now() - removeStarted;
     await ready(fixture.packages - 1);
     const afterRemove = await request("hd_memory");
-    const row = { variant, repetition, restartMs, status, fresh, processRss, passes, parityHash: hash(parity),
+    const row = { variant, repetition, restartMs, profileCachedBytes, status, fresh, processRss, passes, parityHash: hash(parity),
       hover, hoverFirst: distribution(hover.map(item => item.first)), hoverComplete: distribution(hover.map(item => item.complete)),
       disableMs, enableMs, disabledRestartMs, disabledMemory, afterEnable,
       reimport, afterReimport, recycleMs, afterRecycle, removeMs, afterRemove,

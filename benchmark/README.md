@@ -30,7 +30,11 @@ node benchmark/index-residency-report.mjs /tmp/index-*-results /tmp/index-*-nati
 
 `--before-ref` extracts the unmodified `extension/` of a commit (or pass an
 extracted copy with `--before`) and runs it as the `baseline` variant. Output
-directories must be fresh. Each repetition reverses
+directories must be fresh. `--os-cold true` syncs and evicts every file of the
+seeded profile and temporary extension from the OS page cache (`dd
+iflag=nocache`) before the measured launch, so startup and the first pass read
+from the storage device; it needs `TMPDIR` on a disk filesystem, because tmpfs
+pages cannot be evicted. Without it the OS cache is warm. Each repetition reverses
 the policy order, seeds a fresh profile with the same native files, and restarts Chrome before
 timing startup, two full lookup passes and real pointer hovers. Complete ordered
 results, kanji, inflection, dictionary selection and media must match. Each sample
