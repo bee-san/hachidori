@@ -3056,11 +3056,13 @@
       ipaRow.className = "gsm-hoshidicts-metadata gsm-hoshidicts-ipa-metadata";
       let frequencyCount = 0;
       function updateFrequency(context) {
+        // Every frequency dictionary keeps its tag (#505); the metadata
+        // display budget only limits the pitch badges after them.
         const frequencyTags = includeFrequency ? createFrequencyTags(
           documentRef,
           result,
           context.dictionaryPresentation || [],
-          maxMetadataTags,
+          Infinity,
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true
@@ -3192,7 +3194,7 @@
           documentRef,
           result,
           Array.isArray(context.dictionaryPresentation) ? context.dictionaryPresentation : [],
-          maxMetadataTags,
+          Infinity,
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true
