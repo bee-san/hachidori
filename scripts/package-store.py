@@ -148,8 +148,8 @@ def main():
         "Hachidori is licensed under GPL-3.0-or-later. See LICENSE.\n"
         f"Matching source archive: {source_name}\nSHA-256: {source_hash}\n"
         "The publisher distributes this source archive alongside this release.\n"
-        "It includes recursive submodule sources, pinned zip.js sources,\n"
-        "and docs/source-build.md. The store listing provides the download location.\n"
+        "It includes recursive submodule sources, pinned zip.js and gifenc\n"
+        "sources, and docs/source-build.md. The store listing provides the download location.\n"
         "This source archive matches the Chrome ZIP of this release.\n"
     ).encode(), 0o100644)
     upload_name = stem + "-chrome.zip"

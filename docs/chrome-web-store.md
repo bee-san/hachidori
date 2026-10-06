@@ -38,7 +38,7 @@ The welcome and settings copy provide the relevant
 
 ### What already fits, and what needs an honest explanation
 
-- **Bundled code:** the dictionary engine, workers and ZIP library
+- **Bundled code:** the dictionary engine, workers, ZIP library and GIF encoder
   live under `extension/`. The audited loading paths do not fetch remote JS or
   WASM. Dictionary ZIPs, update indexes, audio lists and media are data, not
   downloaded extension logic. The manifest's `'wasm-unsafe-eval'` is Chrome's
@@ -153,8 +153,8 @@ for its exact changes and any test-environment limitations.
 
 Google needs **`manifest.json` at the ZIP root**. The release command packages
 tracked runtime files with their licenses and the privacy policy, then creates
-a matching source ZIP containing recursive submodules and pinned zip.js
-sources. Existing dictionary Wasm bundles are included unchanged unless
+a matching source ZIP containing recursive submodules and pinned zip.js and
+gifenc sources. Existing dictionary Wasm bundles are included unchanged unless
 the release intentionally rebuilds them. See [source/build instructions](source-build.md)
 and [Google's package preparation](https://developer.chrome.com/docs/webstore/prepare).
 
