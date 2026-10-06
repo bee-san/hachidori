@@ -1302,7 +1302,7 @@ pronunciation.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 290 predeclared checks in a browser. The reproducible
+The primary-path test runs 291 predeclared checks in a browser. The reproducible
 launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
 external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -1840,7 +1840,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 290 assertions, and the summary line
+`PLANNED` at the top of the file names all 291 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
