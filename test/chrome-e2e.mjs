@@ -237,6 +237,32 @@ const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) 
 const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
   .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
+// Word highlighting (#520): the real content script segments a page through
+// the engine and paints each word's Anki status with the Highlight API.
+const WORD_HIGHLIGHT_CHECKS = [
+  "word highlights mark visible words by Anki status, and text scrolled to or added later, without changing the page's DOM",
+  "adding a word to Anki from the popup moves its marks from unknown to learning",
+  "turning word highlighting off removes every mark and keeps its settings",
+];
+// The highlight names come from the source, so a rename cannot leave the
+// checks reading a registry key nothing sets.
+const WORD_HIGHLIGHT_NAME = (() => {
+  const source = readFileSync(resolve(EXTENSION, "word-highlights.js"), "utf8");
+  const match = /`(hd-word-)\$\{status\}`/u.exec(source);
+  if (!match) throw new Error("word-highlights.js no longer names its highlights hd-word-${status}");
+  return status => `${match[1]}${status}`;
+})();
+const WORDS_PAGE_HTML = `<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>hachidori word highlights</title>
+<style>
+  body { font: 32px/2 serif; padding: 40px; background: #ffffff; color: #1a1a1a; }
+  #far { margin-top: 4000px; }
+</style></head>
+<body>
+  <p id="line"><span id="words-verb"><ruby>食<rt>た</rt></ruby>べたかった</span>。<span>漢字</span>を読む</p>
+  <p id="far">ありがとう</p>
+</body></html>`;
+
 const PLANNED = [
   DICTIONARY_RANK_CHECK,
   "dictionary pointer reorder and confirmed bulk removal persist across reload",
@@ -336,6 +362,7 @@ const PLANNED = [
   "the duplicate index keeps refreshing while maturity blur is disabled and re-enabling uses it without Anki",
   "an unavailable Anki refresh retains cached maturity and independent count blur",
   "worker restart restores indexed maturity and the missing thirty-minute alarm without fetching",
+  ...WORD_HIGHLIGHT_CHECKS,
   "lookup counts survive a full browser restart",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
@@ -8192,6 +8219,223 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
   }
 }
 
+// The word highlighting check's AnkiConnect, served by this suite's own page
+// server: the service worker mines through it and the offscreen document's
+// index refresh reads it, so no real Anki is involved.
+const WORD_HIGHLIGHT_ANKI_PATH = "/anki-connect";
+let wordHighlightAnki = null;
+
+async function answerWordHighlightAnki(request, response) {
+  let body = "";
+  for await (const chunk of request) body += chunk;
+  const headers = { "content-type": "application/json", "access-control-allow-origin": "*" };
+  try {
+    if (!wordHighlightAnki) throw new Error("no word highlighting check is running");
+    const reply = await answerAnkiConnect(JSON.parse(body), wordHighlightAnki);
+    response.writeHead(200, headers);
+    response.end(JSON.stringify(reply));
+  } catch (error) {
+    diagnostics.push(`[word-highlight anki] ${error?.stack ?? error}`);
+    response.writeHead(500, headers);
+    response.end(JSON.stringify({ result: null, error: String(error) }));
+  }
+}
+
+async function checkWordHighlighting({ browser, settings, pageUrl }) {
+  const controls = ["opt-experimental-wordHighlighting", "opt-word-highlight", "opt-word-highlight-unknown",
+    "opt-word-highlight-learning", "opt-word-highlight-known", "opt-word-highlight-style"];
+  const original = await readSettingsControls(settings, controls);
+  const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
+  // A collection with no notes until the popup adds one; nothing is mature.
+  const notes = new Map();
+  const actions = [];
+  const fronts = query => [...query.matchAll(/"front:((?:\\.|[^"])*)"/giu)].map(match => match[1].replace(/\\(.)/gu, "$1"));
+  wordHighlightAnki = async (action, params) => {
+    actions.push(action);
+    if (action === "deckNames") return ["Default"];
+    if (action === "modelNames") return ["Basic"];
+    if (action === "modelNamesAndIds") return { Basic: 1 };
+    if (action === "modelFieldNames") return ["Front", "Back"];
+    if (action === "canAddNotesWithErrorDetail") {
+      return params.notes.map(note => ({ canAdd: ![...notes.values()].some(fields => fields.Front === note.fields.Front), error: null }));
+    }
+    if (action === "addNote") {
+      notes.set(notes.size + 1, params.note.fields);
+      return notes.size;
+    }
+    if (action === "findNotes") {
+      if (params.query.endsWith(" is:review -is:learn prop:ivl>=21")) return [];
+      const wanted = fronts(params.query);
+      return [...notes].filter(([, fields]) => wanted.length === 0 || wanted.includes(fields.Front)).map(([noteId]) => noteId);
+    }
+    if (action === "notesInfo") {
+      return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [noteId],
+        fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value], order) => [field, { value, order }])) }));
+    }
+    if (action === "getMediaFilesNames") return [];
+    throw new Error(`Unexpected word highlighting Anki action ${action}`);
+  };
+  const tab = await browser.newPage();
+  const popup = await popupReader(tab);
+  const marks = () => tab.evaluate(names => Object.fromEntries(Object.entries(names).flatMap(([status, name]) => {
+    const highlight = CSS.highlights.get(name);
+    return highlight ? [[status, [...highlight].map(range => range.startContainer.data.slice(range.startOffset, range.endOffset))]] : [];
+  })), Object.fromEntries(["unknown", "learning", "known"].map(status => [status, WORD_HIGHLIGHT_NAME(status)])));
+  const waitForMarks = async (predicate, timeout = 20_000) => {
+    const deadline = Date.now() + timeout;
+    let current = await marks();
+    while (!predicate(current) && Date.now() < deadline) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 100));
+      current = await marks();
+    }
+    return current;
+  };
+  // The page's markup without Hachidori's own popup host.
+  const markup = () => tab.evaluate(() => {
+    const clone = document.documentElement.cloneNode(true);
+    for (const host of clone.querySelectorAll("hachidori-host")) host.remove();
+    return clone.outerHTML;
+  });
+  // The distinct colours drawn just below a word, where its underline is.
+  const underline = selector => tab.evaluate(async query => {
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector(query));
+    const rect = range.getBoundingClientRect();
+    await new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+    return { left: rect.left, right: rect.right, top: rect.bottom - 12, bottom: rect.bottom + 14 };
+  }, selector).then(async strip => {
+    const png = await tab.screenshot({ encoding: "base64" });
+    return tab.evaluate(async ({ png, strip }) => {
+      const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(bitmap, 0, 0);
+      const scale = bitmap.width / innerWidth;
+      const colours = new Set();
+      for (let y = Math.round(strip.top * scale); y < strip.bottom * scale; y += 1) {
+        for (let x = Math.round(strip.left * scale); x < strip.right * scale; x += 2) {
+          colours.add([...context.getImageData(x, y, 1, 1).data.slice(0, 3)].join(","));
+        }
+      }
+      // The status colours word-highlights.js wrote for this page.
+      const rules = [...document.adoptedStyleSheets].flatMap(sheet => [...sheet.cssRules])
+        .flatMap(rule => rule.cssRules ? [...rule.cssRules] : [rule])
+        .filter(rule => rule.selectorText?.startsWith("::highlight(hd-word-"));
+      const colour = value => { const probe = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true }); probe.fillStyle = value;
+        probe.fillRect(0, 0, 1, 1); return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+      return { colours: [...colours].map(value => value.split(",").map(Number)),
+        statuses: Object.fromEntries(rules.map(rule => [/hd-word-(\w+)/u.exec(rule.selectorText)[1],
+          colour(rule.style.textDecorationColor)])) };
+    }, { png, strip });
+  });
+  const draws = (sample, status) => sample.statuses[status] !== undefined
+    && sample.colours.some(pixel => pixel.every((value, index) => Math.abs(value - sample.statuses[status][index]) <= 3));
+  try {
+    await tab.setViewport({ width: 1100, height: 700 });
+    await tab.goto(new URL("words", pageUrl).href, { waitUntil: "load" });
+    const before = await markup();
+    await tab.evaluate(() => {
+      window.__wordHighlightMutations = [];
+      new MutationObserver(records => {
+        for (const record of records) {
+          const ours = record.target.closest?.("hachidori-host")
+            || (record.type === "childList" && [...record.addedNodes, ...record.removedNodes]
+              .every(node => node.localName === "hachidori-host"));
+          if (!ours) window.__wordHighlightMutations.push(`${record.type} ${record.target.nodeName}`);
+        }
+      }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    await settings.evaluate(async url => {
+      const { options } = await chrome.storage.local.get("options");
+      const defaults = HDReaderOptions.normaliseOptions({}).anki;
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+        options: { anki: { ...defaults, url, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, new URL(WORD_HIGHLIGHT_ANKI_PATH, pageUrl).href);
+    // A gated section opens only once its experimental switch is on.
+    await updateSettingsControls(settings, { "opt-experimental-wordHighlighting": true });
+    await updateSettingsControls(settings, { "opt-word-highlight": true, "opt-word-highlight-unknown": true,
+      "opt-word-highlight-learning": true, "opt-word-highlight-known": false, "opt-word-highlight-style": "underline" });
+    await tab.bringToFront();
+    const shown = await waitForMarks(current => ["食", "べたかった", "漢字", "読む"]
+      .every(text => current.unknown?.includes(text)));
+    const after = await markup();
+    const mutations = await tab.evaluate(() => window.__wordHighlightMutations.slice());
+    await tab.evaluate(() => document.getElementById("far").scrollIntoView({ block: "center" }));
+    const scrolled = await waitForMarks(current => current.unknown?.includes("ありがとう"));
+    await tab.evaluate(() => {
+      const line = document.createElement("p");
+      line.id = "arrived";
+      line.textContent = "読んだ";
+      document.getElementById("far").after(line);
+    });
+    const arrived = await waitForMarks(current => current.unknown?.includes("読んだ"));
+    check(WORD_HIGHLIGHT_CHECKS[0],
+      JSON.stringify(shown.unknown) === JSON.stringify(["食", "べたかった", "漢字", "読む"])
+        && Object.keys(shown).join() === "unknown,learning"
+        // The far line is marked once it scrolls into view, and the first
+        // line, now a long way above, keeps no ranges.
+        && JSON.stringify(scrolled.unknown) === JSON.stringify(["ありがとう"])
+        && JSON.stringify(arrived.unknown) === JSON.stringify(["ありがとう", "読んだ"])
+        && before === after && mutations.length === 0,
+      JSON.stringify({ shown, scrolled, arrived, mutations, sameMarkup: before === after }));
+
+    await tab.evaluate(() => window.scrollTo(0, 0));
+    const red = await underline("#line > span:last-child");
+    const verb = await hoverForPopup(tab, popup, "#words-verb");
+    const ready = await (async () => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const state = await popup.anki();
+        if (state?.controls?.[0]?.action === "add" && !state.controls[0].disabled) return state;
+        await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      }
+      return popup.anki();
+    })();
+    await popup.click(".gsm-hoshidicts-mine-button");
+    const added = await waitForMarks(current => current.learning?.includes("べたかった"));
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    const orange = await underline("#words-verb");
+    const unchanged = await underline("#line > span:last-child");
+    if (process.env.HACHIDORI_WORD_HIGHLIGHT_SCREENSHOT) {
+      await tab.screenshot({ path: process.env.HACHIDORI_WORD_HIGHLIGHT_SCREENSHOT, clip: { x: 0, y: 0, width: 1100, height: 180 } });
+    }
+    check(WORD_HIGHLIGHT_CHECKS[1],
+      verb?.plain.includes("食べる") && ready?.controls?.[0]?.action === "add"
+        && notes.size === 1 && [...notes.values()][0].Front === "食べる"
+        && JSON.stringify(added.learning) === JSON.stringify(["食", "べたかった"])
+        && !added.unknown.includes("べたかった") && added.unknown.includes("漢字")
+        && draws(red, "unknown") && !draws(red, "learning")
+        && draws(orange, "learning") && !draws(orange, "unknown") && draws(unchanged, "unknown")
+        && !actions.includes("findCards"),
+      JSON.stringify({ verb: verb?.plain, ready: ready?.controls?.[0], notes: [...notes.values()], added, actions,
+        red: red.statuses, orange: orange.statuses }));
+
+    await updateSettingsControls(settings, { "opt-word-highlight": false });
+    const cleared = await waitForMarks(current => Object.keys(current).length === 0, 5_000);
+    const kept = await settings.evaluate(async () => {
+      const { options } = await chrome.storage.local.get("options");
+      return { enabled: options.wordHighlightEnabled, unknown: options.wordHighlightUnknown,
+        learning: options.wordHighlightLearning, known: options.wordHighlightKnown, style: options.wordHighlightStyle,
+        flag: options.experimental.wordHighlighting };
+    });
+    check(WORD_HIGHLIGHT_CHECKS[2],
+      Object.keys(cleared).length === 0
+        && JSON.stringify(kept) === JSON.stringify({ enabled: false, unknown: true, learning: true, known: false,
+          style: "underline", flag: true }),
+      JSON.stringify({ cleared, kept }));
+  } finally {
+    await updateSettingsControls(settings, original);
+    await settings.evaluate(async anki => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, options: { anki } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, originalAnki);
+    wordHighlightAnki = null;
+    await tab.close();
+  }
+}
+
 async function checkToolbarPreview(page, frame) {
   const original = await readSettingsControls(page, ["opt-popup-toolbar", "opt-popup-opacity", "opt-popup-height"]);
   await frame.evaluate(() => {
@@ -10945,7 +11189,15 @@ async function main() {
   const launch = puppeteer.default?.launch ? puppeteer.default : puppeteer;
 
   const server = createServer((req, res) => {
+    if (req.method === "POST" && req.url === WORD_HIGHLIGHT_ANKI_PATH) {
+      void answerWordHighlightAnki(req, res);
+      return;
+    }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    if (req.url === "/words") {
+      res.end(WORDS_PAGE_HTML);
+      return;
+    }
     res.end(req.url === "/frame"
       ? '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="font: 32px serif; padding: 40px"><span id="frame-verb">食べたかった</span></body></html>'
       : PAGE_HTML);
@@ -12573,7 +12825,9 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 9
+      // Word highlighting's link stays hidden until its experimental switch is on.
+      && links.length === 10
+      && links.filter((link) => link.checkVisibility()).length === 9
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -13786,6 +14040,8 @@ async function main() {
   });
   await checkDefinitionBlur({ settings: page, tab, popup });
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
+  await checkWordHighlighting({ browser, settings: page, pageUrl });
+  await tab.bringToFront();
   await checkFrameAndFullscreenPopups(tab, popup, pageUrl);
   await checkPopupStaysInPlace(tab, popup);
   await checkTabSwitchKeepsPopup(page, tab, popup, pageUrl);
