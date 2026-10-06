@@ -47,9 +47,19 @@
     return ((Number(hours) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000 + Number(fraction.padEnd(3, "0"));
   }
 
+  // A cue's text without its tags. Ruby readings and their parentheses are
+  // not part of the spoken line, so text inside <rt> and <rp> is left out.
   function vttText(lines) {
-    // Ruby readings and their parentheses are not part of the spoken line.
-    const text = lines.join("\n").replace(/<(rt|rp)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, "").replace(/<[^>]*>/gu, "");
+    let text = "";
+    let hidden = 0;
+    for (const part of lines.join("\n").split(/(<[^>]*>)/u)) {
+      if (!part.startsWith("<")) {
+        if (hidden === 0) text += part;
+        continue;
+      }
+      const ruby = /^<(\/?)r[tp]\b/iu.exec(part);
+      if (ruby) hidden = Math.max(0, hidden + (ruby[1] ? -1 : 1));
+    }
     return cleanLines(decodeEntities(text));
   }
 

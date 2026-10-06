@@ -17,7 +17,6 @@ import { encodeBase64 } from "./base64.js";
 export const SENTENCE_PAD_MS = 250;
 // How long the last captured audio has to arrive after the page's replay ends.
 const DRAIN_TIMEOUT_MS = 500;
-const DRAIN_POLL_MS = 20;
 
 // Wall-clock minus media time while the line played at 1×: the median of the
 // page's (wall ms, media ms) pairs, so a stale pair from the seek cannot move it.
@@ -65,7 +64,8 @@ export function createAudioFrameClock({ timeOrigin, now }) {
 // of their first sample; frame 0 is at `originMs`. Missing frames stay
 // silent, and the range is clamped to what was recorded.
 export function clipSamples(chunks, { originMs, sampleRate, startMs, endMs }) {
-  if (!Number.isFinite(originMs) || !(sampleRate > 0) || !(endMs > startMs) || chunks.length === 0) return null;
+  if (![originMs, sampleRate, startMs, endMs].every(Number.isFinite) || sampleRate <= 0 || endMs <= startMs
+      || chunks.length === 0) return null;
   let recordedStart = Infinity;
   let recordedEnd = -Infinity;
   for (const chunk of chunks) {
@@ -74,7 +74,7 @@ export function clipSamples(chunks, { originMs, sampleRate, startMs, endMs }) {
   }
   const from = Math.max(recordedStart, Math.round((startMs - originMs) * sampleRate / 1000));
   const to = Math.min(recordedEnd, Math.round((endMs - originMs) * sampleRate / 1000));
-  if (!(to > from)) return null;
+  if (to <= from) return null;
   const output = new Float32Array(to - from);
   for (const chunk of chunks) {
     const begin = Math.max(from, chunk.startFrame);
@@ -130,6 +130,31 @@ function monoSamples(value) {
   return mono;
 }
 
+// The wall-clock time just after the last sample recorded so far, or null.
+function recordedUntil(current) {
+  if (current.clock.originMs === null || current.sampleRate === null) return null;
+  return current.clock.originMs + current.clock.endFrame * 1000 / current.sampleRate;
+}
+
+// Places every block the stream delivers until it ends, and tells a waiting
+// finish when the recording has reached the time it waits for.
+async function readStream(current) {
+  for (let read = await current.reader.read(); !read.done; read = await current.reader.read()) {
+    const { value } = read;
+    try {
+      current.sampleRate ??= value.sampleRate;
+      if (value.sampleRate === current.sampleRate) {
+        const startFrame = current.clock.place({ timestampUs: value.timestamp, frames: value.numberOfFrames,
+          sampleRate: value.sampleRate });
+        current.chunks.push({ startFrame, samples: monoSamples(value) });
+        if (current.waiter !== null && recordedUntil(current) >= current.waiter.untilMs) current.waiter.resolve();
+      }
+    } finally {
+      value.close();
+    }
+  }
+}
+
 export function createNetflixRecorder(window, {
   now = () => window.performance.timeOrigin + window.performance.now(),
 } = {}) {
@@ -139,23 +164,8 @@ export function createNetflixRecorder(window, {
     window.clearTimeout(current.timer);
     current.reader?.cancel().catch(() => {});
     for (const track of current.stream?.getTracks() ?? []) track.stop();
+    current.waiter?.resolve();
     if (session === current) session = null;
-  }
-
-  async function read(current) {
-    for (;;) {
-      const { value, done } = await current.reader.read();
-      if (done) return;
-      try {
-        current.sampleRate ??= value.sampleRate;
-        if (value.sampleRate !== current.sampleRate) continue;
-        const startFrame = current.clock.place({ timestampUs: value.timestamp, frames: value.numberOfFrames,
-          sampleRate: value.sampleRate });
-        current.chunks.push({ startFrame, samples: monoSamples(value) });
-      } finally {
-        value.close();
-      }
-    }
   }
 
   // Opens this tab's stream and starts placing its samples. Chrome hands a
@@ -166,7 +176,7 @@ export function createNetflixRecorder(window, {
       throw new Error("The Netflix recording request is invalid.");
     }
     if (session !== null) stop(session);
-    const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null,
+    const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null, waiter: null,
       clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
     session = current;
     try {
@@ -186,7 +196,7 @@ export function createNetflixRecorder(window, {
       });
       const [track] = current.stream.getAudioTracks();
       current.reader = new window.MediaStreamTrackProcessor({ track }).readable.getReader();
-      current.reading = read(current).catch(() => {});
+      readStream(current).catch(() => {});
       // A recording nobody finishes still ends, which gives the tab its sound back.
       current.timer = window.setTimeout(() => stop(current), limitMs);
     } catch (error) {
@@ -196,13 +206,18 @@ export function createNetflixRecorder(window, {
     return { padMs: SENTENCE_PAD_MS };
   }
 
-  // Audio reaches the frame a little after the page plays it.
-  async function drain(current, untilMs) {
-    const deadline = now() + DRAIN_TIMEOUT_MS;
-    while (now() < deadline && !(current.clock.originMs !== null && current.sampleRate !== null
-      && current.clock.originMs + current.clock.endFrame * 1000 / current.sampleRate >= untilMs)) {
-      await new Promise(resolve => { window.setTimeout(resolve, DRAIN_POLL_MS); });
-    }
+  // Audio reaches the frame a little after the page plays it: wait until the
+  // recording covers `untilMs`, for at most DRAIN_TIMEOUT_MS.
+  function drain(current, untilMs) {
+    if ((recordedUntil(current) ?? -Infinity) >= untilMs) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = window.setTimeout(() => current.waiter?.resolve(), DRAIN_TIMEOUT_MS);
+      current.waiter = { untilMs, resolve: () => {
+        window.clearTimeout(timer);
+        current.waiter = null;
+        resolve();
+      } };
+    });
   }
 
   async function finish({ startMs, endMs, anchors }) {

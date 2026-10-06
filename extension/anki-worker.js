@@ -10,10 +10,9 @@ import {
 
 // A note that was definitively not written leaves no media of its own behind.
 async function releaseCapturedMedia({ writeResources, invoke }) {
-  for (const filename of [writeResources?.screenshotFilename, writeResources?.sentenceAudioFilename]) {
-    if (typeof filename !== "string" || filename === "") continue;
-    await invoke("deleteMediaFile", { filename }, 10_000).catch(() => undefined);
-  }
+  const filenames = [writeResources?.screenshotFilename, writeResources?.sentenceAudioFilename]
+    .filter(filename => typeof filename === "string" && filename !== "");
+  await Promise.all(filenames.map(filename => invoke("deleteMediaFile", { filename }, 10_000).catch(() => undefined)));
 }
 
 // Media the reader captures for one mining action. Each kind is held under its

@@ -48,7 +48,7 @@
     "BIF240", "BIF320"]);
   // What a profile list looks like in JSON: the key Subadub looks for, or one
   // of its profile names. Profile names are letters, digits and hyphens.
-  const PROFILE_MARKER = new RegExp(`"profiles":\\s*\\[|"(?:${[...NETFLIX_PROFILES].join("|")})"`, "u");
+  const PROFILE_MARKER = new RegExp(String.raw`"profiles":\s*\[|"(?:${[...NETFLIX_PROFILES].join("|")})"`, "u");
   // Text downloads netflix-subtitles.js reads, in order of preference.
   const DOWNLOADS = [[WEBVTT_PROFILE, "webvtt"], ["imsc1.1", "ttml"], ["dfxp-ls-sdh", "ttml"], ["simplesdh", "ttml"]];
   const POLL_MS = 25;
@@ -94,10 +94,15 @@
     return null;
   }
 
+  // A download's URLs are a list of { url } records, or a map of CDN URLs.
+  function firstUrl(urls) {
+    if (Array.isArray(urls)) return urls[0];
+    return urls && typeof urls === "object" ? Object.values(urls)[0] : null;
+  }
+
   function download(track) {
     for (const [profile, format] of DOWNLOADS) {
-      const urls = track.downloadables?.[profile]?.urls;
-      const first = Array.isArray(urls) ? urls[0] : (urls && typeof urls === "object" ? Object.values(urls)[0] : null);
+      const first = firstUrl(track.downloadables?.[profile]?.urls);
       const url = typeof first === "string" ? first : first?.url;
       if (typeof url === "string" && url !== "") return { url, format };
     }
@@ -183,7 +188,6 @@
   };
 
   const wallClock = () => performance.timeOrigin + performance.now();
-  const sleep = ms => new Promise(resolve => { setTimeout(resolve, ms); });
 
   // Netflix's own player: writing <video>.currentTime makes Netflix stop with
   // error M7375, so seeking goes through its player API.
@@ -234,56 +238,67 @@
     }
   }
 
+  // Where the viewer is, by Netflix's own clock when it answers.
+  function currentPosition(player, video) {
+    try {
+      const reported = typeof player.getCurrentTime === "function" ? player.getCurrentTime() : Number.NaN;
+      if (Number.isFinite(reported)) return reported;
+    } catch {
+      // The element's own time is the position to return to.
+    }
+    return video.currentTime * 1000;
+  }
+
+  // (wall-clock ms, media ms) pairs while the video plays forward, until media
+  // time `to`; a replay that has not got there by `deadline` failed.
+  function sample(video, to, deadline) {
+    return new Promise((resolve, reject) => {
+      const anchors = [];
+      let previous = null;
+      const timer = setInterval(() => {
+        const media = video.currentTime * 1000;
+        if (!video.paused && !video.seeking && previous !== null && media > previous) anchors.push([wallClock(), media]);
+        previous = media;
+        if (media >= to || video.ended) {
+          clearInterval(timer);
+          resolve(anchors);
+        } else if (wallClock() > deadline) {
+          clearInterval(timer);
+          reject(Object.assign(new Error("timeout"), { code: "timeout" }));
+        }
+      }, POLL_MS);
+    });
+  }
+
   // Plays the clip once at 1× from just before the cue to just after it and
   // reports (wall-clock ms, media ms) pairs, so the extension can find the
   // line in what it recorded. Position, paused state and speed are restored.
   async function replay({ id, startMs, endMs, padMs }) {
     const player = netflixPlayer();
     const video = mainVideo();
-    if (player === null || video === null) {
-      post({ kind: "replay", id, ok: false, error: "player" });
-      return;
-    }
-    if (replaying) {
-      post({ kind: "replay", id, ok: false, error: "busy" });
+    if (player === null || video === null || replaying) {
+      post({ kind: "replay", id, ok: false, error: replaying ? "busy" : "player" });
       return;
     }
     replaying = true;
-    let positionMs = video.currentTime * 1000;
-    try {
-      if (typeof player.getCurrentTime === "function" && Number.isFinite(player.getCurrentTime())) {
-        positionMs = player.getCurrentTime();
-      }
-    } catch {
-      // The element's own time is the position to return to.
-    }
-    const saved = { positionMs, paused: video.paused, rate: video.playbackRate };
+    const saved = { positionMs: currentPosition(player, video), paused: video.paused, rate: video.playbackRate };
     const from = Math.max(0, startMs - padMs);
     const to = endMs + padMs;
-    const anchors = [];
-    let error = null;
+    let reply;
     try {
       video.playbackRate = 1;
       const landed = await seek(player, video, from);
       if (landed > from + 50 && from > 0) await seek(player, video, from - PREROLL_MS);
       await play(player, video);
-      const deadline = wallClock() + (to - from) + REPLAY_SLACK_MS;
-      let previous = null;
-      for (;;) {
-        const media = video.currentTime * 1000;
-        if (!video.paused && !video.seeking && previous !== null && media > previous) anchors.push([wallClock(), media]);
-        previous = media;
-        if (media >= to || video.ended) break;
-        if (wallClock() > deadline) throw Object.assign(new Error("timeout"), { code: "timeout" });
-        await sleep(POLL_MS);
-      }
-    } catch (failure) {
-      error = failure?.code ?? "replay";
+      const anchors = await sample(video, to, wallClock() + (to - from) + REPLAY_SLACK_MS);
+      reply = { kind: "replay", id, ok: true, anchors };
+    } catch (error) {
+      reply = { kind: "replay", id, ok: false, error: error?.code ?? "replay" };
     } finally {
       restore(player, video, saved);
       replaying = false;
     }
-    post(error === null ? { kind: "replay", id, ok: true, anchors } : { kind: "replay", id, ok: false, error });
+    post(reply);
   }
 
   document.addEventListener(COMMAND_EVENT, event => {

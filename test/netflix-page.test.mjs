@@ -18,6 +18,7 @@ function page({ pathname = "/watch/81000001", subtitles = {}, player = null, vid
   document.addEventListener(PAGE_EVENT, event => posted.push(JSON.parse(event.detail)));
   const context = vm.createContext({
     document, CustomEvent, EventTarget, ArrayBuffer, Promise, Reflect, performance, setTimeout, clearTimeout,
+    setInterval, clearInterval,
     location: { pathname },
     fetch: async url => {
       fetched.push(url);

@@ -133,6 +133,19 @@
       command({ type: "resend", movieId });
     }
 
+    // One text's matches across the tracks: the cue when exactly one track has
+    // exactly one, and whether a track had several.
+    function matchText(entry, tracks, observation, text) {
+      const found = tracks.map(track => ({ track, cues: subtitles.matchingCues(track.cues, observation.mediaTimeMs, text) }));
+      const unique = found.find(candidate => candidate.cues.length === 1);
+      if (unique === undefined) return { ambiguous: found.some(candidate => candidate.cues.length > 1) };
+      if (entry.chosen === null && entry.tracks.size > 1 && found.filter(candidate => candidate.cues.length > 0).length === 1) {
+        entry.chosen = unique.track;
+      }
+      const [cue] = unique.cues;
+      return { cue: { movieId: observation.movieId, trackId: unique.track.id, startMs: cue.startMs, endMs: cue.endMs, text: cue.text } };
+    }
+
     // The cue an observation belongs to, or the reason there is none. With
     // Japanese and Japanese [CC] tracks, the first line that matches in only
     // one of them chooses that track for the episode.
@@ -148,16 +161,9 @@
         : [...entry.tracks.values()].sort((left, right) => left.closedCaptions - right.closedCaptions);
       let ambiguous = false;
       for (const text of new Set([observation.lineText, observation.hoveredText])) {
-        const found = tracks.map(track => ({ track, cues: subtitles.matchingCues(track.cues, observation.mediaTimeMs, text) }));
-        const unique = found.find(candidate => candidate.cues.length === 1);
-        if (unique !== undefined) {
-          if (entry.chosen === null && entry.tracks.size > 1 && found.filter(candidate => candidate.cues.length > 0).length === 1) {
-            entry.chosen = unique.track;
-          }
-          const [cue] = unique.cues;
-          return { cue: { movieId, trackId: unique.track.id, startMs: cue.startMs, endMs: cue.endMs, text: cue.text } };
-        }
-        if (found.some(candidate => candidate.cues.length > 1)) ambiguous = true;
+        const match = matchText(entry, tracks, observation, text);
+        if (match.cue) return { cue: match.cue };
+        ambiguous ||= match.ambiguous;
       }
       return { reason: ambiguous ? "ambiguous" : "no-match" };
     }
@@ -171,7 +177,7 @@
       if (!resolved.cue) return { netflix: { unavailable: resolved.reason } };
       const { movieId, startMs, endMs, text } = resolved.cue;
       const whole = sentence ? subtitles.cueSentence(text, sentence.sentence, sentence.matchOffset) : null;
-      return { netflix: { cue: { movieId, startMs, endMs } }, ...(whole ?? {}) };
+      return { netflix: { cue: { movieId, startMs, endMs } }, ...whole };
     }
 
     function replay(cue, padMs) {
@@ -207,7 +213,7 @@
         const started = await send("hd_netflix_capture_start", { cue });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
         if (typeof started.sessionId !== "string" || !Number.isFinite(started.padMs)) {
-          throw new Error("the recording did not start.");
+          throw new TypeError("the recording did not start.");
         }
         let anchors;
         try {
