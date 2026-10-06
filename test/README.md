@@ -617,7 +617,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
 `HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-180 checks, ordered by dependency. Exits 0 on success,
+181 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -752,18 +752,24 @@ through both mapped and paged storage. The JSON response shape stays unchanged.
 
 **`hdw_segment`** (#520) is scored on a fresh engine instance holding the
 reference dictionary and its frequency dictionary from
-`segmentation-reference.mjs` (about fifty original NHK-Easy, visual-novel and
-subtitle lines with their expected split and headwords). The response shape, the
-UTF-16 offsets, the function-word flag, the known-words alternative split, the
-no-op and oversized-text paths, and the frequency option are all asserted, and
-the best split is scored against the greedy longest-match parse over the whole
-set: it must score at least as well, must fix at least one boundary the greedy
-parse gets wrong (白い猫がいる, where greedy takes がい→外 and strands る), and
-must recover the dictionary form of at least 90% of the conjugated lines. The
-run prints both scores so the owner can decide whether the whole-line split is
-worth keeping over greedy (the issue's open question), and the segment
-throughput and hover-while-segmenting latency are measured by
-`benchmark/segmentation.mjs`.
+`segmentation-reference.mjs`: 47 original lines written in the style of NHK
+Easy news, visual novels and anime subtitles, with their expected split and
+headwords. The response shape, the UTF-16 offsets, the function-word flag, the
+known-words alternative split, and the no-op and oversized-text paths are all
+asserted. 今日本 splits into two words either way, so it pins the frequency
+tie-break: no frequency and ascending ranks keep 今日 + 本, descending counts
+choose 今 + 日本. A small extra dictionary with Jitendex's headwords for the
+copula's past and presumptive forms and the conjunctions built on it (だった,
+でしょう, だけど…) checks that those spans are function words. The best split is
+scored against the greedy longest-match parse over the whole set with the
+shared `scoreReferenceSet`: it must score at least as well, must fix at least
+one boundary the greedy parse gets wrong (白い猫がいる, where greedy takes がい→外
+and strands る), and must recover the dictionary form of at least 90% of the
+conjugated lines. The run prints both scores so the owner can decide whether
+the whole-line split is worth keeping over greedy (the issue's open question).
+`benchmark/segmentation.mjs` scores real archives the same way and measures
+segment throughput, the longest single segment turn and hover latency beside
+it.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -799,7 +805,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 711 checks, all of
+full request→reply round trip per contract-C message type. 719 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -996,6 +1002,12 @@ What it proves, in order:
    A committed package whose files no longer load is skipped on reload: the
    other dictionaries keep answering lookups, `hd_status.failedDictionaries`
    names it with its load error, and removing it clears the report.
+   `hd_segment` splits a batch of chunks, each keyed by its id, through the
+   real background → offscreen → engine path. A lookup queued from inside the
+   first chunk's native call reaches the engine before the second chunk does,
+   which only a per-chunk engine turn allows. A chunk holding a lone surrogate
+   keeps its UTF-16 offsets, and an oversized chunk refuses the batch before
+   any chunk is segmented.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every

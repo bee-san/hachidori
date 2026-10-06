@@ -2,7 +2,7 @@
 //
 // Reference test set for word segmentation (#520, phase 1).
 //
-// About fifty original Japanese lines in the register of NHK Easy news, a
+// Forty-seven original Japanese lines written in the style of NHK Easy news, a
 // visual novel and anime subtitles, each with the split a hover would show and
 // the headword of every content word. No copyrighted text is reproduced; the
 // lines are written for this test.
