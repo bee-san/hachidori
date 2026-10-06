@@ -1,0 +1,710 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Word highlighting (#520): marks the Japanese words a frame shows with their
+// Anki status through the CSS Custom Highlight API, so the page's DOM is never
+// changed. The local engine segments the text (`hd_segment`) and the worker's
+// cached Anki index answers each word's status (`hd_anki_word_status`); the
+// worker's change signal re-reads the statuses of the words already marked
+// without segmenting the page again.
+//
+// content.js supplies how page text is read, the way a hover reads it: the
+// blocks under a node whose own text includes Japanese, and each block's runs
+// of text as character entries ({ node, offset, sourceLength, text, collapsed }).
+(function () {
+  "use strict";
+
+  const STATUSES = ["unknown", "learning", "known"];
+  const HIGHLIGHT_NAMES = Object.fromEntries(STATUSES.map(status => [status, `hd-word-${status}`]));
+  const OPTION_KEYS = { unknown: "wordHighlightUnknown", learning: "wordHighlightLearning", known: "wordHighlightKnown" };
+  const CARD_STATUSES = new Set(["learning", "known"]);
+  // Each status takes a colour of the popup palette chosen in Design, or of
+  // the default palette for a theme renderer that brings none.
+  const PALETTE_TOKENS = { unknown: "error", learning: "warning", known: "success" };
+  const DEFAULT_COLORS = { unknown: "#c67d80", learning: "#c29a65", known: "#7fa58d" };
+  // WCAG's contrast for a line against its background, and for coloured text.
+  const LINE_CONTRAST = 3;
+  const TEXT_CONTRAST = 4.5;
+  const ENGINE_TARGET = "hoshidicts-offscreen";
+  const ANKI_TARGET = "hachidori-anki";
+  // A hover waits for the chunk the engine is segmenting, so a chunk is a
+  // sentence, cut at a clause break only when it runs past this many units.
+  const MAX_CHUNK_LENGTH = 128;
+  const SENTENCE_END = new Set(["。", "．", "！", "？", "!", "?", "…", "‥"]);
+  const CLAUSE_END = new Set(["、", "，", ",", " ", "　"]);
+  const MAX_BATCH_CHUNKS = 32;
+  const MAX_BATCH_LENGTH = 2048;
+  // The latest segmentations, by their exact text, so repeated texthooker
+  // lines and redrawn subtitles are free; a texthooker runs for hours.
+  const SEGMENT_CACHE_ENTRIES = 4096;
+  const RETRY_MS = 1000;
+  const MAX_RETRY_MS = 60_000;
+  const RECHECK_MS = 100;
+
+  const isCardStatus = status => CARD_STATUSES.has(status);
+
+  // sRGB relative luminance and contrast ratio, as WCAG defines them.
+  function luminance(rgb) {
+    return rgb.map(channel => channel / 255)
+      .map(channel => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  }
+
+  function contrast(first, second) {
+    const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  // The colour moved toward black or white, whichever the background contrasts
+  // with more, until it reaches `ratio` against the background.
+  function legible(color, background, ratio) {
+    const toward = contrast([0, 0, 0], background) >= contrast([255, 255, 255], background)
+      ? [0, 0, 0] : [255, 255, 255];
+    for (let step = 0; step <= 20; step += 1) {
+      const mixed = color.map((channel, index) => Math.round(channel + (toward[index] - channel) * step / 20));
+      if (contrast(mixed, background) >= ratio) return mixed;
+    }
+    return toward;
+  }
+
+  // A run's sentences as { start, text }. A sentence longer than
+  // MAX_CHUNK_LENGTH is cut after its last clause break in the second half of
+  // that length, or at the length itself; a chunk without Japanese is dropped.
+  function chunksOf(text, isJapanese) {
+    const chunks = [];
+    let start = 0;
+    const cut = end => {
+      const piece = text.slice(start, end);
+      if (isJapanese(piece)) chunks.push({ start, text: piece });
+      start = end;
+    };
+    for (let index = 0; index < text.length; index += 1) {
+      if (SENTENCE_END.has(text[index])) {
+        cut(index + 1);
+      } else if (index + 1 - start >= MAX_CHUNK_LENGTH) {
+        let end = index + 1;
+        for (let back = index; back > start + MAX_CHUNK_LENGTH / 2; back -= 1) {
+          if (CLAUSE_END.has(text[back])) {
+            end = back + 1;
+            break;
+          }
+        }
+        // Never between the halves of a surrogate pair.
+        if ((text.charCodeAt(end) & 0xfc00) === 0xdc00) end += 1;
+        cut(end);
+        index = end - 1;
+      }
+    }
+    if (start < text.length) cut(text.length);
+    return chunks;
+  }
+
+  // A run's text, and the pieces mapping it onto the page: run text
+  // [start, start + length) is node text [offset, end), one code unit for one
+  // except a collapsed whitespace piece, which stands for its whole source.
+  function runOf(entries) {
+    const pieces = [];
+    let text = "";
+    for (const entry of entries) {
+      const last = pieces.at(-1);
+      if (last && !last.collapsed && !entry.collapsed && last.node === entry.node && last.end === entry.offset) {
+        last.end += entry.sourceLength;
+        last.length += entry.text.length;
+      } else {
+        pieces.push({ node: entry.node, offset: entry.offset, end: entry.offset + entry.sourceLength,
+          start: text.length, length: entry.text.length, collapsed: entry.collapsed === true });
+      }
+      text += entry.text;
+    }
+    return { text, pieces };
+  }
+
+  function createWordHighlighter({ window, send, textBlocks, textRuns, isJapanese, prepare, readPalette }) {
+    const { document } = window;
+    const highlights = Object.fromEntries(STATUSES.map(status => {
+      const highlight = new window.Highlight();
+      // Below the hover's source highlight, which keeps the default priority.
+      highlight.priority = -1;
+      return [status, highlight];
+    }));
+    const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
+    let probe = null;
+    let sheet = null;
+    let options = null;
+    let running = false;
+    // Bumped by start() and stop(): an answer to an older session is dropped.
+    let session = 0;
+    // Bumped by invalidate() too, for segmentations of older dictionaries.
+    let segmentEpoch = 0;
+    let ready = false;
+    let suspended = 0;
+    let intersections = null;
+    let mutations = null;
+    let scheduled = false;
+    let recheckTimer = null;
+    let retryTimer = null;
+    let failures = 0;
+    const blocks = new Map();
+    const visible = new Set();
+    const segments = new Map();
+    let generation = null;
+    let segmenting = false;
+    // Status by headword, read at statusRevision for statusesEpoch. Every
+    // change signal bumps statusEpoch, so the words shown are read again.
+    const statuses = new Map();
+    let statusEpoch = 0;
+    let statusesEpoch = -1;
+    let statusRevision = null;
+    // Unknown until the worker answers. False means the cached index has no
+    // rows for the first Anki Template, so nothing is segmented or marked.
+    let available = null;
+    let statusing = false;
+
+    function schedule() {
+      if (scheduled || !running) return;
+      scheduled = true;
+      window.queueMicrotask(pump);
+    }
+
+    function retryLater() {
+      failures += 1;
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        schedule();
+      }, Math.min(MAX_RETRY_MS, RETRY_MS * 2 ** (failures - 1)));
+    }
+
+    // ------------------------------------------------------------ page text
+
+    function track(element) {
+      const block = blocks.get(element);
+      if (block) {
+        block.dirty = true;
+        return;
+      }
+      blocks.set(element, { element, runs: [], dirty: true, recheck: true });
+      intersections.observe(element);
+    }
+
+    function drop(block) {
+      for (const run of block.runs) unpaint(run);
+      intersections.unobserve(block.element);
+      blocks.delete(block.element);
+      visible.delete(block);
+    }
+
+    function rebuild(block) {
+      for (const run of block.runs) unpaint(run);
+      block.runs = [];
+      for (const entries of textRuns(block.element)) {
+        const { text, pieces } = runOf(entries);
+        if (!isJapanese(text)) continue;
+        block.runs.push({ text, pieces, chunks: chunksOf(text, isJapanese), wanted: false, stale: true, painted: [] });
+      }
+      block.dirty = false;
+      block.recheck = true;
+    }
+
+    // A run is segmented once it comes within a viewport of the visible area,
+    // so a long page, or one huge block of it, costs only what is near.
+    function nearViewport(run) {
+      const first = run.pieces[0];
+      const last = run.pieces.at(-1);
+      const range = document.createRange();
+      try {
+        range.setStart(first.node, first.offset);
+        range.setEnd(last.node, last.end);
+      } catch {
+        return false;
+      }
+      const rect = range.getBoundingClientRect();
+      const { innerWidth: width, innerHeight: height } = window;
+      return rect.bottom >= -height && rect.top <= 2 * height && rect.right >= -width && rect.left <= 2 * width;
+    }
+
+    function recheck(block) {
+      block.recheck = false;
+      if (block.runs.length === 1) {
+        block.runs[0].wanted = true;
+        return;
+      }
+      for (const run of block.runs) run.wanted ||= nearViewport(run);
+    }
+
+    function onIntersection(entries) {
+      for (const entry of entries) {
+        const block = blocks.get(entry.target);
+        if (!block) continue;
+        if (entry.isIntersecting) {
+          visible.add(block);
+          block.recheck = true;
+        } else if (visible.delete(block)) {
+          // Text that leaves the viewport keeps no ranges; its segmentation
+          // stays cached for its return.
+          for (const run of block.runs) {
+            unpaint(run);
+            run.wanted = false;
+            run.stale = true;
+          }
+        }
+      }
+      schedule();
+    }
+
+    function containingBlock(node) {
+      for (let current = node; current; current = current.parentNode) {
+        const block = blocks.get(current);
+        if (block) return block;
+      }
+      return null;
+    }
+
+    function onMutations(records) {
+      let removed = false;
+      for (const record of records) {
+        const block = containingBlock(record.target);
+        if (block) block.dirty = true;
+        if (record.type === "characterData") {
+          for (const element of textBlocks(record.target)) track(element);
+        }
+        for (const node of record.addedNodes) {
+          for (const element of textBlocks(node)) track(element);
+        }
+        removed ||= record.removedNodes.length > 0;
+      }
+      if (removed) {
+        for (const block of [...blocks.values()]) {
+          if (!block.element.isConnected) drop(block);
+        }
+      }
+      schedule();
+    }
+
+    function onViewportChange() {
+      if (recheckTimer !== null) return;
+      recheckTimer = window.setTimeout(() => {
+        recheckTimer = null;
+        for (const block of visible) {
+          if (block.runs.some(run => !run.wanted)) block.recheck = true;
+        }
+        schedule();
+      }, RECHECK_MS);
+    }
+
+    // --------------------------------------------------------------- status
+
+    const surfaceOf = (span, text) => text.slice(span.start, span.start + span.length);
+
+    function markable(span, text) {
+      return !span.functionWord && Array.isArray(span.candidates) && span.candidates.length > 0
+        && isJapanese(surfaceOf(span, text));
+    }
+
+    // A kana-written word can be another candidate's reading: かわいい on the
+    // page against a 可愛い card.
+    function readingCandidates(span, text) {
+      const surface = surfaceOf(span, text);
+      return span.candidates.slice(1).filter(candidate => (candidate.reading || candidate.expression) === surface);
+    }
+
+    // A phrase that is one dictionary entry and also splits into words around
+    // a function word (今日は as 今日 + は). A compound of content words alone
+    // (学生 as 学 + 生) is a word of its own, as its card would be.
+    function alternativeApplies(span) {
+      const words = Array.isArray(span.alternative) ? span.alternative : [];
+      return words.some(word => word.functionWord) && words.some(word => !word.functionWord);
+    }
+
+    function spanHeadwords(span, text) {
+      if (!markable(span, text)) return [];
+      const headwords = [span.candidates[0].expression,
+        ...readingCandidates(span, text).map(candidate => candidate.expression)];
+      if (alternativeApplies(span)) {
+        for (const word of span.alternative) headwords.push(...spanHeadwords(word, text));
+      }
+      return headwords;
+    }
+
+    // The popup's first result decides, so a mark agrees with what a hover
+    // shows; when it has no card, a candidate the surface spells out may.
+    function spanStatus(span, text) {
+      const first = statuses.get(span.candidates[0].expression);
+      if (first !== "unknown") return first;
+      return readingCandidates(span, text).map(candidate => statuses.get(candidate.expression))
+        .find(isCardStatus) ?? "unknown";
+    }
+
+    // Marks are { start, length, status } in the chunk's text. A phrase with
+    // no card made only of words with cards is marked as those words.
+    function spanMarks(span, text) {
+      if (!markable(span, text)) return [];
+      const status = spanStatus(span, text);
+      if (status === "unknown" && alternativeApplies(span)
+          && span.alternative.every(word => !markable(word, text) || isCardStatus(spanStatus(word, text)))) {
+        return span.alternative.flatMap(word => spanMarks(word, text));
+      }
+      return [{ start: span.start, length: span.length, status }];
+    }
+
+    function runHeadwords(run) {
+      const headwords = [];
+      for (const chunk of run.chunks) {
+        for (const span of segments.get(chunk.text) ?? []) headwords.push(...spanHeadwords(span, chunk.text));
+      }
+      return headwords;
+    }
+
+    // The run's marks in its own text, or null until every chunk is segmented
+    // and every status the marks need has been read.
+    function runMarks(run) {
+      if (available === false) return [];
+      const marks = [];
+      for (const chunk of run.chunks) {
+        const spans = segments.get(chunk.text);
+        if (spans === undefined) return null;
+        for (const span of spans) {
+          if (!spanHeadwords(span, chunk.text).every(headword => statuses.has(headword))) return null;
+          for (const mark of spanMarks(span, chunk.text)) marks.push({ ...mark, start: mark.start + chunk.start });
+        }
+      }
+      return marks;
+    }
+
+    // ------------------------------------------------------------- painting
+
+    // One static range per text node a mark covers, so ruby annotations
+    // between them stay unmarked and page mutations need no range upkeep.
+    function markRanges(run, start, end) {
+      const { pieces } = run;
+      let low = 0;
+      let high = pieces.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (pieces[middle].start + pieces[middle].length <= start) low = middle + 1;
+        else high = middle;
+      }
+      const parts = [];
+      for (let index = low; index < pieces.length && pieces[index].start < end; index += 1) {
+        const piece = pieces[index];
+        const from = piece.collapsed ? piece.offset : piece.offset + Math.max(0, start - piece.start);
+        const to = piece.collapsed ? piece.end : piece.offset + Math.min(piece.length, end - piece.start);
+        const part = parts.at(-1);
+        if (part?.node === piece.node && part.end === from) part.end = to;
+        else parts.push({ node: piece.node, start: from, end: to });
+      }
+      return parts.map(part => new window.StaticRange({
+        startContainer: part.node, startOffset: part.start, endContainer: part.node, endOffset: part.end,
+      }));
+    }
+
+    function unpaint(run) {
+      for (const [status, range] of run.painted) highlights[status].delete(range);
+      run.painted = [];
+    }
+
+    function paint(run) {
+      const marks = runMarks(run);
+      if (marks === null) return;
+      unpaint(run);
+      for (const { start, length, status } of marks) {
+        for (const range of markRanges(run, start, start + length)) {
+          highlights[status].add(range);
+          run.painted.push([status, range]);
+        }
+      }
+      run.stale = false;
+    }
+
+    // Each run keeps its marks until its new ones are ready.
+    function repaintAll() {
+      for (const block of visible) {
+        for (const run of block.runs) run.stale = true;
+      }
+    }
+
+    function register() {
+      if (!running || !ready) return;
+      for (const status of STATUSES) {
+        const name = HIGHLIGHT_NAMES[status];
+        if (suspended === 0 && options[OPTION_KEYS[status]]) window.CSS.highlights.set(name, highlights[status]);
+        else if (window.CSS.highlights.get(name) === highlights[status]) window.CSS.highlights.delete(name);
+      }
+    }
+
+    // sRGB bytes of any CSS colour, oklch() included, as Chrome paints it.
+    function rgba(value) {
+      probe ??= new window.OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+      probe.clearRect(0, 0, 1, 1);
+      probe.fillStyle = "#0000";
+      probe.fillStyle = value;
+      probe.fillRect(0, 0, 1, 1);
+      return [...probe.getImageData(0, 0, 1, 1).data];
+    }
+
+    // The page's own background, which the marks are made legible against.
+    function pageBackground() {
+      for (const element of [document.body, document.documentElement]) {
+        if (!element) continue;
+        const [red, green, blue, alpha] = rgba(window.getComputedStyle(element).backgroundColor);
+        if (alpha > 0) return [red, green, blue];
+      }
+      // A transparent root shows the canvas, which is dark only for a page
+      // whose colour scheme allows dark.
+      const schemes = window.getComputedStyle(document.documentElement).colorScheme.split(/\s+/u);
+      const dark = schemes.includes("dark") && (!schemes.includes("light") || colorScheme.matches);
+      return dark ? [18, 18, 18] : [255, 255, 255];
+    }
+
+    // content.css draws each status with its own line style. This owned sheet
+    // gives it the palette's colour, or swaps the line for coloured text or a
+    // tinted background. Under forced colours Chrome paints every highlight in
+    // Highlight and HighlightText whatever its author colours, so the sheet
+    // stands aside and the line styles alone tell the statuses apart.
+    function refreshColors() {
+      if (!running || !ready) return;
+      const palette = readPalette();
+      const background = pageBackground();
+      const rules = STATUSES.map(status => {
+        const token = palette?.getPropertyValue(`--hoshidicts-palette-${PALETTE_TOKENS[status]}`).trim();
+        const color = rgba(token || DEFAULT_COLORS[status]).slice(0, 3);
+        let declarations = `text-decoration-color: rgb(${legible(color, background, LINE_CONTRAST).join(" ")});`;
+        if (options.wordHighlightStyle === "color") {
+          declarations = `text-decoration-line: none; color: rgb(${legible(color, background, TEXT_CONTRAST).join(" ")});`;
+        } else if (options.wordHighlightStyle === "background") {
+          declarations = `text-decoration-line: none; background-color: rgb(${color.join(" ")} / 34%);`;
+        }
+        return `  ::highlight(${HIGHLIGHT_NAMES[status]}) { ${declarations} }`;
+      });
+      sheet ??= new window.CSSStyleSheet();
+      sheet.replaceSync(`@media not (forced-colors: active) {\n${rules.join("\n")}\n}`);
+      if (!document.adoptedStyleSheets.includes(sheet)) document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    }
+
+    // ------------------------------------------------------------- requests
+
+    async function requestSegments() {
+      if (segmenting || retryTimer !== null || available !== true) return;
+      const batch = new Set();
+      let length = 0;
+      collect: for (const block of visible) {
+        for (const run of block.runs) {
+          if (!run.wanted) continue;
+          for (const chunk of run.chunks) {
+            if (segments.has(chunk.text) || batch.has(chunk.text)) continue;
+            batch.add(chunk.text);
+            length += chunk.text.length;
+            if (batch.size >= MAX_BATCH_CHUNKS || length >= MAX_BATCH_LENGTH) break collect;
+          }
+        }
+      }
+      if (batch.size === 0) return;
+      const texts = [...batch];
+      const epoch = segmentEpoch;
+      segmenting = true;
+      let reply;
+      try {
+        reply = await send("hd_segment", {
+          chunks: texts.map((text, id) => ({ id, text })),
+          scanLength: options.scanLength,
+          options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder },
+        }, ENGINE_TARGET);
+      } catch {
+        if (epoch === segmentEpoch) {
+          segmenting = false;
+          retryLater();
+        }
+        return;
+      }
+      if (epoch !== segmentEpoch) return;
+      segmenting = false;
+      failures = 0;
+      // A dictionary commit between two chunks leaves a batch of two
+      // generations, so a changed generation discards every segmentation.
+      if (generation !== null && reply.generation !== generation) {
+        segments.clear();
+        repaintAll();
+      } else {
+        for (const { id, spans } of reply.segments) {
+          segments.delete(texts[id]);
+          segments.set(texts[id], spans);
+        }
+        while (segments.size > SEGMENT_CACHE_ENTRIES) segments.delete(segments.keys().next().value);
+      }
+      generation = reply.generation;
+      schedule();
+    }
+
+    async function requestStatuses() {
+      if (statusing || retryTimer !== null) return;
+      const refresh = statusesEpoch !== statusEpoch;
+      if (!refresh && available !== true) return;
+      const headwords = new Set();
+      for (const block of visible) {
+        for (const run of block.runs) {
+          if (!run.wanted) continue;
+          for (const headword of runHeadwords(run)) {
+            if (refresh || !statuses.has(headword)) headwords.add(headword);
+          }
+        }
+      }
+      // A refresh with nothing segmented yet still learns whether the index
+      // can answer, before any text is segmented.
+      if (headwords.size === 0 && !refresh) return;
+      const asked = [...headwords];
+      const token = session;
+      const epoch = statusEpoch;
+      statusing = true;
+      let reply;
+      try {
+        reply = await send("hd_anki_word_status", { request: { headwords: asked } }, ANKI_TARGET);
+      } catch {
+        if (token === session) {
+          statusing = false;
+          retryLater();
+        }
+        return;
+      }
+      if (token !== session) return;
+      statusing = false;
+      failures = 0;
+      // A newer change signal makes this answer stale, and the words are asked again.
+      if (epoch === statusEpoch) {
+        if (refresh) {
+          statuses.clear();
+          statusesEpoch = epoch;
+          repaintAll();
+        }
+        available = Array.isArray(reply.statuses);
+        statusRevision = reply.revision;
+        if (available) asked.forEach((headword, index) => statuses.set(headword, reply.statuses[index]));
+      }
+      schedule();
+    }
+
+    function pump() {
+      scheduled = false;
+      if (!running) return;
+      for (const block of visible) {
+        if (block.dirty) rebuild(block);
+        if (block.recheck) recheck(block);
+        for (const run of block.runs) {
+          if (run.wanted && run.stale) paint(run);
+        }
+      }
+      void requestStatuses();
+      void requestSegments();
+    }
+
+    // ------------------------------------------------------------ lifecycle
+
+    function start(next) {
+      options = next;
+      if (running) return;
+      running = true;
+      session += 1;
+      segmentEpoch += 1;
+      statusEpoch += 1;
+      const token = session;
+      intersections = new window.IntersectionObserver(onIntersection, { rootMargin: "100%" });
+      mutations = new window.MutationObserver(onMutations);
+      mutations.observe(document, { childList: true, subtree: true, characterData: true });
+      if (document.body) for (const element of textBlocks(document.body)) track(element);
+      window.addEventListener("scroll", onViewportChange, { capture: true, passive: true });
+      window.addEventListener("resize", onViewportChange, { passive: true });
+      // The marks wait for the popup host, whose palette colours them.
+      Promise.resolve().then(prepare).catch(() => {}).then(() => {
+        if (token !== session) return;
+        ready = true;
+        // Added after the popup's own listener, which applies an automatic palette first.
+        colorScheme.addEventListener("change", refreshColors);
+        refreshColors();
+        register();
+      });
+      schedule();
+    }
+
+    function stop() {
+      if (!running) return;
+      running = false;
+      ready = false;
+      session += 1;
+      segmentEpoch += 1;
+      intersections.disconnect();
+      mutations.disconnect();
+      window.removeEventListener("scroll", onViewportChange, { capture: true });
+      window.removeEventListener("resize", onViewportChange);
+      colorScheme.removeEventListener("change", refreshColors);
+      window.clearTimeout(recheckTimer);
+      window.clearTimeout(retryTimer);
+      recheckTimer = null;
+      retryTimer = null;
+      failures = 0;
+      for (const status of STATUSES) {
+        if (window.CSS.highlights.get(HIGHLIGHT_NAMES[status]) === highlights[status]) {
+          window.CSS.highlights.delete(HIGHLIGHT_NAMES[status]);
+        }
+        highlights[status].clear();
+      }
+      if (sheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(value => value !== sheet);
+      blocks.clear();
+      visible.clear();
+      segments.clear();
+      statuses.clear();
+      generation = null;
+      segmenting = false;
+      statusing = false;
+      statusesEpoch = -1;
+      statusRevision = null;
+      available = null;
+    }
+
+    // The dictionaries changed: segment the shown text again, each run
+    // keeping its marks until its new segmentation arrives.
+    function invalidate() {
+      if (!running) return;
+      segmentEpoch += 1;
+      segmenting = false;
+      segments.clear();
+      generation = null;
+      repaintAll();
+      schedule();
+    }
+
+    function update(next) {
+      const previous = options;
+      options = next;
+      if (!running) return;
+      if (next.scanLength !== previous.scanLength || next.frequencyDictionary !== previous.frequencyDictionary
+          || next.frequencyOrder !== previous.frequencyOrder) invalidate();
+      if (next.wordHighlightStyle !== previous.wordHighlightStyle || next.popupTheme !== previous.popupTheme) refreshColors();
+      register();
+    }
+
+    // The worker's change signal. A revision this frame has already read needs
+    // nothing; null says the evidence itself changed.
+    function statusChanged(revision) {
+      if (!running) return;
+      if (revision !== null && revision === statusRevision && statusesEpoch === statusEpoch && available === true) return;
+      statusEpoch += 1;
+      schedule();
+    }
+
+    // A screenshot of the page for a note leaves the marks out.
+    function suspend() {
+      suspended += 1;
+      register();
+      let restored = false;
+      return () => {
+        if (restored) return;
+        restored = true;
+        suspended -= 1;
+        register();
+      };
+    }
+
+    return { start, stop, update, invalidate, statusChanged, refreshColors, suspend,
+      get running() { return running; } };
+  }
+
+  globalThis.HDWordHighlights = { HIGHLIGHT_NAMES, createWordHighlighter };
+}());

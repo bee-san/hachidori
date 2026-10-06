@@ -73,6 +73,9 @@
     },
     "scanTextAtSelection": {
       "description": "Look up the text at the selection"
+    },
+    "toggleWordHighlights": {
+      "description": "Show or hide the word highlights on the page"
     }
   },
   "action": {
@@ -102,6 +105,7 @@
         "render/glossary.js",
         "render/popup.js",
         "theme-host.js",
+        "word-highlights.js",
         "content.js"
       ],
       "css": [

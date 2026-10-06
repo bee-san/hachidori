@@ -3201,11 +3201,12 @@ async function toggleLookupsFromCommand() {
 
 // Popup-action shortcuts run their in-page keybind action in the active tab.
 // Every frame's reader receives the command; one without an open popup, or
-// without a selection for the scans, does nothing.
+// without a selection for the scans, does nothing. Each frame shows or hides
+// its own word highlights.
 const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
-  "scanSelectedText", "scanTextAtSelection"]);
+  "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights"]);
 
 chrome.commands?.onCommand?.addListener((command, tab) => {
   if (command === "openSettingsPage") {
