@@ -71,6 +71,7 @@ function memorySampler(rootPid, intervalMs = 100) {
   };
   capture();
   const timer = setInterval(capture, intervalMs);
+  timer.unref();
   return { stop() { clearInterval(timer); return { peak, last: capture(), intervalMs }; } };
 }
 const puppeteer = (await import(pathToFileURL(process.env.HACHIDORI_PUPPETEER).href)).default;
@@ -153,7 +154,7 @@ async function sample(variant, repetition) {
   const content = readFileSync(contentFile, "utf8"), marker = '  start();\n}());';
   assert.equal(content.split(marker).length, 2);
   writeFileSync(contentFile, content.replace(marker, `${probe}\n${marker}`));
-  let browser, page, id;
+  let browser, page, id, sampler;
 
   const desiredIndex = baseline ? "resident" : variant === "resident" || variant === "paged" ? variant : "auto";
   const request = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields }), type, fields);
@@ -226,7 +227,7 @@ async function sample(variant, repetition) {
     console.log(`${variant} #${repetition+1}: installed profile prepared`);
     const loadStarted = performance.now();
     await launch();
-    const sampler = memorySampler(browser.process().pid);
+    sampler = memorySampler(browser.process().pid);
     const status = await ready();
     assert.equal(status.storageBackend, "opfs"); assert.equal(status.threaded, true);
     assert.deepEqual(status.failedDictionaries, []);
@@ -397,7 +398,11 @@ async function sample(variant, repetition) {
   } catch (error) {
     console.error(JSON.stringify({ error: String(error) }, null, 2));
     throw error;
-  } finally { await browser?.close(); rmSync(directory, { recursive: true, force: true }); }
+  } finally {
+    sampler?.stop();
+    await browser?.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 // A sample that stalls (seen in about 1 of 40 samples, in main and PR variants
 // alike, on a host shared with other browser tests) is retried once in a fresh
