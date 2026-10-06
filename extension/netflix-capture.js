@@ -213,7 +213,9 @@ function readVideo(current, window) {
         const data = rasterise(current, value, window);
         if (data !== null) {
           current.lastVideoMs = timestampMs;
-          current.frames.push({ timestampUs: value.timestamp, data });
+          // Place the frame on the wall clock as it arrives, so the clock's
+          // page/raw-domain decision uses the arrival time, as audio's does.
+          current.frames.push({ wallMs: current.videoClock.wallMs(value.timestamp), data });
         }
       }
     } finally {
@@ -302,8 +304,7 @@ export function createNetflixRecorder(window, {
   // falls back to the screenshot, like any other capture failure.
   function encodeGif(current, { startMs, endMs, offset }) {
     if (!current.gif || current.frames.length === 0 || current.gifWidth === 0) return undefined;
-    const placed = current.frames.map(frame => ({ data: frame.data,
-      mediaMs: current.videoClock.wallMs(frame.timestampUs) - offset }));
+    const placed = current.frames.map(frame => ({ data: frame.data, mediaMs: frame.wallMs - offset }));
     const entries = selectGifFrames(placed, { startMs, endMs });
     if (entries.length === 0) return undefined;
     try {

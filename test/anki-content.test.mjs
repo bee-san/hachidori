@@ -893,3 +893,53 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   assert.equal(submittedRequest.sentenceAudio, undefined);
   assert.equal(recordings.length, 1);
 });
+
+test("a Netflix note records its line's GIF, and a missing or failed GIF falls back to the screenshot", async t => {
+  const recordings = [];
+  // The reader asks for both the audio and the GIF; the worker's flags say so.
+  let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true, gif: true };
+  let recorded = async () => ({ audio: { token: "line-a", filename: "a.wav" },
+    gif: { token: "gif-a", filename: "hachidori-gif-a.gif" } });
+  let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 21, warnings: [] }; }
+    return decision;
+  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
+    recordings.push([cue, templateId, options]);
+    return recorded();
+  });
+  f.context.getRequest = result => ({ term: result.term, netflix });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  const mine = async index => {
+    f.items[index].add.click();
+    await until(() => f.items[index].add.dataset.state === "success");
+    return f.items[index].output.textContent;
+  };
+
+  // A GIF is recorded (the recorder is asked for it) and both files are submitted.
+  assert.equal(await mine(0), "Added note 21.");
+  assert.deepEqual(recordings.at(-1), [netflix.cue, "default", { gif: true }]);
+  assert.deepEqual(submittedRequest.gif, { token: "gif-a", filename: "hachidori-gif-a.gif" });
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+
+  // The replay returns no GIF: {gif} falls back to the screenshot, with no warning.
+  recorded = async () => ({ audio: { token: "line-b", filename: "b.wav" }, gif: null });
+  assert.equal(await mine(1), "Added note 21.");
+  assert.equal(submittedRequest.gif, undefined);
+  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-b", filename: "b.wav" });
+
+  // No cue: both media unavailable, {gif} still falls back to the screenshot.
+  netflix = { unavailable: "no-match" };
+  recorded = async () => { throw new Error("must not record without a cue"); };
+  f.controller.refresh(f.context.owner);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  assert.match(await mine(2), /Sentence audio: the hovered subtitle matched no line/u);
+  assert.deepEqual([...submittedRequest.captureUnavailable].sort(), ["gif", "sentence-audio"]);
+});

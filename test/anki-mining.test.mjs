@@ -799,6 +799,22 @@ test("a Netflix request routes a blank Kiku, Lapis or Senren sentence-audio fiel
   }
 });
 
+test("a Netflix request flags the gif capture for a mapped {gif}, only while the switch is on", async () => {
+  const gif = netflixMining({ model: "Basic", fields: ["Front", "Back"], fieldTemplates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Back: { value: "{gif}", overwriteMode: "overwrite" } } });
+  const reply = await gif.preflight({ netflix: NETFLIX_CUE });
+  assert.equal(reply.gif, true, "a mapped {gif} on a Netflix request records a GIF");
+  // {gif} also needs the screenshot, as it falls back to it.
+  assert.equal(reply.screenshot, true, "the screenshot is also required for the fallback");
+  // A line without a cue still flags the GIF so the reader can fall back to the screenshot.
+  assert.equal((await gif.preflight({ netflix: { unavailable: "no-match" } })).gif, true);
+  // Off Netflix and with the switch off, no GIF capture is flagged.
+  assert.equal(Object.hasOwn(await gif.preflight({}), "gif"), false);
+  gif.change({ netflixMining: false });
+  assert.equal(Object.hasOwn(await gif.preflight({ netflix: NETFLIX_CUE }), "gif"), false);
+});
+
 test("a filled sentence-audio field is kept and a custom note type uses its own {sentence-audio} mapping", async () => {
   const kept = netflixMining({ model: "Kiku", fields: ["Expression", "SentenceAudio"], fieldTemplates: {
     Expression: { value: "{expression}", overwriteMode: "overwrite" },
