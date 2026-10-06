@@ -23,7 +23,7 @@ async function base64(window, blob, signal) {
   }
 }
 
-async function candidateFile(window, repository, candidate, signal, sourceType) {
+async function candidateFile(window, repository, candidate, signal) {
   const lease = await repository.acquire(candidate, signal);
   let audio, abort;
   try {
@@ -39,7 +39,7 @@ async function candidateFile(window, repository, candidate, signal, sourceType) 
       audio.load();
     }).catch(async error => {
       if (signal.aborted || !audio.error) throw error;
-      const diagnosis = await undecodableRecording(lease.blob, audio.error, sourceType);
+      const diagnosis = await undecodableRecording(lease.blob, audio.error);
       signal.throwIfAborted();
       throw diagnosis;
     });
@@ -109,8 +109,7 @@ export async function exportAnkiAudio(window, repository, {
       const candidates = plan.candidate ? [plan.candidate] : await repository.candidates(source, term, signal);
       for (const [index, candidate] of candidates.entries()) {
         try {
-          return { ...await candidateFile(window, repository, { ...candidate, index: candidate.index ?? index }, signal,
-            source.type), sourceId: source.id };
+          return { ...await candidateFile(window, repository, { ...candidate, index: candidate.index ?? index }, signal), sourceId: source.id };
         } catch (error) { signal.throwIfAborted(); failure = error; }
       }
     } catch (error) { signal.throwIfAborted(); failure = error; }

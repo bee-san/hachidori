@@ -12,7 +12,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     current = null;
   }
 
-  async function playUrl(candidate, signal, onPlaying, sourceType) {
+  async function playUrl(candidate, signal, onPlaying) {
     const lease = await repository.acquire(candidate, signal);
     let audio;
     let abort;
@@ -34,7 +34,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
       // A media error fires error and rejects play(); whichever arrives
       // first, explain it. Cancellation and autoplay refusals pass through.
       if (signal.aborted || !audio?.error) throw error;
-      const diagnosis = await undecodableRecording(lease.blob, audio.error, sourceType);
+      const diagnosis = await undecodableRecording(lease.blob, audio.error);
       signal.throwIfAborted();
       throw diagnosis;
     } finally {
@@ -78,13 +78,13 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     }
   }
 
-  async function firstPlayable(found, signal, onPlaying, onResolving, sourceType) {
+  async function firstPlayable(found, signal, onPlaying, onResolving) {
     let failure;
     for (const [index, entry] of found.entries()) {
       try {
         onResolving?.();
         const candidate = { ...entry, index: entry.index ?? index };
-        await playUrl(candidate, signal, onPlaying, sourceType);
+        await playUrl(candidate, signal, onPlaying);
         return candidate;
       } catch (error) {
         signal.throwIfAborted();
@@ -127,7 +127,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     if (source.type.startsWith("text-to-speech")) return playSpeech(source, term, signal, onPlaying);
     const found = selectedCandidate ? [selectedCandidate] : await repository.candidates(source, term, signal);
     signal.throwIfAborted();
-    return found.length ? firstPlayable(found, signal, onPlaying, onResolving, source.type) : null;
+    return found.length ? firstPlayable(found, signal, onPlaying, onResolving) : null;
   }
 
   return {

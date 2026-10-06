@@ -5622,8 +5622,8 @@ async function checkAudioSettings(page, browser) {
     check("Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors",
       obsoleteCleared && success === "" && empty === "No pronunciation was returned."
         && failure === "Could not play: The pronunciation list returned HTTP 503."
-        && listAsRecording === "Could not play: This Audio URL returned a Yomitan audio list, not a recording. "
-          + "Set this source's type to Yomitan JSON in Audio Settings."
+        && listAsRecording === "Could not play: The URL returned a Yomitan audio list, not a recording. "
+          + "If it is a list link, set this source's type to Yomitan JSON in Audio Settings."
         && [...routes].every(([url, route]) => route.requests === (url === list ? 2 : 1)),
       JSON.stringify({ success, empty, failure, listAsRecording,
         requests: [...routes].map(([url, route]) => [url, route.requests]) }));

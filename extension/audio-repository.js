@@ -20,21 +20,21 @@ const MEDIA_ERRORS = { 1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK", 3: "MEDIA
 // Explains a recording the browser has already failed to decode, so an
 // imprecise provider MIME type never rejects one that plays. A Yomitan list
 // URL saved as an Audio URL fails this way (#499).
-export async function undecodableRecording(blob, mediaError, sourceType) {
+export async function undecodableRecording(blob, mediaError) {
   if (/^\s*\{/u.test(await blob.slice(0, 64).text())) {
     try {
       if (JSON.parse(await blob.text())?.type === "audioSourceList") {
-        return new Error(sourceType === "custom"
-          ? "This Audio URL returned a Yomitan audio list, not a recording. Set this source's type to Yomitan JSON in Audio Settings."
-          : "The provider returned a Yomitan audio list, not a recording.");
+        return new Error("The URL returned a Yomitan audio list, not a recording. If it is a list link, "
+          + "set this source's type to Yomitan JSON in Audio Settings.");
       }
     } catch {
       // Other JSON or text: the browser's media error below describes it.
     }
   }
   const media = [MEDIA_ERRORS[mediaError?.code], mediaError?.message].filter(Boolean).join(": ");
-  return new Error(`The browser could not decode the recording${media ? ` (${media})` : ""}. The provider sent `
-    + `${blob.size} bytes ${blob.type ? `of ${blob.type}` : "with no content type"}.`);
+  const detail = media ? ` (${media})` : "";
+  const type = blob.type ? `of ${blob.type}` : "with no content type";
+  return new Error(`The browser could not decode the recording${detail}. The provider sent ${blob.size} bytes ${type}.`);
 }
 
 export function createAudioRepository({ window, fetch, now = () => performance.now() }) {
@@ -68,8 +68,9 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
     } catch {
       signal.throwIfAborted();
       const type = result.headers?.get("content-type");
-      throw new Error(`The pronunciation list is not JSON${type ? ` (${type})` : ""}. If this URL plays a recording `
-        + "itself, set this source's type to Audio URL in Audio Settings.");
+      const detail = type ? ` (${type})` : "";
+      throw new Error(`The pronunciation list is not JSON${detail}. If this URL plays a recording itself, `
+        + "set this source's type to Audio URL in Audio Settings.");
     }
   }
 

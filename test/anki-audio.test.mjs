@@ -129,6 +129,6 @@ test("mining explains an audio list saved as an Audio URL the way Audio Test doe
     removeAttribute() { this.src = ""; }
   };
   await assert.rejects(exportAnkiAudio(f.window, repository, { sources: [list], term }, new AbortController().signal),
-    { message: "This Audio URL returned a Yomitan audio list, not a recording. Set this source's type to Yomitan JSON in Audio Settings." });
+    { message: "The URL returned a Yomitan audio list, not a recording. If it is a list link, set this source's type to Yomitan JSON in Audio Settings." });
   repository.clear();
 });
