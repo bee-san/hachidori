@@ -2545,7 +2545,11 @@ shows minutes later. Concealment is counted, so one capture cannot
 reveal the reader while another still owns it. The worker validates the request against
 its sender before every attempt: `tabs.captureVisibleTab` takes the window's
 active tab, so the asking tab must still be that tab, and a top-level frame must
-still show the document that asked. The post-capture check also requires the
+still show the page recorded in `sender.tab.url` when the request arrived.
+The content script's `sender.url` can retain its original address after
+`history.pushState` or `history.replaceState`, as on Netflix; it is only the
+fallback when Chrome supplies no tab URL. A route change after the request
+still fails the check. The post-capture check also requires the
 same window ID: dragging the reading tab to another window can otherwise leave
 it active while the original window captures a different tab.
 Before and after each attempt, a read-only message addressed to the original
@@ -2593,6 +2597,14 @@ configuration. A note type without a picture field maps nothing and captures
 nothing, and `{screenshot}` is refused in the first Anki field for the same
 reason that a note's identity cannot be a fresh picture
 name.
+
+Netflix and other streaming sites may render protected video as black in a
+browser screenshot while leaving subtitles and page controls visible. This is
+separate from Hachidori's “reading tab moved” error, which occurs before the
+capture API runs. Hachidori uses Chrome's normal
+[`tabs.captureVisibleTab`](https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab)
+API and cannot guarantee capture of DRM-protected video. A successful capture
+response does not tell the extension whether the browser omitted that video.
 
 ## Managed custom dictionary
 

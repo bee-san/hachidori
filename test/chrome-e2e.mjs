@@ -311,6 +311,7 @@ const PLANNED = [
   "Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
+  "Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "a note mined from a selection takes the hover's sentence without the hidden text inside it",
@@ -6104,6 +6105,12 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   // The first field carries a marker of its own so these notes are new rather
   // than duplicates of the ones the checks above already added.
   await configure(false, { fieldTemplates: { Front: template("{expression} screenshot"), Back: template("{screenshot}"), Audio: template("") } });
+  const originalUrl = tab.url();
+  const spaUrl = await tab.evaluate(() => {
+    history.pushState(null, "", "/watch/1234");
+    history.replaceState(null, "", "?trackId=example%3Fvalue#player");
+    return location.href;
+  });
   // A fresh lookup, because the previous Add left its own control terminal.
   await tab.keyboard.press("Escape");
   await hoverForPopup(tab, popup, "#kanjiword");
@@ -6129,6 +6136,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const startedMining = Date.now();
   await tab.mouse.click(addRect.x + addRect.width / 2, addRect.y + addRect.height / 2, { clickCount: 2 });
   const saved = await settled(state => state?.controls.some(item => item.state === "success"));
+  await tab.evaluate(url => history.replaceState(null, "", url), originalUrl);
   console.log(`     screenshot mining answered in ${Date.now() - startedMining} ms`);
   const opacity = await tab.evaluate(() => window.__hostOpacity ?? []);
   const upload = calls.filter(call => call.action === "storeMediaFile").at(-1);
@@ -6179,6 +6187,11 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       wordDarkest: Math.round(wordDarkest), wordColour,
     };
   }, { data: files.get(filename), rect: popupRect });
+  check("Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
+    spaUrl !== originalUrl && spaUrl.includes("/watch/1234?trackId=example%3Fvalue#player")
+      && saved.controls[0].state === "success" && filename !== null && files.has(filename)
+      && !saved.controls[0].output.includes("Screenshot:"),
+    JSON.stringify({ originalUrl, spaUrl, saved: saved.controls[0], filename }));
   check(
     "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
     saved.controls[0].action === "view"
