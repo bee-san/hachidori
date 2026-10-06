@@ -6349,6 +6349,101 @@ async function main() {
   );
   await request("hd_remove", { id: longKeyPackage?.id, title: LONG_KEY_TITLE });
 
+  // hd_segment (#520): a batch of text chunks, each split into the words a
+  // hover would show, through the real background -> offscreen -> engine path.
+  // The reply keeps one entry per chunk with its id, every span carries a
+  // candidate headword and a function-word flag, and offsets are UTF-16 units
+  // inside the chunk.
+  const segmentBatch = await request("hd_segment", {
+    chunks: [{ id: "a", text: "食べる" }, { id: "b", text: "漢字を読む" }, { id: "c", text: "。、" }],
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  const segA = segmentBatch.segments?.find((segment) => segment.id === "a");
+  const segB = segmentBatch.segments?.find((segment) => segment.id === "b");
+  const segC = segmentBatch.segments?.find((segment) => segment.id === "c");
+  const headwords = (segment) => segment?.spans?.map((span) => span.candidates?.[0]?.expression) ?? [];
+  check(
+    "hd_segment splits a batch of chunks into spans, keyed by chunk id",
+    segmentBatch.ok === true
+      && segmentBatch.segments?.length === 3
+      && headwords(segA).includes("食べる")
+      && segA.spans[0].start === 0 && segA.spans[0].length === 3
+      && typeof segA.spans[0].functionWord === "boolean"
+      && Array.isArray(segA.spans[0].candidates)
+      && headwords(segB).includes("漢字") && headwords(segB).includes("読む")
+      && Array.isArray(segC.spans) && segC.spans.length === 0,
+    JSON.stringify({ ok: segmentBatch.ok, error: segmentBatch.error,
+      a: headwords(segA), b: headwords(segB), c: segC?.spans?.length }),
+  );
+  // A hover that arrives while a chunk is being segmented runs before the
+  // batch's next chunk, because hd_segment takes one engine turn per chunk.
+  // The lookup is queued from inside the first chunk's native call, the moment
+  // a hover could arrive; a batch run as one queued job would segment both
+  // chunks first.
+  const nativeOrder = [];
+  let lookupDuringChunk = null;
+  const segmentingCcall = observedEngine.ccall;
+  observedEngine.ccall = (name, returnType, argumentTypes, argumentValues) => {
+    if (name === "hdw_segment") {
+      nativeOrder.push(argumentValues[0]);
+      lookupDuringChunk ??= engineService.handleEngineMessage({
+        type: "hd_lookup", requestId: "lookup-during-segment", text: "漢字", maxResults: 32, scanLength: 16,
+      });
+    } else if (name === "hdw_lookup") {
+      nativeOrder.push(name);
+    }
+    return segmentingCcall(name, returnType, argumentTypes, argumentValues);
+  };
+  let interleavedSegment = null;
+  try {
+    interleavedSegment = await engineService.handleEngineMessage({
+      type: "hd_segment", requestId: "segment-around-lookup", scanLength: 16,
+      chunks: [{ id: "x", text: "読む" }, { id: "y", text: "食べる" }],
+    });
+  } finally {
+    observedEngine.ccall = segmentingCcall;
+  }
+  const interleavedLookup = await lookupDuringChunk;
+  check(
+    "a hover that arrives during a segment chunk runs before the batch's next chunk",
+    interleavedSegment?.ok === true && interleavedSegment.segments?.length === 2
+      && interleavedLookup?.ok === true && interleavedLookup.results?.[0]?.term?.expression === "漢字"
+      && JSON.stringify(nativeOrder) === JSON.stringify(["読む", "hdw_lookup", "食べる"]),
+    JSON.stringify({ nativeOrder, segment: interleavedSegment?.ok, lookup: interleavedLookup?.results?.[0]?.term?.expression }),
+  );
+  // A chunk cut inside a surrogate pair (a pair split across two text nodes)
+  // still segments with its offsets, the lone surrogate counting as one unit.
+  // An oversized chunk refuses the batch before any chunk takes an engine turn.
+  const surrogateBatch = await request("hd_segment", {
+    chunks: [{ id: "split", text: "食べる\uDC00読む\uD83D" }], scanLength: 16,
+  });
+  let refusedBatchSegmentCalls = 0;
+  const refusingCcall = observedEngine.ccall;
+  observedEngine.ccall = (name, ...rest) => {
+    if (name === "hdw_segment") refusedBatchSegmentCalls += 1;
+    return refusingCcall(name, ...rest);
+  };
+  let oversizedBatch = null;
+  try {
+    oversizedBatch = await request("hd_segment", {
+      chunks: [{ id: "first", text: "食べる" }, { id: "huge", text: "あ".repeat(1366) }], scanLength: 16,
+    });
+  } finally {
+    observedEngine.ccall = refusingCcall;
+  }
+  const surrogateSpans = surrogateBatch.segments?.[0]?.spans?.map((span) =>
+    [span.start, span.length, span.candidates?.[0]?.expression]);
+  check(
+    "hd_segment keeps a lone surrogate's offsets and refuses an oversized chunk before any engine turn",
+    surrogateBatch.ok === true
+      && JSON.stringify(surrogateSpans) === JSON.stringify([[0, 3, "食べる"], [4, 2, "読む"]])
+      && oversizedBatch?.ok === false && /4096-byte/u.test(oversizedBatch.error)
+      && refusedBatchSegmentCalls === 0,
+    JSON.stringify({ surrogate: surrogateBatch.error ?? surrogateSpans,
+      oversized: oversizedBatch?.error, refusedBatchSegmentCalls }),
+  );
+
   // An MDict dictionary: the .mdx plus its .mdd travel as blob URLs, the engine
   // service stages them side by side under their own names so the importer
   // finds the resource file, and the result is an ordinary package whose media

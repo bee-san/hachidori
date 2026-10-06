@@ -62,6 +62,15 @@ import {
   customDictionarySemanticRevision,
   parseCustomDictionary,
 } from '../extension/custom-dictionary.js';
+import {
+  SEGMENTATION_DICTIONARY_TITLE,
+  SEGMENTATION_FREQUENCY_TITLE,
+  buildSegmentationDictionaryZip,
+  buildSegmentationFrequencyZip,
+  formatReferenceScore,
+  greedySpans,
+  scoreReferenceSet,
+} from './segmentation-reference.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VARIANT = { fallback: 'hoshidicts', 'threaded-idbfs': 'hoshidicts-threaded-idbfs' }[process.env.HACHIDORI_WASM_VARIANT] ?? 'hoshidicts-threaded';
@@ -163,6 +172,16 @@ const LOOKUP_RESULT = {
   preprocessorSteps: 'int',
 };
 const LOOKUP_RESPONSE = { results: arrayOf(LOOKUP_RESULT), dictionaryCount: 'int' };
+const SEGMENT_CANDIDATE = { expression: 'string', reading: 'string' };
+const SEGMENT_WORD = { start: 'int', length: 'int', functionWord: 'boolean', candidates: arrayOf(SEGMENT_CANDIDATE) };
+const SEGMENT_SPAN = {
+  start: 'int',
+  length: 'int',
+  functionWord: 'boolean',
+  candidates: arrayOf(SEGMENT_CANDIDATE),
+  alternative: arrayOf(SEGMENT_WORD),
+};
+const SEGMENT_RESPONSE = { spans: arrayOf(SEGMENT_SPAN) };
 const KANJI_STAT = { name: 'string', value: 'string' };
 const KANJI_ENTRY = {
   dictionary: 'string',
@@ -2004,6 +2023,174 @@ check('large media imports and loads but only fetches up to 4 MiB', () => {
   eq(media(title, 'media/small.png'), makePng().length, 'healthy media fetch after error');
   eq(lastError(), '', 'healthy media error');
   ok(lookup('食べる').results.length > 0, 'dictionary remains usable');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_segment (word segmentation, #520)');
+
+// A fresh engine instance with the reference dictionary and its frequency
+// dictionary, so segmentation is scored without the fixture's own entries. The
+// reference set and both dictionaries live in segmentation-reference.mjs.
+const S = await createHoshidicts();
+const scall = (name, ret, types, args) => S.ccall(name, ret, types, args);
+S.FS.mkdir('/work');
+scall('hdw_init_storage', 'number', ['number'], [0]);
+const simport = (bytes, out) => {
+  S.FS.writeFile('/work/seg.zip', Buffer.from(bytes));
+  const report = JSON.parse(scall('hdw_import', 'string', ['string', 'string', 'number'], ['/work/seg.zip', out, 0]));
+  S.FS.unlink('/work/seg.zip');
+  return report;
+};
+const segTermReport = simport(buildSegmentationDictionaryZip(), '/dicts');
+const segFreqReport = simport(buildSegmentationFrequencyZip(), '/dicts');
+const segAdd = (title, kind) => scall('hdw_add_dict', 'number', ['string', 'number', 'number'], [`/dicts/${title}`, kind, 0]);
+const segmentS = (text, scanLength = 16, options = '') =>
+  JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [text, scanLength, options]));
+const lookupS = (text, maxResults, scanLength) =>
+  JSON.parse(scall('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], [text, maxResults, scanLength, ''])).results;
+
+check('the reference dictionaries import and load', () => {
+  ok(segTermReport.success, `term import failed: ${segTermReport.error}`);
+  ok(segFreqReport.success, `frequency import failed: ${segFreqReport.error}`);
+  eq(segAdd(SEGMENTATION_DICTIONARY_TITLE, 0), 1, `term add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+  eq(segAdd(SEGMENTATION_FREQUENCY_TITLE, 1), 1, `frequency add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+});
+
+check('segment conforms to the response contract', () => {
+  conforms(segmentS('今日は朝からとても寒いです。', 16), SEGMENT_RESPONSE, 'segment response');
+});
+
+check('empty text and non-positive scan length are no-ops', () => {
+  same(segmentS('', 16).spans, [], 'empty text');
+  same(segmentS('食べる', 0).spans, [], 'scan length 0');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'a no-op is not an error');
+});
+
+check('spans cover the line in order, with UTF-16 offsets inside the text', () => {
+  const text = '白い猫がいる。';
+  const units = text.length;
+  let previous = 0;
+  for (const span of segmentS(text, 16).spans) {
+    ok(span.start >= previous, 'spans are ordered and non-overlapping');
+    ok(span.start + span.length <= units, 'a span stays inside the text');
+    const surface = text.slice(span.start, span.start + span.length);
+    eq(span.candidates[0]?.expression !== undefined, true, 'a span has at least one candidate');
+    ok(surface.length > 0, 'a span is non-empty');
+    previous = span.start + span.length;
+  }
+});
+
+check('punctuation and whitespace produce no spans', () => {
+  same(segmentS('。、！？　', 16).spans, [], 'punctuation and spaces');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'punctuation is not an error');
+});
+
+check('a conjugated word is one span taking its dictionary form', () => {
+  // 食べなかった -> 食べる, the status feature's keying rule.
+  const spans = segmentS('食べなかった。', 16).spans;
+  eq(spans.length, 1, 'one content span');
+  eq(spans[0].candidates[0].expression, '食べる', 'headword');
+  eq(spans[0].length, '食べなかった'.length, 'the whole surface is covered');
+});
+
+check('function words are flagged and left for the page to leave unmarked', () => {
+  const spans = segmentS('猫が好きだ。', 16).spans;
+  const byHead = new Map(spans.map((s) => [s.candidates[0]?.expression, s]));
+  ok(byHead.get('が')?.functionWord === true, 'が is a function word');
+  ok(byHead.get('だ')?.functionWord === true, 'だ is a function word');
+  ok(byHead.get('猫')?.functionWord === false, '猫 is a content word');
+});
+
+check('a phrase of known words carries its alternative split', () => {
+  // 今日は matches the greeting entry; its alternative is 今日 + は, so the
+  // highlighter can colour it by 今日 when only that has a card.
+  const span = segmentS('今日は', 16).spans[0];
+  eq(span.candidates[0].expression, '今日は', 'the whole phrase is the primary span');
+  same(span.alternative.map((w) => w.candidates[0].expression), ['今日', 'は'], 'alternative split headwords');
+  eq(span.alternative[1].functionWord, true, 'the alternative marks は a function word');
+});
+
+check('a single word has no alternative split', () => {
+  for (const span of segmentS('猫が好きだ。', 16).spans) {
+    if (span.length === 1) same(span.alternative, [], `${span.candidates[0]?.expression} has no alternative`);
+  }
+});
+
+// Score the greedy longest-match parse and the best split against the reference
+// set (segmentation-reference.mjs). The issue ships greedy if the best split
+// scores no better, so this records both.
+const lookupFirstS = (text) => lookupS(text, 1, 16)[0];
+const score = scoreReferenceSet({ segment: (text) => segmentS(text, 16).spans, lookupFirst: lookupFirstS });
+for (const line of formatReferenceScore(score)) console.log(`        ${line}`);
+
+check('the best split scores at least as well as the greedy parse', () => {
+  ok(score.bestWords >= score.greedyWords,
+    `best split ${score.bestWords} words < greedy ${score.greedyWords}; the issue ships greedy only if it scores no worse`);
+  ok(score.bestLines >= score.greedyLines, `best split ${score.bestLines} lines-exact < greedy ${score.greedyLines}`);
+});
+
+check('the best split fixes at least one boundary the greedy parse gets wrong', () => {
+  // 白い猫がいる: greedy takes がい (外) and strands る; the best split keeps
+  // が + いる. This is the Design-2 case the whole-line split is for. The
+  // reference lines use no surrogate pairs, so code-point and UTF-16 offsets
+  // agree.
+  const text = '白い猫がいる。';
+  const best = segmentS(text, 16).spans.map((s) => `${s.start}:${s.length}:${s.candidates[0]?.expression}`);
+  const greedy = greedySpans(text, lookupFirstS).map((s) => `${s.start}:${s.length}:${s.headword}`);
+  ok(best.includes('3:1:が') && best.includes('4:2:いる'), `best split: ${best.join(' ')}`);
+  ok(greedy.includes('3:2:外'), `greedy did not take the がい trap: ${greedy.join(' ')}`);
+});
+
+check('most conjugated reference lines recover their dictionary forms', () => {
+  // The deinflector is Yomitan-equivalent; a few auxiliary-verb chains it joins
+  // (て + しまう, て + くれる) are reported in the score above rather than failed.
+  ok(score.conjugatedRecovered >= Math.ceil(score.conjugatedLines * 0.9),
+    `${score.conjugatedRecovered}/${score.conjugatedLines} conjugated lines recovered; expected at least 90%`);
+});
+
+check('frequency breaks a tie between two-word splits in the selected order', () => {
+  // 今日本 is two words either way: 今日 + 本 (ranks 1 and 38) or 今 + 日本
+  // (75 and 42). Ranks ascending and no frequency both keep 今日 + 本; read
+  // descending, as occurrence counts, the same values choose 今 + 日本.
+  const split = (frequencyOrder) => segmentS('今日本', 16, JSON.stringify({
+    frequencyDictionary: SEGMENTATION_FREQUENCY_TITLE, frequencyOrder, primaryReading: '',
+  })).spans.map((span) => span.candidates[0].expression).join(' + ');
+  eq(split('disabled'), '今日 + 本', 'no frequency');
+  eq(split('ascending'), '今日 + 本', 'ascending ranks');
+  eq(split('descending'), '今 + 日本', 'descending occurrence counts');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'no error');
+});
+
+check('the copula forms and conjunctions a dictionary lists whole are function words', () => {
+  // Jitendex has headwords for the copula's past and presumptive forms and for
+  // conjunctions built on it, so a span lands on だった rather than on だ. A
+  // small dictionary of those headwords is added for this check only.
+  const title = 'segmentation-copula';
+  const words = ['だった', 'だろう', 'だろ', 'でしょう', 'でしょ', 'だけど', 'だったら', 'それでは'];
+  const report = simport(buildTitledZip(title, {
+    terms: words.map((word, index) => [word, word, '', '', 0, [`copula ${word}`], index, '']),
+  }), '/dicts');
+  ok(report.success, `copula import failed: ${report.error}`);
+  eq(segAdd(title, 0), 1, `copula add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+  try {
+    for (const word of words) {
+      const span = segmentS(`雨${word}`, 16).spans.find((candidate) => candidate.start === 1);
+      eq(span?.length, word.length, `${word} is one span`);
+      eq(span?.functionWord, true, `${word} is a function word`);
+    }
+  } finally {
+    eq(scall('hdw_remove_dict', 'number', ['string'], [`/dicts/${title}`]), 1, 'copula remove_dict');
+  }
+});
+
+check('segment rejects text above the 4 KiB lookup limit', () => {
+  const tooLong = 'あ'.repeat(1500);
+  const response = JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [tooLong, 16, '']));
+  same(response.spans, [], 'oversized text returns no spans');
+  ok(scall('hdw_last_error', 'string', [], []).includes('segment text'), 'oversized text reports an error');
+  // The engine stays usable.
+  ok(segmentS('猫がいる。', 16).spans.length > 0, 'engine usable after a refused segment');
 });
 
 // ---------------------------------------------------------------------------

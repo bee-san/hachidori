@@ -230,6 +230,45 @@ Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
 elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
 summaries are on, so those timings include the summary walkers.
 
+## Word segmentation (#520)
+
+`segmentation.mjs` measures `hdw_segment`, the word-highlighting feature's
+engine call, on the frozen C ABI in MEMFS (like `node-smoke.mjs`), isolating the
+engine cost from messaging, OPFS and paint. It reports:
+
+- segmentation throughput: lines, segments and code points per second, with the
+  per-line p50/p95, with the frequency tie-break (`auto`) and without it
+  (`disabled`);
+- one call on the largest chunk `hd_segment` accepts, 4 KiB of UTF-8 built from
+  the corpus lines. `hd_segment` yields the engine only between chunks, so a
+  hover that arrives during a chunk waits for the rest of it: up to the
+  per-line time when a chunk is one line, up to this time for the largest
+  chunk. Callers should send a line or a text node per chunk;
+- the latency of a hover `hdw_lookup` on an idle engine and right after a
+  one-line segment call has returned, which is what interleaving costs a hover
+  beyond that wait;
+- the reference-set scores (`test/segmentation-reference.mjs`) of the best
+  split and the greedy parse with the loaded dictionaries, with and without the
+  frequency tie-break: matching words (span and headword), matching boundaries
+  (span only, whatever spelling the dictionary's headword has) and exact lines.
+
+```sh
+# Self-contained: the small reference dictionary from the segmentation test set.
+node benchmark/segmentation.mjs
+
+# A real corpus: any Yomitan term archive plus a frequency archive.
+HACHIDORI_SEGMENT_TERM_ZIP=/path/to/jitendex-yomitan.zip \
+HACHIDORI_SEGMENT_FREQ_ZIP=/path/to/frequency.zip \
+  node benchmark/segmentation.mjs
+```
+
+`HACHIDORI_SEGMENT_SAMPLES` (400) and `HACHIDORI_SEGMENT_WARMUP` (50) size the
+run; the largest chunk is segmented a twentieth as many times, at least five.
+`HACHIDORI_WASM_VARIANT` selects the threaded-idbfs or fallback build. These
+are per-call engine timings; they exclude messaging, the content script's
+chunking, the hover delay and popup rendering, which the hover-popup harness
+above measures end to end.
+
 ## Linked-browser relay latency
 
 The existing two-browser Sharing suite can record healthy linked-browser lookup
