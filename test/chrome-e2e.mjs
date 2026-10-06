@@ -313,6 +313,7 @@ const PLANNED = [
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
+  "a mined screenshot of a page with a paused MSE video contains that video's frame instead of a black region",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "a note mined from a selection takes the hover's sentence without the hidden text inside it",
@@ -6124,6 +6125,43 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     history.replaceState(null, "", "?trackId=example%3Fvalue#player");
     return location.href;
   });
+  // A Netflix-style player beside the text: an MSE stream recorded from a
+  // canvas, paused on its first frame. The page reads that frame's colour, so
+  // the picture is compared with what the video shows rather than with a guess.
+  const player = await tab.evaluate(async () => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 160, height: 90 });
+    const context = canvas.getContext("2d");
+    const paint = setInterval(() => {
+      context.fillStyle = "rgb(0, 200, 80)";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }, 20);
+    const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
+    const chunks = [];
+    recorder.ondataavailable = event => chunks.push(event.data);
+    const recorded = new Promise(resolve => { recorder.onstop = resolve; });
+    recorder.start();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    recorder.stop();
+    await recorded;
+    clearInterval(paint);
+    const video = Object.assign(document.createElement("video"), { id: "mse-player", muted: true });
+    video.style.cssText = "position: fixed; top: 16px; right: 16px; width: 240px; height: 135px";
+    document.body.append(video);
+    const presented = new Promise(resolve => video.requestVideoFrameCallback(resolve));
+    const source = new MediaSource();
+    video.src = URL.createObjectURL(source);
+    await new Promise(resolve => source.addEventListener("sourceopen", resolve, { once: true }));
+    const buffer = source.addSourceBuffer('video/webm; codecs="vp8"');
+    buffer.appendBuffer(await new Blob(chunks).arrayBuffer());
+    await new Promise((resolve, reject) => { buffer.onupdateend = resolve; buffer.onerror = reject; });
+    source.endOfStream();
+    await presented;
+    const frame = new OffscreenCanvas(video.videoWidth, video.videoHeight).getContext("2d");
+    frame.drawImage(video, 0, 0);
+    const { x, y, width, height } = video.getBoundingClientRect();
+    return { rect: { x, y, width, height },
+      colour: [...frame.getImageData(video.videoWidth >> 1, video.videoHeight >> 1, 1, 1).data.slice(0, 3)] };
+  });
   // A fresh lookup, because the previous Add left its own control terminal.
   await tab.keyboard.press("Escape");
   await hoverForPopup(tab, popup, "#kanjiword");
@@ -6149,7 +6187,12 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const startedMining = Date.now();
   await tab.mouse.click(addRect.x + addRect.width / 2, addRect.y + addRect.height / 2, { clickCount: 2 });
   const saved = await settled(state => state?.controls.some(item => item.state === "success"));
-  await tab.evaluate(url => history.replaceState(null, "", url), originalUrl);
+  await tab.evaluate(url => {
+    history.replaceState(null, "", url);
+    const video = document.getElementById("mse-player");
+    URL.revokeObjectURL(video.src);
+    video.remove();
+  }, originalUrl);
   console.log(`     screenshot mining answered in ${Date.now() - startedMining} ms`);
   const opacity = await tab.evaluate(() => window.__hostOpacity ?? []);
   const upload = calls.filter(call => call.action === "storeMediaFile").at(-1);
@@ -6157,7 +6200,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const filename = /<img src="([^"]+)">/u.exec(note.Back ?? "")?.[1] ?? null;
   // The picture itself: decoded in the page, so its size and the pixels where
   // the popup stood are read from what Anki actually received.
-  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect }) => {
+  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect, player }) => {
     const response = await fetch(`data:image/jpeg;base64,${data}`);
     const bitmap = await createImageBitmap(await response.blob());
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -6169,6 +6212,8 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       const pixel = pixelAt(x, y);
       return (pixel[0] + pixel[1] + pixel[2]) / 3;
     };
+    const inPlayer = (x, y) => x >= player.x && x < player.x + player.width
+      && y >= player.y && y < player.y + player.height;
     // Where the popup stood must look like the page it covered, and the picture
     // as a whole must still contain the page's own dark text.
     let popupSum = 0, popupSamples = 0, darkest = 255;
@@ -6179,7 +6224,19 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       }
     }
     for (let y = 2; y < window.innerHeight - 2; y += 6) {
-      for (let x = 2; x < window.innerWidth - 2; x += 6) darkest = Math.min(darkest, luminance(x, y));
+      for (let x = 2; x < window.innerWidth - 2; x += 6) {
+        if (!inPlayer(x, y)) darkest = Math.min(darkest, luminance(x, y));
+      }
+    }
+    // The video's own frame, inside its edges.
+    const playerSum = [0, 0, 0];
+    let playerSamples = 0;
+    for (let y = player.y + 8; y < player.y + player.height - 8; y += 8) {
+      for (let x = player.x + 8; x < player.x + player.width - 8; x += 8) {
+        const pixel = pixelAt(x, y);
+        for (let channel = 0; channel < 3; channel += 1) playerSum[channel] += pixel[channel];
+        playerSamples += 1;
+      }
     }
     // The hovered word: still the page's own dark, neutral text rather than the
     // reader's coloured source highlight.
@@ -6198,13 +6255,22 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       viewport: [Math.round(window.innerWidth * devicePixelRatio), Math.round(window.innerHeight * devicePixelRatio)],
       popupMean: Math.round(popupSum / Math.max(1, popupSamples)), popupSamples, darkest,
       wordDarkest: Math.round(wordDarkest), wordColour,
+      playerSamples, playerColour: playerSum.map(sum => Math.round(sum / Math.max(1, playerSamples))),
     };
-  }, { data: files.get(filename), rect: popupRect });
+  }, { data: files.get(filename), rect: popupRect, player: player.rect });
   check("Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
     spaUrl !== originalUrl && spaUrl.includes("/watch/1234?trackId=example%3Fvalue#player")
       && saved.controls[0].state === "success" && filename !== null && files.has(filename)
       && !saved.controls[0].output.includes("Screenshot:"),
     JSON.stringify({ originalUrl, spaUrl, saved: saved.controls[0], filename }));
+  // A capture that left the video region black, or showed the page behind it,
+  // is not the picture the reader saw.
+  check("a mined screenshot of a page with a paused MSE video contains that video's frame instead of a black region",
+    player.colour[1] > 120 && player.colour[1] - player.colour[0] > 80
+      && picture !== null && picture.playerSamples > 100
+      && picture.playerColour.every((value, channel) => Math.abs(value - player.colour[channel]) <= 32),
+    JSON.stringify({ player, picture: picture && { playerColour: picture.playerColour, playerSamples: picture.playerSamples },
+      popupRect }));
   check(
     "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
     saved.controls[0].action === "view"

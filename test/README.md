@@ -1426,9 +1426,12 @@ removal, proves dictionary recovery keeps Finish and Settings available.
 
 The mining screenshot check changes the reading page's path, query and fragment
 with `history.pushState` and `history.replaceState` before adding the card, then
-requires the real JPEG in Anki. The extension smoke suite also keeps the content
-script's original URL stale, accepts the current tab URL, and refuses a route
-change during capture alongside its existing tab-switch and reload checks.
+requires the real JPEG in Anki. The page also shows a paused MSE video recorded
+from a canvas; the JPEG must hold that frame's own colour where the video
+stands, so a capture with a black video region fails. The extension smoke suite
+also keeps the content script's original URL stale, accepts the current tab
+URL, and refuses a route change during capture alongside its existing
+tab-switch and reload checks.
 
 The startup screenshot check uses Chrome’s live extension document context to
 capture that tab, since packaged extension pages cannot answer content-script
