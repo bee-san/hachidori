@@ -1975,14 +1975,24 @@ const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
 // current statuses itself. A linked browser relays its host's revision here.
 function broadcastWordStatus(revision) {
   if (typeof chrome.tabs?.query !== "function") return;
-  chrome.tabs.query({}).then(tabs => {
-    for (const tab of tabs) {
-      if (typeof tab.id !== "number") continue;
-      chrome.tabs.sendMessage(tab.id, {
-        target: CONTENT_WORD_STATUS_TARGET, type: "hd_anki_word_status_changed", revision,
-      }).catch(() => {});
+  void (async () => {
+    let tabs;
+    try {
+      tabs = await chrome.tabs.query({});
+    } catch {
+      return;
     }
-  }).catch(() => {});
+    await Promise.all(tabs.map(async tab => {
+      if (typeof tab.id !== "number") return;
+      try {
+        await chrome.tabs.sendMessage(tab.id, {
+          target: CONTENT_WORD_STATUS_TARGET, type: "hd_anki_word_status_changed", revision,
+        });
+      } catch {
+        // A tab without a content script (chrome://, the Web Store) has no reader.
+      }
+    }));
+  })();
 }
 
 function indexRowRevision(value) {
