@@ -3416,12 +3416,17 @@ const HANDLERS = {
   // so it never holds the queue while awaiting its own per-chunk turns.
   async hd_segment(message) {
     requireEngine();
-    const chunks = Array.isArray(message.chunks) ? message.chunks : [];
     const scanLength = clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH);
     const options = lookupOptionsJson(message.options);
+    // Every chunk is checked before the first engine turn. A lone surrogate (a
+    // pair split across two text nodes) becomes U+FFFD, one code unit for one,
+    // so the spans' offsets still index the text the page sent.
+    const chunks = (Array.isArray(message.chunks) ? message.chunks : []).map((chunk) => ({
+      id: chunk?.id ?? null,
+      text: boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES).toWellFormed(),
+    }));
     const segments = [];
-    for (const chunk of chunks) {
-      const chunkText = boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES);
+    for (const { id, text: chunkText } of chunks) {
       // One chunk per serialised turn: a queued hd_lookup waiting behind this
       // batch gets the engine between chunks (the engine is not reentrant), so
       // the sequential await is the point rather than an accident.
@@ -3434,7 +3439,7 @@ const HANDLERS = {
         if (!Array.isArray(parsed?.spans)) throw new Error("hdw_segment returned a malformed response");
         return parsed.spans;
       });
-      segments.push({ id: chunk?.id ?? null, spans });
+      segments.push({ id, spans });
     }
     return { segments };
   },
