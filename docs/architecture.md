@@ -2636,7 +2636,38 @@ separate from Hachidori's “reading tab moved” error, which occurs before the
 capture API runs. Hachidori uses Chrome's normal
 [`tabs.captureVisibleTab`](https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab)
 API and cannot guarantee capture of DRM-protected video. A successful capture
-response does not tell the extension whether the browser omitted that video.
+response does not tell the extension whether the browser omitted that video,
+and Hachidori does not guess DRM from black pixels: a video can show a black
+frame.
+
+Migaku takes its card screenshot with the same API. Its Chrome Web Store
+package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
+for the reading tab's window as PNG and crops the picture to the video;
+Hachidori keeps the whole viewport. Migaku's audio clip comes from a
+`tabCapture` stream. Both calls receive what Chrome composites for that window,
+so in the same browser, graphics settings and frame, Chrome decides for both
+whether the picture includes protected video:
+
+- Software-decrypted video is composited into the capture. On Windows, a
+  capture request turns off DirectComposition overlays unless the frame holds
+  hardware-protected video
+  ([`dc_layer_overlay.cc`](https://source.chromium.org/chromium/chromium/src/+/main:components/viz/service/display/dc_layer_overlay.cc),
+  [graphics-dev](https://groups.google.com/a/chromium.org/g/graphics-dev/c/R14cLG4dRrY)).
+  In headless Chrome for Testing 152 on Linux, with software compositing, a
+  Widevine-encrypted MSE stream that the page itself read back from a canvas
+  as black appeared in captures made with Hachidori's JPEG call and Migaku's
+  PNG call, as the unencrypted stream of the same title did. A Windows
+  screenshot of the browser window can still show that video as black: while
+  nothing is being captured, Chrome presents protected video in an overlay
+  marked display-only
+  ([`swap_chain_presenter.cc`](https://source.chromium.org/chromium/chromium/src/+/main:ui/gl/swap_chain_presenter.cc)),
+  which the operating system's screen capture cannot read.
+- Hardware-protected video, from hardware secure decryption on Windows, stays
+  in an overlay while the capture is taken, so the captured frame is black
+  where the video plays. When Migaku's screenshot and audio both come back
+  blank, it tells the user to turn off Chrome's graphics acceleration and
+  restart. Hachidori's capture is the same call, so that setting applies to it
+  too. Neither that remedy nor Netflix itself has been tested for Hachidori.
 
 ## Managed custom dictionary
 
