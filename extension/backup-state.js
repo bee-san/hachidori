@@ -37,7 +37,6 @@ function assertDictionaryList(dictionaries) {
     assertDictionaryUpdateSchedule(entry);
     if (typeof entry?.id !== "string" || entry.id === "" || ids.has(entry.id)
         || typeof entry.title !== "string" || entry.title === "" || titles.has(entry.title)
-        || /[\\/]/u.test(entry.title) || entry.title.includes("\0") || [".", ".."].includes(entry.title)
         || typeof entry.revision !== "string"
         || typeof entry.enabled !== "boolean" || typeof entry.favorite !== "boolean"
         || (entry.displayName !== null && typeof entry.displayName !== "string")

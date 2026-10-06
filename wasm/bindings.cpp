@@ -539,12 +539,15 @@ struct RemoveOnExit {
   }
 };
 
-// Internal staging directories cannot also be dictionary destinations.
-bool usable_as_directory_name(std::string_view title) {
-  return !title.empty() && title != "." && title != ".." &&
-         title != STAGING_DIR && title != REMOVAL_DIR &&
-         !title.contains('/') && !title.contains('\\') &&
-         !title.contains('\0');
+// A package lives in folder_name(title) (hoshidicts/importer.hpp), which is
+// the title itself unless the title is not one plain path component. The
+// internal staging directories cannot also be dictionary destinations.
+bool usable_dictionary_title(std::string_view title) {
+  if (title.empty()) {
+    return false;
+  }
+  const std::string folder = dictionary_importer::folder_name(title);
+  return folder != STAGING_DIR && folder != REMOVAL_DIR;
 }
 
 std::string unusable_title_error(std::string_view title) {
@@ -552,7 +555,7 @@ std::string unusable_title_error(std::string_view title) {
     return "the archive declares no dictionary title";
   }
   return "the dictionary title \"" + std::string{title} +
-         "\" cannot be used as a folder name";
+         "\" is reserved for Hachidori's own files";
 }
 
 // The importer decides the format from the file's first bytes (an MDict header
@@ -832,17 +835,16 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
   const std::filesystem::path staging = root / STAGING_DIR;
   const std::filesystem::path work = staging / STAGING_WORK;
   // A Yomitan archive's title is whatever index.json says, so it is checked
-  // before the importer can turn it into a path. An MDict title comes from
-  // MdictSource::sanitize_title, which yields one plain path component (no
-  // separators, NUL, "." or ".."), so the importer cannot leave `work`; the
-  // post-import usable_as_directory_name check below still applies to it.
+  // before the import. The importer writes to folder_name(title), one plain
+  // path component, so it cannot leave `work`; the post-import check below
+  // applies to an MDict title too.
   if (!looks_like_mdict(zip_path)) {
     std::string title;
     if (!peek_title(zip_path, title, report.error)) {
       return report;
     }
-    const std::filesystem::path staged = (work / title).lexically_normal();
-    if (!usable_as_directory_name(title) || staged.parent_path() != work.lexically_normal()) {
+    const std::filesystem::path staged = (work / dictionary_importer::folder_name(title)).lexically_normal();
+    if (!usable_dictionary_title(title) || staged.parent_path() != work.lexically_normal()) {
       report.title = title;
       report.error = unusable_title_error(title);
       return report;
@@ -861,12 +863,13 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
   if (!report.success) {
     return report;
   }
-  if (!usable_as_directory_name(report.title)) {
+  if (!usable_dictionary_title(report.title)) {
     report.success = false;
     report.error = unusable_title_error(report.title);
     return report;
   }
-  const std::filesystem::path imported = work / report.title;
+  const std::string folder = dictionary_importer::folder_name(report.title);
+  const std::filesystem::path imported = work / folder;
   if (!dictionary_files_present(imported)) {
     report.success = false;
     report.error = "the import produced no loadable dictionary";
@@ -874,7 +877,7 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
   }
   try {
     flush_tree(imported);
-    install_dictionary(imported, root / report.title, staging / STAGING_REPLACED / report.title);
+    install_dictionary(imported, root / folder, staging / STAGING_REPLACED / folder);
   } catch (const std::exception& e) {
     cleanup.release();
     report.success = false;

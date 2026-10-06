@@ -9658,12 +9658,16 @@ async function main() {
     [true, 4],
   );
 
+  // A title is a name, not a path: one spelled like a path names no
+  // installed package and reaches nothing outside the dictionary root.
+  const stateBeforeUnsafeRemove = await storedDictionaryState();
   const unsafeRemove = await request("hd_remove", { title: "../outside" });
   const afterUnsafeRemove = await request("hd_status");
   equal(
-    "hd_remove rejects a title that can escape the dictionary root",
-    [unsafeRemove.ok, afterUnsafeRemove.dictionaryCount],
-    [false, 4],
+    "hd_remove of a title spelled like a path removes nothing",
+    [unsafeRemove.ok, afterUnsafeRemove.dictionaryCount,
+      JSON.stringify(await storedDictionaryState()) === JSON.stringify(stateBeforeUnsafeRemove)],
+    [true, 4, true],
   );
 
   const writesBeforeRemove = storage.sets.length;
@@ -10627,6 +10631,39 @@ async function isolatedImportStage({ createHoshidicts, offscreenChrome, storedDi
     JSON.stringify({ disabledTarget, disabledUpdate, disabledUpdateStatus, validationAdds, addModes }),
   );
   await request("hd_remove", { id: installedPackage.id, title });
+
+  // A Yomitan title is any string; MarvNC's "Nico/Pixiv" (#512) lives in the
+  // folder hoshidicts' folder_name gives it, and every later step finds it
+  // there again by its title.
+  const slashTitle = "Nico/Pixiv";
+  const slashQuery = "題名語";
+  const slashArchive = new Uint8Array(buildTitledZip(slashTitle, {
+    terms: [[slashQuery, "だいめいご", "", "", 0, ["slash title"], 1, ""]],
+  }));
+  const slashInstall = await request("hd_import", { blobUrl: createObjectURL(slashArchive), fileName: "[Other] Nico-Pixiv.zip" });
+  const slashPackage = (await storedDictionaryState()).dictionaries.find((entry) => entry.title === slashTitle);
+  const slashLookup = await request("hd_lookup", { text: slashQuery });
+  const slashReload = await request("hd_reload");
+  const slashAfterReload = await request("hd_lookup", { text: slashQuery });
+  check(
+    "a title with a slash installs into its own folder, answers lookups by its title and survives a reload",
+    slashInstall.ok === true && slashInstall.report?.title === slashTitle
+      && /^\/dicts\/\.hdw-generation-[^/]+\/Nico_Pixiv #c747f3db$/u.test(slashPackage?.path ?? "")
+      && slashLookup.results?.[0]?.term?.glossaries?.some((entry) => entry.dictionary === slashTitle)
+      && slashReload.ok !== false
+      && slashAfterReload.results?.[0]?.term?.glossaries?.some((entry) => entry.dictionary === slashTitle)
+      && (await request("hd_status")).failedDictionaries.length === 0,
+    JSON.stringify({ slashInstall, slashPackage, slashLookup, slashAfterReload }),
+  );
+  const slashRemoval = await request("hd_remove", { id: slashPackage?.id, title: slashTitle });
+  check(
+    "a title with a slash can be removed with its files",
+    slashRemoval.ok !== false
+      && !(await storedDictionaryState()).dictionaries.some((entry) => entry.title === slashTitle)
+      && !stageEngine.FS.analyzePath(slashPackage?.path ?? "/missing").exists
+      && (await request("hd_lookup", { text: slashQuery })).results.length === 0,
+    JSON.stringify({ slashRemoval, path: slashPackage?.path }),
+  );
 }
 
 /* ------------------------------------------------------- renderer integration stage */
