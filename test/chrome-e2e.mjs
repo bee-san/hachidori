@@ -263,6 +263,7 @@ const PLANNED = [
   "startup practice without a usable dictionary retains recovery and completion controls",
   "the practice visual novel scene fits narrow screens and looks a word up through the real reader and installed dictionaries",
   "the reader refuses to run on Settings even when its own scripts are loaded there",
+  "Remove all imported dictionaries clears disabled and search-hidden packages through the real engine after one confirmation",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "first-run setup automatically prepends detected local audio as source 1",
@@ -322,6 +323,7 @@ const PLANNED = [
   "accepted reader lookups persist canonical counts without delaying definitions",
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "local count and blur settings belong to Reading without external corpus controls",
+  "Reset lookup counts refreshes the open popup to zero without recording and the next lookup counts 1",
   "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
   "frequency blur uses native fixture values without recording counts or waiting for another signal",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
@@ -7638,6 +7640,51 @@ async function checkLookupStatistics({ settings, tab, popup }) {
     check("local count and blur settings belong to Reading without external corpus controls",
       localControls.counts === "lookup" && localControls.blur === "lookup" && localControls.external === 0,
       JSON.stringify(localControls));
+
+    // Settings → Reading → Reset lookup counts while the counted popup stays open.
+    const storedState = () => settings.evaluate(async () => {
+      const stored = await chrome.storage.local.get(null);
+      return { dictionaries: stored.dictionaryState?.revision, options: stored.options?.revision,
+        rows: Object.keys(stored).filter(key => key.startsWith("lookupStats:")) };
+    });
+    const beforeReset = await readLookupStatistics(settings);
+    const storedBeforeReset = await storedState();
+    await popup.lookupStatistics("remember");
+    await settings.bringToFront();
+    await showSettingsSection(settings, "lookup");
+    let resetDialog = null;
+    const acceptReset = async (dialog) => { resetDialog = dialog.message(); await dialog.accept(); };
+    settings.on("dialog", acceptReset);
+    await settings.click("#lookup-counts-reset");
+    const resetStatus = await settings.waitForFunction(() => {
+      const status = document.getElementById("lookup-counts-reset-status");
+      return status.classList.contains("is-ready") || status.classList.contains("is-error") ? status.textContent : false;
+    }, { polling: 100, timeout: 10_000 }).then((handle) => handle.jsonValue()).catch(error => `no outcome: ${error.message}`);
+    settings.off("dialog", acceptReset);
+    const zeroed = await waitForLookupStatistics(popup, value => value?.text.includes("Looked up 0 times"));
+    const afterReset = await readLookupStatistics(settings);
+    const storedAfterReset = await storedState();
+    const nextDefinition = await freshLookup();
+    const counted = await waitForLookupStatistics(popup, value => value?.text.includes("Looked up 1 time"));
+    const afterNext = await readLookupStatistics(settings);
+    check(
+      "Reset lookup counts refreshes the open popup to zero without recording and the next lookup counts 1",
+      resetDialog?.startsWith("Reset lookup counts for every word?")
+        && resetStatus === "Lookup counts reset."
+        && beforeReset.statistics?.lookupCount > 0 && storedBeforeReset.rows.length > 0
+        && zeroed?.samePopup === true && zeroed.sameLine === true && zeroed.hidden === false
+        && afterReset.statistics?.lookupCount === 0
+        && afterReset.descriptor?.generation !== beforeReset.descriptor?.generation
+        && afterReset.descriptor?.revision === beforeReset.descriptor.revision + 1
+        && storedAfterReset.rows.length === 0
+        && storedAfterReset.dictionaries === storedBeforeReset.dictionaries
+        && storedAfterReset.options === storedBeforeReset.options
+        && nextDefinition?.plain.includes("食べる") && counted?.hidden === false
+        && afterNext.statistics?.lookupCount === 1
+        && afterNext.descriptor?.generation === afterReset.descriptor.generation,
+      JSON.stringify({ resetDialog, resetStatus, beforeReset, storedBeforeReset, zeroed, afterReset,
+        storedAfterReset, counted, afterNext }),
+    );
     if (process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT) {
       await settings.bringToFront();
       await showSettingsSection(settings, "lookup");
@@ -11733,8 +11780,60 @@ async function main() {
   );
 
   // Clear the mocked catalogue packages so the Settings installer below starts
-  // from the same clean library it always did; the setup mock stays attached so
-  // no later run can reach the network, but must not answer Settings' own fetches.
+  // from the same clean library it always did: first through Settings → Library →
+  // Remove all imported dictionaries, with one package disabled and the others
+  // hidden by a search. The setup mock stays attached so no later run can reach
+  // the network, but must not answer Settings' own fetches.
+  await page.bringToFront();
+  await showSettingsSection(page, "dictionaries");
+  const setupInstalled = await page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState?.dictionaries ?? []);
+  const disabledSetupId = setupInstalled[1]?.id;
+  await page.evaluate((id) => {
+    const enabled = document.querySelector(`.dict-row[data-dictionary-id="${id}"] .dict-enabled`);
+    enabled.checked = false;
+    enabled.dispatchEvent(new Event("change", { bubbles: true }));
+  }, disabledSetupId);
+  await page.waitForFunction(async (id) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return dictionaryState?.dictionaries?.find(entry => entry.id === id)?.enabled === false
+      && !document.getElementById("library-remove-all").disabled;
+  }, { timeout: 30_000, polling: 100 }, disabledSetupId).catch(() => {});
+  await page.evaluate((title) => {
+    const search = document.getElementById("dict-search");
+    search.value = title;
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  }, setupInstalled[0]?.title);
+  const searchVisibleRows = await page.$$eval("#dict-list .dict-row", rows => rows.length);
+  let removeAllDialog = null;
+  const acceptRemoveAll = async (dialog) => { removeAllDialog = dialog.message(); await dialog.accept(); };
+  page.on("dialog", acceptRemoveAll);
+  await page.click("#library-remove-all");
+  const removeAllOutcome = await page.waitForFunction(() => {
+    const status = document.getElementById("library-reset-status");
+    return status.classList.contains("is-ready") || status.classList.contains("is-error") ? status.textContent : false;
+  }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(error => `no outcome: ${error.message}`);
+  page.off("dialog", acceptRemoveAll);
+  const afterRemoveAll = await page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState?.dictionaries?.map(entry => entry.title) ?? null);
+  check(
+    "Remove all imported dictionaries clears disabled and search-hidden packages through the real engine after one confirmation",
+    setupInstalled.length === RECOMMENDED_DICTIONARIES.length
+      && searchVisibleRows > 0 && searchVisibleRows < setupInstalled.length
+      && removeAllDialog?.startsWith(`Remove ${setupInstalled.length} imported dictionaries?`)
+      && removeAllDialog.includes("including disabled ones and any the search hides")
+      && removeAllOutcome === `Removed ${setupInstalled.length} dictionaries.`
+      && afterRemoveAll?.length === 0,
+    JSON.stringify({ setupInstalled: setupInstalled.map(({ title, enabled }) => ({ title, enabled })),
+      searchVisibleRows, removeAllDialog, removeAllOutcome, afterRemoveAll }),
+  );
+  await page.evaluate(() => {
+    const search = document.getElementById("dict-search");
+    search.value = "";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  // Whatever that check left behind is removed directly, so a failure there
+  // cannot change the starting library of the checks below.
   for (const { title } of RECOMMENDED_DICTIONARIES) {
     const removed = await page.evaluate((dictionaryTitle) => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen",
