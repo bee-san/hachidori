@@ -256,10 +256,14 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
       ? `[sound:${escape(request.sentenceAudio.filename)}]` : "",
     // Experimental Netflix mining: the line's animated GIF when one was
     // recorded, otherwise the viewport screenshot's <img>. Off Netflix, with
-    // the switch off, or on a recording failure there is no GIF, so a Picture
-    // field mapped to {gif} still gets the screenshot.
-    gif: () => request.gif?.filename && !request.captureUnavailable?.includes("gif")
-      ? `<img src="${escape(request.gif.filename)}">` : table.screenshot(),
+    // the switch off, or when the line could not be recorded there is no GIF,
+    // so a Picture field mapped to {gif} still gets the screenshot. A held GIF
+    // that Anki could not store leaves the field empty instead: the screenshot
+    // was released unstored, because no field referenced it.
+    gif: () => {
+      if (!request.gif?.filename) return table.screenshot();
+      return request.captureUnavailable?.includes("gif") ? "" : `<img src="${escape(request.gif.filename)}">`;
+    },
   };
   const values = new Map();
   let glossaries, frequencies;

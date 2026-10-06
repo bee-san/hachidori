@@ -2802,8 +2802,12 @@ reader records nothing.
 
 `{gif}` renders `<img src="hachidori-gif-<uuid>.gif">` when a GIF of the line
 is held and stored, and otherwise the screenshot's `<img>`, so off Netflix,
-with the switch off, or when a GIF cannot be made a `{gif}` field still gets the
-viewport picture. Because of that fallback a mapped `{gif}` makes
+with the switch off, or when the line could not be recorded a `{gif}` field
+still gets the viewport picture. A held GIF that Anki refused or that a newer
+recording replaced leaves the field empty with a `GIF:` warning instead: the
+worker had released the screenshot unstored, because no applied field
+referenced it, and the pronunciation re-render must not name it. Because of
+that fallback a mapped `{gif}` makes
 `ankiCaptureRequirements` require the screenshot as well, and preflight adds
 `gif: true` on a Netflix request whose mapping contains the marker. `{gif}` is
 refused in the first field and is hidden from the marker picker while Netflix

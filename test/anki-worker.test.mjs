@@ -976,3 +976,49 @@ test("a recorded Netflix GIF is held, stored under its own name, and falls back 
   options.experimental.netflixMining = false;
   await assert.rejects(service.gifImage(GIF_DATA, "default"), /turned off in Settings/u);
 });
+
+test("pronunciation enrichment keeps a refused or replaced GIF out of its field, without the unstored screenshot", async t => {
+  for (const outcome of ["stored", "replaced", "refused"]) await t.test(outcome, async () => {
+    let fields;
+    const mediaFiles = new Set();
+    const options = globalThis.HDReaderOptions.normaliseOptions({
+      experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
+      anki: { model: "Basic", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{gif}{audio}", overwriteMode: "overwrite" } } } });
+    const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+      models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [];
+      if (action === "getMediaFilesNames") return mediaFiles.has(params.pattern) ? [params.pattern] : [];
+      if (action === "storeMediaFile") {
+        if (outcome === "refused" && params.filename.endsWith(".gif")) throw new Error("media folder is read-only");
+        mediaFiles.add(params.filename);
+        return params.filename;
+      }
+      if (action === "deleteMediaFile") { mediaFiles.delete(params.filename); return null; }
+      if (action === "addNote") { fields = { ...params.note.fields }; return 12; }
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic",
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action === "updateNoteFields") { Object.assign(fields, params.note.fields); return null; }
+      throw new Error(`Unexpected ${action}`);
+    } };
+    const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+      duplicateIndex: testIndex(() => []),
+      readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+      offscreen: async message => message.type === "hd_anki_audio" ? { filename: AUDIO_FILENAME, data: AUDIO_DATA }
+        : { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] },
+    });
+    // {gif} needs the screenshot for its fallback, so the reader took one too.
+    const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+    const gif = await service.gifImage(GIF_DATA, "default");
+    if (outcome === "replaced") await service.gifImage(GIF_DATA, "default");
+    const result = await service.submit({ term: { expression: "猫", reading: "ねこ" }, generation: 3,
+      configKey: (await service.status()).configKey, screenshot, gif });
+    assert.equal(result.state, "added");
+    assert.equal(fields.Back, `${outcome === "stored" ? `<img src="${gif.filename}">` : ""}[sound:${AUDIO_FILENAME}]`);
+    assert.equal(mediaFiles.has(screenshot.filename), false, "the screenshot no field used was never stored");
+    if (outcome === "stored") assert.deepEqual(result.warnings, []);
+    else assert.match(result.warnings.join(" "), /GIF: /u);
+  });
+});

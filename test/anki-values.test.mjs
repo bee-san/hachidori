@@ -293,14 +293,14 @@ test("the gif marker is the line's GIF when present and the screenshot otherwise
   // falls back to the viewport screenshot's <img>.
   assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{gif}"),
     '<img src="hachidori-screenshot-1.jpg">');
-  // A GIF marked unavailable also falls back to the screenshot.
+  // A held GIF that Anki could not store renders nothing: the screenshot the
+  // fallback would name was released unstored, as no field referenced it.
   assert.equal(await render(request({ gif: { filename: "hachidori-gif-1.gif" }, captureUnavailable: ["gif"],
-    screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{gif}"),
-    '<img src="hachidori-screenshot-1.jpg">');
+    screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{gif}"), "");
   // With neither a GIF nor a screenshot, {gif} is empty.
   assert.equal(await render(request({}), "{gif}"), "");
   // A screenshot that itself failed does not leak through the fallback.
-  assert.equal(await render(request({ gif: { filename: "g.gif" }, screenshot: { filename: "s.jpg" },
+  assert.equal(await render(request({ screenshot: { filename: "s.jpg" },
     captureUnavailable: ["gif", "screenshot"] }), "{gif}"), "");
 });
 
