@@ -184,17 +184,27 @@ function text(value) {
   return typeof value === "string" ? value : "";
 }
 
+// The folder a package's files live in, as hoshidicts'
+// dictionary_importer::folder_name chooses it: the title itself when it is one
+// plain path component, otherwise the title with "/", "\\", ":" and NUL as "_"
+// plus " #" and the FNV-1a 32-bit hash of its UTF-8 bytes. A Yomitan title is
+// any string ("Nico/Pixiv"); only the folder has to be a path component.
+function dictionaryFolderName(title) {
+  if (title !== "" && title !== "." && title !== ".." && !/[/\\\0]/u.test(title)) {
+    return title;
+  }
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(title)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return `${title.replace(/[/\\:\0]/gu, "_")} #${hash.toString(16).padStart(8, "0")}`;
+}
+
+// Whether a title can name a package: any nonempty title whose folder is not
+// one of the engine's own staging directories.
 function usableDictionaryTitle(title) {
-  return (
-    title !== "" &&
-    title !== "." &&
-    title !== ".." &&
-    title !== ".hdw-import" &&
-    title !== ".hdw-remove" &&
-    !title.includes("/") &&
-    !title.includes("\\") &&
-    !title.includes("\0")
-  );
+  const folder = title === "" ? "" : dictionaryFolderName(title);
+  return folder !== "" && folder !== ".hdw-import" && folder !== ".hdw-remove";
 }
 
 function clampInt(value, min, max, fallback) {
@@ -677,22 +687,19 @@ function isGenerationRoot(path) {
 function dictionaryRoot(dictionary) {
   const title = text(dictionary?.title);
   const path = text(dictionary?.path);
-  if (title === ""
-      || title === "."
-      || title === ".."
-      || title === ".hdw-import"
-      || title.includes("/")
-      || title.includes("\\")
-      || title.includes("\0")) {
+  // A legacy package may be titled .hdw-remove (the removal recovery keeps
+  // it); only the import staging directory can never hold a package.
+  const folder = title === "" ? "" : dictionaryFolderName(title);
+  if (folder === "" || folder === ".hdw-import") {
     return null;
   }
-  if (path === `${DICT_ROOT}/${title}`) {
+  if (path === `${DICT_ROOT}/${folder}`) {
     return path;
   }
   const separator = path.lastIndexOf("/");
   const root = path.slice(0, separator);
   return separator > DICT_ROOT.length
-    && path === `${root}/${title}`
+    && path === `${root}/${folder}`
     && isGenerationRoot(root)
     ? root
     : null;
@@ -806,13 +813,13 @@ function moveDictionaryFiles(source, destination, markerLast) {
   removeEmptyDirectory(source);
 }
 
-function settleStagedRemoval(title, restore) {
-  const stagedPath = `${REMOVAL_ROOT}/${title}`;
+function settleStagedRemoval(folder, restore) {
+  const stagedPath = `${REMOVAL_ROOT}/${folder}`;
   if (!exists(stagedPath)) {
     return false;
   }
   if (restore) {
-    moveDictionaryFiles(stagedPath, `${DICT_ROOT}/${title}`, true);
+    moveDictionaryFiles(stagedPath, `${DICT_ROOT}/${folder}`, true);
   } else {
     removeTree(stagedPath);
   }
@@ -963,7 +970,7 @@ async function listLegacyImported(legacy) {
     legacy.map((row) => text(row?.title)).filter((title) => title !== ""),
   );
   for (const title of expectedTitles) {
-    const path = `${DICT_ROOT}/${title}`;
+    const path = `${DICT_ROOT}/${dictionaryFolderName(title)}`;
     if (dictionaryRoot({ title, path }) === null) {
       continue;
     }
@@ -1170,15 +1177,16 @@ async function recoverPendingRemovals(snapshot) {
     return;
   }
   const stored = snapshot.state?.dictionaries ?? snapshot.legacyDictionaries ?? [];
-  const retainedTitles = new Set(stored.map((dictionary) => text(dictionary?.title)));
+  const retainedFolders = new Set(stored.map((dictionary) => text(dictionary?.title))
+    .filter(usableDictionaryTitle).map(dictionaryFolderName));
   let changed = false;
-  for (const title of engine.FS.readdir(REMOVAL_ROOT)) {
-    const stagedPath = `${REMOVAL_ROOT}/${title}`;
-    if (title === "." || title === ".." || !usableDictionaryTitle(title)
+  for (const folder of engine.FS.readdir(REMOVAL_ROOT)) {
+    const stagedPath = `${REMOVAL_ROOT}/${folder}`;
+    if (folder === "." || folder === ".." || !usableDictionaryTitle(folder)
         || !isDirectory(engine.FS.stat(stagedPath))) {
       continue;
     }
-    changed = settleStagedRemoval(title, retainedTitles.has(title)) || changed;
+    changed = settleStagedRemoval(folder, retainedFolders.has(folder)) || changed;
   }
   if (changed) {
     await persistFilesystem();
@@ -1932,8 +1940,8 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
   if (!usableDictionaryTitle(nextTitle)) {
     throw new Error("the separate dictionary title cannot be used as a filesystem path");
   }
-  const currentPath = `${generationRoot}/${currentTitle}`;
-  const nextPath = `${generationRoot}/${nextTitle}`;
+  const currentPath = `${generationRoot}/${dictionaryFolderName(currentTitle)}`;
+  const nextPath = `${generationRoot}/${dictionaryFolderName(nextTitle)}`;
   if (!exists(currentPath) || exists(nextPath)) {
     throw new Error("the staged dictionary title changed unexpectedly");
   }
@@ -1984,7 +1992,7 @@ async function commitImportedGeneration(
   expectedRevision,
   importDecision,
 ) {
-  let generated = await packageFromIndex(`${generationRoot}/${report.title}`);
+  let generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(report.title)}`);
   if (generated.title !== report.title) {
     throw new Error("the imported dictionary title changed while it was being committed");
   }
@@ -2027,7 +2035,7 @@ async function commitImportedGeneration(
       retitleImportedPackage(generationRoot, candidateTitle, nextTitle);
       candidateTitle = nextTitle;
       await persistFilesystem();
-      generated = await packageFromIndex(`${generationRoot}/${candidateTitle}`);
+      generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(candidateTitle)}`);
     }
     return [...stored, generated];
   });
@@ -2335,9 +2343,9 @@ export async function importDictionaryArchive(
       ),
     );
     if (report.success && report.title === "") {
-      // hdw_import refuses a title it cannot use as a folder name, so this is
-      // unreachable; without a title there is nothing to register, and a row
-      // with an empty title would poison reconcile().
+      // hdw_import refuses an empty title, so this is unreachable; without a
+      // title there is nothing to register, and a row with an empty title
+      // would poison reconcile().
       report.success = false;
       report.error = `${fileName} declares no dictionary title`;
     }
@@ -2920,7 +2928,7 @@ async function commitCustomGeneration(
   generationRoot,
   report,
 ) {
-  const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
+  const generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(report.title)}`);
   if (report.title !== CUSTOM_DICTIONARY_TITLE
       || generated.title !== CUSTOM_DICTIONARY_TITLE) {
     throw new Error("the compiled custom archive has the wrong dictionary title");
@@ -3080,7 +3088,7 @@ async function stageBackupFiles(prepared, roots) {
   const dictionaries = archived.map(dictionary => {
     const root = createGenerationRoot();
     roots.push(root);
-    const next = { ...dictionary, path: `${root}/${dictionary.title}` };
+    const next = { ...dictionary, path: `${root}/${dictionaryFolderName(text(dictionary.title))}` };
     assertBackupDictionaryPath(next, "The backup contains an invalid dictionary title.");
     return next;
   });
