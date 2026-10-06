@@ -220,7 +220,13 @@ try {
   const wav = beepWav();
   tab.on("request", request => {
     const url = request.url();
-    if (url === WATCH) return request.respond({ contentType: "text/html; charset=utf-8", body: page });
+    // A locked-down page: no frames of its own, no capture features. The
+    // extension's recorder frame and tab capture must still work.
+    if (url === WATCH) {
+      return request.respond({ contentType: "text/html; charset=utf-8", body: page, headers: {
+        "Content-Security-Policy": "frame-src 'none'; child-src 'none'; object-src 'none'",
+        "Permissions-Policy": "microphone=(), camera=(), display-capture=()" } });
+    }
     if (url === "https://www.netflix.com/fixture/ja.vtt") {
       return request.respond({ contentType: "text/vtt; charset=utf-8", headers: { "Access-Control-Allow-Origin": "*" }, body: vtt });
     }
