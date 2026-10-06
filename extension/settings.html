@@ -1286,7 +1286,8 @@
             <legend data-search-keywords="ram memory heap low memory mode">Memory</legend>
             <p id="memory-total" class="section-note" aria-live="polite">Engine memory: —</p>
             <p id="memory-extension-total" class="section-note" aria-live="polite">Extension total: —</p>
-            <p class="hint">Dictionary indexes stay in memory. On direct OPFS storage, entries and images are read from disk when needed by default. Each dictionary's share is under its Details in Library. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
+            <p id="memory-indexes" class="section-note" aria-live="polite"></p>
+            <p class="hint">On direct OPFS storage, entries and images are read from disk when needed by default. In Low memory mode, Automatic hash indexes also read a large library's bigger indexes from disk. Each dictionary's share is under its Details in Library. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
             <div id="dictionary-entry-storage">
               <label class="field-label" for="opt-dictionary-entry-storage">Dictionary entries</label>
               <select id="opt-dictionary-entry-storage" aria-describedby="opt-dictionary-entry-storage-help">
@@ -1295,6 +1296,15 @@
                 <option value="resident">Keep in memory</option>
               </select>
               <p class="field-hint" id="opt-dictionary-entry-storage-help">Reading entries from disk uses less engine memory and may make lookups slightly slower. Keeping entries in memory favours lookup speed. Changing this restarts the idle engine; import threading stays the same. Low memory mode always reads entries from disk.</p>
+            </div>
+            <div id="dictionary-index-storage">
+              <label class="field-label" for="opt-dictionary-index-storage">Dictionary hash indexes</label>
+              <select id="opt-dictionary-index-storage" aria-describedby="opt-dictionary-index-storage-help">
+                <option value="auto">Automatic (reduce memory in Low memory mode)</option>
+                <option value="paged">Read from disk</option>
+                <option value="resident">Keep in memory</option>
+              </select>
+              <p class="field-hint" id="opt-dictionary-index-storage-help">Automatic keeps every hash index in memory, except in Low memory mode, where it keeps the smallest within one shared 32 MiB budget and reads the rest from disk. Reading indexes from disk saves memory in large libraries and makes lookups slightly slower. All dictionaries remain available. Changing this restarts the idle engine.</p>
             </div>
             <label class="lookup-enable" id="low-memory-mode">
               <span>Low memory mode</span>

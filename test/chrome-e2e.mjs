@@ -508,6 +508,8 @@ const PLANNED = [
   "low memory mode keeps only each dictionary's index in the heap",
   "turning low memory mode off restarts the full-pool worker",
   "resident entry storage restores mapped entries independently of low memory mode",
+  "paged hash storage uses the shared cache independently of entry residency",
+  "resident hash storage returns after an idle policy restart",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "deep structured content renders while node-limit failures omit only their definition",
@@ -15510,6 +15512,34 @@ async function main() {
       && residentLookup.ok === true && JSON.stringify(residentLookup.results) === JSON.stringify(fullPoolLookup.results),
     JSON.stringify({ status: residentStatus, memory: residentMemory, lookup: residentLookup }),
   );
+  await page.select("#opt-dictionary-index-storage", "paged");
+  const pagedHashStatus = await page.waitForFunction(async () => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ready && !status.loading && status.dictionaryIndexStorage === "paged" ? status : false;
+  }, { timeout: 30_000, polling: 250 }).then(handle => handle.jsonValue());
+  const pagedHashLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  const pagedHashMemory = await engineRequest("hd_memory");
+  check("paged hash storage uses the shared cache independently of entry residency",
+    pagedHashStatus.hashIndexStorage === "paged" && pagedHashStatus.packageCount === 1
+      && pagedHashStatus.registeredKindCount === 1
+      && pagedHashMemory.dictionaries[0].paged === false
+      && pagedHashMemory.dictionaries[0].hashIndexStorage === "paged"
+      && pagedHashMemory.dictionaries[0].residentHashBytes === 0
+      && pagedHashMemory.indexes.bytes > 0 && pagedHashMemory.entries.bytes === 0
+      && pagedHashMemory.pageCacheBytes === pagedHashMemory.indexes.bytes
+      && JSON.stringify(pagedHashLookup.results) === JSON.stringify(residentLookup.results),
+    JSON.stringify({ status: pagedHashStatus, memory: pagedHashMemory }));
+  await page.select("#opt-dictionary-index-storage", "resident");
+  await page.waitForFunction(async () => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ready && !status.loading && status.dictionaryIndexStorage === "resident";
+  }, { timeout: 30_000, polling: 250 });
+  const residentHashMemory = await engineRequest("hd_memory");
+  check("resident hash storage returns after an idle policy restart",
+    residentHashMemory.dictionaries[0].residentHashBytes === residentHashMemory.dictionaries[0].hashBytes
+      && residentHashMemory.dictionaries[0].hashIndexStorage === "resident"
+      && residentHashMemory.pageCacheBytes === 0,
+    JSON.stringify({ before: residentMemory, after: residentHashMemory }));
   await engineRequest("hd_remove", { title: lowMemoryTitle });
   await page.waitForFunction(async () => {
     const stored = await chrome.storage.local.get("dictionaryState");

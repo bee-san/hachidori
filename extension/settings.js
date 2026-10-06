@@ -530,6 +530,8 @@ function renderLowMemoryMode() {
   element("dictionary-entry-storage").hidden = !available;
   element("opt-dictionary-entry-storage").value = options.dictionaryEntryStorage;
   element("opt-dictionary-entry-storage").disabled = options.lowMemoryMode;
+  element("dictionary-index-storage").hidden = !available || lastEngineStatus?.storageBackend !== "opfs";
+  element("opt-dictionary-index-storage").value = options.dictionaryIndexStorage;
 }
 
 function memorySettings() {
@@ -3618,6 +3620,10 @@ function attachHandlers() {
   element("opt-low-memory-mode").addEventListener("change", (event) => {
     options.lowMemoryMode = event.target.checked;
     renderLowMemoryMode();
+    writeOptions();
+  });
+  element("opt-dictionary-index-storage").addEventListener("change", (event) => {
+    options.dictionaryIndexStorage = event.target.value;
     writeOptions();
   });
   element("opt-dictionary-entry-storage").addEventListener("change", (event) => {

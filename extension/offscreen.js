@@ -105,6 +105,8 @@ let lastEngineStatus = {
   ready: false,
   loading: true,
   dictionaryCount: 0,
+  packageCount: 0,
+  registeredKindCount: 0,
   failedDictionaries: [],
   generation: 0,
 };
@@ -118,9 +120,9 @@ const held = new Set();
 // dictionary change, or when the stored option no longer matches the worker.
 const recycler = createEngineRecycler({
   isIdle: () => pending.size === 0 && held.size === 0,
-  restart: (lowMemory, dictionaryEntryStorage) => {
+  restart: (lowMemory, dictionaryEntryStorage, dictionaryIndexStorage) => {
     worker.terminate();
-    startWorkerEngine(workerScript, lowMemory, dictionaryEntryStorage);
+    startWorkerEngine(workerScript, lowMemory, dictionaryEntryStorage, dictionaryIndexStorage);
   },
 });
 
@@ -198,6 +200,11 @@ function finishRequest(id, response) {
       ready: response.ready === true,
       loading: response.loading === true,
       dictionaryCount: Number(response.dictionaryCount) || 0,
+      packageCount: Number(response.packageCount) || 0,
+      registeredKindCount: Number(response.registeredKindCount) || 0,
+      dictionaryIndexStorage: response.dictionaryIndexStorage,
+      hashIndexStorage: response.hashIndexStorage,
+      residentHashBudgetBytes: response.residentHashBudgetBytes,
       failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
       generation: Number(response.generation) || 0,
     };
@@ -297,13 +304,13 @@ async function selectEngine() {
 
 // The name tells engine-worker-runtime.js which pthread pool and import
 // threading to start with; see docs/memory.md.
-function startWorkerEngine(script, lowMemory, dictionaryEntryStorage) {
+function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionaryIndexStorage) {
   workerScript = script;
   worker = new Worker(new URL(script, import.meta.url), {
     type: "module",
-    name: engineWorkerName(lowMemory, dictionaryEntryStorage),
+    name: engineWorkerName(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage),
   });
-  recycler.setRunning(lowMemory, dictionaryEntryStorage);
+  recycler.setRunning(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage);
   worker.addEventListener("error", (event) => failEngine(event.error || event.message));
   worker.addEventListener("messageerror", () => failEngine("the engine worker sent an unreadable message"));
   worker.onmessage = (event) => {
@@ -364,10 +371,10 @@ async function readEngineConfig() {
   try {
     const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_engine_config" });
     return { lowMemoryMode: reply?.ok === true && reply.lowMemoryMode === true,
-      dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto" };
+      dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: reply?.dictionaryIndexStorage ?? "auto" };
   } catch (error) {
     console.warn(`hoshidicts: could not read the engine configuration: ${describe(error)}`);
-    return { lowMemoryMode: false, dictionaryEntryStorage: "auto" };
+    return { lowMemoryMode: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto" };
   }
 }
 
@@ -376,14 +383,14 @@ let pushedEngineConfig = null;
 // Only the pthread workers have a Low memory mode or entry policy to switch to.
 let recyclable = false;
 const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedConfig]) => {
-  const { lowMemoryMode: lowMemory, dictionaryEntryStorage } = pushedEngineConfig ?? storedConfig;
+  const { lowMemoryMode: lowMemory, dictionaryEntryStorage, dictionaryIndexStorage } = pushedEngineConfig ?? storedConfig;
   lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
   lastEngineStatus.threaded = mode !== "local" && mode !== "worker-local";
   if (mode === "local") return startLocalEngine();
   if (mode === "worker-local") return startWorkerEngine("./engine-worker-local.js", false);
   recyclable = true;
-  recycler.setDesired(lowMemory, dictionaryEntryStorage);
-  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js", lowMemory, dictionaryEntryStorage);
+  recycler.setDesired(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage);
+  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js", lowMemory, dictionaryEntryStorage, dictionaryIndexStorage);
 }).catch(failEngine);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -395,8 +402,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // and the single-thread worker is never desired in another mode. Settings
   // hides the Low memory switch when threaded is false.
   pushedEngineConfig = { lowMemoryMode: message.lowMemoryMode === true,
-    dictionaryEntryStorage: message.dictionaryEntryStorage ?? "auto" };
-  if (recyclable) recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage);
+    dictionaryEntryStorage: message.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: message.dictionaryIndexStorage ?? "auto" };
+  if (recyclable) recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage, pushedEngineConfig.dictionaryIndexStorage);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
   return true;
 });
