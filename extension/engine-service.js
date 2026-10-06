@@ -946,7 +946,7 @@ async function packageFromIndex(path) {
     language: optionalText(index?.sourceLanguage),
     frequencyMode: optionalText(index?.frequencyMode),
     termCount: count(index?.counts?.terms?.total),
-    frequencyCount: count(index?.counts?.termMeta?.freq),
+    frequencyCount: count(index?.counts?.termMeta?.freq) + count(index?.counts?.kanjiMeta?.freq),
     pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
     kanjiCount: count(index?.counts?.kanji?.total),
     mediaCount: count(index?.counts?.media?.total),

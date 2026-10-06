@@ -4019,6 +4019,30 @@
       glyph.lang = "ja";
       glyph.textContent = kanji.character;
       navigation.appendChild(glyph);
+      // kanji_meta_bank frequencies, shown as the term view shows a term's.
+      const kanjiFrequencies = Array.isArray(kanji.frequencies) ? kanji.frequencies : [];
+      const frequencyCapsule = documentRef.createElement("div");
+      frequencyCapsule.className = "gsm-hoshidicts-primary-metadata-capsule gsm-hoshidicts-kanji-frequencies";
+      frequencyCapsule.setAttribute("role", "group");
+      frequencyCapsule.setAttribute("aria-label", "Kanji frequencies");
+      function renderKanjiFrequencies(context) {
+        const tags = createFrequencyTags(
+          documentRef,
+          { term: { frequencies: kanjiFrequencies } },
+          Array.isArray(context.dictionaryPresentation) ? context.dictionaryPresentation : [],
+          Infinity,
+          context.averageFrequency === true,
+          context.showFrequencyDictionaryNames === true,
+          context.compactFrequencyNumbers === true
+        );
+        const frequencies = documentRef.createElement("span");
+        frequencies.className = "gsm-hoshidicts-primary-frequencies";
+        frequencies.append(...tags);
+        frequencyCapsule.replaceChildren(frequencies);
+        frequencyCapsule.hidden = tags.every(tag => tag.hidden);
+      }
+      renderKanjiFrequencies(renderOptions);
+      navigation.appendChild(frequencyCapsule);
       for (const previous of noteControls.actions.querySelectorAll(
         ":scope > .gsm-hoshidicts-popup-close, :scope > .gsm-hoshidicts-kanji-back"
       )) previous.remove();
@@ -4122,6 +4146,7 @@
         dictionaryDisplayNames = next.dictionaryDisplayNames;
         if (selected.key !== nextSelected.key) renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(nextSelected));
         selected = nextSelected;
+        renderKanjiFrequencies(renderOptions);
         let changed = false;
         if (sameMembers) {
           for (const heading of contentScroll.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
