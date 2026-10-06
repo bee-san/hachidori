@@ -164,17 +164,23 @@ async function sample(variant, repetition) {
     await page.bringToFront();
   }
   async function ready(count = fixture.packages) {
-    return page.waitForFunction(async (count, desiredIndex) => {
-      // A startup message can lose its reply while Chrome activates/replaces
-      // extension contexts. Retry observations; never retry a mutation.
-      let timer;
-      const s = await Promise.race([chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
-        new Promise(done => { timer = setTimeout(() => done(null), 1000); })]);
-      clearTimeout(timer);
-      if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
-      return s?.ok && s.ready && !s.loading && s.lowMemory && s.dictionaryCount === count*4
-        && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
-    }, { timeout: 600000, polling: 50 }, count, desiredIndex).then(handle => handle.jsonValue());
+    try {
+      return await page.waitForFunction(async (count, desiredIndex) => {
+        // A startup message can lose its reply while Chrome activates/replaces
+        // extension contexts. Retry observations; never retry a mutation.
+        let timer;
+        const s = await Promise.race([chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+          new Promise(done => { timer = setTimeout(() => done(null), 1000); })]);
+        clearTimeout(timer);
+        if (s) globalThis.benchmarkLastStatus = s;
+        if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
+        return s?.ok && s.ready && !s.loading && s.lowMemory && s.dictionaryCount === count*4
+          && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
+      }, { timeout: 600000, polling: 50 }, count, desiredIndex).then(handle => handle.jsonValue());
+    } catch (error) {
+      const last = await page.evaluate(() => globalThis.benchmarkLastStatus ?? null).catch(() => null);
+      throw new Error(`${error.message}; last engine status: ${JSON.stringify(last)}`, { cause: error });
+    }
   }
   try {
     await launch();
