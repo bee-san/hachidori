@@ -22,7 +22,7 @@ function fixture(saved) {
     fields: { expression: "Expression" },
   } });
   let state = copy(saved), clock = 1_800_000, rows = [["猫", true, [9, 7]]];
-  let held = null, failure = null, writeFailure = false, storageTail = Promise.resolve(), writing = false;
+  let held = null, failure = null, writeFailure = false, storageTail = Promise.resolve(), writing = false, reads = 0;
   const refreshes = [], lookups = [], batches = [], alarms = new Map();
   const dependencies = {
     async fetchRows(source) {
@@ -41,7 +41,10 @@ function fixture(saved) {
       return expressions.map(expression => invoke.answer(expression));
     },
     readOptions: async () => copy(options),
-    readState: async () => copy(state),
+    readState: async () => {
+      reads += 1;
+      return copy(state);
+    },
     updateState(update) {
       const run = storageTail.then(async () => {
         writing = true;
@@ -76,6 +79,7 @@ function fixture(saved) {
     invoke(answer) { return { answer }; },
     get options() { return copy(options); },
     get state() { return copy(state); },
+    get reads() { return reads; },
     setRows(value) { rows = copy(value); },
     fail(value = new Error("Anki closed")) { failure = value; },
     failWrites(value = true) { writeFailure = value; },
@@ -249,6 +253,18 @@ test("word status answers a batch from the cached rows at their row revision, wi
   assert.deepEqual(await f.service.statuses({ ...f.options.anki, model: "" }, ["猫"]), { revision: 3, statuses: null });
   assert.equal(f.lookups.length, asked, "word status must stay cache-only");
   assert.equal(f.batches.length, 0);
+});
+
+test("word status answers from the rows held in memory without reading the stored index", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  // A finished pull schedules its own follow-up check, which reads the state.
+  await f.service.reconcile();
+  const reads = f.reads;
+  for (let index = 0; index < 5; index++) {
+    assert.deepEqual(await f.service.statuses(f.options.anki, ["猫", "犬"]), { revision: 1, statuses: ["known", "unknown"] });
+  }
+  assert.equal(f.reads, reads, "a status batch must not read and normalise the whole stored index");
 });
 
 test("the complete index refreshes every 30 minutes and retries if a post-write update races its pull", async () => {
