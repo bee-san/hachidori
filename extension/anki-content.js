@@ -22,6 +22,32 @@
   const netflixReason = reason => Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason;
   const heldMedia = media => media && typeof media.filename === "string" && media.filename
     ? { token: media.token, filename: media.filename } : null;
+  // `wanted` is { audio, gif }; `outcome` collects the warnings and the
+  // captureUnavailable kinds while a recording is applied.
+  function markUnavailable(outcome, wanted, reason) {
+    if (wanted.audio) {
+      outcome.warnings.push(`Sentence audio: ${netflixReason(reason)}`);
+      outcome.captureUnavailable.push("sentence-audio");
+    }
+    if (wanted.gif) outcome.captureUnavailable.push("gif");
+  }
+  function applyRecordedMedia(record, outcome, wanted, recorded) {
+    if (wanted.audio) {
+      const audio = heldMedia(recorded?.audio);
+      if (audio) record.sentenceAudio = audio;
+      else {
+        outcome.warnings.push(`Sentence audio: ${netflixReason(typeof recorded?.audio?.unavailable === "string"
+          ? recorded.audio.unavailable : "no audio was recorded.")}`);
+        outcome.captureUnavailable.push("sentence-audio");
+      }
+    }
+    // The GIF is held under its own token, or {gif} falls back to the screenshot.
+    if (wanted.gif) {
+      const gif = heldMedia(recorded?.gif);
+      if (gif) record.gif = gif;
+      else outcome.captureUnavailable.push("gif");
+    }
+  }
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
       .filter(control => !control.hidden);
@@ -439,30 +465,6 @@
     //
     // `wanted` is { audio, gif }; `outcome` collects the warnings and the
     // captureUnavailable kinds while each recorded item is applied to `record`.
-    function markUnavailable(outcome, wanted, reason) {
-      if (wanted.audio) {
-        outcome.warnings.push(`Sentence audio: ${netflixReason(reason)}`);
-        outcome.captureUnavailable.push("sentence-audio");
-      }
-      if (wanted.gif) outcome.captureUnavailable.push("gif");
-    }
-    function applyRecordedMedia(record, outcome, wanted, recorded) {
-      if (wanted.audio) {
-        const audio = heldMedia(recorded?.audio);
-        if (audio) record.sentenceAudio = audio;
-        else {
-          outcome.warnings.push(`Sentence audio: ${netflixReason(typeof recorded?.audio?.unavailable === "string"
-            ? recorded.audio.unavailable : "no audio was recorded.")}`);
-          outcome.captureUnavailable.push("sentence-audio");
-        }
-      }
-      // The GIF is held under its own token, or {gif} falls back to the screenshot.
-      if (wanted.gif) {
-        const gif = heldMedia(recorded?.gif);
-        if (gif) record.gif = gif;
-        else outcome.captureUnavailable.push("gif");
-      }
-    }
     async function recordNetflixMedia(record, outcome, wanted, cue) {
       try {
         const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, { gif: wanted.gif }));
