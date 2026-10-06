@@ -2142,7 +2142,15 @@ appears beside it (#501): a missing recording, a failed source and a cancelled
 request all return it to Play, whether autoplay or a click started it.
 Settings → Audio → Test explains why a source fails, and the chooser shows each
 source's discovery error. Shift-click, right-click or Down opens
-the source/name chooser; Escape closes it before dismissing the popup. A choice
+the source/name chooser beside that button: below it, or above when only that side
+has room, at least 6px inside its popup and shortened to the room there, so a long
+list scrolls inside it. The chooser is the popup's own out-of-flow child, placed in
+popup pixels with the reader's scale and browser-zoom conversion, so opening it
+moves no definition. It follows its button when a pane scrolls or the popup is
+placed or resized, and closes when the button is hidden or scrolled away, its owner
+retires, or a press lands elsewhere in the reader. Escape closes it before
+dismissing the popup. While it is open, a child pane over it closes unless a Note
+draft protects it, and definition scans wait. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
 after expiry. Failed choices are forgotten so ordinary playback can fall back.
