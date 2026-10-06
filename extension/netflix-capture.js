@@ -166,7 +166,7 @@ function readStream(current) {
 // timestamp is in the page's time (performance.timeOrigin) on current Chrome
 // and in a raw monotonic clock on older builds; the first frame decides which,
 // as the audio clock does.
-export function createVideoFrameClock({ timeOrigin, now }) {
+function createVideoFrameClock({ timeOrigin, now }) {
   let domainMs = null;
   return {
     wallMs(timestampUs) {
