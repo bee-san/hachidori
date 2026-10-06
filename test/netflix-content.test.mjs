@@ -255,28 +255,38 @@ function playing(t, options) {
     layout: (node, rect) => rects.set(node, [rect]) };
 }
 
-// Mines the line: the page seeks and plays the clip, lets the test act while
-// it plays, then restores the paused video and answers. The restoring pause
-// and seek report themselves after the answer, as the element's events do.
-async function mine(f, during = () => {}) {
+// Mines the line as the page replays it: seek and play the clip, let the test
+// act while it plays, then restore the video's paused state (paused when the
+// reader asks to keep it so) and answer. The restore's events report
+// themselves after the answer, as the element's do. `finishing` runs when the
+// reader asks the worker to finish, while the recorder still runs. Resolves
+// with the replay command.
+async function mine(f, { during = () => {}, finishing = () => {} } = {}) {
+  let replay = null;
   const replayPage = event => {
     const command = JSON.parse(event.detail);
     if (command.type !== "replay") return;
+    replay = command;
+    const playOn = !f.paused() && command.keepPaused !== true;
     setTimeout(() => {
       f.media("seeking");
       f.media("seeked");
       f.media("play");
       during();
-      f.setPaused(true);
+      f.setPaused(!playOn);
       f.post({ kind: "replay", id: command.id, ok: true, anchors: [[5000, 950], [5100, 1050]] });
-      setTimeout(() => { for (const type of ["pause", "seeking", "seeked"]) f.fire(type); }, 0);
+      setTimeout(() => { for (const type of ["pause", "seeking", "seeked", ...(playOn ? ["play"] : [])]) f.fire(type); }, 0);
     }, 0);
   };
   f.window.document.addEventListener(COMMAND_EVENT, replayPage);
-  const send = async type => (type === "hd_netflix_capture_start" ? { sessionId: "s1", padMs: 250 }
-    : { token: "t1", filename: "hachidori-sentence-audio-a.wav" });
+  const send = async type => {
+    if (type === "hd_netflix_capture_start") return { sessionId: "s1", padMs: 250 };
+    finishing();
+    return { token: "t1", filename: "hachidori-sentence-audio-a.wav" };
+  };
   try {
-    return await f.netflix.record({ movieId: "81000001", startMs: 1000, endMs: 3500 }, { send, templateId: "default" });
+    await f.netflix.record({ movieId: "81000001", startMs: 1000, endMs: 3500 }, { send, templateId: "default" });
+    return replay;
   } finally {
     f.window.document.removeEventListener(COMMAND_EVENT, replayPage);
     await settle();
@@ -347,11 +357,11 @@ test("a replay is never paused or resumed, and the hover pause it interrupted st
   viewer.netflix.setHoverPause(true);
   viewer.media("pause");
   viewer.move(ON_LINE);
-  await mine(viewer, () => {
+  await mine(viewer, { during: () => {
     viewer.move(AWAY);
     viewer.move(ON_LINE);
     viewer.move(AWAY);
-  });
+  } });
   assert.deepEqual(viewer.hoverCommands(), []);
   assert.equal(viewer.paused(), true);
 
@@ -366,17 +376,47 @@ test("a replay is never paused or resumed, and the hover pause it interrupted st
   held.popup(false);
   assert.deepEqual(held.hoverCommands(), ["pause", "resume"]);
 
-  // Leaving while the replay plays resumes once it is over.
+  // Leaving while the line is recorded resumes once the recorder has stopped:
+  // Chrome mutes the tab until then.
   const left = playing(t);
   left.netflix.setHoverPause(true);
   left.move(ON_LINE);
   left.popup(true);
-  await mine(left, () => {
-    left.popup(false);
-    left.move(AWAY);
-    assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes during the replay");
+  await mine(left, {
+    during: () => {
+      left.popup(false);
+      left.move(AWAY);
+      assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes during the replay");
+    },
+    finishing: () => assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes while the recorder runs"),
   });
   assert.deepEqual(left.hoverCommands(), ["pause", "resume"]);
+});
+
+test("mining leaves the video paused until the recording is over and the pointer has left, even if the viewer played it", async t => {
+  const f = playing(t);
+  f.netflix.setHoverPause(true);
+  f.move(ON_LINE);
+  await settle();
+  f.media("play");
+  f.popup(true);
+  assert.equal((await mine(f)).keepPaused, true, "the page is asked to restore the video paused");
+  assert.equal(f.paused(), true);
+  f.move(AWAY);
+  assert.deepEqual(f.hoverCommands(), ["pause"], "the popup still holds it");
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
+  await settle();
+  // Mined with the pointer away, it plays on once the recorder has stopped, not before.
+  await mine(f, { finishing: () => assert.deepEqual(f.hoverCommands(), ["pause", "resume"]) });
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume", "resume"]);
+  assert.equal(f.paused(), false);
+  await settle();
+  // Without hover pause, the replay restores the viewer's state as it was.
+  f.netflix.setHoverPause(false);
+  assert.equal((await mine(f)).keepPaused, false);
+  assert.equal(f.paused(), false);
+  assert.equal(f.hoverCommands().length, 3);
 });
 
 test("a new /watch/ page drops the resume, and nothing pauses while the reader has hover pause off", async t => {

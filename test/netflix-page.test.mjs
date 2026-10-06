@@ -254,3 +254,20 @@ test("pause and resume go through Netflix's player, wait for a replay, and malfo
   page({ video: playing.video }).command({ type: "pause" });
   assert.equal(playing.video.paused, false);
 });
+
+test("a replay asked to keep the video paused restores a playing video paused", async () => {
+  const { calls, video, player } = playerFixture({ paused: false, rate: 1.5 });
+  const { posted, command } = page({ player, video });
+  command({ type: "replay", id: "r1", startMs: 500, endMs: 550, padMs: 25, keepPaused: true });
+  assert.equal((await replayed(posted)).ok, true);
+  assert.deepEqual(calls.map(([name]) => name), ["seek", "play", "pause", "seek"], "restored, and not played on");
+  assert.equal(video.paused, true);
+  assert.equal(video.playbackRate, 1.5);
+  // Only `true` keeps it paused.
+  command({ type: "resume" });
+  posted.length = 0;
+  command({ type: "replay", id: "r2", startMs: 500, endMs: 550, padMs: 25, keepPaused: "yes" });
+  assert.equal((await replayed(posted)).ok, true);
+  assert.equal(calls.at(-1)[0], "play");
+  assert.equal(video.paused, false);
+});
