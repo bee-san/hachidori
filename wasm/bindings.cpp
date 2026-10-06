@@ -487,23 +487,24 @@ struct TextIndex {
 
 // The number of bytes a UTF-8 code point starting with `lead` occupies, or 0
 // when `lead` is not a valid leading byte.
-size_t utf8_width(unsigned char lead) {
-  if (lead < 0x80) return 1;
-  if (lead >= 0xC2 && lead < 0xE0) return 2;
-  if (lead >= 0xE0 && lead < 0xF0) return 3;
-  if (lead >= 0xF0 && lead < 0xF5) return 4;
+size_t utf8_width(std::byte lead) {
+  const auto value = std::to_integer<unsigned>(lead);
+  if (value < 0x80) return 1;
+  if (value >= 0xC2 && value < 0xE0) return 2;
+  if (value >= 0xE0 && value < 0xF0) return 3;
+  if (value >= 0xF0 && value < 0xF5) return 4;
   return 0;
 }
 
 bool is_utf8_continuation(char byte) {
-  return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
+  return (static_cast<std::byte>(byte) & std::byte{0xC0}) == std::byte{0x80};
 }
 
 TextIndex index_text(std::string_view text) {
   TextIndex index;
   size_t utf16 = 0;
   for (size_t i = 0; i < text.size();) {
-    const size_t width = utf8_width(static_cast<unsigned char>(text[i]));
+    const size_t width = utf8_width(static_cast<std::byte>(text[i]));
     if (width == 0 || i + width > text.size()
         || !std::ranges::all_of(text.substr(i + 1, width - 1), is_utf8_continuation)) {
       throw std::invalid_argument("segment text is not valid UTF-8");
