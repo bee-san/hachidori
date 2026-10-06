@@ -29,7 +29,7 @@ import {
   browserName, forwardableRequest, mutatingForwardedRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
 import { createUploadHost, uploadImportDecision } from "./linked-import.js";
-import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
+import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm, resetLookupStats } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -874,6 +874,16 @@ function lookupStatistics(message, record) {
   );
 }
 
+// Rows outside the committed descriptor's generation are unreachable.
+async function removeObsoleteLookupStatsRows() {
+  const stored = await chrome.storage.local.get(null);
+  const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+  assertLookupStatsDescriptor(descriptor);
+  const prefix = lookupStatsPrefix(descriptor);
+  const unused = Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix));
+  if (unused.length > 0) await chrome.storage.local.remove(unused);
+}
+
 function assertBackupEngineSender(sender) {
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
     throw new Error("Backup restore and cleanup must be requested by the dictionary engine.");
@@ -1038,13 +1048,24 @@ const WORKER_HANDLERS = {
   hd_lookup_stats_read(message) { return lookupStatistics(message, false); },
   async hd_lookup_stats_cleanup(_message, sender) {
     assertBackupEngineSender(sender);
-    const stored = await chrome.storage.local.get(null);
-    const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
-    assertLookupStatsDescriptor(descriptor);
-    const prefix = lookupStatsPrefix(descriptor);
-    const unused = Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix));
-    if (unused.length > 0) await chrome.storage.local.remove(unused);
+    await removeObsoleteLookupStatsRows();
     return {};
+  },
+  // Runs in the storage queue, so each lookup is recorded wholly before or
+  // after the new generation; the old rows are unreachable once it commits.
+  async hd_lookup_stats_reset(_message, sender) {
+    if (!ankiSettingsSender(sender)) throw new Error("Lookup counts can be reset only from Hachidori Settings.");
+    // A linked install mirrors the host's counts; resetting the mirror would not reset them.
+    if (sharingLinked) throw new Error("Lookup counts belong to the linked Hachidori. Unlink to reset this browser's counts.");
+    const stored = await chrome.storage.local.get(LOOKUP_STATS_KEY);
+    const descriptor = resetLookupStats(stored[LOOKUP_STATS_KEY]);
+    await writeLocalState({ [LOOKUP_STATS_KEY]: descriptor });
+    try {
+      await removeObsoleteLookupStatsRows();
+    } catch (error) {
+      console.warn("hachidori: lookup counts were reset; the replaced rows could not be removed yet:", describe(error));
+    }
+    return { descriptor };
   },
   async hd_backup_download(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {

@@ -1033,6 +1033,67 @@ async function lookupStatsStage() {
     malformedOptions.statistics?.lookupCount === 1 && !("seenCount" in malformedOptions.statistics)
       && storage.sets.length === beforeMalformed + 1, JSON.stringify(malformedOptions));
 
+  // Settings → Reading → Reset lookup counts. Holding the storage queue fixes
+  // which side of the reset each lookup lands on.
+  const settingsSender = { id: "hachidorismokeextensionid", url: `${EXTENSION_ORIGIN}/settings.html` };
+  const reset = (sender = settingsSender) =>
+    bus.sendMessage("lookup-settings", { target: "hoshidicts-worker", type: "hd_lookup_stats_reset" }, sender);
+  const tick = () => new Promise(done => setTimeout(done, 0));
+  const holdStorage = () => {
+    let release;
+    backgroundContext.lookupStatsGate = new Promise(resolveGate => { release = resolveGate; });
+    const held = runInContext("serialiseStorage(() => lookupStatsGate)", backgroundContext);
+    return async () => { release(); await held; };
+  };
+  const rowKeys = () => [...storage.raw.keys()].filter(key => key.startsWith("lookupStats:"));
+  const unrelated = () => ["options", "dictionaryState", "customDictionarySource"]
+    .map(key => JSON.stringify(storage.raw.get(key) ?? null)).join();
+  const unrelatedBefore = unrelated();
+  const original = structuredClone(storage.raw.get("lookupStats"));
+  const fromPage = await send("hd_lookup_stats_reset");
+  await runInContext("sharingLinked = true", backgroundContext);
+  const whileLinked = await reset();
+  await runInContext("sharingLinked = false", backgroundContext);
+  const setsBeforeResets = storage.sets.length;
+  let release = holdStorage();
+  const recordedBefore = send("hd_lookup_stats_record", fields);
+  await tick();
+  const firstReset = reset();
+  await tick();
+  await release();
+  const [before, first] = await Promise.all([recordedBefore, firstReset]);
+  const readAfterFirst = await send("hd_lookup_stats_read", fields);
+  const rowsAfterFirst = rowKeys();
+  release = holdStorage();
+  const secondReset = reset();
+  await tick();
+  const recordedAfter = send("hd_lookup_stats_record", fields);
+  await tick();
+  await release();
+  const [second, after] = await Promise.all([secondReset, recordedAfter]);
+  const newRow = lookupStatsKey(second.descriptor, after.statistics);
+  // Each reset writes only the descriptor; neither lookup writes a merged row.
+  const writes = storage.sets.slice(setsBeforeResets);
+  check("Settings resets lookup counts to a new empty generation that orders lookups before or after it",
+    fromPage.ok === false && fromPage.error.includes("Settings")
+      && whileLinked.ok === false && whileLinked.error.includes("linked")
+      && before.ok && before.statistics.lookupCount === 26 && before.descriptor.generation === original.generation
+      && first.ok && first.descriptor.revision === before.descriptor.revision + 1
+      && ![original.generation, null].includes(first.descriptor.generation)
+      && readAfterFirst.statistics.lookupCount === 0
+      && JSON.stringify(readAfterFirst.descriptor) === JSON.stringify(first.descriptor)
+      && rowsAfterFirst.length === 0
+      && second.ok && second.descriptor.revision === first.descriptor.revision + 1
+      && second.descriptor.generation !== first.descriptor.generation
+      && after.statistics.lookupCount === 1 && after.descriptor.generation === second.descriptor.generation
+      && after.descriptor.revision === second.descriptor.revision + 1
+      && JSON.stringify(rowKeys()) === JSON.stringify([newRow])
+      && JSON.stringify(writes) === JSON.stringify([
+        ["lookupStats", lookupStatsKey(original, before.statistics)], ["lookupStats"], ["lookupStats"], ["lookupStats", newRow],
+      ])
+      && unrelated() === unrelatedBefore,
+    JSON.stringify({ fromPage, whileLinked, before, first, readAfterFirst, rowsAfterFirst, second, after, writes }));
+
   const localBus = makeBus(), localStorage = makeStorage();
   const localChrome = makeChrome("lookup-stats-local-worker", localBus, localStorage);
   await localChrome.storage.local.set({ options: { revision: 1, showLookupCounts: true,
