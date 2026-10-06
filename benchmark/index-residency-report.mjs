@@ -2,8 +2,9 @@
 // Summarises index-residency.mjs and index-residency-native.mjs output:
 //   node benchmark/index-residency-report.mjs <results-directory>...
 // Each directory gains summary.json and summary.md; the tables are printed.
-// Latency percentiles pool every query of every repetition for one pass;
-// other figures are the median across repetitions.
+// Every figure is the median across repetitions of that repetition's value,
+// so one repetition disturbed by the host does not move the result. Latency
+// percentiles are per repetition over its queries; `p50Range` keeps the spread.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,12 +27,20 @@ const percentile = (values, p) => {
   return sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : null;
 };
 const sum = values => values.reduce((total, value) => total + value, 0);
-const latency = values => ({ p50: percentile(values, 0.5), p95: percentile(values, 0.95), p99: percentile(values, 0.99),
-  throughputPerSecond: values.length ? values.length / (sum(values) / 1000) : null, count: values.length });
+// passes: one { latencies, wallMs? } per repetition. Throughput is lookups per
+// second of the pass's wall time, or of its summed latencies without one.
+function latency(passes) {
+  const per = passes.map(({ latencies, wallMs }) => ({ p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95),
+    p99: percentile(latencies, 0.99), throughput: latencies.length / ((wallMs ?? sum(latencies)) / 1000) }));
+  const p50s = per.map(item => item.p50);
+  return { p50: median(p50s), p95: median(per.map(item => item.p95)), p99: median(per.map(item => item.p99)),
+    throughputPerSecond: median(per.map(item => item.throughput)), p50Range: [Math.min(...p50s), Math.max(...p50s)],
+    queries: passes[0]?.latencies.length ?? 0 };
+}
 
 function browserVariant(variant, rows, { fixture, defaultBudgetMiB }) {
-  const pass = n => rows.flatMap(row => row.passes[n].latencies);
-  const engine = n => rows.flatMap(row => row.passes[n].native);
+  const pass = n => rows.map(row => ({ latencies: row.passes[n].latencies, wallMs: row.passes[n].wallMs }));
+  const engine = n => rows.map(row => ({ latencies: row.passes[n].native }));
   const memory = n => rows.map(row => row.passes[n].memory);
   const residentHash = item => item.residentHashBytes ?? (item.hashIndexStorage === "paged" ? 0 : null);
   const fixtureHashBytes = fixture.hashTableBytes
@@ -41,10 +50,8 @@ function browserVariant(variant, rows, { fixture, defaultBudgetMiB }) {
     variant, label: label(variant, defaultBudgetMiB), samples: rows.length,
     startupMs: median(rows.map(row => row.restartMs)),
     firstLookupMs: median(rows.map(row => row.passes[0].latencies[0])),
-    cold: { roundTrip: latency(pass(0)), engine: latency(engine(0)),
-      samplesP50: rows.map(row => percentile(row.passes[0].latencies, 0.5)) },
-    warm: { roundTrip: latency(pass(1)), engine: latency(engine(1)),
-      samplesP50: rows.map(row => percentile(row.passes[1].latencies, 0.5)) },
+    cold: { roundTrip: latency(pass(0)), engine: latency(engine(0)) },
+    warm: { roundTrip: latency(pass(1)), engine: latency(engine(1)) },
     // main reports no hash residency field: every hash table is resident.
     residentHashBytes: median(rows.map(row => {
       const values = row.fresh.dictionaries.map(residentHash);
@@ -64,13 +71,13 @@ function browserVariant(variant, rows, { fixture, defaultBudgetMiB }) {
     reimportMs: median(rows.map(row => row.reimport?.ms)),
     disabledRestartMs: median(rows.map(row => row.disabledRestartMs)),
     recycleMs: median(rows.map(row => row.recycleMs)),
-    hoverFirst: percentile(rows.flatMap(row => row.hover.map(item => item.first)), 0.5),
-    hoverComplete: percentile(rows.flatMap(row => row.hover.map(item => item.complete)), 0.5),
+    hoverFirst: median(rows.map(row => percentile(row.hover.map(item => item.first), 0.5))),
+    hoverComplete: median(rows.map(row => percentile(row.hover.map(item => item.complete), 0.5))),
   };
 }
 
 function nativeVariant(mode, rows) {
-  const pass = n => rows.flatMap(row => row.passes[n]);
+  const pass = n => rows.map(row => ({ latencies: row.passes[n] }));
   return { variant: mode, label: mode === "paged" ? "all paged (native)" : "resident (native)", samples: rows.length,
     cold: { engine: latency(pass(0)) }, warm: { engine: latency(pass(1)) },
     warmIndexReads: median(rows.map(row => row.cache?.[1]?.indexes.reads - row.cache?.[0]?.indexes.reads)) };
