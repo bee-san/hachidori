@@ -72,7 +72,7 @@ const SUMMARISERS = {
 export function summariseStorage(items) {
   const keys = {};
   const lookupRows = { count: 0, bytes: 0 };
-  for (const key of Object.keys(items).sort()) {
+  for (const key of Object.keys(items).sort((left, right) => left.localeCompare(right))) {
     const value = items[key];
     if (key.startsWith(LOOKUP_STATS_ROW_PREFIX)) {
       lookupRows.count += 1;
@@ -150,7 +150,7 @@ export async function collectDebugInfo({ chrome, window, send, workerTarget, con
 }
 
 export function debugInfoFilename(date) {
-  const stamp = date.toISOString().replace(/\.\d+Z$/u, "Z").replace(/[:]/gu, "-");
+  const stamp = date.toISOString().replace(/\.\d+Z$/u, "Z").replaceAll(":", "-");
   return `hachidori-debug-${stamp}.json`;
 }
 
