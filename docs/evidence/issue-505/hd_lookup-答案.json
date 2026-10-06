@@ -1,0 +1,145 @@
+{
+  "results": [
+    {
+      "matched": "答案",
+      "deinflected": "答案",
+      "trace": [],
+      "term": {
+        "expression": "答案",
+        "reading": "とうあん",
+        "rules": "",
+        "score": 0,
+        "glossaries": [
+          {
+            "dictionary": "答案-terms",
+            "glossary": "[\"answer (to an examination question)\",\"examination paper\"]",
+            "definitionTags": "n",
+            "termTags": ""
+          }
+        ],
+        "frequencies": [
+          {
+            "dictionary": "Frequency 01",
+            "frequencies": [
+              {
+                "value": 1007,
+                "displayValue": "1007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 02",
+            "frequencies": [
+              {
+                "value": 2007,
+                "displayValue": "2007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 03",
+            "frequencies": [
+              {
+                "value": 3007,
+                "displayValue": "3007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 04",
+            "frequencies": [
+              {
+                "value": 4007,
+                "displayValue": "4007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 05",
+            "frequencies": [
+              {
+                "value": 5007,
+                "displayValue": "5007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 06",
+            "frequencies": [
+              {
+                "value": 6007,
+                "displayValue": "6007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 07",
+            "frequencies": [
+              {
+                "value": 7007,
+                "displayValue": "7007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 08",
+            "frequencies": [
+              {
+                "value": 8007,
+                "displayValue": "8007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 09",
+            "frequencies": [
+              {
+                "value": 9007,
+                "displayValue": "9007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 10",
+            "frequencies": [
+              {
+                "value": 10007,
+                "displayValue": "10007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 11",
+            "frequencies": [
+              {
+                "value": 11007,
+                "displayValue": "11007"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 12",
+            "frequencies": [
+              {
+                "value": 12007,
+                "displayValue": "12007"
+              }
+            ]
+          },
+          {
+            "dictionary": "monogatari",
+            "frequencies": [
+              {
+                "value": 13337,
+                "displayValue": "13337/37459"
+              }
+            ]
+          }
+        ],
+        "pitches": []
+      },
+      "preprocessorSteps": 0
+    }
+  ],
+  "dictionaryCount": 14
+}
