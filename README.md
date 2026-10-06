@@ -134,6 +134,15 @@ changing and may be removed:
   plays on once the pointer has left the line and Hachidori's popup, unless you
   played, paused or skipped it yourself in the meantime. Adding a note leaves it
   paused until the line is recorded and the pointer has left.
+- **Word highlighting** — mark the Japanese words on every page by their Anki
+  status, like Migaku: unknown words (no card) get a solid line, learning words
+  a dashed one and, if you turn them on, known words (a mature card) a dotted
+  one, in your popup theme's colours. Turn it on under **Settings → Reading →
+  Word highlighting**. Your dictionaries split the page into words in the
+  browser and the status comes from the Anki index Hachidori keeps for the
+  first Anki Template, so opening a page never contacts Anki; adding a word from
+  the popup re-marks every copy of it at once. The page's markup is not
+  changed, but its own scripts can read which words are marked.
 
 
 # Opinionated

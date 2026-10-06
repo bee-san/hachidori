@@ -782,7 +782,9 @@ step, or `null` for modifiers only), `modifiers`, `scopes` and `enabled`. Only
 actions that map onto an existing Hachidori control are offered. Close, entry
 and dictionary navigation, Back, Add note, View notes, Play audio, Play audio
 from source, Scan selected text, Scan text at selection and Toggle option are
-available. The defaults are Yomitan's keys for those actions: Escape,
+available, and Hachidori's own Toggle word highlights, in the page scope, which
+shows or hides [word highlighting](#word-highlighting)'s marks in a frame. The
+defaults are Yomitan's keys for those actions: Escape,
 Alt+PageUp/PageDown (three entries), Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B,
 Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
 entry): Yomitan's popup moves one entry per Alt+wheel event outside its
@@ -860,7 +862,7 @@ Hachidori has:
 - Open Hachidori settings, unassigned.
 - One unassigned command for each popup keybind action that needs no chosen
   argument: Close, Add to Anki, View in Anki, Play audio, the entry and
-  dictionary moves, Back, and the two selection scans.
+  dictionary moves, Back, the two selection scans and Toggle word highlights.
 
 The worker toggles `hoverEnabled` inside its storage queue with the same
 revisioned options write as the toolbar switch. A popup-action command goes to
@@ -872,7 +874,8 @@ so the browser's fullscreen layer can paint it; on exit the host returns to the
 document body. Replaced elements and open shadow-root hosts use the body fallback,
 where the fullscreen layer may obscure the popup. Every frame's reader runs the
 matching keybind action, with a count of one for entry moves. Only a frame with
-an open popup, or a selection for the scans, acts on it. Chrome alone can change
+an open popup, or a selection for the scans, acts on it; Toggle word highlights
+toggles every frame's own marks. Chrome alone can change
 these shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
 and opens `chrome://extensions/shortcuts`.
@@ -1251,8 +1254,8 @@ connecting and reconnecting), and on unlinking. Revisions on either side of a
 signal goes to
 linked browsers over the sharing socket as a `word-status` frame; a linked
 browser forwards the batch to its host (which owns the evidence) and relays
-the host's signal to its own tabs. The reader's painting consumes this in a
-later phase.
+the host's signal to its own tabs. [Word highlighting](#word-highlighting)
+paints these statuses on the page.
 
 The selected scope is one of the exact configured note type across all decks,
 the exact configured deck and its subdecks across recognized note types, or all
@@ -1360,6 +1363,89 @@ selection. A paused notice links to the count recording toggle when recording
 is disabled. Any active condition shows the common reveal controls. The Design
 preview passes fixed count, maturity and native frequency samples through the
 same helpers, hover and timer without making lookups or Anki requests.
+
+## Word highlighting
+
+Settings → Advanced → Experimental features → **Word highlighting**
+(`options.experimental.wordHighlighting`, #520) reveals Reading → Word
+highlighting. Its **Highlight words by Anki status** (`wordHighlightEnabled`,
+off by default) is the runtime switch, together with Enable lookups; turning
+the experimental switch off turns it off in the same save and keeps the rest:
+one switch per status (`wordHighlightUnknown` and `wordHighlightLearning` on,
+`wordHighlightKnown` off) and the style (`wordHighlightStyle`: underline, text
+colour or background).
+
+`word-highlights.js` runs in every frame beside `content.js`, which supplies
+how page text is read: the blocks whose own text includes Japanese, and each
+block's runs as a hover scan reads them, with ruby readings and other opaque
+text left out, whitespace collapsed and CJK segment breaks dropped. A run ends
+where a hovered word ends, at a `<br>`, a block separator, a nested block, a
+control or a preserved line break. Text in editors and text fields, inside open
+shadow roots and Google Docs' imposter is not marked.
+
+An `IntersectionObserver` with a margin of one viewport watches the blocks,
+and a `MutationObserver` over the document notices text that arrives, changes or
+leaves. A block within the margin has its run boundaries found in one walk; the
+runs within the margin themselves are found by bisection along the block's
+direction (down, or across for vertical text; a block set in columns is checked
+run by run), at most every 100 ms while the page scrolls, and only their
+characters are read. So a long page, or one huge block such as an Aozora Bunko
+novel's `<br>`-separated lines, keeps ranges only near the viewport. That
+matters beyond the work saved: Chrome revalidates every registered range
+whenever any highlight changes, the hover's source highlight included. Text that
+leaves the margin keeps no ranges, and its segmentation stays cached.
+
+Each run is cut into sentences of at most 128 code units, cut at a clause break,
+since a hover can wait behind the chunk being segmented. They go through
+`hd_segment` in batches of up to 32 chunks or 2,048 code units, one batch in
+flight per frame, and are cached by their exact text (the latest 4,096), so
+repeated texthooker lines and redrawn subtitles cost nothing. A reply from
+another engine generation is discarded with the cache. A dictionary change, or
+a scan length or frequency option change, segments the shown text again, and
+each run keeps its marks until its new segmentation arrives.
+
+Status comes from `hd_anki_word_status`. Its first request carries no
+headwords: an index with no rows for the first Template (`statuses: null`)
+leaves the page unsegmented and unmarked until the worker's change signal.
+Otherwise the headwords of the spans shown are asked in one batch:
+
+- A span takes the status of its first candidate, the popup's first result.
+  Without a card there, a candidate whose reading, or kana headword, is the
+  surface text lends its card (かわいい against 可愛い).
+- A span with no card whose alternative split runs around a function word
+  (今日は as 今日 + は), and whose content words all have cards, is marked as
+  those words. A compound of content words alone (学生 as 学 + 生) keeps its
+  own status.
+- Function words and spans without Japanese stay unmarked.
+
+`hd_anki_word_status_changed` re-reads the statuses of the words shown without
+segmenting again, unless its revision is the one already read; a newer signal
+makes an answer still in flight stale.
+
+Each status has one `Highlight` (`hd-word-unknown`, `hd-word-learning`,
+`hd-word-known`) at priority −1, so the hover's source highlight paints above
+it. A word's ranges are `StaticRange`s, one per text node it covers, so ruby
+readings stay unmarked and the page's own mutations do no range upkeep. A
+status switched off is unregistered, not recomputed. The page's DOM never
+changes: only the frame's popup host is added, once the frame shows Japanese
+text, because the marks take its palette; a frame without Japanese text near
+its viewport sends nothing. A mining screenshot unregisters the marks while it
+captures, and Toggle word highlights (a keybind action and a browser shortcut)
+hides and shows a frame's marks until it reloads or highlighting is switched
+off. The page's own scripts can read
+`CSS.highlights`, so a page can see which of its words are marked and how.
+
+`content.css` draws unknown with a solid line, learning dashed and known
+dotted, so a status never depends on colour alone. An owned document sheet
+colours them with the popup palette's error, warning and success colours, or
+the default palette's for a renderer without them, moved toward black or white
+until a line reaches 3:1 against the page background, or text 4.5:1;
+backgrounds are tinted at 34%. The page background is the body's or the root's,
+otherwise the canvas, so text a page paints on another background inside them
+gets colours legible against its main background. Under forced colours Chrome
+paints every highlight in Highlight and HighlightText whatever its author
+colours, so the sheet applies only outside `forced-colors: active` and the line
+styles tell the statuses apart.
 
 ## Lookup response boundary
 
@@ -2078,8 +2164,10 @@ under `options.experimental` and saved through the same revisioned option
 writes. A feature that names a Settings section keeps that section, its rail
 link and its picker option hidden while the switch is off; a hash request for
 the hidden section resolves to Advanced and is re-resolved when the stored
-options arrive or change. The feature's own settings stay where they were, so
-turning a switch off preserves them. The compact picker
+options arrive or change. Global search leaves the hidden section's settings
+out too. The feature's own settings stay where they were, so
+turning a switch off preserves them. Word highlighting is such a section: its
+rail link sits indented under Reading. The compact picker
 keeps all fourteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
