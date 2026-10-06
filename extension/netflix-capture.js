@@ -225,6 +225,22 @@ function readVideo(current, window) {
   });
 }
 
+// The looping GIF of the line, from the frames kept while it played, in the
+// cue's own window. A GIF the encoder cannot make is simply absent: the note
+// falls back to the screenshot, like any other capture failure.
+function encodeGif(current, { startMs, endMs, offset }) {
+  if (!current.gif || current.frames.length === 0 || current.gifWidth === 0) return undefined;
+  const placed = current.frames.map(frame => ({ data: frame.data, mediaMs: frame.wallMs - offset }));
+  const entries = selectGifFrames(placed, { startMs, endMs });
+  if (entries.length === 0) return undefined;
+  try {
+    return encodeBase64(encodeLoopingGif(entries.map(entry => ({ data: entry.frame.data, delayMs: entry.delayMs })),
+      current.gifWidth, current.gifHeight));
+  } catch {
+    return undefined;
+  }
+}
+
 export function createNetflixRecorder(window, {
   now = () => window.performance.timeOrigin + window.performance.now(),
 } = {}) {
@@ -297,22 +313,6 @@ export function createNetflixRecorder(window, {
         resolve();
       } };
     });
-  }
-
-  // The looping GIF of the line, from the frames kept while it played, in the
-  // cue's own window. A GIF the encoder cannot make is simply absent: the note
-  // falls back to the screenshot, like any other capture failure.
-  function encodeGif(current, { startMs, endMs, offset }) {
-    if (!current.gif || current.frames.length === 0 || current.gifWidth === 0) return undefined;
-    const placed = current.frames.map(frame => ({ data: frame.data, mediaMs: frame.wallMs - offset }));
-    const entries = selectGifFrames(placed, { startMs, endMs });
-    if (entries.length === 0) return undefined;
-    try {
-      return encodeBase64(encodeLoopingGif(entries.map(entry => ({ data: entry.frame.data, delayMs: entry.delayMs })),
-        current.gifWidth, current.gifHeight));
-    } catch {
-      return undefined;
-    }
   }
 
   async function finish({ startMs, endMs, anchors }) {

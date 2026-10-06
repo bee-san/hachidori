@@ -19,6 +19,9 @@
     replay: "Netflix did not finish replaying the line.",
     linked: "this browser is linked to another Hachidori, so Netflix lines are not recorded.",
   };
+  const netflixReason = reason => Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason;
+  const heldMedia = media => media && typeof media.filename === "string" && media.filename
+    ? { token: media.token, filename: media.filename } : null;
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
       .filter(control => !control.hidden);
@@ -433,60 +436,66 @@
     // the line with the reader concealed. Like the screenshot, media that
     // cannot be recorded is a warning on an otherwise ordinary note; {gif}
     // falls back to the screenshot the submission already took.
+    //
+    // `wanted` is { audio, gif }; `outcome` collects the warnings and the
+    // captureUnavailable kinds while each recorded item is applied to `record`.
+    function markUnavailable(outcome, wanted, reason) {
+      if (wanted.audio) {
+        outcome.warnings.push(`Sentence audio: ${netflixReason(reason)}`);
+        outcome.captureUnavailable.push("sentence-audio");
+      }
+      if (wanted.gif) outcome.captureUnavailable.push("gif");
+    }
+    function applyRecordedMedia(record, outcome, wanted, recorded) {
+      if (wanted.audio) {
+        const audio = heldMedia(recorded?.audio);
+        if (audio) record.sentenceAudio = audio;
+        else {
+          outcome.warnings.push(`Sentence audio: ${netflixReason(typeof recorded?.audio?.unavailable === "string"
+            ? recorded.audio.unavailable : "no audio was recorded.")}`);
+          outcome.captureUnavailable.push("sentence-audio");
+        }
+      }
+      // The GIF is held under its own token, or {gif} falls back to the screenshot.
+      if (wanted.gif) {
+        const gif = heldMedia(recorded?.gif);
+        if (gif) record.gif = gif;
+        else outcome.captureUnavailable.push("gif");
+      }
+    }
+    async function recordNetflixMedia(record, outcome, wanted, cue) {
+      try {
+        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, { gif: wanted.gif }));
+        if (typeof recorded?.unavailable === "string") markUnavailable(outcome, wanted, recorded.unavailable);
+        else applyRecordedMedia(record, outcome, wanted, recorded);
+      } catch (error) {
+        markUnavailable(outcome, wanted, error.message);
+      }
+    }
     async function prepareNetflixMedia(record, request, owns) {
       record.netflixWarning = "";
       record.sentenceAudio = null;
       record.gif = null;
-      const wantsAudio = record.decision?.sentenceAudio === true;
-      const wantsGif = record.decision?.gif === true;
-      if (!wantsAudio && !wantsGif) return request;
+      const wanted = { audio: record.decision?.sentenceAudio === true, gif: record.decision?.gif === true };
+      if (!wanted.audio && !wanted.gif) return request;
       // A linked browser records no Netflix media; {gif} keeps its screenshot.
       if (record.decision?.netflixLinked === true) {
-        if (wantsAudio) record.netflixWarning = `Sentence audio: ${NETFLIX_UNAVAILABLE.linked}`;
-        return wantsGif ? { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "gif"] } : request;
+        if (wanted.audio) record.netflixWarning = `Sentence audio: ${NETFLIX_UNAVAILABLE.linked}`;
+        return wanted.gif ? { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "gif"] } : request;
       }
-      const warnings = [];
-      let captureUnavailable = request.captureUnavailable ?? [];
-      const describe = reason => Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason;
-      const unavailable = reason => {
-        if (wantsAudio) { warnings.push(`Sentence audio: ${describe(reason)}`); captureUnavailable = [...captureUnavailable, "sentence-audio"]; }
-        if (wantsGif) captureUnavailable = [...captureUnavailable, "gif"];
-      };
+      const outcome = { warnings: [], captureUnavailable: [...(request.captureUnavailable ?? [])] };
       const cue = request.netflix?.cue;
       if (!cue) {
-        unavailable(request.netflix?.unavailable ?? "no-timeline");
+        markUnavailable(outcome, wanted, request.netflix?.unavailable ?? "no-timeline");
       } else {
         if (owns()) setStatus(record, "Recording the line…");
-        try {
-          const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, { gif: wantsGif }));
-          if (typeof recorded?.unavailable === "string") {
-            unavailable(recorded.unavailable);
-          } else {
-            if (wantsAudio) {
-              const audio = recorded?.audio;
-              if (audio && typeof audio.filename === "string" && audio.filename) {
-                record.sentenceAudio = { token: audio.token, filename: audio.filename };
-              } else {
-                warnings.push(`Sentence audio: ${describe(typeof audio?.unavailable === "string" ? audio.unavailable : "no audio was recorded.")}`);
-                captureUnavailable = [...captureUnavailable, "sentence-audio"];
-              }
-            }
-            // The GIF: held under its own token, or {gif} falls back to the screenshot.
-            if (wantsGif) {
-              const gif = recorded?.gif;
-              if (gif && typeof gif.filename === "string" && gif.filename) record.gif = { token: gif.token, filename: gif.filename };
-              else captureUnavailable = [...captureUnavailable, "gif"];
-            }
-          }
-        } catch (error) {
-          unavailable(error.message);
-        }
+        await recordNetflixMedia(record, outcome, wanted, cue);
       }
-      record.netflixWarning = warnings.join(" ");
+      record.netflixWarning = outcome.warnings.join(" ");
       const next = { ...request };
       if (record.sentenceAudio) next.sentenceAudio = record.sentenceAudio;
       if (record.gif) next.gif = record.gif;
-      if (captureUnavailable.length) next.captureUnavailable = captureUnavailable;
+      if (outcome.captureUnavailable.length) next.captureUnavailable = outcome.captureUnavailable;
       return next;
     }
     function submitted(record, result) {
