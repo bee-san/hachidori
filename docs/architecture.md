@@ -1232,21 +1232,27 @@ revision counters. Each word row is exactly `[wordKey, maturityFlag,
 sortedNoteIds]`; rows never retain note fields, note-type names, deck names or
 card data. The index is derived state and is excluded from backups.
 
-`hd_anki_word_status` answers a page's batch of headwords from the same cached
-rows, keyed only by the first Anki Template's source, without contacting Anki:
-each headword resolves to `known` (a mature row), `learning` (an immature row)
-or `unknown` (no row), and the reply carries the index's `rowRevision`. A
-source with no cached snapshot — a different Template source, or no Anki
-configuration — answers `{ revision, statuses: null }` so the reader treats word
-status as unavailable rather than a page of unknown words. The worker
-broadcasts that `rowRevision` to every reading tab (`hachidori-anki-content`,
-`hd_anki_word_status_changed`) when it changes — an add, a click-time repair or
-the 30-minute refresh — so content scripts re-read status for the headwords
-already shown rather than resegmenting. While hosting, the same revision is
-broadcast to linked browsers over the sharing socket as a `word-status` frame;
-a linked browser forwards the batch to its host (which owns the evidence) and
-relays the host's revision to its own tabs. The reader's painting consumes this
-in a later phase.
+`hd_anki_word_status` answers a page's batch of headwords from the same rows,
+held in the worker's memory and keyed only by the first Anki Template's
+source, without reading storage or contacting Anki: each headword resolves to
+`known` (a mature row), `learning` (an immature row) or `unknown` (no row), and
+the reply carries those rows' `rowRevision`. A source with no cached snapshot
+— a different Template source, or no Anki configuration — answers
+`{ revision, statuses: null }` so the reader treats word status as unavailable
+rather than a page of unknown words. The worker sends
+`hd_anki_word_status_changed` to every reading tab (`hachidori-anki-content`)
+so content scripts re-read status for the headwords already shown rather than
+resegmenting. After a row change (an add, a click-time repair or the 30-minute
+refresh) it carries the new `rowRevision`. It carries `revision: null` when
+the evidence itself changes: for another Template source (whose rows arrive
+with its first pull), when a linked browser's link completes its hello (on
+connecting and reconnecting), and on unlinking. Revisions on either side of a
+`null` count different rows and cannot be compared. While hosting, the same
+signal goes to
+linked browsers over the sharing socket as a `word-status` frame; a linked
+browser forwards the batch to its host (which owns the evidence) and relays
+the host's signal to its own tabs. The reader's painting consumes this in a
+later phase.
 
 The selected scope is one of the exact configured note type across all decks,
 the exact configured deck and its subdecks across recognized note types, or all
@@ -3003,8 +3009,9 @@ saved mapping, URL and API key for both. Every
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
 can replay it as one write. The host also broadcasts the Anki duplicate index's
-`rowRevision` as a `word-status` frame, which the relay forwards verbatim like
-any broadcast; the index itself is derived state the host never mirrors. A
+word-status signal (its `rowRevision`, or `null` after a Template source
+change) as a `word-status` frame, which the relay forwards verbatim like any
+broadcast; the index itself is derived state the host never mirrors. A
 browser install shares by default; the overlay copy (`OVERLAY_MODE`) does not.
 
 A linked install runs `extension/sharing-client.js`: one WebSocket to the
@@ -3148,7 +3155,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_apply_state` | Apply a package change, then compare-and-set it atomically. An unchanged manifest set uses native order only, retaining failed-package diagnostics and skipping load/warmup; other changes load incrementally when verified, otherwise rebuild. The reply's `loadPath` and `hd_status.lastLoadPath` report `order-only`, `incremental`, or `full`. |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
-| `hd_anki_word_status` | Read `known`/`learning`/`unknown` for a page's headwords from the first Template's cached duplicate index, with its `rowRevision`; cache-only, never contacts Anki, and forwarded to the host while linked |
+| `hd_anki_word_status` | Read `known`/`learning`/`unknown` for a page's headwords from the first Template's duplicate-index rows held in memory, with their `rowRevision`; never reads storage or contacts Anki, and forwarded to the host while linked |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) and its entry storage policy (`dictionaryEntryStorage`) and whether every package's entries are read from disk (`pagedDictionaries`); while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report the engine heap size, the paged entries' cache (`pageCacheBytes`), and each loaded package's resident bytes (its index files and, unless it is `paged`, its entries, once however many native kinds it loads as); see [memory.md](memory.md) |
