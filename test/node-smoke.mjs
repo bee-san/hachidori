@@ -2152,12 +2152,17 @@ check('most conjugated reference lines recover their dictionary forms', () => {
     `${score.conjugatedRecovered}/${score.conjugatedLines} conjugated lines recovered; expected at least 90%`);
 });
 
-check('segment honours the frequency option', () => {
-  // With the frequency dictionary disabled, ties fall back to the greedy
-  // longest-first order; the response still conforms and covers the line.
-  const disabled = JSON.stringify({ frequencyDictionary: '', frequencyOrder: 'disabled', primaryReading: '' });
-  conforms(segmentS('白い猫がいる。', 16, disabled), SEGMENT_RESPONSE, 'segment with frequency disabled');
-  eq(scall('hdw_last_error', 'string', [], []), '', 'disabled frequency is not an error');
+check('frequency breaks a tie between two-word splits in the selected order', () => {
+  // 今日本 is two words either way: 今日 + 本 (ranks 1 and 38) or 今 + 日本
+  // (75 and 42). Ranks ascending and no frequency both keep 今日 + 本; read
+  // descending, as occurrence counts, the same values choose 今 + 日本.
+  const split = (frequencyOrder) => segmentS('今日本', 16, JSON.stringify({
+    frequencyDictionary: SEGMENTATION_FREQUENCY_TITLE, frequencyOrder, primaryReading: '',
+  })).spans.map((span) => span.candidates[0].expression).join(' + ');
+  eq(split('disabled'), '今日 + 本', 'no frequency');
+  eq(split('ascending'), '今日 + 本', 'ascending ranks');
+  eq(split('descending'), '今 + 日本', 'descending occurrence counts');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'no error');
 });
 
 check('segment rejects text above the 4 KiB lookup limit', () => {
