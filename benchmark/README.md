@@ -230,6 +230,33 @@ Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
 elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
 summaries are on, so those timings include the summary walkers.
 
+## Word segmentation (#520)
+
+`segmentation.mjs` measures `hdw_segment`, the word-highlighting feature's
+engine call, on the frozen C ABI in MEMFS (like `node-smoke.mjs`), isolating the
+engine cost from messaging, OPFS and paint. It reports segmentation throughput —
+lines, segments and code points per second, with the per-line p50/p95 — and the
+latency of a hover `hdw_lookup` both on an idle engine and immediately after a
+page-sized segment call, so the cost of segmenting beside a reader's own hovers
+is visible. It runs the segment both with the frequency tie-break (`auto`) and
+without it (`disabled`).
+
+```sh
+# Self-contained: the small reference dictionary from the segmentation test set.
+node benchmark/segmentation.mjs
+
+# A real corpus: any Yomitan term archive plus a frequency archive.
+HACHIDORI_SEGMENT_TERM_ZIP=/path/to/jitendex-yomitan.zip \
+HACHIDORI_SEGMENT_FREQ_ZIP=/path/to/jiten-frequency.zip \
+  node benchmark/segmentation.mjs
+```
+
+`HACHIDORI_SEGMENT_SAMPLES` and `HACHIDORI_SEGMENT_WARMUP` size the run, and
+`HACHIDORI_WASM_VARIANT` selects the threaded-idbfs or fallback build. These are
+per-call engine timings, a lower bound on what a page costs; they exclude the
+content script's chunk batching, the hover delay and popup rendering, which the
+hover-popup harness above measures end to end.
+
 ## Linked-browser relay latency
 
 The existing two-browser Sharing suite can record healthy linked-browser lookup

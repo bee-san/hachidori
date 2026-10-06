@@ -617,7 +617,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
 `HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-117 checks, ordered by dependency. Exits 0 on success,
+180 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -750,6 +750,21 @@ descending definition scores, stable ties, fractional and negative scores, tag
 ownership, dictionary priority and reordering, and selected-dictionary lookups
 through both mapped and paged storage. The JSON response shape stays unchanged.
 
+**`hdw_segment`** (#520) is scored on a fresh engine instance holding the
+reference dictionary and its frequency dictionary from
+`segmentation-reference.mjs` (about fifty original NHK-Easy, visual-novel and
+subtitle lines with their expected split and headwords). The response shape, the
+UTF-16 offsets, the function-word flag, the known-words alternative split, the
+no-op and oversized-text paths, and the frequency option are all asserted, and
+the best split is scored against the greedy longest-match parse over the whole
+set: it must score at least as well, must fix at least one boundary the greedy
+parse gets wrong (白い猫がいる, where greedy takes がい→外 and strands る), and
+must recover the dictionary form of at least 90% of the conjugated lines. The
+run prints both scores so the owner can decide whether the whole-line split is
+worth keeping over greedy (the issue's open question), and the segment
+throughput and hover-while-segmenting latency are measured by
+`benchmark/segmentation.mjs`.
+
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 - The `hdw_lookup` failure fallback is the literal
@@ -784,7 +799,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 537 checks, all of
+full request→reply round trip per contract-C message type. 711 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
