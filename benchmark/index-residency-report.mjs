@@ -8,6 +8,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { readJsonlRecoveringTail } from "./system.mjs";
 
 const MIB = 1024 * 1024;
@@ -105,9 +106,22 @@ function comparisons(variants) {
   }));
 }
 
+// A run's output directory, or its gzip-compressed copy under benchmark/results.
+function readResult(directory, name) {
+  const plain = resolve(directory, name);
+  return existsSync(plain) ? readFileSync(plain, "utf8") : gunzipSync(readFileSync(`${plain}.gz`)).toString("utf8");
+}
+
+function readRows(directory, name) {
+  const plain = resolve(directory, name);
+  if (existsSync(plain)) return readJsonlRecoveringTail(plain);
+  if (!existsSync(`${plain}.gz`)) return [];
+  return readResult(directory, name).split("\n").filter(Boolean).map(line => JSON.parse(line));
+}
+
 export function summarise(directory) {
-  const definition = JSON.parse(readFileSync(resolve(directory, "definition.json"), "utf8"));
-  const rows = readJsonlRecoveringTail(resolve(directory, "raw.jsonl"));
+  const definition = JSON.parse(readResult(directory, "definition.json"));
+  const rows = readRows(directory, "raw.jsonl");
   const native = rows.length > 0 && "mode" in rows[0];
   const order = native ? ["resident", "paged"] : definition.variants;
   const variants = order.map(variant => {
@@ -115,7 +129,7 @@ export function summarise(directory) {
     if (!matching.length) return null;
     return native ? nativeVariant(variant, matching) : browserVariant(variant, matching, definition);
   }).filter(Boolean);
-  const failures = existsSync(resolve(directory, "failures.jsonl")) ? readJsonlRecoveringTail(resolve(directory, "failures.jsonl")) : [];
+  const failures = readRows(directory, "failures.jsonl");
   return { kind: native ? "native" : "browser", fixture: definition.fixture.label, packages: definition.fixture.packages, failures,
     hashTableBytes: definition.fixture.hashTableBytes ?? null, corpus: definition.fixture.corpus.length,
     revision: definition.revision ?? null, beforeRevision: definition.beforeRevision ?? null, variants,

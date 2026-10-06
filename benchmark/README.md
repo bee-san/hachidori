@@ -23,6 +23,9 @@ for fixture in reporter many large small; do
     --output /tmp/index-$fixture-results --before-ref origin/main --samples 3 \
     --variants baseline,resident,16,32,64,paged
 done
+TMPDIR=/path/on/a/disk node benchmark/index-residency.mjs --fixture /tmp/index-reporter \
+  --output /tmp/index-reporter-cold-results --before-ref origin/main --samples 3 \
+  --variants baseline,resident,16,32,64,paged --os-cold true
 node benchmark/index-residency-native.mjs /tmp/index-native/benchmark-lookup \
   /tmp/index-reporter /tmp/index-reporter-native
 node benchmark/index-residency-report.mjs /tmp/index-*-results /tmp/index-*-native
@@ -71,9 +74,13 @@ sampled every 100 ms from launch through the warm pass (peak) and read right
 after it (steady), before Low memory mode's idle recycle can replace the
 worker. Native timings exclude serialization; WASM call timings include it;
 round trips exclude rendering; hovers include the first and complete rendered
-results. RSS counts shared pages once per process, OS caches are uncontrolled,
-and startup has already touched header and warmup pages. See the
-[measured report](../docs/benchmarks/index-residency.md).
+results. RSS counts shared pages once per process, the OS file cache is warm
+unless `--os-cold` is set, and startup has already touched header and warmup pages. The
+[measured report](../docs/benchmarks/index-residency.md) uses the runs kept in
+`results/index-residency/<run>/`: gzip-compressed definitions, raw samples and
+failed attempts with the hostname and home directory redacted, plus each
+`summary.md`. `node benchmark/index-residency-report.mjs
+benchmark/results/index-residency/*/` reads them in place.
 
 To count the fixed corpus's exact-hit hash pages (a lower bound that excludes
 additional prefixes, Bloom false positives and entry pages):

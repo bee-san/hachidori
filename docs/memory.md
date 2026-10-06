@@ -170,9 +170,13 @@ reimport. Import threading continues to follow Low memory mode.
 
 The selector is hidden on IDBFS and single-thread hosts, which keep resident
 hashes until their read cost is measured. Stored preferences remain intact.
-The [Chrome benchmark](benchmarks/index-residency.md) compares 16, 32 and 64 MiB,
-resident and fully paged controls on synthetic small, 58-package and large-index
-libraries. It records the memory/latency tradeoff and its limits.
+The [Chrome benchmark](benchmarks/index-residency.md) compares main's resident
+hashes with 16, 32 and 64 MiB budgets and fully paged hashes on the same
+installed files. For a 58-package library shaped like a reported one, the 32 MiB
+budget shrank the engine heap from 342 MiB to 100 MiB after loading (120 MiB once
+the shared cache had filled) and made lookups about 0.5 ms (24%) slower with the
+OS file cache warm, or about 10 ms slower for the first lookups after the files
+had left it. A library whose hashes fit the budget is unchanged.
 
 For diagnostics, `hd_memory` separates `hashBytes`, `residentHashBytes`,
 `otherResidentBytes` and `residentEntryBytes` for each package. `pageCacheBytes`
