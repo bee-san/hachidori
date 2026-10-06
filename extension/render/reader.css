@@ -3348,6 +3348,11 @@ html[data-hoshidicts-theme="girlypop"],
   line-height: 1.2;
 }
 
+/* Beside the glyph, which the navigation row already centres. */
+.gsm-hoshidicts-primary-metadata-capsule.gsm-hoshidicts-kanji-frequencies {
+  margin: 0;
+}
+
 .gsm-hoshidicts-kanji-entry {
   padding: var(--hd-space-3) 0;
   border-top: 1px solid var(--hoshidicts-border);

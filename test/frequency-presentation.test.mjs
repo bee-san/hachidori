@@ -358,3 +358,28 @@ test("abbreviated frequency numbers pick the unit after rounding", t => {
   assert.deepEqual([999, 1000, 51499, 99950, 999949, 999950, 1234567, 999950000].map(api.formatCompactFrequencyNumber),
     ["999", "1k", "51.5k", "100k", "999.9k", "1m", "1.2m", "1b"]);
 });
+
+test("a kanji view shows its kanji frequencies beside the glyph and follows live display choices (#512)", t => {
+  const f = fixture(t);
+  const defaults = f.options.normaliseOptions({});
+  const kanji = { character: "日", entries: [{ dictionary: "KANJIDIC", onyomi: "ニチ", kunyomi: "ひ", tags: "",
+    definitions: ["day"], stats: [] }], frequencies: [
+    { dictionary: "Aozora Bunko", frequencies: [{ value: 4, displayValue: "4 (12732)" }] },
+    { dictionary: "JPDB Kanji", frequencies: [{ value: 6, displayValue: "6" }] },
+  ] };
+  f.view.renderKanji(kanji, f.candidate, defaults);
+  const capsule = f.popup.querySelector(".gsm-hoshidicts-kanji-navigation > .gsm-hoshidicts-kanji-frequencies");
+  assert.ok(capsule, "the frequencies sit in the kanji header");
+  assert.equal(capsule.hidden, false);
+  assert.deepEqual([...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency")].map(tag => tag.dataset.dictionary),
+    ["Aozora Bunko", "JPDB Kanji"]);
+  assert.equal(capsule.textContent, "4 (12732)6");
+  f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true });
+  assert.equal(capsule.textContent, "Aozora Bunko4 (12732)JPDB Kanji6");
+
+  f.view.renderKanji({ ...kanji, frequencies: [] }, f.candidate, defaults);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-kanji-frequencies").hidden, true);
+  f.view.renderKanji({ character: "日", entries: kanji.entries }, f.candidate, defaults);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-kanji-frequencies").hidden, true,
+    "a reply without frequencies renders as before");
+});

@@ -132,6 +132,8 @@ struct WireKanjiEntry {
 struct WireKanji {
   std::string character;
   std::vector<WireKanjiEntry> entries;
+  // kanji_meta_bank frequencies, in frequency-dictionary order.
+  std::vector<WireFrequencyEntry> frequencies;
 };
 
 struct WireStyle {
@@ -276,6 +278,22 @@ std::string lookup_json(const T& value, const LookupCopyBudget& budget) {
   return out;
 }
 
+std::vector<WireFrequencyEntry> convert_frequencies(const std::vector<FrequencyEntry>& frequencies,
+                                                    LookupCopyBudget& budget) {
+  std::vector<WireFrequencyEntry> out;
+  out.reserve(frequencies.size());
+  for (const auto& f : frequencies) {
+    WireFrequencyEntry entry;
+    entry.dictionary = copy_lookup_string(f.dict_name, budget, "frequency dictionary");
+    entry.frequencies.reserve(f.frequencies.size());
+    for (const auto& v : f.frequencies) {
+      entry.frequencies.emplace_back(v.value, copy_lookup_string(v.display_value, budget, "frequency display value"));
+    }
+    out.push_back(std::move(entry));
+  }
+  return out;
+}
+
 WireTerm convert_term(const TermResult& term, LookupCopyBudget& budget) {
   WireTerm out;
   out.expression = copy_lookup_string(term.expression, budget, "term expression");
@@ -294,16 +312,7 @@ WireTerm convert_term(const TermResult& term, LookupCopyBudget& budget) {
         copy_lookup_string(g.term_tags, budget, "term tags"));
   }
 
-  out.frequencies.reserve(term.frequencies.size());
-  for (const auto& f : term.frequencies) {
-    WireFrequencyEntry entry;
-    entry.dictionary = copy_lookup_string(f.dict_name, budget, "frequency dictionary");
-    entry.frequencies.reserve(f.frequencies.size());
-    for (const auto& v : f.frequencies) {
-      entry.frequencies.emplace_back(v.value, copy_lookup_string(v.display_value, budget, "frequency display value"));
-    }
-    out.frequencies.push_back(std::move(entry));
-  }
+  out.frequencies = convert_frequencies(term.frequencies, budget);
 
   out.pitches.reserve(term.pitches.size());
   for (const auto& p : term.pitches) {
@@ -798,7 +807,9 @@ WireImportReport report_for(const ImportResult& result) {
   report.title = result.title;
   report.termCount = counts.terms.total;
   report.metaCount = meta_count(counts.termMeta, "total");
-  report.frequencyCount = meta_count(counts.termMeta, "freq");
+  // A kanji_meta_bank frequency makes the package a frequency dictionary too,
+  // which is the kind query_kanji reads kanji frequencies from.
+  report.frequencyCount = meta_count(counts.termMeta, "freq") + meta_count(counts.kanjiMeta, "freq");
   report.pitchCount = meta_count(counts.termMeta, "pitch") + meta_count(counts.termMeta, "ipa");
   report.kanjiCount = counts.kanji.total;
   report.mediaCount = counts.media.total;
@@ -1147,15 +1158,17 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_kanji(const char* character) {
         std::ranges::sort(out_entry.stats, {}, &WireKanjiStat::name);
         wire.entries.push_back(std::move(out_entry));
       }
-      // Empty character is the contract's "nothing matched" sentinel.
+      // Empty character is the contract's "nothing matched" sentinel. A
+      // frequency alone is not a kanji entry to show.
       if (!wire.entries.empty()) {
         wire.character = copy_lookup_string(result.character, budget, "kanji character");
+        wire.frequencies = convert_frequencies(result.frequencies, budget);
       }
     }
     out = lookup_json(wire, budget);
   } catch (...) {
     set_error(describe_current_exception());
-    out = R"({"character":"","entries":[]})";
+    out = R"({"character":"","entries":[],"frequencies":[]})";
   }
   return out.c_str();
 }

@@ -37,6 +37,7 @@ import {
   TRAINED_TITLE,
   TRAINING_SAMPLE_FLOOR,
   buildDataDescriptorZip,
+  buildUncompressedSizeDescriptorZip,
   buildEntryCountZip,
   buildEntryExpandedZip,
   buildFixtureZip,
@@ -170,7 +171,7 @@ const KANJI_ENTRY = {
   definitions: arrayOf('string'),
   stats: arrayOf(KANJI_STAT),
 };
-const LOOKUP_KANJI = { character: 'string', entries: arrayOf(KANJI_ENTRY) };
+const LOOKUP_KANJI = { character: 'string', entries: arrayOf(KANJI_ENTRY), frequencies: arrayOf(FREQUENCY_ENTRY) };
 const STYLE = { dictionary: 'string', styles: 'string' };
 const TAG = { name: 'string', category: 'string', order: 'number', notes: 'string', score: 'number' };
 const DICTIONARY_TAGS = { dictionary: 'string', tags: arrayOf(TAG) };
@@ -785,8 +786,43 @@ check('kanji hit conforms and carries sorted stats', () => {
 
 check('kanji miss returns the documented empty sentinel', () => {
   for (const character of ['犬', '']) {
-    same(kanji(character), { character: '', entries: [] }, `kanji(${show(character)})`);
+    same(kanji(character), { character: '', entries: [], frequencies: [] }, `kanji(${show(character)})`);
   }
+});
+
+// MarvNC's kanji frequency lists hold nothing but a kanji_meta_bank (#512).
+// Loaded as a frequency dictionary, their rows reach a kanji lookup and not a
+// term spelled with the same character.
+const KANJI_FREQUENCY_TITLE = 'kanji-frequency-fixture';
+const KANJI_FREQUENCY_OUT = '/work/kanji-frequency';
+M.FS.mkdir(KANJI_FREQUENCY_OUT);
+M.FS.writeFile('/work/kanji-frequency.zip', buildTitledZip(KANJI_FREQUENCY_TITLE, {
+  banks: false,
+  frequencyMode: 'rank-based',
+  kanjiMeta: [['食', 'freq', { value: 7, displayValue: '7 (12732)' }], ['飲', 'freq', 9]],
+}));
+const kanjiFrequencyReport = hdwImport('/work/kanji-frequency.zip', KANJI_FREQUENCY_OUT);
+check('a kanji_meta_bank-only archive imports as a frequency dictionary', () => {
+  eq(kanjiFrequencyReport.success, true, `import failed: ${kanjiFrequencyReport.error}`);
+  eq(kanjiFrequencyReport.termCount, 0, 'termCount');
+  eq(kanjiFrequencyReport.kanjiCount, 0, 'kanjiCount');
+  eq(kanjiFrequencyReport.frequencyCount, 2, 'frequencyCount');
+});
+eq(addDict(`${KANJI_FREQUENCY_OUT}/${KANJI_FREQUENCY_TITLE}`, KINDS.freq), 1, `add kanji frequencies: ${lastError()}`);
+
+check('a kanji lookup carries the kanji frequencies', () => {
+  const result = kanji('食');
+  conforms(result, LOOKUP_KANJI, 'LookupKanji');
+  same(
+    result.frequencies,
+    [{ dictionary: KANJI_FREQUENCY_TITLE, frequencies: [{ value: 7, displayValue: '7 (12732)' }] }],
+    'frequencies',
+  );
+});
+
+check('a term spelled like the kanji gets no kanji frequency', () => {
+  const dictionaries = (lookup('食').results[0]?.term.frequencies ?? []).map(({ dictionary }) => dictionary);
+  ok(!dictionaries.includes(KANJI_FREQUENCY_TITLE), `term frequencies: ${JSON.stringify(dictionaries)}`);
 });
 
 check('styles come from the imported index.json', () => {
@@ -986,6 +1022,9 @@ check('a forged local/central size disagreement is refused', () =>
 check('entries that defer their sizes to data descriptors import like the fixture (#491)', () =>
   acceptedWithoutResourceCap(buildDataDescriptorZip(), 'data descriptors'));
 
+check('data-descriptor entries whose local headers keep the uncompressed size import (#512)', () =>
+  acceptedWithoutResourceCap(buildUncompressedSizeDescriptorZip(), 'uncompressed-size descriptors'));
+
 check('a data-descriptor entry whose local header records other sizes is refused', () =>
   rejectedWith(buildForgedSizeZip({ dataDescriptor: true }), ARCHIVE_ERRORS.forgedSize, 'forged descriptor size'));
 
@@ -1010,7 +1049,7 @@ reset();
 check('reset drops every dictionary', () => {
   eq(lastError(), '', 'hdw_last_error');
   same(lookup('食べる'), { results: [], dictionaryCount: 0 }, 'lookup with zero dictionaries');
-  same(kanji('食'), { character: '', entries: [] }, 'kanji with zero dictionaries');
+  same(kanji('食'), { character: '', entries: [], frequencies: [] }, 'kanji with zero dictionaries');
   same(styles(), [], 'styles with zero dictionaries');
   same(tags(), [], 'tags with zero dictionaries');
   eq(media(TITLE, MEDIA_PATH), 0, 'media with zero dictionaries');

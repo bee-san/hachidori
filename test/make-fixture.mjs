@@ -50,7 +50,7 @@ function zipEntry(name, data, method) {
 // writes it: general-purpose bit 3 set, zero CRC and sizes in the local header,
 // and the real values in a signed data descriptor after the data (APPNOTE
 // 4.3.9, 4.4.4). The central directory is the same either way.
-function buildZip(entries, { dataDescriptors = false } = {}) {
+function buildZip(entries, { dataDescriptors = false, localUncompressedSize = false } = {}) {
   const chunks = [];
   const records = [];
   let offset = 0;
@@ -66,7 +66,7 @@ function buildZip(entries, { dataDescriptors = false } = {}) {
     lfh.writeUInt16LE(0x21, 12); // mod date: 2000-01-01
     lfh.writeUInt32LE(dataDescriptors ? 0 : e.crc, 14);
     lfh.writeUInt32LE(dataDescriptors ? 0 : e.body.length, 18);
-    lfh.writeUInt32LE(dataDescriptors ? 0 : e.raw.length, 22);
+    lfh.writeUInt32LE(dataDescriptors && !localUncompressedSize ? 0 : e.raw.length, 22);
     lfh.writeUInt16LE(e.name.length, 26);
     lfh.writeUInt16LE(0, 28); // extra length; zip.cpp adds it to data_offset
 
@@ -548,6 +548,12 @@ export function buildDataDescriptorZip() {
   return buildZip(fixtureEntries(), { dataDescriptors: true });
 }
 
+// Bit 3 with only the compressed size deferred: the local headers still record
+// the uncompressed size, as the NHK pitch dictionary's archive does (#512).
+export function buildUncompressedSizeDescriptorZip() {
+  return buildZip(fixtureEntries(), { dataDescriptors: true, localUncompressedSize: true });
+}
+
 // The fixture with a different declared title, and optionally with the term bank
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
@@ -556,6 +562,7 @@ export function buildTitledZip(title, {
   banks = true,
   terms = TERMS,
   termMeta = [],
+  kanjiMeta = [],
   mediaEntries = [],
   frequencyMode,
   styles = '',
@@ -580,6 +587,9 @@ export function buildTitledZip(title, {
   }
   if (termMeta.length > 0) {
     entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify(termMeta)));
+  }
+  if (kanjiMeta.length > 0) {
+    entries.push(zipEntry('kanji_meta_bank_1.json', JSON.stringify(kanjiMeta)));
   }
   if (styles) {
     entries.push(zipEntry('styles.css', styles));

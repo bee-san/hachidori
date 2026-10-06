@@ -583,8 +583,9 @@ What it proves, in order:
    `"324/37459"` bare and `"five (5)"` under a reading reports the text as
    written with its first number as the value, as Yomitan does, and applies the
    reading-scoped row to that reading only.
-5. **`hdw_kanji`** (including the `{"character":"","entries":[]}` miss sentinel and
-   the binding's sort of `stats` by name), **`hdw_styles`**, **`hdw_tags`** (every
+5. **`hdw_kanji`** (including the `{"character":"","entries":[],"frequencies":[]}`
+   miss sentinel, the binding's sort of `stats` by name, and the frequencies of
+   a kanji_meta_bank-only archive loaded as a frequency dictionary), **`hdw_styles`**, **`hdw_tags`** (every
    tag-bank row in bank order, again after a reset and reload and after a
    re-import; none for a directory the previous engine imported), and
    **`hdw_media`** (byte length, PNG signature, and the full bytes equal to the
