@@ -147,7 +147,8 @@ function playerFixture({ startMs = 7000, paused = true, rate = 1.5 } = {}) {
   Object.defineProperties(video, {
     currentTime: {
       get: () => (mediaMs + (playingSince === null ? 0 : now() - playingSince)) / 1000,
-      set: () => { throw new Error("currentTime was written"); },
+      // Logged as well as thrown, so a write that is caught still shows.
+      set: () => { calls.push(["currentTime"]); throw new Error("currentTime was written"); },
     },
     paused: { get: () => playingSince === null },
   });
@@ -222,4 +223,34 @@ test("a replay of a playing video resumes it, and a page without the player or a
   missing.context.document.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: "{not json" }));
   await settle();
   assert.equal(missing.posted.length, 1);
+});
+
+test("pause and resume go through Netflix's player, wait for a replay, and malformed commands do nothing", async () => {
+  const { calls, video, player } = playerFixture({ paused: false, rate: 1 });
+  const { context, posted, command } = page({ player, video });
+  command({ type: "pause" });
+  assert.deepEqual(calls, [["pause"]]);
+  assert.equal(video.paused, true);
+  command({ type: "resume" });
+  assert.deepEqual(calls, [["pause"], ["play", 1]]);
+  assert.equal(video.paused, false);
+  for (const detail of [JSON.stringify({ type: "Pause" }), JSON.stringify({ type: ["resume"] }), JSON.stringify("pause"),
+    "{not json", "null"]) context.document.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail }));
+  context.document.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { type: "pause" } }));
+  assert.equal(calls.length, 2, "malformed commands do nothing");
+
+  // A replay owns the player until it has restored the viewer's state.
+  calls.length = 0;
+  command({ type: "replay", id: "r1", startMs: 500, endMs: 550, padMs: 25 });
+  command({ type: "pause" });
+  command({ type: "resume" });
+  assert.equal((await replayed(posted)).ok, true);
+  assert.deepEqual(calls.map(([name]) => name), ["seek", "play", "pause", "seek", "play"], "only the replay's own calls");
+  command({ type: "pause" });
+  assert.deepEqual(calls.at(-1), ["pause"]);
+
+  // Without Netflix's player nothing is paused.
+  const playing = playerFixture({ paused: false });
+  page({ video: playing.video }).command({ type: "pause" });
+  assert.equal(playing.video.paused, false);
 });
