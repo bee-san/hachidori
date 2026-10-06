@@ -79,7 +79,8 @@ export function createSettingsSearch({ document, navigate }) {
     results.replaceChildren();
     panel.hidden = false;
     document.getElementById("library-navigation").hidden = true;
-    for (const section of document.querySelectorAll("main > section:not([data-settings-unavailable='true'])")) {
+    // A section whose experimental flag is off is not offered either.
+    for (const section of document.querySelectorAll("main > section:not([data-settings-unavailable='true']):not([data-settings-gated])")) {
       searchSection(section, words);
     }
     const matches = results.childElementCount;

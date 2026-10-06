@@ -12,6 +12,8 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
 const extension = file => readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8");
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
+// Values from the page's realm, compared as data.
+const plain = value => JSON.parse(JSON.stringify(value));
 
 // Settings as a user opens it: navigation attached, then stored options adopted.
 function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {}) {
@@ -83,4 +85,51 @@ test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch
   assert.equal(el("import-file-label").textContent, "Choose dictionary files");
   assert.match(el("import-drop-hint").textContent, /MDX dictionary with its MDD files/u);
   assert.equal(el("opt-experimental-mdxImport"), null);
+});
+
+test("Word highlighting is a Reading section that only its experimental switch reveals, search included", t => {
+  const { window, el, visible } = fixture(t, { hash: "#word-highlighting", stored: { wordHighlightKnown: true } });
+  const railItem = () => window.document.querySelector('.settings-nav a[href="#word-highlighting"]').parentElement;
+  const pickerOption = () => el("settings-section").querySelector('option[value="word-highlighting"]');
+  const search = words => {
+    el("settings-search").value = words;
+    el("settings-search").dispatchEvent(new window.Event("input"));
+    const found = [...el("settings-search-matches").querySelectorAll("strong")].map(node => node.textContent);
+    el("settings-search").value = "";
+    el("settings-search").dispatchEvent(new window.Event("input"));
+    return found;
+  };
+  // Off: the section, its rail link, its picker option and its settings in search are all hidden.
+  assert.deepEqual(visible(), ["advanced"]);
+  assert.equal(railItem().hidden, true);
+  assert.equal(pickerOption().hidden, true);
+  assert.deepEqual(search("mark unknown words"), []);
+
+  el("opt-experimental-wordHighlighting").click();
+  assert.deepEqual(visible(), ["word-highlighting"], "the requested section opens once its switch is on");
+  assert.equal(railItem().hidden, false);
+  assert.equal(pickerOption().hidden, false);
+  assert.deepEqual(search("mark unknown words"), ["Mark unknown words"]);
+  assert.equal(el("opt-word-highlight").checked, false, "highlighting itself starts off");
+  assert.equal(el("opt-word-highlight-unknown").checked, true);
+  assert.equal(el("opt-word-highlight-known").checked, true);
+  assert.equal(el("opt-word-highlight-style").value, "underline");
+  el("opt-word-highlight").click();
+  el("opt-word-highlight-style").value = "background";
+  el("opt-word-highlight-style").dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.deepEqual(plain(window.readPending()), { experimental: { ...plain(window.readOptions().experimental), wordHighlighting: true },
+    wordHighlightEnabled: true, wordHighlightStyle: "background" });
+});
+
+test("turning Word highlighting's experimental switch off stops the marks in the same save and keeps its settings", t => {
+  const { window, el, visible } = fixture(t, { hash: "#word-highlighting", stored: {
+    experimental: { wordHighlighting: true }, wordHighlightEnabled: true, wordHighlightKnown: true, wordHighlightStyle: "color" } });
+  assert.deepEqual(visible(), ["word-highlighting"]);
+  assert.equal(el("opt-word-highlight").checked, true);
+  el("opt-experimental-wordHighlighting").click();
+  assert.deepEqual(visible(), ["advanced"]);
+  assert.deepEqual(plain(window.readPending()), {
+    experimental: { ...plain(window.readOptions().experimental), wordHighlighting: false }, wordHighlightEnabled: false });
+  assert.equal(window.readOptions().wordHighlightKnown, true);
+  assert.equal(window.readOptions().wordHighlightStyle, "color");
 });
