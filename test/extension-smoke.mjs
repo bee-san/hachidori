@@ -6378,18 +6378,26 @@ async function main() {
   );
   // A hover that arrives while a chunk is being segmented runs before the
   // batch's next chunk, because hd_segment takes one engine turn per chunk.
-  // The lookup is queued from inside the first chunk's native call, the moment
-  // a hover could arrive; a batch run as one queued job would segment both
-  // chunks first.
+  // The lookup arrives as a message during the first chunk's native call, as a
+  // hover reaches the engine worker: a task of its own, which a batch run as
+  // one chain of engine turns would keep waiting until its last chunk.
   const nativeOrder = [];
+  const hoverMessage = new MessageChannel();
   let lookupDuringChunk = null;
+  const lookupArrived = new Promise((resolveArrival) => {
+    hoverMessage.port1.onmessage = () => {
+      hoverMessage.port1.close();
+      lookupDuringChunk = engineService.handleEngineMessage({
+        type: "hd_lookup", requestId: "lookup-during-segment", text: "漢字", maxResults: 32, scanLength: 16,
+      });
+      resolveArrival();
+    };
+  });
   const segmentingCcall = observedEngine.ccall;
   observedEngine.ccall = (name, returnType, argumentTypes, argumentValues) => {
     if (name === "hdw_segment") {
       nativeOrder.push(argumentValues[0]);
-      lookupDuringChunk ??= engineService.handleEngineMessage({
-        type: "hd_lookup", requestId: "lookup-during-segment", text: "漢字", maxResults: 32, scanLength: 16,
-      });
+      if (nativeOrder.length === 1) hoverMessage.port2.postMessage(null);
     } else if (name === "hdw_lookup") {
       nativeOrder.push(name);
     }
@@ -6404,6 +6412,7 @@ async function main() {
   } finally {
     observedEngine.ccall = segmentingCcall;
   }
+  await lookupArrived;
   const interleavedLookup = await lookupDuringChunk;
   check(
     "a hover that arrives during a segment chunk runs before the batch's next chunk",

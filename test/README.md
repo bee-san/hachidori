@@ -1034,11 +1034,12 @@ What it proves, in order:
    other dictionaries keep answering lookups, `hd_status.failedDictionaries`
    names it with its load error, and removing it clears the report.
    `hd_segment` splits a batch of chunks, each keyed by its id, through the
-   real background → offscreen → engine path. A lookup queued from inside the
-   first chunk's native call reaches the engine before the second chunk does,
-   which only a per-chunk engine turn allows. A chunk holding a lone surrogate
-   keeps its UTF-16 offsets, and an oversized chunk refuses the batch before
-   any chunk is segmented.
+   real background → offscreen → engine path. A lookup that arrives as a
+   message during the first chunk's native call, as a hover reaches the engine
+   worker, reaches the engine before the second chunk does, which only a
+   per-chunk turn that lets pending messages in allows. A chunk holding a lone
+   surrogate keeps its UTF-16 offsets, and an oversized chunk refuses the batch
+   before any chunk is segmented.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
