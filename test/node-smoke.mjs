@@ -62,6 +62,14 @@ import {
   customDictionarySemanticRevision,
   parseCustomDictionary,
 } from '../extension/custom-dictionary.js';
+import {
+  REFERENCE_LINES,
+  SEGMENTATION_DICTIONARY_TITLE,
+  SEGMENTATION_FREQUENCY_TITLE,
+  buildSegmentationDictionaryZip,
+  buildSegmentationFrequencyZip,
+  expectedSpans,
+} from './segmentation-reference.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VARIANT = { fallback: 'hoshidicts', 'threaded-idbfs': 'hoshidicts-threaded-idbfs' }[process.env.HACHIDORI_WASM_VARIANT] ?? 'hoshidicts-threaded';
@@ -163,6 +171,16 @@ const LOOKUP_RESULT = {
   preprocessorSteps: 'int',
 };
 const LOOKUP_RESPONSE = { results: arrayOf(LOOKUP_RESULT), dictionaryCount: 'int' };
+const SEGMENT_CANDIDATE = { expression: 'string', reading: 'string' };
+const SEGMENT_WORD = { start: 'int', length: 'int', functionWord: 'boolean', candidates: arrayOf(SEGMENT_CANDIDATE) };
+const SEGMENT_SPAN = {
+  start: 'int',
+  length: 'int',
+  functionWord: 'boolean',
+  candidates: arrayOf(SEGMENT_CANDIDATE),
+  alternative: arrayOf(SEGMENT_WORD),
+};
+const SEGMENT_RESPONSE = { spans: arrayOf(SEGMENT_SPAN) };
 const KANJI_STAT = { name: 'string', value: 'string' };
 const KANJI_ENTRY = {
   dictionary: 'string',
@@ -281,6 +299,9 @@ const lookupDictionary = (text, path, maxResults = 32, scanLength = 16, options 
     [text, path, maxResults, scanLength, options],
   ),
 );
+const segmentRaw = (text, scanLength = 16, options = '') =>
+  call('hdw_segment', 'string', ['string', 'number', 'string'], [text, scanLength, options]);
+const segment = (...args) => JSON.parse(segmentRaw(...args));
 const kanji = (character) => JSON.parse(call('hdw_kanji', 'string', ['string'], [character]));
 const styles = () => JSON.parse(call('hdw_styles', 'string', [], []));
 const tags = () => JSON.parse(call('hdw_tags', 'string', [], []));
@@ -2004,6 +2025,209 @@ check('large media imports and loads but only fetches up to 4 MiB', () => {
   eq(media(title, 'media/small.png'), makePng().length, 'healthy media fetch after error');
   eq(lastError(), '', 'healthy media error');
   ok(lookup('食べる').results.length > 0, 'dictionary remains usable');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_segment (word segmentation, #520)');
+
+// A fresh engine instance with the reference dictionary and its frequency
+// dictionary, so segmentation is scored without the fixture's own entries. The
+// reference set and both dictionaries live in segmentation-reference.mjs.
+const S = await createHoshidicts();
+const scall = (name, ret, types, args) => S.ccall(name, ret, types, args);
+S.FS.mkdir('/work');
+scall('hdw_init_storage', 'number', ['number'], [0]);
+const simport = (bytes, out) => {
+  S.FS.writeFile('/work/seg.zip', Buffer.from(bytes));
+  const report = JSON.parse(scall('hdw_import', 'string', ['string', 'string', 'number'], ['/work/seg.zip', out, 0]));
+  S.FS.unlink('/work/seg.zip');
+  return report;
+};
+const segTermReport = simport(buildSegmentationDictionaryZip(), '/dicts');
+const segFreqReport = simport(buildSegmentationFrequencyZip(), '/dicts');
+const segAdd = (title, kind) => scall('hdw_add_dict', 'number', ['string', 'number', 'number'], [`/dicts/${title}`, kind, 0]);
+const segmentS = (text, scanLength = 16, options = '') =>
+  JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [text, scanLength, options]));
+const lookupS = (text, maxResults, scanLength) =>
+  JSON.parse(scall('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], [text, maxResults, scanLength, ''])).results;
+
+check('the reference dictionaries import and load', () => {
+  ok(segTermReport.success, `term import failed: ${segTermReport.error}`);
+  ok(segFreqReport.success, `frequency import failed: ${segFreqReport.error}`);
+  eq(segAdd(SEGMENTATION_DICTIONARY_TITLE, 0), 1, `term add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+  eq(segAdd(SEGMENTATION_FREQUENCY_TITLE, 1), 1, `frequency add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+});
+
+check('segment conforms to the response contract', () => {
+  conforms(segmentS('今日は朝からとても寒いです。', 16), SEGMENT_RESPONSE, 'segment response');
+});
+
+check('empty text and non-positive scan length are no-ops', () => {
+  same(segmentS('', 16).spans, [], 'empty text');
+  same(segmentS('食べる', 0).spans, [], 'scan length 0');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'a no-op is not an error');
+});
+
+check('spans cover the line in order, with UTF-16 offsets inside the text', () => {
+  const text = '白い猫がいる。';
+  const units = text.length;
+  let previous = 0;
+  for (const span of segmentS(text, 16).spans) {
+    ok(span.start >= previous, 'spans are ordered and non-overlapping');
+    ok(span.start + span.length <= units, 'a span stays inside the text');
+    const surface = text.slice(span.start, span.start + span.length);
+    eq(span.candidates[0]?.expression !== undefined, true, 'a span has at least one candidate');
+    ok(surface.length > 0, 'a span is non-empty');
+    previous = span.start + span.length;
+  }
+});
+
+check('punctuation and whitespace produce no spans', () => {
+  same(segmentS('。、！？　', 16).spans, [], 'punctuation and spaces');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'punctuation is not an error');
+});
+
+check('a conjugated word is one span taking its dictionary form', () => {
+  // 食べなかった -> 食べる, the status feature's keying rule.
+  const spans = segmentS('食べなかった。', 16).spans;
+  eq(spans.length, 1, 'one content span');
+  eq(spans[0].candidates[0].expression, '食べる', 'headword');
+  eq(spans[0].length, '食べなかった'.length, 'the whole surface is covered');
+});
+
+check('function words are flagged and left for the page to leave unmarked', () => {
+  const spans = segmentS('猫が好きだ。', 16).spans;
+  const byHead = new Map(spans.map((s) => [s.candidates[0]?.expression, s]));
+  ok(byHead.get('が')?.functionWord === true, 'が is a function word');
+  ok(byHead.get('だ')?.functionWord === true, 'だ is a function word');
+  ok(byHead.get('猫')?.functionWord === false, '猫 is a content word');
+});
+
+check('a phrase of known words carries its alternative split', () => {
+  // 今日は matches the greeting entry; its alternative is 今日 + は, so the
+  // highlighter can colour it by 今日 when only that has a card.
+  const span = segmentS('今日は', 16).spans[0];
+  eq(span.candidates[0].expression, '今日は', 'the whole phrase is the primary span');
+  same(span.alternative.map((w) => w.candidates[0].expression), ['今日', 'は'], 'alternative split headwords');
+  eq(span.alternative[1].functionWord, true, 'the alternative marks は a function word');
+});
+
+check('a single word has no alternative split', () => {
+  for (const span of segmentS('猫が好きだ。', 16).spans) {
+    if (span.length === 1) same(span.alternative, [], `${span.candidates[0]?.expression} has no alternative`);
+  }
+});
+
+// Score the greedy longest-match parse and the best split against the reference
+// set. Greedy is one max-length lookup per uncovered position; best split is
+// hdw_segment. The issue ships greedy if the best split scores no better, so
+// this records both.
+function greedySpans(text) {
+  const chars = Array.from(text);
+  const spans = [];
+  let index = 0;
+  while (index < chars.length) {
+    const results = lookupS(chars.slice(index).join(''), 1, 16);
+    const matched = results[0]?.matched;
+    if (matched) {
+      const length = Array.from(matched).length;
+      spans.push({ start: index, length, headword: results[0].term.expression });
+      index += length;
+    } else {
+      index += 1;
+    }
+  }
+  return spans;
+}
+
+// hdw_segment offsets are UTF-16 code units; the reference lines use no
+// surrogate pairs, so a code-point index equals its UTF-16 offset here.
+function bestContentSpans(text) {
+  return segmentS(text, 16).spans.map((span) => ({
+    start: span.start, length: span.length, headword: span.candidates[0]?.expression,
+  }));
+}
+
+const score = { bestWords: 0, greedyWords: 0, totalWords: 0, bestLines: 0, greedyLines: 0, functionCorrect: 0 };
+let conjugatedLines = 0;
+let conjugatedCovered = 0;
+for (const line of REFERENCE_LINES) {
+  const expected = expectedSpans(line);
+  const expectedKeys = new Set(expected.map((s) => `${s.start}:${s.length}:${s.headword}`));
+  const best = bestContentSpans(line.text);
+  const greedy = greedySpans(line.text);
+  const bestHits = best.filter((s) => expectedKeys.has(`${s.start}:${s.length}:${s.headword}`)).length;
+  const greedyHits = greedy.filter((s) => expectedKeys.has(`${s.start}:${s.length}:${s.headword}`)).length;
+  score.totalWords += expected.length;
+  score.bestWords += bestHits;
+  score.greedyWords += greedyHits;
+  if (bestHits === expected.length && best.length === expected.length) score.bestLines += 1;
+  if (greedyHits === expected.length && greedy.length === expected.length) score.greedyLines += 1;
+  const bestByPosition = new Map(segmentS(line.text, 16).spans.map((s) => [`${s.start}:${s.length}`, s]));
+  for (const e of expected) {
+    const span = bestByPosition.get(`${e.start}:${e.length}`);
+    if (span && span.functionWord === e.functionWord) score.functionCorrect += 1;
+  }
+  if (line.conjugated) {
+    conjugatedLines += 1;
+    // Every content word whose surface differs from its headword was recovered.
+    const recovered = line.words.every(([surface, headword, fn]) => {
+      if (fn || surface === headword) return true;
+      return best.some((s) => s.headword === headword
+        && line.text.slice(s.start, s.start + Array.from(surface).length) === surface);
+    });
+    if (recovered) conjugatedCovered += 1;
+  }
+}
+
+const pct = (n, d) => `${((100 * n) / d).toFixed(1)}%`;
+console.log(`        reference set: ${REFERENCE_LINES.length} lines, ${score.totalWords} words`);
+console.log(`        best split : ${score.bestWords}/${score.totalWords} words (${pct(score.bestWords, score.totalWords)}), `
+  + `${score.bestLines}/${REFERENCE_LINES.length} lines exact`);
+console.log(`        greedy     : ${score.greedyWords}/${score.totalWords} words (${pct(score.greedyWords, score.totalWords)}), `
+  + `${score.greedyLines}/${REFERENCE_LINES.length} lines exact`);
+console.log(`        function-word flag: ${score.functionCorrect}/${score.totalWords} correct`);
+console.log(`        conjugated lines fully recovered: ${conjugatedCovered}/${conjugatedLines}`);
+
+check('the best split scores at least as well as the greedy parse', () => {
+  ok(score.bestWords >= score.greedyWords,
+    `best split ${score.bestWords} words < greedy ${score.greedyWords}; the issue ships greedy only if it scores no worse`);
+  ok(score.bestLines >= score.greedyLines, `best split ${score.bestLines} lines-exact < greedy ${score.greedyLines}`);
+});
+
+check('the best split fixes at least one boundary the greedy parse gets wrong', () => {
+  // 白い猫がいる: greedy takes がい (外) and strands る; the best split keeps
+  // が + いる. This is the Design-2 case the whole-line split is for.
+  const text = '白い猫がいる。';
+  const best = bestContentSpans(text).map((s) => `${s.start}:${s.length}:${s.headword}`);
+  const greedy = greedySpans(text).map((s) => `${s.start}:${s.length}:${s.headword}`);
+  ok(best.includes('3:1:が') && best.includes('4:2:いる'), `best split: ${best.join(' ')}`);
+  ok(greedy.includes('3:2:外'), `greedy did not take the がい trap: ${greedy.join(' ')}`);
+});
+
+check('most conjugated reference lines recover their dictionary forms', () => {
+  // The deinflector is Yomitan-equivalent; a few auxiliary-verb chains it joins
+  // (て + しまう, て + くれる) are reported in the score above rather than failed.
+  ok(conjugatedCovered >= Math.ceil(conjugatedLines * 0.9),
+    `${conjugatedCovered}/${conjugatedLines} conjugated lines recovered; expected at least 90%`);
+});
+
+check('segment honours the frequency option', () => {
+  // With the frequency dictionary disabled, ties fall back to the greedy
+  // longest-first order; the response still conforms and covers the line.
+  const disabled = JSON.stringify({ frequencyDictionary: '', frequencyOrder: 'disabled', primaryReading: '' });
+  conforms(segmentS('白い猫がいる。', 16, disabled), SEGMENT_RESPONSE, 'segment with frequency disabled');
+  eq(scall('hdw_last_error', 'string', [], []), '', 'disabled frequency is not an error');
+});
+
+check('segment rejects text above the 4 KiB lookup limit', () => {
+  const tooLong = 'あ'.repeat(1500);
+  const response = JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [tooLong, 16, '']));
+  same(response.spans, [], 'oversized text returns no spans');
+  ok(scall('hdw_last_error', 'string', [], []).includes('segment text'), 'oversized text reports an error');
+  // The engine stays usable.
+  ok(segmentS('猫がいる。', 16).spans.length > 0, 'engine usable after a refused segment');
 });
 
 // ---------------------------------------------------------------------------
