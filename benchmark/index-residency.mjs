@@ -234,8 +234,9 @@ async function sample(variant, repetition) {
       else signatures.set(key, timed.resultHash);
       passes.push({ ...timed, roundTrip: distribution(timed.latencies), engine: distribution(timed.native), memory: await request("hd_memory") });
     }
-    // Peak covers startup and both passes; steady is read after both passes settle.
-    await new Promise(done => setTimeout(done, 2000));
+    // Low memory mode recycles the worker after 2 s idle once startup's state
+    // commit has settled, so read memory while the worker that served both
+    // passes is still running. Peak covers startup and both passes.
     const processRss = { ...sampler.stop(), fresh: rssFresh };
     const parity = { kanji: (await request("hd_kanji", { character: "食" })).kanji,
       selected: (await request("hd_lookup_dictionary", { text: "食べました", dictionary: fixture.dictionaries[0].title })).results,
