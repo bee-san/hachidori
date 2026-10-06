@@ -26,6 +26,8 @@ If another tool (Yomitan, Anki, a reader app) already behaves the way you expect
 ## Environment
 
 <!--
+For a bug, attach the debug info file: Settings → Advanced → Troubleshooting → Get debug info. It records the version, browser, memory use, installed dictionaries and every setting, with your AnkiConnect API key removed and your personal dictionary, lookup history and Anki notes left out. Then fill in what the file cannot show, such as the website and steps:
+
 - Hachidori version (chrome://extensions → Hachidori → Details) and whether it is the Chrome Web Store build, a GitHub release, or built from source
 - Browser and version, and operating system
 - Where it happens: the website, app, or texthooker page. Say whether it also happens on a plain page such as Wikipedia
