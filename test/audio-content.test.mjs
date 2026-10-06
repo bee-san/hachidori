@@ -171,15 +171,14 @@ test("a failed explicit pronunciation is forgotten so normal Audio can try order
   f.shadow.querySelector('[role="dialog"] div button').click();
   f.sent.at(-1).resolveReply({ ok: false, error: "Cannot decode" });
   await settle();
-  assert.match(v.item.status.textContent, /Cannot decode/u);
-  assert.equal(v.item.status.previousElementSibling, v.item.button, "the error stays beside its button");
-  assert.equal(v.item.button.dataset.state, "error");
+  assert.equal(v.item.status.textContent, "", "Audio Settings → Test explains a failure; the popup stays quiet");
+  assert.equal(v.item.button.dataset.state, undefined);
   assert.equal(f.controller.selectionFor(v.item.result), null);
   v.item.button.click();
   assert.equal(f.sent.at(-1).selection, undefined);
   f.sent.at(-1).resolveReply({ ok: true, status: "success" });
   await settle();
-  assert.equal(v.item.status.textContent, "", "successful replay clears the error without success prose");
+  assert.equal(v.item.status.textContent, "");
   assert.equal(v.item.button.dataset.state, undefined);
 });
 
@@ -305,5 +304,53 @@ test("keybind playback restarts the entry's pronunciation and can play one sourc
   f.sent.at(-1).resolveReply({ ok: true, groups: [{ sourceId: "first", sourceKey: "first-key", type: "custom", candidates: [] }] });
   await settle();
   assert.equal(plays().length, 3, "a source without choices plays nothing");
-  assert.equal(v.item.status.textContent, "No pronunciation was returned. Check Audio Settings.");
+  assert.equal(v.item.status.textContent, "");
+  assert.equal(v.item.button.dataset.state, undefined);
+});
+
+// #501: a missing or failed pronunciation is no error beside the headword.
+// Settings → Audio → Test and the chooser keep the details.
+test("missing and failed pronunciations leave the headword quiet, autoplayed or played by hand; the chooser keeps details", async t => {
+  const f = fixture(t), v = f.view();
+  for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
+    f.window.eval(readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8"));
+  }
+  // The renderer's own control, which has no status slot.
+  const { element, button } = f.window.HDPopup.createAudioControl(f.window.document, "聞く");
+  v.context.popup.replaceChildren(element);
+  const item = { button, result: v.item.result };
+  const quiet = what => {
+    assert.equal(v.context.popup.querySelector(".gsm-hoshidicts-audio-status"), null, `${what}: no status prose`);
+    assert.equal(element.textContent, "", `${what}: the control holds only its icon button`);
+    assert.equal(button.dataset.state, undefined, `${what}: no error state`);
+    assert.equal(button.getAttribute("aria-busy"), "false");
+    assert.equal(button.getAttribute("aria-label"), "Play pronunciation for 聞く");
+  };
+  f.controller.update({ ...f.window.HDReaderOptions.DEFAULT_OPTIONS, audioAutoplay: true });
+  f.controller.bind([item], v.context);
+  assert.equal(f.sent[0].type, "hd_audio_play", "autoplay ran");
+  f.sent[0].resolveReply({ ok: true, status: "no-result" });
+  await settle();
+  quiet("autoplay with no recording");
+  for (const reply of [{ ok: true, status: "no-result" }, { ok: false, error: "The recording returned HTTP 404." },
+    { ok: true, status: "cancelled" }]) {
+    button.click();
+    f.sent.at(-1).resolveReply(reply);
+    await settle();
+    quiet(`manual ${reply.status ?? "failure"}`);
+  }
+  button.dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "ArrowDown" }));
+  f.sent.at(-1).resolveReply({ ok: true, groups: [{ sourceId: "json", sourceKey: "key", type: "custom-json",
+    error: "The pronunciation list returned HTTP 403." }] });
+  await settle();
+  const menu = () => v.context.popup.querySelector('[role="dialog"]');
+  assert.match(menu().textContent, /1\. Yomitan JSON/u);
+  assert.match(menu().textContent, /The pronunciation list returned HTTP 403\./u, "the chooser names the failing source");
+  assert.equal(menu().querySelector('[role="status"]').textContent, "No pronunciations found. Check Audio Settings.");
+  f.controller.closeMenu();
+  button.dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "ArrowDown" }));
+  f.sent.at(-1).resolveReply({ ok: false, error: "Pronunciation discovery timed out after 12 seconds." });
+  await settle();
+  assert.equal(menu().querySelector('[role="status"]').textContent, "Pronunciation discovery timed out after 12 seconds.");
+  quiet("a failed chooser request");
 });

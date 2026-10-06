@@ -117,3 +117,18 @@ test("cancelling Anki media encoding aborts its reader and releases the playback
   f.repository.clear();
   assert.deepEqual(f.revoked, ["blob:3", "blob:10"]);
 });
+
+test("mining explains an audio list saved as an Audio URL the way Audio Test does (#499)", async () => {
+  const f = fixture();
+  const list = { ...source, id: "list", type: "custom", url: "https://example.test/audio/list?term={term}" };
+  const repository = createAudioRepository({ window: f.window, fetch: async () => ({ ok: true,
+    blob: async () => new Blob([JSON.stringify({ type: "audioSourceList", audioSources: [] })], { type: "application/json" }) }) });
+  f.window.Audio = class {
+    load() { if (this.src) queueMicrotask(() => { this.error = { code: 4 }; this.onerror?.(); }); }
+    pause() {}
+    removeAttribute() { this.src = ""; }
+  };
+  await assert.rejects(exportAnkiAudio(f.window, repository, { sources: [list], term }, new AbortController().signal),
+    { message: "This Audio URL returned a Yomitan audio list, not a recording. Set this source's type to Yomitan JSON in Audio Settings." });
+  repository.clear();
+});

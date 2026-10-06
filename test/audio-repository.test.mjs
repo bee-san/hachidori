@@ -75,3 +75,34 @@ test("candidate retention counts source keys as well as response data without li
   assert.equal(f.requests.length, 2, "an oversized source key must not be retained outside the byte budget");
   f.repository.clear();
 });
+
+test("list and recording failures say which request failed, with its HTTP status or network error (#499)", async () => {
+  const responses = new Map();
+  const repository = createAudioRepository({ window: { URL: { createObjectURL: () => "blob:1", revokeObjectURL() {} } },
+    fetch: async url => {
+      const response = responses.get(url);
+      if (typeof response === "function") return response();
+      if (response instanceof Error) throw response;
+      return response;
+    } });
+  const list = "https://example.test/?term=%E8%81%9E%E3%81%8F";
+  responses.set(list, { ok: false, status: 403 });
+  await assert.rejects(repository.candidates(source, term, signal()), { message: "The pronunciation list returned HTTP 403." });
+  responses.set(candidate.url, { ok: false, status: 404 });
+  await assert.rejects(repository.acquire(candidate, signal()), { message: "The recording returned HTTP 404." });
+  responses.set(candidate.url, new TypeError("Failed to fetch"));
+  await assert.rejects(repository.acquire(candidate, signal()),
+    { message: "The recording could not be downloaded (Failed to fetch)." });
+  // A Yomitan JSON source pointed at a recording (an MP3's ID3 header).
+  responses.set(list, { ok: true, headers: new Headers({ "content-type": "audio/mpeg" }),
+    json: async () => JSON.parse("ID3\u0004") });
+  await assert.rejects(repository.candidates(source, term, signal()), { message: "The pronunciation list is not JSON "
+    + "(audio/mpeg). If this URL plays a recording itself, set this source's type to Audio URL in Audio Settings." });
+  // Stopping while the download is in flight stays a cancellation.
+  const controller = new AbortController();
+  responses.set(candidate.url, () => {
+    controller.abort(new DOMException("Playback stopped.", "AbortError"));
+    throw controller.signal.reason;
+  });
+  await assert.rejects(repository.acquire(candidate, controller.signal), { name: "AbortError" });
+});
