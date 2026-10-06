@@ -3999,6 +3999,11 @@ async function ankiWordStatusStage() {
   // host's reply; its own index and Anki service are never consulted.
   const clientBus = makeBus(), clientStorage = makeStorage();
   const clientChrome = makeChrome("word-status-client", clientBus, clientStorage);
+  const clientBroadcasts = [];
+  clientChrome.tabs = {
+    async query() { return [{ id: 21 }]; },
+    async sendMessage(tabId, message) { clientBroadcasts.push({ tabId, message }); },
+  };
   const linkAddress = "ws://127.0.0.1:9101/link";
   await clientStorage.api().local.set({ sharing: { host: null, client: { address: linkAddress } } });
   loadBackgroundScript({ chrome: clientChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
@@ -4008,6 +4013,7 @@ async function ankiWordStatusStage() {
   link?.open();
   link?.receive({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Host", dictionaryCount: 1,
     capabilities: ["linked-anki-v1", "linked-anki-v2"], snapshot: {} });
+  await settle(() => clientBroadcasts.length >= 1);
   const asking = clientBus.sendMessage("word-status-client-page", { target: "hachidori-anki", type: "hd_anki_word_status",
     requestId: "reader-word-status", request: { headwords: ["読む", "猫"] } }, page);
   await settle(() => (link?.requests().length ?? 0) >= 1);
@@ -4021,6 +4027,20 @@ async function ankiWordStatusStage() {
     })
       && hostReply !== undefined && JSON.stringify(linked) === JSON.stringify(hostReply.response),
     JSON.stringify({ forwarded, linked }));
+
+  // The host's index starts answering this browser's pages at the link's
+  // hello and stops at unlinking; neither continues the other's revisions.
+  link?.receive({ kind: "word-status", revision: 2 });
+  await settle(() => clientBroadcasts.length >= 2);
+  const unlinked = await clientBus.sendMessage("word-status-client-settings", {
+    target: "hachidori-sharing", type: "hd_sharing_client_unlink", requestId: "word-status-unlink" });
+  await settle(() => clientBroadcasts.length >= 3);
+  check("a linked browser's pages re-read word status when the link's hello completes, on each host revision and after unlinking",
+    unlinked.ok === true
+      && JSON.stringify(clientBroadcasts.map(entry => [entry.tabId, entry.message.revision])) === JSON.stringify([[21, null], [21, 2], [21, null]])
+      && clientBroadcasts.every(entry => entry.message.target === "hachidori-anki-content"
+        && entry.message.type === "hd_anki_word_status_changed"),
+    JSON.stringify({ unlinked, clientBroadcasts }));
   Object.assign(offscreenState, offscreenBefore);
 }
 

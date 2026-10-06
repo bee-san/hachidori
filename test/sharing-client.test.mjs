@@ -155,7 +155,7 @@ test("a dictionary upload goes only to a host that accepts it", async () => {
   assert.deepEqual(await reply, { ok: true, token: "t" });
 });
 
-test("a linked browser relays the host's word-status revision to its reader through onWordStatus", async () => {
+test("a linked browser relays the host's word-status revision, and none when the host's index starts or stops answering", async () => {
   Socket.instances.length = 0;
   const revisions = [];
   const client = createSharingClient({
@@ -168,9 +168,11 @@ test("a linked browser relays the host's word-status revision to its reader thro
   client.link("ws://127.0.0.1:8771/link");
   const socket = Socket.instances[0];
   socket.open();
+  assert.deepEqual(revisions, [], "nothing is announced before the host's hello completes");
   socket.receive(hello([LINKED_ANKI_CAPABILITY]));
-  await Promise.resolve();
+  await new Promise(resolve => setImmediate(resolve));
   socket.receive({ kind: "word-status", revision: 9 });
-  assert.deepEqual(revisions, [9]);
+  assert.deepEqual(revisions, [null, 9]);
   client.unlink();
+  assert.deepEqual(revisions, [null, 9, null]);
 });
