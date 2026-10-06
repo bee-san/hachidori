@@ -851,6 +851,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
     .replace(/import \{ applyGoogleDocsFlag \} from "\.\/google-docs\.js";\s*/u, "")
+    .replace(/import \{ applyNetflixFlag \} from "\.\/netflix\.js";\s*/u, "")
     .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -871,6 +872,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
     applyGoogleDocsFlag: sandbox.applyGoogleDocsFlag ?? (() => Promise.resolve()),
+    applyNetflixFlag: sandbox.applyNetflixFlag ?? (() => Promise.resolve()),
   });
   const context = createContext(sandbox);
   context.globalThis = context;

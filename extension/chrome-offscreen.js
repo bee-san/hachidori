@@ -22,9 +22,9 @@ async function createOffscreen(url) {
   try {
     await chrome.offscreen.createDocument({
       url,
-      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK"],
+      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK", "USER_MEDIA"],
       justification:
-        "Runs the local dictionary engine and pronunciation audio.",
+        "Runs the local dictionary engine and pronunciation audio, and records a Netflix subtitle line's audio for Anki when experimental Netflix mining is on.",
     });
   } catch (error) {
     // Another extension context may have won the race; only a genuine absence

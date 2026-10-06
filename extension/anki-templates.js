@@ -11,7 +11,7 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
   "pitch-accent-categories", "pitch-accent-graphs", "pitch-accent-graphs-jj",
-  "audio", "screenshot"];
+  "audio", "screenshot", "sentence-audio"];
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"]]);
 const MARKER_DESCRIPTIONS = {
   expression: "Dictionary form of the selected term",
@@ -61,6 +61,7 @@ const MARKER_DESCRIPTIONS = {
   "pitch-accent-graphs-jj": "Japanese pitch accent SVG graphs with kana labels (Jidoujisho style)",
   audio: "Selected pronunciation audio",
   screenshot: "Screenshot of the source page",
+  "sentence-audio": "Netflix subtitle line's audio (experimental)",
 };
 const DYNAMIC_MARKER_OPTIONS = [
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],
@@ -188,6 +189,7 @@ export function ankiCaptureRequirements(templates) {
   const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
   return {
     includeScreenshot: markers.has("screenshot"),
+    includeSentenceAudio: markers.has("sentence-audio"),
   };
 }
 

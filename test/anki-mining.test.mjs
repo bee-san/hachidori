@@ -749,3 +749,72 @@ test("a popup's batched readiness gives every entry its per-entry reply for a fi
   assert.match(sample[4].error, /^Anki refused the note because its first field is empty\./u);
   assert.match(sample[5].error, /^The first field of note type “Kiku”, “Expression”, is empty for this result/u);
 });
+
+// Experimental Netflix mining routes the presets' blank sentence-audio field.
+function netflixMining({ model, fields, fieldTemplates, netflixMining = true }) {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  let config = { ...base, url: "http://127.0.0.1:8765", apiKey: "", model, deck: "Default", fieldTemplates, netflixMining };
+  const rendered = [];
+  const gateway = {
+    async discover() { return { connected: true, model, models: [model], decks: ["Default"], fields, errors: [] }; },
+    async invoke(action) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  const service = createAnkiMiningService({ gateway, readConfig: async () => config, duplicateIndex: testIndex(),
+    buildFields: async (request, current) => {
+      rendered.push(structuredClone(current.resolved.templates));
+      return { fields: { [fields[0]]: request.term.expression } };
+    },
+    beforeWrite: async () => {}, enrich: async () => [] });
+  const preflight = async patch => service.preflight({ term: { expression: "猫", reading: "ねこ" }, generation: 3,
+    configKey: (await service.status()).configKey, ...patch });
+  return { service, rendered, preflight, change(patch) { config = { ...config, ...patch }; } };
+}
+
+const NETFLIX_CUE = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
+
+test("a Netflix request routes a blank Kiku, Lapis or Senren sentence-audio field to {sentence-audio} in its own copy only", async () => {
+  for (const [model, first, field] of [["Kiku", "Expression", "SentenceAudio"], ["Lapis v1.7", "Expression", "SentenceAudio"],
+    ["Senren", "word", "sentenceAudio"]]) {
+    const saved = { [first]: { value: "{expression}", overwriteMode: "overwrite" },
+      [field]: { value: "", overwriteMode: "coalesce" } };
+    const f = netflixMining({ model, fields: [first, field], fieldTemplates: saved });
+    const reply = await f.preflight({ netflix: NETFLIX_CUE });
+    assert.equal(reply.sentenceAudio, true, model);
+    assert.equal(f.rendered.at(-1)[field].value, "{sentence-audio}", model);
+    assert.equal(saved[field].value, "", "the saved template is never rewritten");
+    // A line without a cue still learns that it needs one, so the reader can say why there is none.
+    assert.equal((await f.preflight({ netflix: { unavailable: "no-match" } })).sentenceAudio, true);
+    // Off Netflix nothing changes.
+    const plain = await f.preflight({});
+    assert.equal(Object.hasOwn(plain, "sentenceAudio"), false);
+    assert.equal(f.rendered.at(-1)[field].value, "");
+    // With the switch off a Netflix request is an ordinary one.
+    f.change({ netflixMining: false });
+    const off = await f.preflight({ netflix: NETFLIX_CUE });
+    assert.equal(Object.hasOwn(off, "sentenceAudio"), false);
+    assert.equal(f.rendered.at(-1)[field].value, "");
+  }
+});
+
+test("a filled sentence-audio field is kept and a custom note type uses its own {sentence-audio} mapping", async () => {
+  const kept = netflixMining({ model: "Kiku", fields: ["Expression", "SentenceAudio"], fieldTemplates: {
+    Expression: { value: "{expression}", overwriteMode: "overwrite" },
+    SentenceAudio: { value: "{audio}", overwriteMode: "coalesce" } } });
+  const reply = await kept.preflight({ netflix: NETFLIX_CUE });
+  assert.equal(Object.hasOwn(reply, "sentenceAudio"), false);
+  assert.equal(kept.rendered.at(-1).SentenceAudio.value, "{audio}");
+  // "My Kiku" is not the Kiku note type, so nothing is routed for it.
+  const namesake = netflixMining({ model: "My Kiku", fields: ["Expression", "SentenceAudio"], fieldTemplates: {
+    Expression: { value: "{expression}", overwriteMode: "overwrite" },
+    SentenceAudio: { value: "", overwriteMode: "coalesce" } } });
+  assert.equal(Object.hasOwn(await namesake.preflight({ netflix: NETFLIX_CUE }), "sentenceAudio"), false);
+  assert.equal(namesake.rendered.at(-1).SentenceAudio.value, "");
+  const custom = netflixMining({ model: "Basic", fields: ["Front", "Back"], fieldTemplates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Back: { value: "{sentence}<br>{sentence-audio}", overwriteMode: "overwrite" } } });
+  assert.equal((await custom.preflight({ netflix: NETFLIX_CUE })).sentenceAudio, true);
+  assert.equal(Object.hasOwn(await custom.preflight({}), "sentenceAudio"), false);
+});

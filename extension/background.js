@@ -72,6 +72,7 @@ import {
 } from "./setup-state.js";
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
+import { applyNetflixFlag } from "./netflix.js";
 
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseOptions, projectStoredOptions,
@@ -1954,6 +1955,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void reconcileAnkiIndex();
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
+  void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
   const { lowMemoryMode, dictionaryEntryStorage } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
   if (lowMemoryMode === previous.lowMemoryMode && dictionaryEntryStorage === previous.dictionaryEntryStorage) return;
@@ -2096,6 +2098,121 @@ async function captureSenderViewport(sender) {
   }
 }
 
+// Experimental Netflix mining (docs/architecture.md, Netflix mining). While the
+// page replays one subtitle line, `start` opens a tab-capture stream of the
+// asking tab in the offscreen document, `finish` cuts the line out of it and
+// gives the WAV to the Anki worker to hold for the note, `cancel` stops it.
+// The worker holds no media itself; only the final WAV reaches Anki.
+const NETFLIX_TARGET = "hachidori-netflix";
+const NETFLIX_CAPTURE_TARGET = "hachidori-netflix-capture";
+const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
+// Beyond the line itself, an unfinished recording gets this long before the
+// offscreen document stops it and gives the tab its sound back.
+const NETFLIX_RECORDING_SLACK_MS = 60_000;
+let netflixRecording = null;
+
+function netflixCue(value) {
+  if (!value || typeof value !== "object" || typeof value.movieId !== "string" || !/^\d+$/u.test(value.movieId)
+      || !Number.isFinite(value.startMs) || !Number.isFinite(value.endMs)
+      || value.startMs < 0 || value.endMs < value.startMs) {
+    throw new Error("The Netflix line to record is invalid.");
+  }
+  return { movieId: value.movieId, startMs: value.startMs, endMs: value.endMs };
+}
+
+// The exact top-frame Netflix player document that asked, in the active tab.
+async function netflixRecordingTab(sender) {
+  if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || typeof sender.tab?.id !== "number"
+      || !sender.documentId) {
+    throw new Error("Only the Netflix player page can record a line.");
+  }
+  const tab = await chrome.tabs.get(sender.tab.id);
+  if (tab?.active !== true) throw new Error("The Netflix tab is no longer the active tab.");
+  if (!NETFLIX_WATCH_URL.test(tab.url ?? "")) throw new Error("The tab is no longer playing a Netflix title.");
+  const document = await chrome.tabs.sendMessage(tab.id, { target: "hachidori-anki-content", type: "hd_anki_document" },
+    { documentId: sender.documentId }).catch(() => null);
+  if (document?.present !== true) throw new Error("The Netflix page changed before the line was recorded.");
+  return tab;
+}
+
+function netflixRelay(type, fields) {
+  return relay({ ...fields, target: NETFLIX_CAPTURE_TARGET, type, requestId: `netflix-${crypto.randomUUID()}` });
+}
+
+async function stopNetflixRecording() {
+  const recording = netflixRecording;
+  netflixRecording = null;
+  if (recording) await netflixRelay("hd_netflix_record_cancel", { sessionId: recording.sessionId }).catch(() => {});
+}
+
+async function startNetflixRecording(message, sender) {
+  if (sharingLinked) return { unavailable: "linked" };
+  const cue = netflixCue(message.cue);
+  const tab = await netflixRecordingTab(sender);
+  // One line at a time: a newer Add takes over from an older one.
+  await stopNetflixRecording();
+  let streamId;
+  try {
+    streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  } catch (error) {
+    // Chrome lets an extension capture a tab only after the user invokes it there.
+    if (/not been invoked|activeTab/iu.test(describe(error))) return { unavailable: "grant" };
+    throw error;
+  }
+  const recording = { sessionId: crypto.randomUUID(), documentId: sender.documentId, cue };
+  netflixRecording = recording;
+  let reply;
+  try {
+    reply = await netflixRelay("hd_netflix_record_start", { sessionId: recording.sessionId, streamId,
+      limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS });
+  } finally {
+    if (reply?.ok !== true && netflixRecording === recording) netflixRecording = null;
+  }
+  if (reply?.ok !== true) throw new Error(reply?.error || "The recording did not start.");
+  return { sessionId: recording.sessionId, padMs: reply.padMs };
+}
+
+async function finishNetflixRecording(message, sender) {
+  const recording = netflixRecording;
+  if (recording?.sessionId !== message.sessionId || recording.documentId !== sender.documentId) {
+    throw new Error("The recording of this line was replaced or interrupted.");
+  }
+  netflixRecording = null;
+  const reply = await netflixRelay("hd_netflix_record_finish", { sessionId: recording.sessionId,
+    startMs: recording.cue.startMs, endMs: recording.cue.endMs, anchors: message.anchors });
+  if (reply?.ok !== true) throw new Error(reply?.error || "The line could not be recorded.");
+  if (reply.silent === true) return { unavailable: "silent" };
+  return getAnkiMining().sentenceAudio(reply.data, message.templateId);
+}
+
+async function cancelNetflixRecording(message, sender) {
+  if (netflixRecording?.sessionId === message.sessionId && netflixRecording.documentId === sender.documentId) {
+    await stopNetflixRecording();
+  }
+  return { cancelled: true };
+}
+
+const NETFLIX_REQUESTS = {
+  hd_netflix_capture_start: startNetflixRecording,
+  hd_netflix_capture_finish: finishNetflixRecording,
+  hd_netflix_capture_cancel: cancelNetflixRecording,
+};
+
+async function handleNetflixRequest(message, sender) {
+  if (!Object.hasOwn(NETFLIX_REQUESTS, message.type)) throw new Error("Unknown Netflix request.");
+  await sharingReady;
+  const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
+  if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+  return NETFLIX_REQUESTS[message.type](message, sender);
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== NETFLIX_TARGET) return false;
+  handleNetflixRequest(message, sender).then(result => sendResponse(workerReply(message, result)),
+    error => sendResponse(failureReply(message, error)));
+  return true;
+});
+
 // Anki owns its own mutation queue. Discovery, DOM rendering and network I/O
 // must never hold the dictionary storage queue while the engine calls into it.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -2158,7 +2275,10 @@ async function linkedPreflight(message, request) {
     return { state: "error", canAdd: false, error: `unexpected reply for ${single.type}` };
   }
   if (reply.ok !== true) return { state: "error", canAdd: false, error: reply.error || `${single.type} failed` };
-  return Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
+  const entry = Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
+  // Netflix media stay with the reading browser's own Anki connection, so a
+  // linked Netflix request is told it gets none.
+  return request?.netflix !== null && typeof request?.netflix === "object" ? { ...entry, netflixLinked: true } : entry;
 }
 
 async function linkedPreflightBatch(message) {
@@ -2999,6 +3119,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
+  void applyNetflixFlag(chrome, options.experimental.netflixMining);
 });
 
 if (OVERLAY_MODE) {

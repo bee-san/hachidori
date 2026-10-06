@@ -936,6 +936,15 @@
     return GOOGLE_DOCS_HOST && options.experimental.googleDocs === true;
   }
 
+  // Experimental Features → Netflix mining: background.js registers
+  // netflix-content.js on Netflix while the flag is on; the switch also gates
+  // a page that loaded it before the switch went off.
+  const NETFLIX_HOST = location.hostname === "www.netflix.com";
+  function netflixMiningEnabled() {
+    return NETFLIX_HOST && options.experimental.netflixMining === true
+      && typeof window.HDNetflix?.miningFields === "function";
+  }
+
   function releaseDocsImposter() {
     docsImposter?.text.remove();
     docsImposter = null;
@@ -2357,6 +2366,8 @@
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
+      recordNetflixLine: (cue, templateId) => window.HDNetflix.record(cue, {
+        send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId }),
     });
     mining.update(options, optionsStorageRevision >= 0);
     audio ??= window.HDAudio.createAudioController({ window, popupRect,
@@ -2529,6 +2540,10 @@
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+        // Experimental Netflix mining: the root popup's pinned cue, and for the
+        // root lookup the whole cue as its sentence.
+        ...(netflixMiningEnabled() ? window.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,
+          level === rootLevel ? candidate : null) : {}),
       };
     } });
   }
@@ -2814,6 +2829,11 @@
   function show(candidate, level = rootLevel) {
     level.activeCandidate = candidate;
     level.activeSignature = candidateSignature(candidate);
+    // A Netflix subtitle line is pinned as the popup opens, so adding the note
+    // after the line has gone still records that line.
+    if (level === rootLevel && candidate.sourceDepth === -1 && netflixMiningEnabled()) {
+      candidate.netflixObservation ??= window.HDNetflix.observe(candidate.anchor);
+    }
     // The body may have been replaced, or the player may have entered fullscreen.
     mountHost();
     level.popup.hidden = false;

@@ -358,6 +358,14 @@ test("availability revalidates retained choices, all mappings and the first mode
     Back: { value: "{expression}", overwriteMode: "overwrite" },
   } });
   assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /Unknown marker.*capture-animation/iu);
+  // Captured media is never part of a note's identity.
+  for (const marker of ["{screenshot}", "{sentence-audio}"]) {
+    const mediaFirst = config({ model: "Basic", fieldTemplates: {
+      Front: { value: `{expression}${marker}`, overwriteMode: "overwrite" },
+      Back: { value: "{glossary}", overwriteMode: "overwrite" },
+    } });
+    assert.deepEqual(ankiAvailability(mediaFirst, discovery), ["Captured media cannot be mapped to the first field, “Front”."]);
+  }
   assert.deepEqual(value, before);
 });
 

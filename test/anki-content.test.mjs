@@ -61,7 +61,7 @@ function assertChecking(item) {
     action: "add",
   });
 }
-function fixture(t, send, capture = send, wait, conceal) {
+function fixture(t, send, capture = send, wait, conceal, recordNetflixLine) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
@@ -71,7 +71,7 @@ function fixture(t, send, capture = send, wait, conceal) {
     : send(type, fields);
   const controllerSend = send.handlesBatches === true ? viewOrSend : answerBatches(viewOrSend);
   const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
-    ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}) });
+    ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}), ...(recordNetflixLine ? { recordNetflixLine } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
@@ -795,4 +795,101 @@ test("a submission Anki answers as a duplicate or invalid releases its screensho
     // A definitive refusal is not an unconfirmed write.
     assert.doesNotMatch(f.items[0].output.textContent, /could not be confirmed|Check Anki before trying again/u, state);
   }
+});
+
+test("a Netflix note records its line concealed after the screenshot, and a missing line is a warning, never a failure", async t => {
+  const calls = [], concealed = [], recordings = [];
+  let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true };
+  let recorded = async () => ({ token: "line-a", filename: "hachidori-sentence-audio-a.wav" });
+  let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 12, warnings: [] }; }
+    return decision;
+  }, undefined, undefined, async during => {
+    concealed.push("hidden");
+    const result = await during();
+    concealed.push("restored");
+    return result;
+  }, async (cue, templateId) => {
+    recordings.push([cue, templateId, calls.at(-1)]);
+    return recorded();
+  });
+  f.context.getRequest = result => ({ term: result.term, netflix });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  const mine = async index => {
+    f.items[index].add.click();
+    await until(() => f.items[index].add.dataset.state === "success");
+    return f.items[index].output.textContent;
+  };
+
+  assert.equal(await mine(0), "Added note 12.");
+  // The picture first, then the line, each with the reader hidden, then the write.
+  assert.deepEqual(recordings, [[netflix.cue, "default", "hd_anki_screenshot"]]);
+  assert.deepEqual(concealed, ["hidden", "restored", "hidden", "restored"]);
+  assert.deepEqual(calls.filter(type => ["hd_anki_screenshot", "hd_anki_submit"].includes(type)),
+    ["hd_anki_screenshot", "hd_anki_submit"]);
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "hachidori-sentence-audio-a.wav" });
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+
+  // Chrome's missing capture grant explains the one-time invocation.
+  recorded = async () => ({ unavailable: "grant" });
+  assert.match(await mine(1), /^Added note 12\. Sentence audio: Chrome has not let Hachidori record this tab yet\. Click Hachidori's toolbar button once/u);
+  assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
+  assert.equal(submittedRequest.sentenceAudio, undefined);
+
+  // A line with no cue says why and records nothing.
+  netflix = { unavailable: "no-match" };
+  recorded = async () => { throw new Error("must not record without a cue"); };
+  f.controller.refresh(f.context.owner);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  assert.match(await mine(2), /Sentence audio: the hovered subtitle matched no line in Netflix's subtitle file\./u);
+  assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
+  assert.equal(recordings.length, 2);
+});
+
+test("a recording failure, a linked browser and an unmapped marker never fail or record the note", async t => {
+  const recordings = [];
+  let decision = { state: "addable", canAdd: true, sentenceAudio: true };
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 7, warnings: [] }; }
+    return decision;
+  }, undefined, undefined, undefined, async cue => {
+    recordings.push(cue);
+    throw new Error("The Netflix tab is no longer the active tab.");
+  });
+  f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "1", startMs: 0, endMs: 900 } } });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.equal(f.items[0].output.textContent, "Added note 7. Sentence audio: The Netflix tab is no longer the active tab.");
+  assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
+
+  decision = { state: "addable", canAdd: true, sentenceAudio: true, netflixLinked: true };
+  f.controller.refresh(f.context.owner);
+  await until(() => f.items[1].add && !f.items[1].add.disabled);
+  f.items[1].add.click();
+  await until(() => f.items[1].add.dataset.state === "success");
+  assert.match(f.items[1].output.textContent, /Sentence audio: this browser is linked to another Hachidori/u);
+
+  // Without a mapped {sentence-audio}, or with Netflix mining off, the worker
+  // says nothing about sentence audio and the note is exactly as before.
+  decision = { state: "addable", canAdd: true };
+  f.controller.refresh(f.context.owner);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  f.items[2].add.click();
+  await until(() => f.items[2].add.dataset.state === "success");
+  assert.equal(f.items[2].output.textContent, "Added note 7.");
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+  assert.equal(submittedRequest.sentenceAudio, undefined);
+  assert.equal(recordings.length, 1);
 });

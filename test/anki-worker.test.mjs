@@ -784,3 +784,104 @@ test("worker selects the requested Template for destination, fields and screensh
       duplicateScopeOptions: { deckName: null, checkChildren: false, checkAllModels: false },
     }, tags: ["hachidori"] }]);
 });
+
+test("a recorded Netflix line is held until the note is written and stored as its own WAV, beside the screenshot", async () => {
+  const uploads = [], deletions = [];
+  let refuse = false, duplicate = false, lostReply = false, check = { canAdd: true }, fields = null;
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
+    anki: { model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Back: { value: "{screenshot}{sentence-audio}", overwriteMode: "overwrite" } } } });
+  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+    models: ["Basic"], decks: ["Default"], errors: [] }),
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [check];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [12];
+      if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
+      if (action === "addNote") {
+        if (duplicate) throw new Error("cannot create note because it is a duplicate");
+        if (lostReply) throw new AnkiTransportError("Anki reply lost", { dispatched: true });
+        fields = params.note.fields;
+        return 12;
+      }
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
+      uploads.push(params.filename);
+      if (refuse && params.filename.endsWith(".wav")) throw new Error("media folder is read-only");
+      return params.filename;
+    } };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(() => /duplicate/iu.test(check.error ?? "") ? [12] : []),
+    readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates, {}), media: [] }),
+  });
+  const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
+    generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Netflix", dictionaryAliases: {}, frequencyDictionaries: [],
+    netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } };
+  const { configKey } = await service.status();
+  const SENTENCE_AUDIO = /^hachidori-sentence-audio-[0-9a-f-]{36}\.wav$/u;
+
+  // Holding stores nothing; only a WAV is held.
+  await assert.rejects(service.sentenceAudio("bm90IHdhdg==", "default"), /no WAV audio/u);
+  const held = await service.sentenceAudio(AUDIO_DATA, "default");
+  assert.match(held.filename, SENTENCE_AUDIO);
+  assert.equal(uploads.length, 0);
+  const picture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  const added = await service.submit({ ...request, configKey, screenshot: picture, sentenceAudio: held });
+  assert.equal(added.state, "added");
+  assert.deepEqual(added.warnings, []);
+  assert.deepEqual(uploads, [picture.filename, held.filename]);
+  assert.equal(fields.Back, `<img src="${picture.filename}">[sound:${held.filename}]`);
+
+  // A recording that is no longer the held one, and a refused upload, are warnings
+  // on a note that is still written without a broken reference.
+  const stale = await service.submit({ ...request, term: { ...request.term, expression: "犬" }, configKey, sentenceAudio: held });
+  assert.match(stale.warnings.join(" "), /Sentence audio: the recorded line was replaced/u);
+  assert.equal(fields.Back, "");
+  refuse = true;
+  const refusedLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  const refused = await service.submit({ ...request, term: { ...request.term, expression: "鳥" }, configKey,
+    sentenceAudio: refusedLine });
+  assert.equal(refused.state, "added");
+  assert.match(refused.warnings.join(" "), /Sentence audio: media folder is read-only/u);
+  assert.equal(fields.Back, "");
+  assert.deepEqual(deletions, [refusedLine.filename]);
+  refuse = false;
+  deletions.length = 0;
+
+  // A definitive no-write releases the held line; a definitively refused write
+  // deletes the stored one; an uncertain write keeps it.
+  check = { canAdd: false, error: "cannot create note because it is a duplicate" };
+  const duplicateLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  assert.equal((await service.submit({ ...request, configKey, sentenceAudio: duplicateLine })).state, "duplicate");
+  check = { canAdd: true };
+  assert.match((await service.submit({ ...request, configKey, sentenceAudio: duplicateLine })).warnings.join(" "),
+    /recorded line was replaced/u);
+  duplicate = true;
+  const rejectedLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  assert.equal((await service.submit({ ...request, term: { ...request.term, expression: "馬" }, configKey,
+    sentenceAudio: rejectedLine })).state, "duplicate");
+  assert.deepEqual(deletions, [rejectedLine.filename]);
+  duplicate = false;
+  deletions.length = 0;
+  lostReply = true;
+  const uncertainLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  assert.equal((await service.submit({ ...request, configKey, sentenceAudio: uncertainLine })).state, "uncertain");
+  assert.equal(uploads.at(-1), uncertainLine.filename);
+  assert.deepEqual(deletions, [], "an uncertain write must retain its uploaded line");
+  lostReply = false;
+
+  // An abandoned submission releases its own line only.
+  const abandoned = await service.sentenceAudio(AUDIO_DATA, "default");
+  assert.deepEqual(service.discardScreenshot({ token: "someone-else" }), { discarded: true });
+  service.discardScreenshot({ token: abandoned.token });
+  assert.match((await service.submit({ ...request, term: { ...request.term, expression: "牛" }, configKey,
+    sentenceAudio: abandoned })).warnings.join(" "), /recorded line was replaced/u);
+
+  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "deleted"), /no longer available/u);
+  options.experimental.netflixMining = false;
+  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /turned off in Settings/u);
+});

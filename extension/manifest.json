@@ -17,6 +17,7 @@
     "offscreen",
     "scripting",
     "storage",
+    "tabCapture",
     "unlimitedStorage",
     "userScripts"
   ],
