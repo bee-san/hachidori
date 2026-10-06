@@ -800,7 +800,7 @@ test("a submission Anki answers as a duplicate or invalid releases its screensho
 test("a Netflix note records its line concealed after the screenshot, and a missing line is a warning, never a failure", async t => {
   const calls = [], concealed = [], recordings = [];
   let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true };
-  let recorded = async () => ({ token: "line-a", filename: "hachidori-sentence-audio-a.wav" });
+  let recorded = async () => ({ audio: { token: "line-a", filename: "hachidori-sentence-audio-a.wav" }, gif: null });
   let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
   let submittedRequest = null;
   const f = fixture(t, async (type, { request } = {}) => {
@@ -874,12 +874,15 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   assert.equal(f.items[0].output.textContent, "Added note 7. Sentence audio: The Netflix tab is no longer the active tab.");
   assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
 
-  decision = { state: "addable", canAdd: true, sentenceAudio: true, netflixLinked: true };
+  // A linked preflight is the host's reply plus netflixLinked: the host never
+  // sees the cue, so it flags neither sentenceAudio nor gif.
+  decision = { state: "addable", canAdd: true, netflixLinked: true };
   f.controller.refresh(f.context.owner);
   await until(() => f.items[1].add && !f.items[1].add.disabled);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "success");
-  assert.match(f.items[1].output.textContent, /Sentence audio: this browser is linked to another Hachidori/u);
+  assert.equal(f.items[1].output.textContent,
+    "Added note 7. Netflix mining: this browser is linked to another Hachidori, so Netflix lines are not recorded.");
 
   // Without a mapped {sentence-audio}, or with Netflix mining off, the worker
   // says nothing about sentence audio and the note is exactly as before.
@@ -892,4 +895,101 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   assert.equal(submittedRequest.captureUnavailable, undefined);
   assert.equal(submittedRequest.sentenceAudio, undefined);
   assert.equal(recordings.length, 1);
+});
+
+test("a Netflix note records its line's GIF, and a missing or failed GIF falls back to the screenshot", async t => {
+  const recordings = [];
+  // The reader asks for both the audio and the GIF; the worker's flags say so.
+  let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true, gif: true };
+  let recorded = async () => ({ audio: { token: "line-a", filename: "a.wav" },
+    gif: { token: "gif-a", filename: "hachidori-gif-a.gif" } });
+  let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 21, warnings: [] }; }
+    return decision;
+  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
+    recordings.push([cue, templateId, options]);
+    return recorded();
+  });
+  f.context.getRequest = result => ({ term: result.term, netflix });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  const mine = async index => {
+    f.items[index].add.click();
+    await until(() => f.items[index].add.dataset.state === "success");
+    return f.items[index].output.textContent;
+  };
+
+  // A GIF is recorded (the recorder is asked for it) and both files are submitted.
+  assert.equal(await mine(0), "Added note 21.");
+  assert.deepEqual(recordings.at(-1), [netflix.cue, "default", { audio: true, gif: true }]);
+  assert.deepEqual(submittedRequest.gif, { token: "gif-a", filename: "hachidori-gif-a.gif" });
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+
+  // The replay returns no GIF: {gif} falls back to the screenshot, and the note says so.
+  recorded = async () => ({ audio: { token: "line-b", filename: "b.wav" }, gif: null });
+  assert.equal(await mine(1), "Added note 21. GIF: no GIF could be made of the line.");
+  assert.equal(submittedRequest.gif, undefined);
+  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-b", filename: "b.wav" });
+
+  // No cue: one warning names both media, and {gif} still falls back to the screenshot.
+  netflix = { unavailable: "no-match" };
+  recorded = async () => { throw new Error("must not record without a cue"); };
+  f.controller.refresh(f.context.owner);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  assert.equal(await mine(2),
+    "Added note 21. Sentence audio and GIF: the hovered subtitle matched no line in Netflix's subtitle file.");
+  assert.deepEqual([...submittedRequest.captureUnavailable].sort(), ["gif", "sentence-audio"]);
+});
+
+test("a note whose only Netflix field is {gif} says why it got the screenshot instead", async t => {
+  const decision = { state: "addable", canAdd: true, screenshot: true, gif: true };
+  const wantedMedia = [];
+  let recorded = async () => ({ unavailable: "grant" });
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 31, warnings: [] }; }
+    return decision;
+  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
+    wantedMedia.push(options);
+    return recorded();
+  });
+  f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  const mine = async index => {
+    f.items[index].add.click();
+    await until(() => f.items[index].add.dataset.state === "success");
+    return f.items[index].output.textContent;
+  };
+
+  // Without a grant the warning still explains the one-time click.
+  assert.equal(await mine(0), "Added note 31. GIF: Chrome has not let Hachidori record this tab yet. Click Hachidori's "
+    + "toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from "
+    + "chrome://extensions/shortcuts; later notes in this tab will record the line.");
+  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  assert.deepEqual(submittedRequest.screenshot, { token: "shot-a", filename: "hachidori-screenshot-a.jpg" });
+
+  // A recorded GIF is submitted with no warning and no audio.
+  recorded = async () => ({ audio: null, gif: { token: "gif-b", filename: "hachidori-gif-b.gif" } });
+  assert.equal(await mine(1), "Added note 31.");
+  assert.deepEqual(submittedRequest.gif, { token: "gif-b", filename: "hachidori-gif-b.gif" });
+  assert.equal(submittedRequest.sentenceAudio, undefined);
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+
+  // A recording that fails is a GIF warning too.
+  recorded = async () => { throw new Error("The recording of this line was interrupted."); };
+  assert.equal(await mine(2), "Added note 31. GIF: The recording of this line was interrupted.");
+  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  // Each recording asked for the GIF only, so no WAV is made or held.
+  assert.deepEqual(wantedMedia, Array(3).fill({ audio: false, gif: true }));
 });

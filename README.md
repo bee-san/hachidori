@@ -119,13 +119,18 @@ changing and may be removed:
   in a Japanese subtitle on `netflix.com/watch/…` and add it: the sentence is the
   whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
   audio. Kiku, Lapis and Senren use their blank sentence-audio field
-  automatically. Hachidori reads Netflix's own subtitle files for the timing
+  automatically. A field mapped to `{gif}` gets a short looping GIF of the line;
+  off Netflix or with the switch off it is the page screenshot instead, so a
+  `Picture` field mapped to `{gif}` still gets a picture everywhere, and a
+  Netflix line that cannot be recorded also gets the screenshot, with a note
+  saying why. Hachidori reads Netflix's own subtitle files for the timing
   (adapted from Subadub) and replays the line once to record it, muted, then
   returns to where you were. Chrome lets it record a tab only after you click Hachidori's
   toolbar button once on that tab, or add notes with its **Add the current popup
   entry to Anki** shortcut. Netflix may change its data without notice, and
-  protected playback can record as silence; the note is then added without the
-  audio and says why. While you hover a subtitle line the video pauses, and it
+  protected playback can record as silence, in which case the note is added
+  without the audio and says why, or as black frames, which Hachidori cannot
+  tell from a dark scene, so the GIF is then black. While you hover a subtitle line the video pauses, and it
   plays on once the pointer has left the line and Hachidori's popup, unless you
   played, paused or skipped it yourself in the meantime. Adding a note leaves it
   paused until the line is recorded and the pointer has left.
@@ -155,7 +160,7 @@ assets and their copyright declaration.
 
 Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
 
-The experimental Netflix mining's subtitle hooks are adapted from [Subadub](https://github.com/rsimmons/subadub) by Russel Simmons, under the MIT licence ([notice](distribution/licenses/subadub-LICENSE)).
+The experimental Netflix mining's subtitle hooks are adapted from [Subadub](https://github.com/rsimmons/subadub) by Russel Simmons, under the MIT licence ([notice](distribution/licenses/subadub-LICENSE)). Its looping GIFs are encoded with [gifenc](https://github.com/mattdesl/gifenc) by Matt DesLauriers, under the MIT licence ([notice](distribution/licenses/gifenc-LICENSE)).
 
 Headword furigana use the kanji readings of [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). This file is the property of the [Electronic Dictionary Research and Development Group](https://www.edrdg.org/), and is used in conformance with the Group's [licence](https://www.edrdg.org/edrdg/licence.html). The readings in `extension/vendor/kanjidic/` remain under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder, encodeMonoWav, isSilent,
   mediaClockOffset } from "../extension/netflix-capture.js";
+import { readGif } from "./gif-structure.mjs";
 
 test("the media clock offset is the median of the page's (wall, media) pairs", () => {
   assert.equal(mediaClockOffset([[10_000, 1000], [10_101, 1100], [10_200, 1200]]), 9000);
@@ -172,4 +173,114 @@ test("a missing grant, silence, a line that never played and an abandoned record
   assert.equal(abandoned.record.stopped, 3);
   await assert.rejects(third.start({ targetTabId: "7", limitMs: 1000 }), /invalid/u);
   await assert.rejects(third.start({ targetTabId: 7 }), /invalid/u);
+});
+
+// A recorder window that also serves a video track and the OffscreenCanvas the
+// GIF path draws frames into. Audio and video each have their own reader whose
+// blocks the test pushes; getImageData returns a solid frame of the colour the
+// last drawn VideoFrame carried, so a decoded GIF has recognisable frames.
+function gifRecorderWindow() {
+  const clock = { now: 2_000_000 };
+  const record = { constraints: null, stopped: 0, cancelled: 0, timers: [], pushAudio: null, pushVideo: null };
+  const streams = { audio: { blocks: [], wake: null }, video: { blocks: [], wake: null } };
+  const reader = store => ({
+    read: () => new Promise(resolve => { if (store.blocks.length) resolve(store.blocks.shift()); else store.wake = resolve; }),
+    cancel: async () => { record.cancelled++; store.wake?.({ done: true }); },
+  });
+  let lastDraw = 0;
+  const window = {
+    performance: { timeOrigin: 1_000_000, now: () => clock.now - 1_000_000 },
+    chrome: { tabCapture: { async getMediaStreamId() { return "stream-id"; } } },
+    navigator: { mediaDevices: { async getUserMedia(constraints) {
+      record.constraints = constraints;
+      const audio = { kind: "audio", stop: () => { record.stopped++; } };
+      const video = { kind: "video", stop: () => { record.stopped++; } };
+      return { getAudioTracks: () => [audio], getVideoTracks: () => constraints.video ? [video] : [],
+        getTracks: () => [audio, ...(constraints.video ? [video] : [])] };
+    } } },
+    MediaStreamTrackProcessor: class {
+      constructor({ track }) { this.readable = { getReader: () => reader(track.kind === "video" ? streams.video : streams.audio) }; }
+    },
+    OffscreenCanvas: class {
+      constructor(width, height) { this.width = width; this.height = height; }
+      getContext() {
+        return { drawImage: frame => { lastDraw = frame.level; },
+          getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(lastDraw) }) };
+      }
+    },
+    setTimeout: (callback, ms) => { if (ms >= 1000) { record.timers.push({ callback, ms }); return record.timers.length; } return setTimeout(callback, 0); },
+    clearTimeout: () => {},
+  };
+  record.pushAudio = (timestampMs, frames, value) => {
+    const block = { value: { timestamp: timestampMs * 1000, numberOfFrames: frames, numberOfChannels: 1, sampleRate: 1000,
+      copyTo(plane) { plane.fill(value); }, close() {} }, done: false };
+    if (streams.audio.wake) { const resolve = streams.audio.wake; streams.audio.wake = null; resolve(block); } else streams.audio.blocks.push(block);
+  };
+  record.pushVideo = (timestampMs, level) => {
+    const block = { value: { timestamp: timestampMs * 1000, displayWidth: 960, displayHeight: 540, codedWidth: 960,
+      codedHeight: 540, level, close() {} }, done: false };
+    if (streams.video.wake) { const resolve = streams.video.wake; streams.video.wake = null; resolve(block); } else streams.video.blocks.push(block);
+  };
+  return { window, record, clock };
+}
+
+const settle = () => new Promise(resolve => { setTimeout(resolve, 0); });
+
+test("with gif, the recorder opens the video track and encodes a looping GIF of the cue window", async () => {
+  const { window, record, clock } = gifRecorderWindow();
+  const recorder = createNetflixRecorder(window);
+  await recorder.start({ targetTabId: 7, limitMs: 60_000, gif: true });
+  // Both tracks are requested from the one stream.
+  assert.deepEqual(record.constraints.video, { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: "stream-id" } });
+  clock.now = 1_001_100;
+  // Audio so the clip is not empty, and video frames every 40 ms (25 fps). The
+  // page played media 1000 ms at wall 1_001_500, so offset is 1_000_500 and a
+  // frame at timestamp T lands at media T − 500; frames at 1500–2100 ms map to
+  // the cue window 1000–1600 ms, thinned to <=10 fps.
+  for (let block = 0; block < 20; block++) record.pushAudio(1000 + block * 100, 100, (block + 1) / 64);
+  for (let ms = 1400; ms <= 2200; ms += 40) record.pushVideo(ms, (ms / 40) % 200);
+  await settle();
+  await settle();
+  clock.now = 1_001_000 + 3000;
+  // The cue 1000–1600 ms is the GIF window.
+  const clip = await recorder.finish({ startMs: 1000, endMs: 1600, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
+  assert.equal(typeof clip.gif, "string", "a GIF was encoded");
+  const gif = readGif(Buffer.from(clip.gif, "base64"));
+  assert.ok(gif.frames.length > 1, `the GIF has more than one frame (${gif.frames.length})`);
+  assert.equal(gif.loop, 0, "the GIF loops forever");
+  // The downscale keeps the aspect ratio within 480 px wide (960×540 → 480×270).
+  assert.equal(gif.width, 480);
+  assert.equal(gif.height, 270);
+  assert.ok(record.stopped >= 2, "the audio and video tracks are both stopped");
+});
+
+test("without gif, no video track is opened and no GIF is returned", async () => {
+  const { window, record, clock } = gifRecorderWindow();
+  const recorder = createNetflixRecorder(window);
+  await recorder.start({ targetTabId: 7, limitMs: 60_000 });
+  assert.equal(record.constraints.video, false);
+  clock.now = 1_001_100;
+  for (let block = 0; block < 20; block++) record.pushAudio(1000 + block * 100, 100, (block + 1) / 64);
+  await settle();
+  clock.now = 1_001_000 + 3000;
+  const clip = await recorder.finish({ startMs: 1000, endMs: 1600, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
+  assert.equal(clip.gif, undefined, "no GIF without a {gif} field");
+  assert.equal(clip.silent, false);
+});
+
+test("for a {gif} field alone, the recorder returns the GIF and encodes no WAV", async () => {
+  const { window, record, clock } = gifRecorderWindow();
+  const recorder = createNetflixRecorder(window);
+  await recorder.start({ targetTabId: 7, limitMs: 60_000, audio: false, gif: true });
+  // The audio track is still opened: it mutes the tab and paces the finish.
+  assert.notEqual(record.constraints.audio, false);
+  clock.now = 1_001_100;
+  for (let block = 0; block < 20; block++) record.pushAudio(1000 + block * 100, 100, (block + 1) / 64);
+  for (let ms = 1400; ms <= 2200; ms += 40) record.pushVideo(ms, (ms / 40) % 200);
+  await settle();
+  await settle();
+  clock.now = 1_001_000 + 3000;
+  const clip = await recorder.finish({ startMs: 1000, endMs: 1600, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
+  assert.deepEqual(Object.keys(clip), ["gif"], "only the GIF leaves the frame");
+  assert.equal(Buffer.from(clip.gif, "base64").toString("ascii", 0, 6), "GIF89a");
 });

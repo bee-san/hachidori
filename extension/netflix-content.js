@@ -232,13 +232,15 @@
     }
 
     // Records the cue's line: a recorder frame opens the tab's stream, the page
-    // replays the line, then the frame cuts the clip and the worker holds its
-    // WAV for the note. Resolves with the held file or with why there is none.
-    async function record(cue, { send, templateId }) {
+    // replays the line, then the frame cuts the clip (with audio unset, no WAV;
+    // with gif set, a looping GIF of the line) and the worker holds its files
+    // for the note. Resolves with { audio, gif } for the fields, or with why
+    // there is none.
+    async function record(cue, { send, templateId, audio = true, gif = false }) {
       const frame = recorderFrame();
       recordings += 1;
       try {
-        const started = await send("hd_netflix_capture_start", { cue });
+        const started = await send("hd_netflix_capture_start", { cue, audio, gif });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
         if (typeof started.sessionId !== "string" || !Number.isFinite(started.padMs)) {
           throw new TypeError("the recording did not start.");

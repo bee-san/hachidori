@@ -381,7 +381,7 @@ clicks, live editing without replacing cards or Note drafts, and stale-control
 navigation rejection.
 
 `node --test test/netflix.test.mjs test/netflix-subtitles.test.mjs test/netflix-page.test.mjs
-test/netflix-content.test.mjs test/netflix-capture.test.mjs` covers experimental
+test/netflix-content.test.mjs test/netflix-capture.test.mjs test/netflix-gif.test.mjs` covers experimental
 Netflix mining without contacting Netflix. The flag starts off and registers
 the main-world and reader scripts for Netflix's top frame only while on; the
 manifest asks for `tabCapture`, never injects them itself, and exposes only
@@ -408,10 +408,18 @@ recorded (whose replay's play and seeks keep the pause), after a new
 played on asks the page to keep it paused, and it resumes only once the
 recorder has stopped and the pointer has left.
 The recorder frame's sample clock, trim, median clock fit, silence detection
-and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
+and WAV encoding run on synthetic blocks through fake media APIs; with a `{gif}`
+field it also opens the video track, downscales the frames to 480 px wide and
+encodes a looping GIF of the cue window with more than one frame, and for a
+`{gif}` field alone returns that GIF and no WAV. `netflix-gif.test.mjs` covers
+the frame selection, per-frame delays, the loop marker and the one palette the
+frames share on their own; both read the GIF block by block
+(`gif-structure.mjs`). `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
-held WAV's storage lifecycle, the `{sentence-audio}` value and the reader's
-warnings. The extension smoke suite keeps a recorder port only for the recorder
+held WAV's and GIF's storage lifecycle, the `{sentence-audio}` and `{gif}`
+values with the GIF's screenshot fallback, and the reader's warnings, named for
+the mapped media (a `{gif}`-only note included) and given for any linked Netflix
+note. The extension smoke suite keeps a recorder port only for the recorder
 page framed in a Netflix watch tab while the switch is on. Real Netflix playback, Chrome's capture grant and protected video are
 not covered by any automated suite.
 
@@ -419,14 +427,17 @@ not covered by any automated suite.
 mines a fixture page served at a Netflix watch address through the real popup
 into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
 player and in-tab recording must store a WAV whose beep lies within 125 ms of
-its place, with the viewer's position, pause and speed restored and
-`currentTime` written only by the player. It then plays the fixture from inside
+its place, and a looping GIF of the line (from an animated element on the
+fixture page) that Chrome's `ImageDecoder` decodes into more than one distinct
+frame, at most 480 px wide, with the viewer's
+position, pause and speed restored and `currentTime` written only by the player. It then plays the fixture from inside
 the cue: hovering the line must pause it through the player and moving away
 resume it without a seek; a second note added during that pause must be
 recorded with the pause still in force afterwards and resumed on leaving; a
 third note, added after the viewer played the paused video on over the line,
 must leave it paused with no play but the replay's own while the recorder frame
-is in the page, and play it on once the pointer leaves; and
+is in the page, and play it on once the pointer leaves; a fourth note, with
+`{gif}` its only Netflix field, must hold the line's GIF alone; and
 with the switch turned off, the page that still has the scripts must pause
 nothing. It needs headful Chrome, because
 headless Chrome captures tab audio as silence, and stands in for the user's

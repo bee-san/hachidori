@@ -322,11 +322,16 @@ export function createAnkiMiningService({
   const sentenceAudioFor = (prepared, request) => netflixRequest(prepared.config, request)
     && ankiCaptureRequirements(prepared.resolved.templates).includeSentenceAudio
     ? { sentenceAudio: true } : {};
+  // A mapped {gif} on a Netflix request: the reader records a GIF of the line
+  // when it submits, and falls back to the screenshot where it cannot.
+  const gifFor = (prepared, request) => netflixRequest(prepared.config, request)
+    && ankiCaptureRequirements(prepared.resolved.templates).includeGif
+    ? { gif: true } : {};
 
   async function deferredReply(request, prepared) {
     const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
     return { state: "addable", canAdd: true, error: null, deferred: true, screenshot: screenshotFor(prepared),
-      ...sentenceAudioFor(prepared, request), ...extra };
+      ...sentenceAudioFor(prepared, request), ...gifFor(prepared, request), ...extra };
   }
 
   async function preflightReply(request, prepared, result) {
@@ -340,6 +345,7 @@ export function createAnkiMiningService({
       noteIds: result.noteIds,
       screenshot: screenshotFor(prepared),
       ...sentenceAudioFor(prepared, request),
+      ...gifFor(prepared, request),
       ...extra,
     };
   }

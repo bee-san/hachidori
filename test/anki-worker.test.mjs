@@ -27,6 +27,8 @@ wav.writeUInt16LE(16, 34);
 wav.write("data", 36, "ascii");
 wav.writeUInt32LE(2, 40);
 const AUDIO_DATA = wav.toString("base64");
+// A minimal GIF89a byte string; the worker checks the base64 "R0lG" prefix.
+const GIF_DATA = Buffer.from("GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;", "latin1").toString("base64");
 
 function testIndex(resolve = async () => []) {
   const find = async (config, expression, invoke) => {
@@ -884,4 +886,139 @@ test("a recorded Netflix line is held until the note is written and stored as it
   await assert.rejects(service.sentenceAudio(AUDIO_DATA, "deleted"), /no longer available/u);
   options.experimental.netflixMining = false;
   await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /turned off in Settings/u);
+});
+
+test("a recorded Netflix GIF is held, stored under its own name, and falls back to the screenshot", async () => {
+  const uploads = [], deletions = [];
+  let refuse = false, duplicate = false, fields = null;
+  const options = globalThis.HDReaderOptions.normaliseOptions({
+    experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
+    anki: { model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+      // {gif} renders the GIF when present, otherwise the screenshot's <img>.
+      Back: { value: "{gif}", overwriteMode: "overwrite" } } } });
+  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+    models: ["Basic"], decks: ["Default"], errors: [] }),
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [];
+      if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
+      if (action === "addNote") {
+        if (duplicate) throw new Error("cannot create note because it is a duplicate");
+        fields = params.note.fields;
+        return 12;
+      }
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
+      uploads.push(params.filename);
+      if (refuse && params.filename.endsWith(".gif")) throw new Error("media folder is read-only");
+      return params.filename;
+    } };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(() => []),
+    readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates, {}), media: [] }),
+  });
+  const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
+    generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Netflix", dictionaryAliases: {}, frequencyDictionaries: [],
+    netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } };
+  const { configKey } = await service.status();
+  const GIF = /^hachidori-gif-[0-9a-f-]{36}\.gif$/u;
+
+  // Only a GIF is held; its filename is distinct from the WAV and the picture.
+  await assert.rejects(service.gifImage("bm90IGdpZg==", "default"), /no GIF/u);
+  const held = await service.gifImage(GIF_DATA, "default");
+  assert.match(held.filename, GIF);
+  assert.equal(uploads.length, 0);
+
+  // The GIF is stored inside the write and the {gif} field references it.
+  const added = await service.submit({ ...request, configKey, gif: held });
+  assert.equal(added.state, "added");
+  assert.deepEqual(added.warnings, []);
+  assert.deepEqual(uploads, [held.filename]);
+  assert.equal(fields.Back, `<img src="${held.filename}">`);
+
+  // With the GIF marked unavailable, {gif} falls back to the screenshot's <img>.
+  const picture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  const fellBack = await service.submit({ ...request, configKey, screenshot: picture,
+    captureUnavailable: ["gif"] });
+  assert.equal(fellBack.state, "added");
+  assert.equal(fields.Back, `<img src="${picture.filename}">`, "{gif} rendered the screenshot instead");
+
+  // A replaced GIF is a warning; the field keeps no broken reference.
+  const stale = await service.submit({ ...request, term: { ...request.term, expression: "犬" }, configKey, gif: held });
+  assert.match(stale.warnings.join(" "), /GIF: the recorded GIF was replaced/u);
+  assert.equal(fields.Back, "");
+
+  // A refused upload is a warning and the stored file is taken back out.
+  refuse = true;
+  const refusedGif = await service.gifImage(GIF_DATA, "default");
+  const refused = await service.submit({ ...request, term: { ...request.term, expression: "鳥" }, configKey, gif: refusedGif });
+  assert.equal(refused.state, "added");
+  assert.match(refused.warnings.join(" "), /GIF: media folder is read-only/u);
+  assert.deepEqual(deletions, [refusedGif.filename]);
+  refuse = false;
+  deletions.length = 0;
+
+  // A definitively rejected note deletes its GIF; discarding by token releases it.
+  duplicate = true;
+  const rejectedGif = await service.gifImage(GIF_DATA, "default");
+  assert.equal((await service.submit({ ...request, configKey, gif: rejectedGif })).state, "duplicate");
+  assert.deepEqual(deletions, [rejectedGif.filename]);
+  duplicate = false;
+  const abandoned = await service.gifImage(GIF_DATA, "default");
+  service.discardScreenshot({ token: abandoned.token });
+  assert.match((await service.submit({ ...request, term: { ...request.term, expression: "牛" }, configKey, gif: abandoned })).warnings.join(" "),
+    /recorded GIF was replaced/u);
+
+  options.experimental.netflixMining = false;
+  await assert.rejects(service.gifImage(GIF_DATA, "default"), /turned off in Settings/u);
+});
+
+test("pronunciation enrichment keeps a refused or replaced GIF out of its field, without the unstored screenshot", async t => {
+  for (const outcome of ["stored", "replaced", "refused"]) await t.test(outcome, async () => {
+    let fields;
+    const mediaFiles = new Set();
+    const options = globalThis.HDReaderOptions.normaliseOptions({
+      experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
+      anki: { model: "Basic", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{gif}{audio}", overwriteMode: "overwrite" } } } });
+    const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+      models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [];
+      if (action === "getMediaFilesNames") return mediaFiles.has(params.pattern) ? [params.pattern] : [];
+      if (action === "storeMediaFile") {
+        if (outcome === "refused" && params.filename.endsWith(".gif")) throw new Error("media folder is read-only");
+        mediaFiles.add(params.filename);
+        return params.filename;
+      }
+      if (action === "deleteMediaFile") { mediaFiles.delete(params.filename); return null; }
+      if (action === "addNote") { fields = { ...params.note.fields }; return 12; }
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic",
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action === "updateNoteFields") { Object.assign(fields, params.note.fields); return null; }
+      throw new Error(`Unexpected ${action}`);
+    } };
+    const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+      duplicateIndex: testIndex(() => []),
+      readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+      offscreen: async message => message.type === "hd_anki_audio" ? { filename: AUDIO_FILENAME, data: AUDIO_DATA }
+        : { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] },
+    });
+    // {gif} needs the screenshot for its fallback, so the reader took one too.
+    const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+    const gif = await service.gifImage(GIF_DATA, "default");
+    if (outcome === "replaced") await service.gifImage(GIF_DATA, "default");
+    const result = await service.submit({ term: { expression: "猫", reading: "ねこ" }, generation: 3,
+      configKey: (await service.status()).configKey, screenshot, gif });
+    assert.equal(result.state, "added");
+    assert.equal(fields.Back, `${outcome === "stored" ? `<img src="${gif.filename}">` : ""}[sound:${AUDIO_FILENAME}]`);
+    assert.equal(mediaFiles.has(screenshot.filename), false, "the screenshot no field used was never stored");
+    if (outcome === "stored") assert.deepEqual(result.warnings, []);
+    else assert.match(result.warnings.join(" "), /GIF: /u);
+  });
 });

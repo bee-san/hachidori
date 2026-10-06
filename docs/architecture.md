@@ -2721,8 +2721,8 @@ whether the picture includes protected video:
 
 Settings → Advanced → Experimental features → **Netflix mining**
 (`options.experimental.netflixMining`, off by default) gives notes mined from a
-Netflix subtitle the line's own audio and the whole line as the sentence, and
-pauses the video while a subtitle line is hovered. It is
+Netflix subtitle the line's own audio, a looping GIF of it, and the whole line
+as the sentence, and pauses the video while a subtitle line is hovered. It is
 Netflix only, and every part fails closed: a note that cannot get its line is
 added with its other fields and a warning.
 
@@ -2800,6 +2800,21 @@ preflight and Add refuses the stale Add. Preflight adds `sentenceAudio: true`
 when a Netflix request's mapping contains the marker; without that key the
 reader records nothing.
 
+`{gif}` renders `<img src="hachidori-gif-<uuid>.gif">` when a GIF of the line
+is held and stored, and otherwise the screenshot's `<img>`, so off Netflix,
+with the switch off, or when the line could not be recorded a `{gif}` field
+still gets the viewport picture. A held GIF that Anki refused or that a newer
+recording replaced leaves the field empty with a `GIF:` warning instead: the
+worker had released the screenshot unstored, because no applied field
+referenced it, and the pronunciation re-render must not name it. Because of
+that fallback a mapped `{gif}` makes
+`ankiCaptureRequirements` require the screenshot as well, and preflight adds
+`gif: true` on a Netflix request whose mapping contains the marker. `{gif}` is
+refused in the first field and is hidden from the marker picker while Netflix
+mining is off, like `{sentence-audio}`; a saved mapping stays valid and renders
+as the screenshot. Both markers and the preset note types are left otherwise
+unchanged.
+
 **Recording.** After the screenshot, the reader adds a hidden recorder frame,
 `netflix-recorder.html`, to the Netflix page (outside Netflix's app root) and
 sends `hd_netflix_capture_start` with the cue. The worker requires the switch, a
@@ -2821,10 +2836,18 @@ engine, which puts it in another process than the service worker (its
 stream with `getUserMedia` and reads it with `MediaStreamTrackProcessor`,
 placing each `AudioData` block on the wall clock
 (`performance.timeOrigin + performance.now()`) by counting samples from the
-first block's timestamp, as the removed recorder did. Chrome mutes a captured
-tab, so the replay is silent. A recording nobody finishes stops itself a minute
-after the cue's length, and removing the frame or closing its port stops it at
-once.
+first block's timestamp, as the removed recorder did. When a `{gif}` field
+needs it, the `record` request also sets `gif`, so the frame asks for the
+stream's video track too and reads it with a second `MediaStreamTrackProcessor`:
+it draws each `VideoFrame` into an `OffscreenCanvas` at most 480 px wide, reads
+back its RGBA and closes the frame at once, keeping no more than ten frames a
+second by the frames' own timestamps and placing each on the same wall clock.
+When no field maps `{sentence-audio}`, the request sets `audio: false`: the frame
+still opens the audio track, which mutes the tab for the replay and tells it
+when the capture has caught up, but encodes no WAV and the worker holds none.
+Chrome mutes a captured tab, so the replay is silent. A recording nobody
+finishes stops itself a minute after the cue's length, and removing the frame
+or closing its port stops it at once.
 
 With Hachidori's overlays concealed, the reader asks the page to replay the
 cue. Writing `<video>.currentTime` makes Netflix stop with error M7375, so the
@@ -2839,12 +2862,23 @@ video paused (see **Hover pause**).
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
 otherwise it is encoded as a 16-bit mono WAV (the removed recorder's encoder)
-and passed to the worker on the port. The worker holds it like the screenshot:
+and passed to the worker on the port. When video was captured, the frame places
+the kept frames by the same offset, keeps those inside the cue's own window
+(not padded), and encodes a looping GIF of them with the pinned MIT encoder
+gifenc (`extension/vendor/gifenc.js`, see `distribution/THIRD_PARTY_NOTICES.md`),
+each frame's delay the gap to the next and the loop set to repeat forever. The
+frames share one 256-colour palette quantised from all of them: gifenc's
+quantiser costs nearly as much for one detailed frame as for the whole line, so
+a palette per frame took 7–9 s for a 4 s line of anime-style frames against
+about 0.7 s for one. A GIF
+it cannot make is simply absent, so `{gif}` falls back to the screenshot. The
+GIF is passed to the worker beside the WAV, even when the audio was silent. The
+worker holds each like the screenshot:
 one pending recording, stored with `storeMediaFile` inside the queued write,
 its fields emptied and a warning added when the upload is refused, released
 after an authoritative no-write, deleted after a definitively rejected write,
 kept after an uncertain one, and discarded by token
-(`hd_anki_screenshot_discard`, which releases either kind) when the reader
+(`hd_anki_screenshot_discard`, which releases any kind) when the reader
 abandons the submission. A replay that fails cancels the recording with
 `hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
 
@@ -2878,18 +2912,22 @@ for the viewer's.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to
-Anki** shortcut), a silent recording (a muted video or protected playback;
-turning off Chrome's graphics acceleration can help), a missing Netflix player
-or an unfinished replay are each a `Sentence audio:` warning on the added note.
-A browser linked to another Hachidori records nothing: its worker marks a
-Netflix request's linked preflight replies `netflixLinked`, and the reader warns
-instead. No DRM workaround is attempted, and black pictures are not detected.
+Anki** shortcut), a missing Netflix player or an unfinished replay are each a
+warning on the added note, named for the media its fields map: `Sentence
+audio:`, `GIF:` or `Sentence audio and GIF:`. A silent recording (a muted video
+or protected playback; turning off Chrome's graphics acceleration can help) is a
+`Sentence audio:` warning, and a recording that made no GIF a `GIF:` one, while
+the field gets the screenshot. A browser linked to another Hachidori records
+nothing: its worker marks a Netflix request's linked preflight replies
+`netflixLinked`, and the reader adds a `Netflix mining:` warning instead, since
+the host never sees the cue and so cannot say which media are mapped. No DRM
+workaround is attempted, and black pictures are not detected.
 
 Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their
-text and screenshot and say why they have no line audio. Nothing of Netflix is
-stored: timelines live in the page's memory, the recording in the recorder
-frame's, and only the final WAV reaches Anki.
+text and screenshot and say why they have no line audio or GIF. Nothing of
+Netflix is stored: timelines live in the page's memory, the recording in the
+recorder frame's, and only the final WAV and GIF reach Anki.
 
 ## Managed custom dictionary
 
@@ -3180,7 +3218,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
-| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV for the note, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
+| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 
 ## Build outputs
 

@@ -4,8 +4,8 @@
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
 
   const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
-  // Why a Netflix note has no sentence audio, by the reason the reader, the
-  // page or the worker reported.
+  // Why a Netflix note has no sentence audio or GIF, by the reason the reader,
+  // the page or the worker reported.
   const NETFLIX_UNAVAILABLE = {
     "no-timeline": "Netflix's subtitle timing for this episode was not found. Reload the Netflix page; Netflix may also have changed its data.",
     image: "this episode's Japanese subtitles are images, which have no timed text.",
@@ -13,12 +13,42 @@
     failed: "Netflix's subtitle file for this episode could not be read.",
     "no-match": "the hovered subtitle matched no line in Netflix's subtitle file.",
     ambiguous: "the hovered subtitle matched more than one line in Netflix's subtitle file.",
-    grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts; later notes in this tab will have sentence audio.",
+    grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts; later notes in this tab will record the line.",
     silent: "the recording was silent, so no audio was attached. If the video is not muted, Netflix may be blocking capture of protected playback; turning off Chrome's “Use graphics acceleration when available” can help.",
+    "no-gif": "no GIF could be made of the line.",
     player: "Netflix's player controls were not found, so the line could not be replayed.",
     replay: "Netflix did not finish replaying the line.",
     linked: "this browser is linked to another Hachidori, so Netflix lines are not recorded.",
   };
+  const netflixReason = reason => Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason;
+  const heldMedia = media => media && typeof media.filename === "string" && media.filename
+    ? { token: media.token, filename: media.filename } : null;
+  // `wanted` is { audio, gif }, the media the note's fields map; a warning
+  // names those it is about. `outcome` collects the warnings and the
+  // captureUnavailable kinds while a recording is applied.
+  function netflixLabel(wanted) {
+    if (wanted.audio && wanted.gif) return "Sentence audio and GIF";
+    return wanted.audio ? "Sentence audio" : "GIF";
+  }
+  function markUnavailable(outcome, wanted, reason) {
+    outcome.warnings.push(`${netflixLabel(wanted)}: ${netflixReason(reason)}`);
+    if (wanted.audio) outcome.captureUnavailable.push("sentence-audio");
+    if (wanted.gif) outcome.captureUnavailable.push("gif");
+  }
+  function applyRecordedMedia(record, outcome, wanted, recorded) {
+    if (wanted.audio) {
+      const audio = heldMedia(recorded?.audio);
+      if (audio) record.sentenceAudio = audio;
+      else markUnavailable(outcome, { audio: true }, typeof recorded?.audio?.unavailable === "string"
+        ? recorded.audio.unavailable : "no audio was recorded.");
+    }
+    // The GIF is held under its own token, or {gif} falls back to the screenshot.
+    if (wanted.gif) {
+      const gif = heldMedia(recorded?.gif);
+      if (gif) record.gif = gif;
+      else markUnavailable(outcome, { gif: true }, "no-gif");
+    }
+  }
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
       .filter(control => !control.hidden);
@@ -210,7 +240,8 @@
     // afterwards; without a host to hide, the screenshot is just taken.
     conceal = during => during(),
     // Experimental Netflix mining: records a cue's line through the page and
-    // resolves with the held WAV or why there is none (netflix-content.js).
+    // resolves with { audio, gif } for the fields, or with why there is none
+    // (netflix-content.js). Its options { audio, gif } name the media wanted.
     recordNetflixLine = async () => { throw new Error("this page cannot replay Netflix lines."); },
   }) {
     const owners = new Map(), bound = new WeakMap();
@@ -380,10 +411,18 @@
       record.sentenceAudio = null;
       try { await send("hd_anki_screenshot_discard", { request: { token } }); } catch { /* A restarted worker holds nothing. */ }
     }
+    // The recorded GIF is held and released exactly like the line's audio.
+    async function discardGif(record) {
+      if (!record.gif) return;
+      const { token } = record.gif;
+      record.gif = null;
+      try { await send("hd_anki_screenshot_discard", { request: { token } }); } catch { /* A restarted worker holds nothing. */ }
+    }
     // The media this submission captured is nobody's once no note was written.
     async function discardCaptures(record) {
       await discardScreenshot(record);
       await discardSentenceAudio(record);
+      await discardGif(record);
     }
     async function handleSubmissionFailure(record, error, writeSent, owns) {
       if (!writeSent) {
@@ -419,34 +458,50 @@
         return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "screenshot"] };
       }
     }
-    // Experimental Netflix mining: the hovered subtitle line's audio, recorded
-    // while the page replays the line with the reader concealed. Like the
-    // screenshot, a line that cannot be recorded is a warning on an otherwise
-    // ordinary note.
+    // Experimental Netflix mining: the hovered subtitle line's audio and, when
+    // a {gif} field needs it, a looping GIF, recorded while the page replays
+    // the line with the reader concealed. Like the screenshot, media that
+    // cannot be recorded is a warning on an otherwise ordinary note; {gif}
+    // falls back to the screenshot the submission already took.
+    //
+    // `wanted` is { audio, gif }; `outcome` collects the warnings and the
+    // captureUnavailable kinds while each recorded item is applied to `record`.
+    async function recordNetflixMedia(record, outcome, wanted, cue) {
+      try {
+        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, wanted));
+        if (typeof recorded?.unavailable === "string") markUnavailable(outcome, wanted, recorded.unavailable);
+        else applyRecordedMedia(record, outcome, wanted, recorded);
+      } catch (error) {
+        markUnavailable(outcome, wanted, error.message);
+      }
+    }
     async function prepareNetflixMedia(record, request, owns) {
       record.netflixWarning = "";
       record.sentenceAudio = null;
+      record.gif = null;
+      // A linked browser records nothing. Its host never sees the Netflix cue,
+      // so its preflight cannot say which media the fields map; the reader
+      // warns for any linked Netflix note, and {gif} keeps its screenshot.
       if (record.decision?.netflixLinked === true) {
-        record.netflixWarning = `Sentence audio: ${NETFLIX_UNAVAILABLE.linked}`;
+        record.netflixWarning = `Netflix mining: ${NETFLIX_UNAVAILABLE.linked}`;
         return request;
       }
-      if (record.decision?.sentenceAudio !== true) return request;
-      const unavailable = reason => {
-        record.netflixWarning = `Sentence audio: ${Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason}`;
-        return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "sentence-audio"] };
-      };
+      const wanted = { audio: record.decision?.sentenceAudio === true, gif: record.decision?.gif === true };
+      if (!wanted.audio && !wanted.gif) return request;
+      const outcome = { warnings: [], captureUnavailable: [...(request.captureUnavailable ?? [])] };
       const cue = request.netflix?.cue;
-      if (!cue) return unavailable(request.netflix?.unavailable ?? "no-timeline");
-      if (owns()) setStatus(record, "Recording the line…");
-      try {
-        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId));
-        if (typeof recorded?.unavailable === "string") return unavailable(recorded.unavailable);
-        if (typeof recorded?.filename !== "string" || !recorded.filename) throw new Error("no audio was recorded.");
-        record.sentenceAudio = { token: recorded.token, filename: recorded.filename };
-        return { ...request, sentenceAudio: record.sentenceAudio };
-      } catch (error) {
-        return unavailable(error.message);
+      if (!cue) {
+        markUnavailable(outcome, wanted, request.netflix?.unavailable ?? "no-timeline");
+      } else {
+        if (owns()) setStatus(record, "Recording the line…");
+        await recordNetflixMedia(record, outcome, wanted, cue);
       }
+      record.netflixWarning = outcome.warnings.join(" ");
+      const next = { ...request };
+      if (record.sentenceAudio) next.sentenceAudio = record.sentenceAudio;
+      if (record.gif) next.gif = record.gif;
+      if (outcome.captureUnavailable.length) next.captureUnavailable = outcome.captureUnavailable;
+      return next;
     }
     function submitted(record, result) {
       if (result.state === "uncertain") { uncertain(record, result.error); return true; }

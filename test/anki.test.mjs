@@ -359,7 +359,7 @@ test("availability revalidates retained choices, all mappings and the first mode
   } });
   assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /Unknown marker.*capture-animation/iu);
   // Captured media is never part of a note's identity.
-  for (const marker of ["{screenshot}", "{sentence-audio}"]) {
+  for (const marker of ["{screenshot}", "{sentence-audio}", "{gif}"]) {
     const mediaFirst = config({ model: "Basic", fieldTemplates: {
       Front: { value: `{expression}${marker}`, overwriteMode: "overwrite" },
       Back: { value: "{glossary}", overwriteMode: "overwrite" },

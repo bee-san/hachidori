@@ -283,6 +283,27 @@ test("the Netflix sentence-audio marker references only a held recording, as the
     "{audio}{sentence-audio}", { audio: "[sound:word.mp3]" }), "[sound:word.mp3][sound:a.wav]");
 });
 
+test("the gif marker is the line's GIF when present and the screenshot otherwise", async () => {
+  // On Netflix with a recorded GIF, {gif} is the GIF's <img>.
+  assert.equal(await render(request({ gif: { filename: "hachidori-gif-1.gif" } }), "{gif}"),
+    '<img src="hachidori-gif-1.gif">');
+  assert.equal(await render(request({ gif: { filename: '"><script>' } }), "{gif}"),
+    '<img src="&quot;&gt;&lt;script&gt;">');
+  // Off Netflix, with the switch off, or on failure there is no GIF, so {gif}
+  // falls back to the viewport screenshot's <img>.
+  assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{gif}"),
+    '<img src="hachidori-screenshot-1.jpg">');
+  // A held GIF that Anki could not store renders nothing: the screenshot the
+  // fallback would name was released unstored, as no field referenced it.
+  assert.equal(await render(request({ gif: { filename: "hachidori-gif-1.gif" }, captureUnavailable: ["gif"],
+    screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{gif}"), "");
+  // With neither a GIF nor a screenshot, {gif} is empty.
+  assert.equal(await render(request({}), "{gif}"), "");
+  // A screenshot that itself failed does not leak through the fallback.
+  assert.equal(await render(request({ screenshot: { filename: "s.jpg" },
+    captureUnavailable: ["gif", "screenshot"] }), "{gif}"), "");
+});
+
 test("cloze syntax inside marker values cannot become an Anki deletion, while template deletions and CSS stay literal", async () => {
   const deletion = /\{\{c\d+::|\}\}/u;
   const css = "<style>.x { color: red; } .x > .y { margin: 0 }</style>";

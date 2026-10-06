@@ -127,7 +127,9 @@ the service worker and both engine runtimes run the same code.
   `www.netflix.com`. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
   records the replayed line inside the Netflix tab; `{sentence-audio}`
-  attaches it to the note.
+  attaches its WAV to the note, and `{gif}` attaches a looping GIF of the line
+  (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`), or the page
+  screenshot where there is none.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `settings-theme.js` is the classic script in its `<head>` that applies the
   saved theme before the first paint, ahead of the `settings.js` module;
@@ -165,6 +167,8 @@ the service worker and both engine runtimes run the same code.
   `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
   `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
   from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime.
+  `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
+  mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
   in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is

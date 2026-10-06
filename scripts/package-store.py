@@ -136,6 +136,8 @@ def main():
             upload[f"licenses/{dependency['name']}/{name}"] = entries[name]
         if dependency["name"] == "zipjs" and entries["dist/zip-core-external.min.js"][0] != upload["vendor/zip.js"][0]:
             raise ValueError("Pinned zip.js source no longer matches the shipped runtime.")
+        if dependency["name"] == "gifenc" and entries["dist/gifenc.esm.js"][0] != upload["vendor/gifenc.js"][0]:
+            raise ValueError("Pinned gifenc source no longer matches the shipped runtime.")
 
     sources["SOURCE_REVISIONS.json"] = (json_bytes({"repositories": revisions, "dependencies": dependencies}), 0o100644)
     source_name = stem + "-source.zip"
@@ -146,8 +148,8 @@ def main():
         "Hachidori is licensed under GPL-3.0-or-later. See LICENSE.\n"
         f"Matching source archive: {source_name}\nSHA-256: {source_hash}\n"
         "The publisher distributes this source archive alongside this release.\n"
-        "It includes recursive submodule sources, pinned zip.js sources,\n"
-        "and docs/source-build.md. The store listing provides the download location.\n"
+        "It includes recursive submodule sources, pinned zip.js and gifenc\n"
+        "sources, and docs/source-build.md. The store listing provides the download location.\n"
         "This source archive matches the Chrome ZIP of this release.\n"
     ).encode(), 0o100644)
     upload_name = stem + "-chrome.zip"

@@ -2159,9 +2159,10 @@ async function captureSenderViewport(sender) {
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). While the
 // page replays one subtitle line, a hidden recorder frame in the Netflix tab
 // (netflix-recorder.html) records the tab: `start` lets that frame open its
-// tab-capture stream, `finish` has it cut the line out and gives the WAV to
-// the Anki worker to hold for the note, `cancel` stops it. The frame connects
-// on a port; the worker holds no media itself and only the WAV reaches Anki.
+// tab-capture stream, `finish` has it cut the line out and gives its WAV and
+// GIF to the Anki worker to hold for the note, `cancel` stops it. The frame
+// connects on a port; the worker holds no media itself and only the WAV and
+// GIF reach Anki.
 const NETFLIX_TARGET = "hachidori-netflix";
 const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
@@ -2291,8 +2292,8 @@ async function startNetflixRecording(message, sender) {
   });
   let started;
   try {
-    started = await askRecorder(port, { type: "record", targetTabId: tab.id,
-      limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS }, "started");
+    started = await askRecorder(port, { type: "record", targetTabId: tab.id, audio: message.audio !== false,
+      gif: message.gif === true, limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS }, "started");
   } catch (error) {
     if (netflixRecording === recording) stopNetflixRecording();
     throw error;
@@ -2316,8 +2317,15 @@ async function finishNetflixRecording(message, sender) {
   } finally {
     if (netflixRecording === recording) stopNetflixRecording();
   }
-  if (clip.silent === true) return { unavailable: "silent" };
-  return getAnkiMining().sentenceAudio(clip.data, message.templateId);
+  const mining = getAnkiMining();
+  // The GIF, when the recorder made one, is held like the WAV: on its own token
+  // for the {gif} field, independent of whether the audio was silent. A
+  // recording for a {gif} field alone has no WAV to hold.
+  const gif = typeof clip.gif === "string" ? await mining.gifImage(clip.gif, message.templateId) : null;
+  let audio = null;
+  if (clip.silent === true) audio = { unavailable: "silent" };
+  else if (typeof clip.data === "string") audio = await mining.sentenceAudio(clip.data, message.templateId);
+  return { audio, gif };
 }
 
 function cancelNetflixRecording(message, sender) {

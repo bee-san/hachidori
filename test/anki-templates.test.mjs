@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { ANKI_TEMPLATE_MARKER_OPTIONS, applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate } from "../extension/anki-templates.js";
+import { ANKI_TEMPLATE_MARKER_OPTIONS, applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate, ankiCaptureRequirements } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki, ...patch });
 
@@ -90,7 +90,21 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
   assert.deepEqual(ankiTemplateErrors("{Sentence-Audio}"), []);
   assert.equal(ANKI_TEMPLATE_MARKER_OPTIONS.find(option => option.marker === "sentence-audio")?.description,
     "Netflix subtitle line's audio (experimental)");
+  const gifOption = ANKI_TEMPLATE_MARKER_OPTIONS.find(option => option.marker === "gif");
+  assert.equal(gifOption?.description, "Netflix subtitle line's animated GIF, otherwise the page screenshot (experimental)");
+  assert.equal(gifOption?.experimental, "netflixMining", "the gif marker is a Netflix mining experimental marker");
+  assert.deepEqual(ankiTemplateErrors("{gif}"), [], "{gif} is a known marker");
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
+});
+
+test("capture requirements for the gif marker also require the screenshot", () => {
+  const of = (...templates) => ankiCaptureRequirements(Object.fromEntries(templates.map((value, index) => [index, { value }])));
+  assert.deepEqual(of(""), { includeScreenshot: false, includeSentenceAudio: false, includeGif: false });
+  assert.deepEqual(of("{screenshot}"), { includeScreenshot: true, includeSentenceAudio: false, includeGif: false });
+  assert.deepEqual(of("{sentence-audio}"), { includeScreenshot: false, includeSentenceAudio: true, includeGif: false });
+  // {gif} falls back to the screenshot, so a mapped {gif} needs it taken too.
+  assert.deepEqual(of("{gif}"), { includeScreenshot: true, includeSentenceAudio: false, includeGif: true });
+  assert.deepEqual(of("{gif}", "{sentence-audio}"), { includeScreenshot: true, includeSentenceAudio: true, includeGif: true });
 });
 
 test("template rendering substitutes once, preserves literal HTML and removes only empty marker-only breaks", () => {

@@ -854,17 +854,20 @@ test("an experimental feature's marker is suggested only while its flag is on an
   const owner = row(f, "Back");
   const toggle = owner.querySelector(".anki-marker-combobox-toggle");
   const marker = owner.querySelector('[role="option"][data-marker="{sentence-audio}"]');
+  const gifMarker = owner.querySelector('[role="option"][data-marker="{gif}"]');
   const listed = () => {
     toggle.dispatchEvent(new f.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     toggle.click();
     const visible = !marker.hidden;
+    const gifVisible = !gifMarker.hidden;
     owner.querySelector('[role="combobox"]').dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    return visible;
+    return { visible, gifVisible };
   };
   assert.ok(marker, "the option exists so a saved mapping keeps its description");
-  assert.equal(listed(), false, "the Netflix marker is not offered while Netflix mining is off");
+  assert.ok(gifMarker, "the gif option exists so a saved mapping keeps its description");
+  assert.deepEqual(listed(), { visible: false, gifVisible: false }, "the Netflix markers are not offered while Netflix mining is off");
   assert.deepEqual([...owner.querySelectorAll(".anki-template-error")].map(error => error.textContent), [""],
     "a saved {sentence-audio} mapping is still valid");
   experimental.netflixMining = true;
-  assert.equal(listed(), true, "turning the flag on offers it again");
+  assert.deepEqual(listed(), { visible: true, gifVisible: true }, "turning the flag on offers both again");
 });
