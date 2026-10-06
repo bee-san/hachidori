@@ -50,7 +50,21 @@ function zipEntry(name, data, method) {
 // writes it: general-purpose bit 3 set, zero CRC and sizes in the local header,
 // and the real values in a signed data descriptor after the data (APPNOTE
 // 4.3.9, 4.4.4). The central directory is the same either way.
-function buildZip(entries, { dataDescriptors = false, localUncompressedSize = false } = {}) {
+//
+// With zip64, every size and offset is the 0xFFFFFFFF sentinel and the values
+// sit in Zip64 extended information extra fields (APPNOTE 4.5.3): in both
+// headers for "both" (Info-ZIP -fz, Python force_zip64, yazl), in the central
+// directory alone for "central" (zip.js, whose local header keeps the
+// sentinel without a field).
+function zip64Extra(...values) {
+  const extra = Buffer.alloc(4 + 8 * values.length);
+  extra.writeUInt16LE(0x0001, 0);
+  extra.writeUInt16LE(8 * values.length, 2);
+  values.forEach((value, index) => extra.writeBigUInt64LE(BigInt(value), 4 + 8 * index));
+  return extra;
+}
+
+function buildZip(entries, { dataDescriptors = false, localUncompressedSize = false, zip64 = null } = {}) {
   const chunks = [];
   const records = [];
   let offset = 0;
@@ -65,14 +79,15 @@ function buildZip(entries, { dataDescriptors = false, localUncompressedSize = fa
     lfh.writeUInt16LE(0, 10); // mod time
     lfh.writeUInt16LE(0x21, 12); // mod date: 2000-01-01
     lfh.writeUInt32LE(dataDescriptors ? 0 : e.crc, 14);
-    lfh.writeUInt32LE(dataDescriptors ? 0 : e.body.length, 18);
-    lfh.writeUInt32LE(dataDescriptors && !localUncompressedSize ? 0 : e.raw.length, 22);
+    lfh.writeUInt32LE(zip64 ? 0xFFFFFFFF : dataDescriptors ? 0 : e.body.length, 18);
+    lfh.writeUInt32LE(zip64 ? 0xFFFFFFFF : dataDescriptors && !localUncompressedSize ? 0 : e.raw.length, 22);
     lfh.writeUInt16LE(e.name.length, 26);
-    lfh.writeUInt16LE(0, 28); // extra length; zip.cpp adds it to data_offset
+    const localExtra = zip64 === 'both' ? zip64Extra(e.raw.length, e.body.length) : Buffer.alloc(0);
+    lfh.writeUInt16LE(localExtra.length, 28); // zip.cpp adds it to data_offset
 
     records.push({ ...e, lfhOffset: offset });
-    chunks.push(lfh, e.name, e.body);
-    offset += lfh.length + e.name.length + e.body.length;
+    chunks.push(lfh, e.name, localExtra, e.body);
+    offset += lfh.length + e.name.length + localExtra.length + e.body.length;
     if (dataDescriptors) {
       const descriptor = Buffer.alloc(16);
       descriptor.writeUInt32LE(0x08074b50, 0);
@@ -95,17 +110,18 @@ function buildZip(entries, { dataDescriptors = false, localUncompressedSize = fa
     cdh.writeUInt16LE(0, 12);
     cdh.writeUInt16LE(0x21, 14);
     cdh.writeUInt32LE(e.crc, 16);
-    cdh.writeUInt32LE(e.body.length, 20);
-    cdh.writeUInt32LE(e.raw.length, 24);
+    cdh.writeUInt32LE(zip64 ? 0xFFFFFFFF : e.body.length, 20);
+    cdh.writeUInt32LE(zip64 ? 0xFFFFFFFF : e.raw.length, 24);
     cdh.writeUInt16LE(e.name.length, 28);
-    cdh.writeUInt16LE(0, 30); // extra
+    const centralExtra = zip64 ? zip64Extra(e.raw.length, e.body.length, e.lfhOffset) : Buffer.alloc(0);
+    cdh.writeUInt16LE(centralExtra.length, 30); // extra
     cdh.writeUInt16LE(0, 32); // comment
     cdh.writeUInt16LE(0, 34); // disk number
     cdh.writeUInt16LE(0, 36); // internal attrs
     cdh.writeUInt32LE((0o100644 << 16) >>> 0, 38); // external attrs
-    cdh.writeUInt32LE(e.lfhOffset, 42);
-    chunks.push(cdh, e.name);
-    offset += cdh.length + e.name.length;
+    cdh.writeUInt32LE(zip64 ? 0xFFFFFFFF : e.lfhOffset, 42);
+    chunks.push(cdh, e.name, centralExtra);
+    offset += cdh.length + e.name.length + centralExtra.length;
   }
 
   const eocd = Buffer.alloc(22);
@@ -552,6 +568,10 @@ export function buildDataDescriptorZip() {
 // the uncompressed size, as the NHK pitch dictionary's archive does (#512).
 export function buildUncompressedSizeDescriptorZip() {
   return buildZip(fixtureEntries(), { dataDescriptors: true, localUncompressedSize: true });
+}
+
+export function buildZip64Zip(zip64 = 'both') {
+  return buildZip(fixtureEntries(), { zip64 });
 }
 
 // The fixture with a different declared title, and optionally with the term bank

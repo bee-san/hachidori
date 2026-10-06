@@ -38,6 +38,7 @@ import {
   TRAINING_SAMPLE_FLOOR,
   buildDataDescriptorZip,
   buildUncompressedSizeDescriptorZip,
+  buildZip64Zip,
   buildEntryCountZip,
   buildEntryExpandedZip,
   buildFixtureZip,
@@ -1025,6 +1026,12 @@ check('entries that defer their sizes to data descriptors import like the fixtur
 check('data-descriptor entries whose local headers keep the uncompressed size import (#512)', () =>
   acceptedWithoutResourceCap(buildUncompressedSizeDescriptorZip(), 'uncompressed-size descriptors'));
 
+check('entries whose sizes and offsets are in Zip64 extra fields import like the fixture', () =>
+  acceptedWithoutResourceCap(buildZip64Zip('both'), 'Zip64 extra fields'));
+
+check('Zip64 entries whose local headers keep only the sentinel, as zip.js writes them, import', () =>
+  acceptedWithoutResourceCap(buildZip64Zip('central'), 'zip.js Zip64'));
+
 check('a data-descriptor entry whose local header records other sizes is refused', () =>
   rejectedWith(buildForgedSizeZip({ dataDescriptor: true }), ARCHIVE_ERRORS.forgedSize, 'forged descriptor size'));
 
@@ -1073,16 +1080,49 @@ check('the heap keeps the import high-water mark after a reset', () => {
 
 G('hdw_import staging');
 
-// dictionary_importer::import turns the title inside the archive into a
-// directory and remove_all()s that directory on failure, so hdw_import stages
-// every import in a scratch directory and only moves the result into place once
-// it is complete. Without that, a title of ".." deletes the filesystem the
-// dictionaries live in and a failed re-import destroys the copy it replaces.
+// hdw_import stages every import in a scratch directory and only moves the
+// result into place once it is complete, so a failed re-import cannot destroy
+// the copy it replaces. A Yomitan title is any string (MarvNC's own include
+// "Nico/Pixiv", #512): the package lives in folder_name(title), one plain path
+// component, so no title reaches outside /dicts. engine-service.js computes
+// the same folder to find the files again; its function is checked against
+// the folders the engine actually writes.
+const dictionaryFolderName = (() => {
+  const source = readFileSync(join(HERE, '..', 'extension', 'engine-service.js'), 'utf8');
+  const start = source.indexOf('function dictionaryFolderName(');
+  const end = source.indexOf('\n}\n', start) + 3;
+  return new Function(`${source.slice(start, end)}\nreturn dictionaryFolderName;`)();
+})();
 reset();
 M.FS.writeFile('/root-canary.txt', 'canary');
 const rootBefore = M.FS.readdir('/').filter((n) => n !== '.' && n !== '..').sort();
+const dictsNow = () => M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..').sort();
 
-for (const title of ['..', '../../..', '../escaped', 'sub/dir', '.', '']) {
+for (const title of ['..', '../../..', '../escaped', 'sub/dir', '.', 'Nico/Pixiv', 'back\\slash', 'Japanese-Mongolian/日・モ辞典']) {
+  check(`a title of ${show(title)} imports into its own folder and escapes nothing`, () => {
+    const archive = `/work/titled-${dictionaryFolderName(title).replace(/[^A-Za-z0-9]/gu, '_')}.zip`;
+    M.FS.writeFile(archive, buildTitledZip(title));
+    const r = hdwImport(archive, '/dicts');
+    conforms(r, IMPORT_REPORT, 'ImportReport');
+    eq(r.success, true, `import failed: ${r.error}`);
+    eq(r.title, title, 'the report keeps the title');
+    const folder = dictionaryFolderName(title);
+    ok(!folder.includes('/') && folder !== '.' && folder !== '..', `folder ${show(folder)} is one path component`);
+    same(dictsNow(), [TITLE, folder].sort(), '/dicts holds the fixture and the new folder, and no staging debris');
+    same(M.FS.readdir('/').filter((n) => n !== '.' && n !== '..').sort(), rootBefore, 'filesystem root');
+    eq(addDict(`/dicts/${folder}`, KINDS.term), 1, `add_dict: ${lastError()}`);
+    eq(lookup('食べたかった').results[0].term.glossaries.some((g) => g.dictionary === title), true,
+      'a lookup names the dictionary by its title');
+    reset();
+    for (const name of M.FS.readdir(`/dicts/${folder}`)) {
+      if (name !== '.' && name !== '..') M.FS.unlink(`/dicts/${folder}/${name}`);
+    }
+    M.FS.rmdir(`/dicts/${folder}`);
+    same(dictsNow(), [TITLE], 'cleanup');
+  });
+}
+
+for (const title of ['', '.hdw-import', '.hdw-remove']) {
   check(`a title of ${show(title)} is refused and destroys nothing`, () => {
     M.FS.writeFile('/work/titled.zip', buildTitledZip(title));
     const r = hdwImport('/work/titled.zip', '/dicts');
@@ -1090,11 +1130,7 @@ for (const title of ['..', '../../..', '../escaped', 'sub/dir', '.', '']) {
     eq(r.success, false, 'success');
     ok(r.error.length > 0, 'error should be populated');
     eq(lastError(), r.error, 'hdw_last_error should mirror report.error');
-    same(
-      M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..'),
-      [TITLE],
-      '/dicts should still hold exactly the imported dictionary and no staging debris',
-    );
+    same(dictsNow(), [TITLE], '/dicts should still hold exactly the imported dictionary and no staging debris');
     same(M.FS.readdir('/').filter((n) => n !== '.' && n !== '..').sort(), rootBefore, 'filesystem root');
   });
 }
