@@ -49,16 +49,23 @@
 
   // A cue's text without its tags. Ruby readings and their parentheses are
   // not part of the spoken line, so text inside <rt> and <rp> is left out.
+  // WebVTT escapes a literal "<", so every "<" opens a tag.
   function vttText(lines) {
+    const source = lines.join("\n");
     let text = "";
     let hidden = 0;
-    for (const part of lines.join("\n").split(/(<[^>]*>)/u)) {
-      if (!part.startsWith("<")) {
-        if (hidden === 0) text += part;
-        continue;
+    let at = 0;
+    while (at < source.length) {
+      const open = source.indexOf("<", at);
+      const close = open < 0 ? -1 : source.indexOf(">", open);
+      if (close < 0) {
+        if (hidden === 0) text += source.slice(at);
+        break;
       }
-      const ruby = /^<(\/?)r[tp]\b/iu.exec(part);
-      if (ruby) hidden = Math.max(0, hidden + (ruby[1] ? -1 : 1));
+      if (hidden === 0) text += source.slice(at, open);
+      const tag = source.slice(open + 1, close).toLowerCase();
+      if (/^\/?r[tp](?![a-z])/u.test(tag)) hidden = Math.max(0, hidden + (tag.startsWith("/") ? -1 : 1));
+      at = close + 1;
     }
     return cleanLines(decodeEntities(text));
   }

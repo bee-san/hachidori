@@ -138,9 +138,9 @@ function recordedUntil(current) {
 
 // Places every block the stream delivers until it ends, and tells a waiting
 // finish when the recording has reached the time it waits for.
-async function readStream(current) {
-  for (let read = await current.reader.read(); !read.done; read = await current.reader.read()) {
-    const { value } = read;
+function readStream(current) {
+  return current.reader.read().then(({ done, value }) => {
+    if (done) return undefined;
     try {
       current.sampleRate ??= value.sampleRate;
       if (value.sampleRate === current.sampleRate) {
@@ -152,7 +152,8 @@ async function readStream(current) {
     } finally {
       value.close();
     }
-  }
+    return readStream(current);
+  });
 }
 
 export function createNetflixRecorder(window, {

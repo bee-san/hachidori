@@ -32,6 +32,9 @@ test("WebVTT cues keep exact times and plain text without marks, tags, readings 
     [{ startMs: 1500, endMs: 2250, text: "行こう" }]);
   // A cue that ends before it starts, or has no text, is not a line.
   assert.deepEqual(parseWebVtt("WEBVTT\n\n00:00:05.000 --> 00:00:04.000\n逆\n\n00:00:06.000 --> 00:00:07.000\n&lrm;\n"), []);
+  // Readings with tags inside them, <rp> parentheses and a stray tag end.
+  assert.deepEqual(parseWebVtt("WEBVTT\n\n00:01.000 --> 00:02.000\n<ruby>今日<rp>(</rp><rt><c.r>きょう</c></rt><rp>)</rp></ruby>は<b>晴れ</b>>\n"),
+    [{ startMs: 1000, endMs: 2000, text: "今日は晴れ>" }]);
   assert.throws(() => parseWebVtt("1\n00:00:01,000 --> 00:00:02,000\nSRT\n"), /not a WebVTT/u);
 });
 
