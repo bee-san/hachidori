@@ -9,14 +9,14 @@
   function setBusy(record, busy) {
     record.button.setAttribute("aria-busy", String(busy));
     if (busy) record.button.dataset.state = "loading";
-    else if (record.button.dataset.state !== "error") delete record.button.dataset.state;
+    else delete record.button.dataset.state;
     record.button.setAttribute("aria-label", `${busy ? "Stop" : "Play"} pronunciation for ${record.term.expression}`);
     record.button.title = `${busy ? "Stop" : "Play"} pronunciation; Shift-click, right-click or press Down for choices`;
   }
 
   function createAudioController({ window, send, onMenuChange, onSelectionChange = () => {} }) {
     const document = window.document;
-    const bound = new WeakMap(), visited = new WeakMap(), feedback = new WeakMap();
+    const bound = new WeakMap(), visited = new WeakMap();
     const controls = new Set();
     let selections = new WeakMap();
     let options = window.HDReaderOptions.DEFAULT_OPTIONS;
@@ -77,26 +77,11 @@
       return active === operation && current(operation.record);
     }
 
-    function setStatus(record, text) {
-      if (text) record.button.dataset.state = "error";
-      let output = feedback.get(record.button) || record.status;
-      if (!output && !text) return;
-      if (!output) {
-        output = document.createElement("output");
-        output.className = "gsm-hoshidicts-audio-status";
-        output.setAttribute("aria-live", "polite");
-        record.button.after(output);
-      }
-      feedback.set(record.button, output);
-      output.textContent = text;
-    }
-
     function stop() {
       if (!active) return;
       const previous = active;
       active = null;
       setBusy(previous.record, false);
-      setStatus(previous.record, "");
       void send("hd_audio_stop", { playRequestId: previous.requestId }).catch(() => {});
     }
 
@@ -126,7 +111,6 @@
       const operation = { record, type, requestId: window.crypto.randomUUID() };
       active = operation;
       setBusy(record, true);
-      setStatus(record, "");
       try {
         const reply = await send(type, { term: record.term, requestId: operation.requestId, ...fields });
         if (!owns(operation)) return;
@@ -138,7 +122,8 @@
             selections.delete(record.result);
             onSelectionChange(record.owner);
           }
-          setStatus(record, `Could not play: ${error.message}`);
+          // Nothing appears beside the headword (#501): Audio Settings → Test
+          // explains a failing source, and an open chooser shows its error.
           if (menu?.record === record) menu.output.textContent = error.message;
         }
       } finally {
@@ -149,7 +134,6 @@
     function play(record, selection = selections.get(record.result)) {
       closeMenu();
       return request(record, "hd_audio_play", selection ? { selection } : {}, reply => {
-        setStatus(record, reply.status === "no-result" ? "No pronunciation was returned. Check Audio Settings." : "");
         // The pronunciation the user just heard is the one Add to Anki should
         // attach, so a downloadable recording becomes the selection exactly as
         // a menu choice would. Browser speech has no recording to pin.
@@ -217,7 +201,6 @@
           }
           element.append(section);
         }
-        setStatus(record, "");
         output.textContent = count ? "Choose a pronunciation to play." : "No pronunciations found. Check Audio Settings.";
         onMenuChange(record.owner);
       });
@@ -261,10 +244,7 @@
       void request(record, "hd_audio_candidates", {}, reply => {
         const group = reply.groups.find(item => item.sourceId === sourceId);
         const candidate = group?.candidates?.[0];
-        if (!candidate) {
-          setStatus(record, "No pronunciation was returned. Check Audio Settings.");
-          return;
-        }
+        if (!candidate) return;
         void play(record, { sourceId: group.sourceId, sourceKey: group.sourceKey, ...record.term,
           index: 0, url: candidate.url ?? null, name: candidate.name });
       });

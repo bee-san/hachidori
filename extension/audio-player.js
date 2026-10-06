@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { createAudioRepository } from "./audio-repository.js";
+import { createAudioRepository, undecodableRecording } from "./audio-repository.js";
 import { resolveSpeech } from "./speech.js";
 
 // One pronunciation owner; playback leases and native speech callbacks belong
@@ -12,7 +12,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     current = null;
   }
 
-  async function playUrl(candidate, signal, onPlaying) {
+  async function playUrl(candidate, signal, onPlaying, sourceType) {
     const lease = await repository.acquire(candidate, signal);
     let audio;
     let abort;
@@ -30,6 +30,13 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
         signal.addEventListener("abort", abort, { once: true });
       });
       await Promise.all([Promise.resolve().then(() => audio.play()), ended]);
+    } catch (error) {
+      // A media error fires error and rejects play(); whichever arrives
+      // first, explain it. Cancellation and autoplay refusals pass through.
+      if (signal.aborted || !audio?.error) throw error;
+      const diagnosis = await undecodableRecording(lease.blob, audio.error, sourceType);
+      signal.throwIfAborted();
+      throw diagnosis;
     } finally {
       if (audio) {
         signal.removeEventListener("abort", abort);
@@ -71,13 +78,13 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     }
   }
 
-  async function firstPlayable(found, signal, onPlaying, onResolving) {
+  async function firstPlayable(found, signal, onPlaying, onResolving, sourceType) {
     let failure;
     for (const [index, entry] of found.entries()) {
       try {
         onResolving?.();
         const candidate = { ...entry, index: entry.index ?? index };
-        await playUrl(candidate, signal, onPlaying);
+        await playUrl(candidate, signal, onPlaying, sourceType);
         return candidate;
       } catch (error) {
         signal.throwIfAborted();
@@ -120,7 +127,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     if (source.type.startsWith("text-to-speech")) return playSpeech(source, term, signal, onPlaying);
     const found = selectedCandidate ? [selectedCandidate] : await repository.candidates(source, term, signal);
     signal.throwIfAborted();
-    return found.length ? firstPlayable(found, signal, onPlaying, onResolving) : null;
+    return found.length ? firstPlayable(found, signal, onPlaying, onResolving, source.type) : null;
   }
 
   return {

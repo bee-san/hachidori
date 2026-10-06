@@ -5612,10 +5612,21 @@ async function checkAudioSettings(page, browser) {
     const empty = await testRow();
     await input(`${customRow} .audio-url`, "https://audio.example.test/failure");
     const failure = await testRow();
+    // #499: a Yomitan list URL saved under Add source's default Audio URL
+    // type. Chrome fails to decode the JSON, and Test says which type to choose.
+    await input(`${customRow} .audio-type`, "custom", "change");
+    await input(`${customRow} .audio-url`, template);
+    const listAsRecording = await testRow();
+    await input(`${customRow} .audio-type`, "custom-json", "change");
+    const list = "https://audio.example.test/list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&lang=ja";
     check("Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors",
       obsoleteCleared && success === "" && empty === "No pronunciation was returned."
-        && failure.includes("503") && [...routes.values()].every(route => route.requests === 1),
-      JSON.stringify({ success, empty, failure, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+        && failure === "Could not play: The pronunciation list returned HTTP 503."
+        && listAsRecording === "Could not play: This Audio URL returned a Yomitan audio list, not a recording. "
+          + "Set this source's type to Yomitan JSON in Audio Settings."
+        && [...routes].every(([url, route]) => route.requests === (url === list ? 2 : 1)),
+      JSON.stringify({ success, empty, failure, listAsRecording,
+        requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await input(`${customRow} .audio-url`, template);
     if (process.env.HACHIDORI_AUDIO_SCREENSHOT) {
       await page.setViewport({ width: 1200, height: 1100 });

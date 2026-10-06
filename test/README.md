@@ -1212,7 +1212,9 @@ navigation and main-column left/width values across the tall-to-short change.
 Audio adds three browser assertions: default reading TTS plus ordered/disabled
 custom sources survive save/reload; encoded JSON discovery tries an undecodable
 candidate before naturally completing a one-second PCM WAV; no-result, HTTP
-failure and Stop have distinct feedback. A stopped fetch cannot change the UI,
+failure and Stop have distinct feedback, a list failure names the list and its
+HTTP status, and a Yomitan list saved as an Audio URL, which Chrome cannot
+decode, tells the user to choose Yomitan JSON (#499). A stopped fetch cannot change the UI,
 and the same offscreen document and engine survive 31 seconds of audio silence.
 `HACHIDORI_AUDIO_SCREENSHOT` captures the Audio Settings page.
 
@@ -1239,8 +1241,12 @@ unavailable selected voices and linked browser speech validation,
 document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
-including delayed initial options without repeating a manual play, quiet success
-feedback, and controls hidden when no source is configured. Extension
+including delayed initial options without repeating a manual play, nothing
+beside the audio button for a missing, failed or cancelled pronunciation (#501)
+while the chooser keeps each source's error, list and recording failures named
+with their HTTP status or network error, an undecodable recording's media error,
+size and content type, the Audio URL/Yomitan JSON type mismatch in both
+directions, the same explanation when mining (#499), and controls hidden when no source is configured. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 

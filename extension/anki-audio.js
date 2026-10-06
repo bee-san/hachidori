@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { selectedAudioPlan } from "./audio-repository.js";
+import { selectedAudioPlan, undecodableRecording } from "./audio-repository.js";
 import { ankiMediaFilename } from "./anki-resources.js";
 
 const MIME_EXTENSIONS = { "audio/aac": "aac", "audio/flac": "flac", "audio/mp4": "m4a", "audio/mpeg": "mp3",
@@ -23,7 +23,7 @@ async function base64(window, blob, signal) {
   }
 }
 
-async function candidateFile(window, repository, candidate, signal) {
+async function candidateFile(window, repository, candidate, signal, sourceType) {
   const lease = await repository.acquire(candidate, signal);
   let audio, abort;
   try {
@@ -37,6 +37,11 @@ async function candidateFile(window, repository, candidate, signal) {
       signal.addEventListener("abort", abort, { once: true });
       audio.src = lease.url;
       audio.load();
+    }).catch(async error => {
+      if (signal.aborted || !audio.error) throw error;
+      const diagnosis = await undecodableRecording(lease.blob, audio.error, sourceType);
+      signal.throwIfAborted();
+      throw diagnosis;
     });
     signal.throwIfAborted();
     const suffix = new URL(candidate.url).pathname.split(".").at(-1).toLowerCase();
@@ -104,7 +109,8 @@ export async function exportAnkiAudio(window, repository, {
       const candidates = plan.candidate ? [plan.candidate] : await repository.candidates(source, term, signal);
       for (const [index, candidate] of candidates.entries()) {
         try {
-          return { ...await candidateFile(window, repository, { ...candidate, index: candidate.index ?? index }, signal), sourceId: source.id };
+          return { ...await candidateFile(window, repository, { ...candidate, index: candidate.index ?? index }, signal,
+            source.type), sourceId: source.id };
         } catch (error) { signal.throwIfAborted(); failure = error; }
       }
     } catch (error) { signal.throwIfAborted(); failure = error; }
