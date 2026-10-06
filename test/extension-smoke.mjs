@@ -6412,6 +6412,37 @@ async function main() {
       && JSON.stringify(nativeOrder) === JSON.stringify(["読む", "hdw_lookup", "食べる"]),
     JSON.stringify({ nativeOrder, segment: interleavedSegment?.ok, lookup: interleavedLookup?.results?.[0]?.term?.expression }),
   );
+  // A chunk cut inside a surrogate pair (a pair split across two text nodes)
+  // still segments with its offsets, the lone surrogate counting as one unit.
+  // An oversized chunk refuses the batch before any chunk takes an engine turn.
+  const surrogateBatch = await request("hd_segment", {
+    chunks: [{ id: "split", text: "食べる\uDC00読む\uD83D" }], scanLength: 16,
+  });
+  let refusedBatchSegmentCalls = 0;
+  const refusingCcall = observedEngine.ccall;
+  observedEngine.ccall = (name, ...rest) => {
+    if (name === "hdw_segment") refusedBatchSegmentCalls += 1;
+    return refusingCcall(name, ...rest);
+  };
+  let oversizedBatch = null;
+  try {
+    oversizedBatch = await request("hd_segment", {
+      chunks: [{ id: "first", text: "食べる" }, { id: "huge", text: "あ".repeat(1366) }], scanLength: 16,
+    });
+  } finally {
+    observedEngine.ccall = refusingCcall;
+  }
+  const surrogateSpans = surrogateBatch.segments?.[0]?.spans?.map((span) =>
+    [span.start, span.length, span.candidates?.[0]?.expression]);
+  check(
+    "hd_segment keeps a lone surrogate's offsets and refuses an oversized chunk before any engine turn",
+    surrogateBatch.ok === true
+      && JSON.stringify(surrogateSpans) === JSON.stringify([[0, 3, "食べる"], [4, 2, "読む"]])
+      && oversizedBatch?.ok === false && /4096-byte/u.test(oversizedBatch.error)
+      && refusedBatchSegmentCalls === 0,
+    JSON.stringify({ surrogate: surrogateBatch.error ?? surrogateSpans,
+      oversized: oversizedBatch?.error, refusedBatchSegmentCalls }),
+  );
 
   // An MDict dictionary: the .mdx plus its .mdd travel as blob URLs, the engine
   // service stages them side by side under their own names so the importer
