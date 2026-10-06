@@ -16,6 +16,7 @@ import { createThemeStore } from "./theme-store.js";
 import { createActivationSettings } from "./activation-settings.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
+import { collectDebugInfo, debugInfoBlob, debugInfoFilename } from "./debug-info.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
 import { uploadDictionary } from "./linked-import.js";
@@ -228,6 +229,7 @@ const SECTION_STATUSES = {
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
+  "debug-info-status": { section: "advanced", label: "Troubleshooting" },
 };
 let activeSection = "dictionaries";
 const unseenSectionCompletions = new Set();
@@ -447,6 +449,26 @@ function renderSharingLink(value) {
   renderLookupCountsReset();
   if (wasLinked && !linked) {
     void backupController?.refreshAutomaticBackups();
+  }
+}
+
+// Advanced → Troubleshooting. A blob download, so it also works in hosts
+// without chrome.downloads.
+async function downloadDebugInfo() {
+  const button = element("debug-info-download");
+  button.disabled = true;
+  setSectionStatus("debug-info-status", "Collecting debug info…", "working");
+  try {
+    const report = await collectDebugInfo({ chrome, window, send, workerTarget: WORKER_TARGET, context: {
+      overlayMode: OVERLAY_MODE, hostCapabilities: HOST_CAPABILITIES, miningCapabilities: MINING_CAPABILITIES,
+      linkedTo: sharingLinkedAddress, effectiveOptions: options,
+    } });
+    downloadBlob(document, debugInfoBlob(report), debugInfoFilename(new Date(report.generatedAt)));
+    setSectionStatus("debug-info-status", "Debug info downloaded.", "ready", true);
+  } catch (error) {
+    setSectionStatus("debug-info-status", `Could not collect debug info: ${describe(error)}`, "error");
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -3416,6 +3438,7 @@ function attachHandlers() {
   element("library-reset-personal").addEventListener("change", () => setControlsDisabled(importing));
   element("library-remove-all").addEventListener("click", () => { void removeAllDictionaries(); });
   element("lookup-counts-reset").addEventListener("click", () => { void resetLookupCounts(); });
+  element("debug-info-download").addEventListener("click", () => { void downloadDebugInfo(); });
 
   element("dict-group-create-form").addEventListener("submit", (event) => {
     event.preventDefault();

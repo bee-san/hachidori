@@ -125,6 +125,8 @@ the service worker and both engine runtimes run the same code.
   `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `memory-settings.js`
   the Advanced → Memory readout and each Library row's *In memory* line;
+  `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
+  with credentials redacted and reader content reduced to counts;
   `activation-settings.js` the Reading → Activation key or button picker and
   its *Press to set* recorder;
   `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`

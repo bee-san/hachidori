@@ -1279,7 +1279,7 @@
         <section class="card" id="advanced" aria-labelledby="advanced-heading" hidden>
           <div class="card-head">
             <h1 id="advanced-heading" tabindex="-1" data-search-keywords="experimental beta labs flags preview">Advanced</h1>
-            <p class="hint">Memory use and features that are still changing. Changes save automatically.</p>
+            <p class="hint">Memory use, features that are still changing, and debug info for bug reports. Changes save automatically.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <fieldset class="lookup-group" id="memory-settings">
@@ -1308,6 +1308,14 @@
             <p class="section-note">Experimental features may change or be removed in a later version. Turning one off hides it but keeps its settings for the next time you turn it on.</p>
             <ul id="experimental-features" class="experimental-list"></ul>
             <p id="experimental-empty" class="hint" hidden>No experimental features are available in this version.</p>
+          </fieldset>
+          <fieldset class="lookup-group" id="debug-info-settings">
+            <legend data-search-keywords="debug diagnostics bug report troubleshooting support logs version">Troubleshooting</legend>
+            <div class="options-actions">
+              <button type="button" class="ghost" id="debug-info-download" aria-describedby="debug-info-help">Get debug info</button>
+              <output class="custom-dictionary-status" id="debug-info-status" aria-live="polite"></output>
+            </div>
+            <p class="field-hint" id="debug-info-help">Downloads a JSON file to attach to a bug report: the Hachidori version, browser, engine status and memory use, installed dictionaries, and every setting. Your AnkiConnect API key is removed, and your personal dictionary entries, lookup history and Anki notes are left out.</p>
           </fieldset>
         </section>
       </main>
