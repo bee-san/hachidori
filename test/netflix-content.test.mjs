@@ -43,6 +43,7 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
     resolve: observation => plain(api.resolve(observation)),
     miningFields: (...args) => plain(api.miningFields(...args)),
     record: async (...args) => plain(await api.record(...args)),
+    setHoverPause: enabled => api.setHoverPause(enabled),
   };
   return { window, netflix: reader, video, commands, post, subtitle, spans,
     navigate: path => window.history.pushState({}, "", path) };
@@ -213,4 +214,182 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   assert.deepEqual(sent, ["hd_netflix_capture_start"]);
   await assert.rejects(f.netflix.record(cue, { send: async () => ({}), templateId: "default" }), /did not start/u);
   assert.equal(f.window.document.querySelectorAll("iframe").length, 0, "a failed start removes the recorder frame");
+});
+
+// Where the fixture's two lines are drawn: a gap between them, inside
+// Netflix's subtitle layer that spans the player.
+const LINE_RECTS = [{ left: 400, top: 560, right: 800, bottom: 600 }, { left: 460, top: 604, right: 740, bottom: 644 }];
+const ON_LINE = [600, 580];
+const BETWEEN_LINES = [600, 602];
+const AWAY = [600, 300];
+const settle = () => new Promise(resolve => { setTimeout(resolve, 0); });
+
+// A playing video whose lines are laid out at LINE_RECTS, and a page that
+// pauses and plays it on command as Netflix's player does: the element's state
+// changes at once and its event follows.
+function playing(t, options) {
+  const f = netflix(t, options);
+  const { window, video } = f;
+  let paused = false;
+  Object.defineProperty(video, "paused", { configurable: true, get: () => paused });
+  const rects = new Map(f.spans().map((span, index) => [span.firstChild, [LINE_RECTS[index]]]));
+  window.Range.prototype.getClientRects = function getClientRects() { return rects.get(this.startContainer) ?? []; };
+  const fire = type => video.dispatchEvent(new window.Event(type));
+  // What the viewer, or a replay, does to the element.
+  const media = type => {
+    if (type === "play" || type === "pause") paused = type === "pause";
+    fire(type);
+  };
+  window.document.addEventListener(COMMAND_EVENT, event => {
+    const { type } = JSON.parse(event.detail);
+    if (type !== "pause" && type !== "resume") return;
+    paused = type === "pause";
+    setTimeout(() => fire(paused ? "pause" : "play"), 0);
+  });
+  const move = ([clientX, clientY]) => window.document.body.dispatchEvent(new window.MouseEvent("mousemove",
+    { bubbles: true, clientX, clientY }));
+  const popup = shown => window.dispatchEvent(new window.CustomEvent(shown ? "hachidori-popup-shown" : "hachidori-popup-hidden"));
+  const hoverCommands = () => f.commands.filter(command => command.type === "pause" || command.type === "resume")
+    .map(command => command.type);
+  return { ...f, fire, media, move, popup, hoverCommands, paused: () => paused, setPaused: value => { paused = value; } };
+}
+
+// Mines the line: the page seeks and plays the clip, lets the test act while
+// it plays, then restores the paused video and answers. The restoring pause
+// and seek report themselves after the answer, as the element's events do.
+async function mine(f, during = () => {}) {
+  const replayPage = event => {
+    const command = JSON.parse(event.detail);
+    if (command.type !== "replay") return;
+    setTimeout(() => {
+      f.media("seeking");
+      f.media("seeked");
+      f.media("play");
+      during();
+      f.setPaused(true);
+      f.post({ kind: "replay", id: command.id, ok: true, anchors: [[5000, 950], [5100, 1050]] });
+      setTimeout(() => { for (const type of ["pause", "seeking", "seeked"]) f.fire(type); }, 0);
+    }, 0);
+  };
+  f.window.document.addEventListener(COMMAND_EVENT, replayPage);
+  const send = async type => (type === "hd_netflix_capture_start" ? { sessionId: "s1", padMs: 250 }
+    : { token: "t1", filename: "hachidori-sentence-audio-a.wav" });
+  try {
+    return await f.netflix.record({ movieId: "81000001", startMs: 1000, endMs: 3500 }, { send, templateId: "default" });
+  } finally {
+    f.window.document.removeEventListener(COMMAND_EVENT, replayPage);
+    await settle();
+  }
+}
+
+test("hovering a playing subtitle pauses it until the pointer has left the line and the popup", async t => {
+  const f = playing(t);
+  f.netflix.setHoverPause(true);
+  f.move(AWAY);
+  f.move(ON_LINE);
+  f.move(BETWEEN_LINES);
+  assert.deepEqual(f.hoverCommands(), ["pause"], "entering pauses once; the gap between the lines is the subtitle");
+  assert.equal(f.paused(), true);
+  // The popup, nested ones included, keeps it paused once the pointer has left the line.
+  f.popup(true);
+  f.move(AWAY);
+  await settle();
+  assert.deepEqual(f.hoverCommands(), ["pause"]);
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
+  assert.equal(f.paused(), false);
+  await settle();
+  // Without the popup, leaving the line resumes at once.
+  f.move(ON_LINE);
+  f.move(AWAY);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume", "pause", "resume"]);
+  await settle();
+  // A video that was already paused is left alone.
+  f.media("pause");
+  f.move(ON_LINE);
+  f.move(AWAY);
+  assert.equal(f.hoverCommands().length, 4);
+
+  const empty = playing(t, { lines: [] });
+  empty.netflix.setHoverPause(true);
+  for (const point of [AWAY, ON_LINE, BETWEEN_LINES, AWAY]) empty.move(point);
+  assert.deepEqual(empty.hoverCommands(), [], "an empty subtitle layer pauses nothing");
+});
+
+test("what the viewer plays, pauses or seeks while hovering is left as the viewer left it", async t => {
+  const takeOvers = {
+    play: f => f.media("play"),
+    "play then pause": f => { f.media("play"); f.media("pause"); },
+    seek: f => { f.media("seeking"); f.media("seeked"); },
+  };
+  for (const [name, takeOver] of Object.entries(takeOvers)) {
+    const f = playing(t);
+    f.netflix.setHoverPause(true);
+    f.move(ON_LINE);
+    await settle();
+    takeOver(f);
+    f.move(AWAY);
+    assert.deepEqual(f.hoverCommands(), ["pause"], name);
+  }
+});
+
+test("a replay is never paused or resumed, and the hover pause it interrupted still resumes", async t => {
+  // The viewer's own pause: entering the line during the replay's playback pauses nothing.
+  const viewer = playing(t);
+  viewer.netflix.setHoverPause(true);
+  viewer.media("pause");
+  viewer.move(ON_LINE);
+  await mine(viewer, () => {
+    viewer.move(AWAY);
+    viewer.move(ON_LINE);
+    viewer.move(AWAY);
+  });
+  assert.deepEqual(viewer.hoverCommands(), []);
+  assert.equal(viewer.paused(), true);
+
+  // Neither the replay's own play and seeks nor its seek back undo the hover pause.
+  const held = playing(t);
+  held.netflix.setHoverPause(true);
+  held.move(ON_LINE);
+  held.popup(true);
+  held.move(AWAY);
+  await mine(held);
+  assert.deepEqual(held.hoverCommands(), ["pause"]);
+  held.popup(false);
+  assert.deepEqual(held.hoverCommands(), ["pause", "resume"]);
+
+  // Leaving while the replay plays resumes once it is over.
+  const left = playing(t);
+  left.netflix.setHoverPause(true);
+  left.move(ON_LINE);
+  left.popup(true);
+  await mine(left, () => {
+    left.popup(false);
+    left.move(AWAY);
+    assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes during the replay");
+  });
+  assert.deepEqual(left.hoverCommands(), ["pause", "resume"]);
+});
+
+test("a new /watch/ page drops the resume, and nothing pauses while the reader has hover pause off", async t => {
+  const f = playing(t);
+  f.move(ON_LINE);
+  f.move(AWAY);
+  assert.deepEqual(f.hoverCommands(), [], "off until the reader turns it on");
+  f.netflix.setHoverPause(true);
+  f.move(ON_LINE);
+  f.navigate("/watch/81000002");
+  f.move(AWAY);
+  assert.deepEqual(f.hoverCommands(), ["pause"], "the next episode is not resumed");
+  await settle();
+  f.media("play");
+  f.move(ON_LINE);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
+  // Turned off with its pause in force, it resumes nothing and pauses nothing.
+  f.netflix.setHoverPause(false);
+  f.move(AWAY);
+  f.media("play");
+  f.move(ON_LINE);
+  f.move(AWAY);
+  assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
 });
