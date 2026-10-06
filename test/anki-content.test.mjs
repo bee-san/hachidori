@@ -773,3 +773,26 @@ test("a custom Anki button whose Template was removed stays visible and reports 
   assert.equal(calls.some(call => call.fields.templateId === "deleted-template"
     || call.fields.request?.templateId === "deleted-template"), false);
 });
+
+test("a submission Anki answers as a duplicate or invalid releases its screenshot and stays retryable", async t => {
+  for (const state of ["duplicate", "invalid"]) {
+    const calls = [];
+    const f = fixture(t, async (type, fields = {}) => {
+      calls.push([type, fields.request?.token]);
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+      if (type === "hd_anki_submit") return { state, noteIds: [31], error: "Anki refused this note." };
+      if (type === "hd_anki_screenshot_discard") return { discarded: true };
+      return { state: "addable", canAdd: true, screenshot: true };
+    });
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    f.items[0].add.click();
+    await until(() => calls.some(([type]) => type === "hd_anki_screenshot_discard"));
+    await tick();
+    assert.deepEqual(calls.filter(([type]) => type === "hd_anki_screenshot_discard"), [["hd_anki_screenshot_discard", "shot-a"]], state);
+    // A definitive refusal is not an unconfirmed write.
+    assert.doesNotMatch(f.items[0].output.textContent, /could not be confirmed|Check Anki before trying again/u, state);
+  }
+});
