@@ -128,8 +128,9 @@ changing and may be removed:
   returns to where you were. Chrome lets it record a tab only after you click Hachidori's
   toolbar button once on that tab, or add notes with its **Add the current popup
   entry to Anki** shortcut. Netflix may change its data without notice, and
-  protected playback can record as silence or black frames; the note is then
-  added without that media and says why. While you hover a subtitle line the video pauses, and it
+  protected playback can record as silence, in which case the note is added
+  without the audio and says why, or as black frames, which Hachidori cannot
+  tell from a dark scene, so the GIF is then black. While you hover a subtitle line the video pauses, and it
   plays on once the pointer has left the line and Hachidori's popup, unless you
   played, paused or skipped it yourself in the meantime. Adding a note leaves it
   paused until the line is recorded and the pointer has left.

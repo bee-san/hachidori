@@ -2721,8 +2721,8 @@ whether the picture includes protected video:
 
 Settings → Advanced → Experimental features → **Netflix mining**
 (`options.experimental.netflixMining`, off by default) gives notes mined from a
-Netflix subtitle the line's own audio and the whole line as the sentence, and
-pauses the video while a subtitle line is hovered. It is
+Netflix subtitle the line's own audio, a looping GIF of it, and the whole line
+as the sentence, and pauses the video while a subtitle line is hovered. It is
 Netflix only, and every part fails closed: a note that cannot get its line is
 added with its other fields and a warning.
 
@@ -2925,9 +2925,9 @@ workaround is attempted, and black pictures are not detected.
 
 Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their
-text and screenshot and say why they have no line audio. Nothing of Netflix is
-stored: timelines live in the page's memory, the recording in the recorder
-frame's, and only the final WAV reaches Anki.
+text and screenshot and say why they have no line audio or GIF. Nothing of
+Netflix is stored: timelines live in the page's memory, the recording in the
+recorder frame's, and only the final WAV and GIF reach Anki.
 
 ## Managed custom dictionary
 

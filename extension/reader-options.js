@@ -36,7 +36,7 @@
     { id: "smallerAnkiCards", label: "Smaller Anki cards",
       description: "Write compact definitions to new Anki notes: dictionary stylesheets, classes and wrappers are left out, keeping the text, line breaks, lists, tables, furigana and images. Notes already in Anki are not changed." },
     { id: "netflixMining", label: "Netflix mining",
-      description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice, and replays the line once to record it. Reload Netflix after turning this on. Protected video can make the audio silent." },
+      description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice, and replays the line once to record it. Reload Netflix after turning this on. Protected video can make the audio silent or the GIF black." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
