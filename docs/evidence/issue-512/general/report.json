@@ -1,0 +1,133 @@
+{
+  "importSummary": "Finished 10 of 10 archives — 10 imported, 0 failed.",
+  "importRows": [
+    "113__MarvNC_yomitan-dictionaries__[Other] Nico-Pixiv.zip",
+    "Yomitan ZIP file",
+    "Imported Nico/Pixiv in 0.6 seconds: 92,272 terms.",
+    "100__MarvNC_yomitan-dictionaries__[JP-Mongolian] Japanese-Mongolian 日・モ辞典.zip",
+    "Yomitan ZIP file",
+    "Imported Japanese-Mongolian/日・モ辞典 in 0.3 seconds: 18,947 terms.",
+    "106__MarvNC_yomitan-dictionaries__[Kanji] TheKanjiMap.zip",
+    "Yomitan ZIP file",
+    "Imported TheKanjiMap Kanji Radicals/Composition in 0.1 seconds: 6,911 kanji.",
+    "303__gdrive__萌典.zip",
+    "Yomitan ZIP file",
+    "Imported 萌典 in 1.0 seconds: 164,269 terms.",
+    "py-force64.zip",
+    "Yomitan ZIP file",
+    "Imported writer-matrix in 0.2 seconds: 3,001 terms, 2 frequency entries, 1 kanji, 1 media file.",
+    "101__MarvNC_yomitan-dictionaries__[Kanji Frequency] Aozora Bunko.zip",
+    "Yomitan ZIP file",
+    "Imported 青空文庫漢字 in 0.1 seconds: 8,488 frequency entries.",
+    "102__MarvNC_yomitan-dictionaries__[Kanji Frequency] Innocent Corpus Kanji.zip",
+    "Yomitan ZIP file",
+    "Imported Innocent Corpus Kanji in 0.1 seconds: 6,430 frequency entries.",
+    "103__MarvNC_yomitan-dictionaries__[Kanji Frequency] JPDB Kanji.zip",
+    "Yomitan ZIP file",
+    "Imported JPDB Kanji Freq in 0.1 seconds: 6,494 frequency entries.",
+    "104__MarvNC_yomitan-dictionaries__[Kanji Frequency] Wikipedia.zip",
+    "Yomitan ZIP file",
+    "Imported Wikipedia Kanji in 0.1 seconds: 20,932 frequency entries.",
+    "hachidori-fixture.zip",
+    "Yomitan ZIP file",
+    "Imported hachidori-fixture in 0.1 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+  ],
+  "packages": [
+    {
+      "title": "Nico/Pixiv",
+      "folder": "Nico_Pixiv #c747f3db"
+    },
+    {
+      "title": "Japanese-Mongolian/日・モ辞典",
+      "folder": "Japanese-Mongolian_日・モ辞典 #fe76af61"
+    },
+    {
+      "title": "TheKanjiMap Kanji Radicals/Composition",
+      "folder": "TheKanjiMap Kanji Radicals_Composition #45a8e7ea"
+    },
+    {
+      "title": "萌典",
+      "folder": "萌典"
+    },
+    {
+      "title": "writer-matrix",
+      "folder": "writer-matrix"
+    },
+    {
+      "title": "青空文庫漢字",
+      "folder": "青空文庫漢字"
+    },
+    {
+      "title": "Innocent Corpus Kanji",
+      "folder": "Innocent Corpus Kanji"
+    },
+    {
+      "title": "JPDB Kanji Freq",
+      "folder": "JPDB Kanji Freq"
+    },
+    {
+      "title": "Wikipedia Kanji",
+      "folder": "Wikipedia Kanji"
+    },
+    {
+      "title": "hachidori-fixture",
+      "folder": "hachidori-fixture"
+    }
+  ],
+  "beforeRestart": {
+    "Nico/Pixiv :: 相川千秋": true,
+    "Japanese-Mongolian/日・モ辞典 :: 赤い": true,
+    "萌典 :: 丟飯碗": true,
+    "writer-matrix :: 語1": true,
+    "TheKanjiMap Kanji Radicals/Composition :: 巾": true,
+    "kanji frequencies for 食": [
+      "writer-matrix",
+      "青空文庫漢字",
+      "Innocent Corpus Kanji",
+      "JPDB Kanji Freq",
+      "Wikipedia Kanji"
+    ]
+  },
+  "afterRestart": {
+    "Nico/Pixiv :: 相川千秋": true,
+    "Japanese-Mongolian/日・モ辞典 :: 赤い": true,
+    "萌典 :: 丟飯碗": true,
+    "writer-matrix :: 語1": true,
+    "TheKanjiMap Kanji Radicals/Composition :: 巾": true,
+    "kanji frequencies for 食": [
+      "writer-matrix",
+      "青空文庫漢字",
+      "Innocent Corpus Kanji",
+      "JPDB Kanji Freq",
+      "Wikipedia Kanji"
+    ]
+  },
+  "statusAfterRestart": {
+    "type": "hd_status_result",
+    "requestId": "i512b-hd_status-0.16371103394229558",
+    "ok": true,
+    "error": null,
+    "generation": 1,
+    "ready": true,
+    "loading": false,
+    "dictionaryCount": 15,
+    "failedDictionaries": [],
+    "lastLoadPath": "full",
+    "storageBackend": "opfs",
+    "threaded": true,
+    "lowMemory": false,
+    "pagedDictionaries": true,
+    "dictionaryEntryStorage": "auto"
+  },
+  "remove": {
+    "type": "hd_remove_result",
+    "requestId": "i512b-hd_remove-0.35589813372376833",
+    "ok": true,
+    "error": null,
+    "generation": 2
+  },
+  "afterRemove": {
+    "stillListed": false,
+    "lookup": false
+  }
+}
