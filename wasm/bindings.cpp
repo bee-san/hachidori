@@ -448,7 +448,9 @@ struct WireSegmentSpan {
   // hover's order: the first is the popup's first result.
   std::vector<WireSegmentCandidate> candidates;
   // The best split of the span's text into shorter words, when one covers all
-  // of it (今日は as 今日 and は); empty otherwise.
+  // of it (今日は as 今日 and は); empty otherwise. A full dictionary has one
+  // for almost every compound (学生 as 学 and 生), so phase 3 decides when an
+  // alternative may colour a span, as the issue's Design 1 step 3 describes.
   std::vector<WireSegmentWord> alternative;
 };
 
@@ -460,16 +462,19 @@ struct WireSegmentResponse {
 // whose text or first headword is one of these is a function word, which the
 // page leaves unmarked. Jitendex carries part of speech only inside its
 // structured glossaries, not in the tags or rules hoshidicts returns, so the
-// words are listed here.
+// words are listed here. It lists the copula's past and presumptive forms and
+// conjunctions built on it (だった, でしょう, だけど) as headwords of their own,
+// so a span lands on them whole rather than on だ.
 constexpr std::array FUNCTION_WORDS = std::to_array<std::string_view>({
     "が", "を", "に", "へ", "で", "と", "から", "より", "まで", "の", "は", "も",
     "こそ", "さえ", "でも", "しか", "だけ", "ばかり", "など", "なんか", "くらい", "ぐらい",
     "ほど", "って", "とか", "やら", "ずつ", "て", "ば", "ても", "けど", "けれど",
     "けれども", "し", "ので", "のに", "ながら", "たり", "か", "ね", "ねえ", "よ",
     "な", "なあ", "ぞ", "ぜ", "わ", "さ", "かな", "かしら", "よね", "っけ",
-    "や", "には", "では", "とは", "にも", "でも", "へと", "だ", "です", "である",
-    "じゃ", "じゃない", "ではない", "ん", "のだ", "んだ", "のです", "んです", "そして", "しかし",
-    "だから", "それで", "でも", "また", "だが", "ところが", "すると",
+    "や", "には", "では", "とは", "にも", "へと", "だ", "です", "である", "だった",
+    "だろう", "だろ", "でしょう", "でしょ", "じゃ", "じゃない", "ではない", "ん", "のだ", "んだ",
+    "のです", "んです", "そして", "しかし", "だから", "だけど", "だったら", "それで", "それでは", "また",
+    "だが", "ところが", "すると",
 });
 
 bool is_function_word(std::string_view surface, std::string_view headword) {
