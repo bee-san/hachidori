@@ -192,8 +192,9 @@ for more than twice the cost. The downsides:
   slower still.
 - Lookup throughput falls 13.5%, which matters for bulk lookups rather than
   hovers.
-- Index pages now compete with entry pages in the shared 32 MiB cache: about
-  7,800 more 4 KiB reads per 570 lookups in a large library.
+- Index pages now compete with entry pages in the shared 32 MiB cache: per 570
+  lookups in a large library, about 7,800 index-page reads plus 1,800 more
+  entry-page reads than with resident hashes.
 - The engine and bindings gain a second hash reader path, a residency policy
   and diagnostics to maintain.
 - Normal-mode users with large libraries keep main's memory use. If that
