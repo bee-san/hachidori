@@ -377,14 +377,17 @@ non-Japanese tracks are skipped, and a replay seeks through the player API,
 plays at 1× and restores position, pause and speed without writing
 `currentTime`. Hover pause's `pause` and `resume` commands also go through the
 player, never write `currentTime`, wait while a replay runs, and malformed
-commands do nothing. A jsdom watch page checks pinning, the whole-cue sentence, reasons
+commands do nothing, and a replay sent `keepPaused: true` restores a playing
+video paused. A jsdom watch page checks pinning, the whole-cue sentence, reasons
 for a missing cue, post validation, the episode reset and the [CC] track choice.
 With stubbed client rects it checks hover pause: entering a playing line pauses
 it, the gap between its lines and the shown popup keep it paused, and leaving
 both resumes it; nothing pauses for a paused video or a layer with no line, and
-nothing resumes after the viewer's own play, pause or seek, during a replay
-(whose own play and seeks keep the pause), after a new `/watch/`, or once the
-reader turns hover pause off.
+nothing resumes after the viewer's own play, pause or seek, while a line is
+recorded (whose replay's play and seeks keep the pause), after a new
+`/watch/`, or once the reader turns hover pause off. Mining a video the viewer
+played on asks the page to keep it paused, and it resumes only once the
+recorder has stopped and the pointer has left.
 The recorder frame's sample clock, trim, median clock fit, silence detection
 and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
@@ -401,7 +404,10 @@ its place, with the viewer's position, pause and speed restored and
 `currentTime` written only by the player. It then plays the fixture from inside
 the cue: hovering the line must pause it through the player and moving away
 resume it without a seek; a second note added during that pause must be
-recorded with the pause still in force afterwards and resumed on leaving; and
+recorded with the pause still in force afterwards and resumed on leaving; a
+third note, added after the viewer played the paused video on over the line,
+must leave it paused with no play but the replay's own while the recorder frame
+is in the page, and play it on once the pointer leaves; and
 with the switch turned off, the page that still has the scripts must pause
 nothing. It needs headful Chrome, because
 headless Chrome captures tab audio as silence, and stands in for the user's

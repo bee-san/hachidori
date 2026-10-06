@@ -127,7 +127,8 @@ changing and may be removed:
   protected playback can record as silence; the note is then added without the
   audio and says why. While you hover a subtitle line the video pauses, and it
   plays on once the pointer has left the line and Hachidori's popup, unless you
-  played, paused or skipped it yourself in the meantime.
+  played, paused or skipped it yourself in the meantime. Adding a note leaves it
+  paused until the line is recorded and the pointer has left.
 
 
 # Opinionated

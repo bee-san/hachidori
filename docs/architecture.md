@@ -2810,7 +2810,9 @@ page seeks through Netflix's player API
 (`netflix.appContext.state.playerApp.getAPI().videoPlayer`), to 250 ms before
 the cue and 2 s earlier again if the seek lands past that, plays at 1×, and
 reports `(wall ms, media ms)` pairs every 25 ms until 250 ms after the cue. It
-then restores the position, paused state and speed, each step independently.
+then restores the position, paused state and speed, each step independently;
+a replay sent with `keepPaused`, as hover pause sends it, restores a playing
+video paused (see **Hover pause**).
 `hd_netflix_capture_finish` has the frame wait up to 500 ms for the last audio,
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
@@ -2841,11 +2843,16 @@ pointer stays on the line or the reader's popup is shown (from
 popups share), and leaving both sends `resume`. A `play` or `seeking` event on
 the video outside a replay drops the resume, so the viewer's own play, pause
 (which follows a play) or seek wins; a new `/watch/<id>` and the switch going
-off also drop it and leave the video as it is. A replay is never paused or
-resumed: the reader sends neither command while one is pending and the page
-ignores both while it replays. The replay restores the paused state itself;
-its seek back reports itself after the answer and is not taken for the
-viewer's, and a leave during the replay resumes once it has answered.
+off also drop it and leave the video as it is. Nothing is paused or resumed
+while a line is recorded: the reader sends neither command from the recorder
+frame's creation to its removal, and the page ignores both while it replays.
+Chrome mutes the tab until the recorder stops, so the reader sends the replay
+`keepPaused`, and the page restores a video that was playing paused. The
+reader then holds that pause like its own, whether it paused the video or the
+viewer had played it on, and resumes once the frame is gone and the pointer
+has left the line and the popup; a leave during the recording takes effect
+then. The page's seek back reports itself after its answer and is not taken
+for the viewer's.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to
