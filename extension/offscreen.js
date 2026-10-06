@@ -13,6 +13,11 @@ import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js"
 import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
+import { captureDebugLog, readDebugLog, recordDebugFailure } from "./debug-log.js";
+
+// Settings → Advanced → Get debug info reads this document's recent warnings,
+// errors and failed replies, and the engine worker's (debug-log.js).
+captureDebugLog(globalThis, { context: "offscreen" });
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -44,6 +49,7 @@ const MUTATION_TYPES = new Set([
 const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
 const POLL_TYPES = new Set(["hd_status", "hd_memory"]);
 const IMPORT_READ_TYPES = new Set([
+  "hd_debug_log",
   "hd_lookup",
   "hd_lookup_dictionary",
   "hd_kanji",
@@ -55,6 +61,7 @@ const IMPORT_READ_TYPES = new Set([
   "hd_api_dictionary_close",
 ]);
 const STAGED_MUTATION_READ_TYPES = new Set([
+  "hd_debug_log",
   "hd_lookup",
   "hd_lookup_dictionary",
   "hd_kanji",
@@ -122,6 +129,7 @@ function describe(error) {
 }
 
 function failedResponse(message, error, errorCode = null) {
+  recordDebugFailure(globalThis, message?.type || "hd_unknown", error);
   return boundResponseFailure({
     type: `${message?.type || "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
@@ -510,9 +518,24 @@ async function measureExtensionMemory(message) {
   return reply(bytes, heap);
 }
 
+// This document's log, then the engine worker's. A local engine runs on this
+// document and shares its log.
+async function readDebugLogs(message) {
+  const logs = [await readDebugLog(globalThis)];
+  if (worker !== null) {
+    const reply = await new Promise((resolve) => dispatchEngine({ type: "hd_debug_log", requestId: null }, resolve));
+    logs.push(reply?.ok === true ? reply.log : { context: "engine-worker", error: reply?.error ?? "no reply" });
+  }
+  return { type: "hd_debug_log_result", requestId: message.requestId ?? null, ok: true, error: null, logs };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== TARGET || message.relayed !== true || message.type === "hd_engine_config") {
     return false;
+  }
+  if (message.type === "hd_debug_log") {
+    readDebugLogs(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describe(error))));
+    return true;
   }
   if (message.type === "hd_memory_total") {
     measureExtensionMemory(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describe(error))));

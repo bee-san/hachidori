@@ -1,4 +1,5 @@
 import { encodeBase64 } from "./base64.js";
+import { readDebugLog, recordDebugFailure } from "./debug-log.js";
 import {
   httpsUrl,
   assertRecommendedDictionary,
@@ -93,7 +94,7 @@ const MEDIA_TYPES = {
 // revalidation and native installation phase.
 // Dictionary download reads serve an archive already built by its open, so
 // they need no turn in the queue either.
-const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
+const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_debug_log", "hd_backup_release", "hd_import", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -3724,6 +3725,11 @@ const HANDLERS = {
   // read from disk when shown, and a paged package's entries as they are
   // looked up, through a page cache of pageCacheBytes. The heap itself never
   // shrinks, so heapBytes also keeps whatever an import or rebuild peaked at.
+  // The log of the context this engine runs in, for Get debug info.
+  async hd_debug_log() {
+    return { log: await readDebugLog(globalThis) };
+  },
+
   hd_memory() {
     requireEngine();
     const dictionaries = (loadedPackages ?? []).map((entry) => ({
@@ -3786,6 +3792,7 @@ function failurePayload(type) {
 
 function engineFailureReply(type, requestId, error) {
   const description = describe(error);
+  recordDebugFailure(globalThis, type, description);
   let errorCode = error === bootError ? "engine-start-failed" : error?.errorCode ?? null;
   if (errorCode === null && description === "the dictionary engine is still starting") {
     errorCode = "engine-starting";
