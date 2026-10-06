@@ -198,7 +198,8 @@ test("recording starts the capture, has the page replay the cue, then finishes o
     ["hd_netflix_capture_finish", { sessionId: "s1", anchors: [[5000, 950], [5100, 1050]], templateId: "default" }],
   ]);
   const replay = f.commands.find(command => command.type === "replay");
-  assert.deepEqual({ ...replay, id: typeof replay.id }, { type: "replay", id: "string", startMs: 1000, endMs: 3500, padMs: 250 });
+  assert.deepEqual({ ...replay, id: typeof replay.id }, { type: "replay", id: "string", startMs: 1000, endMs: 3500, padMs: 250,
+    keepPaused: false });
 
   // A page without Netflix's player cancels the recording.
   sent.length = 0;
@@ -388,7 +389,12 @@ test("a replay is never paused or resumed, and the hover pause it interrupted st
       left.move(AWAY);
       assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes during the replay");
     },
-    finishing: () => assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes while the recorder runs"),
+    finishing: () => {
+      // The replay has answered; the recorder still runs.
+      left.move(ON_LINE);
+      left.move(AWAY);
+      assert.deepEqual(left.hoverCommands(), ["pause"], "nothing resumes while the recorder runs");
+    },
   });
   assert.deepEqual(left.hoverCommands(), ["pause", "resume"]);
 });

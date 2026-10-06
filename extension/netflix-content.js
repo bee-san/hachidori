@@ -36,13 +36,15 @@
     const replays = new Map();
     let watched = null;
     // Hover pause, which content.js turns on with the switch. `held` while
-    // the pause this reader asked for is in force; `restoring` from a replay's
-    // answer until the page's seek back has landed.
+    // the pause this reader asked for, or kept through a recording, is in
+    // force; `restoring` from a replay's answer until the page's seek back has
+    // landed; `recordings` while a line is recorded.
     let hoverPause = false;
     let hovering = false;
     let popupOpen = false;
     let held = false;
     let restoring = false;
+    let recordings = 0;
     const range = document.createRange();
 
     const command = message => {
@@ -82,7 +84,9 @@
         pending.reject(Object.assign(new Error(`Netflix's player could not replay the line (${message.error}).`),
           { code: message.error === "player" ? "player" : "replay" }));
       }
-      replayOver();
+      // The page restores the viewer's state as it answers; its seek back
+      // reports itself afterwards.
+      restoring = true;
     }
 
     // Everything the page posts is checked before it is used: any script on
@@ -200,14 +204,18 @@
 
     function replay(cue, padMs) {
       const id = window.crypto.randomUUID();
+      // Chrome mutes the tab until the recorder stops, so with hover pause the
+      // page restores a playing video paused and this reader resumes it once
+      // the recording is over and the pointer has left.
+      const video = mainVideo();
+      if (hoverPause && video !== null && !video.paused) held = true;
       return new Promise((resolveReplay, rejectReplay) => {
         const timer = window.setTimeout(() => {
           replays.delete(id);
           rejectReplay(Object.assign(new Error("Netflix's player did not finish replaying the line."), { code: "replay" }));
-          replayOver();
         }, cue.endMs - cue.startMs + 2 * padMs + REPLAY_SLACK_MS);
         replays.set(id, { resolve: resolveReplay, reject: rejectReplay, timer });
-        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs });
+        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs, keepPaused: hoverPause });
       });
     }
 
@@ -228,6 +236,7 @@
     // WAV for the note. Resolves with the held file or with why there is none.
     async function record(cue, { send, templateId }) {
       const frame = recorderFrame();
+      recordings += 1;
       try {
         const started = await send("hd_netflix_capture_start", { cue });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
@@ -244,6 +253,9 @@
         return await send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
       } finally {
         frame.remove();
+        recordings -= 1;
+        // A leave during the recording takes effect now the recorder has stopped.
+        release();
       }
     }
 
@@ -268,10 +280,10 @@
     }
 
     // Leaving the line and the popup resumes what this reader paused, unless a
-    // replay owns the player.
+    // line is being recorded.
     function release() {
       sync();
-      if (!held || hovering || popupOpen || replays.size > 0) return;
+      if (!held || hovering || popupOpen || recordings > 0) return;
       held = false;
       command({ type: "resume" });
     }
@@ -288,7 +300,7 @@
         return;
       }
       const video = mainVideo();
-      if (held || replays.size > 0 || video === null || video.paused) return;
+      if (held || recordings > 0 || video === null || video.paused) return;
       held = true;
       command({ type: "pause" });
     }
@@ -300,14 +312,6 @@
       if (event.target !== mainVideo()) return;
       if (event.type === "seeked") restoring = false;
       else if (replays.size === 0 && !(restoring && event.type === "seeking")) held = false;
-    }
-
-    // A replay has answered or given up. The page restores the viewer's state
-    // as it answers, so its seek back reports itself afterwards; a leave during
-    // the replay takes effect now.
-    function replayOver() {
-      restoring = true;
-      release();
     }
 
     // content.js turns hover pause on and off with the Netflix mining switch.
