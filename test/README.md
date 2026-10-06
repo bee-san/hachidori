@@ -381,7 +381,8 @@ The recorder frame's sample clock, trim, median clock fit, silence detection
 and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
 held WAV's storage lifecycle, the `{sentence-audio}` value and the reader's
-warnings. Real Netflix playback, Chrome's capture grant and protected video are
+warnings. The extension smoke suite keeps a recorder port only for the recorder
+page framed in a Netflix watch tab while the switch is on. Real Netflix playback, Chrome's capture grant and protected video are
 not covered by any automated suite.
 
 `xvfb-run -a node test/chrome-netflix-mining.mjs`, outside the default runs,
