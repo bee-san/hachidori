@@ -104,21 +104,23 @@ function fixture(t, html, { lexicon, statuses = {}, available = true, options = 
     const runs = [[]];
     for (const node of textNodes(block)) {
       if (node.nodeType === 1 && node.localName === "br") runs.push([]);
-      if (node.nodeType !== 3 || node.parentElement.closest("rt")) continue;
-      for (let offset = 0; offset < node.data.length; offset += 1) {
-        runs.at(-1).push({ node, offset, sourceLength: 1, text: node.data[offset], collapsed: false });
-      }
+      if (node.nodeType === 3 && !node.parentElement.closest("rt")) runs.at(-1).push({ node, start: 0, end: node.data.length });
     }
     return runs.filter(run => run.length > 0);
   };
-  const highlighter = window.HDWordHighlights.createWordHighlighter({ window, send, textBlocks, textRuns, isJapanese,
-    prepare: async () => {}, readPalette: () => ({ getPropertyValue: name => palette[name] ?? "" }) });
+  const runEntries = parts => parts.flatMap(({ node, start, end }) => Array.from({ length: end - start },
+    (_, index) => ({ node, offset: start + index, sourceLength: 1, text: node.data[start + index], collapsed: false })));
+  let prepared = 0;
+  const highlighter = window.HDWordHighlights.createWordHighlighter({ window, send, textBlocks, textRuns, runEntries, isJapanese,
+    prepare: async () => { prepared += 1; }, readPalette: () => ({ getPropertyValue: name => palette[name] ?? "" }) });
   const current = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS, wordHighlightEnabled: true, ...options };
   return {
     window, document, state, sent, highlighter, observed,
+    get prepared() { return prepared; },
     options: current,
     start: () => highlighter.start(current),
     show: (...elements) => intersect(elements.map(target => ({ target, isIntersecting: true }))),
+    hide: (...elements) => intersect(elements.map(target => ({ target, isIntersecting: false }))),
     hold(type) { hold = { type }; return () => { const { release } = hold; hold = null; release?.(); }; },
     segmented: () => sent.filter(request => request.type === "hd_segment").flatMap(request => request.fields.chunks.map(chunk => chunk.text)),
     statusRequests: () => sent.filter(request => request.type === "hd_anki_word_status").map(request => request.fields.request.headwords),
@@ -140,13 +142,18 @@ test("visible words take their first result's status, leaving function words and
     { lexicon: VERBS, statuses: { 食べる: "unknown", 漢字: "learning", 読む: "known" } });
   page.start();
   await settle();
-  // Nothing is segmented before the index says it can answer, nor off screen.
-  assert.deepEqual(page.statusRequests(), [[]]);
-  assert.deepEqual(page.segmented(), []);
+  // A frame with nothing shown yet sends nothing and builds no popup host.
+  assert.deepEqual(page.sent, []);
+  assert.equal(page.prepared, 0);
   assert.equal(page.observed.size, 2);
   page.show(page.document.getElementById("near"));
   await settle();
+  // The index is asked whether it can answer before anything is segmented,
+  // and the off-screen line is not segmented at all.
+  assert.deepEqual(page.statusRequests()[0], []);
+  assert.equal(page.sent[0].type, "hd_anki_word_status");
   assert.deepEqual(page.segmented(), ["食べたかった。", "漢字を読む"]);
+  assert.equal(page.prepared, 1);
   assert.deepEqual(page.sent.find(request => request.type === "hd_segment").fields.scanLength, page.options.scanLength);
   // The conjugated verb is marked by its dictionary form's card, around the
   // ruby's reading; を is a function word and known words are off by default.
@@ -214,6 +221,39 @@ test("arriving lines reuse cached segmentation and a status change moves marks w
   assert.equal(page.observed.has(line), false);
 });
 
+test("only text near the viewport keeps ranges, inside one long block and in blocks that leave it", async t => {
+  const page = fixture(t, `<p id="novel">${Array.from({ length: 40 }, () => "猫がいる").join("<br>")}</p><p id="other">猫</p>`,
+    { lexicon: VERBS });
+  const novel = page.document.getElementById("novel");
+  const lines = [...novel.childNodes].filter(node => node.nodeType === 3);
+  // Lines 50 px apart in a 100 px viewport; one viewport around it is near.
+  const scroll = { y: 0 };
+  Object.defineProperty(page.window, "innerHeight", { value: 100, configurable: true });
+  page.window.Range.prototype.getBoundingClientRect = function () {
+    const top = lines.indexOf(this.startContainer) * 50 - scroll.y;
+    return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40 };
+  };
+  const painted = () => [...page.window.CSS.highlights.get("hd-word-unknown") ?? []]
+    .map(range => lines.indexOf(range.startContainer)).filter(index => index >= 0);
+  const lineRange = (from, to) => Array.from({ length: to - from + 1 }, (_, index) => from + index)
+    .flatMap(index => [index, index]);
+  page.start();
+  page.show(novel, page.document.getElementById("other"));
+  await settle();
+  assert.deepEqual(painted(), lineRange(0, 4));
+  scroll.y = 1000;
+  page.window.dispatchEvent(new page.window.Event("scroll"));
+  await new Promise(resolveWait => setTimeout(resolveWait, 150));
+  await settle();
+  assert.deepEqual(painted().sort((a, b) => a - b), lineRange(18, 24), "lines scrolled away keep no ranges");
+  assert.deepEqual(page.segmented(), ["猫がいる", "猫"]);
+  // A whole block leaving the viewport takes its ranges with it.
+  page.hide(novel);
+  await settle();
+  assert.deepEqual(painted(), []);
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫"] });
+});
+
 test("an unavailable index marks nothing until the worker signals, and stale or stopped replies are dropped", async t => {
   const page = fixture(t, `<p id="line">猫がいる</p>`, { lexicon: VERBS, available: false });
   page.start();
@@ -266,6 +306,7 @@ test("status colours follow the palette, made legible against the page, and stan
   };
   const channels = value => /rgb\((\d+),? (\d+),? (\d+)/u.exec(value).slice(1, 4).map(Number);
   page.start();
+  page.show(page.document.getElementById("line"));
   await settle();
   const underline = rules();
   for (const status of ["unknown", "learning", "known"]) {

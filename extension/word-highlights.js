@@ -8,8 +8,9 @@
 // without segmenting the page again.
 //
 // content.js supplies how page text is read, the way a hover reads it: the
-// blocks under a node whose own text includes Japanese, and each block's runs
-// of text as character entries ({ node, offset, sourceLength, text, collapsed }).
+// blocks under a node whose own text includes Japanese, each block's runs as
+// text node parts ({ node, start, end }), and a run's character entries
+// ({ node, offset, sourceLength, text, collapsed }) once it is needed.
 (function () {
   "use strict";
 
@@ -118,7 +119,7 @@
     return { text, pieces };
   }
 
-  function createWordHighlighter({ window, send, textBlocks, textRuns, isJapanese, prepare, readPalette }) {
+  function createWordHighlighter({ window, send, textBlocks, textRuns, runEntries, isJapanese, prepare, readPalette }) {
     const { document } = window;
     const highlights = Object.fromEntries(STATUSES.map(status => {
       const highlight = new window.Highlight();
@@ -136,6 +137,7 @@
     // Bumped by invalidate() too, for segmentations of older dictionaries.
     let segmentEpoch = 0;
     let ready = false;
+    let preparing = false;
     let suspended = 0;
     let intersections = null;
     let mutations = null;
@@ -195,40 +197,85 @@
 
     function rebuild(block) {
       for (const run of block.runs) unpaint(run);
-      block.runs = [];
-      for (const entries of textRuns(block.element)) {
-        const { text, pieces } = runOf(entries);
-        if (!isJapanese(text)) continue;
-        block.runs.push({ text, pieces, chunks: chunksOf(text, isJapanese), wanted: false, stale: true, painted: [] });
-      }
+      block.runs = textRuns(block.element)
+        .filter(parts => parts.some(({ node, start, end }) => isJapanese(node.data.slice(start, end))))
+        .map(parts => ({ parts, text: null, pieces: null, chunks: null, wanted: false, stale: true, painted: [] }));
       block.dirty = false;
       block.recheck = true;
     }
 
-    // A run is segmented once it comes within a viewport of the visible area,
-    // so a long page, or one huge block of it, costs only what is near.
-    function nearViewport(run) {
-      const first = run.pieces[0];
-      const last = run.pieces.at(-1);
-      const range = document.createRange();
-      try {
-        range.setStart(first.node, first.offset);
-        range.setEnd(last.node, last.end);
-      } catch {
-        return false;
-      }
-      const rect = range.getBoundingClientRect();
-      const { innerWidth: width, innerHeight: height } = window;
-      return rect.bottom >= -height && rect.top <= 2 * height && rect.right >= -width && rect.left <= 2 * width;
+    // A run's text and chunks, read the first time it is wanted.
+    function build(run) {
+      ({ text: run.text, pieces: run.pieces } = runOf(runEntries(run.parts)));
+      run.chunks = chunksOf(run.text, isJapanese);
     }
 
+    // Runs are wanted, segmented and painted, only within a viewport of the
+    // visible area, so a long page, or one huge block of it (an Aozora Bunko
+    // novel is a single block of <br>-separated lines), keeps only the ranges
+    // near what is shown. Chrome revalidates every registered range whenever
+    // any highlight changes, the hover's source highlight included.
+    function runRect(run) {
+      const first = run.parts[0];
+      const last = run.parts.at(-1);
+      const range = document.createRange();
+      try {
+        range.setStart(first.node, first.start);
+        range.setEnd(last.node, last.end);
+      } catch {
+        return null;
+      }
+      return range.getBoundingClientRect();
+    }
+
+    // -1 when a rect lies before that area along the block's direction (above
+    // it for horizontal text, right of it for vertical-rl, left for
+    // vertical-lr), 1 after it, 0 within it.
+    function sideOf(writingMode) {
+      const { innerWidth: width, innerHeight: height } = window;
+      if (writingMode.endsWith("-rl")) return rect => (rect.left > 2 * width ? -1 : Number(rect.right < -width));
+      if (writingMode.endsWith("-lr")) return rect => (rect.right < -width ? -1 : Number(rect.left > 2 * width));
+      return rect => (rect.bottom < -height ? -1 : Number(rect.top > 2 * height));
+    }
+
+    // A block's runs follow its direction in document order, so the near ones
+    // are found by bisection; a block set in columns is checked run by run.
     function recheck(block) {
       block.recheck = false;
-      if (block.runs.length === 1) {
-        block.runs[0].wanted = true;
+      const { runs } = block;
+      // The observer has already found a one-run block near the viewport.
+      if (runs.length === 1) {
+        runs[0].wanted = true;
         return;
       }
-      for (const run of block.runs) run.wanted ||= nearViewport(run);
+      const style = window.getComputedStyle(block.element);
+      const side = sideOf(style.writingMode);
+      const place = run => {
+        const rect = runRect(run);
+        return rect ? side(rect) : 1;
+      };
+      let near;
+      if ([style.columnCount, style.columnWidth].some(value => value && value !== "auto")) {
+        near = runs.map(run => place(run) === 0);
+      } else {
+        let first = 0;
+        let last = runs.length;
+        while (first < last) {
+          const middle = (first + last) >> 1;
+          if (place(runs[middle]) < 0) first = middle + 1;
+          else last = middle;
+        }
+        let end = first;
+        while (end < runs.length && place(runs[end]) <= 0) end += 1;
+        near = runs.map((_, index) => index >= first && index < end);
+      }
+      runs.forEach((run, index) => {
+        if (run.wanted && !near[index]) {
+          unpaint(run);
+          run.stale = true;
+        }
+        run.wanted = near[index];
+      });
     }
 
     function onIntersection(entries) {
@@ -285,7 +332,7 @@
       recheckTimer = window.setTimeout(() => {
         recheckTimer = null;
         for (const block of visible) {
-          if (block.runs.some(run => !run.wanted)) block.recheck = true;
+          if (block.runs.length > 1) block.recheck = true;
         }
         schedule();
       }, RECHECK_MS);
@@ -588,11 +635,30 @@
         if (block.dirty) rebuild(block);
         if (block.recheck) recheck(block);
         for (const run of block.runs) {
+          if (run.wanted && run.text === null) build(run);
           if (run.wanted && run.stale) paint(run);
         }
       }
+      // A frame with no Japanese text near its viewport, such as most
+      // advertising frames, sends nothing and builds no popup host.
+      if (visible.size === 0) return;
+      if (!preparing) prepareColors();
       void requestStatuses();
       void requestSegments();
+    }
+
+    // The marks wait for the popup host, whose palette colours them.
+    function prepareColors() {
+      preparing = true;
+      const token = session;
+      Promise.resolve().then(prepare).catch(() => {}).then(() => {
+        if (token !== session) return;
+        ready = true;
+        // Added after the popup's own listener, which applies an automatic palette first.
+        colorScheme.addEventListener("change", refreshColors);
+        refreshColors();
+        register();
+      });
     }
 
     // ------------------------------------------------------------ lifecycle
@@ -604,22 +670,12 @@
       session += 1;
       segmentEpoch += 1;
       statusEpoch += 1;
-      const token = session;
       intersections = new window.IntersectionObserver(onIntersection, { rootMargin: "100%" });
       mutations = new window.MutationObserver(onMutations);
       mutations.observe(document, { childList: true, subtree: true, characterData: true });
       if (document.body) for (const element of textBlocks(document.body)) track(element);
       window.addEventListener("scroll", onViewportChange, { capture: true, passive: true });
       window.addEventListener("resize", onViewportChange, { passive: true });
-      // The marks wait for the popup host, whose palette colours them.
-      Promise.resolve().then(prepare).catch(() => {}).then(() => {
-        if (token !== session) return;
-        ready = true;
-        // Added after the popup's own listener, which applies an automatic palette first.
-        colorScheme.addEventListener("change", refreshColors);
-        refreshColors();
-        register();
-      });
       schedule();
     }
 
@@ -627,6 +683,7 @@
       if (!running) return;
       running = false;
       ready = false;
+      preparing = false;
       session += 1;
       segmentEpoch += 1;
       intersections.disconnect();

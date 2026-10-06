@@ -958,7 +958,7 @@
 
   // Reading → Word highlighting (#520, experimental): word-highlights.js marks
   // this frame's words by their Anki status, reading the page's text as a
-  // hover does through textBlocks() and textRuns().
+  // hover does through textBlocks(), textRuns() and runEntries().
   let wordHighlights = null;
   // Toggle word highlights hides the marks in this frame until it reloads.
   let wordHighlightsHidden = false;
@@ -973,6 +973,7 @@
       send: sendRequest,
       textBlocks,
       textRuns,
+      runEntries,
       isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
       prepare: ensureUi,
       readPalette: () => (host ? window.getComputedStyle(host) : null),
@@ -1011,20 +1012,20 @@
   }
 
   /**
-   * The runs of `block`'s own text, each the character entries a scan from its
-   * start collects. A run ends where a hovered word ends: at a <br>, a block
+   * The runs of `block`'s own text, each a list of text node parts
+   * ({ node, start, end }, up to the node's end or its next preserved line
+   * break). A run ends where a hovered word ends: at a <br>, a block
    * separator, a nested block, a control or a line break the page preserves.
+   * Only the parts are found here, so a long block costs one walk; runEntries()
+   * reads a run's characters once it is needed.
    */
   function textRuns(block) {
     const styleCache = new Map();
     const runs = [];
-    let entries = [];
+    let parts = [];
     const endRun = () => {
-      if (entries.length > 0) {
-        dropCjkSegmentBreaks(entries);
-        runs.push(entries);
-      }
-      entries = [];
+      if (parts.length > 0) runs.push(parts);
+      parts = [];
     };
     const walker = createScanWalker(block, styleCache);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -1035,14 +1036,27 @@
         continue;
       }
       const text = node.nodeValue || "";
-      let from = 0;
-      while (!appendTextNode(entries, node, from, Infinity, styleCache)) {
-        endRun();
-        from += text.slice(from).search(SEGMENT_BREAK_PATTERN) + 1;
+      let start = 0;
+      if (preservesWhitespace(node.parentElement, styleCache)) {
+        for (const { index } of text.matchAll(/[\n\r]/gu)) {
+          if (index > start) parts.push({ node, start, end: index });
+          endRun();
+          start = index + 1;
+        }
       }
+      if (start < text.length) parts.push({ node, start, end: text.length });
     }
     endRun();
     return runs;
+  }
+
+  /** A run's character entries, collapsed and joined as a scan reads them. */
+  function runEntries(parts) {
+    const styleCache = new Map();
+    const entries = [];
+    for (const { node, start } of parts) appendTextNode(entries, node, start, Infinity, styleCache);
+    dropCjkSegmentBreaks(entries);
+    return entries;
   }
 
   function releaseDocsImposter() {
