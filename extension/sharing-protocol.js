@@ -205,12 +205,7 @@ export function allowLinkedAnkiRequest(message) {
     return { ...base, request };
   }
   if (message.type === "hd_anki_word_status") {
-    const request = selectedFields(message.request, ["headwords"]);
-    const headwords = request.headwords;
-    if (!Array.isArray(headwords) || headwords.some(headword => typeof headword !== "string")) {
-      throw new Error("malformed linked word status request");
-    }
-    return { ...base, request: { headwords } };
+    return { ...base, request: selectedFields(message.request, ["headwords"]) };
   }
   if (message.type === "hd_anki_browse") {
     const request = selectedFields(message.request, ["noteIds", "expression", "configKey", "templateId"]);

@@ -2369,9 +2369,8 @@ async function handleAnkiRequest(message, sender) {
       }
       // Mature-word evidence has always belonged to the host, including hosts
       // from before linked mining advertised a capability. Page-wide word
-      // status reads the same host-owned index.
-      if (message.type === "hd_anki_maturity") return forwardToHost(message);
-      if (message.type === "hd_anki_word_status") return forwardToHost(message, LINKED_ANKI_CAPABILITY);
+      // status reads the same host-owned index, always for its first Template.
+      if (["hd_anki_maturity", "hd_anki_word_status"].includes(message.type)) return forwardToHost(message);
       if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
       if (message.type === "hd_anki_preflight_batch") return linkedPreflightBatch(message);
       if (["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
