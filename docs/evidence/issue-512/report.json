@@ -1,0 +1,95 @@
+{
+  "importSummary": "Finished 5 of 5 archives — 5 imported, 0 failed.",
+  "importRows": [
+    "[Kanji Frequency] Aozora Bunko.zipYomitan ZIP fileImported 青空文庫漢字 in 0.2 seconds: 8,488 frequency entries.",
+    "[Kanji Frequency] Innocent Corpus Kanji.zipYomitan ZIP fileImported Innocent Corpus Kanji in 0.1 seconds: 6,430 frequency entries.",
+    "[Kanji Frequency] JPDB Kanji.zipYomitan ZIP fileImported JPDB Kanji Freq in 0.1 seconds: 6,494 frequency entries.",
+    "[Pitch] NHK日本語発音アクセント新辞典.zipYomitan ZIP fileImported NHK日本語発音アクセント新辞典 in 0.3 seconds: 75,992 terms.",
+    "hachidori-fixture.zipYomitan ZIP fileImported hachidori-fixture in 0.1 seconds: 6 terms, 2 frequency entries, 2 pitch entries, 1 kanji, 1 media file."
+  ],
+  "state": [
+    {
+      "title": "青空文庫漢字",
+      "termCount": 0,
+      "frequencyCount": 8488,
+      "pitchCount": 0,
+      "kanjiCount": 0
+    },
+    {
+      "title": "Innocent Corpus Kanji",
+      "termCount": 0,
+      "frequencyCount": 6430,
+      "pitchCount": 0,
+      "kanjiCount": 0
+    },
+    {
+      "title": "JPDB Kanji Freq",
+      "termCount": 0,
+      "frequencyCount": 6494,
+      "pitchCount": 0,
+      "kanjiCount": 0
+    },
+    {
+      "title": "NHK日本語発音アクセント新辞典",
+      "termCount": 75992,
+      "frequencyCount": 0,
+      "pitchCount": 0,
+      "kanjiCount": 0
+    },
+    {
+      "title": "hachidori-fixture",
+      "termCount": 6,
+      "frequencyCount": 2,
+      "pitchCount": 2,
+      "kanjiCount": 1
+    }
+  ],
+  "kanjiFrequencies": [
+    {
+      "dictionary": "青空文庫漢字",
+      "frequencies": [
+        {
+          "value": 213,
+          "displayValue": "213 (7114)"
+        }
+      ]
+    },
+    {
+      "dictionary": "Innocent Corpus Kanji",
+      "frequencies": [
+        {
+          "value": 119,
+          "displayValue": "119 (285327)"
+        }
+      ]
+    },
+    {
+      "dictionary": "JPDB Kanji Freq",
+      "frequencies": [
+        {
+          "value": 73,
+          "displayValue": "73"
+        }
+      ]
+    }
+  ],
+  "nhkLookup": [
+    {
+      "expression": "箸",
+      "reading": "はし",
+      "dictionaries": [
+        "NHK日本語発音アクセント新辞典"
+      ]
+    }
+  ],
+  "kanjiView": {
+    "hidden": false,
+    "text": "213 (7114)119 (285327)73",
+    "tags": [
+      "青空文庫漢字: 213 (213 (7114))",
+      "Innocent Corpus Kanji: 119 (119 (285327))",
+      "JPDB Kanji Freq: 73"
+    ],
+    "glyph": "食"
+  }
+}
