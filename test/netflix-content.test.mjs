@@ -251,7 +251,8 @@ function playing(t, options) {
   const popup = shown => window.dispatchEvent(new window.CustomEvent(shown ? "hachidori-popup-shown" : "hachidori-popup-hidden"));
   const hoverCommands = () => f.commands.filter(command => command.type === "pause" || command.type === "resume")
     .map(command => command.type);
-  return { ...f, fire, media, move, popup, hoverCommands, paused: () => paused, setPaused: value => { paused = value; } };
+  return { ...f, fire, media, move, popup, hoverCommands, paused: () => paused, setPaused: value => { paused = value; },
+    layout: (node, rect) => rects.set(node, [rect]) };
 }
 
 // Mines the line: the page seeks and plays the clip, lets the test act while
@@ -284,6 +285,12 @@ async function mine(f, during = () => {}) {
 
 test("hovering a playing subtitle pauses it until the pointer has left the line and the popup", async t => {
   const f = playing(t);
+  // A second box at the top of the picture: each box has its own bounds.
+  const top = f.window.document.createElement("div");
+  top.className = "player-timedtext-text-container";
+  top.innerHTML = "<span>（ナレーション）</span>";
+  f.window.document.querySelector(".player-timedtext").append(top);
+  f.layout(top.firstChild.firstChild, { left: 500, top: 40, right: 700, bottom: 80 });
   f.netflix.setHoverPause(true);
   f.move(AWAY);
   f.move(ON_LINE);
@@ -328,6 +335,7 @@ test("what the viewer plays, pauses or seeks while hovering is left as the viewe
     f.move(ON_LINE);
     await settle();
     takeOver(f);
+    f.move(BETWEEN_LINES);
     f.move(AWAY);
     assert.deepEqual(f.hoverCommands(), ["pause"], name);
   }
@@ -387,6 +395,8 @@ test("a new /watch/ page drops the resume, and nothing pauses while the reader h
   assert.deepEqual(f.hoverCommands(), ["pause", "pause"]);
   // Turned off with its pause in force, it resumes nothing and pauses nothing.
   f.netflix.setHoverPause(false);
+  f.popup(true);
+  f.popup(false);
   f.move(AWAY);
   f.media("play");
   f.move(ON_LINE);
