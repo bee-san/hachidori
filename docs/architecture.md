@@ -2648,7 +2648,12 @@ whether the picture includes protected video:
   In headless Chrome for Testing 152 on Linux, with software compositing, a
   Widevine-encrypted MSE stream that the page itself read back from a canvas
   as black appeared in captures made with Hachidori's JPEG call and Migaku's
-  PNG call, as the unencrypted stream of the same title did.
+  PNG call, as the unencrypted stream of the same title did. A Windows
+  screenshot of the browser window can still show that video as black: while
+  nothing is being captured, Chrome presents protected video in an overlay
+  marked display-only
+  ([`swap_chain_presenter.cc`](https://source.chromium.org/chromium/chromium/src/+/main:ui/gl/swap_chain_presenter.cc)),
+  which the operating system's screen capture cannot read.
 - Hardware-protected video, from hardware secure decryption on Windows, stays
   in an overlay while the capture is taken, so the captured frame is black
   where the video plays. When Migaku's screenshot and audio both come back
