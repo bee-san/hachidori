@@ -763,5 +763,5 @@
       get running() { return running; } };
   }
 
-  globalThis.HDWordHighlights = { HIGHLIGHT_NAMES, createWordHighlighter };
+  globalThis.HDWordHighlights = { createWordHighlighter };
 }());
