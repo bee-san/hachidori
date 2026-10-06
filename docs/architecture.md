@@ -2636,9 +2636,9 @@ Migaku takes its card screenshot with the same API. Its Chrome Web Store
 package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
 for the reading tab's window as PNG and crops the picture to the video;
 Hachidori keeps the whole viewport. Migaku's audio clip comes from a
-`tabCapture` stream. With the same browser, page, frame and graphics settings,
-both calls receive the same pixels, and Chrome decides whether those include
-protected video:
+`tabCapture` stream. Both calls receive what Chrome composites for that window,
+so in the same browser, graphics settings and frame, Chrome decides for both
+whether the picture includes protected video:
 
 - Software-decrypted video is composited into the capture. On Windows, a
   capture request turns off DirectComposition overlays unless the frame holds
