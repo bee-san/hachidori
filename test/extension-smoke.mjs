@@ -17829,6 +17829,50 @@ async function contentNoteStage() {
     } finally { harness.close(); }
   }
 
+  // Issue #504: an open pronunciation chooser is its pane's interaction. A
+  // child pane that would cover it closes unless a draft protects it, and
+  // definition scans wait until the chooser closes.
+  async function audioChooserPaneCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    let caretCalls = 0;
+    try {
+      await harness.initialLookup();
+      const child = harness.internalLink({ query: "child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+      await child;
+      const button = harness.popup.querySelector(".gsm-hoshidicts-audio-button");
+      const choose = () => button.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      const menu = () => harness.popup.querySelector(".gsm-hoshidicts-audio-choices");
+      const closeMenu = () => menu().querySelector(".gsm-hoshidicts-audio-menu-close").click();
+      harness.edit(true, 1);
+      choose();
+      const draftKept = Boolean(menu()) && Boolean(harness.driver.popupAt(1));
+      closeMenu();
+      harness.edit(false, 1);
+      choose();
+      const childClosed = Boolean(menu()) && !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+      // Hit testing is where a definition scan starts; count it.
+      window.document.caretPositionFromPoint = () => { caretCalls += 1; return null; };
+      window.setTimeout = (callback) => { timers.set(++nextTimer, callback); return nextTimer; };
+      window.clearTimeout = (id) => timers.delete(id);
+      const scan = () => {
+        timers.clear();
+        harness.driver.onPopupMouseMove({ target: harness.popup, clientX: 20, clientY: 20, buttons: 0 }, 0);
+        for (const callback of [...timers.values()]) callback();
+      };
+      scan();
+      const held = childClosed && caretCalls === 0 && harness.take("hd_lookup") === null;
+      closeMenu();
+      scan();
+      const resumed = held && caretCalls > 0;
+      return { "an open pronunciation chooser closes the child pane over it unless a draft holds it, and pauses definition scans":
+        (draftKept && resumed) || { draftKept, childClosed, held, resumed, caretCalls } };
+    } finally { harness.close(); }
+  }
+
   async function nestedNotesCase() {
     const outcomes = [];
     for (const navigation of ["close", "navigate", "back", "lower"]) {
@@ -22270,7 +22314,7 @@ async function contentNoteStage() {
     activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase(),
       ...await overlayDepartureCase(), ...await browserDepartureCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await audioChooserPaneCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
