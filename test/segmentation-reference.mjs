@@ -289,16 +289,20 @@ export function greedySpans(text, lookupFirst) {
 // set, with whatever dictionaries the engine has loaded: `segment(text)` is
 // hdw_segment's spans for a line, `lookupFirst(text)` the first hdw_lookup
 // result, both with the same options. node-smoke scores the dictionaries
-// above; benchmark/segmentation.mjs scores real archives the same way.
+// above; benchmark/segmentation.mjs scores real archives the same way. A word
+// counts when its span and headword match; a boundary when its span does,
+// whatever headword spelling the dictionary uses (有る for ある).
 export function scoreReferenceSet({ segment, lookupFirst }) {
   const score = {
-    lines: REFERENCE_LINES.length, words: 0, bestWords: 0, greedyWords: 0, bestLines: 0, greedyLines: 0,
-    functionWords: 0, conjugatedLines: 0, conjugatedRecovered: 0,
+    lines: REFERENCE_LINES.length, words: 0, bestWords: 0, greedyWords: 0, bestBoundaries: 0, greedyBoundaries: 0,
+    bestLines: 0, greedyLines: 0, functionWords: 0, conjugatedLines: 0, conjugatedRecovered: 0,
   };
   const key = (span) => `${span.start}:${span.length}:${span.headword}`;
+  const boundary = (span) => `${span.start}:${span.length}`;
   for (const line of REFERENCE_LINES) {
     const expected = expectedSpans(line);
     const expectedKeys = new Set(expected.map(key));
+    const expectedBoundaries = new Set(expected.map(boundary));
     const spans = segment(line.text);
     const best = spans.map((span) => ({ start: span.start, length: span.length, headword: span.candidates[0]?.expression }));
     const greedy = greedySpans(line.text, lookupFirst);
@@ -307,11 +311,13 @@ export function scoreReferenceSet({ segment, lookupFirst }) {
     score.words += expected.length;
     score.bestWords += bestHits;
     score.greedyWords += greedyHits;
+    score.bestBoundaries += best.filter((span) => expectedBoundaries.has(boundary(span))).length;
+    score.greedyBoundaries += greedy.filter((span) => expectedBoundaries.has(boundary(span))).length;
     if (bestHits === expected.length && best.length === expected.length) score.bestLines += 1;
     if (greedyHits === expected.length && greedy.length === expected.length) score.greedyLines += 1;
-    const byPosition = new Map(spans.map((span) => [`${span.start}:${span.length}`, span]));
+    const byPosition = new Map(spans.map((span) => [boundary(span), span]));
     for (const word of expected) {
-      if (byPosition.get(`${word.start}:${word.length}`)?.functionWord === word.functionWord) score.functionWords += 1;
+      if (byPosition.get(boundary(word))?.functionWord === word.functionWord) score.functionWords += 1;
     }
     if (line.conjugated) {
       score.conjugatedLines += 1;
@@ -330,8 +336,10 @@ export function formatReferenceScore(score) {
   return [
     `reference set: ${score.lines} lines, ${score.words} words`,
     `best split : ${score.bestWords}/${score.words} words (${percent(score.bestWords)}), `
+      + `${score.bestBoundaries}/${score.words} boundaries (${percent(score.bestBoundaries)}), `
       + `${score.bestLines}/${score.lines} lines exact`,
     `greedy     : ${score.greedyWords}/${score.words} words (${percent(score.greedyWords)}), `
+      + `${score.greedyBoundaries}/${score.words} boundaries (${percent(score.greedyBoundaries)}), `
       + `${score.greedyLines}/${score.lines} lines exact`,
     `function-word flag: ${score.functionWords}/${score.words} correct`,
     `conjugated lines fully recovered: ${score.conjugatedRecovered}/${score.conjugatedLines}`,
