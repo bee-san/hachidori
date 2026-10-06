@@ -47,6 +47,14 @@
     return ((Number(hours) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000 + Number(fraction.padEnd(3, "0"));
   }
 
+  // How deep inside ruby readings the text after `tag` (its name, lowercased)
+  // is. WebVTT lets the last </rt> before </ruby> be left out; </ruby> ends it.
+  function readingDepth(tag, depth) {
+    if (/^\/ruby(?![a-z])/u.test(tag)) return 0;
+    if (/^\/?r[tp](?![a-z])/u.test(tag)) return Math.max(0, depth + (tag.startsWith("/") ? -1 : 1));
+    return depth;
+  }
+
   // A cue's text without its tags. Ruby readings and their parentheses are
   // not part of the spoken line, so text inside <rt> and <rp> is left out.
   // WebVTT escapes a literal "<", so every "<" opens a tag.
@@ -63,10 +71,7 @@
         break;
       }
       if (hidden === 0) text += source.slice(at, open);
-      const tag = source.slice(open + 1, close).toLowerCase();
-      // WebVTT lets the last </rt> before </ruby> be left out; </ruby> ends it.
-      if (/^\/ruby(?![a-z])/u.test(tag)) hidden = 0;
-      else if (/^\/?r[tp](?![a-z])/u.test(tag)) hidden = Math.max(0, hidden + (tag.startsWith("/") ? -1 : 1));
+      hidden = readingDepth(source.slice(open + 1, close).toLowerCase(), hidden);
       at = close + 1;
     }
     return cleanLines(decodeEntities(text));
