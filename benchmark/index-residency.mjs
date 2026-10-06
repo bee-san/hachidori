@@ -159,7 +159,7 @@ async function sample(variant, repetition) {
   const request = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields }), type, fields);
   async function launch() {
     browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true,
-      userDataDir: resolve(directory, "profile"), protocolTimeout: 600000,
+      userDataDir: resolve(directory, "profile"), protocolTimeout: 300000,
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
     const target = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().startsWith("chrome-extension://"));
     id = new URL(target.url()).host;
@@ -181,7 +181,7 @@ async function sample(variant, repetition) {
         if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
         return s?.ok && s.ready && !s.loading && s.lowMemory && s.dictionaryCount === count*4
           && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
-      }, { timeout: 600000, polling: 50 }, count, desiredIndex).then(handle => handle.jsonValue());
+      }, { timeout: 180000, polling: 50 }, count, desiredIndex).then(handle => handle.jsonValue());
     } catch (error) {
       const last = await page.evaluate(() => globalThis.benchmarkLastStatus ?? null).catch(() => null);
       throw new Error(`${error.message}; last engine status: ${JSON.stringify(last)}`, { cause: error });
@@ -399,9 +399,24 @@ async function sample(variant, repetition) {
     throw error;
   } finally { await browser?.close(); rmSync(directory, { recursive: true, force: true }); }
 }
+// A sample that stalls (seen in about 1 of 40 samples, in main and PR variants
+// alike, on a host shared with other browser tests) is retried once in a fresh
+// profile. failures.jsonl keeps every failed attempt; the summary reports them.
+async function sampleWithRetry(variant, repetition) {
+  for (let attempt = 1; ; ++attempt) {
+    try {
+      return await sample(variant, repetition);
+    } catch (error) {
+      appendJsonlDurable(resolve(output, "failures.jsonl"), { variant, repetition, attempt, utc: new Date().toISOString(),
+        error: String(error) });
+      if (attempt === 2) throw error;
+      console.error(`${variant} #${repetition+1}: attempt ${attempt} failed; retrying in a fresh profile`);
+    }
+  }
+}
 try {
   for (let repetition = 0; repetition < samples; ++repetition) {
-    for (const variant of repetition % 2 ? [...variants].reverse() : variants) rows.push(await sample(variant, repetition));
+    for (const variant of repetition % 2 ? [...variants].reverse() : variants) rows.push(await sampleWithRetry(variant, repetition));
   }
   writeFileSync(resolve(output, "results.json"), JSON.stringify({ definition, rows }, null, 2));
   console.log(writeSummary(output));

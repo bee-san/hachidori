@@ -5,7 +5,7 @@
 // Every figure is the median across repetitions of that repetition's value,
 // so one repetition disturbed by the host does not move the result. Latency
 // percentiles are per repetition over its queries; `p50Range` keeps the spread.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readJsonlRecoveringTail } from "./system.mjs";
@@ -115,7 +115,8 @@ export function summarise(directory) {
     if (!matching.length) return null;
     return native ? nativeVariant(variant, matching) : browserVariant(variant, matching, definition);
   }).filter(Boolean);
-  return { kind: native ? "native" : "browser", fixture: definition.fixture.label, packages: definition.fixture.packages,
+  const failures = existsSync(resolve(directory, "failures.jsonl")) ? readJsonlRecoveringTail(resolve(directory, "failures.jsonl")) : [];
+  return { kind: native ? "native" : "browser", fixture: definition.fixture.label, packages: definition.fixture.packages, failures,
     hashTableBytes: definition.fixture.hashTableBytes ?? null, corpus: definition.fixture.corpus.length,
     revision: definition.revision ?? null, beforeRevision: definition.beforeRevision ?? null, variants,
     comparisons: comparisons(variants) };
@@ -138,15 +139,24 @@ export function markdown(summary) {
         + ` | ${whole(item.warm.engine.throughputPerSecond)} | ${whole(item.warmIndexReads)} |`);
     }
   } else {
-    lines.push("| Variant | Resident hashes (MiB) | Startup (ms) | Cold p50 / p95 (ms) | Warm p50 / p95 (ms) | Warm lookups/s"
-      + " | Heap after load / peak (MiB) | Live after lookups (MiB) | Extension RSS peak / steady (MiB) | Reimport (ms) |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+    lines.push("| Variant | Resident hashes (MiB) | Cold p50 / p95 (ms) | Warm p50 / p95 (ms) | Warm lookups/s"
+      + " | Hover first / complete (ms) |", "| --- | ---: | ---: | ---: | ---: | ---: |");
     for (const item of summary.variants) {
-      lines.push(`| ${item.label} | ${mib(item.residentHashBytes)} | ${whole(item.startupMs)}`
+      lines.push(`| ${item.label} | ${mib(item.residentHashBytes)}`
         + ` | ${ms(item.cold.roundTrip.p50)} / ${ms(item.cold.roundTrip.p95)} | ${ms(item.warm.roundTrip.p50)} / ${ms(item.warm.roundTrip.p95)}`
-        + ` | ${whole(item.warm.roundTrip.throughputPerSecond)} | ${mib(item.heapAfterLoadBytes)} / ${mib(item.heapPeakBytes)}`
-        + ` | ${mib(item.liveAfterLookupsBytes)} | ${mib(item.extensionRssPeakBytes)} / ${mib(item.extensionRssSteadyBytes)}`
-        + ` | ${whole(item.reimportMs)} |`);
+        + ` | ${whole(item.warm.roundTrip.throughputPerSecond)} | ${ms(item.hoverFirst)} / ${ms(item.hoverComplete)} |`);
+    }
+    lines.push("", "| Variant | WASM heap after load (MiB) | WASM heap peak (MiB) | Live allocations (MiB)"
+      + " | Extension RSS peak (MiB) | Extension RSS steady (MiB) |", "| --- | ---: | ---: | ---: | ---: | ---: |");
+    for (const item of summary.variants) {
+      lines.push(`| ${item.label} | ${mib(item.heapAfterLoadBytes)} | ${mib(item.heapPeakBytes)} | ${mib(item.liveAfterLookupsBytes)}`
+        + ` | ${mib(item.extensionRssPeakBytes)} | ${mib(item.extensionRssSteadyBytes)} |`);
+    }
+    lines.push("", "| Variant | Startup (ms) | Reimport (ms) | Restart with half disabled (ms) | Idle recycle (ms) |",
+      "| --- | ---: | ---: | ---: | ---: |");
+    for (const item of summary.variants) {
+      lines.push(`| ${item.label} | ${whole(item.startupMs)} | ${whole(item.reimportMs)} | ${whole(item.disabledRestartMs)}`
+        + ` | ${whole(item.recycleMs)} |`);
     }
   }
   if (summary.comparisons.length) {
@@ -159,15 +169,19 @@ export function markdown(summary) {
           + ` | ${delta(item.warmP50Ms, "ms", 1, 3)} | ${delta(item.warmP95Ms, "ms", 1, 3)} | ${signed(item.warmThroughput?.percent, 1)}% |`);
       }
     } else {
-      lines.push("| Variant | Cold p50 | Cold p95 | Warm p50 | Warm p95 | Warm throughput | Heap peak | Extension RSS peak |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+      lines.push("| Variant | Cold p50 | Cold p95 | Warm p50 | Warm p95 | Warm throughput | WASM heap peak"
+        + " | Extension RSS peak | Extension RSS steady |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
       for (const item of summary.comparisons) {
         lines.push(`| ${summary.variants.find(v => v.variant === item.variant).label} | ${delta(item.coldP50Ms, "ms")}`
           + ` | ${delta(item.coldP95Ms, "ms")} | ${delta(item.warmP50Ms, "ms")} | ${delta(item.warmP95Ms, "ms")}`
           + ` | ${signed(item.warmThroughput?.percent, 1)}% | ${delta(item.heapPeakBytes, "MiB", MIB, 1)}`
-          + ` | ${delta(item.extensionRssPeakBytes, "MiB", MIB, 1)} |`);
+          + ` | ${delta(item.extensionRssPeakBytes, "MiB", MIB, 1)} | ${delta(item.extensionRssSteadyBytes, "MiB", MIB, 1)} |`);
       }
     }
+  }
+  if (summary.failures?.length) {
+    lines.push("", `Retried after a failed attempt: ${summary.failures.map(item => `${label(item.variant)} #${item.repetition + 1}`
+      + ` (${item.error.split(";")[0].slice(0, 120)})`).join("; ")}.`);
   }
   return lines.join("\n");
 }
