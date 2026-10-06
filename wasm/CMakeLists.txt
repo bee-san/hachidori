@@ -73,6 +73,7 @@ target_link_options(hoshidicts_wasm PRIVATE
     -sEXPORT_NAME=createHoshidicts
     -sENVIRONMENT=web,worker,node
     -sALLOW_MEMORY_GROWTH=1
+    -sEXPORT_EXCEPTION_HANDLING_HELPERS=1
     -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB
     -sFORCE_FILESYSTEM=1
@@ -96,11 +97,11 @@ endif()
 if(HACHIDORI_PTHREADS AND HACHIDORI_WASMFS)
   target_link_options(hoshidicts_wasm PRIVATE
       -sWASMFS=1
-      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore,getExceptionMessage,decrementExceptionRefcount
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore
   )
 else()
   target_link_options(hoshidicts_wasm PRIVATE
       -lidbfs.js
-      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore,getExceptionMessage,decrementExceptionRefcount
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8,stackSave,stackRestore
   )
 endif()
