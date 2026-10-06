@@ -375,8 +375,16 @@ the profile is added once, unrelated values stringify and parse byte-identically
 a cyclic value still throws its `TypeError`, forced, "Off", image and
 non-Japanese tracks are skipped, and a replay seeks through the player API,
 plays at 1× and restores position, pause and speed without writing
-`currentTime`. A jsdom watch page checks pinning, the whole-cue sentence, reasons
+`currentTime`. Hover pause's `pause` and `resume` commands also go through the
+player, never write `currentTime`, wait while a replay runs, and malformed
+commands do nothing. A jsdom watch page checks pinning, the whole-cue sentence, reasons
 for a missing cue, post validation, the episode reset and the [CC] track choice.
+With stubbed client rects it checks hover pause: entering a playing line pauses
+it, the gap between its lines and the shown popup keep it paused, and leaving
+both resumes it; nothing pauses for a paused video or a layer with no line, and
+nothing resumes after the viewer's own play, pause or seek, during a replay
+(whose own play and seeks keep the pause), after a new `/watch/`, or once the
+reader turns hover pause off.
 The recorder frame's sample clock, trim, median clock fit, silence detection
 and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
@@ -390,7 +398,12 @@ mines a fixture page served at a Netflix watch address through the real popup
 into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
 player and in-tab recording must store a WAV whose beep lies within 125 ms of
 its place, with the viewer's position, pause and speed restored and
-`currentTime` written only by the player. It needs headful Chrome, because
+`currentTime` written only by the player. It then plays the fixture from inside
+the cue: hovering the line must pause it through the player and moving away
+resume it without a seek; a second note added during that pause must be
+recorded with the pause still in force afterwards and resumed on leaving; and
+with the switch turned off, the page that still has the scripts must pause
+nothing. It needs headful Chrome, because
 headless Chrome captures tab audio as silence, and stands in for the user's
 toolbar click with `--allowlisted-extension-id`.
 

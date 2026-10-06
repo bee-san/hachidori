@@ -125,7 +125,9 @@ changing and may be removed:
   toolbar button once on that tab, or add notes with its **Add the current popup
   entry to Anki** shortcut. Netflix may change its data without notice, and
   protected playback can record as silence; the note is then added without the
-  audio and says why.
+  audio and says why. While you hover a subtitle line the video pauses, and it
+  plays on once the pointer has left the line and Hachidori's popup, unless you
+  played, paused or skipped it yourself in the meantime.
 
 
 # Opinionated
