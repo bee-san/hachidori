@@ -960,10 +960,12 @@
   // this frame's words by their Anki status, reading the page's text as a
   // hover does through textBlocks(), textRuns() and runEntries().
   let wordHighlights = null;
-  // Toggle word highlights hides the marks in this frame until it reloads.
+  // Toggle word highlights hides the marks in this frame until it reloads or
+  // highlighting is switched off.
   let wordHighlightsHidden = false;
 
   function syncWordHighlights() {
+    if (!options.wordHighlightEnabled) wordHighlightsHidden = false;
     if (disposed || !options.hoverEnabled || !options.wordHighlightEnabled || wordHighlightsHidden) {
       wordHighlights?.stop();
       return;
