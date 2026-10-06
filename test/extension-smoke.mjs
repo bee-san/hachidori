@@ -824,8 +824,10 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+\{[^}]*\}\s*from[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
+  const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
+    .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "")
     .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
@@ -875,7 +877,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n${debugLog}\n`
       + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -4772,8 +4774,10 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import \{ readDictionaryArchiveIdentity \} from "\.\/dictionary-import-archive\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "")
+    .replace(/import \{ captureDebugLog \} from "\.\/debug-log\.js";\s*/u, "")
     // The module awaits its entry point; a classic script has no top-level await.
     .replace(/^await start\(\);$/mu, "start();");
+  const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   window.TextEncoder ??= TextEncoder;
   for (const dialog of window.document.querySelectorAll("dialog")) {
     dialog.showModal ??= function showModal() {
@@ -4788,7 +4792,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${settings}`,
   );
 }
 

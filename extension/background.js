@@ -1,4 +1,5 @@
 import { extensionApi as chrome } from "./browser-api.js";
+import { captureWorkerDebugLog, readDebugLog, recordDebugFailure } from "./debug-log.js";
 import { ensureChromeOffscreen } from "./chrome-offscreen.js";
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
@@ -138,6 +139,10 @@ function getBackupDownloads() {
   backupDownloads ??= createBackupDownloads(chrome, relay);
   return backupDownloads;
 }
+
+// Settings → Advanced → Get debug info reads this worker's recent warnings,
+// errors and failed replies (debug-log.js).
+captureWorkerDebugLog(globalThis, chrome.storage.session);
 
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
@@ -1090,6 +1095,10 @@ const WORKER_HANDLERS = {
     return readBackupPayload();
   },
 
+  async hd_debug_log(_message, sender) {
+    if (!ankiSettingsSender(sender)) throw new Error("The debug log is available only from Hachidori Settings.");
+    return { log: await readDebugLog(globalThis) };
+  },
   async hd_backup_auto_list(_message, sender) {
     if (!ankiSettingsSender(sender)) {
       throw new Error("Automatic backups are available only from Hachidori Settings.");
@@ -2007,6 +2016,7 @@ function checkedOptionsResult(message, result) {
 
 function failureReply(message, error) {
   const description = describe(error);
+  recordDebugFailure(globalThis, message?.type ?? "hd_unknown", description);
   let errorCode = typeof error?.code === "string" ? error.code : null;
   if (errorCode === null && description === NOT_REACHABLE) {
     errorCode = "sharing-disconnected";
@@ -2512,7 +2522,7 @@ async function handleWorkerRequest(message, sender) {
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const run = () => [
     "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
-    "hd_lookup_stats_record", "hd_lookup_stats_read", "hd_engine_config",
+    "hd_lookup_stats_record", "hd_lookup_stats_read", "hd_engine_config", "hd_debug_log",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
   const operation = ["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)
     ? trackAnkiOperation(run) : run();
