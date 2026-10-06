@@ -7,8 +7,10 @@
 // word through the real popup and requires the stored WAV's beep within 125 ms
 // of its place, seeking only through the player and the viewer's state restored.
 // Hovering the line of the playing video must then pause it through the player
-// and moving away resume it, also around a second note's replay, and nothing
-// once the switch is off.
+// and moving away resume it, also around a second note's replay; a note added
+// while the viewer plays it on over the line must leave it paused, never
+// played on while the recorder runs, until the pointer leaves; and nothing
+// pauses once the switch is off.
 //
 // Not part of the default runs. Chrome grants tab capture only after a user
 // invokes the extension on the tab; --allowlisted-extension-id stands in for
@@ -78,7 +80,8 @@ const vtt = `WEBVTT\n\n1\n00:00:02.000 --> 00:00:03.600 position:50.00%,middle a
 
 // The parts of Netflix's watch page the feature uses. The fake player seeks
 // with the element's own setter and records it; any other write counts. It
-// also records each play and pause it is asked for.
+// also records each play and pause it is asked for, and whether a play came
+// while Hachidori's recorder frame was in the page (the tab is muted then).
 const page = `<!doctype html><meta charset="utf-8"><title>Netflix fixture</title>
 <style>body{margin:0;background:#000;color:#fff;font:40px sans-serif}
 .player-timedtext{position:absolute;left:0;right:0;top:300px;text-align:center}</style>
@@ -94,7 +97,7 @@ Object.defineProperty(video, "currentTime", { configurable: true,
   set(value) { if (!seeking) evidence.directWrites++; native.set.call(this, value); } });
 const player = {
   seek(ms) { evidence.seeks.push(ms); seeking = true; video.currentTime = ms / 1000; seeking = false; },
-  play() { evidence.calls.push("play"); return video.play(); },
+  play() { evidence.calls.push(document.querySelector("iframe") ? "play while recording" : "play"); return video.play(); },
   pause() { evidence.calls.push("pause"); video.pause(); },
   getCurrentTime() { return video.currentTime * 1000; },
 };
@@ -336,11 +339,29 @@ try {
   assert.equal(notes.length, 2, "a second note was added during the hover pause");
   assert.match(notes[1].fields.Back, /\[sound:hachidori-sentence-audio-/u, "the paused line was recorded");
   after = await playback();
-  assert.deepEqual(after.calls.slice(start.calls.length), ["pause", "play", "pause"], "the replay played the line and kept the pause");
+  assert.deepEqual(after.calls.slice(start.calls.length), ["pause", "play while recording", "pause"],
+    "the replay played the line and kept the pause");
   assert.equal(after.paused, true);
   await tab.mouse.move(...away);
   await waitForCalls(start, 4, false, "leaving after the replay resumes");
   assert.equal((await playback()).calls.at(-1), "play", "the resume goes through the player");
+
+  // A note added while the viewer has played the video on over the line: it
+  // stays paused, not played on in the muted tab, while the pointer is still
+  // there, and plays on once the pointer leaves.
+  start = await playFrom(CUE.startMs + 200);
+  await tab.mouse.move(...onWord);
+  await waitForCalls(start, 1, true, "hovering pauses before the viewer plays");
+  await tab.evaluate(() => document.querySelector("video").play());
+  await addNote();
+  assert.equal(notes.length, 3, "a third note was added while the video played");
+  after = await playback();
+  assert.deepEqual(after.calls.slice(start.calls.length), ["pause", "play while recording", "pause"],
+    "the replay restored the playing video paused");
+  assert.equal(after.paused, true, "the video stays paused while the pointer is on the line");
+  await tab.mouse.move(...away);
+  await waitForCalls(start, 4, false, "leaving after mining plays the video on");
+  assert.equal((await playback()).calls.at(-1), "play", "the video plays on after the recorder has stopped");
 
   // Switched off, the page that still has the scripts pauses nothing.
   await settings.evaluate(async () => {
@@ -359,7 +380,7 @@ try {
   assert.equal(after.paused, false);
   assert.equal(after.directWrites, 0, "the hover pause wrote no currentTime either");
   passed = true;
-  console.log("Netflix mining fixture: 2 notes, line audio within 125 ms, playback restored, hover pause and resume through the player — passed");
+  console.log("Netflix mining fixture: 3 notes, line audio within 125 ms, playback restored, hover pause and resume through the player, no play while recording — passed");
 } finally {
   await browser?.close();
   anki.close();
