@@ -63,12 +63,13 @@ import {
   parseCustomDictionary,
 } from '../extension/custom-dictionary.js';
 import {
-  REFERENCE_LINES,
   SEGMENTATION_DICTIONARY_TITLE,
   SEGMENTATION_FREQUENCY_TITLE,
   buildSegmentationDictionaryZip,
   buildSegmentationFrequencyZip,
-  expectedSpans,
+  formatReferenceScore,
+  greedySpans,
+  scoreReferenceSet,
 } from './segmentation-reference.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -2120,75 +2121,11 @@ check('a single word has no alternative split', () => {
 });
 
 // Score the greedy longest-match parse and the best split against the reference
-// set. Greedy is one max-length lookup per uncovered position; best split is
-// hdw_segment. The issue ships greedy if the best split scores no better, so
-// this records both.
-function greedySpans(text) {
-  const chars = Array.from(text);
-  const spans = [];
-  let index = 0;
-  while (index < chars.length) {
-    const results = lookupS(chars.slice(index).join(''), 1, 16);
-    const matched = results[0]?.matched;
-    if (matched) {
-      const length = Array.from(matched).length;
-      spans.push({ start: index, length, headword: results[0].term.expression });
-      index += length;
-    } else {
-      index += 1;
-    }
-  }
-  return spans;
-}
-
-// hdw_segment offsets are UTF-16 code units; the reference lines use no
-// surrogate pairs, so a code-point index equals its UTF-16 offset here.
-function bestContentSpans(text) {
-  return segmentS(text, 16).spans.map((span) => ({
-    start: span.start, length: span.length, headword: span.candidates[0]?.expression,
-  }));
-}
-
-const score = { bestWords: 0, greedyWords: 0, totalWords: 0, bestLines: 0, greedyLines: 0, functionCorrect: 0 };
-let conjugatedLines = 0;
-let conjugatedCovered = 0;
-for (const line of REFERENCE_LINES) {
-  const expected = expectedSpans(line);
-  const expectedKeys = new Set(expected.map((s) => `${s.start}:${s.length}:${s.headword}`));
-  const best = bestContentSpans(line.text);
-  const greedy = greedySpans(line.text);
-  const bestHits = best.filter((s) => expectedKeys.has(`${s.start}:${s.length}:${s.headword}`)).length;
-  const greedyHits = greedy.filter((s) => expectedKeys.has(`${s.start}:${s.length}:${s.headword}`)).length;
-  score.totalWords += expected.length;
-  score.bestWords += bestHits;
-  score.greedyWords += greedyHits;
-  if (bestHits === expected.length && best.length === expected.length) score.bestLines += 1;
-  if (greedyHits === expected.length && greedy.length === expected.length) score.greedyLines += 1;
-  const bestByPosition = new Map(segmentS(line.text, 16).spans.map((s) => [`${s.start}:${s.length}`, s]));
-  for (const e of expected) {
-    const span = bestByPosition.get(`${e.start}:${e.length}`);
-    if (span && span.functionWord === e.functionWord) score.functionCorrect += 1;
-  }
-  if (line.conjugated) {
-    conjugatedLines += 1;
-    // Every content word whose surface differs from its headword was recovered.
-    const recovered = line.words.every(([surface, headword, fn]) => {
-      if (fn || surface === headword) return true;
-      return best.some((s) => s.headword === headword
-        && line.text.slice(s.start, s.start + Array.from(surface).length) === surface);
-    });
-    if (recovered) conjugatedCovered += 1;
-  }
-}
-
-const pct = (n, d) => `${((100 * n) / d).toFixed(1)}%`;
-console.log(`        reference set: ${REFERENCE_LINES.length} lines, ${score.totalWords} words`);
-console.log(`        best split : ${score.bestWords}/${score.totalWords} words (${pct(score.bestWords, score.totalWords)}), `
-  + `${score.bestLines}/${REFERENCE_LINES.length} lines exact`);
-console.log(`        greedy     : ${score.greedyWords}/${score.totalWords} words (${pct(score.greedyWords, score.totalWords)}), `
-  + `${score.greedyLines}/${REFERENCE_LINES.length} lines exact`);
-console.log(`        function-word flag: ${score.functionCorrect}/${score.totalWords} correct`);
-console.log(`        conjugated lines fully recovered: ${conjugatedCovered}/${conjugatedLines}`);
+// set (segmentation-reference.mjs). The issue ships greedy if the best split
+// scores no better, so this records both.
+const lookupFirstS = (text) => lookupS(text, 1, 16)[0];
+const score = scoreReferenceSet({ segment: (text) => segmentS(text, 16).spans, lookupFirst: lookupFirstS });
+for (const line of formatReferenceScore(score)) console.log(`        ${line}`);
 
 check('the best split scores at least as well as the greedy parse', () => {
   ok(score.bestWords >= score.greedyWords,
@@ -2198,10 +2135,12 @@ check('the best split scores at least as well as the greedy parse', () => {
 
 check('the best split fixes at least one boundary the greedy parse gets wrong', () => {
   // 白い猫がいる: greedy takes がい (外) and strands る; the best split keeps
-  // が + いる. This is the Design-2 case the whole-line split is for.
+  // が + いる. This is the Design-2 case the whole-line split is for. The
+  // reference lines use no surrogate pairs, so code-point and UTF-16 offsets
+  // agree.
   const text = '白い猫がいる。';
-  const best = bestContentSpans(text).map((s) => `${s.start}:${s.length}:${s.headword}`);
-  const greedy = greedySpans(text).map((s) => `${s.start}:${s.length}:${s.headword}`);
+  const best = segmentS(text, 16).spans.map((s) => `${s.start}:${s.length}:${s.candidates[0]?.expression}`);
+  const greedy = greedySpans(text, lookupFirstS).map((s) => `${s.start}:${s.length}:${s.headword}`);
   ok(best.includes('3:1:が') && best.includes('4:2:いる'), `best split: ${best.join(' ')}`);
   ok(greedy.includes('3:2:外'), `greedy did not take the がい trap: ${greedy.join(' ')}`);
 });
@@ -2209,8 +2148,8 @@ check('the best split fixes at least one boundary the greedy parse gets wrong', 
 check('most conjugated reference lines recover their dictionary forms', () => {
   // The deinflector is Yomitan-equivalent; a few auxiliary-verb chains it joins
   // (て + しまう, て + くれる) are reported in the score above rather than failed.
-  ok(conjugatedCovered >= Math.ceil(conjugatedLines * 0.9),
-    `${conjugatedCovered}/${conjugatedLines} conjugated lines recovered; expected at least 90%`);
+  ok(score.conjugatedRecovered >= Math.ceil(score.conjugatedLines * 0.9),
+    `${score.conjugatedRecovered}/${score.conjugatedLines} conjugated lines recovered; expected at least 90%`);
 });
 
 check('segment honours the frequency option', () => {

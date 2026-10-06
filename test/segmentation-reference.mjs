@@ -269,3 +269,71 @@ export function expectedSpans(line) {
   }
   return spans;
 }
+
+// The greedy longest-match parse the issue compares against (Yomitan's
+// scanning parser): at each position take the first result of one lookup and
+// skip past what it matched. `lookupFirst(text)` is that result, or undefined.
+export function greedySpans(text, lookupFirst) {
+  const chars = Array.from(text);
+  const spans = [];
+  for (let index = 0; index < chars.length;) {
+    const result = lookupFirst(chars.slice(index).join(''));
+    const length = result?.matched ? Array.from(result.matched).length : 0;
+    if (length > 0) spans.push({ start: index, length, headword: result.term.expression });
+    index += Math.max(length, 1);
+  }
+  return spans;
+}
+
+// Scores hdw_segment's best split and the greedy parse against the reference
+// set, with whatever dictionaries the engine has loaded: `segment(text)` is
+// hdw_segment's spans for a line, `lookupFirst(text)` the first hdw_lookup
+// result, both with the same options. node-smoke scores the dictionaries
+// above; benchmark/segmentation.mjs scores real archives the same way.
+export function scoreReferenceSet({ segment, lookupFirst }) {
+  const score = {
+    lines: REFERENCE_LINES.length, words: 0, bestWords: 0, greedyWords: 0, bestLines: 0, greedyLines: 0,
+    functionWords: 0, conjugatedLines: 0, conjugatedRecovered: 0,
+  };
+  const key = (span) => `${span.start}:${span.length}:${span.headword}`;
+  for (const line of REFERENCE_LINES) {
+    const expected = expectedSpans(line);
+    const expectedKeys = new Set(expected.map(key));
+    const spans = segment(line.text);
+    const best = spans.map((span) => ({ start: span.start, length: span.length, headword: span.candidates[0]?.expression }));
+    const greedy = greedySpans(line.text, lookupFirst);
+    const bestHits = best.filter((span) => expectedKeys.has(key(span))).length;
+    const greedyHits = greedy.filter((span) => expectedKeys.has(key(span))).length;
+    score.words += expected.length;
+    score.bestWords += bestHits;
+    score.greedyWords += greedyHits;
+    if (bestHits === expected.length && best.length === expected.length) score.bestLines += 1;
+    if (greedyHits === expected.length && greedy.length === expected.length) score.greedyLines += 1;
+    const byPosition = new Map(spans.map((span) => [`${span.start}:${span.length}`, span]));
+    for (const word of expected) {
+      if (byPosition.get(`${word.start}:${word.length}`)?.functionWord === word.functionWord) score.functionWords += 1;
+    }
+    if (line.conjugated) {
+      score.conjugatedLines += 1;
+      // Every content word whose surface differs from its headword is recovered.
+      const recovered = line.words.every(([surface, headword, fn]) => fn || surface === headword
+        || best.some((span) => span.headword === headword
+          && line.text.slice(span.start, span.start + Array.from(surface).length) === surface));
+      if (recovered) score.conjugatedRecovered += 1;
+    }
+  }
+  return score;
+}
+
+export function formatReferenceScore(score) {
+  const percent = (count) => `${((100 * count) / score.words).toFixed(1)}%`;
+  return [
+    `reference set: ${score.lines} lines, ${score.words} words`,
+    `best split : ${score.bestWords}/${score.words} words (${percent(score.bestWords)}), `
+      + `${score.bestLines}/${score.lines} lines exact`,
+    `greedy     : ${score.greedyWords}/${score.words} words (${percent(score.greedyWords)}), `
+      + `${score.greedyLines}/${score.lines} lines exact`,
+    `function-word flag: ${score.functionWords}/${score.words} correct`,
+    `conjugated lines fully recovered: ${score.conjugatedRecovered}/${score.conjugatedLines}`,
+  ];
+}
