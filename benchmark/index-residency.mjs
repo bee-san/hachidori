@@ -190,12 +190,27 @@ async function sample(variant, repetition) {
   }
   try {
     await launch();
-    await page.evaluate(async desiredIndex => {
-      const options = (await chrome.storage.local.get("options")).options ?? {};
-      await chrome.storage.local.set({ options: { ...options, revision: (options.revision ?? 0) + 1,
-          lowMemoryMode: true, dictionaryEntryStorage: "auto", ...(desiredIndex ? { dictionaryIndexStorage: desiredIndex } : {}),
-          audioAutoplay: false, showLookupCounts: false, maxResults: 256, hoverEnabled: true, lookupMode: "hover", showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, definitionBlurCountEnabled: false } });
-    }, baseline ? null : desiredIndex);
+    // A fresh profile is a first install: the service worker seeds options and
+    // opens the startup page. A direct storage write could race that seed and
+    // be replaced, starting the measured engine in another mode. Wait for it,
+    // then write through the worker's own revisioned options queue.
+    await page.evaluate(async patch => {
+      const stored = async () => (await chrome.storage.local.get("options")).options;
+      while (await stored() === undefined) await new Promise(done => setTimeout(done, 50));
+      for (let attempt = 1; ; ++attempt) {
+        const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+          requestId: "benchmark-options", baseRevision: (await stored()).revision ?? 0, options: patch });
+        if (reply?.ok !== false) break;
+        if (attempt === 5) throw new Error(`benchmark options were not written: ${JSON.stringify(reply)}`);
+      }
+      const options = await stored();
+      for (const [key, value] of Object.entries(patch)) {
+        if (options[key] !== value) throw new Error(`stored option ${key} is ${JSON.stringify(options[key])}`);
+      }
+    }, { lowMemoryMode: true, dictionaryEntryStorage: "auto", ...(baseline ? {} : { dictionaryIndexStorage: desiredIndex }),
+      audioAutoplay: false, showLookupCounts: false, maxResults: 256, hoverEnabled: true, lookupMode: "hover",
+      showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, definitionBlurCountEnabled: false });
+    for (const open of await browser.pages()) if (open.url().includes("startup.html")) await open.close();
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
     await page.evaluate(async (dictionaries, origin) => {
