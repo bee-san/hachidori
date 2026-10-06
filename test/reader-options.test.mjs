@@ -150,3 +150,29 @@ test("stored options drop the removed hover delay and migrate the renamed blur-c
   assert.deepEqual(validateOptionsPatch({ definitionBlurEnabled: false }), { definitionBlurCountEnabled: false });
   assert.throws(() => validateOptionsPatch({ definitionBlurEnabled: "yes" }));
 });
+
+test("hover scan delays stay immediate by default and the definition delay follows the page until set", () => {
+  assert.equal(DEFAULT_OPTIONS.scanDelayMs, 0, "existing readers keep immediate lookups");
+  assert.equal(DEFAULT_OPTIONS.definitionScanDelayMs, null, "Same as page delay");
+  assert.deepEqual(projectStoredOptions({}), {}, "a record without them stays sparse");
+  for (const delay of [0, 250, 5000]) {
+    assert.deepEqual(validateOptionsPatch({ scanDelayMs: delay, definitionScanDelayMs: delay }),
+      { scanDelayMs: delay, definitionScanDelayMs: delay });
+  }
+  assert.deepEqual(validateOptionsPatch({ definitionScanDelayMs: null }), { definitionScanDelayMs: null });
+  assert.equal(normaliseOptions({ scanDelayMs: 300, definitionScanDelayMs: 0 }).definitionScanDelayMs, 0,
+    "a custom 0 is not Same as page delay");
+  for (const garbage of [-1, 5001, 1.5, "250", true, {}, undefined]) {
+    for (const key of ["scanDelayMs", "definitionScanDelayMs"]) {
+      assert.throws(() => validateOptionsPatch({ [key]: garbage }), /invalid reader option/,
+        `${key} ${JSON.stringify(garbage)}`);
+    }
+  }
+  assert.throws(() => validateOptionsPatch({ scanDelayMs: null }), /invalid reader option/, "only definitions inherit");
+  assert.deepEqual(projectStoredOptions({ scanDelayMs: "bogus", definitionScanDelayMs: "bogus" }),
+    { scanDelayMs: 0, definitionScanDelayMs: null }, "stored garbage falls back to the defaults without throwing");
+  assert.deepEqual(projectStoredOptions({ scanDelayMs: 9000, definitionScanDelayMs: -5 }),
+    { scanDelayMs: 5000, definitionScanDelayMs: 0 });
+  assert.equal(normaliseOptions({ hoverDelayMs: 250 }).scanDelayMs, 0, "the retired hover delay is not revived");
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("scanDelayMs") && !KEYBIND_TOGGLE_OPTIONS.includes("definitionScanDelayMs"));
+});

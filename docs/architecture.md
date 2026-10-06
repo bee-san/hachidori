@@ -640,7 +640,9 @@ the toolbar's Japanese lookups and the toggle shortcut. The **Activation key or
 button** picker lists **No key** first: it writes only `lookupMode: "hover"`,
 and a key writes `activationKey` with `activationSticky` or `activation` as
 **Keep the popup open after releasing the key or button** says. That switch is
-hidden for No key and on when a key is chosen again.
+hidden for No key and on when a key is chosen again. **Hover scan delay** is
+shown for No key, and **Definition hover delay** while Child popups also follow
+the page.
 
 The activation input can also be the middle, Back or Forward mouse button,
 stored as `MouseMiddle`, `MouseBack` or `MouseForward` in the same
@@ -663,10 +665,23 @@ with No key and Child popups set to hold it, only a press over a popup is a
 scan press, and page presses keep their ordinary meaning. Otherwise No key and
 keyboard keys are unchanged, including a middle press closing the popup.
 
-There is no open delay (the never-adjustable `hoverDelayMs` option was removed
-in #401 and is dropped from older records and backups), so a scan runs
-on the next timer turn at the pointer's latest position, and a key pressed over
-a stationary pointer scans at once. The hide/transfer delay defaults to the
+Pointer movement is coalesced into one scan on the next timer turn at the
+pointer's latest position. **Hover scan delay** (`scanDelayMs`, 0–5,000 ms)
+is an opening delay for lookups that need no key: with No key, a word is
+looked up once the pointer has rested on it that long (#502). It is 0 by
+default, which keeps immediate lookups; 150–250 ms skips words the pointer only
+passes over. The dwell belongs to the resolved word and its popup level, not
+to a stationary pointer, so moving within the word never postpones it; moving
+to another word restarts it. When it expires the pointer is scanned again and
+the word is looked up only if it is still the one there, so text that changed
+under a resting pointer waits for the next move. A cancelled dwell sends
+nothing, so lookup counts and autoplay follow executed lookups only, and the
+current popup and a Note draft are untouched while a dwell runs. A held
+activation key or button, a click, a dictionary link, and a selection or
+keybind lookup never wait, and a key pressed over a stationary pointer scans
+at once. The never-adjustable `hoverDelayMs` key removed in #401 is still
+dropped from older records and backups rather than read as the new delay.
+The hide/transfer delay defaults to the
 existing 160 ms, with the pinned source's 0–5,000 ms range. It is one global
 setting, not a per-dictionary policy. Zero hide delay dismisses immediately.
 
@@ -684,6 +699,17 @@ summaries look nothing up. A click child loads like a link child, so pointer
 movement does not cancel it. Dictionary links, clicked kanji, the depth limit and
 protected Note drafts behave the same in every mode. The option is kept local to
 a linked overlay.
+
+Unmodified definition scanning waits for the hover scan delay too, unless
+**Definition hover delay** sets its own (#503), so page lookups can stay
+immediate while children wait, or the reverse. `definitionScanDelayMs: null` is
+**Same as page delay** and keeps following later page edits; a custom value,
+0 included, is used as set. It applies at every popup depth and only to
+opening children by hover, not to popup dismissal or nesting depth; a
+key-gated, clicked or linked child never waits. The page and its panes share
+the one dwell: leaving a pane, an ancestor press, Escape, Note editing, an audio
+chooser change and an option change cancel it. Both delays are kept local to a
+linked overlay.
 
 Glossary scanning continues when a disclosure, link or action button keeps
 focus. Editing fields and protected Note drafts still pause scanning. Internal

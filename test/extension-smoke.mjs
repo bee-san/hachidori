@@ -3105,7 +3105,8 @@ async function sharingTransitionStage() {
     const blockedTemplates = await write({
       anki: globalThis.HDReaderOptions.normaliseOptions({}).anki,
     });
-    const local = await write({ hoverEnabled: false, popupWidthPx: 480, definitionLookupMode: "click" });
+    const local = await write({ hoverEnabled: false, popupWidthPx: 480, definitionLookupMode: "click",
+      scanDelayMs: 200, definitionScanDelayMs: 0 });
     const rawHost = { ...overlay.hello.snapshot.options, revision: 11, popupTheme: "dracula", popupWidthPx: 1200 };
     socket.receive({ kind: "storage", changes: { options: rawHost } });
     await until(() => current().popupTheme === "dracula");
@@ -3120,10 +3121,12 @@ async function sharingTransitionStage() {
         && local.ok && local.options.revision === initial.revision + 1 && socket.requests().length === 0
         && mirrored.popupWidthPx === 480 && !mirrored.hoverEnabled && mirrored.lookupMode === "hover"
         && mirrored.definitionLookupMode === "click" && current().definitionLookupMode === "click"
+        && mirrored.scanDelayMs === 200 && mirrored.definitionScanDelayMs === 0 && current().definitionScanDelayMs === 0
         && !mirrored.sourceHighlightEnabled && mirrored.revision === local.options.revision + 1
         && current().revision === mirrored.revision && current().popupTheme === "dracula"
         && overlay.storage.raw.get("sharingLocalState").options.popupWidthPx === 480
-        && overlay.storage.raw.get("sharingLocalState").options.definitionLookupMode === "click",
+        && overlay.storage.raw.get("sharingLocalState").options.definitionLookupMode === "click"
+        && overlay.storage.raw.get("sharingLocalState").options.scanDelayMs === 200,
       JSON.stringify({ initial, blockedTemplates, local, mirrored, current: current() }));
 
     async function answerWrite(promise, hostOptions, expectedCount, ok = true) {
@@ -20911,6 +20914,286 @@ async function contentNoteStage() {
     return result;
   }
 
+  // Issues #502 and #503 drive these with controlled timers: `flush` runs one
+  // task's zero-delay timers, `fire` the single timer with a dwell's delay.
+  function dwellClock(window) {
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const ids = (delay) => [...timers].filter(([, timer]) => timer.delay === delay).map(([id]) => id);
+    const run = (id) => {
+      const { callback } = timers.get(id);
+      timers.delete(id);
+      callback();
+    };
+    return {
+      ids,
+      flush() { for (const id of ids(0)) if (timers.has(id)) run(id); },
+      fire(delay) {
+        const [id] = ids(delay);
+        if (id === undefined) return false;
+        run(id);
+        return true;
+      },
+    };
+  }
+
+  // Issue #502: with No key, a lookup waits until the pointer has rested on
+  // one word for the scan delay. The dwell belongs to the word, so moving
+  // within it never postpones it; leaving it, or anything that cancels pointer
+  // work, ends it without a lookup. Deliberate input never waits.
+  async function scanDelayCase() {
+    const result = {};
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const clock = dwellClock(window);
+    const settings = { lookupMode: "hover", scanDelayMs: 220 };
+    const word = (query) => ({ ...harness.candidate, query });
+    // Every scan resolves a fresh candidate, as the page scanner does.
+    const hover = (candidate, clientX = 200) => {
+      harness.driver.setScanCandidate(candidate && { ...candidate });
+      harness.driver.onMouseMove({ clientX, clientY: 200, target: window.document.body });
+      clock.flush();
+    };
+    const sent = (type) => harness.sent.filter((request) => request.type === type).length;
+    try {
+      harness.emitOptions(settings);
+      for (const query of ["食べた", "読む", "漢字"]) hover(word(query));
+      const crossed = sent("hd_lookup") === 0 && clock.ids(220).length === 1;
+      const [dwell] = clock.ids(220);
+      hover(word("漢字"), 203);
+      const kept = clock.ids(220).length === 1 && clock.ids(220)[0] === dwell && sent("hd_lookup") === 0;
+      clock.fire(220);
+      const rested = harness.take("hd_lookup");
+      const once = rested?.request.text === "漢字" && sent("hd_lookup") === 1 && clock.ids(220).length === 0;
+      if (rested) harness.reply(rested, { dictionaryCount: 1, results: [harness.term("漢字")] });
+      await harness.settle();
+      hover(word("漢字"), 205);
+      const shown = !harness.driver.snapshot().popupHidden && sent("hd_lookup") === 1 && clock.ids(220).length === 0;
+      result["No key lookups wait for the pointer to rest: crossing words sends none and resting on one sends one"] =
+        crossed && kept && once && shown || { crossed, kept, once, shown };
+
+      hover(word("読む"));
+      const [first] = clock.ids(220);
+      hover(word("漢字"));
+      const returned = clock.ids(220).length === 0;
+      hover(word("読む"));
+      const restarted = clock.ids(220).length === 1 && clock.ids(220)[0] !== first;
+      hover(null);
+      const left = clock.ids(220).length === 0;
+      result["changing or leaving the word restarts or cancels its dwell, even by way of the shown word"] =
+        first !== undefined && returned && restarted && left && sent("hd_lookup") === 1
+        || { first, returned, restarted, left };
+
+      const lookups = sent("hd_lookup");
+      const recorded = sent("hd_lookup_stats_record");
+      const cancellations = {};
+      for (const [reason, cancel] of Object.entries({
+        scroll: () => harness.driver.onScroll(),
+        "window exit": () => harness.driver.onMouseOut({ relatedTarget: null }),
+        "Escape over a popup": () => window.document.dispatchEvent(new window.KeyboardEvent("keydown",
+          { key: "Escape", code: "Escape", bubbles: true })),
+        "Escape before a popup": () => window.document.dispatchEvent(new window.KeyboardEvent("keydown",
+          { key: "Escape", code: "Escape", bubbles: true })),
+        "page press": () => harness.driver.onMouseDown({ button: 0, clientX: 200, clientY: 200,
+          target: window.document.body }),
+        "key mode": () => harness.emitOptions({ ...settings, lookupMode: "activationSticky" }),
+      })) {
+        harness.emitOptions(settings);
+        hover(word("読む"));
+        const armed = clock.ids(220).length === 1;
+        cancel();
+        cancellations[reason] = armed && !clock.fire(220);
+      }
+      result["scroll, window exit, Escape, a page press and a key mode change cancel a dwell without a lookup or count"] =
+        Object.values(cancellations).every(Boolean) && sent("hd_lookup") === lookups
+          && sent("hd_lookup_stats_record") === recorded || cancellations;
+
+      harness.emitOptions(settings);
+      hover(word("読む"));
+      harness.emitOptions({ ...settings, scanDelayMs: 330 });
+      clock.flush();
+      const rearmed = clock.ids(220).length === 0 && clock.ids(330).length === 1;
+      clock.fire(330);
+      const edited = harness.take("hd_lookup");
+      harness.emitOptions({ ...settings, scanDelayMs: 0 });
+      hover(word("食べた"));
+      const immediate = harness.take("hd_lookup");
+      harness.emitOptions({ ...settings, lookupMode: "activation", activationKey: "Shift" });
+      hover(word("漢字"));
+      const gated = sent("hd_lookup") === lookups + 2;
+      window.document.dispatchEvent(new window.KeyboardEvent("keydown",
+        { key: "Shift", code: "ShiftLeft", shiftKey: true, bubbles: true }));
+      clock.flush();
+      const keyed = harness.take("hd_lookup");
+      window.document.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft", bubbles: true }));
+      result["an edited delay restarts the dwell, while 0 and a held activation key look up at once"] =
+        rearmed && edited?.request.text === "読む" && immediate?.request.text === "食べた" && gated
+          && keyed?.request.text === "漢字" && clock.ids(220).length === 0
+        || { rearmed, edited: edited?.request.text, immediate: immediate?.request.text, gated, keyed: keyed?.request.text };
+
+      harness.emitOptions(settings);
+      // A regression can leave lookups unanswered; the next reply must be the Note view's.
+      harness.pending.splice(0);
+      await harness.initialLookup();
+      hover(word("読む"));
+      const armedBeforeNote = clock.ids(220).length === 1;
+      harness.edit(true);
+      hover(word("漢字"));
+      const drafting = harness.driver.snapshot();
+      result["opening a Note cancels a dwell and keeps the draft's popup through later hovers"] =
+        armedBeforeNote && clock.ids(220).length === 0 && drafting.noteEditing && !drafting.popupHidden
+          && harness.take("hd_lookup") === null || { armedBeforeNote, drafting };
+      harness.edit(false);
+
+      hover(word("読む"));
+      const armedBeforeTeardown = clock.ids(220).length === 1;
+      harness.driver.teardown();
+      result["teardown cancels a dwell"] = armedBeforeTeardown && !clock.fire(220) && harness.take("hd_lookup") === null;
+    } finally {
+      harness.close();
+    }
+    return result;
+  }
+
+  // Issue #503: definitions may wait on their own delay while page lookups
+  // stay immediate. Same as page delay (null) follows later page edits, a
+  // custom 0 is immediate, and links and clicks never wait. Each move in a
+  // pane reaches the page's capture listener first, as it does in Chrome.
+  async function definitionScanDelayCase() {
+    const result = {};
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const clock = dwellClock(window);
+    const host = harness.popup.getRootNode().host;
+    const settings = { lookupMode: "hover", scanDelayMs: 0, definitionScanDelayMs: 330, popupNestingMaxDepth: 2 };
+    function glossary(text, depth = 0) {
+      const content = document.createElement("div");
+      content.className = "gsm-hoshidicts-glossary-content";
+      const term = document.createElement("span");
+      term.textContent = text;
+      content.append(document.createTextNode("説明："), term, document.createTextNode("です。"));
+      harness.driver.popupAt(depth).querySelector(".gsm-hoshidicts-definitions").append(content);
+      return term;
+    }
+    function point(term, depth = 0, clientX = 120) {
+      document.caretPositionFromPoint = () => ({ offsetNode: term.firstChild, offset: 0 });
+      harness.driver.onMouseMove({ clientX, clientY: 80, target: host });
+      harness.driver.onPopupMouseMove({ clientX, clientY: 80, target: term }, depth);
+      clock.flush();
+    }
+    const lookups = () => harness.sent.filter((request) => request.type === "hd_lookup").length;
+    const answer = async (request, expression) => {
+      if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term(expression)] });
+      await harness.settle();
+    };
+    try {
+      harness.emitOptions(settings);
+      harness.driver.setScanCandidate(harness.candidate);
+      harness.driver.onMouseMove({ clientX: 300, clientY: 300, target: harness.anchor });
+      clock.flush();
+      const page = harness.take("hd_lookup");
+      await answer(page, harness.candidate.query);
+      const word = glossary("食用語");
+      point(word);
+      const waiting = lookups() === 1 && clock.ids(330).length === 1;
+      const [dwell] = clock.ids(330);
+      point(word, 0, 123);
+      const kept = clock.ids(330).length === 1 && clock.ids(330)[0] === dwell && lookups() === 1;
+      clock.fire(330);
+      const child = harness.take("hd_lookup");
+      await answer(child, "食用語");
+      result["page lookups stay immediate while definition text waits for its own delay"] =
+        page?.request.text === harness.candidate.query && waiting && kept
+          && child?.request.text.startsWith("食用語") === true && !harness.driver.snapshot(1).popupHidden
+        || { page: page?.request.text, waiting, kept, child: child?.request.text };
+
+      const nested = glossary("用語集", 1);
+      point(nested, 1);
+      const nestedWaiting = clock.ids(330).length === 1 && lookups() === 2;
+      clock.fire(330);
+      const grandchild = harness.take("hd_lookup");
+      await answer(grandchild, "用語集");
+      point(glossary("最深部", 2), 2);
+      result["the definition delay holds at depth two and the depth limit still stops scanning"] =
+        nestedWaiting && grandchild?.request.text.startsWith("用語集") === true
+          && !harness.driver.snapshot(2).popupHidden && clock.ids(330).length === 0 && lookups() === 3
+        || { nestedWaiting, grandchild: grandchild?.request.text, lookups: lookups() };
+
+      const inheriting = glossary("別用語");
+      harness.emitOptions({ ...settings, scanDelayMs: 220, definitionScanDelayMs: null });
+      point(inheriting);
+      const inherited = clock.ids(220).length === 1;
+      harness.emitOptions({ ...settings, scanDelayMs: 110, definitionScanDelayMs: null });
+      clock.flush();
+      const followed = clock.ids(220).length === 0 && clock.ids(110).length === 1;
+      harness.emitOptions({ ...settings, scanDelayMs: 110, definitionScanDelayMs: 0 });
+      clock.flush();
+      const custom = harness.take("hd_lookup");
+      result["Same as page delay follows later page edits and a custom 0 looks up at once"] =
+        inherited && followed && custom?.request.text.startsWith("別用語") === true && clock.ids(110).length === 0
+        || { inherited, followed, custom: custom?.request.text };
+      await answer(custom, "別用語");
+
+      harness.emitOptions(settings);
+      const link = document.createElement("a");
+      link.textContent = "辞書";
+      word.parentElement.append(link);
+      void harness.render().context.onInternalLink({ anchor: link, query: "辞書" });
+      const linked = harness.take("hd_lookup");
+      await answer(linked, "辞書");
+      harness.emitOptions({ ...settings, definitionLookupMode: "click" });
+      document.caretPositionFromPoint = () => ({ offsetNode: word.firstChild, offset: 0 });
+      for (const type of ["mousedown", "click"]) {
+        word.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0, clientX: 120, clientY: 80 }));
+      }
+      const clicked = harness.take("hd_lookup");
+      await answer(clicked, "食用語");
+      harness.emitOptions({ ...settings, definitionLookupMode: "activation" });
+      const held = glossary("熟語");
+      point(held);
+      const gated = clock.ids(330).length === 0 && harness.take("hd_lookup") === null;
+      document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft", shiftKey: true, bubbles: true }));
+      clock.flush();
+      const keyed = harness.take("hd_lookup");
+      document.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft", bubbles: true }));
+      await answer(keyed, "熟語");
+      result["dictionary links, clicked words and a held activation key open their child at once"] =
+        linked?.request.text === "辞書" && clicked?.request.text.startsWith("食用語") === true && gated
+          && keyed?.request.text.startsWith("熟語") === true && clock.ids(330).length === 0
+        || { linked: linked?.request.text, clicked: clicked?.request.text, gated, keyed: keyed?.request.text };
+
+      const cancellations = {};
+      for (const [reason, cancel] of Object.entries({
+        "leaving the pane": () => harness.driver.popupAt(0).dispatchEvent(new window.MouseEvent("mouseleave")),
+        "Note editing": () => { harness.edit(true); harness.edit(false); },
+        "key mode": () => harness.emitOptions({ ...settings, definitionLookupMode: "activation" }),
+        // Back and Note refreshes redraw the definitions under a resting pointer.
+        "a redrawn word": () => {
+          const redrawn = glossary("語彙");
+          document.caretPositionFromPoint = () => ({ offsetNode: redrawn.firstChild, offset: 0 });
+        },
+        "an ancestor press": () => harness.driver.popupAt(0).dispatchEvent(
+          new window.MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 120, clientY: 80 })),
+      })) {
+        harness.emitOptions(settings);
+        point(glossary("語彙"));
+        const armed = clock.ids(330).length === 1;
+        const before = lookups();
+        cancel();
+        clock.fire(330);
+        cancellations[reason] = armed && lookups() === before && clock.ids(330).length === 0;
+      }
+      result["leaving the pane, Note editing, a key mode change, a redraw and an ancestor press cancel a definition dwell"] =
+        Object.values(cancellations).every(Boolean) || cancellations;
+    } finally {
+      harness.close();
+    }
+    return result;
+  }
+
   // Issue #363: Yomitan's "Hide popup on cursor exit" in the default sticky
   // mode. The popup hides once the pointer has been inside it and left, after
   // the option's own delay, unless a draft, an audio menu or a resize keeps it.
@@ -22311,7 +22594,8 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionLanguageCase(), ...await selectionNoticeCase(), ...await personalDictionaryOffCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
-    activation: { ...await activationCase(), ...await cursorExitCase(), ...await activationButtonCase(),
+    activation: { ...await activationCase(), ...await scanDelayCase(), ...await definitionScanDelayCase(),
+      ...await cursorExitCase(), ...await activationButtonCase(),
       ...await overlayDepartureCase(), ...await browserDepartureCase() },
     mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedStickyCase(), ...await nestedCursorExitCase(), ...await nestedPlacementCase(), ...await nestedClickCase(), ...await audioChooserPaneCase(), ...await nestedReplyRaceCase(),

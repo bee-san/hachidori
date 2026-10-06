@@ -196,6 +196,9 @@
 
   let lastPointer = null;
   let scanTimer = null;
+  // The one word a lookup that needs no key is waiting on: its level (null for
+  // the page), candidate and timer. See dwellElapsed().
+  let scanDwell = null;
   let hideTimer = null;
   let transferTimer = null;
   let descendantTimer = null;
@@ -1568,6 +1571,7 @@
     clearDictionaryResources();
     window.clearTimeout(scanTimer);
     window.clearTimeout(hideTimer);
+    cancelScanDwell();
     clearTransferTimer();
     clearDescendantTimer();
     clearCursorExitTimer();
@@ -2403,6 +2407,7 @@
       const depth = level.depth + (link ? 2 : 1);
       if (levels.length <= depth || hasProtectedNote(depth)) return;
       clearScanTimer();
+      cancelScanDwell();
       dismissLevels(depth, false);
     });
     // Reading → Activation → Child popups → Click: a primary click on a word in
@@ -2863,6 +2868,7 @@
     }
     cancelPopupLayout();
     clearScanTimer();
+    cancelScanDwell();
     selectionDragActive = false;
     dragSelection = null;
     activeSelectionCandidate = null;
@@ -2949,6 +2955,8 @@
   // can be left, so a popup it never entered stays. Pane to pane is no exit:
   // a child overlaps its parent, and onPopupEnter owns that transfer.
   function onPopupLeave(event, level) {
+    // Leaving the pane, for any destination, leaves the word it was resting on.
+    if (scanDwell?.level === level) cancelScanDwell();
     if (!options.hidePopupOnCursorExit || level !== pointerLevel || popupResize) return;
     const next = event.relatedTarget;
     if (next && levels.some((other) => other.popup?.contains(next))) return;
@@ -3699,8 +3707,16 @@
     pendingCandidateLookup = null;
   }
 
-  function cancelCandidateScan() {
+  function cancelScanDwell() {
+    if (scanDwell !== null) window.clearTimeout(scanDwell.timer);
+    scanDwell = null;
+  }
+
+  // A move inside the popup keeps the dwell on a word in its definitions: that
+  // pane's own mousemove follows and decides what the pointer rests on.
+  function cancelCandidateScan(insidePopup = false) {
     clearScanTimer();
+    if (!insidePopup || scanDwell?.level === null) cancelScanDwell();
     if (rootLevel.popup?.inert) {
       hide();
       return;
@@ -3713,6 +3729,8 @@
   }
 
   function cancelPendingHover(level) {
+    // A dwell is a hover child that has not been asked for yet.
+    cancelScanDwell();
     const child = levels[level.depth + 1];
     if (
       !child ||
@@ -3748,6 +3766,43 @@
 
   function definitionHoverAllowed() {
     return options.definitionLookupMode !== "click" && (!definitionKeyGated() || activationPressed);
+  }
+
+  // Reading → Activation → Hover scan delay and Definition hover delay. Only a
+  // lookup that needs no key waits: a held key or button, a click, a link or
+  // a selection is deliberate. Definitions follow the page unless set.
+  function hoverScanDelay(level) {
+    if (level === null) return options.lookupMode === "hover" ? options.scanDelayMs : 0;
+    return definitionKeyGated() ? 0 : options.definitionScanDelayMs ?? options.scanDelayMs;
+  }
+
+  // Whether the word under the pointer, on the page (level null) or in a
+  // pane's definitions, may be looked up now. Otherwise its dwell starts, or
+  // runs on when it is already this word's, so moving within the word never
+  // postpones it. On expiry the pointer is scanned again and the word is looked
+  // up only if it is still the one there; a word that changed under a resting
+  // pointer waits for the pointer to move.
+  function dwellElapsed(candidate, level, signature = candidateSignature(candidate)) {
+    const dwell = scanDwell;
+    const same = dwell?.level === level && dwell.signature === signature
+      && sameAnchorNode(candidate, dwell.candidate);
+    if (same && dwell.timer !== null) return false;
+    cancelScanDwell();
+    if (same) return true;
+    if (dwell?.timer === null) return false;
+    const delay = hoverScanDelay(level);
+    if (delay === 0) return true;
+    // The pointer has left any word that is still loading.
+    if (level === null) cancelCandidateScan();
+    else cancelPendingHover(level);
+    const next = { level, candidate, signature, timer: null };
+    next.timer = window.setTimeout(() => {
+      next.timer = null;
+      if (lastPointer) scanPointer(lastPointer);
+      if (scanDwell === next) cancelScanDwell();
+    }, delay);
+    scanDwell = next;
+    return false;
   }
 
   // The configured activation input when it is a mouse button that something
@@ -3870,6 +3925,9 @@
       return;
     }
     clearDescendantTimer();
+    // A word whose child is already open or loading needs no dwell.
+    if (sameChildLookup(levels[level.depth + 1], candidate, "")) cancelScanDwell();
+    else if (!dwellElapsed(candidate, level)) return;
     openChildLookup(candidate, level);
   }
 
@@ -3930,10 +3988,11 @@
     }
     const signature = candidateSignature(candidate);
     // Scanning the popup's own word again, pending or shown, keeps the popup
-    // and cancels its cursor-exit hide.
+    // and cancels its cursor-exit hide, and ends a dwell on any other word.
     if (pendingCandidateLookup?.token === rootLevel.lookupToken
         && pendingCandidateLookup.signature === signature
         && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) {
+      cancelScanDwell();
       clearHideTimer();
       clearCursorExitTimer();
       return;
@@ -3943,11 +4002,13 @@
       rootLevel.activeSignature === signature &&
       sameAnchorNode(candidate, rootLevel.activeCandidate)
     ) {
+      cancelScanDwell();
       clearHideTimer();
       clearCursorExitTimer();
       return;
     }
     clearHideTimer();
+    if (!dwellElapsed(candidate, null, signature)) return;
     lookupCandidate(candidate, signature);
   }
 
@@ -4013,7 +4074,7 @@
     if (isOurNode(event.target)) {
       pointerInPopup = true;
       clearTransferTimer();
-      cancelCandidateScan();
+      cancelCandidateScan(true);
       clearHideTimer();
       return;
     }
@@ -4252,7 +4313,7 @@
   }
 
   // Close keeps the reader's Escape order: an audio menu, then theme actions, then a Note form,
-  // then the focused or deepest popup, then a pending lookup. Nothing closed
+  // then the focused or deepest popup, then a pending or waiting lookup. Nothing closed
   // leaves the key to activation.
   function closeFromKeybind(event) {
     if (audio?.closeMenu()) {
@@ -4276,10 +4337,11 @@
         return true;
       }
       event.stopPropagation();
+      cancelScanDwell();
       hide(focused || levels.at(-1));
       return true;
     }
-    const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
+    const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null || scanDwell !== null;
     hide();
     return dismissedCandidate;
   }
@@ -4371,9 +4433,10 @@
   // A wheel step passes its own key and the popup it is over.
   function runKeybinds(event, level, key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code) {
     const modifiers = keybindModifiers(event);
-    // A pending lookup counts as its popup: Escape has always cancelled one.
+    // A pending lookup counts as its popup: Escape has always cancelled one,
+    // as it does one still waiting for the pointer to rest.
     const popupScope = Boolean(rootLevel.popup && !rootLevel.popup.hidden)
-      || pendingCandidateLookup !== null || activeSelectionCandidate !== null;
+      || pendingCandidateLookup !== null || activeSelectionCandidate !== null || scanDwell !== null;
     const characterInput = (modifiers.length === 0 || modifiers.join() === "shift")
       && (event.key?.length === 1 || event.key === "Process");
     for (const bind of options.keybinds) {
@@ -4604,7 +4667,8 @@
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey
       || next.definitionLookupMode !== options.definitionLookupMode;
     const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
-      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText || personalChanged;
+      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText || personalChanged
+      || next.scanDelayMs !== options.scanDelayMs || next.definitionScanDelayMs !== options.definitionScanDelayMs;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const cursorExitChanged = next.hidePopupOnCursorExit !== options.hidePopupOnCursorExit
       || next.hidePopupOnCursorExitDelayMs !== options.hidePopupOnCursorExitDelayMs;

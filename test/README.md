@@ -161,6 +161,12 @@ release, click or menu act, records keys by name, reports the primary and
 secondary buttons and unlisted keys without saving them, ignores repeats and
 cancels on Escape.
 
+`node --test test/scan-delay-settings.test.mjs` checks that **Hover scan delay**
+shows only for No key and **Definition hover delay** only while Child popups
+follow the page, that Custom starts from the page delay, and that Same as page
+delay saves null while a custom 0 saves as 0. It uses the same external jsdom
+dependency.
+
 `node --test test/frequency-presentation.test.mjs` checks full Yomitan-style
 frequency values by default and opt-in abbreviated numbers, the primary result's frequency tags sharing the later
 entries' tag structure, every supplied frequency dictionary's tag in the first and later entries (13, 20 and 60
@@ -741,6 +747,16 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   Scan delay cases (#502, #503) drive controlled timers: with No key, crossing
+   words sends no lookup and resting on one sends exactly one, without movement
+   inside the word restarting its dwell, while another word restarts it and
+   scroll, window exit, Escape, a press, a key mode change, a Note and teardown
+   cancel it; an edited delay restarts it, and 0 or a held key looks up at once.
+   Page lookups stay immediate while definitions wait for their own delay at
+   depths one and two, Same as page delay follows page edits, a custom 0 is
+   immediate, links, clicks and a held key never wait, and leaving the pane, a
+   redraw under the resting pointer or an ancestor press cancels the dwell. A
+   linked overlay keeps both delays local.
    Leaving the tab or the window keeps a rendered popup and its Note draft in
    every lookup mode, with no hide timer, until Escape closes the Note and then
    the popup; it also keeps a selection's popup, a sticky child and a kanji
@@ -1707,7 +1723,10 @@ engine reload, stationary printable-key activation with open delay, delayed hide
 on release, and cancellation of a quick press/release. Choosing No key stores
 Hover, hides the keep-open switch and opens a popup on plain hover; choosing the
 key again restores it with the popup staying open, and the switch selects the
-closing mode. A non-default key is kept behind No key and checked with mode,
+closing mode. With No key, the same quick pass across a word, counted at the
+worker's engine relay, looks its glyphs up without a hover scan delay and
+nothing with a 700 ms one; resting on the word then sends one lookup after the
+delay. A non-default key is kept behind No key and checked with mode,
 enablement and hide delay after the full browser restart. With Hide popup on
 cursor exit on, a sticky popup outlasts its delay while the pointer never enters
 it, hides once the pointer has been inside and left even though a mouse click
