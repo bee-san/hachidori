@@ -1266,7 +1266,8 @@ EMSCRIPTEN_KEEPALIVE double hdw_page_cache_bytes(void) {
 EMSCRIPTEN_KEEPALIVE const char* hdw_memory_stats(void) {
   static std::string out;
   const auto stats = engine().query.page_cache_statistics();
-  const auto allocated = mallinfo();
+  // Emscripten's libc provides mallinfo only; glibc's replacement, mallinfo2, does not exist there.
+  const auto allocated = mallinfo();  // NOSONAR(cpp:S1874)
   const WireMemoryStats wire{{stats.entries.bytes, stats.entries.hits, stats.entries.reads, stats.entries.read_bytes},
                    {stats.indexes.bytes, stats.indexes.hits, stats.indexes.reads, stats.indexes.read_bytes},
                    static_cast<size_t>(allocated.uordblks), static_cast<size_t>(allocated.fordblks)};

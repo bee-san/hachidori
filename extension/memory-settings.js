@@ -45,7 +45,8 @@ export function createMemorySettings({ document, readMemory, readExtensionTotal,
     const share = typeof entry?.bytes === "number" ? `\u2248 ${formatBytes(entry.bytes)}` : UNAVAILABLE;
     // Entry and hash residency are independent; metadata remains resident.
     const disk = [entry?.paged === true ? "entries" : "", entry?.hashIndexStorage === "paged" ? "hash index" : ""].filter(Boolean);
-    target.textContent = `In memory: ${share}${disk.length ? ` (${disk.join(" and ")} read from disk)` : ""}`;
+    const detail = disk.length ? ` (${disk.join(" and ")} read from disk)` : "";
+    target.textContent = `In memory: ${share}${detail}`;
   }
 
   function renderRows() {
