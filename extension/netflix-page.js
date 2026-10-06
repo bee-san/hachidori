@@ -303,7 +303,7 @@
 
   // Hovering a subtitle pauses and resumes through the player like the replay,
   // which owns the player until it has restored the viewer's state.
-  function hover(type) {
+  function pauseOrResume(type) {
     const player = netflixPlayer();
     const video = mainVideo();
     if (replaying || player === null || video === null) return;
@@ -328,7 +328,7 @@
         && [command.startMs, command.endMs, command.padMs].every(Number.isFinite) && command.startMs <= command.endMs) {
       void replay(command);
     } else if (command?.type === "pause" || command?.type === "resume") {
-      hover(command.type);
+      pauseOrResume(command.type);
     }
   });
 }());
