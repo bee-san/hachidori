@@ -9,7 +9,8 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { appendJsonlDurable, directoryContentSha256, hostSnapshot, processTreeSample } from "./system.mjs";
+import { writeSummary } from "./index-residency-report.mjs";
+import { appendJsonlDurable, directoryContentSha256, hostSnapshot } from "./system.mjs";
 
 const arg = (name, fallback) => { const at = process.argv.indexOf(`--${name}`); return at < 0 ? fallback : process.argv[at + 1]; };
 const repo = resolve(import.meta.dirname, "..");
@@ -18,8 +19,55 @@ const output = resolve(arg("output"));
 const samples = Number(arg("samples", "3"));
 const measureTotal = arg("measure-total", "false") === "true";
 const variants = arg("variants", "resident,16,32,64,paged").split(",");
-const before = arg("before", null);
+// The baseline is a previous revision's unmodified extension/: a directory
+// that contains it (--before), or a commit to extract it from (--before-ref).
+const beforeRef = arg("before-ref", null);
+const beforeRevision = beforeRef
+  ? execFileSync("git", ["rev-parse", "--verify", `${beforeRef}^{commit}`], { cwd: repo, encoding: "utf8" }).trim() : null;
+let before = arg("before", null);
+if (!before && beforeRevision) {
+  before = mkdtempSync(resolve(tmpdir(), "hachidori-index-before-"));
+  execFileSync("sh", ["-c", 'git archive "$1" extension | tar -x -C "$2"', "sh", beforeRevision, before], { cwd: repo });
+}
 const baseExtension = resolve(repo, "extension");
+// Memory of the renderer hosting the offscreen document and its engine
+// worker (the WASM heap), and of the whole browser tree. Both are RSS, so
+// shared pages count once per process.
+function processMemory(rootPid) {
+  const rows = new Map();
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = readFileSync(`/proc/${name}/stat`, "utf8");
+      const status = readFileSync(`/proc/${name}/status`, "utf8");
+      rows.set(Number(name), { parent: Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]),
+        rss: Number(status.match(/^VmRSS:\s+(\d+)/m)?.[1] ?? 0) * 1024,
+        extension: readFileSync(`/proc/${name}/cmdline`, "utf8").includes("--extension-process") });
+    } catch { /* The process exited while it was listed. */ }
+  }
+  const tree = new Set([rootPid]);
+  for (let size = 0; size !== tree.size;) {
+    size = tree.size;
+    for (const [pid, row] of rows) if (tree.has(row.parent)) tree.add(pid);
+  }
+  let treeRssBytes = 0, extensionRssBytes = 0;
+  for (const pid of tree) {
+    treeRssBytes += rows.get(pid)?.rss ?? 0;
+    if (rows.get(pid)?.extension) extensionRssBytes += rows.get(pid).rss;
+  }
+  return { treeRssBytes, extensionRssBytes };
+}
+function memorySampler(rootPid, intervalMs = 100) {
+  const peak = { treeRssBytes: 0, extensionRssBytes: 0 };
+  const capture = () => {
+    const now = processMemory(rootPid);
+    for (const key of Object.keys(peak)) peak[key] = Math.max(peak[key], now[key]);
+    return now;
+  };
+  capture();
+  const timer = setInterval(capture, intervalMs);
+  return { stop() { clearInterval(timer); return { peak, last: capture(), intervalMs }; } };
+}
 const puppeteer = (await import(pathToFileURL(process.env.HACHIDORI_PUPPETEER).href)).default;
 const chrome = process.env.HACHIDORI_CHROME;
 const probe = readFileSync(resolve(repo, "benchmark/hover-popup-probe.js"), "utf8");
@@ -51,9 +99,12 @@ const signatures = new Map();
 const rows = [];
 const definition = { revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(),
   extensionSha256: directoryContentSha256(baseExtension), beforeExtensionSha256: before ? directoryContentSha256(resolve(before, "extension")) : null,
+  beforeRef, beforeRevision,
+  defaultBudgetMiB: Number(readFileSync(resolve(baseExtension, "dictionary-index-storage.js"), "utf8")
+    .match(/RESIDENT_HASH_BUDGET_BYTES = (\d+) \* 1024 \* 1024;/)[1]),
   node: process.version, chrome: execFileSync(chrome, ["--version"], { encoding: "utf8" }).trim(),
-  environment: hostSnapshot(), fixture, samples, variants, before, measureTotal,
-  boundary: "fresh engine; cache includes header/startup warmup pages; OS cache is uncontrolled; engine ccall includes serialization/glue; round trip excludes CDP and rendering" };
+  environment: hostSnapshot(), fixture, samples, variants, before, measureTotal, profileDirectory: tmpdir(),
+  boundary: "fresh engine; cache includes header/startup warmup pages; OS cache is uncontrolled; engine ccall includes serialization/glue; round trip excludes CDP and rendering; RSS peak sampled every 100 ms from launch to the end of the warm pass" };
 writeFileSync(resolve(output, "definition.json"), JSON.stringify(definition, null, 2));
 
 async function sample(variant, repetition) {
@@ -135,30 +186,34 @@ async function sample(variant, repetition) {
     }, baseline ? null : desiredIndex);
     // No native mapping/import is performed during setup: write installed,
     // format-preserving files directly, then restart before any measurement.
-    await page.evaluate(async (dictionaries, files, origin) => {
+    await page.evaluate(async (dictionaries, origin) => {
       // Each package's setup worker releases its fetch buffers and OPFS handles
       // before the next one. None of this untimed work survives into the sample.
-      for (const dictionary of dictionaries) await new Promise((done, reject) => {
+      for (const { files, ...dictionary } of dictionaries) await new Promise((done, reject) => {
         const worker = new Worker(chrome.runtime.getURL("benchmark-seed-worker.js"));
         worker.onmessage = ({ data }) => { worker.terminate(); data.ok ? done() : reject(new Error(data.error)); };
         worker.onerror = error => { worker.terminate(); reject(new Error(error.message)); };
         worker.postMessage({ dictionaries: [dictionary], files, origin });
       });
-      await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries } });
-    }, fixture.dictionaries.map(({ directory, ...dictionary }) => dictionary), fixture.files.map(({ name, bytes }) => ({ name, bytes })), origin);
+      await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
+        dictionaries: dictionaries.map(({ files, ...dictionary }) => dictionary) } });
+    }, fixture.dictionaries.map(({ directory, files, reporterResidentBytes, syntheticRows, ...dictionary }) => ({ ...dictionary,
+      files: (files ?? fixture.files).map(({ name, bytes }) => ({ name, bytes })) })), origin);
     await browser.close(); browser = null;
     writeFileSync(offscreenFile, offscreenSource);
     console.log(`${variant} #${repetition+1}: installed profile prepared`);
     const loadStarted = performance.now();
     await launch();
+    const sampler = memorySampler(browser.process().pid);
     const status = await ready();
     assert.equal(status.storageBackend, "opfs"); assert.equal(status.threaded, true);
     assert.deepEqual(status.failedDictionaries, []);
     const restartMs = performance.now() - loadStarted;
     const fresh = await request("hd_memory");
-    const rssFresh = processTreeSample(browser.process().pid).rssBytes;
+    const rssFresh = processMemory(browser.process().pid);
     const pass = () => page.evaluate(async words => {
       const latencies = [], native = [], results = [];
+      const passStarted = performance.now();
       for (const text of words) {
         const started = performance.now();
         const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text, maxResults: 256, scanLength: 16 });
@@ -167,8 +222,9 @@ async function sample(variant, repetition) {
         if (!reply.ok) throw new Error(JSON.stringify(reply));
         results.push(reply.results);
       }
+      const wallMs = performance.now() - passStarted;
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(results)));
-      return { latencies, native, resultHash: Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2,"0")).join("") };
+      return { latencies, native, wallMs, resultHash: Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2,"0")).join("") };
     }, fixture.corpus);
     const passes = [];
     for (let n = 0; n < 2; ++n) {
@@ -178,6 +234,9 @@ async function sample(variant, repetition) {
       else signatures.set(key, timed.resultHash);
       passes.push({ ...timed, roundTrip: distribution(timed.latencies), engine: distribution(timed.native), memory: await request("hd_memory") });
     }
+    // Peak covers startup and both passes; steady is read after both passes settle.
+    await new Promise(done => setTimeout(done, 2000));
+    const processRss = { ...sampler.stop(), fresh: rssFresh };
     const parity = { kanji: (await request("hd_kanji", { character: "食" })).kanji,
       selected: (await request("hd_lookup_dictionary", { text: "食べました", dictionary: fixture.dictionaries[0].title })).results,
       media: (await request("hd_media", { dictionary: fixture.dictionaries[0].title, path: "media/kanji.png" })).dataUrl };
@@ -266,11 +325,11 @@ async function sample(variant, repetition) {
     const removeMs = performance.now() - removeStarted;
     await ready(fixture.packages - 1);
     const afterRemove = await request("hd_memory");
-    const row = { variant, repetition, restartMs, status, fresh, rssFresh, passes, parityHash: hash(parity),
+    const row = { variant, repetition, restartMs, status, fresh, processRss, passes, parityHash: hash(parity),
       hover, hoverFirst: distribution(hover.map(item => item.first)), hoverComplete: distribution(hover.map(item => item.complete)),
       disableMs, enableMs, disabledRestartMs, disabledMemory, afterEnable,
       reimport, afterReimport, recycleMs, afterRecycle, removeMs, afterRemove,
-      rssWarm: processTreeSample(browser.process().pid).rssBytes };
+      rssAfterLifecycle: processMemory(browser.process().pid) };
     // Advanced starts Chrome's asynchronous memory measurement. Keep it
     // outside setup and timings, where GC would interfere with OPFS writes.
     if (variant === "32" && repetition === 0) {
@@ -322,6 +381,8 @@ try {
     for (const variant of repetition % 2 ? [...variants].reverse() : variants) rows.push(await sample(variant, repetition));
   }
   writeFileSync(resolve(output, "results.json"), JSON.stringify({ definition, rows }, null, 2));
+  console.log(writeSummary(output));
 } finally {
   await new Promise(done => server.close(done));
+  if (!arg("before", null) && before) rmSync(before, { recursive: true, force: true });
 }

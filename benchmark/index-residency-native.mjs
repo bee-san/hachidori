@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { writeSummary } from "./index-residency-report.mjs";
 import { appendJsonlDurable, hostSnapshot } from "./system.mjs";
 
 const [binary, fixtureDirectory, outputDirectory] = process.argv.slice(2);
@@ -35,3 +36,4 @@ for (let repetition = 0; repetition < 3; repetition++) {
     console.log(`${mode} #${repetition + 1}: ${result.words} words, ${result.result_count} results, ${result.glossary_count} glossaries`);
   }
 }
+console.log(writeSummary(output));
