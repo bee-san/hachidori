@@ -249,8 +249,8 @@ export function createSharingHost({
       }) });
     },
     // The Anki duplicate index is derived state the host owns and never mirrors.
-    // Its row revision still travels to linked browsers so their pages can
-    // re-read word status when a card is added, repaired or refreshed (#520).
+    // Its row revision, or null after a Template source change, still travels
+    // to linked browsers so their pages can re-read word status (#520).
     wordStatusChanged(revision) {
       if (socket === null || clients.size === 0) return;
       post({ kind: "broadcast", text: JSON.stringify({ kind: "word-status", revision }) });
