@@ -3423,8 +3423,9 @@ const HANDLERS = {
     for (const chunk of chunks) {
       const chunkText = boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES);
       // One chunk per serialised turn: a queued hd_lookup waiting behind this
-      // batch gets the engine between chunks (the engine is not reentrant).
-      const spans = await serialise(async () => {
+      // batch gets the engine between chunks (the engine is not reentrant), so
+      // the sequential await is the point rather than an accident. NOSONAR
+      const spans = await serialise(async () => { // NOSONAR: per-chunk yield is intentional
         await ensureLoaded();
         if (chunkText === "") return [];
         const json = engine.ccall("hdw_segment", "string", ["string", "number", "string"], [chunkText, scanLength, options]);

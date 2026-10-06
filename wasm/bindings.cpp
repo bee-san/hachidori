@@ -461,7 +461,7 @@ struct WireSegmentResponse {
 // page leaves unmarked. Jitendex carries part of speech only inside its
 // structured glossaries, not in the tags or rules hoshidicts returns, so the
 // words are listed here.
-constexpr std::string_view FUNCTION_WORDS[] = {
+constexpr std::array FUNCTION_WORDS = std::to_array<std::string_view>({
     "が", "を", "に", "へ", "で", "と", "から", "より", "まで", "の", "は", "も",
     "こそ", "さえ", "でも", "しか", "だけ", "ばかり", "など", "なんか", "くらい", "ぐらい",
     "ほど", "って", "とか", "やら", "ずつ", "て", "ば", "ても", "けど", "けれど",
@@ -470,7 +470,7 @@ constexpr std::string_view FUNCTION_WORDS[] = {
     "や", "には", "では", "とは", "にも", "でも", "へと", "だ", "です", "である",
     "じゃ", "じゃない", "ではない", "ん", "のだ", "んだ", "のです", "んです", "そして", "しかし",
     "だから", "それで", "でも", "また", "だが", "ところが", "すると",
-};
+});
 
 bool is_function_word(std::string_view surface, std::string_view headword) {
   return std::ranges::find(FUNCTION_WORDS, surface) != std::ranges::end(FUNCTION_WORDS)
@@ -485,28 +485,32 @@ struct TextIndex {
   size_t codepoints() const { return bytes.size() - 1; }
 };
 
+// The number of bytes a UTF-8 code point starting with `lead` occupies, or 0
+// when `lead` is not a valid leading byte.
+size_t utf8_width(unsigned char lead) {
+  if (lead < 0x80) return 1;
+  if (lead >= 0xC2 && lead < 0xE0) return 2;
+  if (lead >= 0xE0 && lead < 0xF0) return 3;
+  if (lead >= 0xF0 && lead < 0xF5) return 4;
+  return 0;
+}
+
+bool is_utf8_continuation(char byte) {
+  return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
+}
+
 TextIndex index_text(std::string_view text) {
   TextIndex index;
   size_t utf16 = 0;
   for (size_t i = 0; i < text.size();) {
-    const auto lead = static_cast<unsigned char>(text[i]);
-    size_t width = 0;
-    if (lead < 0x80) {
-      width = 1;
-    } else if (lead >= 0xC2 && lead < 0xE0) {
-      width = 2;
-    } else if (lead >= 0xE0 && lead < 0xF0) {
-      width = 3;
-    } else if (lead >= 0xF0 && lead < 0xF5) {
-      width = 4;
-    }
+    const size_t width = utf8_width(static_cast<unsigned char>(text[i]));
     if (width == 0 || i + width > text.size()
-        || !std::ranges::all_of(text.substr(i + 1, width - 1),
-                                [](char c) { return (static_cast<unsigned char>(c) & 0xC0) == 0x80; })) {
+        || !std::ranges::all_of(text.substr(i + 1, width - 1), is_utf8_continuation)) {
       throw std::invalid_argument("segment text is not valid UTF-8");
     }
     index.bytes.push_back(i);
     index.utf16.push_back(utf16);
+    // Code points outside the BMP (four UTF-8 bytes) are one surrogate pair.
     utf16 += width == 4 ? 2 : 1;
     i += width;
   }
@@ -523,20 +527,21 @@ struct SegmentFrequency {
 };
 
 SegmentFrequency segment_frequency(const DictionaryQuery& query, const LookupOptions& options) {
+  using enum LookupFrequencyOrder;
   const std::vector<std::string> order = query.get_freq_dict_order();
   switch (options.frequency_order) {
-    case LookupFrequencyOrder::Auto:
+    case Auto:
       if (!order.empty()) {
         return {order.front(), false};
       }
       break;
-    case LookupFrequencyOrder::Ascending:
-    case LookupFrequencyOrder::Descending:
+    case Ascending:
+    case Descending:
       if (options.frequency_dictionary.has_value() && std::ranges::find(order, *options.frequency_dictionary) != order.end()) {
-        return {options.frequency_dictionary, options.frequency_order == LookupFrequencyOrder::Descending};
+        return {options.frequency_dictionary, options.frequency_order == Descending};
       }
       break;
-    case LookupFrequencyOrder::Disabled:
+    case Disabled:
       break;
   }
   return {};
@@ -584,7 +589,46 @@ struct SegmentMatch {
 
 using SegmentLattice = std::vector<std::vector<SegmentMatch>>;
 
-SegmentLattice build_lattice(Engine& e, std::string_view text, const TextIndex& index, size_t scan_length,
+// Thrown for a segmentation invariant that a correct engine never violates;
+// hdw_segment's catch turns it into an error string rather than aborting.
+class SegmentError : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
+
+// The code-point length of the matched prefix of a lookup result that started
+// at `start`, checked to end on a code-point boundary.
+size_t matched_codepoints(const TextIndex& index, size_t start, const LookupResult& result) {
+  const size_t stop = index.bytes[start] + result.matched.size();
+  const auto boundary = std::ranges::lower_bound(index.bytes, stop);
+  if (boundary == index.bytes.end() || *boundary != stop) {
+    throw SegmentError("a lookup matched part of a code point");
+  }
+  return static_cast<size_t>(boundary - index.bytes.begin()) - start;
+}
+
+// Merges one lookup result into the matches that can start at a position,
+// keeping its candidates and the best frequency value for its length.
+void record_match(std::vector<SegmentMatch>& matches, size_t codepoints, const LookupResult& result,
+                  const SegmentFrequency& frequency, LookupCopyBudget& budget) {
+  auto match = std::ranges::find(matches, codepoints, &SegmentMatch::codepoints);
+  if (match == matches.end()) {
+    match = matches.insert(matches.end(), SegmentMatch{.codepoints = codepoints});
+  }
+  match->candidates.emplace_back(copy_lookup_string(result.term.expression, budget, "term expression"),
+                                 copy_lookup_string(result.term.reading, budget, "term reading"));
+  if (!frequency.dictionary.has_value()) {
+    return;
+  }
+  const std::optional<int> value = term_frequency(result.term, frequency);
+  if (value.has_value()
+      && (!match->best_value.has_value()
+          || (frequency.descending ? *value > *match->best_value : *value < *match->best_value))) {
+    match->best_value = value;
+  }
+}
+
+SegmentLattice build_lattice(const Engine& e, std::string_view text, const TextIndex& index, size_t scan_length,
                              const LookupOptions& options, LookupCopyBudget& budget) {
   const SegmentFrequency frequency = segment_frequency(e.query, options);
   // The hover hands the engine the scan length, or a long key's length plus
@@ -600,25 +644,7 @@ SegmentLattice build_lattice(Engine& e, std::string_view text, const TextIndex& 
     auto& matches = lattice[start];
     // Every result, so that each matched length keeps its candidates.
     for (const auto& result : e.lookup.lookup(slice, INT_MAX, scan_length, options)) {
-      const size_t stop = index.bytes[start] + result.matched.size();
-      const auto boundary = std::ranges::lower_bound(index.bytes, stop);
-      if (boundary == index.bytes.end() || *boundary != stop) {
-        throw std::logic_error("a lookup matched part of a code point");
-      }
-      const auto codepoints = static_cast<size_t>(boundary - index.bytes.begin()) - start;
-      auto match = std::ranges::find(matches, codepoints, &SegmentMatch::codepoints);
-      if (match == matches.end()) {
-        match = matches.insert(matches.end(), SegmentMatch{.codepoints = codepoints});
-      }
-      match->candidates.emplace_back(copy_lookup_string(result.term.expression, budget, "term expression"),
-                                     copy_lookup_string(result.term.reading, budget, "term reading"));
-      if (frequency.dictionary.has_value()) {
-        const std::optional<int> value = term_frequency(result.term, frequency);
-        if (value.has_value() && (!match->best_value.has_value() ||
-                                  (frequency.descending ? *value > *match->best_value : *value < *match->best_value))) {
-          match->best_value = value;
-        }
-      }
+      record_match(matches, matched_codepoints(index, start, result), result, frequency, budget);
     }
     for (auto& match : matches) {
       match.frequency = frequency.dictionary.has_value() ? frequency_cost(match.best_value, frequency.descending) : 0;
@@ -692,7 +718,28 @@ Word segment_word(std::string_view text, const TextIndex& index, size_t position
   return word;
 }
 
-WireSegmentResponse segment(Engine& e, std::string_view text, size_t scan_length, const LookupOptions& options,
+// The best split of a span's own code points into shorter words, when one
+// covers all of them (今日は -> 今日 + は); empty when the span is one code
+// point or no gap-free shorter split exists.
+std::vector<WireSegmentWord> alternative_split(const SegmentLattice& lattice, std::string_view text,
+                                               const TextIndex& index, size_t position, size_t stop) {
+  std::vector<WireSegmentWord> alternative;
+  if (stop - position <= 1) {
+    return alternative;
+  }
+  const std::vector<SplitStep> parts = best_split(lattice, position, stop, stop - position);
+  if (parts.front().cost.unmatched != 0) {
+    return alternative;
+  }
+  for (size_t part = position; part < stop;) {
+    const SegmentMatch& word = lattice[part][*parts[part - position].match];
+    alternative.push_back(segment_word<WireSegmentWord>(text, index, part, word));
+    part += word.codepoints;
+  }
+  return alternative;
+}
+
+WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_length, const LookupOptions& options,
                             LookupCopyBudget& budget) {
   const TextIndex index = index_text(text);
   const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, budget);
@@ -705,18 +752,9 @@ WireSegmentResponse segment(Engine& e, std::string_view text, size_t scan_length
       continue;
     }
     const SegmentMatch& match = lattice[position][*chosen];
-    auto span = segment_word<WireSegmentSpan>(text, index, position, match);
     const size_t stop = position + match.codepoints;
-    if (match.codepoints > 1) {
-      const std::vector<SplitStep> parts = best_split(lattice, position, stop, match.codepoints);
-      if (parts.front().cost.unmatched == 0) {
-        for (size_t part = position; part < stop;) {
-          const SegmentMatch& word = lattice[part][*parts[part - position].match];
-          span.alternative.push_back(segment_word<WireSegmentWord>(text, index, part, word));
-          part += word.codepoints;
-        }
-      }
-    }
+    auto span = segment_word<WireSegmentSpan>(text, index, position, match);
+    span.alternative = alternative_split(lattice, text, index, position, stop);
     response.spans.push_back(std::move(span));
     position = stop;
   }
@@ -1462,8 +1500,8 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
   try {
     WireSegmentResponse response;
     LookupCopyBudget budget;
-    const std::string_view segment_text{text == nullptr ? "" : text};
-    if (!segment_text.empty() && scan_length > 0) {
+    if (const std::string_view segment_text{text == nullptr ? "" : text};
+        !segment_text.empty() && scan_length > 0) {
       require_lookup_text_size(segment_text, "segment text");
       const LookupOptions options = parse_options(options_json);
       response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, budget);
