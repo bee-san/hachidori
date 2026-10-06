@@ -1,24 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Segmentation throughput and the hover-lookup latency a reader sees while a
-// page is being segmented (#520, phase 1).
+// Segmentation throughput, the longest engine turn a page's segmentation can
+// take, and how the best split compares with the greedy parse (#520, phase 1).
 //
 // `hdw_segment` runs one deinflecting lookup per code point, so it is the
 // heaviest engine call the word-highlighting feature adds. This measures:
 //
 //   - segments per second and the per-line time distribution, over a corpus of
 //     representative lines, with and without the frequency tie-break;
-//   - the latency of a hover `hdw_lookup` issued on the same engine instance,
-//     both idle and immediately after a page-sized segmentation batch, so the
-//     cost of segmenting next to a reader's own hovers is visible.
+//   - one call on the largest chunk hd_segment accepts (4 KiB of UTF-8). The
+//     engine is not reentrant and hd_segment yields it only between chunks, so
+//     a hover that arrives during a chunk waits for the rest of it: up to the
+//     per-line time when a chunk is one line, up to this time for the largest;
+//   - the latency of a hover `hdw_lookup` on an idle engine and right after a
+//     one-line segment call has returned, which is what interleaving costs a
+//     hover beyond that wait;
+//   - the reference-set scores (test/segmentation-reference.mjs) of the best
+//     split and the greedy parse with the loaded dictionaries.
 //
 // It drives the frozen C ABI directly on the real WASM build in MEMFS, the way
 // node-smoke.mjs does, rather than the browser path (benchmark/run.mjs). That
-// isolates the engine cost from messaging, OPFS and paint; the numbers are a
-// per-call lower bound, not end-to-end latency.
+// isolates the engine cost from messaging, OPFS and paint; the numbers are
+// per-call engine timings, not end-to-end latency.
 //
-// Dictionaries: a real Jitendex + Jiten frequency pair when their archives are
-// given (HACHIDORI_SEGMENT_TERM_ZIP / HACHIDORI_SEGMENT_FREQ_ZIP), otherwise the
+// Dictionaries: a real Jitendex + frequency pair when their archives are given
+// (HACHIDORI_SEGMENT_TERM_ZIP / HACHIDORI_SEGMENT_FREQ_ZIP), otherwise the
 // small self-contained reference dictionary from the segmentation test set, so
 // the benchmark runs with no external data.
 
@@ -33,6 +39,8 @@ import {
   SEGMENTATION_FREQUENCY_TITLE,
   buildSegmentationDictionaryZip,
   buildSegmentationFrequencyZip,
+  formatReferenceScore,
+  scoreReferenceSet,
 } from "../test/segmentation-reference.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -41,8 +49,11 @@ const VARIANT = process.env.HACHIDORI_WASM_VARIANT === "fallback" ? "hoshidicts"
 const MODULE_PATH = join(HERE, "..", "extension", "vendor", `${VARIANT}.mjs`);
 
 const SCAN_LENGTH = 16;
+// hd_segment's per-chunk limit, the same 4 KiB of UTF-8 as a lookup's text.
+const MAX_CHUNK_BYTES = 4 * 1024;
 const WARMUP = Number(process.env.HACHIDORI_SEGMENT_WARMUP ?? 50);
 const SAMPLES = Number(process.env.HACHIDORI_SEGMENT_SAMPLES ?? 400);
+const LARGEST_CHUNK_SAMPLES = Math.max(5, Math.ceil(SAMPLES / 20));
 const AUTO = JSON.stringify({ frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" });
 const DISABLED = JSON.stringify({ frequencyDictionary: "", frequencyOrder: "disabled", primaryReading: "" });
 
@@ -105,8 +116,8 @@ function segment(text, options) {
   return JSON.parse(json);
 }
 
-function lookup(text) {
-  const json = call("hdw_lookup", "string", ["string", "number", "number", "string"], [text, 32, SCAN_LENGTH, AUTO]);
+function lookup(text, maxResults = 32, options = AUTO) {
+  const json = call("hdw_lookup", "string", ["string", "number", "number", "string"], [text, maxResults, SCAN_LENGTH, options]);
   if (lastError() !== "") throw new Error(`hdw_lookup: ${lastError()}`);
   return JSON.parse(json);
 }
@@ -135,23 +146,57 @@ function measureSegment(options) {
   };
 }
 
-// --- Hover latency, idle and during segmentation --------------------------
-// The engine is single-threaded; the extension runs one chunk per queue turn
-// so a hover interleaves between chunks. Here the whole corpus is one batch and
-// a hover is timed right after it, the worst case for a hover that lands when a
-// chunk has just started.
-const HOVER_QUERIES = ["食べる", "読む", "漢字", "白い猫", "気がする"].filter((text) => lookup(text).results.length >= 0);
-function measureHover({ segmentBetween }) {
+// --- The longest engine turn ----------------------------------------------
+// The corpus lines, repeated up to the 4 KiB one chunk may hold: one call is
+// one engine turn, the longest a hover can wait behind a single chunk.
+function largestChunk() {
+  let chunk = "";
+  for (let i = 0; ; i += 1) {
+    const next = chunk + CORPUS[i % CORPUS.length];
+    if (Buffer.byteLength(next) > MAX_CHUNK_BYTES) return chunk;
+    chunk = next;
+  }
+}
+
+function measureLargestChunk() {
+  const chunk = largestChunk();
+  segment(chunk, AUTO);
+  const samples = [];
+  let spans = 0;
+  for (let i = 0; i < LARGEST_CHUNK_SAMPLES; i += 1) {
+    const before = performance.now();
+    spans = segment(chunk, AUTO).spans.length;
+    samples.push(performance.now() - before);
+  }
+  return { bytes: Buffer.byteLength(chunk), codepoints: Array.from(chunk).length, spans, ...summarise(samples) };
+}
+
+// --- Hover latency, idle and after a segment turn --------------------------
+// A hover is timed right after a one-line segment call returns, as one that
+// runs between two of a batch's chunks is. Its wait for the chunk ahead of it
+// is the segment time above, not part of this figure.
+const HOVER_QUERIES = ["食べる", "読む", "漢字", "白い猫", "気がする"];
+function measureHover({ afterSegment }) {
   for (let i = 0; i < WARMUP; i += 1) lookup(HOVER_QUERIES[i % HOVER_QUERIES.length]);
   const samples = [];
   for (let i = 0; i < SAMPLES; i += 1) {
-    if (segmentBetween) segment(CORPUS[i % CORPUS.length], AUTO);
+    if (afterSegment) segment(CORPUS[i % CORPUS.length], AUTO);
     const query = HOVER_QUERIES[i % HOVER_QUERIES.length];
     const before = performance.now();
     lookup(query);
     samples.push(performance.now() - before);
   }
   return summarise(samples);
+}
+
+// --- Reference-set scores ---------------------------------------------------
+// The greedy parse looks up with the same options as the split it is compared
+// with.
+function referenceScore(options) {
+  return scoreReferenceSet({
+    segment: (text) => segment(text, options).spans,
+    lookupFirst: (text) => lookup(text, 1, options).results[0],
+  });
 }
 
 const report = {
@@ -164,20 +209,30 @@ const report = {
   samples: SAMPLES,
   segmentAutoFrequency: measureSegment(AUTO),
   segmentNoFrequency: measureSegment(DISABLED),
-  hoverIdle: measureHover({ segmentBetween: false }),
-  hoverWhileSegmenting: measureHover({ segmentBetween: true }),
+  largestChunk: measureLargestChunk(),
+  hoverIdle: measureHover({ afterSegment: false }),
+  hoverAfterSegmentTurn: measureHover({ afterSegment: true }),
+  referenceAutoFrequency: referenceScore(AUTO),
+  referenceNoFrequency: referenceScore(DISABLED),
 };
 
+const ms = (value) => `${value.toFixed(3)} ms`;
 console.log(JSON.stringify(report, null, 2));
 console.log("");
 console.log(`corpus: ${report.corpus}`);
 console.log(`segment (auto freq): ${report.segmentAutoFrequency.linesPerSecond.toFixed(0)} lines/s, `
   + `${report.segmentAutoFrequency.segmentsPerSecond.toFixed(0)} segments/s, `
   + `${report.segmentAutoFrequency.codepointsPerSecond.toFixed(0)} codepoints/s, `
-  + `p50 ${report.segmentAutoFrequency.p50Ms.toFixed(3)} ms, p95 ${report.segmentAutoFrequency.p95Ms.toFixed(3)} ms`);
+  + `p50 ${ms(report.segmentAutoFrequency.p50Ms)}, p95 ${ms(report.segmentAutoFrequency.p95Ms)}`);
 console.log(`segment (no freq)  : ${report.segmentNoFrequency.linesPerSecond.toFixed(0)} lines/s, `
   + `${report.segmentNoFrequency.segmentsPerSecond.toFixed(0)} segments/s, `
-  + `p50 ${report.segmentNoFrequency.p50Ms.toFixed(3)} ms`);
-console.log(`hover latency idle : p50 ${report.hoverIdle.p50Ms.toFixed(3)} ms, p95 ${report.hoverIdle.p95Ms.toFixed(3)} ms`);
-console.log(`hover while segmenting: p50 ${report.hoverWhileSegmenting.p50Ms.toFixed(3)} ms, `
-  + `p95 ${report.hoverWhileSegmenting.p95Ms.toFixed(3)} ms`);
+  + `p50 ${ms(report.segmentNoFrequency.p50Ms)}`);
+console.log(`largest chunk (${report.largestChunk.bytes} bytes, ${report.largestChunk.codepoints} code points, `
+  + `${report.largestChunk.count} calls): p50 ${ms(report.largestChunk.p50Ms)}, max ${ms(report.largestChunk.maxMs)}`);
+console.log(`hover latency idle : p50 ${ms(report.hoverIdle.p50Ms)}, p95 ${ms(report.hoverIdle.p95Ms)}`);
+console.log(`hover after a segment turn: p50 ${ms(report.hoverAfterSegmentTurn.p50Ms)}, `
+  + `p95 ${ms(report.hoverAfterSegmentTurn.p95Ms)}`);
+for (const [label, score] of [["auto frequency", report.referenceAutoFrequency], ["no frequency", report.referenceNoFrequency]]) {
+  console.log(`${label}:`);
+  for (const line of formatReferenceScore(score)) console.log(`  ${line}`);
+}
