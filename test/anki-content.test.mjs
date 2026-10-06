@@ -926,7 +926,7 @@ test("a Netflix note records its line's GIF, and a missing or failed GIF falls b
 
   // A GIF is recorded (the recorder is asked for it) and both files are submitted.
   assert.equal(await mine(0), "Added note 21.");
-  assert.deepEqual(recordings.at(-1), [netflix.cue, "default", { gif: true }]);
+  assert.deepEqual(recordings.at(-1), [netflix.cue, "default", { audio: true, gif: true }]);
   assert.deepEqual(submittedRequest.gif, { token: "gif-a", filename: "hachidori-gif-a.gif" });
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
   assert.equal(submittedRequest.captureUnavailable, undefined);
@@ -950,6 +950,7 @@ test("a Netflix note records its line's GIF, and a missing or failed GIF falls b
 
 test("a note whose only Netflix field is {gif} says why it got the screenshot instead", async t => {
   const decision = { state: "addable", canAdd: true, screenshot: true, gif: true };
+  const wantedMedia = [];
   let recorded = async () => ({ unavailable: "grant" });
   let submittedRequest = null;
   const f = fixture(t, async (type, { request } = {}) => {
@@ -957,7 +958,10 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
     if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
     if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 31, warnings: [] }; }
     return decision;
-  }, undefined, undefined, during => during(), async () => recorded());
+  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
+    wantedMedia.push(options);
+    return recorded();
+  });
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
@@ -986,4 +990,6 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
   recorded = async () => { throw new Error("The recording of this line was interrupted."); };
   assert.equal(await mine(2), "Added note 31. GIF: The recording of this line was interrupted.");
   assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  // Each recording asked for the GIF only, so no WAV is made or held.
+  assert.deepEqual(wantedMedia, Array(3).fill({ audio: false, gif: true }));
 });

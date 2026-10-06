@@ -241,7 +241,7 @@
     conceal = during => during(),
     // Experimental Netflix mining: records a cue's line through the page and
     // resolves with { audio, gif } for the fields, or with why there is none
-    // (netflix-content.js). `gif` asks it to also record a looping GIF.
+    // (netflix-content.js). Its options { audio, gif } name the media wanted.
     recordNetflixLine = async () => { throw new Error("this page cannot replay Netflix lines."); },
   }) {
     const owners = new Map(), bound = new WeakMap();
@@ -468,7 +468,7 @@
     // captureUnavailable kinds while each recorded item is applied to `record`.
     async function recordNetflixMedia(record, outcome, wanted, cue) {
       try {
-        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, { gif: wanted.gif }));
+        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, wanted));
         if (typeof recorded?.unavailable === "string") markUnavailable(outcome, wanted, recorded.unavailable);
         else applyRecordedMedia(record, outcome, wanted, recorded);
       } catch (error) {

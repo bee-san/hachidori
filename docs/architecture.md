@@ -2842,6 +2842,9 @@ stream's video track too and reads it with a second `MediaStreamTrackProcessor`:
 it draws each `VideoFrame` into an `OffscreenCanvas` at most 480 px wide, reads
 back its RGBA and closes the frame at once, keeping no more than ten frames a
 second by the frames' own timestamps and placing each on the same wall clock.
+When no field maps `{sentence-audio}`, the request sets `audio: false`: the frame
+still opens the audio track, which mutes the tab for the replay and tells it
+when the capture has caught up, but encodes no WAV and the worker holds none.
 Chrome mutes a captured tab, so the replay is silent. A recording nobody
 finishes stops itself a minute after the cue's length, and removing the frame
 or closing its port stops it at once.
@@ -3215,7 +3218,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
-| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV for the note, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
+| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 
 ## Build outputs
 

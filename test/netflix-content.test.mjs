@@ -194,7 +194,7 @@ test("recording starts the capture, has the page replay the cue, then finishes o
     [["chrome-extension://hachidori/netflix-recorder.html", "none", "true"]]]);
   assert.equal(f.window.document.querySelectorAll("iframe").length, 0);
   assert.deepEqual(sent, [
-    ["hd_netflix_capture_start", { cue, gif: false }],
+    ["hd_netflix_capture_start", { cue, audio: true, gif: false }],
     ["hd_netflix_capture_finish", { sessionId: "s1", anchors: [[5000, 950], [5100, 1050]], templateId: "default" }],
   ]);
   const replay = f.commands.find(command => command.type === "replay");
@@ -228,7 +228,11 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   };
   assert.deepEqual(await f.netflix.record(cue, { send: gifSend, templateId: "default", gif: true }),
     { audio: { token: "t2", filename: "a.wav" }, gif: { token: "g2", filename: "hachidori-gif-a.gif" } });
-  assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, gif: true }]);
+  assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, audio: true, gif: true }]);
+  // A {gif} field alone asks the recorder for no WAV.
+  sent.length = 0;
+  await f.netflix.record(cue, { send: gifSend, templateId: "default", audio: false, gif: true });
+  assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, audio: false, gif: true }]);
 });
 
 // Where the fixture's two lines are drawn: a gap between them, inside

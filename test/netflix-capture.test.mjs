@@ -269,3 +269,20 @@ test("without gif, no video track is opened and no GIF is returned", async () =>
   assert.equal(clip.gif, undefined, "no GIF without a {gif} field");
   assert.equal(clip.silent, false);
 });
+
+test("for a {gif} field alone, the recorder returns the GIF and encodes no WAV", async () => {
+  const { window, record, clock } = gifRecorderWindow();
+  const recorder = createNetflixRecorder(window);
+  await recorder.start({ targetTabId: 7, limitMs: 60_000, audio: false, gif: true });
+  // The audio track is still opened: it mutes the tab and paces the finish.
+  assert.notEqual(record.constraints.audio, false);
+  clock.now = 1_001_100;
+  for (let block = 0; block < 20; block++) record.pushAudio(1000 + block * 100, 100, (block + 1) / 64);
+  for (let ms = 1400; ms <= 2200; ms += 40) record.pushVideo(ms, (ms / 40) % 200);
+  await settle();
+  await settle();
+  clock.now = 1_001_000 + 3000;
+  const clip = await recorder.finish({ startMs: 1000, endMs: 1600, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
+  assert.deepEqual(Object.keys(clip), ["gif"], "only the GIF leaves the frame");
+  assert.equal(Buffer.from(clip.gif, "base64").toString("ascii", 0, 6), "GIF89a");
+});

@@ -258,14 +258,16 @@ export function createNetflixRecorder(window, {
   // Opens this tab's stream and starts placing its samples. Chrome hands a
   // stream ID only to an extension the user invoked on the tab, and the ID is
   // used here, in the context that asked for it.
-  async function start({ targetTabId, limitMs, gif = false }) {
+  async function start({ targetTabId, limitMs, audio = true, gif = false }) {
     if (!Number.isSafeInteger(targetTabId) || !Number.isFinite(limitMs) || limitMs <= 0) {
       throw new Error("The Netflix recording request is invalid.");
     }
     if (session !== null) stop(session);
+    // The audio track is opened either way: it mutes the tab for the replay
+    // and tells finish when the capture has caught up. Only a {sentence-audio}
+    // field needs its WAV, and video is captured only for a {gif} field.
     const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null, waiter: null,
-      clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }),
-      // Video is captured only when a {gif} field needs it.
+      clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }), audio,
       gif, videoReader: null, frames: [], lastVideoMs: null, canvas: null, context: null, gifWidth: 0, gifHeight: 0,
       videoClock: createVideoFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
     session = current;
@@ -326,6 +328,7 @@ export function createNetflixRecorder(window, {
     }
     if (offset === null) throw new Error("Netflix did not play the line, so nothing was recorded.");
     const gif = encodeGif(current, { startMs, endMs, offset });
+    if (!current.audio) return gif ? { gif } : {};
     const samples = clipSamples(current.chunks, { originMs: current.clock.originMs, sampleRate: current.sampleRate,
       startMs: startMs - SENTENCE_PAD_MS + offset, endMs: endMs + SENTENCE_PAD_MS + offset });
     if (samples === null) throw new Error("No audio was recorded while the line played.");
