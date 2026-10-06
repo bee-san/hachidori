@@ -96,7 +96,8 @@ const MEDIA_TYPES = {
 // Dictionary download reads serve an archive already built by its open, so
 // they need no turn in the queue either.
 // Segmentation is unqueued too: its handler serialises one engine turn per
-// chunk itself (hd_segment), so queued lookups run between a page's chunks.
+// chunk itself (hd_segment) and lets pending messages in between chunks, so a
+// hover's lookup runs between a page's chunks.
 const UNQUEUED = new Set(["hd_status", "hd_memory", "hd_debug_log", "hd_backup_release", "hd_import", "hd_segment", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
 
 // A storage read-modify-write spans two messages, so another context can write
@@ -383,6 +384,21 @@ function serialise(job) {
     () => undefined,
   );
   return run;
+}
+
+// Resolves once the messages that reached the engine before it are dispatched.
+// A request arrives as a message event, a task of its own, and a loop of
+// serialised turns runs as one chain of microtasks, which no message can enter
+// until the loop ends.
+function yieldToMessages() {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
 }
 
 function requireEngine() {
@@ -3426,7 +3442,10 @@ const HANDLERS = {
       text: boundedText(chunk?.text, "segment text", MAX_LOOKUP_TEXT_BYTES).toWellFormed(),
     }));
     const segments = [];
-    for (const { id, text: chunkText } of chunks) {
+    for (const [index, { id, text: chunkText }] of chunks.entries()) {
+      // A message that reached the engine during the previous chunk, such as
+      // a hover's hd_lookup, takes its turn before this chunk's.
+      if (index > 0) await yieldToMessages(); // NOSONAR: per-chunk yield is intentional
       // One chunk per serialised turn: a queued hd_lookup waiting behind this
       // batch gets the engine between chunks (the engine is not reentrant), so
       // the sequential await is the point rather than an accident.
