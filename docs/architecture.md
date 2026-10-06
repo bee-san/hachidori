@@ -2710,8 +2710,9 @@ the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`
 with `netflix-content.js` beside the manifest's content scripts. The worker
 applies the flag at startup and on every options change, serialised like the
 Google Docs flag; turning it off unregisters both. A Netflix tab that was open
-when the switch changed needs a reload, and the reader also checks the switch
-itself, so a page that still has the scripts does nothing once it is off.
+when the switch changed needs a reload. The reader and the worker also check
+the switch themselves, so a page that still has the scripts records nothing once
+it is off, though its page hooks stay until the page reloads.
 
 **Subtitles.** The page script adapts Subadub's two hooks (MIT, see
 `distribution/THIRD_PARTY_NOTICES.md`). `JSON.stringify` finds the manifest

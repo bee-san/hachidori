@@ -2141,7 +2141,9 @@ async function netflixRecordingTab(sender) {
   return tab;
 }
 
-// Only this extension's own recorder page, framed in a Netflix tab, may connect.
+// Only this extension's own recorder page, framed in a Netflix tab, may
+// connect, and only while Netflix mining is on: the page is web-accessible to
+// Netflix, so a frame the page made itself is refused with the switch off.
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== NETFLIX_RECORDER_PORT) return;
   const { sender } = port;
@@ -2151,6 +2153,16 @@ chrome.runtime.onConnect.addListener(port => {
     port.disconnect();
     return;
   }
+  let open = true;
+  port.onDisconnect.addListener(() => { open = false; });
+  chrome.storage.local.get(OPTIONS_KEY).then(stored => {
+    if (!open) return;
+    if (normaliseOptions(stored[OPTIONS_KEY]).experimental.netflixMining === true) adoptNetflixRecorder(tabId, port);
+    else port.disconnect();
+  }, () => port.disconnect());
+});
+
+function adoptNetflixRecorder(tabId, port) {
   const waiter = netflixRecorderWaiters.get(tabId);
   if (waiter) {
     netflixRecorderWaiters.delete(tabId);
@@ -2162,7 +2174,7 @@ chrome.runtime.onConnect.addListener(port => {
       if (netflixRecorders.get(tabId) === port) netflixRecorders.delete(tabId);
     });
   }
-});
+}
 
 function netflixRecorderPort(tabId) {
   const ready = netflixRecorders.get(tabId);

@@ -64,7 +64,9 @@
       }
       if (hidden === 0) text += source.slice(at, open);
       const tag = source.slice(open + 1, close).toLowerCase();
-      if (/^\/?r[tp](?![a-z])/u.test(tag)) hidden = Math.max(0, hidden + (tag.startsWith("/") ? -1 : 1));
+      // WebVTT lets the last </rt> before </ruby> be left out; </ruby> ends it.
+      if (/^\/ruby(?![a-z])/u.test(tag)) hidden = 0;
+      else if (/^\/?r[tp](?![a-z])/u.test(tag)) hidden = Math.max(0, hidden + (tag.startsWith("/") ? -1 : 1));
       at = close + 1;
     }
     return cleanLines(decodeEntities(text));

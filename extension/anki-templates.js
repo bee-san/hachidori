@@ -74,11 +74,15 @@ const DYNAMIC_MARKER_OPTIONS = [
   ["single-frequency-number-DICTIONARY", "Numeric value from one frequency dictionary"],
 ];
 export const ANKI_TEMPLATE_MARKERS = Object.freeze([...CORE_MARKERS, ...MARKER_ALIASES.keys()]);
+// Markers of an experimental feature, by the flag that lists them in Settings.
+// They stay valid with the flag off, so a saved template still renders.
+const EXPERIMENTAL_MARKERS = new Map([["sentence-audio", "netflixMining"]]);
 export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   ...CORE_MARKERS.map(marker => Object.freeze({
     marker,
     value: `{${marker}}`,
     description: MARKER_DESCRIPTIONS[marker],
+    ...(EXPERIMENTAL_MARKERS.has(marker) ? { experimental: EXPERIMENTAL_MARKERS.get(marker) } : {}),
   })),
   ...[...MARKER_ALIASES].map(([marker, canonical]) => Object.freeze({
     marker,

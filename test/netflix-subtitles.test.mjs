@@ -35,6 +35,9 @@ test("WebVTT cues keep exact times and plain text without marks, tags, readings 
   // Readings with tags inside them, <rp> parentheses and a stray tag end.
   assert.deepEqual(parseWebVtt("WEBVTT\n\n00:01.000 --> 00:02.000\n<ruby>今日<rp>(</rp><rt><c.r>きょう</c></rt><rp>)</rp></ruby>は<b>晴れ</b>>\n"),
     [{ startMs: 1000, endMs: 2000, text: "今日は晴れ>" }]);
+  // The last </rt> before </ruby> may be left out (WebVTT §4.2.2).
+  assert.deepEqual(parseWebVtt("WEBVTT\n\n00:01.000 --> 00:02.000\n<ruby>今日<rt>きょう</ruby>は雨だ\n"),
+    [{ startMs: 1000, endMs: 2000, text: "今日は雨だ" }]);
   assert.throws(() => parseWebVtt("1\n00:00:01,000 --> 00:00:02,000\nSRT\n"), /not a WebVTT/u);
 });
 
