@@ -35,6 +35,27 @@ timestamps survive worker/browser restart and participate in [complete backup
 and restore](backup-format.md). There is no product entry cap; browser storage
 and safe JSON integer representation still apply.
 
+## Resetting lookup counts
+
+**Settings → Reading → Lookup history → Reset lookup counts** asks once, then
+starts an empty history. Dictionaries, settings, the recording switch and Anki
+notes are unchanged. An open popup shows *Looked up 0 times* without recording
+a lookup, and the next lookup of a word counts as 1.
+
+The service worker publishes a descriptor with a new generation and the next
+revision, never revision 0, since open readers reject older revisions. It runs
+in the same storage queue as lookups, then removes the replaced generation's
+rows. So a lookup is recorded wholly before the reset, which erases it, or
+wholly after it, counting from 1; it is never added to an old count, and
+replies or row events from the replaced generation are rejected. An open popup
+keeps the blur decision it already made, so a revealed definition is not
+blurred again; the next lookup decides from the new count.
+
+Exported backups, and automatic backups made before the reset, still hold the
+earlier counts; restoring one brings them back. While this browser is linked
+to another Hachidori the counts belong to that host, so the reset is
+unavailable until you unlink.
+
 ## Definition blur
 
 Settings → Reading → Definition blur hides definitions, compact summaries and

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey,
-  lookupStatsPrefix, normaliseLookupTerm,
+  lookupStatsPrefix, normaliseLookupTerm, resetLookupStats,
 } from "../extension/lookup-stats.js";
 
 test("lookup statistics use canonical term/reading keys without conflating readings or delimiters", () => {
@@ -41,4 +41,24 @@ test("backup statistics reject malformed or duplicate rows without silently repa
   }
   assert.throws(() => assertLookupStatsRows(emptyLookupStats(), [row]), /statistics/u);
   assert.throws(() => assertLookupStatsRows({ generation: "one", revision: -1 }, []), /statistics/u);
+});
+
+test("a reset publishes a new empty generation above the current revision and orphans every old row", () => {
+  const first = resetLookupStats();
+  assert.equal(first.revision, 1);
+  assert.equal(typeof first.generation, "string");
+  assertLookupStatsRows(first, []);
+  const current = { generation: "one", revision: 41 };
+  const next = resetLookupStats(current);
+  assert.equal(next.revision, 42, "readers reject descriptor revisions below the one they hold");
+  assert.notEqual(next.generation, current.generation);
+  assert.notEqual(resetLookupStats(current).generation, next.generation);
+  assert.deepEqual(current, { generation: "one", revision: 41 }, "do not mutate the committed descriptor");
+  const row = incrementLookupStats(undefined, normaliseLookupTerm("猫", "ねこ"), 100);
+  assert.ok(!lookupStatsKey(current, row).startsWith(lookupStatsPrefix(next)));
+  assert.equal(incrementLookupStats(undefined, row, 200).lookupCount, 1, "the next lookup in the new generation counts 1");
+  for (const descriptor of [{ generation: "", revision: 1 }, { generation: "one", revision: -1 },
+    { generation: "one", revision: Number.MAX_SAFE_INTEGER }]) {
+    assert.throws(() => resetLookupStats(descriptor), /statistics/u);
+  }
 });

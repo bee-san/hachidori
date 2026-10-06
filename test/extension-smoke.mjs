@@ -1033,6 +1033,67 @@ async function lookupStatsStage() {
     malformedOptions.statistics?.lookupCount === 1 && !("seenCount" in malformedOptions.statistics)
       && storage.sets.length === beforeMalformed + 1, JSON.stringify(malformedOptions));
 
+  // Settings → Reading → Reset lookup counts. Holding the storage queue fixes
+  // which side of the reset each lookup lands on.
+  const settingsSender = { id: "hachidorismokeextensionid", url: `${EXTENSION_ORIGIN}/settings.html` };
+  const reset = (sender = settingsSender) =>
+    bus.sendMessage("lookup-settings", { target: "hoshidicts-worker", type: "hd_lookup_stats_reset" }, sender);
+  const tick = () => new Promise(done => setTimeout(done, 0));
+  const holdStorage = () => {
+    let release;
+    backgroundContext.lookupStatsGate = new Promise(resolveGate => { release = resolveGate; });
+    const held = runInContext("serialiseStorage(() => lookupStatsGate)", backgroundContext);
+    return async () => { release(); await held; };
+  };
+  const rowKeys = () => [...storage.raw.keys()].filter(key => key.startsWith("lookupStats:"));
+  const unrelated = () => ["options", "dictionaryState", "customDictionarySource"]
+    .map(key => JSON.stringify(storage.raw.get(key) ?? null)).join();
+  const unrelatedBefore = unrelated();
+  const original = structuredClone(storage.raw.get("lookupStats"));
+  const fromPage = await send("hd_lookup_stats_reset");
+  await runInContext("sharingLinked = true", backgroundContext);
+  const whileLinked = await reset();
+  await runInContext("sharingLinked = false", backgroundContext);
+  const setsBeforeResets = storage.sets.length;
+  let release = holdStorage();
+  const recordedBefore = send("hd_lookup_stats_record", fields);
+  await tick();
+  const firstReset = reset();
+  await tick();
+  await release();
+  const [before, first] = await Promise.all([recordedBefore, firstReset]);
+  const readAfterFirst = await send("hd_lookup_stats_read", fields);
+  const rowsAfterFirst = rowKeys();
+  release = holdStorage();
+  const secondReset = reset();
+  await tick();
+  const recordedAfter = send("hd_lookup_stats_record", fields);
+  await tick();
+  await release();
+  const [second, after] = await Promise.all([secondReset, recordedAfter]);
+  const newRow = lookupStatsKey(second.descriptor, after.statistics);
+  // Each reset writes only the descriptor; neither lookup writes a merged row.
+  const writes = storage.sets.slice(setsBeforeResets);
+  check("Settings resets lookup counts to a new empty generation that orders lookups before or after it",
+    fromPage.ok === false && fromPage.error.includes("Settings")
+      && whileLinked.ok === false && whileLinked.error.includes("linked")
+      && before.ok && before.statistics.lookupCount === 26 && before.descriptor.generation === original.generation
+      && first.ok && first.descriptor.revision === before.descriptor.revision + 1
+      && ![original.generation, null].includes(first.descriptor.generation)
+      && readAfterFirst.statistics.lookupCount === 0
+      && JSON.stringify(readAfterFirst.descriptor) === JSON.stringify(first.descriptor)
+      && rowsAfterFirst.length === 0
+      && second.ok && second.descriptor.revision === first.descriptor.revision + 1
+      && second.descriptor.generation !== first.descriptor.generation
+      && after.statistics.lookupCount === 1 && after.descriptor.generation === second.descriptor.generation
+      && after.descriptor.revision === second.descriptor.revision + 1
+      && JSON.stringify(rowKeys()) === JSON.stringify([newRow])
+      && JSON.stringify(writes) === JSON.stringify([
+        ["lookupStats", lookupStatsKey(original, before.statistics)], ["lookupStats"], ["lookupStats"], ["lookupStats", newRow],
+      ])
+      && unrelated() === unrelatedBefore,
+    JSON.stringify({ fromPage, whileLinked, before, first, readAfterFirst, rowsAfterFirst, second, after, writes }));
+
   const localBus = makeBus(), localStorage = makeStorage();
   const localChrome = makeChrome("lookup-stats-local-worker", localBus, localStorage);
   await localChrome.storage.local.set({ options: { revision: 1, showLookupCounts: true,
@@ -9017,6 +9078,56 @@ async function main() {
       && settingsConflict.management.visibleAfterExternalChange?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccc",
     JSON.stringify(settingsConflict?.management),
   );
+  const reset = settingsConflict?.reset;
+  const ordinary = reset?.library?.slice(1) ?? [];
+  const confirms = (message, parts) => typeof message === "string" && parts.every(part => message.includes(part));
+  check(
+    "Remove all removes every ordinary package after one confirmation, keeps the personal dictionary unless chosen, and reports failures by title",
+    reset?.filtered.visible.length === 1 && reset.filtered.shown && reset.filtered.enabled
+      && reset.cancelled.removals === 0 && reset.cancelled.custom === 0 && reset.cancelled.status === ""
+      && JSON.stringify(reset.partial.removals) === JSON.stringify(ordinary)
+      && JSON.stringify(reset.partial.remaining) === JSON.stringify([CUSTOM_DICTIONARY_ID, ordinary[2]])
+      && reset.partial.error && reset.partial.custom === 0
+      && confirms(reset.partial.text, ["Removed 3 of 4 dictionaries.", "Library 7: simulated engine failure"])
+      && confirms(reset.partial.confirmation, ["Remove 4 imported dictionaries?", "disabled", "the search hides",
+        "The personal dictionary is kept.", "Anki notes are not changed", "existing backups still hold them"]),
+    JSON.stringify({ filtered: reset?.filtered, cancelled: reset?.cancelled, partial: reset?.partial }),
+  );
+  check(
+    "erasing the personal source uses the confirmed revision, so a later Note keeps it until a fresh confirmation",
+    JSON.stringify(reset?.stale.removals) === JSON.stringify([ordinary[2]])
+      && JSON.stringify(reset.stale.requests) === JSON.stringify([
+        { type: "hd_custom_read", target: "hoshidicts-worker" },
+        { type: "hd_custom_save", baseDocumentRevision: 3, text: "" },
+      ])
+      && JSON.stringify(reset.stale.remaining) === JSON.stringify([CUSTOM_DICTIONARY_ID]) && reset.stale.error
+      && confirms(reset.stale.text, ["Removed 1 dictionary.", "changed after you confirmed, so it was kept"])
+      && confirms(reset.stale.confirmation, ["Remove 1 imported dictionary and erase the personal dictionary source and its 2 entries?"])
+      && !reset.stale.confirmation.includes("is kept")
+      && reset.erased.withoutChoice && reset.erased.withChoice && reset.erased.removals.length === 0
+      && JSON.stringify(reset.erased.requests) === JSON.stringify([
+        { type: "hd_custom_read", target: "hoshidicts-worker" },
+        { type: "hd_custom_save", baseDocumentRevision: 4, text: "" },
+      ])
+      && reset.erased.remaining === 0 && reset.erased.hidden && reset.erased.ready
+      && reset.erased.text === "Erased the personal dictionary source."
+      && reset.erased.confirmation?.startsWith("Erase the personal dictionary source and its 3 entries?"),
+    JSON.stringify({ stale: reset?.stale, erased: reset?.erased }),
+  );
+  check(
+    "Reset lookup counts confirms once, asks the worker, and both resets are unavailable while linked",
+    reset?.linked.removeAll && reset.linked.personal && reset.linked.counts && reset.linked.notices
+      && reset.unlinked.removeAll && reset.unlinked.counts && reset.unlinked.notices
+      && reset.counts.cancelled === 0 && reset.counts.busy
+      && JSON.stringify(reset.counts.done.targets) === JSON.stringify(["hoshidicts-worker"])
+      && reset.counts.done.ready && reset.counts.done.enabled
+      && reset.counts.done.text === "Lookup counts reset."
+      && confirms(reset.counts.done.confirmation, ["Reset lookup counts for every word?", "counts as 1",
+        "Anki notes are not changed", "existing backups keep the earlier counts"])
+      && reset.counts.failed.error && reset.counts.failed.text.includes("linked Hachidori")
+      && reset.counts.enabledAfterFailure && reset.counts.dictionariesUntouched,
+    JSON.stringify({ linked: reset?.linked, unlinked: reset?.unlinked, counts: reset?.counts }),
+  );
   const settingsBatch = await settingsBatchImportStage();
   check(
     "settings imports dropped archives sequentially through the shared progress rows and retains each timed outcome",
@@ -14468,6 +14579,11 @@ async function settingsConflictStage() {
   let removeStarted = false;
   let releaseRemove = null;
   let removeHandler = null;
+  const customRequests = [];
+  let customDocument = { schemaVersion: 1, revision: 0, semanticRevision: "", text: "" };
+  let customSaveHandler = null;
+  const statsResets = [];
+  let statsResetReply = { ok: true };
   const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
@@ -14562,6 +14678,18 @@ async function settingsConflictStage() {
           return new Promise((resolveRemove) => {
             releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
           });
+        }
+        if (message.type === "hd_custom_read") {
+          customRequests.push({ type: message.type, target: message.target });
+          return { ok: true, document: structuredClone(customDocument), state: structuredClone(state) };
+        }
+        if (message.type === "hd_custom_save") {
+          customRequests.push({ type: message.type, baseDocumentRevision: message.baseDocumentRevision, text: message.text });
+          return customSaveHandler(message);
+        }
+        if (message.type === "hd_lookup_stats_reset") {
+          statsResets.push(message.target);
+          return structuredClone(statsResetReply);
         }
         throw new Error(`unexpected settings request ${message.type}`);
       },
@@ -15104,6 +15232,122 @@ async function settingsConflictStage() {
       || state.dictionaries.length !== 1 || state.dictionaries[0].id !== CUSTOM_DICTIONARY_ID) {
     throw new Error("bulk retry did not remove only the failed package and protect the personal dictionary");
   }
+
+  // Settings → Library → Remove all imported dictionaries, then Reading → Reset lookup counts.
+  const settle = async (predicate) => {
+    const until = Date.now() + 2000;
+    while (!predicate() && Date.now() < until) await new Promise(done => window.setTimeout(done, 5));
+    await new Promise(done => window.setTimeout(done, 0));
+  };
+  const importFile = window.document.getElementById("import-file");
+  const removeAll = window.document.getElementById("library-remove-all");
+  const erasePersonal = window.document.getElementById("library-reset-personal");
+  const libraryStatus = window.document.getElementById("library-reset-status");
+  const countsReset = window.document.getElementById("lookup-counts-reset");
+  const countsStatus = window.document.getElementById("lookup-counts-reset-status");
+  const outcome = (output) => ({ text: output.textContent, error: output.classList.contains("is-error"),
+    ready: output.classList.contains("is-ready") });
+  await settle(() => !importFile.disabled);
+  const library = [
+    genericPackage({ id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE }),
+    ...managementDictionaries.slice(4, 8),
+  ];
+  library[2] = { ...library[2], enabled: false };
+  acceptState(library);
+  search.value = "Library 5";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  const resetConfirmations = [];
+  let answer = false;
+  window.confirm = message => { resetConfirmations.push(message); return answer; };
+  removalCalls.length = 0;
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    if (message.title === "Library 7") return { ok: false, error: "simulated engine failure" };
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  const filtered = { visible: rowIds(), shown: !window.document.getElementById("library-reset").hidden,
+    enabled: !removeAll.disabled };
+  removeAll.click();
+  await settle(() => resetConfirmations.length === 1 && !importFile.disabled);
+  const cancelled = { removals: removalCalls.length, custom: customRequests.length, status: libraryStatus.textContent };
+  answer = true;
+  removeAll.click();
+  await settle(() => libraryStatus.textContent.includes("Could not remove") && !importFile.disabled);
+  const partial = { removals: [...removalCalls], remaining: state.dictionaries.map(entry => entry.id),
+    ...outcome(libraryStatus), confirmation: resetConfirmations[1], custom: customRequests.length };
+
+  // A Note appended after the confirmation keeps the personal source.
+  customDocument = { schemaVersion: 1, revision: 3, semanticRevision: "a".repeat(64), text: "猫, ねこ, cat\n犬, いぬ, dog\n" };
+  customSaveHandler = async () => {
+    customDocument = { ...customDocument, revision: 4, text: `${customDocument.text}鳥, とり, bird\n` };
+    return { ok: false, stale: true, error: "the custom dictionary source changed while it was being saved",
+      document: structuredClone(customDocument), state: structuredClone(state) };
+  };
+  removeHandler = async message => {
+    removalCalls.push(message.id);
+    acceptState(state.dictionaries.filter(entry => entry.id !== message.id));
+    return { ok: true };
+  };
+  removalCalls.length = 0;
+  erasePersonal.checked = true;
+  erasePersonal.dispatchEvent(new window.Event("change", { bubbles: true }));
+  removeAll.click();
+  await settle(() => libraryStatus.textContent.includes("changed after you confirmed") && !importFile.disabled);
+  const stale = { removals: [...removalCalls], requests: structuredClone(customRequests),
+    remaining: state.dictionaries.map(entry => entry.id), ...outcome(libraryStatus), confirmation: resetConfirmations[2] };
+
+  // Only the personal dictionary is left: Remove all needs the explicit choice.
+  erasePersonal.checked = false;
+  erasePersonal.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const personalOnlyWithoutChoice = removeAll.disabled;
+  erasePersonal.checked = true;
+  erasePersonal.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const personalOnlyWithChoice = !removeAll.disabled;
+  customRequests.length = 0;
+  removalCalls.length = 0;
+  customSaveHandler = async message => {
+    if (message.baseDocumentRevision !== customDocument.revision) throw new Error("erase used an old revision");
+    customDocument = { schemaVersion: 1, revision: customDocument.revision + 1, semanticRevision: "e".repeat(64), text: "" };
+    const reply = acceptState(state.dictionaries.filter(entry => entry.id !== CUSTOM_DICTIONARY_ID));
+    return { ...reply, document: structuredClone(customDocument), removed: true };
+  };
+  removeAll.click();
+  await settle(() => libraryStatus.textContent.includes("Erased") && !importFile.disabled);
+  const erased = { withoutChoice: personalOnlyWithoutChoice, withChoice: personalOnlyWithChoice,
+    removals: [...removalCalls], requests: structuredClone(customRequests), remaining: state.dictionaries.length,
+    hidden: window.document.getElementById("library-reset").hidden, ...outcome(libraryStatus),
+    confirmation: resetConfirmations[3] };
+
+  acceptState([managementDictionaries[8]]);
+  storageListener({ sharing: { newValue: { host: null, client: { address: "ws://192.0.2.10:8771/link" } } } }, "local");
+  const linked = { removeAll: removeAll.disabled, personal: erasePersonal.disabled, counts: countsReset.disabled,
+    notices: !window.document.getElementById("library-reset-linked").hidden
+      && !window.document.getElementById("lookup-counts-reset-linked").hidden };
+  storageListener({ sharing: { newValue: { host: null, client: null } } }, "local");
+  const unlinked = { removeAll: !removeAll.disabled, counts: !countsReset.disabled,
+    notices: window.document.getElementById("library-reset-linked").hidden
+      && window.document.getElementById("lookup-counts-reset-linked").hidden };
+
+  const statesBeforeCounts = state.revision;
+  answer = false;
+  countsReset.click();
+  const countsCancelled = statsResets.length;
+  answer = true;
+  countsReset.click();
+  const countsBusy = countsReset.disabled;
+  await settle(() => countsStatus.textContent.startsWith("Lookup counts reset"));
+  const countsDone = { targets: [...statsResets], ...outcome(countsStatus), enabled: !countsReset.disabled,
+    confirmation: resetConfirmations.at(-1) };
+  statsResetReply = { ok: false, error: "Lookup counts belong to the linked Hachidori. Unlink to reset this browser's counts." };
+  countsReset.click();
+  await settle(() => countsStatus.textContent.startsWith("Could not"));
+  result.reset = {
+    filtered, cancelled, partial, stale, erased, linked, unlinked,
+    library: library.map(entry => entry.id),
+    counts: { cancelled: countsCancelled, busy: countsBusy, done: countsDone, failed: outcome(countsStatus),
+      enabledAfterFailure: !countsReset.disabled, dictionariesUntouched: state.revision === statesBeforeCounts },
+  };
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;

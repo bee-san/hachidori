@@ -170,7 +170,10 @@ After linking, the page reloads, and from then on:
   addresses refer to the host computer;
 - the Import and Backup sections show that archives and backups belong to the
   host; recommended dictionaries can still be installed from here, and ZIP
-  files imported here are [sent to the host](#imports-from-linked-browsers).
+  files imported here are [sent to the host](#imports-from-linked-browsers);
+- **Remove all imported dictionaries** and **Reset lookup counts** are
+  unavailable: they act on one browser's own data, and what a linked browser
+  shows belongs to the host. Use them on the host, or unlink first.
 
 ![Settings → Sharing on a linked browser, using the shared Hachidori](assets/sharing-linked.png)
 

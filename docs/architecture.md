@@ -2065,6 +2065,17 @@ Bulk actions appear when a selection exists, including selections outside the
 current search. Source editing remains lazy, and lookup preferences apply
 immediately; custom source still requires Save.
 
+**Remove all imported dictionaries**, under Start over at the end of Library,
+lets pending dictionary edits settle, rereads the inventory and asks once with
+the number of ordinary packages, disabled and search-hidden ones included. It
+then sends one ordinary `hd_remove` per package in order and names each package
+still installed afterwards; it is not one library transaction. The personal
+dictionary goes only when **Also erase the personal dictionary source** is
+ticked: Settings reads the source revision before asking and saves an empty
+source against it with `hd_custom_save`, so a Note or save made after the
+confirmation is refused rather than erased. Neither this nor **Reset lookup
+counts** changes Anki or retained backups, and both are disabled while linked.
+
 Reading owns local lookup history and definition blur. Design contains appearance
 and displayed-content controls; its reset leaves reading behaviour and history
 preferences untouched. The preview and advanced CSS use native disclosures.
@@ -2894,6 +2905,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_custom_cas` | Atomically compare-and-set the source document and bound package state |
 | `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |
 | `hd_custom_append` | Append one validated popup Note entry to the latest queued source and compile it |
+| `hd_lookup_stats_record`, `hd_lookup_stats_read`, `hd_lookup_stats_reset`, `hd_lookup_stats_cleanup` | Record or read one term/reading count in the serialized storage queue; from Settings, start a new empty history generation (refused while linked); after a restore, remove rows outside the current generation |
 | `hd_backup_read`, `hd_backup_export`, `hd_backup_prepare`, `hd_backup_restore`, `hd_backup_cancel` | Read the complete manual payload, export it, stage and confirm a complete replacement, or discard staged roots |
 | `hd_backup_auto_list`, `hd_backup_auto_get`, `hd_backup_auto_roots`, `hd_backup_auto_prepare`, `hd_backup_auto_cleanup` | List independently valid retained records, fetch one for the engine, protect every retained record's immutable roots, validate one in place for restore, or reconcile deferred generation cleanup |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |

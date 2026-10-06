@@ -781,7 +781,16 @@ What it proves, in order:
    and removal pruning. The shared group-state contract preserves normalized
    names, disabled installed members, ordered deduplication, and worker metadata
    without mutating its input. A three-archive batch verifies that a failed
-   middle import does not stop the last one.
+   middle import does not stop the last one. **Remove all imported
+   dictionaries** sends one ordered removal per ordinary package after one
+   confirmation, disabled and search-hidden packages included, and names a
+   failed one; it erases the personal source only when that is ticked, at the
+   source revision the confirmation described, so a Note saved since keeps it.
+   **Reset lookup counts** asks the worker once. Both are disabled while linked.
+   The worker accepts a lookup-count reset only from Settings and refuses it
+   while linked; a lookup held in the storage queue on either side of a reset
+   counts in the old generation (and is erased) or from 1 in the new one, and
+   only the new row remains.
    Native spies verify that reordering skips reset, add and warm lookup even
    beside an unchanged enabled or disabled failed package, retaining its error.
    The real-Chrome dictionary-management scenario checks immediate rank and DOM
@@ -1336,9 +1345,12 @@ hides the link; and, after the in-run service-worker restart and the full
 pass-2 relaunch, no reopened startup tab, no further archive request, the same
 completed record, and the earlier edit still in force. Both Anki headings are
 transient, so the page records every heading it paints through a
-`MutationObserver` instead of relying on a poll landing inside them. The four
-setup-installed packages are removed afterwards so the Settings installer below
-still starts from an empty library.
+`MutationObserver` instead of relying on a poll landing inside them. The
+setup-installed packages are then removed with Settings → Library → **Remove
+all imported dictionaries**, one of them disabled and the others hidden by a
+search: one confirmation must state their number and the real engine must
+leave an empty library, so the Settings installer below still starts from an
+empty library.
 
 One further check drives the recognised case. With setup returned to the Anki
 stage and a mocked AnkiConnect answering on the service-worker target, a new
@@ -1471,6 +1483,13 @@ a conflict with explicit discard. Revisioned options also survive the full
 browser restart. The extension harness covers no-op revisions, atomic selector
 pruning, failed-save retry, first-input draft ownership, and old/repeated content
 storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
+
+The lookup-count checks then press **Reset lookup counts** with a counted popup
+still open in the reading tab. After one confirmation, that same popup and
+count line must read *Looked up 0 times* without a recorded lookup, storage must
+hold a new generation one revision higher with no rows and unchanged dictionary
+and options revisions, and the next real lookup must count 1.
+`HACHIDORI_LOOKUP_STATS_SCREENSHOT` captures the Lookup history controls.
 
 Design adds three browser assertions: lazy production-rendered sample content
 and keyboard kanji/Back highlighting, live presentation edits with retained
