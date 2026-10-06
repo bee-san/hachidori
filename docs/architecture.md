@@ -1110,6 +1110,12 @@ including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
+Frequency tags never count against that budget for themselves (#505): every
+frequency dictionary a result carries keeps its tag in the first and every
+later entry, however many are installed and wherever they sit in the
+dictionary order. Their wrapped rows grow with the collection. Visible
+frequency tags still count against the budget for the pitch badges after
+them.
 
 Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not

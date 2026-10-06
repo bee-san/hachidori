@@ -204,6 +204,38 @@ test("tags keep dictionary order, so each first value is the one averaged, as in
     ["Avg rank372", ["462 · 24459㋕", "312 · 19896㋕"]]);
 });
 
+test("every supplied frequency dictionary keeps its tag in the first and later entries, in any order (#505)", t => {
+  const f = fixture(t);
+  // monogatari's row for 答案, as the #427 archive stores it, after enough
+  // other sources to pass the twelve-tag metadata display budget.
+  const monogatari = { dictionary: "monogatari", frequencies: [{ value: 13337, displayValue: "13337/37459" }] };
+  const sources = count => [...Array.from({ length: count - 1 }, (_, index) => ({ dictionary: `Rank ${index + 1}`,
+    frequencies: [{ value: 100 * (index + 1), displayValue: String(100 * (index + 1)) }] })), monogatari];
+  for (const frequencies of [sources(13), sources(20), sources(60), sources(13).toReversed()]) {
+    const titles = frequencies.map(({ dictionary }) => dictionary);
+    const first = { ...RESULT, term: { ...RESULT.term, frequencies } };
+    const second = { ...first, term: { ...first.term, expression: "食う", reading: "くう" } };
+    // Every value is a rank, so the one average is their harmonic mean.
+    const average = Math.floor(frequencies.length
+      / frequencies.reduce((sum, group) => sum + 1 / group.frequencies[0].value, 0));
+    for (const averageFrequency of [false, true]) {
+      f.view.renderResults([first, second], f.candidate, { ...f.options.normaliseOptions({}), averageFrequency,
+        dictionaryPresentation: titles.map(title => ({ title, frequencyMode: "rank-based" })), expandAll: true });
+      const [primary, later] = f.popup.querySelectorAll(".gsm-hoshidicts-entry");
+      for (const container of [primary.querySelector(".gsm-hoshidicts-primary-frequencies"),
+        later.querySelector(".gsm-hoshidicts-frequency-metadata")]) {
+        const tags = [...container.querySelectorAll(".gsm-hoshidicts-tag-frequency:not([data-frequency-average])")];
+        assert.deepEqual(tags.map(tag => tag.dataset.dictionary), titles);
+        assert.equal(tags.find(tag => tag.dataset.dictionary === "monogatari").textContent, "13337/37459");
+        // Averaging hides the individual tags but keeps every one in the DOM.
+        assert.deepEqual(tags.map(tag => tag.hidden), titles.map(() => averageFrequency));
+        assert.deepEqual([...container.querySelectorAll("[data-frequency-average] .gsm-hoshidicts-frequency-value")]
+          .map(node => node.textContent), averageFrequency ? [String(average)] : []);
+      }
+    }
+  }
+});
+
 test("averaged hidden tags take no pitch budget, hide all-hidden groups and follow live toggles and aliases", t => {
   const f = fixture(t);
   const pitch = dictionary => ({ dictionary, pitches: [{ position: 0, pattern: "", nasal: [], devoice: [] }],
