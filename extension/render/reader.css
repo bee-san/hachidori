@@ -2145,6 +2145,10 @@ html[data-hoshidicts-theme="girlypop"],
   white-space: nowrap;
 }
 
+/* The pronunciation chooser is an overlay inside its popup, out of the popup's
+   flow: audio-content.js hangs it beside its button and shortens it to the room
+   there, so a long list scrolls inside it and the definitions never move. The
+   12px keep its 6px placement padding from both edges. */
 .gsm-hoshidicts-audio-menu {
   --hoshidicts-menu-background: color-mix(
     in srgb,
@@ -2167,13 +2171,14 @@ html[data-hoshidicts-theme="girlypop"],
     var(--hoshidicts-palette-primary) 18%,
     var(--hoshidicts-palette-base-100)
   );
-  z-index: 5;
-  flex: 0 1 auto;
-  min-height: 0;
-  width: 100%;
-  max-height: 70%;
+  position: absolute;
+  /* Above the resize handle, which shares the popup's bottom-right corner. */
+  z-index: 11;
+  width: min(280px, calc(100% - 12px));
+  max-height: min(360px, calc(100% - 12px));
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 6px;
   border: 1px solid var(--hoshidicts-menu-border);
@@ -2225,8 +2230,14 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-audio-menu-item:hover,
 .gsm-hoshidicts-audio-menu-item:focus-visible {
-  outline: none;
   background: var(--hoshidicts-menu-hover);
+}
+
+/* Replaces the browser's focus ring. Forced colours drop the background above
+   but draw this outline in a system colour, so keyboard focus stays visible. */
+.gsm-hoshidicts-audio-menu-item:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
 }
 
 .gsm-hoshidicts-audio-menu-close { float: right; width: auto; }

@@ -57,6 +57,7 @@ import { STRUCTURED_TABLE_CHECK, checkStructuredTable } from "./chrome-structure
 import { ACTION_ROW_CHECK, checkActionRow } from "./chrome-action-row.mjs";
 import { DYNAMIC_HEADWORD_CHECK, checkDynamicHeadword } from "./chrome-dynamic-headword.mjs";
 import { LOOKUP_COUNT_LAYOUT_CHECK, checkLookupCountLayout } from "./chrome-lookup-count-layout.mjs";
+import { AUDIO_CHOOSER_CHECK, checkAudioChooser } from "./chrome-audio-chooser.mjs";
 import { SETTINGS_FEEDBACK_CHECK, checkSettingsFeedback } from "./chrome-settings-feedback-scenarios.mjs";
 import { dictionaryManagementScenarios, REORDER_CHECKS } from "./chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK, checkDictionaryRankLayout } from "./chrome-dictionary-rank-scenarios.mjs";
@@ -317,7 +318,7 @@ const PLANNED = [
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "a note mined from a selection takes the hover's sentence without the hidden text inside it",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
-  "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
+  "Popup pronunciation choices open beside Audio from a right-click and Down, preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
   "Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
   "accepted reader lookups persist canonical counts without delaying definitions",
@@ -460,6 +461,7 @@ const PLANNED = [
   ACTION_ROW_CHECK,
   DYNAMIC_HEADWORD_CHECK,
   LOOKUP_COUNT_LAYOUT_CHECK,
+  AUDIO_CHOOSER_CHECK,
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
@@ -1635,24 +1637,33 @@ async function popupReader(page, depth = 0) {
     const reply = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId, returnByValue: true, arguments: [{ value: action }, { value: index }],
       functionDeclaration: function (action, index) {
-        const root = this.getRootNode(), view = this.ownerDocument.defaultView;
+        const root = this.getRootNode();
         const button = this.querySelectorAll(".gsm-hoshidicts-audio-button")[index];
         if (action === "play") button.click();
-        if (action === "choose") button.dispatchEvent(new view.MouseEvent("click", { shiftKey: true, bubbles: true }));
         const candidate = this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")[index];
         if (action === "candidate") candidate.scrollIntoView({ block: "nearest" });
         const menu = this.querySelector(".gsm-hoshidicts-audio-choices");
         const menuRect = menu?.getBoundingClientRect();
         const popupRect = this.getBoundingClientRect();
         const candidateRect = candidate?.getBoundingClientRect();
+        const buttonRect = button?.getBoundingClientRect();
+        const scroller = this.querySelector(".gsm-hoshidicts-content-scroll");
+        // Beside Audio: 4px below or above it, overlapping it horizontally, inside the popup.
+        const gap = menuRect && buttonRect && (menuRect.top >= buttonRect.bottom
+          ? menuRect.top - buttonRect.bottom : buttonRect.top - menuRect.bottom);
         return { text: this.textContent, button: button?.textContent, audioBusy: button?.getAttribute("aria-busy"),
           audioState: button?.dataset.state, audioHidden: button?.hidden,
           feedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
           choices: [...this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")].map(node => node.textContent),
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
-          menuFits: Boolean(menuRect && menuRect.height > 100 && menuRect.top >= popupRect.top && menuRect.bottom <= popupRect.bottom),
+          menuBeside: Boolean(menuRect && Math.abs(gap - 4) <= 1.5 && menuRect.height > 100
+            && menuRect.left <= buttonRect.right && menuRect.right >= buttonRect.left
+            && menuRect.left > popupRect.left && menuRect.right < popupRect.right
+            && menuRect.top > popupRect.top && menuRect.bottom < popupRect.bottom),
+          menuRect: menuRect?.toJSON(),
+          definitions: scroller && { scrollTop: scroller.scrollTop, rect: scroller.getBoundingClientRect().toJSON() },
           candidatePoint: candidateRect && { x: candidateRect.x + candidateRect.width / 2, y: candidateRect.y + candidateRect.height / 2 },
-          buttonRect: button?.getBoundingClientRect().toJSON(),
+          buttonRect: buttonRect?.toJSON(),
           focused: root.activeElement?.className, rect: this.getBoundingClientRect().toJSON() };
       }.toString(),
     });
@@ -5462,16 +5473,19 @@ async function checkPopupAudio(settings, tab, popup, browser) {
         && routes.get(base + "failure").requests === 1 && routes.get(base + "bad.wav").requests === 1,
       JSON.stringify({ silent, played, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
 
-    await popup.audio("choose");
+    // A real right-click on Audio, then Down from the keyboard, open the chooser beside it.
+    const audioButton = played.buttonRect;
+    await tab.mouse.click(audioButton.x + audioButton.width / 2, audioButton.y + audioButton.height / 2, { button: "right" });
     const choices = await until(state => state?.choices.length === 4);
+    const unmoved = JSON.stringify(choices.definitions) === JSON.stringify(played.definitions);
     if (process.env.HACHIDORI_AUDIO_POPUP_SCREENSHOT) {
       const { x, y, width, height } = choices.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_AUDIO_POPUP_SCREENSHOT, clip: { x, y, width, height } });
     }
     await tab.keyboard.press("Escape");
     const escaped = await popup.audio();
-    await popup.audio("choose");
-    await until(state => state?.choices.length === 4);
+    await tab.keyboard.press("ArrowDown");
+    const reopened = await until(state => state?.choices.length === 4);
     const candidate = await popup.audio("candidate", 3);
     await tab.mouse.click(candidate.candidatePoint.x, candidate.candidatePoint.y);
     const chosen = await completed();
@@ -5479,12 +5493,14 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     await popup.audio("play");
     const warm = await completed();
     const media = await evaluate("__e20Audio.map(audio => ({ ended: audio.ended, source: audio.getAttribute('src'), paused: audio.paused }))");
-    check("Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
-      choices.menuFits && choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
+    check("Popup pronunciation choices open beside Audio from a right-click and Down, preserve source identity and warm replay reuses native cached media",
+      choices.menuBeside && unmoved && reopened.menuBeside
+        && choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
         && escaped.focused === "gsm-hoshidicts-audio-button" && chosen.feedback.every(text => text === "")
         && routes.get(base + "osaka.wav").requests === 1 && warm.feedback.every(text => text === "")
         && count() === beforeWarm && media.length === 4
-        && media.every(item => item.paused && item.source === null), JSON.stringify({ choices, escaped, chosen, warm, media }));
+        && media.every(item => item.paused && item.source === null),
+      JSON.stringify({ played, choices, unmoved, escaped, reopened, chosen, warm, media }));
 
     await write({ audioSources: [source("auto", "custom", base + "tokyo.wav")], audioAutoplay: true });
     await rehover();
@@ -13669,6 +13685,8 @@ async function main() {
   check(DYNAMIC_HEADWORD_CHECK, true);
   await checkLookupCountLayout(browser);
   check(LOOKUP_COUNT_LAYOUT_CHECK, true);
+  await checkAudioChooser(browser, { screenshotDirectory: process.env.HACHIDORI_AUDIO_CHOOSER_SCREENSHOTS });
+  check(AUDIO_CHOOSER_CHECK, true);
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);

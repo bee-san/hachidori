@@ -108,6 +108,22 @@ the held Note draft, navigation that cannot reach its target, and Back's
 disclosure order. `test/anki-content.test.mjs` checks that a renderer can name
 the result that owns the shared custom Anki buttons.
 
+`test/chrome-audio-chooser.mjs`, called by the Chrome suite, renders three
+results through the production renderer, stylesheet and audio controller with
+the reader's own popup-pixel conversion (#504). A real right-click, Shift-click
+and Down each open the pronunciation chooser 4 popup pixels below Audio, or
+above it with the bottom toolbar, overlapping it horizontally and at least 6
+popup pixels inside every popup edge: at 100% and 125% popup scale, at 80% under
+125% browser zoom, and in the dark, light and high-contrast palettes. Opening
+it moves neither the definitions nor their scroll position, and focus goes to
+Close and back to Audio. In a 280×200 popup at 125%, 25 choices scroll inside
+the chooser and a real click on the last plays it with its exact identity. A
+later result's chooser follows its scrolled button, including into the pinned
+header, and closes when the button is scrolled out of the definitions or hidden
+by a later shown result. Keyboard focus on a choice draws a transparent outline,
+which forced colours (emulated dark and light) paint in a system colour.
+`HACHIDORI_AUDIO_CHOOSER_SCREENSHOTS` names a directory for its screenshots.
+
 `node --test test/sentence.test.mjs` is the table-driven contract of
 `extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
 end, enclosing quotes and brackets left out, nested and preceding pairs kept
@@ -938,7 +954,9 @@ What it proves, in order:
    retired callbacks and replies, and non-monotonic engine generations. Parent
    and child Note appends complete with reversed replies/storage events without
    losing drafts, duplicating appends, or reviving a retired depth. Queued shared
-   media remains live while any owning popup still needs it.
+   media remains live while any owning popup still needs it. Opening a
+   pronunciation chooser closes the child pane over it unless a draft protects
+   the child, and definition scans start no hit test until the chooser closes.
    Same-view refresh keeps the actual mounted Note form, pending save and
    response-time focus; held failures/misses preserve protected drafts. Repeated
    stale tab/Show-more actions share the current replay without reviving old
@@ -1229,9 +1247,10 @@ and the same offscreen document and engine survive 31 seconds of audio silence.
 
 Popup audio adds four browser assertions for default-off silence, enabled-source
 and decode fallback, source/name choice with native cached replay, once-per-view
-autoplay, and cancellation on dismissal, source edits and navigation. The chooser
-is checked against visible popup bounds and selected with a real mouse click;
-Escape restores Audio focus without hiding definitions.
+autoplay, and cancellation on dismissal, source edits and navigation. A real
+right-click on Audio, and Down from the keyboard, open the chooser 4px beside
+it inside the popup without moving the definitions; a real mouse click selects
+a choice, and Escape restores Audio focus without hiding definitions.
 `HACHIDORI_AUDIO_POPUP_SCREENSHOT` captures the chooser. Test instrumentation
 observes native Audio instances without replacing decoding or completion events.
 
@@ -1255,7 +1274,12 @@ beside the audio button for a missing, failed or cancelled pronunciation (#501)
 while the chooser keeps each source's error, list and recording failures named
 with their HTTP status or network error, an undecodable recording's media error,
 size and content type, the Audio URL/Yomitan JSON type mismatch in both
-directions, the same explanation when mining (#499), and controls hidden when no source is configured. Extension
+directions, the same explanation when mining (#499), and controls hidden when no source is configured. They also place the
+chooser beside its button in popup pixels from each gesture, above it when only
+that side has room and shortened to a long list's room, re-place it on the next
+frame after a popup scroll and at once when its popup is placed, and close it on
+a press elsewhere, a scrolled-away button or retirement, with no late candidates
+filling it. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
@@ -1278,7 +1302,7 @@ pronunciation.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 200 predeclared checks in a browser. The reproducible
+The primary-path test runs 293 predeclared checks in a browser. The reproducible
 launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
 external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -1816,7 +1840,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 193 assertions, and the summary line
+`PLANNED` at the top of the file names all 293 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
