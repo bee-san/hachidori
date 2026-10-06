@@ -5,12 +5,15 @@
 // a fake Netflix player over a <video> whose audio is silence and one beep, a
 // synthetic manifest and WebVTT, and a fake AnkiConnect. It mines the subtitle
 // word through the real popup and requires the stored WAV's beep within 125 ms
-// of its place, seeking only through the player and the viewer's state restored.
+// of its place and a looping GIF of the line that Chrome decodes into more than
+// one distinct frame, seeking only through the player and the viewer's state
+// restored.
 // Hovering the line of the playing video must then pause it through the player
 // and moving away resume it, also around a second note's replay; a note added
 // while the viewer plays it on over the line must leave it paused, never
-// played on while the recorder runs, until the pointer leaves; and nothing
-// pauses once the switch is off.
+// played on while the recorder runs, until the pointer leaves; a note whose
+// only Netflix field is {gif} gets the GIF alone; and nothing pauses once the
+// switch is off.
 //
 // Not part of the default runs. Chrome grants tab capture only after a user
 // invokes the extension on the tab; --allowlisted-extension-id stands in for
@@ -225,7 +228,8 @@ try {
   await settings.click("#opt-experimental-netflixMining");
   await settings.waitForFunction(async () => (await chrome.scripting.getRegisteredContentScripts()).length === 2);
   console.log("Netflix scripts registered");
-  await settings.evaluate(async ankiUrl => {
+  // The Basic note type's Back field template, written through the options queue.
+  const mapBack = back => settings.evaluate(async (ankiUrl, value) => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover",
@@ -233,9 +237,10 @@ try {
         anki: { ...HDReaderOptions.DEFAULT_OPTIONS.anki, url: ankiUrl, model: "Basic", captureScreenshot: false,
           duplicateBehavior: "new",
           fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
-            Back: { value: "{sentence}<br>{sentence-audio}<br>{gif}", overwriteMode: "overwrite" } } } } });
+            Back: { value, overwriteMode: "overwrite" } } } } });
     if (!reply.ok) throw new Error(reply.error);
-  }, `http://127.0.0.1:${anki.address().port}`);
+  }, `http://127.0.0.1:${anki.address().port}`, back);
+  await mapBack("{sentence}<br>{sentence-audio}<br>{gif}");
 
   const tab = await browser.newPage();
   tab.setDefaultTimeout(60_000);
@@ -280,6 +285,35 @@ try {
       for (let wait = 0; wait < 20 && notes.length === added; wait++) await new Promise(done => setTimeout(done, 500));
     }
   }
+  // Chrome's own GIF decoder: the frame count, loop count and size, and how many
+  // decoded frames differ, from the GIF the fake AnkiConnect stored.
+  async function decodeGif(filename) {
+    const bytes = Buffer.from(media.get(filename), "base64");
+    const decoded = await settings.evaluate(async base64 => {
+      const decoder = new ImageDecoder({ data: Uint8Array.from(atob(base64), character => character.charCodeAt(0)),
+        type: "image/gif" });
+      await decoder.tracks.ready;
+      await decoder.completed;
+      const track = decoder.tracks.selectedTrack;
+      const digests = new Set();
+      let width = 0, height = 0;
+      for (let frameIndex = 0; frameIndex < track.frameCount; frameIndex++) {
+        const { image } = await decoder.decode({ frameIndex });
+        width = image.displayWidth;
+        height = image.displayHeight;
+        const canvas = new OffscreenCanvas(width, height);
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0);
+        image.close();
+        const pixels = context.getImageData(0, 0, width, height).data;
+        digests.add([...new Uint8Array(await crypto.subtle.digest("SHA-256", pixels))].join(","));
+      }
+      decoder.close();
+      return { frames: track.frameCount, loop: String(track.repetitionCount), width, height, distinct: digests.size };
+    }, bytes.toString("base64"));
+    return { ...decoded, kib: bytes.length / 1024 };
+  }
+
   await addNote();
   assert.equal(notes.length, 1, "one note was added");
   const [note] = notes;
@@ -300,16 +334,16 @@ try {
   console.log(`clip ${(count / rate).toFixed(3)} s at ${rate} Hz; beep at ${found.toFixed(1)} ms, expected ${expected} ms`);
   assert.ok(first >= 0 && Math.abs(found - expected) <= 125, `the beep is within 125 ms (${found} vs ${expected})`);
   assert.ok(Math.abs(count / rate * 1000 - (CUE.endMs - CUE.startMs + 2 * PAD_MS)) <= 50, "the clip is the cue with its pads");
-  // The {gif} field holds the line's animated GIF: it decodes with more than
-  // one frame, from the moving band the fixture painted while the line played.
+  // The {gif} field holds the line's animated GIF: Chrome decodes it into more
+  // than one distinct frame, from the moving band the fixture painted while the
+  // line played, looping forever and at most 480 px wide.
   const gifFile = /<img src="(hachidori-gif-[0-9a-f-]{36}\.gif)">/u.exec(note.fields.Back)?.[1];
   assert.ok(gifFile, `the note references the line's GIF: ${note.fields.Back}`);
-  const gif = Buffer.from(media.get(gifFile), "base64");
-  assert.equal(gif.toString("ascii", 0, 6), "GIF89a", "the stored GIF has a GIF89a header");
-  let gifFrames = 0;
-  for (let index = 0; index < gif.length - 1; index++) if (gif[index] === 0x21 && gif[index + 1] === 0xf9) gifFrames++;
-  console.log(`gif ${(gif.length / 1024).toFixed(1)} KiB, ${gifFrames} frames`);
-  assert.ok(gifFrames > 1, `the GIF decodes with more than one frame (${gifFrames})`);
+  const gif = await decodeGif(gifFile);
+  console.log(`gif ${gif.kib.toFixed(1)} KiB, ${gif.width}×${gif.height}, ${gif.frames} frames decoded, ${gif.distinct} distinct`);
+  assert.ok(gif.frames > 1 && gif.distinct > 1, `the GIF decodes into more than one distinct frame: ${JSON.stringify(gif)}`);
+  assert.equal(gif.loop, "Infinity", "the GIF loops forever");
+  assert.ok(gif.width > 0 && gif.width <= 480, `the GIF is at most 480 px wide (${gif.width})`);
   const evidence = await tab.evaluate(() => {
     const video = document.querySelector("video");
     return { ...window.__fixture, currentTime: video.currentTime, paused: video.paused, rate: video.playbackRate };
@@ -388,6 +422,21 @@ try {
   await waitForCalls(start, 4, false, "leaving after mining plays the video on");
   assert.equal((await playback()).calls.at(-1), "play", "the video plays on after the recorder has stopped");
 
+  // A note whose only Netflix field is {gif}: the line is recorded for its GIF
+  // alone, with no sentence audio. The paused video is placed inside the cue.
+  await mapBack("{gif}");
+  await tab.mouse.move(...away);
+  await tab.evaluate(ms => {
+    window.netflix.appContext.state.playerApp.getAPI().videoPlayer.getVideoPlayerBySessionId().seek(ms);
+    document.querySelector("video").pause();
+  }, CUE.startMs + 200);
+  await addNote();
+  assert.equal(notes.length, 4, "a fourth note was added with only {gif} mapped");
+  const onlyGif = /^<img src="(hachidori-gif-[0-9a-f-]{36}\.gif)">$/u.exec(notes[3].fields.Back)?.[1];
+  assert.ok(onlyGif, `the {gif}-only note holds the line's GIF alone: ${notes[3].fields.Back}`);
+  const second = await decodeGif(onlyGif);
+  assert.ok(second.frames > 1 && second.distinct > 1, `the {gif}-only GIF decodes into distinct frames: ${JSON.stringify(second)}`);
+
   // Switched off, the page that still has the scripts pauses nothing.
   await settings.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
@@ -405,7 +454,7 @@ try {
   assert.equal(after.paused, false);
   assert.equal(after.directWrites, 0, "the hover pause wrote no currentTime either");
   passed = true;
-  console.log("Netflix mining fixture: 3 notes, line audio within 125 ms, playback restored, hover pause and resume through the player, no play while recording — passed");
+  console.log("Netflix mining fixture: 4 notes, line audio within 125 ms, a decoded looping GIF, a {gif}-only note, playback restored, hover pause and resume through the player, no play while recording — passed");
 } finally {
   await browser?.close();
   anki.close();

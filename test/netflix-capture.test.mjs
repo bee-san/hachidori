@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder, encodeMonoWav, isSilent,
   mediaClockOffset } from "../extension/netflix-capture.js";
+import { readGif } from "./gif-structure.mjs";
 
 test("the media clock offset is the median of the page's (wall, media) pairs", () => {
   assert.equal(mediaClockOffset([[10_000, 1000], [10_101, 1100], [10_200, 1200]]), 9000);
@@ -244,15 +245,12 @@ test("with gif, the recorder opens the video track and encodes a looping GIF of 
   // The cue 1000–1600 ms is the GIF window.
   const clip = await recorder.finish({ startMs: 1000, endMs: 1600, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
   assert.equal(typeof clip.gif, "string", "a GIF was encoded");
-  const gif = Buffer.from(clip.gif, "base64");
-  assert.equal(gif.toString("ascii", 0, 6), "GIF89a");
-  // More than one frame: count the image separators.
-  let frames = 0;
-  for (let index = 0; index < gif.length; index++) if (gif[index] === 0x2c) frames++;
-  assert.ok(frames > 1, `the GIF has more than one frame (${frames})`);
+  const gif = readGif(Buffer.from(clip.gif, "base64"));
+  assert.ok(gif.frames.length > 1, `the GIF has more than one frame (${gif.frames.length})`);
+  assert.equal(gif.loop, 0, "the GIF loops forever");
   // The downscale keeps the aspect ratio within 480 px wide (960×540 → 480×270).
-  assert.equal(gif.readUInt16LE(6), 480);
-  assert.equal(gif.readUInt16LE(8), 270);
+  assert.equal(gif.width, 480);
+  assert.equal(gif.height, 270);
   assert.ok(record.stopped >= 2, "the audio and video tracks are both stopped");
 });
 

@@ -410,9 +410,11 @@ recorder has stopped and the pointer has left.
 The recorder frame's sample clock, trim, median clock fit, silence detection
 and WAV encoding run on synthetic blocks through fake media APIs; with a `{gif}`
 field it also opens the video track, downscales the frames to 480 px wide and
-encodes a looping GIF of the cue window that decodes with more than one frame,
-and `netflix-gif.test.mjs` covers the frame selection, per-frame delays and the
-GIF89a header and loop marker on their own. `anki-mining`, `anki-worker`,
+encodes a looping GIF of the cue window with more than one frame, and for a
+`{gif}` field alone returns that GIF and no WAV. `netflix-gif.test.mjs` covers
+the frame selection, per-frame delays, the loop marker and the one palette the
+frames share on their own; both read the GIF block by block
+(`gif-structure.mjs`). `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
 held WAV's and GIF's storage lifecycle, the `{sentence-audio}` and `{gif}`
 values with the GIF's screenshot fallback, and the reader's warnings, named for
@@ -426,14 +428,16 @@ mines a fixture page served at a Netflix watch address through the real popup
 into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
 player and in-tab recording must store a WAV whose beep lies within 125 ms of
 its place, and a looping GIF of the line (from an animated element on the
-fixture page) that decodes with more than one frame, with the viewer's
+fixture page) that Chrome's `ImageDecoder` decodes into more than one distinct
+frame, at most 480 px wide, with the viewer's
 position, pause and speed restored and `currentTime` written only by the player. It then plays the fixture from inside
 the cue: hovering the line must pause it through the player and moving away
 resume it without a seek; a second note added during that pause must be
 recorded with the pause still in force afterwards and resumed on leaving; a
 third note, added after the viewer played the paused video on over the line,
 must leave it paused with no play but the replay's own while the recorder frame
-is in the page, and play it on once the pointer leaves; and
+is in the page, and play it on once the pointer leaves; a fourth note, with
+`{gif}` its only Netflix field, must hold the line's GIF alone; and
 with the switch turned off, the page that still has the scripts must pause
 nothing. It needs headful Chrome, because
 headless Chrome captures tab audio as silence, and stands in for the user's
