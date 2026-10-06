@@ -617,7 +617,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
 `HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-181 checks, ordered by dependency. Exits 0 on success,
+185 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
