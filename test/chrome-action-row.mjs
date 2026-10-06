@@ -256,7 +256,7 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       const { root } = window.rowFixture;
       const audio = root.querySelector(".gsm-hoshidicts-audio-button");
       const note = root.querySelector(".gsm-hoshidicts-note-button");
-      return ["loading", "error", "idle"].map(state => {
+      return ["loading", "playing", "idle"].map(state => {
         audio.dataset.state = state;
         audio.disabled = state === "loading";
         return { audio: audio.getBoundingClientRect().toJSON(), note: note.getBoundingClientRect().toJSON() };

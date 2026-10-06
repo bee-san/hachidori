@@ -2115,9 +2115,22 @@ a visible error. Only natural completion reports success; the Settings Test has
 the reference's 15-second deadline. Leaving Audio, editing its tested source, or
 closing Settings stops its owned Test.
 
+A failure names the request that failed, the pronunciation list or the
+recording, with its HTTP status or network error (#499). A recording Chrome
+cannot decode reports the browser's media error and the size and content type
+the provider sent. Only a recording that has already failed is read, so an
+imprecise MIME type never rejects one that plays. A Yomitan list saved as an
+Audio URL fails this way, which is what pasting a provider's list link under
+**Add source**'s default type produces; Test then says to choose Yomitan JSON.
+A Yomitan JSON source that answers with something other than JSON is told the
+reverse. Anki mining reports the same explanation.
+
 Each term result shows Audio when an enabled speech or nonempty URL source is
-configured. Loading and playback use the button's icon state; only errors appear
-beside it, with no persistent success text. Shift-click, right-click or Down opens
+configured. Loading and playback use the button's icon state, and nothing
+appears beside it (#501): a missing recording, a failed source and a cancelled
+request all return it to Play, whether autoplay or a click started it.
+Settings → Audio → Test explains why a source fails, and the chooser shows each
+source's discovery error. Shift-click, right-click or Down opens
 the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
+import "../extension/reader-options.js";
 import { createAudioPlayer } from "../extension/audio-player.js";
 
 const term = { expression: "聞く", reading: "きく" };
 const source = { id: "source", type: "custom", enabled: true, url: "https://example.test/{reading}.wav", voice: "" };
 
-function environment({ failFirst = false, hold = false } = {}) {
+function environment({ failFirst = false, hold = false, mediaError = { code: 4 } } = {}) {
   const audio = [], revoked = [], utterances = [];
   let voiceReads = 0;
   const voice = { voiceURI: "ja-voice", name: "Japanese", lang: "ja-JP" };
   const window = {
     Audio: class {
-      constructor(src) { this.src = src; this.error = { code: 4 }; audio.push(this); }
+      constructor(src) { this.src = src; this.error = mediaError; audio.push(this); }
       play() {
         queueMicrotask(() => {
           if (failFirst && audio.length === 1) this.onerror?.();
@@ -57,6 +58,33 @@ test("source testing tries ordered JSON candidates through real player cleanup, 
   assert.deepEqual(env.revoked, ["blob:0", "blob:1"]);
   assert.ok(env.audio.every(audio => audio.paused && audio.released && audio.src === ""));
   assert.equal(env.voiceReads(), 0);
+});
+
+// The reported "could not be decoded or played" (#499), reproduced with
+// yomitan-ultimate-audio's /audio/list URL saved as an Audio URL source.
+test("an undecodable recording explains an audio list sent to an Audio URL and keeps the browser's media error", async () => {
+  const labels = globalThis.HDReaderOptions.AUDIO_SOURCE_LABELS;
+  const list = JSON.stringify({ type: "audioSourceList", audioSources: [{ url: "https://example.test/a.mp3", name: "NHK" }] });
+  const play = async (body, type) => {
+    const env = environment({ failFirst: true, mediaError: { code: 4,
+      message: "DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed" } });
+    const player = createAudioPlayer({ window: env.window, fetch: async () => ({ ok: true, blob: async () => new Blob([body], { type }) }) });
+    try {
+      return await player.play(source, term).then(() => assert.fail("the recording played"), error => error.message);
+    } finally {
+      assert.deepEqual(env.revoked, ["blob:0"], "the failed recording is still evicted");
+      player.dispose();
+    }
+  };
+  const listMessage = "The URL returned a Yomitan audio list, not a recording. If it is a list link, "
+    + `set this source's type to ${labels["custom-json"]} in Audio Settings.`;
+  assert.equal(await play(list, "application/json; charset=utf-8"), listMessage);
+  assert.equal(await play(`  ${list}`, "audio/mpeg"), listMessage, "the bytes decide, not the declared type");
+  assert.equal(await play("not audio", "audio/mpeg"), "The browser could not decode the recording (MEDIA_ERR_SRC_NOT_SUPPORTED: "
+    + "DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed). The provider sent 9 bytes of audio/mpeg.");
+  assert.equal(await play("{\"error\":\"Invalid API key\"}", ""), "The browser could not decode the recording "
+    + "(MEDIA_ERR_SRC_NOT_SUPPORTED: DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed). "
+    + "The provider sent 27 bytes with no content type.");
 });
 
 test("an accepted play promise is not a completed Test and stopping releases only its current audio", async () => {
