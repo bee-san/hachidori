@@ -2796,7 +2796,7 @@ async function resetLookupCounts() {
   try {
     const reply = await send("hd_lookup_stats_reset", {}, WORKER_TARGET);
     if (!reply.ok) throw new Error(reply.error || "the lookup counts could not be reset");
-    setSectionStatus("lookup-counts-reset-status", "Lookup counts reset. Every word starts again from zero.", "ready", true);
+    setSectionStatus("lookup-counts-reset-status", "Lookup counts reset.", "ready", true);
   } catch (error) {
     setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describe(error)}`, "error");
   } finally {

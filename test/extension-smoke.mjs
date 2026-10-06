@@ -9121,7 +9121,7 @@ async function main() {
       && reset.counts.cancelled === 0 && reset.counts.busy
       && JSON.stringify(reset.counts.done.targets) === JSON.stringify(["hoshidicts-worker"])
       && reset.counts.done.ready && reset.counts.done.enabled
-      && reset.counts.done.text === "Lookup counts reset. Every word starts again from zero."
+      && reset.counts.done.text === "Lookup counts reset."
       && confirms(reset.counts.done.confirmation, ["Reset lookup counts for every word?", "counts as 1",
         "Anki notes are not changed", "existing backups keep the earlier counts"])
       && reset.counts.failed.error && reset.counts.failed.text.includes("linked Hachidori")

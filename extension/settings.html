@@ -188,9 +188,9 @@
           <p class="section-note" id="dict-reorder-help">
             Drag to reorder, or use the arrow buttons. Open Details to rename or remove a dictionary.
           </p>
-          <fieldset class="lookup-group library-reset" id="library-reset" hidden>
+          <fieldset class="lookup-group" id="library-reset" hidden>
             <legend>Start over</legend>
-            <p class="field-hint" id="library-reset-help">Removes every imported dictionary, including disabled ones and any the search hides. Anki notes are not changed. Backups you have exported and this browser’s automatic backups still hold the removed dictionaries, so they can restore them.</p>
+            <p class="field-hint" id="library-reset-help">Removes every imported dictionary, including disabled ones and any the search hides. Anki notes are not changed. Exported backups and earlier automatic backups still hold the removed dictionaries and can restore them.</p>
             <label class="lookup-enable">
               <span>Also erase the personal dictionary source</span>
               <input id="library-reset-personal" type="checkbox" aria-describedby="library-reset-personal-help" />
@@ -600,7 +600,7 @@
               <button type="button" class="ghost danger" id="lookup-counts-reset" aria-describedby="lookup-counts-reset-help" data-search-keywords="clear delete erase zero history statistics start over">Reset lookup counts</button>
               <output class="custom-dictionary-status" id="lookup-counts-reset-status" aria-live="polite"></output>
             </div>
-            <p class="field-hint" id="lookup-counts-reset-help">Every word starts again from zero; your next lookup of it counts as 1. Dictionaries, settings and Anki notes are not changed. Backups you have exported and this browser’s automatic backups keep the earlier counts.</p>
+            <p class="field-hint" id="lookup-counts-reset-help">Every word starts again from zero; your next lookup of it counts as 1. Dictionaries, settings and Anki notes are not changed. Exported backups and earlier automatic backups keep the previous counts.</p>
             <p class="field-hint sharing-linked-notice" id="lookup-counts-reset-linked" hidden>Lookup counts belong to the linked Hachidori. Reset them there, or unlink in <a href="#sharing">Sharing</a> first.</p>
           </fieldset>
           <fieldset class="lookup-group" id="definition-blur-settings">
