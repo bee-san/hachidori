@@ -29,7 +29,9 @@ function requestFailure(failure, entry) {
 
 // `applyBatch(changes, isCurrent, snapshot)` writes one host storage batch locally, checking
 // isCurrent inside its storage queue; `version` and `name` introduce this install.
-export function createSharingClient({ WebSocket, applyBatch, version, name, capabilities = SHARING_CAPABILITIES }) {
+// `onWordStatus(revision)` hears the host's Anki index revision, and null
+// whenever the host's index starts or stops answering this browser.
+export function createSharingClient({ WebSocket, applyBatch, version, name, capabilities = SHARING_CAPABILITIES, onWordStatus = () => {} }) {
   const pending = new Map();
   const waiting = new Set();
   let address = null;
@@ -95,6 +97,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
         error = null;
         attempt = 0;
         settleWaiting();
+        // Word-status frames sent while this browser was away are lost, and
+        // this host's revisions do not continue the index that answered before.
+        onWordStatus(null);
         return;
       case "reply": {
         const entry = pending.get(frame.id);
@@ -106,6 +111,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
       case "storage":
         await applyBatch(frame.changes,
           () => socket === current && linkGeneration === currentGeneration);
+        return;
+      case "word-status":
+        onWordStatus(frame.revision);
         return;
       case "ping":
         current.send(JSON.stringify({ kind: "pong" }));
@@ -285,6 +293,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
       rejectPending(failure);
       settleWaiting(failure);
       previous?.close();
+      onWordStatus(null);
     },
   };
 }

@@ -401,5 +401,15 @@ export function createAnkiWorkerService({
       // Missing local evidence never prevents dictionary lookup.
       return { mature: false };
     }
-  } };
+  },
+    // Page-wide word status (#520): the first Template's cached index rows, read
+    // locally without contacting Anki. The reader reconciles against revision.
+    async wordStatus(request) {
+      const headwords = request?.headwords;
+      if (!Array.isArray(headwords) || headwords.some(headword => typeof headword !== "string")) {
+        throw new Error("Word status requires an array of headwords.");
+      }
+      const options = await readOptions();
+      return duplicateIndex.statuses(options.anki, headwords);
+    } };
 }

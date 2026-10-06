@@ -301,7 +301,8 @@ test/anki-client-media.test.mjs test/sharing-settings.test.mjs
 test/anki-addon.test.mjs` checks the sharing wire contract (addresses as a
 person types them, browser names, capability negotiation, the forwarding and
 Anki mining/Settings allowlists, host switching and retired-session replies,
-frame and client-media limits). The relay's raw-socket,
+frame and client-media limits, and word-status frames carrying a revision or
+`null`). The relay's raw-socket,
 archive, paused-peer, ordered large-frame, shutdown and optional Anki Desktop
 checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
@@ -322,6 +323,14 @@ media/TTS ownership, host-specific mining keys, duplicate-index suspension and
 restart ordering. The focused sharing-client checks also pin link generations:
 an unsent edit cannot move to a replacement host, an already-sent write reports
 an unknown outcome, and an obsolete reply cannot settle the new link's request.
+The host broadcasts its word-status revision only while a browser is linked;
+the client relays that revision, and `null` when a link's hello completes or
+it unlinks. The extension smoke suite's word-status stage answers a page's batch
+from the first Template's rows without contacting Anki, broadcasts a row
+change to every tab with its revision and a Template source change without
+one (and to linked browsers), answers a linked browser's batch from the host's
+index, and has a linked browser's pages re-read at its hello, on each host
+revision and after unlinking.
 
 `node test/chrome-sharing.mjs` launches two real Chromes: the host imports
 the fixture, handles a simulated HTTP 503 add-on download, and retries the
@@ -1151,7 +1160,10 @@ zero-request hit, immediate post-write updates, forced stale replacement,
 30-minute full refreshes, retained snapshots through failures, worker restart
 and cache-only maturity membership. It also verifies that linked-role
 suspension drains an admitted refresh, clears its alarm and blocks further
-local pulls until resume. The offscreen service test verifies that
+local pulls until resume. Word status answers a batch in request order, at
+the revision of the rows it read, from the rows held in memory without
+reading the stored index, and answers `null` for another source or no Anki
+configuration. The offscreen service test verifies that
 the refresh worker returns only compact rows and terminates after success or
 failure. These focused suites never contact an Anki collection.
 

@@ -248,5 +248,12 @@ export function createSharingHost({
         kind: "storage", changes: Object.fromEntries(shared.map(([key, change]) => [key, change.newValue ?? null])),
       }) });
     },
+    // The Anki duplicate index is derived state the host owns and never mirrors.
+    // Its row revision, or null after a Template source change, still travels
+    // to linked browsers so their pages can re-read word status (#520).
+    wordStatusChanged(revision) {
+      if (socket === null || clients.size === 0) return;
+      post({ kind: "broadcast", text: JSON.stringify({ kind: "word-status", revision }) });
+    },
   };
 }
