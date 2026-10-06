@@ -1403,6 +1403,13 @@ and page reload, then looks up 辞書 in a local HTML fixture. Access is disable
 again before **Not now** and **Finish**. The Anki success screen, after fixture
 removal, proves dictionary recovery keeps Finish and Settings available.
 `HACHIDORI_STARTUP_LOOKUP_SCREENSHOT` captures the actual practice popup.
+
+The mining screenshot check changes the reading page's path, query and fragment
+with `history.pushState` and `history.replaceState` before adding the card, then
+requires the real JPEG in Anki. The extension smoke suite also keeps the content
+script's original URL stale, accepts the current tab URL, and refuses a route
+change during capture alongside its existing tab-switch and reload checks.
+
 The startup screenshot check uses Chrome’s live extension document context to
 capture that tab, since packaged extension pages cannot answer content-script
 messages and their runtime sender has no tab.

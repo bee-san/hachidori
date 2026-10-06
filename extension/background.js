@@ -2022,7 +2022,8 @@ async function screenshotOwnedTab(sender, startup) {
   const tab = await chrome.tabs.get(tabId);
   if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
   // Tabs hides extension-page URLs; startup's exact live document was checked above.
-  if (!startup && (sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
+  // The script URL can predate SPA navigation; sender.tab snapshots the current page.
+  if (!startup && (sender.frameId ?? 0) === 0 && tab.url !== (sender.tab?.url ?? sender.url)) {
     throw new Error("The reading tab moved to another page before the screenshot.");
   }
   if (!startup) {

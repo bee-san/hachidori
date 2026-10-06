@@ -3603,6 +3603,7 @@ async function ankiScreenshotStage() {
   let moveDuringCapture = false;
   let documentId = "reading-document";
   let reloadDuringCapture = false;
+  let navigateDuringCapture = false;
   const documentChecks = [];
   const contextChecks = [];
   const getContexts = chrome.runtime.getContexts;
@@ -3632,6 +3633,7 @@ async function ankiScreenshotStage() {
       }
       if (moveDuringCapture) tab = { ...tab, windowId: 4 };
       if (reloadDuringCapture) documentId = "replacement-document";
+      if (navigateDuringCapture) tab = { ...tab, url: "https://reader.test/watch/5678" };
       return "data:image/jpeg;base64,c2hvdA==";
     },
   };
@@ -3648,6 +3650,16 @@ async function ankiScreenshotStage() {
   const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id } };
 
   const taken = await ask(reader);
+  tab = { ...tab, url: "https://reader.test/watch/1234?trackId=example%3Fvalue#player" };
+  const spaReader = { ...reader, tab: { id: tab.id, url: tab.url } };
+  const sameDocument = await ask(spaReader);
+  navigateDuringCapture = true;
+  const routeChanged = await ask(spaReader);
+  navigateDuringCapture = false;
+  tab = { ...tab, url: reader.url };
+  check("a mining screenshot accepts a current SPA route despite its stale script URL and rejects a route change during capture",
+    sameDocument?.ok === true && routeChanged?.ok === false && routeChanged.error.includes("moved to another page"),
+    JSON.stringify({ sameDocument, routeChanged }));
   // Chrome rate-limits captures, so one wait is worth a screenshot.
   captureFailures = 1;
   const retried = await ask(reader);
