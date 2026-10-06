@@ -27,6 +27,7 @@ test("template asks for reproduction, expected behavior, environment, and eviden
   assert.match(template, /chrome:\/\/extensions/);
   assert.match(template, /service worker/);
   assert.match(template, /Anki/);
+  assert.match(template, /Settings → Advanced → Troubleshooting → Get debug info/);
 });
 
 test("completed issues do not require an acknowledgement checkbox", () => {
