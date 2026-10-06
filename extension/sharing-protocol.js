@@ -41,6 +41,7 @@ const ADDRESS_HINT = "Enter the address shown under Sharing on the other compute
 
 export const LINKED_ANKI_REQUESTS = new Set([
   "hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity",
+  "hd_anki_word_status",
 ]);
 
 // Which runtime messages a linked client sends to the host instead of its own
@@ -203,6 +204,14 @@ export function allowLinkedAnkiRequest(message) {
     request.term = selectedFields(request.term, ["expression", "reading"]);
     return { ...base, request };
   }
+  if (message.type === "hd_anki_word_status") {
+    const request = selectedFields(message.request, ["headwords"]);
+    const headwords = request.headwords;
+    if (!Array.isArray(headwords) || headwords.some(headword => typeof headword !== "string")) {
+      throw new Error("malformed linked word status request");
+    }
+    return { ...base, request: { headwords } };
+  }
   if (message.type === "hd_anki_browse") {
     const request = selectedFields(message.request, ["noteIds", "expression", "configKey", "templateId"]);
     Object.assign(request, selectedTemplateId(request));
@@ -323,6 +332,8 @@ export function parseHostFrame(text) {
     case "storage":
       if (!frame.changes || typeof frame.changes !== "object" || Array.isArray(frame.changes)) throw new Error("malformed sharing storage frame");
       return { kind: "storage", changes: frame.changes };
+    case "word-status":
+      return { kind: "word-status", revision: Number.isInteger(frame.revision) ? frame.revision : 0 };
     case "ping":
       return { kind: "ping" };
     case "bye":

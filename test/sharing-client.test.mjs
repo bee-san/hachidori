@@ -154,3 +154,23 @@ test("a dictionary upload goes only to a host that accepts it", async () => {
   current.socket.receive({ kind: "reply", id: sent.id, response: { ok: true, token: "t" } });
   assert.deepEqual(await reply, { ok: true, token: "t" });
 });
+
+test("a linked browser relays the host's word-status revision to its reader through onWordStatus", async () => {
+  Socket.instances.length = 0;
+  const revisions = [];
+  const client = createSharingClient({
+    WebSocket: Socket,
+    applyBatch: async () => {},
+    version: "1.0.0",
+    name: "Brave",
+    onWordStatus: revision => revisions.push(revision),
+  });
+  client.link("ws://127.0.0.1:8771/link");
+  const socket = Socket.instances[0];
+  socket.open();
+  socket.receive(hello([LINKED_ANKI_CAPABILITY]));
+  await Promise.resolve();
+  socket.receive({ kind: "word-status", revision: 9 });
+  assert.deepEqual(revisions, [9]);
+  client.unlink();
+});

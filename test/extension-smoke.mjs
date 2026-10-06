@@ -3880,6 +3880,125 @@ async function ankiBackgroundStage() {
     JSON.stringify({ enabledIndex, disabledIndex, optionsCommits }));
 }
 
+// Page-wide word status (#520): the worker answers a batch from the first
+// Template's cached index rows and never contacts Anki; a linked browser sends
+// the batch to its host, which owns that evidence.
+async function ankiWordStatusStage() {
+  FakeSharingSocket.instances.length = 0;
+  // The offscreen engine already exists for these worker-only checks, so this
+  // stage creates none; its bookkeeping is restored on exit so the later
+  // single-creation checks measure their own run.
+  const offscreenBefore = { ...offscreenState };
+  Object.assign(offscreenState, { created: 0, exists: true, concurrent: 0, peakConcurrent: 0 });
+  const settle = async (predicate) => {
+    for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("word-status-worker", bus, storage);
+  const broadcasts = [];
+  chrome.tabs = {
+    async query() { return [{ id: 9 }, { id: 10 }]; },
+    async sendMessage(tabId, message) { broadcasts.push({ tabId, message }); },
+  };
+  const ankiConnect = [];
+  const refreshes = [];
+  bus.addListener("word-status-render", (message, sender, sendResponse) => {
+    if (message?.target !== "hachidori-anki-render" || message.type !== "hd_anki_index_refresh"
+        || message.relayed !== true) return false;
+    refreshes.push(rows => sendResponse({ type: "hd_anki_index_refresh_result", requestId: message.requestId, ok: true, rows }));
+    return true;
+  });
+  await storage.api().local.set({ options: { anki: { model: "Basic", fields: { expression: "Front" } }, revision: 1 } });
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
+    fetch: async (url) => {
+      ankiConnect.push(String(url));
+      throw new Error("word status contacted AnkiConnect");
+    } });
+  const page = { id: chrome.runtime.id, url: "https://reader.example/novel", tab: { id: 9 }, frameId: 0 };
+  const ask = (request, requestId = "page-word-status") => bus.sendMessage("word-status-page",
+    { target: "hachidori-anki", type: "hd_anki_word_status", requestId, request }, page);
+  await settle(() => refreshes.length === 1);
+  const cold = await ask({ headwords: ["食べる"] }, "cold-word-status");
+  refreshes[0]?.([["食べる", true, [11]], ["読む", false, [12]]]);
+  await settle(() => storage.raw.get(ANKI_INDEX_KEY)?.rowRevision === 1);
+  const warm = await ask({ headwords: ["食べる", "読む", "猫", "食べる"] });
+  const malformed = await ask({ headwords: "食べる" }, "malformed-word-status");
+  await settle(() => broadcasts.length >= 2);
+  check("word status answers a page's batch from the first Template's cached rows without contacting Anki",
+    cold.ok === true && cold.revision === 0 && cold.statuses === null
+      && warm.ok === true && warm.type === "hd_anki_word_status_result" && warm.requestId === "page-word-status"
+      && warm.revision === 1 && JSON.stringify(warm.statuses) === JSON.stringify(["known", "learning", "unknown", "known"])
+      && malformed.ok === false && malformed.requestId === "malformed-word-status"
+      && ankiConnect.length === 0 && refreshes.length === 1,
+    JSON.stringify({ cold, warm, malformed, ankiConnect, refreshes: refreshes.length }));
+  check("a changed index row revision is broadcast to every reading tab so the page can re-read word status",
+    broadcasts.length === 2
+      && broadcasts.every(entry => entry.message.target === "hachidori-anki-content"
+        && entry.message.type === "hd_anki_word_status_changed" && entry.message.revision === 1)
+      && JSON.stringify(broadcasts.map(entry => entry.tabId).sort((a, b) => a - b)) === JSON.stringify([9, 10]),
+    JSON.stringify({ broadcasts }));
+
+  // The same worker shares itself once it has a dictionary. A linked
+  // browser's batch is rebuilt from its headwords and read from this index.
+  const dictionary = { id: "word-status-dict", title: "Words", displayName: null, path: "/dicts/Words", enabled: true,
+    favorite: false, revision: "1", isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null,
+    termCount: 2, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-10-01T00:00:00.000Z",
+    lastUpdateCheck: null };
+  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [dictionary], groups: [] } });
+  await settle(() => FakeSharingSocket.instances.some(socket => socket.url.endsWith("/host")));
+  const host = FakeSharingSocket.instances.find(socket => socket.url.endsWith("/host"));
+  host?.open();
+  host?.receive({ kind: "listening", port: 8771 });
+  host?.receive({ kind: "client-open", clientId: "reader", origin: "chrome-extension://linkedreader", address: "127.0.0.1" });
+  const fromReader = frame => host?.receive({ kind: "client-text", clientId: "reader", text: JSON.stringify(frame) });
+  const toReader = () => (host?.sent ?? []).filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
+  fromReader({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Linked",
+    capabilities: ["linked-anki-v1", "linked-anki-v2"] });
+  await settle(() => toReader().some(frame => frame.kind === "hello"));
+  fromReader({ kind: "request", id: "linked-word-status", message: {
+    target: "hachidori-anki", type: "hd_anki_word_status", requestId: "reader-word-status",
+    request: { headwords: ["読む", "猫"], url: "https://client.invalid/anki", apiKey: "client-secret" },
+  } });
+  await settle(() => toReader().some(frame => frame.id === "linked-word-status"));
+  const hostReply = toReader().find(frame => frame.id === "linked-word-status");
+  check("the host answers a linked browser's word status batch from its own index",
+    hostReply?.kind === "reply" && hostReply.response?.ok === true && hostReply.response.requestId === "reader-word-status"
+      && hostReply.response.revision === 1
+      && JSON.stringify(hostReply.response.statuses) === JSON.stringify(["learning", "unknown"])
+      && ankiConnect.length === 0,
+    JSON.stringify({ hostReply, sent: toReader(), ankiConnect }));
+
+  // A linked reading browser forwards the page's batch once and returns the
+  // host's reply; its own index and Anki service are never consulted.
+  const clientBus = makeBus(), clientStorage = makeStorage();
+  const clientChrome = makeChrome("word-status-client", clientBus, clientStorage);
+  const linkAddress = "ws://127.0.0.1:9101/link";
+  await clientStorage.api().local.set({ sharing: { host: null, client: { address: linkAddress } } });
+  loadBackgroundScript({ chrome: clientChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
+    createAnkiWorkerService: () => ({ wordStatus() { throw new Error("linked word status ran in the reading browser"); } }) });
+  await settle(() => FakeSharingSocket.instances.some(socket => socket.url === linkAddress));
+  const link = FakeSharingSocket.instances.find(socket => socket.url === linkAddress);
+  link?.open();
+  link?.receive({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Host", dictionaryCount: 1,
+    capabilities: ["linked-anki-v1", "linked-anki-v2"], snapshot: {} });
+  const asking = clientBus.sendMessage("word-status-client-page", { target: "hachidori-anki", type: "hd_anki_word_status",
+    requestId: "reader-word-status", request: { headwords: ["読む", "猫"] } }, page);
+  await settle(() => (link?.requests().length ?? 0) >= 1);
+  const forwarded = link?.requests() ?? [];
+  link?.receive({ kind: "reply", id: forwarded[0]?.id, response: hostReply?.response });
+  const linked = await asking;
+  check("a linked page's word status crosses the link as one batch and takes the host's reply",
+    forwarded.length === 1 && JSON.stringify(forwarded[0].message) === JSON.stringify({
+      target: "hachidori-anki", type: "hd_anki_word_status", requestId: "reader-word-status",
+      request: { headwords: ["読む", "猫"] },
+    })
+      && hostReply !== undefined && JSON.stringify(linked) === JSON.stringify(hostReply.response),
+    JSON.stringify({ forwarded, linked }));
+  Object.assign(offscreenState, offscreenBefore);
+}
+
 async function backupRelayStage() {
   const results = [];
   for (const prepareType of ["hd_backup_prepare", "hd_backup_auto_prepare"]) {
@@ -5501,6 +5620,7 @@ async function main() {
   await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
+  await ankiWordStatusStage();
   await ankiScreenshotStage();
 
   section("custom dictionary storage ownership");

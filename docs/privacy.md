@@ -86,6 +86,8 @@ checks this local index first: a warm positive shows View in Anki without
 contacting Anki, while an unknown miss continues to the ordinary live mining
 check. Clicking View validates the matching IDs live before opening Anki and
 repairs or removes the compact row. These reads and checks do not create notes.
+Page-wide word status reads this same local index for the words on a page and
+never contacts Anki.
 Frequency definition blur uses only native numeric values already
 returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the

@@ -395,6 +395,7 @@ function getSharingClient() {
     }),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
+    onWordStatus: revision => broadcastWordStatus(revision),
   });
   return sharingClient;
 }
@@ -1965,6 +1966,40 @@ chrome.storage.onChanged.addListener((changes, area) => {
     .catch(() => {});
 });
 
+const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
+
+// Every reading tab's content script re-reads word status for the headwords it
+// already shows when the duplicate index's row revision changes: an add, a
+// click-time repair or the 30-minute refresh (#520). The index is derived
+// state, so this is a signal, not stored data; the content script fetches the
+// current statuses itself. A linked browser relays its host's revision here.
+function broadcastWordStatus(revision) {
+  if (typeof chrome.tabs?.query !== "function") return;
+  chrome.tabs.query({}).then(tabs => {
+    for (const tab of tabs) {
+      if (typeof tab.id !== "number") continue;
+      chrome.tabs.sendMessage(tab.id, {
+        target: CONTENT_WORD_STATUS_TARGET, type: "hd_anki_word_status_changed", revision,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
+}
+
+function indexRowRevision(value) {
+  return value?.version === 1 && Number.isInteger(value.rowRevision) ? value.rowRevision : 0;
+}
+
+// A local index change broadcasts to this install's own tabs and, while
+// hosting, to every linked browser. A linked install leaves its own suspended
+// index alone and relays the host's revision through the client callback.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[ANKI_INDEX_KEY]) return;
+  const next = indexRowRevision(changes[ANKI_INDEX_KEY].newValue);
+  if (next === indexRowRevision(changes[ANKI_INDEX_KEY].oldValue)) return;
+  if (!sharingLinked) broadcastWordStatus(next);
+  sharingHost?.wordStatusChanged(next);
+});
+
 async function applyAnkiIndexRole() {
   const index = getAnkiDuplicateIndex();
   if (sharingLinked) await index.suspend();
@@ -2037,7 +2072,7 @@ function failureReply(message, error) {
 const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_preflight: "preflight",
   hd_anki_preflight_batch: "preflightMany", hd_anki_submit: "submit",
   hd_anki_browse: "browse", hd_anki_screenshot: "screenshot", hd_anki_screenshot_discard: "discardScreenshot",
-  hd_anki_maturity: "maturity" };
+  hd_anki_maturity: "maturity", hd_anki_word_status: "wordStatus" };
 
 // Chrome rate-limits viewport captures, so a second mining action in the same
 // second waits once rather than losing its screenshot.
@@ -2311,8 +2346,10 @@ async function handleAnkiRequest(message, sender) {
         return answerAnkiRequest(message, sender);
       }
       // Mature-word evidence has always belonged to the host, including hosts
-      // from before linked mining advertised a capability.
+      // from before linked mining advertised a capability. Page-wide word
+      // status reads the same host-owned index.
       if (message.type === "hd_anki_maturity") return forwardToHost(message);
+      if (message.type === "hd_anki_word_status") return forwardToHost(message, LINKED_ANKI_CAPABILITY);
       if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
       if (message.type === "hd_anki_preflight_batch") return linkedPreflightBatch(message);
       if (["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {

@@ -107,3 +107,24 @@ test("a closed client is reported, including every client of a lost relay socket
   socket.close();
   assert.deepEqual(closed, ["first", "second", "third"]);
 });
+
+test("the host broadcasts the duplicate index's row revision to linked browsers, only while a client is connected", () => {
+  Socket.instances.length = 0;
+  const host = createSharingHost({
+    WebSocket: Socket,
+    alarms: { clear() {}, create() {} },
+    dispatch: async () => ({ ok: true }),
+    readSnapshot: async () => ({ dictionaryState: { dictionaries: [{}] } }),
+    sharedKey: () => true,
+    version: "1.0.0",
+    name: "Chrome",
+  });
+  host.enable({ port: 8771, dictionaries: 1 });
+  const socket = Socket.instances[0];
+  const broadcasts = () => socket.sent.filter(frame => frame.kind === "broadcast").map(frame => JSON.parse(frame.text));
+  host.wordStatusChanged(5);
+  assert.deepEqual(broadcasts(), [], "no client, no broadcast");
+  socket.receive({ kind: "client-open", clientId: "reader", address: "127.0.0.1" });
+  host.wordStatusChanged(6);
+  assert.deepEqual(broadcasts(), [{ kind: "word-status", revision: 6 }]);
+});

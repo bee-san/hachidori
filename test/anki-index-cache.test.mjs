@@ -228,6 +228,29 @@ test("confirmed adds and overwrites update the row immediately without changing 
   assert.equal(f.lookups.length, 0, "maturity membership must remain cache-only");
 });
 
+test("word status answers a batch from the cached rows at their row revision, without Anki", async () => {
+  const f = fixture();
+  assert.deepEqual(await f.service.statuses(f.options.anki, ["猫"]), { revision: 0, statuses: null },
+    "an index that never loaded is unavailable, not a page of unknown words");
+  await f.service.reconcile();
+  assert.deepEqual(await f.service.statuses(f.options.anki, ["猫", "犬", "猫"]), {
+    revision: 1,
+    statuses: ["known", "unknown", "known"],
+  });
+  await f.service.recordWrite(f.options.anki, "犬", 20);
+  assert.deepEqual(await f.service.statuses(f.options.anki, ["犬"]), { revision: 2, statuses: ["learning"] });
+  await f.service.repair(f.options.anki, "犬", f.invoke(() => ({ wordKey: "犬", mature: true, noteIds: [20] })));
+  const asked = f.lookups.length;
+  assert.deepEqual(await f.service.statuses(f.options.anki, ["犬"]), { revision: 3, statuses: ["known"] });
+  assert.equal(f.state.rowRevision, 3);
+  await f.change({ anki: { ...f.options.anki, duplicateScope: "all" } }, false);
+  assert.deepEqual(await f.service.statuses(f.options.anki, ["猫"]), { revision: 3, statuses: null },
+    "the previous source's rows are not this source's evidence");
+  assert.deepEqual(await f.service.statuses({ ...f.options.anki, model: "" }, ["猫"]), { revision: 3, statuses: null });
+  assert.equal(f.lookups.length, asked, "word status must stay cache-only");
+  assert.equal(f.batches.length, 0);
+});
+
 test("the complete index refreshes every 30 minutes and retries if a post-write update races its pull", async () => {
   const f = fixture(), hold = f.hold();
   const refresh = f.service.reconcile();

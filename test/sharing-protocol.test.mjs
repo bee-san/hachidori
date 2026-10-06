@@ -46,7 +46,8 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
-  for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity"]) {
+  for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity",
+    "hd_anki_word_status"]) {
     assert.equal(forwardableRequest({ target: "hachidori-anki", type }), true, type);
   }
   assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_screenshot" }), false);
@@ -105,6 +106,8 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "hello", protocol: 1, snapshot })).capabilities, []);
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "reply", id: "a", response: { ok: true } })), { kind: "reply", id: "a", response: { ok: true } });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "storage", changes: { options: null } })), { kind: "storage", changes: { options: null } });
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "word-status", revision: 7 })), { kind: "word-status", revision: 7 });
+  assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "word-status" })), { kind: "word-status", revision: 0 });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "ping" })), { kind: "ping" });
   assert.deepEqual(parseHostFrame(JSON.stringify({ kind: "bye", reason: "old" })), { kind: "bye", reason: "old" });
   assert.throws(() => parseHostFrame(JSON.stringify({ kind: "storage", changes: [] })), /malformed sharing storage frame/u);
@@ -168,6 +171,14 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     target: "hachidori-anki", type: "hd_anki_status", requestId: 5, templateId: "sentence",
   }), {
     target: "hachidori-anki", type: "hd_anki_status", requestId: 5, templateId: "sentence",
+  });
+  // Word status always reads the host's first Template; nothing else crosses.
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_word_status", requestId: 6,
+    request: { headwords: ["猫", "食べる"], templateId: "sentence", url: "https://client.invalid/anki", apiKey: "nope" },
+  }), {
+    target: "hachidori-anki", type: "hd_anki_word_status", requestId: 6,
+    request: { headwords: ["猫", "食べる"] },
   });
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_status", templateId: "\n",

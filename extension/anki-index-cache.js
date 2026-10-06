@@ -368,5 +368,25 @@ export function createAnkiDuplicateIndex({
       await hydrate;
       return snapshot?.sourceKey === source.key && rows.get(wordKey)?.mature === true;
     },
+    // A page's headwords, keyed only by the first Template's cached rows. The
+    // reader reconciles against `revision`; a source with no cached snapshot is
+    // unavailable (null), not a page of unknown words.
+    async statuses(config, headwords) {
+      await hydrate;
+      const state = cacheState(await readState());
+      const source = await ankiIndexSource(config);
+      if (source === null || snapshot?.sourceKey !== source.key) {
+        return { revision: state.rowRevision, statuses: null };
+      }
+      return {
+        revision: state.rowRevision,
+        statuses: headwords.map(headword => {
+          const wordKey = ankiWordKey(headword);
+          const row = wordKey === null ? null : rows.get(wordKey) ?? null;
+          if (row === null) return "unknown";
+          return row.mature ? "known" : "learning";
+        }),
+      };
+    },
   };
 }

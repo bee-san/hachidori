@@ -29,7 +29,7 @@ function requestFailure(failure, entry) {
 
 // `applyBatch(changes, isCurrent, snapshot)` writes one host storage batch locally, checking
 // isCurrent inside its storage queue; `version` and `name` introduce this install.
-export function createSharingClient({ WebSocket, applyBatch, version, name, capabilities = SHARING_CAPABILITIES }) {
+export function createSharingClient({ WebSocket, applyBatch, version, name, capabilities = SHARING_CAPABILITIES, onWordStatus = () => {} }) {
   const pending = new Map();
   const waiting = new Set();
   let address = null;
@@ -106,6 +106,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
       case "storage":
         await applyBatch(frame.changes,
           () => socket === current && linkGeneration === currentGeneration);
+        return;
+      case "word-status":
+        onWordStatus(frame.revision);
         return;
       case "ping":
         current.send(JSON.stringify({ kind: "pong" }));
