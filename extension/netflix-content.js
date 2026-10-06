@@ -5,13 +5,17 @@
 // https://www.netflix.com/* (top frame, document_start) while Settings →
 // Advanced → Experimental features → Netflix mining is on. It keeps the
 // subtitle timelines netflix-page.js posts from the page, pins the cue of a
-// hovered `.player-timedtext` line, and drives one replay while the extension
-// records that line for Anki.
+// hovered `.player-timedtext` line, drives one replay while the extension
+// records that line for Anki, and pauses the video while a subtitle line or
+// Hachidori's popup is hovered.
 (function () {
   "use strict";
 
   const PAGE_EVENT = "hachidori-netflix-page";
   const COMMAND_EVENT = "hachidori-netflix-command";
+  // content.js announces its popup on `window`; nested popups open inside it.
+  const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
+  const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
   const WATCH_PATH = /^\/watch\/(\d+)/u;
   const MOVIE_ID = /^\d+$/u;
   const STATUSES = new Set(["image", "none", "failed"]);
@@ -31,12 +35,24 @@
     const resent = new Set();
     const replays = new Map();
     let watched = null;
+    // Hover pause, which content.js turns on with the switch. `held` while
+    // the pause this reader asked for, or kept through a recording, is in
+    // force; `restoring` from a replay's answer until the page's seek back has
+    // landed; `recordings` while a line is recorded.
+    let hoverPause = false;
+    let hovering = false;
+    let popupOpen = false;
+    let held = false;
+    let restoring = false;
+    let recordings = 0;
+    const range = document.createRange();
 
     const command = message => {
       document.dispatchEvent(new window.CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
     };
 
-    // A new /watch/<id> drops the previous movie's timeline.
+    // A new /watch/<id> drops the previous movie's timeline and any resume
+    // this reader still owed it.
     function sync() {
       const movieId = WATCH_PATH.exec(location.pathname)?.[1] ?? null;
       if (movieId === watched) return movieId;
@@ -46,6 +62,7 @@
       }
       if (movieId !== null) retired.delete(movieId);
       resent.clear();
+      held = false;
       watched = movieId;
       return movieId;
     }
@@ -67,6 +84,9 @@
         pending.reject(Object.assign(new Error(`Netflix's player could not replay the line (${message.error}).`),
           { code: message.error === "player" ? "player" : "replay" }));
       }
+      // The page restores the viewer's state as it answers; its seek back
+      // reports itself afterwards.
+      restoring = true;
     }
 
     // Everything the page posts is checked before it is used: any script on
@@ -112,8 +132,10 @@
       return text;
     }
 
+    const mainVideo = () => document.querySelector(".watch-video video") ?? document.querySelector("video");
+
     function mediaTimeMs() {
-      const video = document.querySelector(".watch-video video") ?? document.querySelector("video");
+      const video = mainVideo();
       return video && Number.isFinite(video.currentTime) ? Math.round(video.currentTime * 1000) : null;
     }
 
@@ -182,13 +204,18 @@
 
     function replay(cue, padMs) {
       const id = window.crypto.randomUUID();
+      // Chrome mutes the tab until the recorder stops, so with hover pause the
+      // page restores a playing video paused and this reader resumes it once
+      // the recording is over and the pointer has left.
+      const video = mainVideo();
+      if (hoverPause && video !== null && !video.paused) held = true;
       return new Promise((resolveReplay, rejectReplay) => {
         const timer = window.setTimeout(() => {
           replays.delete(id);
           rejectReplay(Object.assign(new Error("Netflix's player did not finish replaying the line."), { code: "replay" }));
         }, cue.endMs - cue.startMs + 2 * padMs + REPLAY_SLACK_MS);
         replays.set(id, { resolve: resolveReplay, reject: rejectReplay, timer });
-        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs });
+        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs, keepPaused: hoverPause });
       });
     }
 
@@ -209,6 +236,7 @@
     // WAV for the note. Resolves with the held file or with why there is none.
     async function record(cue, { send, templateId }) {
       const frame = recorderFrame();
+      recordings += 1;
       try {
         const started = await send("hd_netflix_capture_start", { cue });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
@@ -225,14 +253,88 @@
         return await send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
       } finally {
         frame.remove();
+        recordings -= 1;
+        // A leave during the recording takes effect now the recorder has stopped.
+        release();
       }
+    }
+
+    // Netflix's subtitle layer covers the player and may not receive pointer
+    // events, so a hovered line is found by geometry: within the bounds of a
+    // subtitle box's text, which also span the gap between its lines. A layer
+    // with no line showing has no text, so no bounds.
+    function overSubtitle(x, y) {
+      for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
+        const rects = [];
+        const walker = document.createTreeWalker(box, SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          range.selectNodeContents(node);
+          rects.push(...range.getClientRects());
+        }
+        if (x >= Math.min(...rects.map(rect => rect.left)) && x <= Math.max(...rects.map(rect => rect.right))
+            && y >= Math.min(...rects.map(rect => rect.top)) && y <= Math.max(...rects.map(rect => rect.bottom))) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Leaving the line and the popup resumes what this reader paused, unless a
+    // line is being recorded.
+    function release() {
+      sync();
+      if (!held || hovering || popupOpen || recordings > 0) return;
+      held = false;
+      command({ type: "resume" });
+    }
+
+    // Entering a line while the video plays pauses it, once: whatever the
+    // viewer does while the pointer stays on the line is the viewer's.
+    function pointerMoved(event) {
+      if (!hoverPause || sync() === null) return;
+      const over = overSubtitle(event.clientX, event.clientY);
+      if (over === hovering) return;
+      hovering = over;
+      if (!over) {
+        release();
+        return;
+      }
+      const video = mainVideo();
+      if (held || recordings > 0 || video === null || video.paused) return;
+      held = true;
+      command({ type: "pause" });
+    }
+
+    // Anything else that plays or seeks the video takes the pause over, and
+    // nothing is resumed; a pause can only follow a play. A replay's own play
+    // and seeks are not the viewer's, and nor is the page's seek back.
+    function videoChanged(event) {
+      if (event.target !== mainVideo()) return;
+      if (event.type === "seeked") restoring = false;
+      else if (replays.size === 0 && !(restoring && event.type === "seeking")) held = false;
+    }
+
+    // content.js turns hover pause on and off with the Netflix mining switch.
+    // Turned off, it forgets a pause in force rather than resuming it.
+    function setHoverPause(enabled) {
+      hoverPause = enabled === true;
+      if (hoverPause) return;
+      held = false;
+      hovering = false;
     }
 
     document.addEventListener(PAGE_EVENT, event => {
       if (typeof event.detail === "string") accept(event.detail);
     });
+    document.addEventListener("mousemove", pointerMoved, { capture: true, passive: true });
+    for (const type of ["play", "seeking", "seeked"]) document.addEventListener(type, videoChanged, true);
+    window.addEventListener(POPUP_SHOWN_EVENT, () => { popupOpen = true; });
+    window.addEventListener(POPUP_HIDDEN_EVENT, () => {
+      popupOpen = false;
+      release();
+    });
 
-    return { observe, resolve, miningFields, record };
+    return { observe, resolve, miningFields, record, setHoverPause };
   }
 
   globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };

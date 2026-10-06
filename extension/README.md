@@ -121,9 +121,10 @@ the service worker and both engine runtimes run the same code.
   imposter.
 - **Netflix mining.** While the experimental flag is on, `netflix.js`
   registers `netflix-page.js` (main world: the subtitle hooks adapted from
-  Subadub, and the line replay through Netflix's player) and
-  `netflix-subtitles.js` with `netflix-content.js` (WebVTT/TTML cue timelines
-  and the hovered line's cue) on `www.netflix.com`. `netflix-recorder.html`
+  Subadub, and the line replay, pause and resume through Netflix's player) and
+  `netflix-subtitles.js` with `netflix-content.js` (WebVTT/TTML cue timelines,
+  the hovered line's cue, and pausing while a line is hovered) on
+  `www.netflix.com`. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
   records the replayed line inside the Netflix tab; `{sentence-audio}`
   attaches it to the note.

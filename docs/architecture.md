@@ -2699,7 +2699,8 @@ whether the picture includes protected video:
 
 Settings → Advanced → Experimental features → **Netflix mining**
 (`options.experimental.netflixMining`, off by default) gives notes mined from a
-Netflix subtitle the line's own audio and the whole line as the sentence. It is
+Netflix subtitle the line's own audio and the whole line as the sentence, and
+pauses the video while a subtitle line is hovered. It is
 Netflix only, and every part fails closed: a note that cannot get its line is
 added with its other fields and a warning.
 
@@ -2809,7 +2810,9 @@ page seeks through Netflix's player API
 (`netflix.appContext.state.playerApp.getAPI().videoPlayer`), to 250 ms before
 the cue and 2 s earlier again if the seek lands past that, plays at 1×, and
 reports `(wall ms, media ms)` pairs every 25 ms until 250 ms after the cue. It
-then restores the position, paused state and speed, each step independently.
+then restores the position, paused state and speed, each step independently;
+a replay sent with `keepPaused`, as hover pause sends it, restores a playing
+video paused (see **Hover pause**).
 `hd_netflix_capture_finish` has the frame wait up to 500 ms for the last audio,
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
@@ -2822,6 +2825,34 @@ kept after an uncertain one, and discarded by token
 (`hd_anki_screenshot_discard`, which releases either kind) when the reader
 abandons the submission. A replay that fails cancels the recording with
 `hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
+
+**Hover pause.** The video pauses while a subtitle line or the popup is
+hovered. `netflix-content.js` cannot read the switch, so the content script
+calls `HDNetflix.setHoverPause` with it on every options change and turns it
+off when the reader stops; a page that kept the scripts after the switch went
+off pauses nothing. On a `/watch/` page, a passive capture `mousemove` listener
+tests the pointer against the bounds of the text in each
+`.player-timedtext-text-container`, taken from its text nodes' client rects,
+because Netflix's subtitle layer covers the player and may not receive pointer
+events. The bounds include the gap between a box's lines; a layer with no line
+showing has no text and so no bounds. Entering a line while the `<video>` plays
+sends the page a `pause` command, which it carries out through Netflix's player
+API like the replay, never by writing `currentTime`. The pause holds while the
+pointer stays on the line or the reader's popup is shown (from
+`hachidori-popup-shown` to `hachidori-popup-hidden` on `window`, which nested
+popups share), and leaving both sends `resume`. A `play` or `seeking` event on
+the video outside a replay drops the resume, so the viewer's own play, pause
+(which follows a play) or seek wins; a new `/watch/<id>` and the switch going
+off also drop it and leave the video as it is. Nothing is paused or resumed
+while a line is recorded: the reader sends neither command from the recorder
+frame's creation to its removal, and the page ignores both while it replays.
+Chrome mutes the tab until the recorder stops, so the reader sends the replay
+`keepPaused`, and the page restores a video that was playing paused. The
+reader then holds that pause like its own, whether it paused the video or the
+viewer had played it on, and resumes once the frame is gone and the pointer
+has left the line and the popup; a leave during the recording takes effect
+then. The page's seek back reports itself after its answer and is not taken
+for the viewer's.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to

@@ -945,6 +945,14 @@
       && typeof window.HDNetflix?.miningFields === "function";
   }
 
+  // netflix-content.js cannot read the switch, so the reader tells it whether
+  // to pause Netflix while a subtitle is hovered, and turns that off when it
+  // stops.
+  function syncNetflixHoverPause() {
+    if (typeof window.HDNetflix?.setHoverPause !== "function") return;
+    window.HDNetflix.setHoverPause(!disposed && netflixMiningEnabled());
+  }
+
   function releaseDocsImposter() {
     docsImposter?.text.remove();
     docsImposter = null;
@@ -1616,6 +1624,7 @@
     appearance?.destroy();
     customStyle?.destroy();
     releaseDocsProbe();
+    syncNetflixHoverPause();
     releaseFieldImposter();
     host?.remove();
     host = null;
@@ -4722,6 +4731,7 @@
     options = next;
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
+    syncNetflixHoverPause();
     if (customButtonsChanged) {
       for (const level of levels) level.view?.setCustomButtons(options.customButtons);
     }

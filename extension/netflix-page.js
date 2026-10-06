@@ -272,8 +272,10 @@
 
   // Plays the clip once at 1× from just before the cue to just after it and
   // reports (wall-clock ms, media ms) pairs, so the extension can find the
-  // line in what it recorded. Position, paused state and speed are restored.
-  async function replay({ id, startMs, endMs, padMs }) {
+  // line in what it recorded. Position, paused state and speed are restored;
+  // with `keepPaused`, the reader's hover pause resumes the video once the
+  // recording is over, so a playing video is restored paused.
+  async function replay({ id, startMs, endMs, padMs, keepPaused }) {
     const player = netflixPlayer();
     const video = mainVideo();
     if (player === null || video === null || replaying) {
@@ -281,7 +283,8 @@
       return;
     }
     replaying = true;
-    const saved = { positionMs: currentPosition(player, video), paused: video.paused, rate: video.playbackRate };
+    const saved = { positionMs: currentPosition(player, video), paused: video.paused || keepPaused === true,
+      rate: video.playbackRate };
     const from = Math.max(0, startMs - padMs);
     const to = endMs + padMs;
     let reply;
@@ -301,6 +304,20 @@
     post(reply);
   }
 
+  // Hovering a subtitle pauses and resumes through the player like the replay,
+  // which owns the player until it has restored the viewer's state.
+  function pauseOrResume(type) {
+    const player = netflixPlayer();
+    const video = mainVideo();
+    if (replaying || player === null || video === null) return;
+    try {
+      if (type === "pause") pause(player, video);
+      else play(player, video).catch(() => {});
+    } catch {
+      // Netflix's player stays as it was.
+    }
+  }
+
   document.addEventListener(COMMAND_EVENT, event => {
     let command;
     try {
@@ -313,6 +330,8 @@
     } else if (command?.type === "replay" && typeof command.id === "string"
         && [command.startMs, command.endMs, command.padMs].every(Number.isFinite) && command.startMs <= command.endMs) {
       void replay(command);
+    } else if (command?.type === "pause" || command?.type === "resume") {
+      pauseOrResume(command.type);
     }
   });
 }());
