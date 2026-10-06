@@ -175,6 +175,7 @@ const recommendedInstallation = createRecommendedInstallClient({
 });
 let updating = false;
 let removing = false;
+let resettingLookupCounts = false;
 let committing = false;
 let pendingDictionaryCommits = 0;
 let pendingDictionaryReorders = 0;
@@ -217,10 +218,12 @@ let importProgress;
 let importDragDepth = 0;
 
 const SECTION_STATUSES = {
+  "library-reset-status": { section: "dictionaries", label: "Library" },
   "import-state": { section: "add-dictionaries", label: "Import" },
   "update-state": { section: "updates", label: "Updates" },
   "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
   "options-status": { section: "lookup", label: "Reading" },
+  "lookup-counts-reset-status": { section: "lookup", label: "Lookup history" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
@@ -426,6 +429,7 @@ function updateAnkiSettings() {
 }
 
 // While linked, imported archives go to the host and backups belong to it; the notices say so.
+// The two resets act only on this browser's own data, so they wait for Unlink.
 function renderSharingLink(value) {
   const wasLinked = sharingLinkedAddress !== null;
   sharingLinkedAddress = typeof value?.client?.address === "string" ? value.client.address : null;
@@ -434,8 +438,12 @@ function renderSharingLink(value) {
   element("sharing-overlay-preferences").hidden = !linked || !OVERLAY_MODE;
   element("sharing-import-notice").hidden = !linked;
   element("sharing-backup-notice").hidden = !linked;
+  element("library-reset-linked").hidden = !linked;
+  element("lookup-counts-reset-linked").hidden = !linked;
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
   element("automatic-backups").hidden = linked;
+  setControlsDisabled(importing);
+  renderLookupCountsReset();
   if (wasLinked && !linked) {
     void backupController?.refreshAutomaticBackups();
   }
@@ -1291,8 +1299,23 @@ function setControlsDisabled(disabled) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
   element("dict-bulk-remove").disabled = blocked || !selectedRemovableDictionaries().length;
+  renderLibraryReset(blocked || committing);
   renderUpdateControls();
   renderCustomDictionaryControls();
+}
+
+// Remove all needs something to remove: an ordinary package, or the explicit
+// personal-source choice.
+function renderLibraryReset(blocked) {
+  const resetBlocked = blocked || sharingLinkedAddress !== null;
+  const erasePersonal = element("library-reset-personal");
+  erasePersonal.disabled = resetBlocked;
+  element("library-remove-all").disabled = resetBlocked
+    || (!erasePersonal.checked && !dictionaries.some(entry => !isManagedCustomDictionary(entry)));
+}
+
+function renderLookupCountsReset() {
+  element("lookup-counts-reset").disabled = resettingLookupCounts || sharingLinkedAddress !== null;
 }
 
 function elapsedSince(started) {
@@ -2340,6 +2363,7 @@ function renderDictionaries(reuseRows = false) {
   });
 
   element("dict-controls").hidden = dictionaries.length === 0;
+  element("library-reset").hidden = dictionaries.length === 0;
   const empty = element("dict-empty");
   const isEmpty = dictionaries.length === 0;
   element("dict-empty-heading").textContent = isEmpty ? "Your Japanese library starts here" : "No dictionaries found";
@@ -2637,25 +2661,147 @@ async function removeSelectedDictionaries() {
 async function removeDictionaries(entries) {
   removing = true;
   setControlsDisabled(true);
-  const failures = [];
   try {
-    await dictionaryCommitTail;
-    for (const { id, title } of entries) {
-      try {
-        const reply = await send("hd_remove", { id, title });
-        if (!reply.ok) throw new Error(reply.error ?? "unknown error");
-        selectedDictionaryIds.delete(id);
-      } catch (error) {
-        failures.push(`${title}: ${describe(error)}`);
-      }
-    }
-    if (await reloadDictionaries()) {
-      await refreshStatus();
-    }
+    const failures = await removePackages(entries);
     if (failures.length) setStatus(`Could not remove ${failures.join("; ")}`, "error");
   } finally {
     removing = false;
     setControlsDisabled(importing);
+  }
+}
+
+// One engine removal per package, in order; a failure does not stop the rest.
+// Returns "title: reason" for each package that is still installed.
+async function removePackages(entries) {
+  const failures = [];
+  await dictionaryCommitTail;
+  for (const { id, title } of entries) {
+    try {
+      const reply = await send("hd_remove", { id, title });
+      if (!reply.ok) throw new Error(reply.error ?? "unknown error");
+      selectedDictionaryIds.delete(id);
+    } catch (error) {
+      failures.push(`${title}: ${describe(error)}`);
+    }
+  }
+  if (await reloadDictionaries()) {
+    await refreshStatus();
+  }
+  return failures;
+}
+
+function countLabel(count, singular, plural) {
+  return `${numberFormat.format(count)} ${count === 1 ? singular : plural}`;
+}
+
+function setLibraryResetStatus(message, tone = "", completed = false) {
+  setSectionStatus("library-reset-status", message, tone, completed);
+}
+
+function removeAllConfirmation(count, personal, erasePersonal) {
+  const entries = personal === null ? 0 : parseCustomDictionary(personal.text).entries.length;
+  const source = `the personal dictionary source and its ${countLabel(entries, "entry", "entries")}`;
+  const packages = countLabel(count, "imported dictionary", "imported dictionaries");
+  const parts = count === 0 ? [`Erase ${source}?`] : [
+    personal === null ? `Remove ${packages}?` : `Remove ${packages} and erase ${source}?`,
+    "That is every imported dictionary, including disabled ones and any the search hides.",
+  ];
+  if (!erasePersonal) parts.push("The personal dictionary is kept.");
+  parts.push("This deletes them from this browser. Anki notes are not changed, and existing backups still hold them.");
+  return parts.join(" ");
+}
+
+// Empty source through the existing save transaction. The revision is the one
+// the confirmation described, so a Note or save since then is refused.
+async function erasePersonalSource(confirmed) {
+  try {
+    const reply = await send("hd_custom_save", { baseDocumentRevision: confirmed.revision, text: "" });
+    if (reply.document !== undefined) adoptCustomDictionaryDocument(reply.document);
+    adoptCustomDictionaryState(reply.state);
+    if (reply.ok) return { erased: true, message: "Erased the personal dictionary source." };
+    if (reply.stale === true) {
+      return { erased: false,
+        message: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again." };
+    }
+    throw new Error(reply.error || "unknown error");
+  } catch (error) {
+    return { erased: false, message: `Could not erase the personal dictionary source: ${describe(error)}.` };
+  }
+}
+
+// What Remove all would remove now: every ordinary package once pending
+// dictionary edits settle, and the personal source when chosen and not empty.
+async function removeAllSnapshot(erasePersonal) {
+  flushDictionaryOrder();
+  await dictionaryCommitTail;
+  if (!await reloadDictionaries()) return null;
+  const entries = dictionaries.filter(entry => !isManagedCustomDictionary(entry));
+  if (!erasePersonal) return { entries, personal: null };
+  const reply = await send("hd_custom_read", {}, WORKER_TARGET);
+  if (!reply.ok || reply.document === undefined) {
+    throw new Error(reply.error || "the personal dictionary source could not be read");
+  }
+  const personal = normaliseCustomDictionaryDocument(reply.document);
+  return { entries, personal: personal.text === "" ? null : personal };
+}
+
+function removedSummary(entries, failures) {
+  const total = countLabel(entries.length, "dictionary", "dictionaries");
+  if (failures.length === 0) return `Removed ${total}.`;
+  const removed = numberFormat.format(entries.length - failures.length);
+  return `Removed ${removed} of ${total}. Could not remove ${failures.join("; ")}.`;
+}
+
+// Settings → Library → Remove all imported dictionaries. The confirmation names
+// the packages left once pending edits settle; each is removed in turn, so a
+// failure is reported by title rather than undoing the others.
+async function removeAllDictionaries() {
+  const erasePersonal = element("library-reset-personal").checked;
+  removing = true;
+  setControlsDisabled(true);
+  try {
+    const snapshot = await removeAllSnapshot(erasePersonal);
+    if (snapshot === null) return;
+    const { entries, personal } = snapshot;
+    if (entries.length === 0 && personal === null) {
+      setLibraryResetStatus("There is nothing to remove.", "ready");
+      return;
+    }
+    if (!window.confirm(removeAllConfirmation(entries.length, personal, erasePersonal))) return;
+    if (sharingLinkedAddress !== null) throw new Error("this browser is now linked to another Hachidori");
+    setLibraryResetStatus("Removing dictionaries…", "working");
+    const failures = await removePackages(entries);
+    const personalOutcome = personal === null ? null : await erasePersonalSource(personal);
+    const messages = entries.length > 0 ? [removedSummary(entries, failures)] : [];
+    if (personalOutcome !== null) messages.push(personalOutcome.message);
+    const succeeded = failures.length === 0 && personalOutcome?.erased !== false;
+    setLibraryResetStatus(messages.join(" "), succeeded ? "ready" : "error", succeeded);
+  } catch (error) {
+    setLibraryResetStatus(`Could not remove the dictionaries: ${describe(error)}`, "error");
+  } finally {
+    removing = false;
+    setControlsDisabled(importing);
+  }
+}
+
+// Settings → Reading → Reset lookup counts: a new, empty history generation.
+async function resetLookupCounts() {
+  if (!window.confirm("Reset lookup counts for every word? Each word starts again from zero, and its next lookup "
+    + "counts as 1. Dictionaries, settings and Anki notes are not changed, and existing backups keep the earlier counts.")) {
+    return;
+  }
+  resettingLookupCounts = true;
+  renderLookupCountsReset();
+  setSectionStatus("lookup-counts-reset-status", "Resetting lookup counts…", "working");
+  try {
+    const reply = await send("hd_lookup_stats_reset", {}, WORKER_TARGET);
+    if (!reply.ok) throw new Error(reply.error || "the lookup counts could not be reset");
+    setSectionStatus("lookup-counts-reset-status", "Lookup counts reset. Every word starts again from zero.", "ready", true);
+  } catch (error) {
+    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describe(error)}`, "error");
+  } finally {
+    resettingLookupCounts = false;
+    renderLookupCountsReset();
   }
 }
 
@@ -3245,6 +3391,9 @@ function attachHandlers() {
     updateSelectedDictionaries("favorite", false, false);
   });
   element("dict-bulk-remove").addEventListener("click", removeSelectedDictionaries);
+  element("library-reset-personal").addEventListener("change", () => setControlsDisabled(importing));
+  element("library-remove-all").addEventListener("click", () => { void removeAllDictionaries(); });
+  element("lookup-counts-reset").addEventListener("click", () => { void resetLookupCounts(); });
 
   element("dict-group-create-form").addEventListener("submit", (event) => {
     event.preventDefault();

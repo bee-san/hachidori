@@ -188,6 +188,20 @@
           <p class="section-note" id="dict-reorder-help">
             Drag to reorder, or use the arrow buttons. Open Details to rename or remove a dictionary.
           </p>
+          <fieldset class="lookup-group library-reset" id="library-reset" hidden>
+            <legend>Start over</legend>
+            <p class="field-hint" id="library-reset-help">Removes every imported dictionary, including disabled ones and any the search hides. Anki notes are not changed. Backups you have exported and this browser’s automatic backups still hold the removed dictionaries, so they can restore them.</p>
+            <label class="lookup-enable">
+              <span>Also erase the personal dictionary source</span>
+              <input id="library-reset-personal" type="checkbox" aria-describedby="library-reset-personal-help" />
+            </label>
+            <p class="field-hint" id="library-reset-personal-help">Leave this off to keep the personal dictionary and its entries.</p>
+            <p class="field-hint sharing-linked-notice" id="library-reset-linked" hidden>The dictionaries belong to the linked Hachidori. Remove them there, or unlink in <a href="#sharing">Sharing</a> first.</p>
+            <div class="options-actions">
+              <button type="button" class="ghost danger" id="library-remove-all" aria-describedby="library-reset-help" data-search-keywords="delete clear reset empty start over library">Remove all imported dictionaries</button>
+              <output class="custom-dictionary-status" id="library-reset-status" aria-live="polite"></output>
+            </div>
+          </fieldset>
         </section>
 
         <section
@@ -582,6 +596,12 @@
               <input id="opt-lookup-counts" type="checkbox" aria-describedby="lookup-counts-help" />
             </label>
             <p class="field-hint" id="lookup-counts-help">See how often you look up a word. Counts stay in this browser and are included in backups; turning this off keeps your past counts.</p>
+            <div class="options-actions">
+              <button type="button" class="ghost danger" id="lookup-counts-reset" aria-describedby="lookup-counts-reset-help" data-search-keywords="clear delete erase zero history statistics start over">Reset lookup counts</button>
+              <output class="custom-dictionary-status" id="lookup-counts-reset-status" aria-live="polite"></output>
+            </div>
+            <p class="field-hint" id="lookup-counts-reset-help">Every word starts again from zero; your next lookup of it counts as 1. Dictionaries, settings and Anki notes are not changed. Backups you have exported and this browser’s automatic backups keep the earlier counts.</p>
+            <p class="field-hint sharing-linked-notice" id="lookup-counts-reset-linked" hidden>Lookup counts belong to the linked Hachidori. Reset them there, or unlink in <a href="#sharing">Sharing</a> first.</p>
           </fieldset>
           <fieldset class="lookup-group" id="definition-blur-settings">
             <legend>Definition blur</legend>
