@@ -250,6 +250,10 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     // rather than referring to a picture Anki does not have.
     screenshot: () => request.screenshot?.filename && !request.captureUnavailable?.includes("screenshot")
       ? `<img src="${escape(request.screenshot.filename)}">` : "",
+    // Experimental Netflix mining: the recorded subtitle line, on the same
+    // terms as the screenshot.
+    "sentence-audio": () => request.sentenceAudio?.filename && !request.captureUnavailable?.includes("sentence-audio")
+      ? `[sound:${escape(request.sentenceAudio.filename)}]` : "",
   };
   const values = new Map();
   let glossaries, frequencies;

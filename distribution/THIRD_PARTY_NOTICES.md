@@ -20,6 +20,7 @@ submodules and the pinned source distributions listed below.
 | kanji-processor | `kanji-processor-LICENSE` | Kanji-variant source data |
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
 | KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |
+| Subadub, Russel Simmons, at [`a03b1b94`](https://github.com/rsimmons/subadub/tree/a03b1b94e59328c11e31485c6016626fcfeb2790) | `subadub-LICENSE` and the header of `netflix-page.js` | Experimental Netflix mining's subtitle-profile and track-list hooks, under the MIT licence |
 | Emscripten | `emscripten-LICENSE` | Generated JavaScript runtime, including its Node.js-derived path code |
 | musl | `musl-COPYRIGHT` | C runtime, including its upstream attribution list |
 | LLVM runtime libraries | `libcxx-LICENSE`, `libcxxabi-LICENSE`, `compiler-rt-LICENSE`, `libunwind-LICENSE` | C++ and compiler runtime notices |

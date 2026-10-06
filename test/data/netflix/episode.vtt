@@ -1,0 +1,34 @@
+WEBVTT
+
+NOTE Synthetic lines written for Hachidori's tests, shaped like Netflix's
+webvtt-lssdh-ios8 downloads: direction marks, cue settings, class spans,
+ruby, entities, a two-line cue, an overlapping cue and a repeated line.
+
+1
+00:00:01.000 --> 00:00:03.500 position:50.00%,middle align:middle size:80.00% line:84.67%
+&lrm;お前、こんなとこで
+&lrm;何してんの？
+
+2
+00:00:04.000 --> 00:00:05.250 position:50.00%,middle align:middle size:80.00% line:84.67%
+&lrm;<c.japanese>散歩してただけだよ</c.japanese>
+
+3
+00:00:05.000 --> 00:00:07.000 position:50.00%,middle align:middle size:80.00% line:10.00%
+&lrm;<c.japanese><c.bg_transparent>（犬の鳴き声）</c.bg_transparent></c.japanese>
+
+4
+00:00:08.000 --> 00:00:09.000
+はい
+
+5
+00:00:09.200 --> 00:00:10.000
+はい
+
+6
+01:02.003 --> 01:04.500
+<ruby>漢字<rt>かんじ</rt></ruby>を読む
+
+7
+01:00:00.000 --> 01:00:02.000
+トム&amp;ジェリー&#x3002;

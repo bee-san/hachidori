@@ -4,6 +4,21 @@
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
 
   const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
+  // Why a Netflix note has no sentence audio, by the reason the reader, the
+  // page or the worker reported.
+  const NETFLIX_UNAVAILABLE = {
+    "no-timeline": "Netflix's subtitle timing for this episode was not found. Reload the Netflix page; Netflix may also have changed its data.",
+    image: "this episode's Japanese subtitles are images, which have no timed text.",
+    none: "this episode has no Japanese subtitle track.",
+    failed: "Netflix's subtitle file for this episode could not be read.",
+    "no-match": "the hovered subtitle matched no line in Netflix's subtitle file.",
+    ambiguous: "the hovered subtitle matched more than one line in Netflix's subtitle file.",
+    grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts; later notes in this tab will have sentence audio.",
+    silent: "the recording was silent, so no audio was attached. If the video is not muted, Netflix may be blocking capture of protected playback; turning off Chrome's “Use graphics acceleration when available” can help.",
+    player: "Netflix's player controls were not found, so the line could not be replayed.",
+    replay: "Netflix did not finish replaying the line.",
+    linked: "this browser is linked to another Hachidori, so Netflix lines are not recorded.",
+  };
   function syncFeedbackSurface(feedback) {
     const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
       .filter(control => !control.hidden);
@@ -194,6 +209,9 @@
     // The page's own overlays are hidden for a viewport screenshot and restored
     // afterwards; without a host to hide, the screenshot is just taken.
     conceal = during => during(),
+    // Experimental Netflix mining: records a cue's line through the page and
+    // resolves with the held WAV or why there is none (netflix-content.js).
+    recordNetflixLine = async () => { throw new Error("this page cannot replay Netflix lines."); },
   }) {
     const owners = new Map(), bound = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
@@ -355,17 +373,29 @@
       record.screenshot = null;
       try { await send("hd_anki_screenshot_discard", { request: { token } }); } catch { /* A restarted worker holds nothing. */ }
     }
+    // The worker holds a recorded line like a picture, and releases it the same way.
+    async function discardSentenceAudio(record) {
+      if (!record.sentenceAudio) return;
+      const { token } = record.sentenceAudio;
+      record.sentenceAudio = null;
+      try { await send("hd_anki_screenshot_discard", { request: { token } }); } catch { /* A restarted worker holds nothing. */ }
+    }
+    // The media this submission captured is nobody's once no note was written.
+    async function discardCaptures(record) {
+      await discardScreenshot(record);
+      await discardSentenceAudio(record);
+    }
     async function handleSubmissionFailure(record, error, writeSent, owns) {
       if (!writeSent) {
-        // Nothing was sent, so the picture this submission took is nobody's.
-        await discardScreenshot(record);
+        // Nothing was sent, so the media this submission took is nobody's.
+        await discardCaptures(record);
       } else if (!error.responseReceived) {
         uncertain(record, `The write could not be confirmed. Check Anki before trying again. ${error.message}`);
         return;
       } else {
         // A worker reply confirms that no Anki mutation was sent. Release the
         // request-owned export even after its popup owner has retired.
-        await discardScreenshot(record);
+        await discardCaptures(record);
       }
       if (!owns()) return;
       setMiningButtonState(record, decisionState(record.decision));
@@ -389,6 +419,35 @@
         return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "screenshot"] };
       }
     }
+    // Experimental Netflix mining: the hovered subtitle line's audio, recorded
+    // while the page replays the line with the reader concealed. Like the
+    // screenshot, a line that cannot be recorded is a warning on an otherwise
+    // ordinary note.
+    async function prepareNetflixMedia(record, request, owns) {
+      record.netflixWarning = "";
+      record.sentenceAudio = null;
+      if (record.decision?.netflixLinked === true) {
+        record.netflixWarning = `Sentence audio: ${NETFLIX_UNAVAILABLE.linked}`;
+        return request;
+      }
+      if (record.decision?.sentenceAudio !== true) return request;
+      const unavailable = reason => {
+        record.netflixWarning = `Sentence audio: ${Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason}`;
+        return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "sentence-audio"] };
+      };
+      const cue = request.netflix?.cue;
+      if (!cue) return unavailable(request.netflix?.unavailable ?? "no-timeline");
+      if (owns()) setStatus(record, "Recording the line…");
+      try {
+        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId));
+        if (typeof recorded?.unavailable === "string") return unavailable(recorded.unavailable);
+        if (typeof recorded?.filename !== "string" || !recorded.filename) throw new Error("no audio was recorded.");
+        record.sentenceAudio = { token: recorded.token, filename: recorded.filename };
+        return { ...request, sentenceAudio: record.sentenceAudio };
+      } catch (error) {
+        return unavailable(error.message);
+      }
+    }
     function submitted(record, result) {
       if (result.state === "uncertain") { uncertain(record, result.error); return true; }
       if (result.state !== "added" && result.state !== "updated") return false;
@@ -397,7 +456,7 @@
       record.terminal = true;
       record.noteIds = [result.noteId];
       const label = result.state === "added" ? "Added" : "Updated";
-      const warnings = [record.screenshotWarning, ...(result.warnings ?? [])].filter(Boolean);
+      const warnings = [record.screenshotWarning, record.netflixWarning, ...(result.warnings ?? [])].filter(Boolean);
       setMiningButtonState(record, "success", `Find ${label.toLowerCase()} note in Anki`);
       setStatus(record, `${label} note ${result.noteId}. ${warnings.join(" ")}`.trim(),
         warnings.length > 0 ? "warning" : "success");
@@ -419,13 +478,14 @@
       setStatus(record, "Saving to Anki…");
       let writeSent = false;
       try {
-        const prepared = await prepareScreenshot(record, request, owns);
+        const screenshotted = await prepareScreenshot(record, request, owns);
+        const prepared = await prepareNetflixMedia(record, screenshotted, owns);
         if (owns()) setStatus(record, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });
         // These replies confirm that no note was written. Release the export
         // even if its popup retired while Anki was checking the submission.
-        if (["duplicate", "invalid"].includes(result.state)) await discardScreenshot(record);
+        if (["duplicate", "invalid"].includes(result.state)) await discardCaptures(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
         await handleSubmissionFailure(record, error, writeSent, owns);

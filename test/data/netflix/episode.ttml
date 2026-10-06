@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic lines written for Hachidori's tests, shaped like Netflix's IMSC
+     and DFXP downloads: tick times, clock and offset times, dur, line breaks,
+     nested spans and ruby styles. The timeline matches episode.vtt. -->
+<tt xmlns="http://www.w3.org/ns/ttml" xmlns:tts="http://www.w3.org/ns/ttml#styling"
+    xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:tickRate="10000000" ttp:timeBase="media" xml:lang="ja">
+  <head>
+    <styling>
+      <style xml:id="style_0" tts:color="white"/>
+      <style xml:id="ruby_container" tts:ruby="container"/>
+      <style xml:id="ruby_base" tts:ruby="base"/>
+      <style xml:id="ruby_text" tts:ruby="text" tts:rubyPosition="before"/>
+    </styling>
+  </head>
+  <body>
+    <div>
+      <p begin="10000000t" end="35000000t" style="style_0">&#x200e;お前、こんなとこで<br/>&#x200e;何してんの？</p>
+      <p begin="40000000t" end="52500000t"><span style="style_0">散歩してただけだよ</span></p>
+      <p begin="50000000t" end="70000000t"><span><span tts:fontStyle="italic">（犬の鳴き声）</span></span></p>
+      <p begin="00:00:08.000" end="00:00:09.000">はい</p>
+      <p begin="9.2s" dur="800ms">はい</p>
+      <p begin="620030000t" end="645000000t"><span style="style_0 ruby_container"><span style="ruby_base">漢字</span><span style="ruby_text">かんじ</span></span>を<span tts:ruby="text">よ</span>読む</p>
+      <p begin="01:00:00.000" end="3602s">トム&amp;ジェリー&#x3002;</p>
+    </div>
+  </body>
+</tt>

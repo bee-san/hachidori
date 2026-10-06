@@ -410,6 +410,7 @@ function updateAnkiSettings() {
   if (activeSection !== "anki" || optionsRevision < 0) return;
   ankiController ??= createAnkiTemplateSettingsController({ document, readAnki: () => options.anki,
     capabilities: MINING_CAPABILITIES,
+    readExperimental: () => options.experimental,
     readButtons: () => options.customButtons,
     editAnki: anki => {
       options.anki = anki;

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate } from "../extension/anki-templates.js";
+import { ANKI_TEMPLATE_MARKER_OPTIONS, applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki, ...patch });
 
@@ -87,6 +87,9 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
   // {screenshot} is a real marker; the other two are not.
   assert.deepEqual(ankiTemplateErrors(source), ["Unknown marker: {unknown}", "Unknown marker: {single-glossary-}"]);
   assert.equal(source, "literal {unknown} {single-glossary-} {screenshot} {unknown}");
+  assert.deepEqual(ankiTemplateErrors("{Sentence-Audio}"), []);
+  assert.equal(ANKI_TEMPLATE_MARKER_OPTIONS.find(option => option.marker === "sentence-audio")?.description,
+    "Netflix subtitle line's audio (experimental)");
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
 });
 

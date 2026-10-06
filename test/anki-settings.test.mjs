@@ -12,7 +12,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, capabilities, readOwnerKey = () => "") {
+function fixture(t, capabilities, readOwnerKey = () => "", readExperimental = undefined) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
   window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
@@ -21,6 +21,7 @@ function fixture(t, capabilities, readOwnerKey = () => "") {
   const controller = createAnkiSettingsController({ document: window.document, readConfig: () => config,
     capabilities,
     readOwnerKey,
+    ...(readExperimental ? { readExperimental } : {}),
     editConfig(value) { config = value; edits.push(value); },
     send(type, fields) { return new Promise(resolve => sent.push({ type, ...fields, resolve })); } });
   const el = id => window.document.getElementById(id);
@@ -839,4 +840,31 @@ test("Template CRUD preserves mappings, uses stable IDs and blocks deletion whil
   assert.equal(f.read().templates.at(-1).name, "Template");
   assert.equal(f.window.document.activeElement, f.el("opt-anki-template-name"));
   assert.equal(f.el("opt-anki-template-name").selectionStart, 0);
+});
+
+test("an experimental feature's marker is suggested only while its flag is on and stays a valid mapping", async t => {
+  const experimental = { netflixMining: false };
+  const f = fixture(t, undefined, undefined, () => experimental);
+  f.adopt({ model: "A", fieldTemplates: {
+    Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Back: { value: "{sentence-audio}", overwriteMode: "coalesce" },
+  } });
+  discovery(f.sent[0]);
+  await tick();
+  const owner = row(f, "Back");
+  const toggle = owner.querySelector(".anki-marker-combobox-toggle");
+  const marker = owner.querySelector('[role="option"][data-marker="{sentence-audio}"]');
+  const listed = () => {
+    toggle.dispatchEvent(new f.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    toggle.click();
+    const visible = !marker.hidden;
+    owner.querySelector('[role="combobox"]').dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    return visible;
+  };
+  assert.ok(marker, "the option exists so a saved mapping keeps its description");
+  assert.equal(listed(), false, "the Netflix marker is not offered while Netflix mining is off");
+  assert.deepEqual([...owner.querySelectorAll(".anki-template-error")].map(error => error.textContent), [""],
+    "a saved {sentence-audio} mapping is still valid");
+  experimental.netflixMining = true;
+  assert.equal(listed(), true, "turning the flag on offers it again");
 });

@@ -271,6 +271,18 @@ test("the screenshot marker references only a stored picture and escapes its fil
     '<img src="&quot;&gt;&lt;script&gt;">');
 });
 
+test("the Netflix sentence-audio marker references only a held recording, as the screenshot does", async () => {
+  // Off Netflix, or with Netflix mining off, nothing was recorded.
+  assert.equal(await render(request({}), "{sentence-audio}"), "");
+  assert.equal(await render(request({ sentenceAudio: { filename: "hachidori-sentence-audio-1.wav" } }), "{sentence-audio}"),
+    "[sound:hachidori-sentence-audio-1.wav]");
+  assert.equal(await render(request({ sentenceAudio: { filename: "hachidori-sentence-audio-1.wav" },
+    captureUnavailable: ["sentence-audio"] }), "{sentence-audio}"), "");
+  // It is independent of the screenshot and of {audio}.
+  assert.equal(await render(request({ sentenceAudio: { filename: "a.wav" }, captureUnavailable: ["screenshot"] }),
+    "{audio}{sentence-audio}", { audio: "[sound:word.mp3]" }), "[sound:word.mp3][sound:a.wav]");
+});
+
 test("cloze syntax inside marker values cannot become an Anki deletion, while template deletions and CSS stay literal", async () => {
   const deletion = /\{\{c\d+::|\}\}/u;
   const css = "<style>.x { color: red; } .x > .y { margin: 0 }</style>";

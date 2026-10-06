@@ -17,6 +17,7 @@
     "offscreen",
     "scripting",
     "storage",
+    "tabCapture",
     "unlimitedStorage",
     "userScripts"
   ],
@@ -128,6 +129,14 @@
       ],
       "matches": [
         "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "netflix-recorder.html"
+      ],
+      "matches": [
+        "https://www.netflix.com/*"
       ]
     }
   ]

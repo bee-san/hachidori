@@ -8,12 +8,23 @@ import {
   validateLinkedAnkiClientMedia,
 } from "./anki-client-media.js";
 
-// A note that was definitively not written leaves no picture of its own behind.
-async function releaseScreenshot({ writeResources, invoke }) {
-  const filename = writeResources?.screenshotFilename;
-  if (typeof filename !== "string" || filename === "") return;
-  await invoke("deleteMediaFile", { filename }, 10_000);
+// A note that was definitively not written leaves no media of its own behind.
+async function releaseCapturedMedia({ writeResources, invoke }) {
+  const filenames = [writeResources?.screenshotFilename, writeResources?.sentenceAudioFilename]
+    .filter(filename => typeof filename === "string" && filename !== "");
+  await Promise.all(filenames.map(filename => invoke("deleteMediaFile", { filename }, 10_000).catch(() => undefined)));
 }
+
+// Media the reader captures for one mining action. Each kind is held under its
+// own token until the note is written, then stored inside the queued write.
+const CAPTURED_MEDIA = {
+  screenshot: { requestKey: "screenshot", resourceKey: "screenshotFilename", label: "Screenshot",
+    reference: filename => `<img src="${filename}">`,
+    replaced: "the captured picture was replaced before this note was saved." },
+  "sentence-audio": { requestKey: "sentenceAudio", resourceKey: "sentenceAudioFilename", label: "Sentence audio",
+    reference: filename => `[sound:${filename}]`,
+    replaced: "the recorded line was replaced before this note was saved." },
+};
 
 export function createAnkiWorkerService({
   gateway,
@@ -61,53 +72,64 @@ export function createAnkiWorkerService({
   const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
     dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true });
 
-  // One pending viewport picture at a time: a later capture supersedes an
+  // One pending item of each kind at a time: a later capture supersedes an
   // earlier one, and a note that is written consumes it. Nothing is uploaded
   // until then, so a rejected note leaves no unreferenced media in Anki.
-  let pendingScreenshot = null;
+  const pendingMedia = { screenshot: null, "sentence-audio": null };
   let screenshotRequestToken = null;
 
   // Stored inside the queued write, once the generation, configuration and
   // duplicate decisions have been made. A refused upload is a warning, and the
-  // fields that referenced the picture are emptied so the note never points at
-  // an image Anki does not have.
-  async function storePendingScreenshot({ request, appliedFields, invoke }) {
-    const filename = request.screenshot?.filename;
-    if (typeof filename !== "string" || filename === "") return { warnings: [] };
-    const reference = `<img src="${filename}">`;
+  // fields that referenced the media are emptied so the note never points at
+  // a file Anki does not have.
+  async function storePendingMedia(kind, { request, appliedFields, invoke }) {
+    const { requestKey, label, reference: referenceFor, replaced } = CAPTURED_MEDIA[kind];
+    const filename = request[requestKey]?.filename;
+    if (typeof filename !== "string" || filename === "") return {};
+    const reference = referenceFor(filename);
     const fields = Object.keys(appliedFields).filter(field => appliedFields[field].includes(reference));
     if (fields.length === 0) {
-      // The fields this note actually applies keep their existing picture, so the
-      // one that was captured for it is released rather than left held.
-      if (!isLinkedSubmission(request) && pendingScreenshot?.token === request.screenshot.token) pendingScreenshot = null;
-      return { warnings: [] };
+      // The fields this note actually applies keep their existing media, so
+      // what was captured for it is released rather than left held.
+      if (!isLinkedSubmission(request) && pendingMedia[kind]?.token === request[requestKey].token) pendingMedia[kind] = null;
+      return {};
     }
-    const withoutPicture = reason => {
+    const without = reason => {
       // Pronunciation enrichment renders this request again after the note is
-      // saved; keep that render from restoring a picture that was not stored.
-      request.captureUnavailable = [...(request.captureUnavailable ?? []), "screenshot"];
+      // saved; keep that render from restoring media that was not stored.
+      request.captureUnavailable = [...(request.captureUnavailable ?? []), kind];
       for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
-      return { warnings: [`Screenshot: ${reason}`] };
+      return { warning: `${label}: ${reason}` };
     };
     const pending = isLinkedSubmission(request)
-      ? linkedClientMedia.get(request)?.screenshot
-      : pendingScreenshot;
-    // Only this note's own picture is consumed: another Add's newer capture is
+      ? linkedClientMedia.get(request)?.[requestKey]
+      : pendingMedia[kind];
+    // Only this note's own media is consumed: another Add's newer capture is
     // left where it is rather than taken away from it.
-    if (!pending || pending.token !== request.screenshot.token || pending.filename !== filename) {
-      return withoutPicture("the captured picture was replaced before this note was saved.");
+    if (!pending || pending.token !== request[requestKey].token || pending.filename !== filename) {
+      return without(replaced);
     }
-    if (!isLinkedSubmission(request)) pendingScreenshot = null;
+    if (!isLinkedSubmission(request)) pendingMedia[kind] = null;
     try {
       const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
       if (stored !== filename) throw new Error("Anki stored it under a different filename.");
     } catch (error) {
       // The store may have happened even though its answer did not arrive, and
-      // the note is about to be written without the picture: take it back out.
-      await releaseScreenshot({ writeResources: { screenshotFilename: filename }, invoke }).catch(() => undefined);
-      return withoutPicture(error.message);
+      // the note is about to be written without the media: take it back out.
+      await releaseCapturedMedia({ writeResources: { [CAPTURED_MEDIA[kind].resourceKey]: filename }, invoke });
+      return without(error.message);
     }
-    return { warnings: [], screenshotFilename: filename };
+    return { filename };
+  }
+
+  async function storePendingScreenshot(context) {
+    const screenshot = await storePendingMedia("screenshot", context);
+    const sentenceAudio = await storePendingMedia("sentence-audio", context);
+    return {
+      warnings: [screenshot.warning, sentenceAudio.warning].filter(Boolean),
+      ...(screenshot.filename ? { screenshotFilename: screenshot.filename } : {}),
+      ...(sentenceAudio.filename ? { sentenceAudioFilename: sentenceAudio.filename } : {}),
+    };
   }
 
   async function prepareWrite(context) {
@@ -119,7 +141,7 @@ export function createAnkiWorkerService({
         validate: () => currentGeneration(context.request),
       });
     } catch (error) {
-      await releaseScreenshot({ writeResources: screenshot, invoke: context.invoke }).catch(() => undefined);
+      await releaseCapturedMedia({ writeResources: screenshot, invoke: context.invoke });
       throw error;
     }
     return screenshot;
@@ -136,6 +158,9 @@ export function createAnkiWorkerService({
         // Part of the checked configuration, so toggling Smaller Anki cards
         // between a preflight and Add refuses the stale Add.
         compactGlossary: options.experimental.smallerAnkiCards === true,
+        // Likewise for the experimental Netflix mining switch, which decides
+        // whether a Netflix request gets its sentence audio.
+        netflixMining: options.experimental.netflixMining === true,
       };
     },
     buildFields: async (request, current, { preflight = false } = {}) => {
@@ -190,7 +215,7 @@ export function createAnkiWorkerService({
         return {};
       }
     },
-    afterRejected: releaseScreenshot,
+    afterRejected: releaseCapturedMedia,
     duplicateIndex,
     enrich: context => enrichAnkiNote(context, {
       audio,
@@ -227,26 +252,50 @@ export function createAnkiWorkerService({
     if (byteLength === null || byteLength > MAX_LINKED_SCREENSHOT_BYTES) {
       throw new Error("This page produced no screenshot or exceeded the 6 MiB screenshot limit.");
     }
-    pendingScreenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
-    return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
+    pendingMedia.screenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
+    return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
+  }
+
+  // Experimental Netflix mining: the WAV of the subtitle line the reader just
+  // had replayed and recorded. Like the screenshot it is held here and stored
+  // only inside the note's write.
+  async function sentenceAudio(data, templateId) {
+    const options = await readOptions();
+    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
+      throw new Error("The selected Anki Template is no longer available.");
+    }
+    if (decodedBase64Length(data) === null || !data.startsWith("UklG")) {
+      throw new Error("The recording produced no WAV audio.");
+    }
+    const held = { token: crypto.randomUUID(), filename: `hachidori-sentence-audio-${crypto.randomUUID()}.wav`, data };
+    pendingMedia["sentence-audio"] = held;
+    return { token: held.token, filename: held.filename };
   }
 
   // An abandoned or definitively rejected submission releases only its own
   // pending bytes; uploaded media has a separate write-outcome cleanup path.
+  // Tokens are unique across kinds, so one discard serves every capture.
   function discardScreenshot(request) {
-    if (pendingScreenshot !== null && pendingScreenshot.token === request?.token) pendingScreenshot = null;
+    for (const kind of Object.keys(pendingMedia)) {
+      if (pendingMedia[kind] !== null && pendingMedia[kind].token === request?.token) pendingMedia[kind] = null;
+    }
     return { discarded: true };
   }
 
   async function submitRequest(request) {
     try {
       const result = await mining.submit(request);
-      if (["duplicate", "invalid"].includes(result.state)) discardScreenshot(request.screenshot);
+      if (["duplicate", "invalid"].includes(result.state)) {
+        discardScreenshot(request.screenshot);
+        discardScreenshot(request.sentenceAudio);
+      }
       return result;
     } catch (error) {
       // The mining service reports a possibly sent mutation as uncertain;
       // a rejection here confirms that its note write never happened.
       discardScreenshot(request.screenshot);
+      discardScreenshot(request.sentenceAudio);
       throw error;
     }
   }
@@ -325,7 +374,7 @@ export function createAnkiWorkerService({
   async function clientMedia(request) {
     const value = {};
     if (request?.screenshot && !request.captureUnavailable?.includes("screenshot")) {
-      const screenshot = pendingScreenshot;
+      const screenshot = pendingMedia.screenshot;
       if (!screenshot || screenshot.token !== request.screenshot.token
           || screenshot.filename !== request.screenshot.filename) {
         throw new Error("The screenshot was replaced before it could be sent to the linked Hachidori.");
@@ -343,7 +392,7 @@ export function createAnkiWorkerService({
 
   return { ...mining, preflightClient, preflightClientSpeech, submit: submitRequest, submitClient,
     clientMedia, settleClientMedia,
-    screenshot, discardScreenshot, async maturity(request) {
+    screenshot, discardScreenshot, sentenceAudio, async maturity(request) {
     try {
       const options = await readOptions();
       return { mature: options.definitionBlurAnkiMature === true
