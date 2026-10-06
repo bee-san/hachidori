@@ -2124,6 +2124,8 @@
     level.popup.style.top = `${position.top}px`;
     level.popup.style.width = `${position.width}px`;
     level.popup.style.height = `${position.height}px`;
+    // A new size, scale or toolbar edge can move the chooser's button.
+    audio?.positionMenu(level);
   }
 
   function positionPopup(fromLevel = rootLevel, resetToolbar = false) {
@@ -2353,9 +2355,17 @@
       conceal: concealReader,
     });
     mining.update(options, optionsStorageRevision >= 0);
-    audio ??= window.HDAudio.createAudioController({ window,
+    audio ??= window.HDAudio.createAudioController({ window, popupRect,
       send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
-      onMenuChange(owner) { cancelCandidateScan(); clearHideTimer(); positionPopup(owner); },
+      // The chooser places itself inside its pane. Open, it is that pane's
+      // interaction, so a child pane that would cover its choices closes.
+      onMenuChange(owner) {
+        cancelCandidateScan();
+        clearHideTimer();
+        if (audio.hasMenu(owner) && levels.length > owner.depth + 1 && !hasProtectedNote(owner.depth + 1)) {
+          dismissLevels(owner.depth + 1, false);
+        }
+      },
       onSelectionChange: owner => mining.refresh(owner),
     });
     audio.update(options, optionsStorageRevision >= 0);
@@ -3832,6 +3842,11 @@
     pointerInPopup = true;
     pointerLevel = level;
     clearHideTimer();
+    // Reaching for a pronunciation choice opens no child popups.
+    if (audio?.hasMenu()) {
+      cancelPendingHover(level);
+      return;
+    }
     const link = popupLinkAt(pointer.target, level);
     if (link) {
       cancelPendingHover(level);
