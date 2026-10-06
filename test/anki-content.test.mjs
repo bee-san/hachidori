@@ -874,12 +874,15 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   assert.equal(f.items[0].output.textContent, "Added note 7. Sentence audio: The Netflix tab is no longer the active tab.");
   assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
 
-  decision = { state: "addable", canAdd: true, sentenceAudio: true, netflixLinked: true };
+  // A linked preflight is the host's reply plus netflixLinked: the host never
+  // sees the cue, so it flags neither sentenceAudio nor gif.
+  decision = { state: "addable", canAdd: true, netflixLinked: true };
   f.controller.refresh(f.context.owner);
   await until(() => f.items[1].add && !f.items[1].add.disabled);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "success");
-  assert.match(f.items[1].output.textContent, /Sentence audio: this browser is linked to another Hachidori/u);
+  assert.equal(f.items[1].output.textContent,
+    "Added note 7. Netflix mining: this browser is linked to another Hachidori, so Netflix lines are not recorded.");
 
   // Without a mapped {sentence-audio}, or with Netflix mining off, the worker
   // says nothing about sentence audio and the note is exactly as before.

@@ -478,13 +478,15 @@
       record.netflixWarning = "";
       record.sentenceAudio = null;
       record.gif = null;
+      // A linked browser records nothing. Its host never sees the Netflix cue,
+      // so its preflight cannot say which media the fields map; the reader
+      // warns for any linked Netflix note, and {gif} keeps its screenshot.
+      if (record.decision?.netflixLinked === true) {
+        record.netflixWarning = `Netflix mining: ${NETFLIX_UNAVAILABLE.linked}`;
+        return request;
+      }
       const wanted = { audio: record.decision?.sentenceAudio === true, gif: record.decision?.gif === true };
       if (!wanted.audio && !wanted.gif) return request;
-      // A linked browser records no Netflix media; {gif} keeps its screenshot.
-      if (record.decision?.netflixLinked === true) {
-        if (wanted.audio) record.netflixWarning = `Sentence audio: ${NETFLIX_UNAVAILABLE.linked}`;
-        return wanted.gif ? { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "gif"] } : request;
-      }
       const outcome = { warnings: [], captureUnavailable: [...(request.captureUnavailable ?? [])] };
       const cue = request.netflix?.cue;
       if (!cue) {
