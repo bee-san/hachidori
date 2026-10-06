@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { encodeBase64 } from "./base64.js";
 
-// Experimental Netflix mining, the offscreen document's side. While the page
-// replays one subtitle line, this records the tab's audio from a
-// chrome.tabCapture stream, then cuts the line out of it by the media times the
-// page reported and encodes a mono WAV for Anki. Only that WAV leaves here.
+// Experimental Netflix mining's recorder. netflix-recorder.html runs this in a
+// hidden extension frame inside the Netflix tab while the page replays one
+// subtitle line: it records the tab's audio from a chrome.tabCapture stream,
+// then cuts the line out of it by the media times the page reported and
+// encodes a mono WAV for Anki. Only that WAV leaves the frame.
+//
+// The frame, not the offscreen document, opens the stream: a tab stream ID is
+// usable only in the process of the context that asked for it, and the
+// offscreen document is cross-origin isolated for the threaded engine, so it
+// runs in another process than the service worker. Chrome mutes a tab while it
+// is captured, so the replay can be silent.
 
 // The audio kept before and after the cue.
 export const SENTENCE_PAD_MS = 250;
-// How long the worklet has to hand over its last samples.
-const FLUSH_TIMEOUT_MS = 1000;
+// How long the last captured audio has to arrive after the page's replay ends.
+const DRAIN_TIMEOUT_MS = 500;
+const DRAIN_POLL_MS = 20;
 
 // Wall-clock minus media time while the line played at 1×: the median of the
 // page's (wall ms, media ms) pairs, so a stale pair from the seek cannot move it.
@@ -23,8 +31,38 @@ export function mediaClockOffset(anchors) {
   return offsets.length % 2 === 1 ? offsets[middle] : (offsets[middle - 1] + offsets[middle]) / 2;
 }
 
-// The recorded samples between two wall-clock times. Chunks carry the context
-// frame of their first sample; frame 0 is at `originMs`. Missing frames stay
+// Places captured AudioData blocks on the wall clock, as the removed media
+// recorder's sample clock did. A block's timestamp is in the page's time
+// (performance.timeOrigin) on current Chrome and in a raw monotonic clock on
+// older builds; the first block decides which. Timestamps are rounded for
+// privacy, so contiguous blocks are placed by counting samples, and only a
+// real jump moves the count.
+export function createAudioFrameClock({ timeOrigin, now }) {
+  let originMs = null;
+  let domainMs = null;
+  let next = 0;
+  return {
+    get originMs() { return originMs; },
+    get endFrame() { return next; },
+    place({ timestampUs, frames, sampleRate }) {
+      const rawMs = timestampUs / 1000;
+      if (originMs === null) {
+        const arrival = now();
+        domainMs = Math.abs(timeOrigin + rawMs - arrival) < 1000 ? timeOrigin : arrival - rawMs - frames * 1000 / sampleRate;
+        originMs = domainMs + rawMs;
+        next = frames;
+        return 0;
+      }
+      const byTimestamp = Math.round((domainMs + rawMs - originMs) * sampleRate / 1000);
+      const start = Math.abs(byTimestamp - next) > frames / 2 ? byTimestamp : next;
+      next = start + frames;
+      return start;
+    },
+  };
+}
+
+// The recorded samples between two wall-clock times. Chunks carry the frame
+// of their first sample; frame 0 is at `originMs`. Missing frames stay
 // silent, and the range is clamped to what was recorded.
 export function clipSamples(chunks, { originMs, sampleRate, startMs, endMs }) {
   if (!Number.isFinite(originMs) || !(sampleRate > 0) || !(endMs > startMs) || chunks.length === 0) return null;
@@ -80,54 +118,75 @@ export function encodeMonoWav(samples, sampleRate) {
   return new Uint8Array(output);
 }
 
-export function createNetflixCaptureService(window, {
+// One AudioData block as mono samples, revived from the removed recorder's mixer.
+function monoSamples(value) {
+  const mono = new Float32Array(value.numberOfFrames);
+  const plane = new Float32Array(value.numberOfFrames);
+  for (let channel = 0; channel < value.numberOfChannels; channel += 1) {
+    value.copyTo(plane, { planeIndex: channel, format: "f32-planar" });
+    for (let frame = 0; frame < mono.length; frame += 1) mono[frame] += plane[frame];
+  }
+  if (value.numberOfChannels > 1) for (let frame = 0; frame < mono.length; frame += 1) mono[frame] /= value.numberOfChannels;
+  return mono;
+}
+
+export function createNetflixRecorder(window, {
   now = () => window.performance.timeOrigin + window.performance.now(),
 } = {}) {
   let session = null;
 
   function stop(current) {
     window.clearTimeout(current.timer);
-    for (const track of current.stream.getTracks()) track.stop();
-    current.context?.close().catch(() => {});
+    current.reader?.cancel().catch(() => {});
+    for (const track of current.stream?.getTracks() ?? []) track.stop();
     if (session === current) session = null;
   }
 
-  function owned(sessionId) {
-    if (session === null || session.sessionId !== sessionId) {
-      throw new Error("The recording of this line was replaced or stopped.");
+  async function read(current) {
+    for (;;) {
+      const { value, done } = await current.reader.read();
+      if (done) return;
+      try {
+        current.sampleRate ??= value.sampleRate;
+        if (value.sampleRate !== current.sampleRate) continue;
+        const startFrame = current.clock.place({ timestampUs: value.timestamp, frames: value.numberOfFrames,
+          sampleRate: value.sampleRate });
+        current.chunks.push({ startFrame, samples: monoSamples(value) });
+      } finally {
+        value.close();
+      }
     }
-    return session;
   }
 
-  async function start({ sessionId, streamId, limitMs }) {
-    if (typeof sessionId !== "string" || typeof streamId !== "string" || streamId === ""
-        || !Number.isFinite(limitMs) || limitMs <= 0) throw new Error("The Netflix recording request is invalid.");
+  // Opens this tab's stream and starts placing its samples. Chrome hands a
+  // stream ID only to an extension the user invoked on the tab, and the ID is
+  // used here, in the context that asked for it.
+  async function start({ targetTabId, limitMs }) {
+    if (!Number.isSafeInteger(targetTabId) || !Number.isFinite(limitMs) || limitMs <= 0) {
+      throw new Error("The Netflix recording request is invalid.");
+    }
     if (session !== null) stop(session);
-    const stream = await window.navigator.mediaDevices.getUserMedia({
-      audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
-      video: false,
-    });
-    const current = { sessionId, stream, context: null, node: null, chunks: [], originMs: null, timer: null, flushed: null };
+    const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null,
+      clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
     session = current;
     try {
-      const context = new window.AudioContext({ latencyHint: "interactive" });
-      current.context = context;
-      await context.audioWorklet.addModule(new URL("./netflix-capture-worklet.js", import.meta.url).href);
-      const source = context.createMediaStreamSource(stream);
-      // A captured tab goes quiet for the user; its sound plays on from here.
-      source.connect(context.destination);
-      const node = new window.AudioWorkletNode(context, "hachidori-netflix-audio");
-      node.port.onmessage = ({ data }) => {
-        if (data?.samples instanceof ArrayBuffer) {
-          current.chunks.push({ startFrame: data.startFrame, samples: new Float32Array(data.samples) });
-        } else if (data?.flushed === true) current.flushed?.();
-      };
-      const silence = context.createGain();
-      silence.gain.value = 0;
-      source.connect(node).connect(silence).connect(context.destination);
-      await context.resume();
-      current.originMs = now() - context.currentTime * 1000;
-      current.node = node;
+      let streamId;
+      try {
+        streamId = await window.chrome.tabCapture.getMediaStreamId({ targetTabId });
+      } catch (error) {
+        if (/not been invoked|activeTab/iu.test(error?.message ?? "")) {
+          stop(current);
+          return { unavailable: "grant" };
+        }
+        throw error;
+      }
+      current.stream = await window.navigator.mediaDevices.getUserMedia({
+        audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
+        video: false,
+      });
+      const [track] = current.stream.getAudioTracks();
+      current.reader = new window.MediaStreamTrackProcessor({ track }).readable.getReader();
+      current.reading = read(current).catch(() => {});
       // A recording nobody finishes still ends, which gives the tab its sound back.
       current.timer = window.setTimeout(() => stop(current), limitMs);
     } catch (error) {
@@ -137,42 +196,48 @@ export function createNetflixCaptureService(window, {
     return { padMs: SENTENCE_PAD_MS };
   }
 
-  function flush(current) {
-    return new Promise(resolve => {
-      const timer = window.setTimeout(resolve, FLUSH_TIMEOUT_MS);
-      current.flushed = () => {
-        window.clearTimeout(timer);
-        resolve();
-      };
-      current.node.port.postMessage({ flush: true });
-    });
+  // Audio reaches the frame a little after the page plays it.
+  async function drain(current, untilMs) {
+    const deadline = now() + DRAIN_TIMEOUT_MS;
+    while (now() < deadline && !(current.clock.originMs !== null && current.sampleRate !== null
+      && current.clock.originMs + current.clock.endFrame * 1000 / current.sampleRate >= untilMs)) {
+      await new Promise(resolve => { window.setTimeout(resolve, DRAIN_POLL_MS); });
+    }
   }
 
-  async function finish({ sessionId, startMs, endMs, anchors }) {
-    const current = owned(sessionId);
-    const sampleRate = current.context.sampleRate;
+  async function finish({ startMs, endMs, anchors }) {
+    const current = session;
+    if (current?.reader == null) throw new Error("The recording of this line was replaced or stopped.");
+    const offset = mediaClockOffset(anchors);
     try {
-      await flush(current);
+      if (offset !== null) await drain(current, endMs + SENTENCE_PAD_MS + offset);
     } finally {
       stop(current);
     }
-    const offset = mediaClockOffset(anchors);
     if (offset === null) throw new Error("Netflix did not play the line, so nothing was recorded.");
-    const samples = clipSamples(current.chunks, { originMs: current.originMs, sampleRate,
+    const samples = clipSamples(current.chunks, { originMs: current.clock.originMs, sampleRate: current.sampleRate,
       startMs: startMs - SENTENCE_PAD_MS + offset, endMs: endMs + SENTENCE_PAD_MS + offset });
     if (samples === null) throw new Error("No audio was recorded while the line played.");
     if (isSilent(samples)) return { silent: true };
-    return { silent: false, data: encodeBase64(encodeMonoWav(samples, sampleRate)) };
+    return { silent: false, data: encodeBase64(encodeMonoWav(samples, current.sampleRate)) };
   }
 
-  return async message => {
-    switch (message.type) {
-      case "hd_netflix_record_start": return start(message);
-      case "hd_netflix_record_finish": return finish(message);
-      case "hd_netflix_record_cancel":
-        if (session?.sessionId === message.sessionId) stop(session);
-        return { cancelled: true };
-      default: throw new Error("Unknown Netflix recording request.");
-    }
-  };
+  return { start, finish, stop: () => { if (session !== null) stop(session); } };
+}
+
+// netflix-recorder.html's side of its port to the service worker: one
+// recording per frame, answered message by message.
+export function connectNetflixRecorder(window) {
+  const recorder = createNetflixRecorder(window);
+  const port = window.chrome.runtime.connect({ name: "hachidori-netflix-recorder" });
+  const answer = (task, reply) => task.then(
+    result => port.postMessage({ type: reply, ...result }),
+    error => port.postMessage({ type: "error", error: error?.message || String(error) }),
+  );
+  port.onMessage.addListener(message => {
+    if (message?.type === "record") answer(recorder.start(message), "started");
+    else if (message?.type === "finish") answer(recorder.finish(message), "clip");
+  });
+  port.onDisconnect.addListener(() => recorder.stop());
+  return port;
 }

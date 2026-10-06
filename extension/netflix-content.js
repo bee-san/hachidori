@@ -186,23 +186,40 @@
       });
     }
 
-    // Records the cue's line: the worker starts the tab recording, the page
-    // replays the line, then the worker cuts the clip and holds its WAV for
-    // the note. Resolves with the held file or with why there is none.
+    // The hidden extension frame that records the tab (netflix-capture.js).
+    function recorderFrame() {
+      const frame = document.createElement("iframe");
+      frame.src = window.chrome.runtime.getURL("netflix-recorder.html");
+      frame.setAttribute("aria-hidden", "true");
+      frame.tabIndex = -1;
+      frame.style.setProperty("display", "none", "important");
+      // Outside Netflix's own app root, so its rendering cannot remove it.
+      document.documentElement.append(frame);
+      return frame;
+    }
+
+    // Records the cue's line: a recorder frame opens the tab's stream, the page
+    // replays the line, then the frame cuts the clip and the worker holds its
+    // WAV for the note. Resolves with the held file or with why there is none.
     async function record(cue, { send, templateId }) {
-      const started = await send("hd_netflix_capture_start", { cue });
-      if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
-      if (typeof started.sessionId !== "string" || !Number.isFinite(started.padMs)) {
-        throw new Error("the recording did not start.");
-      }
-      let anchors;
+      const frame = recorderFrame();
       try {
-        anchors = await replay(cue, started.padMs);
-      } catch (error) {
-        await send("hd_netflix_capture_cancel", { sessionId: started.sessionId }).catch(() => {});
-        return { unavailable: error.code === "player" ? "player" : "replay" };
+        const started = await send("hd_netflix_capture_start", { cue });
+        if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
+        if (typeof started.sessionId !== "string" || !Number.isFinite(started.padMs)) {
+          throw new Error("the recording did not start.");
+        }
+        let anchors;
+        try {
+          anchors = await replay(cue, started.padMs);
+        } catch (error) {
+          await send("hd_netflix_capture_cancel", { sessionId: started.sessionId }).catch(() => {});
+          return { unavailable: error.code === "player" ? "player" : "replay" };
+        }
+        return await send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
+      } finally {
+        frame.remove();
       }
-      return send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
     }
 
     document.addEventListener(PAGE_EVENT, event => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SENTENCE_PAD_MS, clipSamples, createNetflixCaptureService, encodeMonoWav, isSilent,
+import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder, encodeMonoWav, isSilent,
   mediaClockOffset } from "../extension/netflix-capture.js";
 
 test("the media clock offset is the median of the page's (wall, media) pairs", () => {
@@ -11,6 +11,24 @@ test("the media clock offset is the median of the page's (wall, media) pairs", (
   assert.equal(mediaClockOffset([[0, 0], [10, 20]]), -5);
   assert.equal(mediaClockOffset([]), null);
   assert.equal(mediaClockOffset(undefined), null);
+});
+
+test("captured blocks are placed by counted samples on the page clock, or on the raw clock they arrived in", () => {
+  // Page-relative timestamps: frame 0 is at timeOrigin + the first timestamp.
+  const page = createAudioFrameClock({ timeOrigin: 1_000_000, now: () => 1_000_120 });
+  assert.equal(page.place({ timestampUs: 100_000, frames: 480, sampleRate: 48_000 }), 0);
+  assert.equal(page.originMs, 1_000_100);
+  // Privacy-rounded timestamps of contiguous blocks keep the sample count.
+  assert.equal(page.place({ timestampUs: 110_100, frames: 480, sampleRate: 48_000 }), 480);
+  assert.equal(page.place({ timestampUs: 119_900, frames: 480, sampleRate: 48_000 }), 960);
+  // A real gap moves the count.
+  assert.equal(page.place({ timestampUs: 200_000, frames: 480, sampleRate: 48_000 }), 4800);
+  assert.equal(page.endFrame, 5280);
+  // A raw monotonic timestamp far from the page clock is anchored at arrival.
+  const raw = createAudioFrameClock({ timeOrigin: 1_000_000, now: () => 1_000_500 });
+  assert.equal(raw.place({ timestampUs: 9_000_000_000, frames: 480, sampleRate: 48_000 }), 0);
+  assert.equal(raw.originMs, 1_000_490);
+  assert.equal(raw.place({ timestampUs: 9_000_010_000, frames: 480, sampleRate: 48_000 }), 480);
 });
 
 test("a clip is exactly the recorded samples between two wall-clock times", () => {
@@ -44,109 +62,114 @@ test("only exact zeros are silence, and the WAV is 16-bit mono PCM of the clip",
   assert.throws(() => encodeMonoWav(new Float32Array(1), 0), /sample rate/u);
 });
 
-// The offscreen document's media stack, enough to drive one recording: a tab
-// stream, an AudioContext at 1 kHz whose clock reads 2 s at resume, and the
-// worklet's port, through which the test delivers frames.
-function captureWindow() {
-  const stopped = [];
-  const connections = [];
-  const record = { stream: null, constraints: null, worklet: null, port: null, closed: false, timers: [] };
-  const node = name => ({ name, connect(target) { connections.push([name, target.name]); return target; } });
-  class AudioWorkletNode {
-    constructor(context, processor) {
-      this.name = processor;
-      this.port = { onmessage: null, posted: [], postMessage(message) {
-        this.posted.push(message);
-        if (message.flush) queueMicrotask(() => this.onmessage({ data: { flushed: true } }));
-      } };
-      record.port = this.port;
-    }
-    connect(target) { connections.push([this.name, target.name]); return target; }
-  }
+// The recorder frame's media stack: tabCapture, a tab stream, and a track
+// processor whose blocks the test delivers. The page clock reads `clock.now`.
+function recorderWindow({ grant = true } = {}) {
+  const clock = { now: 2_000_000 };
+  const record = { streamIds: [], constraints: null, stopped: 0, cancelled: 0, timers: [], push: null };
+  const blocks = [];
+  let wake = null;
   const window = {
-    performance: { timeOrigin: 1_000_000, now: () => 500 },
+    performance: { timeOrigin: 1_000_000, now: () => clock.now - 1_000_000 },
+    chrome: { tabCapture: { async getMediaStreamId({ targetTabId }) {
+      record.streamIds.push(targetTabId);
+      if (!grant) throw new Error("Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.");
+      return "stream-id";
+    } } },
     navigator: { mediaDevices: { async getUserMedia(constraints) {
       record.constraints = constraints;
-      record.stream = { getTracks: () => [{ stop: () => stopped.push("audio") }] };
-      return record.stream;
+      const track = { stop: () => { record.stopped++; } };
+      return { getAudioTracks: () => [track], getTracks: () => [track] };
     } } },
-    AudioContext: class {
-      constructor() { this.sampleRate = 1000; this.currentTime = 2; this.destination = node("destination"); }
-      audioWorklet = { addModule: async url => { record.worklet = url; } };
-      createMediaStreamSource() { return node("source"); }
-      createGain() { return { ...node("silence"), gain: { value: 1 } }; }
-      async resume() {}
-      async close() { record.closed = true; }
+    MediaStreamTrackProcessor: class {
+      constructor({ track }) {
+        assert.ok(track);
+        this.readable = { getReader: () => ({
+          read: () => new Promise(resolve => {
+            if (blocks.length) resolve(blocks.shift());
+            else wake = resolve;
+          }),
+          cancel: async () => { record.cancelled++; wake?.({ done: true }); },
+        }) };
+      }
     },
-    AudioWorkletNode,
-    setTimeout: (callback, ms) => { record.timers.push({ callback, ms }); return record.timers.length; },
+    setTimeout: (callback, ms) => {
+      if (ms >= 1000) { record.timers.push({ callback, ms }); return record.timers.length; }
+      return setTimeout(callback, 0);
+    },
     clearTimeout: () => {},
   };
-  return { window, record, stopped, connections };
+  // One block of `frames` samples at 1 kHz, stereo with equal channels.
+  record.push = (timestampMs, frames, value) => {
+    const block = { value: { timestamp: timestampMs * 1000, numberOfFrames: frames, numberOfChannels: 2, sampleRate: 1000,
+      copyTo(plane) { plane.fill(value); }, close() {} }, done: false };
+    if (wake) { const resolve = wake; wake = null; resolve(block); } else blocks.push(block);
+  };
+  return { window, record, clock };
 }
 
-test("a recording plays the tab on, trims to the cue's padded media time and stops the stream", async () => {
-  const { window, record, stopped, connections } = captureWindow();
-  const service = createNetflixCaptureService(window);
-  assert.deepEqual(await service({ type: "hd_netflix_record_start", sessionId: "s1", streamId: "stream", limitMs: 60_000 }),
-    { padMs: SENTENCE_PAD_MS });
-  assert.deepEqual(record.constraints, { audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: "stream" } }, video: false });
-  assert.match(record.worklet, /netflix-capture-worklet\.js$/u);
-  assert.deepEqual(connections, [["source", "destination"], ["source", "hachidori-netflix-audio"],
-    ["hachidori-netflix-audio", "silence"], ["silence", "destination"]], "the tab stays audible while it is recorded");
+const tick = () => new Promise(resolve => { setTimeout(resolve, 0); });
+
+test("the recorder opens its own tab's stream, trims to the cue's padded media time and stops the stream", async () => {
+  const { window, record, clock } = recorderWindow();
+  const recorder = createNetflixRecorder(window);
+  assert.deepEqual(await recorder.start({ targetTabId: 7, limitMs: 60_000 }), { padMs: SENTENCE_PAD_MS });
+  assert.deepEqual(record.streamIds, [7]);
+  assert.deepEqual(record.constraints, { audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: "stream-id" } }, video: false });
   assert.deepEqual(record.timers.map(timer => timer.ms), [60_000]);
-  // Wall clock origin: 1_000_000 + 500 - 2 s of context time. Frame n is at 998_500 + n ms.
-  const samples = Float32Array.from({ length: 4000 }, (_, index) => (index % 100) / 200 + 0.001);
-  record.port.onmessage({ data: { startFrame: 0, samples: samples.slice(0, 2000).buffer } });
-  record.port.onmessage({ data: { startFrame: 2000, samples: samples.slice(2000).buffer } });
-  // The page played media 1000 ms at wall 999_000, so the cue 1000–2000 ms with
-  // its 250 ms pads spans wall 998_750–1_000_250: frames 250–1750.
-  const finished = await service({ type: "hd_netflix_record_finish", sessionId: "s1", startMs: 1000, endMs: 2000,
-    anchors: [[999_000, 1000], [999_500, 1500]] });
-  assert.deepEqual(record.port.posted, [{ flush: true }]);
-  assert.deepEqual(stopped, ["audio"]);
-  assert.equal(record.closed, true);
-  const wav = Buffer.from(finished.data, "base64");
-  assert.equal(finished.silent, false);
+  // Page-relative timestamps: the block at 1_000 ms is at wall 1_001_000 and
+  // arrives as it ends. Each 100-frame block is 100 ms at 1 kHz with its own level.
+  clock.now = 1_001_100;
+  for (let block = 0; block < 30; block++) record.push(1000 + block * 100, 100, (block + 1) / 64);
+  await tick();
+  clock.now = 1_001_000 + 3000;
+  // The page played media 1000 ms at wall 1_001_500: the cue 1000–2000 ms with
+  // its 250 ms pads is wall 1_001_250–1_002_750, frames 250–1750.
+  const clip = await recorder.finish({ startMs: 1000, endMs: 2000, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
+  assert.equal(clip.silent, false);
+  assert.ok(record.stopped >= 1 && record.cancelled >= 1, "the stream and its reader are stopped");
+  const wav = Buffer.from(clip.data, "base64");
+  assert.equal(wav.readUInt32LE(24), 1000);
   assert.equal(wav.readUInt32LE(40), 1500 * 2);
-  assert.deepEqual([...Array(1500).keys()].map(index => wav.readInt16LE(44 + index * 2)),
-    [...samples.slice(250, 1750)].map(sample => Math.trunc(sample * 0x7fff)));
-  await assert.rejects(service({ type: "hd_netflix_record_finish", sessionId: "s1", startMs: 1000, endMs: 2000,
-    anchors: [[999_000, 1000]] }), /replaced or stopped/u);
+  const levels = [...Array(1500).keys()].map(index => wav.readInt16LE(44 + index * 2));
+  assert.equal(levels[0], Math.trunc(3 / 64 * 0x7fff), "the clip starts in the block holding frame 250");
+  assert.equal(levels.at(-1), Math.trunc(18 / 64 * 0x7fff), "and ends in the block holding frame 1749");
+  await assert.rejects(recorder.finish({ startMs: 1000, endMs: 2000, anchors: [[1, 1]] }), /replaced or stopped/u);
 });
 
-test("silence, a line that never played, a stale session and an abandoned recording are told apart", async () => {
-  const silent = captureWindow();
-  const service = createNetflixCaptureService(silent.window);
-  await service({ type: "hd_netflix_record_start", sessionId: "s1", streamId: "stream", limitMs: 1000 });
-  silent.record.port.onmessage({ data: { startFrame: 0, samples: new Float32Array(3000).buffer } });
-  assert.deepEqual(await service({ type: "hd_netflix_record_finish", sessionId: "s1", startMs: 1000, endMs: 1500,
-    anchors: [[999_000, 1000]] }), { silent: true });
+test("a missing grant, silence, a line that never played and an abandoned recording are told apart", async () => {
+  const ungranted = recorderWindow({ grant: false });
+  assert.deepEqual(await createNetflixRecorder(ungranted.window).start({ targetTabId: 7, limitMs: 1000 }), { unavailable: "grant" });
+  assert.equal(ungranted.record.constraints, null, "no stream is opened without a grant");
 
-  const never = captureWindow();
-  const second = createNetflixCaptureService(never.window);
-  await second({ type: "hd_netflix_record_start", sessionId: "s2", streamId: "stream", limitMs: 1000 });
-  await assert.rejects(second({ type: "hd_netflix_record_finish", sessionId: "s2", startMs: 0, endMs: 1, anchors: [] }),
-    /did not play the line/u);
-  assert.deepEqual(never.stopped, ["audio"], "a failed finish still stops the stream");
+  const silent = recorderWindow();
+  const recorder = createNetflixRecorder(silent.window);
+  await recorder.start({ targetTabId: 7, limitMs: 1000 });
+  silent.clock.now = 1_001_100;
+  for (let block = 0; block < 30; block++) silent.record.push(1000 + block * 100, 100, 0);
+  await tick();
+  silent.clock.now = 1_004_000;
+  assert.deepEqual(await recorder.finish({ startMs: 1000, endMs: 1500, anchors: [[1_001_500, 1000]] }), { silent: true });
+
+  const never = recorderWindow();
+  const second = createNetflixRecorder(never.window);
+  await second.start({ targetTabId: 7, limitMs: 1000 });
+  await assert.rejects(second.finish({ startMs: 0, endMs: 1, anchors: [] }), /did not play the line/u);
+  assert.equal(never.record.stopped, 1, "a failed finish still stops the stream");
 
   // An unfinished recording stops itself and cannot be finished afterwards.
-  const abandoned = captureWindow();
-  const third = createNetflixCaptureService(abandoned.window);
-  await third({ type: "hd_netflix_record_start", sessionId: "s3", streamId: "stream", limitMs: 1000 });
+  const abandoned = recorderWindow();
+  const third = createNetflixRecorder(abandoned.window);
+  await third.start({ targetTabId: 7, limitMs: 1000 });
   abandoned.record.timers[0].callback();
-  assert.deepEqual(abandoned.stopped, ["audio"]);
-  await assert.rejects(third({ type: "hd_netflix_record_finish", sessionId: "s3", startMs: 0, endMs: 1, anchors: [[1, 1]] }),
-    /replaced or stopped/u);
-  // A newer recording replaces an older one, and cancel stops only its own.
-  await third({ type: "hd_netflix_record_start", sessionId: "s4", streamId: "stream", limitMs: 1000 });
-  await third({ type: "hd_netflix_record_start", sessionId: "s5", streamId: "stream", limitMs: 1000 });
-  assert.deepEqual(abandoned.stopped, ["audio", "audio"]);
-  assert.deepEqual(await third({ type: "hd_netflix_record_cancel", sessionId: "s4" }), { cancelled: true });
-  assert.deepEqual(abandoned.stopped, ["audio", "audio"]);
-  await third({ type: "hd_netflix_record_cancel", sessionId: "s5" });
-  assert.deepEqual(abandoned.stopped, ["audio", "audio", "audio"]);
-  await assert.rejects(third({ type: "hd_netflix_record_start", sessionId: "s6", streamId: "", limitMs: 1000 }), /invalid/u);
-  await assert.rejects(third({ type: "hd_netflix_record_start", sessionId: "s6", streamId: "stream" }), /invalid/u);
-  await assert.rejects(third({ type: "hd_unknown" }), /Unknown Netflix recording request/u);
+  assert.equal(abandoned.record.stopped, 1);
+  await assert.rejects(third.finish({ startMs: 0, endMs: 1, anchors: [[1, 1]] }), /replaced or stopped/u);
+  // A newer recording replaces an older one; stop ends the current one.
+  await third.start({ targetTabId: 7, limitMs: 1000 });
+  await third.start({ targetTabId: 7, limitMs: 1000 });
+  assert.equal(abandoned.record.stopped, 2);
+  third.stop();
+  assert.equal(abandoned.record.stopped, 3);
+  await assert.rejects(third.start({ targetTabId: "7", limitMs: 1000 }), /invalid/u);
+  await assert.rejects(third.start({ targetTabId: 7 }), /invalid/u);
 });

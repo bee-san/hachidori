@@ -24,6 +24,7 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
   { url: `https://www.netflix.com/watch/${movieId}`, runScripts: "outside-only" });
   t.after(() => dom.window.close());
   const { window } = dom;
+  window.chrome = { runtime: { getURL: path => `chrome-extension://hachidori/${path}` } };
   for (const source of SCRIPTS) window.eval(source);
   const video = window.document.querySelector("video");
   Object.defineProperty(video, "currentTime", { value: timeMs / 1000, writable: true });
@@ -178,12 +179,19 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   });
   const send = async (type, fields) => {
     sent.push([type, JSON.parse(JSON.stringify(fields))]);
+    const frames = [...f.window.document.querySelectorAll("iframe")];
+    frameDuring.push(frames.map(frame => [frame.src, frame.style.getPropertyValue("display"), frame.getAttribute("aria-hidden")]));
     if (type === "hd_netflix_capture_start") return { sessionId: "s1", padMs: 250 };
     if (type === "hd_netflix_capture_finish") return { token: "t1", filename: "hachidori-sentence-audio-a.wav" };
     return {};
   };
+  const frameDuring = [];
   assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default" }),
     { token: "t1", filename: "hachidori-sentence-audio-a.wav" });
+  // The hidden recorder frame is in the page for the recording only.
+  assert.deepEqual(frameDuring, [[["chrome-extension://hachidori/netflix-recorder.html", "none", "true"]],
+    [["chrome-extension://hachidori/netflix-recorder.html", "none", "true"]]]);
+  assert.equal(f.window.document.querySelectorAll("iframe").length, 0);
   assert.deepEqual(sent, [
     ["hd_netflix_capture_start", { cue }],
     ["hd_netflix_capture_finish", { sessionId: "s1", anchors: [[5000, 950], [5100, 1050]], templateId: "default" }],
@@ -204,4 +212,5 @@ test("recording starts the capture, has the page replay the cue, then finishes o
     templateId: "default" }), { unavailable: "grant" });
   assert.deepEqual(sent, ["hd_netflix_capture_start"]);
   await assert.rejects(f.netflix.record(cue, { send: async () => ({}), templateId: "default" }), /did not start/u);
+  assert.equal(f.window.document.querySelectorAll("iframe").length, 0, "a failed start removes the recorder frame");
 });

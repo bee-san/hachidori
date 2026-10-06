@@ -130,6 +130,14 @@
       "matches": [
         "<all_urls>"
       ]
+    },
+    {
+      "resources": [
+        "netflix-recorder.html"
+      ],
+      "matches": [
+        "https://www.netflix.com/*"
+      ]
     }
   ]
 }

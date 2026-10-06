@@ -67,16 +67,19 @@ test("turning the flag off unregisters both scripts, rapid toggles apply in orde
   assert.deepEqual(await applyNetflixFlag({}, true), { supported: false, registered: false });
 });
 
-test("the manifest asks for tab capture and never injects the Netflix scripts itself", async () => {
+test("the manifest asks for tab capture, exposes only the recorder page to Netflix and never injects the scripts itself", async () => {
   const manifest = JSON.parse(await readFile(new URL("manifest.json", extension), "utf8"));
   assert.ok(manifest.permissions.includes("tabCapture"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.equal(manifest.optional_permissions, undefined);
-  assert.equal(/netflix/iu.test(JSON.stringify(manifest)), false,
-    "the manifest neither matches Netflix nor exposes its scripts");
+  assert.equal(/netflix/iu.test(JSON.stringify(manifest.content_scripts)), false, "no Netflix content script is declared");
+  const netflixResources = manifest.web_accessible_resources.filter(entry => /netflix/iu.test(JSON.stringify(entry)));
+  assert.deepEqual(netflixResources, [{ resources: ["netflix-recorder.html"], matches: ["https://www.netflix.com/*"] }]);
+  const page = await readFile(new URL("netflix-recorder.html", extension), "utf8");
+  assert.match(page, /<script type="module" src="netflix-recorder\.js"><\/script>/u);
 });
 
-test("the offscreen document is created with the USER_MEDIA reason beside its existing ones", async () => {
+test("the offscreen document keeps its reasons: the recording happens in the tab", async () => {
   const created = [];
   globalThis.chrome = {
     runtime: { getContexts: async () => [], getURL: path => `chrome-extension://test/${path}` },
@@ -88,6 +91,5 @@ test("the offscreen document is created with the USER_MEDIA reason beside its ex
   } finally {
     delete globalThis.chrome;
   }
-  assert.deepEqual(created.map(({ reasons }) => reasons), [["DOM_SCRAPING", "AUDIO_PLAYBACK", "USER_MEDIA"]]);
-  assert.match(created[0].justification, /Netflix/u);
+  assert.deepEqual(created.map(({ reasons }) => reasons), [["DOM_SCRAPING", "AUDIO_PLAYBACK"]]);
 });

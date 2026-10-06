@@ -2140,8 +2140,7 @@ operations before an offscreen-startup retry can dispatch them. Popup requests
 use the enabled persisted sources, not caller-provided URLs. Offscreen lazily
 imports the player; audio never acquires the dictionary mutation lock.
 
-The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together, and
-USER_MEDIA for experimental Netflix mining's tab recording. Chrome
+The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
 audio's 30-second idle window. URL playback fetches without credentials.
 Candidate fallback includes actual decoding/playback failures. Speech waits for
@@ -2773,19 +2772,31 @@ preflight and Add refuses the stale Add. Preflight adds `sentenceAudio: true`
 when a Netflix request's mapping contains the marker; without that key the
 reader records nothing.
 
-**Recording.** After the screenshot, the reader sends `hd_netflix_capture_start`
-with the cue. The worker requires the switch, a top-frame sender in the active
-tab at a `https://www.netflix.com/watch/` address whose exact document still
-answers `hd_anki_document`, and stops any earlier recording. It asks
-`chrome.tabCapture.getMediaStreamId({ targetTabId })` for the asking tab; Chrome
-grants that only on a tab where the user has invoked Hachidori, by its toolbar
-button or one of its keyboard shortcuts, and the grant lasts across Netflix's
-same-site navigation. Without it the reply is `{ unavailable: "grant" }`. The
-offscreen document (reason `USER_MEDIA`) opens the stream with `getUserMedia`,
-plays it on through an `AudioContext` because a captured tab goes quiet, and
-records mono PCM through `netflix-capture-worklet.js`, numbered by context frame
-and placed on the wall clock (`performance.timeOrigin + performance.now()`). A
-recording nobody finishes stops itself a minute after the cue's length.
+**Recording.** After the screenshot, the reader adds a hidden recorder frame,
+`netflix-recorder.html`, to the Netflix page (outside Netflix's app root) and
+sends `hd_netflix_capture_start` with the cue. The worker requires the switch, a
+top-frame sender in the active tab at a `https://www.netflix.com/watch/` address
+whose exact document still answers `hd_anki_document`, and stops any earlier
+recording. The frame connects to the worker on a `hachidori-netflix-recorder`
+port, which the worker accepts only from this extension's recorder page framed
+in a Netflix watch tab; the manifest exposes that one page to
+`https://www.netflix.com/*` only. On the worker's `record` request the frame
+asks `chrome.tabCapture.getMediaStreamId({ targetTabId })` for its own tab.
+Chrome grants that only on a tab where the user has invoked Hachidori, by its
+toolbar button or one of its keyboard shortcuts, and the grant lasts across
+Netflix's same-site navigation; without it the answer is
+`{ unavailable: "grant" }`. The frame, not the offscreen document, opens the
+stream: Chrome lets only a context in the requesting context's process use a
+stream ID, and the offscreen document is cross-origin isolated for the threaded
+engine, which puts it in another process than the service worker (its
+`getUserMedia` fails with "Error starting tab capture"). The frame opens the
+stream with `getUserMedia` and reads it with `MediaStreamTrackProcessor`,
+placing each `AudioData` block on the wall clock
+(`performance.timeOrigin + performance.now()`) by counting samples from the
+first block's timestamp, as the removed recorder did. Chrome mutes a captured
+tab, so the replay is silent. A recording nobody finishes stops itself a minute
+after the cue's length, and removing the frame or closing its port stops it at
+once.
 
 With Hachidori's overlays concealed, the reader asks the page to replay the
 cue. Writing `<video>.currentTime` makes Netflix stop with error M7375, so the
@@ -2794,17 +2805,18 @@ page seeks through Netflix's player API
 the cue and 2 s earlier again if the seek lands past that, plays at 1×, and
 reports `(wall ms, media ms)` pairs every 25 ms until 250 ms after the cue. It
 then restores the position, paused state and speed, each step independently.
-`hd_netflix_capture_finish` has the offscreen document flush the worklet, stop
-every track, take the median wall-minus-media offset of the pairs, and cut the
-PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent; otherwise
-it is encoded as a 16-bit mono WAV (the removed recorder's encoder). The worker
-holds it like the screenshot: one pending recording, stored with
-`storeMediaFile` inside the queued write, its fields emptied and a warning added
-when the upload is refused, released after an authoritative no-write, deleted
-after a definitively rejected write, kept after an uncertain one, and discarded
-by token (`hd_anki_screenshot_discard`, which releases either kind) when the
-reader abandons the submission. A
-replay that fails cancels the recording with `hd_netflix_capture_cancel`.
+`hd_netflix_capture_finish` has the frame wait up to 500 ms for the last audio,
+stop the stream, take the median wall-minus-media offset of the pairs, and cut
+the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
+otherwise it is encoded as a 16-bit mono WAV (the removed recorder's encoder)
+and passed to the worker on the port. The worker holds it like the screenshot:
+one pending recording, stored with `storeMediaFile` inside the queued write,
+its fields emptied and a warning added when the upload is refused, released
+after an authoritative no-write, deleted after a definitively rejected write,
+kept after an uncertain one, and discarded by token
+(`hd_anki_screenshot_discard`, which releases either kind) when the reader
+abandons the submission. A replay that fails cancels the recording with
+`hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to
@@ -2818,8 +2830,8 @@ instead. No DRM workaround is attempted, and black pictures are not detected.
 Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their
 text and screenshot and say why they have no line audio. Nothing of Netflix is
-stored: timelines live in the page's memory, the recording in the offscreen
-document's, and only the final WAV reaches Anki.
+stored: timelines live in the page's memory, the recording in the recorder
+frame's, and only the final WAV reaches Anki.
 
 ## Managed custom dictionary
 
@@ -3105,8 +3117,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
-| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue, finish it into a held WAV for the note, or cancel it ([Netflix mining](#netflix-mining-experimental)) |
-| `hd_netflix_record_start`, `hd_netflix_record_finish`, `hd_netflix_record_cancel` | The worker's relay of those to the offscreen recorder, which accepts them from the worker only |
+| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV for the note, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 
 ## Build outputs
 

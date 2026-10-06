@@ -2099,16 +2099,22 @@ async function captureSenderViewport(sender) {
 }
 
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). While the
-// page replays one subtitle line, `start` opens a tab-capture stream of the
-// asking tab in the offscreen document, `finish` cuts the line out of it and
-// gives the WAV to the Anki worker to hold for the note, `cancel` stops it.
-// The worker holds no media itself; only the final WAV reaches Anki.
+// page replays one subtitle line, a hidden recorder frame in the Netflix tab
+// (netflix-recorder.html) records the tab: `start` lets that frame open its
+// tab-capture stream, `finish` has it cut the line out and gives the WAV to
+// the Anki worker to hold for the note, `cancel` stops it. The frame connects
+// on a port; the worker holds no media itself and only the WAV reaches Anki.
 const NETFLIX_TARGET = "hachidori-netflix";
-const NETFLIX_CAPTURE_TARGET = "hachidori-netflix-capture";
+const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
+// How long the reader's recorder frame has to load and connect.
+const NETFLIX_RECORDER_CONNECT_MS = 10_000;
 // Beyond the line itself, an unfinished recording gets this long before the
-// offscreen document stops it and gives the tab its sound back.
+// recorder stops it and gives the tab its sound back.
 const NETFLIX_RECORDING_SLACK_MS = 60_000;
+// Recorder frames that connected, by tab, until a recording claims them.
+const netflixRecorders = new Map();
+const netflixRecorderWaiters = new Map();
 let netflixRecording = null;
 
 function netflixCue(value) {
@@ -2135,14 +2141,70 @@ async function netflixRecordingTab(sender) {
   return tab;
 }
 
-function netflixRelay(type, fields) {
-  return relay({ ...fields, target: NETFLIX_CAPTURE_TARGET, type, requestId: `netflix-${crypto.randomUUID()}` });
+// Only this extension's own recorder page, framed in a Netflix tab, may connect.
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== NETFLIX_RECORDER_PORT) return;
+  const { sender } = port;
+  const tabId = sender?.tab?.id;
+  if (sender?.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("netflix-recorder.html")
+      || typeof tabId !== "number" || !sender.frameId || !NETFLIX_WATCH_URL.test(sender.tab.url ?? "")) {
+    port.disconnect();
+    return;
+  }
+  const waiter = netflixRecorderWaiters.get(tabId);
+  if (waiter) {
+    netflixRecorderWaiters.delete(tabId);
+    waiter(port);
+  } else {
+    netflixRecorders.get(tabId)?.disconnect();
+    netflixRecorders.set(tabId, port);
+    port.onDisconnect.addListener(() => {
+      if (netflixRecorders.get(tabId) === port) netflixRecorders.delete(tabId);
+    });
+  }
+});
+
+function netflixRecorderPort(tabId) {
+  const ready = netflixRecorders.get(tabId);
+  if (ready) {
+    netflixRecorders.delete(tabId);
+    return Promise.resolve(ready);
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      netflixRecorderWaiters.delete(tabId);
+      reject(new Error("The recorder did not start in the Netflix tab."));
+    }, NETFLIX_RECORDER_CONNECT_MS);
+    netflixRecorderWaiters.set(tabId, port => {
+      clearTimeout(timer);
+      resolve(port);
+    });
+  });
 }
 
-async function stopNetflixRecording() {
+// One request and its answer on the recorder's port.
+function askRecorder(port, message, reply) {
+  return new Promise((resolve, reject) => {
+    const settle = answer => {
+      port.onMessage.removeListener(settle);
+      port.onDisconnect.removeListener(lost);
+      if (answer?.type === reply) resolve(answer);
+      else reject(new Error(answer?.error || "The recorder sent an unexpected reply."));
+    };
+    const lost = () => {
+      port.onMessage.removeListener(settle);
+      reject(new Error("The recording of this line was interrupted."));
+    };
+    port.onMessage.addListener(settle);
+    port.onDisconnect.addListener(lost);
+    port.postMessage(message);
+  });
+}
+
+function stopNetflixRecording() {
   const recording = netflixRecording;
   netflixRecording = null;
-  if (recording) await netflixRelay("hd_netflix_record_cancel", { sessionId: recording.sessionId }).catch(() => {});
+  recording?.port.disconnect();
 }
 
 async function startNetflixRecording(message, sender) {
@@ -2150,26 +2212,26 @@ async function startNetflixRecording(message, sender) {
   const cue = netflixCue(message.cue);
   const tab = await netflixRecordingTab(sender);
   // One line at a time: a newer Add takes over from an older one.
-  await stopNetflixRecording();
-  let streamId;
+  stopNetflixRecording();
+  const port = await netflixRecorderPort(tab.id);
+  const recording = { sessionId: crypto.randomUUID(), documentId: sender.documentId, cue, port };
+  netflixRecording = recording;
+  port.onDisconnect.addListener(() => {
+    if (netflixRecording === recording) netflixRecording = null;
+  });
+  let started;
   try {
-    streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+    started = await askRecorder(port, { type: "record", targetTabId: tab.id,
+      limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS }, "started");
   } catch (error) {
-    // Chrome lets an extension capture a tab only after the user invokes it there.
-    if (/not been invoked|activeTab/iu.test(describe(error))) return { unavailable: "grant" };
+    if (netflixRecording === recording) stopNetflixRecording();
     throw error;
   }
-  const recording = { sessionId: crypto.randomUUID(), documentId: sender.documentId, cue };
-  netflixRecording = recording;
-  let reply;
-  try {
-    reply = await netflixRelay("hd_netflix_record_start", { sessionId: recording.sessionId, streamId,
-      limitMs: cue.endMs - cue.startMs + NETFLIX_RECORDING_SLACK_MS });
-  } finally {
-    if (reply?.ok !== true && netflixRecording === recording) netflixRecording = null;
+  if (typeof started.unavailable === "string") {
+    if (netflixRecording === recording) stopNetflixRecording();
+    return { unavailable: started.unavailable };
   }
-  if (reply?.ok !== true) throw new Error(reply?.error || "The recording did not start.");
-  return { sessionId: recording.sessionId, padMs: reply.padMs };
+  return { sessionId: recording.sessionId, padMs: started.padMs };
 }
 
 async function finishNetflixRecording(message, sender) {
@@ -2177,17 +2239,20 @@ async function finishNetflixRecording(message, sender) {
   if (recording?.sessionId !== message.sessionId || recording.documentId !== sender.documentId) {
     throw new Error("The recording of this line was replaced or interrupted.");
   }
-  netflixRecording = null;
-  const reply = await netflixRelay("hd_netflix_record_finish", { sessionId: recording.sessionId,
-    startMs: recording.cue.startMs, endMs: recording.cue.endMs, anchors: message.anchors });
-  if (reply?.ok !== true) throw new Error(reply?.error || "The line could not be recorded.");
-  if (reply.silent === true) return { unavailable: "silent" };
-  return getAnkiMining().sentenceAudio(reply.data, message.templateId);
+  let clip;
+  try {
+    clip = await askRecorder(recording.port, { type: "finish", startMs: recording.cue.startMs,
+      endMs: recording.cue.endMs, anchors: message.anchors }, "clip");
+  } finally {
+    if (netflixRecording === recording) stopNetflixRecording();
+  }
+  if (clip.silent === true) return { unavailable: "silent" };
+  return getAnkiMining().sentenceAudio(clip.data, message.templateId);
 }
 
-async function cancelNetflixRecording(message, sender) {
+function cancelNetflixRecording(message, sender) {
   if (netflixRecording?.sessionId === message.sessionId && netflixRecording.documentId === sender.documentId) {
-    await stopNetflixRecording();
+    stopNetflixRecording();
   }
   return { cancelled: true };
 }

@@ -150,9 +150,9 @@ Netflix's own player requests on `https://www.netflix.com/watch/…` pages, in
 that page, and keeps their text and timing only in the page's memory. When you
 add a note from a Netflix subtitle and a field maps `{sentence-audio}`,
 Hachidori replays that one line and records the tab's audio while it plays.
-The recording exists only in the extension's memory until it is cut to the
-line, encoded as a WAV and sent to your configured AnkiConnect server with the
-note; nothing is recorded at any other time. Pictures are taken only by the
+The recording exists only in the memory of a hidden Hachidori frame in that tab
+until it is cut to the line, encoded as a WAV and sent to your configured
+AnkiConnect server with the note; nothing is recorded at any other time. Pictures are taken only by the
 ordinary page screenshot above. A browser linked to another Hachidori does not
 record Netflix lines.
 

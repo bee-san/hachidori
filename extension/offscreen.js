@@ -25,8 +25,7 @@ const AUDIO_TARGET = "hachidori-audio";
 const ANKI_TARGET = "hachidori-anki-render";
 const SETUP_TARGET = "hachidori-setup";
 const UPLOAD_STORE_TARGET = "hachidori-upload-store";
-const NETFLIX_CAPTURE_TARGET = "hachidori-netflix-capture";
-let audioService, ankiService, audioRepository, setupInstaller, netflixCaptureService;
+let audioService, ankiService, audioRepository, setupInstaller;
 function getAudioRepository() {
   audioRepository ??= import("./audio-repository.js").then(module => module.createAudioRepository({
     window: globalThis, fetch: globalThis.fetch.bind(globalThis), now: () => performance.now(),
@@ -415,20 +414,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   service.then(handle => handle(message)).then(
     result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, ...result }),
-    error => sendResponse(failedResponse(message, describe(error))),
-  );
-  return true;
-});
-
-// Experimental Netflix mining: records one subtitle line from a tab-capture
-// stream the service worker obtained. Only the worker may ask.
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target !== NETFLIX_CAPTURE_TARGET || message.relayed !== true
-      || sender.id !== chrome.runtime.id || sender.url !== expectedBackgroundUrl(chrome)
-      || sender.tab !== undefined) return false;
-  netflixCaptureService ??= import("./netflix-capture.js").then(module => module.createNetflixCaptureService(globalThis));
-  netflixCaptureService.then(handle => handle(message)).then(
-    result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, ...result }),
     error => sendResponse(failedResponse(message, describe(error))),
   );
   return true;

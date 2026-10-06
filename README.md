@@ -120,8 +120,8 @@ changing and may be removed:
   whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
   audio. Kiku, Lapis and Senren use their blank sentence-audio field
   automatically. Hachidori reads Netflix's own subtitle files for the timing
-  (adapted from Subadub) and replays the line once to record it, then returns to
-  where you were. Chrome lets it record a tab only after you click Hachidori's
+  (adapted from Subadub) and replays the line once to record it, muted, then
+  returns to where you were. Chrome lets it record a tab only after you click Hachidori's
   toolbar button once on that tab, or add notes with its **Add the current popup
   entry to Anki** shortcut. Netflix may change its data without notice, and
   protected playback can record as silence; the note is then added without the

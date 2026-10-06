@@ -365,8 +365,8 @@ navigation rejection.
 test/netflix-content.test.mjs test/netflix-capture.test.mjs` covers experimental
 Netflix mining without contacting Netflix. The flag starts off and registers
 the main-world and reader scripts for Netflix's top frame only while on; the
-manifest asks for `tabCapture`, never injects them itself, and the offscreen
-document adds the `USER_MEDIA` reason. Synthetic WebVTT and TTML files in
+manifest asks for `tabCapture`, never injects them itself, and exposes only
+the recorder page, to Netflix only. Synthetic WebVTT and TTML files in
 `test/data/netflix/` (lines written for these tests, no Netflix subtitles) parse
 to exact cue times and plain text, and cue matching covers whole and partial
 lines, the ±500 ms tolerance, overlapping cues and repeated lines. The page
@@ -377,12 +377,21 @@ non-Japanese tracks are skipped, and a replay seeks through the player API,
 plays at 1× and restores position, pause and speed without writing
 `currentTime`. A jsdom watch page checks pinning, the whole-cue sentence, reasons
 for a missing cue, post validation, the episode reset and the [CC] track choice.
-The recorder's trim, median clock fit, silence detection and WAV encoding run
-on synthetic PCM through fake media APIs. `anki-mining`, `anki-worker`,
+The recorder frame's sample clock, trim, median clock fit, silence detection
+and WAV encoding run on synthetic blocks through fake media APIs. `anki-mining`, `anki-worker`,
 `anki-values` and `anki-content` cover the request-only preset routing, the
 held WAV's storage lifecycle, the `{sentence-audio}` value and the reader's
 warnings. Real Netflix playback, Chrome's capture grant and protected video are
 not covered by any automated suite.
+
+`xvfb-run -a node test/chrome-netflix-mining.mjs`, outside the default runs,
+mines a fixture page served at a Netflix watch address through the real popup
+into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
+player and in-tab recording must store a WAV whose beep lies within 125 ms of
+its place, with the viewer's position, pause and speed restored and
+`currentTime` written only by the player. It needs headful Chrome, because
+headless Chrome captures tab audio as silence, and stands in for the user's
+toolbar click with `--allowlisted-extension-id`.
 
 The lower-level checks can also be run individually in this order. Node suites
 use built-ins and the DOM suites use jsdom. Browser checks need Chrome and

@@ -123,9 +123,10 @@ the service worker and both engine runtimes run the same code.
   registers `netflix-page.js` (main world: the subtitle hooks adapted from
   Subadub, and the line replay through Netflix's player) and
   `netflix-subtitles.js` with `netflix-content.js` (WebVTT/TTML cue timelines
-  and the hovered line's cue) on `www.netflix.com`. `netflix-capture.js` and
-  `netflix-capture-worklet.js` record the replayed line in the offscreen
-  document; `{sentence-audio}` attaches it to the note.
+  and the hovered line's cue) on `www.netflix.com`. `netflix-recorder.html`
+  (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
+  records the replayed line inside the Netflix tab; `{sentence-audio}`
+  attaches it to the note.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `settings-theme.js` is the classic script in its `<head>` that applies the
   saved theme before the first paint, ahead of the `settings.js` module;
