@@ -341,6 +341,7 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
+  "a hover scan delay keeps a quick pass across a word from looking anything up and looks up the word the pointer rests on once",
   "hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
   "Press to set records the middle button, which opens a stationary lookup and releases it like a key",
   "a middle scan press on a Japanese link looks it up without a new tab while other links still open",
@@ -9087,6 +9088,58 @@ async function checkReaderActivation(settings, tab, popup) {
         && keyAgain.key === "K" && keyAgain.sticky && !keyAgain.stickyHidden && !closing.sticky
         && arrowed.key === "K" && arrowed.sticky && !arrowed.stickyHidden,
       JSON.stringify({ noKey, hovered: hovered !== null, keyAgain, closing, arrowed }));
+
+    // Issue #502: the same quick pass across the word, counted at the worker's
+    // engine relay, looks its glyphs up with No key alone and nothing once a
+    // hover scan delay is set; resting on the word then looks it up once.
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    const relay = await activeExtensionWorker(tab.browser(), settings, "hover scan delay relay");
+    await relay.evaluate(() => {
+      const probe = { original: chrome.runtime.sendMessage, lookups: 0 };
+      globalThis.__hoverScanDelayRelay = probe;
+      chrome.runtime.sendMessage = function (message, ...args) {
+        if (message?.relayed && message.type === "hd_lookup") probe.lookups += 1;
+        return probe.original.call(this, message, ...args);
+      };
+    });
+    const relayed = () => relay.evaluate(() => globalThis.__hoverScanDelayRelay.lookups);
+    const pass = async () => {
+      const before = await relayed();
+      // Glyph centres, from the blank before the word to the blank after it.
+      for (let step = 0; step <= 8; step += 1) {
+        await tab.mouse.move(position.x + position.width * (2 * step - 1) / 12, position.y + position.height / 2);
+        await pause(40);
+      }
+      await pause(900);
+      return (await relayed()) - before;
+    };
+    try {
+      await edit({ "opt-activation-key": "" });
+      const immediatePass = await pass();
+      await edit({ "opt-scan-delay": "700" });
+      const delayedPass = await pass();
+      const quiet = !popup.visible(await popup.state());
+      const before = await relayed();
+      await moveToWord();
+      await pause(250);
+      const waiting = !popup.visible(await popup.state()) && await relayed() === before;
+      const rested = await popup.waitForVisible();
+      await pause(300);
+      const lookedUp = (await relayed()) - before;
+      check("a hover scan delay keeps a quick pass across a word from looking anything up and looks up the word the pointer rests on once",
+        immediatePass > 1 && delayedPass === 0 && quiet && waiting && rested?.plain.includes("食べる") === true
+          && lookedUp === 1,
+        JSON.stringify({ immediatePass, delayedPass, quiet, waiting, rested: rested !== null, lookedUp }));
+    } finally {
+      await relay.evaluate(() => {
+        chrome.runtime.sendMessage = globalThis.__hoverScanDelayRelay.original;
+        delete globalThis.__hoverScanDelayRelay;
+      });
+      await relay.detach?.();
+      await edit({ "opt-scan-delay": "0", "opt-activation-key": "K" });
+      await tab.keyboard.press("Escape");
+    }
 
     // Issue #363: Hide popup on cursor exit keeps a sticky popup through key
     // release until the pointer has been inside it and left. The focus a mouse
