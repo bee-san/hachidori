@@ -798,9 +798,23 @@ async function settingsFrequencyStage() {
     emitOptions({ popupTheme: "light" });
     audio &&= storedOptions.audioSources.length === 0 && audioRows().length === 0
       && !window.document.getElementById("audio-source-empty").hidden;
+    // Audio → Sources → Local Audio Server add-on: the detected source joins the list above it at once.
+    const check = window.document.getElementById("anki-audio-check");
+    const add = window.document.getElementById("anki-audio-add");
+    window.fetch = async () => Response.json({ type: "audioSourceList",
+      audioSources: [{ name: "JPod101", url: "http://localhost:5050/jpod/ねこ - 猫.mp3" }] });
+    check.click();
+    await until(() => !add.hidden);
+    let localAudio = check.closest("section")?.id === "audio" && add.closest("#audio-sources") !== null;
+    add.click();
+    localAudio &&= audioRows().length === 1 && audioRows()[0].querySelector(".audio-type").value === "custom-json"
+      && add.hidden && window.document.getElementById("anki-audio-status").textContent === "Local audio is already one of your sources.";
+    await until(() => status() === "Saved.");
+    localAudio &&= storedOptions.audioSources.length === 1
+      && storedOptions.audioSources[0].url === "http://127.0.0.1:5050/?term={term}&reading={reading}";
     settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
     return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
-      designReset, settingsTheme, toolbar, css, audio,
+      designReset, settingsTheme, toolbar, css, audio, localAudio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
@@ -967,6 +981,8 @@ describe("Settings", () => {
       frequencySettings?.audio === true, JSON.stringify(frequencySettings?.audio));
     check("the CSS editor counts unsaved text, preserves revision-bound drafts and resets only custom CSS",
       frequencySettings?.css === true, JSON.stringify(frequencySettings?.css));
+    check("Audio → Sources detects local audio and its added source joins the list above it at once",
+      frequencySettings?.localAudio === true, JSON.stringify(frequencySettings?.localAudio));
     check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
       frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
     check("Settings applies the selected popup theme live across local edits and storage events",
