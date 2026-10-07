@@ -245,7 +245,10 @@ try {
   }, `http://127.0.0.1:${anki.address().port}`, back);
   await mapBack("{sentence}<br>{sentence-audio}<br>{gif}");
   // The switch, through the options queue. The open Netflix page keeps its
-  // scripts, which follow the switch once its reader has the new options.
+  // scripts, which follow the switch once its reader has the new options. The
+  // worker applies the switch just after the write's reply; Settings is a
+  // background tab here, where Chrome pauses animation frames and slows
+  // timers, so the registered scripts are polled from Node.
   async function setSwitch(enabled) {
     await settings.evaluate(async on => {
       const { options } = await chrome.storage.local.get("options");
@@ -253,8 +256,12 @@ try {
         baseRevision: options.revision, options: { experimental: { ...options.experimental, netflixMining: on } } });
       if (!reply.ok) throw new Error(reply.error);
     }, enabled);
-    await settings.waitForFunction(async count => (await chrome.scripting.getRegisteredContentScripts()).length === count,
-      {}, enabled ? 2 : 0);
+    for (const deadline = Date.now() + 30_000; ;) {
+      const registered = await settings.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).length);
+      if (registered === (enabled ? 2 : 0)) break;
+      assert.ok(Date.now() < deadline, `the Netflix scripts follow the switch (${registered} registered)`);
+      await new Promise(done => setTimeout(done, 100));
+    }
     await new Promise(done => setTimeout(done, 500));
   }
 
