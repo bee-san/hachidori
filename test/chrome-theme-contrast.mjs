@@ -91,36 +91,43 @@ async function sampleWords(tab, theme, forced) {
       probe.remove();
     }
     const close = (pixel, colour) => pixel.every((value, index) => Math.abs(value - colour[index]) <= 12);
+    // The status lines lie below the glyphs' ink, which the font's own metrics
+    // locate, and, under forced colours, inside the word's box, the only part
+    // Chrome paints with Highlight: below it the line would be HighlightText
+    // on the page's Canvas, the same colour.
+    const baseline = document.getElementById("baseline").getBoundingClientRect().bottom;
+    const style = getComputedStyle(document.getElementById("words"));
+    const measure = new OffscreenCanvas(1, 1).getContext("2d");
+    measure.font = `${style.fontSize} ${style.fontFamily}`;
     const result = {};
     for (const status of statuses) {
       const line = forcedLine
         ?? paint(rules.find(rule => rule.selectorText === `::highlight(hd-word-${status})`).style.textDecorationColor);
+      const word = document.getElementById(status);
       const range = document.createRange();
-      range.selectNodeContents(document.getElementById(status));
+      range.selectNodeContents(word);
       const rect = range.getBoundingClientRect();
       const left = Math.round(rect.left * scale);
       const width = Math.round(rect.width * scale);
-      // The line lies in the bottom of the word's own box, which forced
-      // colours fill with Highlight; below it is the page.
-      const top = Math.round((rect.bottom - 16) * scale);
-      const height = Math.round(16 * scale);
+      const top = Math.ceil((baseline + measure.measureText(word.textContent).actualBoundingBoxDescent) * scale);
+      const height = Math.floor(rect.bottom * scale) - top;
       const { data } = context.getImageData(left, top, width, height);
       const pixel = (x, y) => [...data.slice((y * width + x) * 4, (y * width + x) * 4 + 3)];
-      let best = { row: 0, coverage: -1, on: [] };
-      for (let y = 0; y < height; y += 1) {
-        const on = Array.from({ length: width }, (_, x) => close(pixel(x, y), line));
-        const coverage = on.filter(Boolean).length / width;
-        if (coverage > best.coverage) best = { row: y, coverage, on };
-      }
-      // What the line is drawn on: the commonest colour a little above it.
+      const rows = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => close(pixel(x, y), line)));
+      const coverage = rows.map(on => on.filter(Boolean).length / width);
+      const best = coverage.indexOf(Math.max(...coverage));
+      // What the line is drawn on: the commonest other colour between the ink and the box's bottom.
       const counts = new Map();
-      for (let x = 0; x < width; x += 1) {
-        const key = pixel(x, Math.max(0, best.row - Math.round(4 * scale))).join();
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
+      rows.forEach((on, y) => on.forEach((isLine, x) => {
+        if (!isLine) counts.set(pixel(x, y).join(), (counts.get(pixel(x, y).join()) ?? 0) + 1);
+      }));
       const under = [...counts].sort((a, b) => b[1] - a[1])[0][0].split(",").map(Number);
-      result[status] = { line, under, coverage: Number(best.coverage.toFixed(2)),
-        pieces: best.on.filter((on, x) => on && !best.on[x - 1]).length };
+      let end = best;
+      while (end + 1 < height && coverage[end + 1] >= 0.3) end += 1;
+      result[status] = { line, under, coverage: Number(coverage[best].toFixed(2)),
+        pieces: rows[best].filter((on, x) => on && !rows[best][x - 1]).length,
+        // A row of the box itself below the line: the line ends inside it.
+        enclosed: coverage.slice(end + 1).some(value => value < 0.1) };
     }
     const first = document.getElementById(statuses[0]).getBoundingClientRect();
     const last = document.getElementById(statuses.at(-1)).getBoundingClientRect();
@@ -129,9 +136,10 @@ async function sampleWords(tab, theme, forced) {
   }, { png, forced, statuses: STATUSES }).then(measured => ({ ...measured, png }));
 }
 
-function wordsPassed({ marks }) {
+function wordsPassed({ marks }, forced) {
   const { unknown, learning, known } = marks;
-  return STATUSES.every(status => marks[status].coverage >= 0.3 && contrast(marks[status].line, marks[status].under) >= 3)
+  return STATUSES.every(status => marks[status].coverage >= 0.3 && contrast(marks[status].line, marks[status].under) >= 3
+      && (!forced || marks[status].enclosed))
     // Not by colour alone: one solid line, a dashed one, a dotted one.
     && unknown.pieces === 1 && learning.pieces > 1 && known.pieces > learning.pieces;
 }
@@ -200,9 +208,12 @@ const server = createServer(async (request, response) => {
   }
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   const page = WORD_PAGES[request.url.slice(1)];
+  // #baseline, an empty inline-block, sits on the line's baseline: the status
+  // lines are measured below the glyphs, which share their colour in forced
+  // colours.
   response.end(page
-    ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}</style>`
-      + `<p id="words"><span id="unknown">${WORDS.unknown}</span>と<span id="learning">${WORDS.learning}</span>と<span id="known">${WORDS.known}</span></p>`
+    ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}#baseline{display:inline-block;width:0;height:0}</style>`
+      + `<p id="words"><span id="unknown">${WORDS.unknown}</span>と<span id="learning">${WORDS.learning}</span>と<span id="known">${WORDS.known}</span><span id="baseline"></span></p>`
     : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
 });
 let browser;
@@ -343,7 +354,7 @@ try {
       const imagesPassed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
         && preview.appearance === "monochrome" && near(previewInk, textColor)
         && ratio >= (scenario.forced ? 20 : 3);
-      const passed = imagesPassed && words.every(wordsPassed);
+      const passed = imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
       const result = { name: scenario.name, passed, theme: state.theme, ink, auto, background,
         previewInk, textColor, contrast: Number(ratio.toFixed(2)),
         words: Object.fromEntries(wordTabs.map((word, index) => [word.name, Object.fromEntries(STATUSES.map(status => {
