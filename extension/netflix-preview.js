@@ -6,7 +6,7 @@ export async function captureNetflixPreview(expectedUrl) {
   const unavailable = reason => ({ error: `Netflix preview screenshot: ${reason}` });
   try {
     if (window.location.href !== expectedUrl) return unavailable("the episode changed before the preview was read.");
-    const movieId = new URL(expectedUrl).pathname.match(/^\/watch\/(\d+)$/u)?.[1];
+    const movieId = /^\/watch\/(\d+)$/u.exec(new URL(expectedUrl).pathname)?.[1];
     const watchPlayer = () => {
       const api = window.netflix?.appContext?.state?.playerApp?.getAPI?.()?.videoPlayer;
       const candidates = (api?.getAllPlayerSessionIds?.() ?? [])
@@ -29,13 +29,14 @@ export async function captureNetflixPreview(expectedUrl) {
       return unavailable("the episode or player changed while the preview was read.");
     }
     const image = frame?.image;
-    const bytes = image instanceof ArrayBuffer ? new Uint8Array(image)
-      : ArrayBuffer.isView(image) ? new Uint8Array(image.buffer, image.byteOffset, image.byteLength) : image;
+    let bytes = image;
+    if (image instanceof ArrayBuffer) bytes = new Uint8Array(image);
+    else if (ArrayBuffer.isView(image)) bytes = new Uint8Array(image.buffer, image.byteOffset, image.byteLength);
     if (bytes == null || typeof bytes[Symbol.iterator] !== "function") return unavailable("the seek preview image is unavailable.");
     let binary = "";
     for (const byte of bytes) {
       if (!Number.isInteger(byte) || byte < 0 || byte > 255) return unavailable("the seek preview contains invalid image bytes.");
-      binary += String.fromCharCode(byte);
+      binary += String.fromCodePoint(byte);
     }
     if (!binary.startsWith("\xff\xd8\xff")) return unavailable("the seek preview is not a JPEG image.");
     return { dataUrl: `data:image/jpeg;base64,${btoa(binary)}` };

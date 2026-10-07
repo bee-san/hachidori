@@ -2146,6 +2146,22 @@ async function screenshotOwnedTab(sender, startup) {
   return tab;
 }
 
+async function captureNetflixPreviewInDocument(tab, sender) {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id, documentIds: [sender.documentId] }, world: "MAIN",
+    func: captureNetflixPreview, args: [tab.url],
+  });
+  if (injection?.documentId !== sender.documentId || injection?.frameId !== 0) {
+    throw new Error("The reading document changed before the Netflix preview was read.");
+  }
+  if (typeof injection.result?.error === "string") throw new Error(injection.result.error);
+  const dataUrl = injection.result?.dataUrl;
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/jpeg;base64,/9j/")) {
+    throw new Error("Netflix preview screenshot: no JPEG preview image was returned.");
+  }
+  return dataUrl;
+}
+
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 async function captureSenderViewport(sender, options) {
@@ -2161,18 +2177,7 @@ async function captureSenderViewport(sender, options) {
     let captured;
     try {
       if (preview) {
-        const [injection] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id, documentIds: [sender.documentId] }, world: "MAIN",
-          func: captureNetflixPreview, args: [tab.url],
-        });
-        if (injection?.documentId !== sender.documentId || injection?.frameId !== 0) {
-          throw new Error("The reading document changed before the Netflix preview was read.");
-        }
-        if (typeof injection.result?.error === "string") throw new Error(injection.result.error);
-        captured = injection.result?.dataUrl;
-        if (typeof captured !== "string" || !captured.startsWith("data:image/jpeg;base64,/9j/")) {
-          throw new Error("Netflix preview screenshot: no JPEG preview image was returned.");
-        }
+        captured = await captureNetflixPreviewInDocument(tab, sender);
       } else {
         captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
       }
