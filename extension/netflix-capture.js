@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { encodeBase64 } from "./base64.js";
 import { GIF_MAX_FPS, GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.js";
+import "./netflix-audio.js";
 
 // Experimental Netflix mining's recorder. netflix-recorder.html runs this in a
 // hidden extension frame inside the Netflix tab while the page replays one
@@ -8,16 +9,19 @@ import { GIF_MAX_FPS, GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from ".
 // then cuts the line out of it by the media times the page reported and
 // encodes a mono WAV for Anki. When a field is mapped to {gif}, it also records
 // the stream's video track and encodes a looping GIF of the line. Only the WAV
-// and the GIF leave the frame.
+// and the GIF leave the frame. The page's own line audio (netflix-audio.js)
+// records sentence audio without it where it can; this frame then records
+// only the GIF.
 //
 // The frame, not the offscreen document, opens the stream: a tab stream ID is
 // usable only in the process of the context that asked for it, and the
 // offscreen document is cross-origin isolated for the threaded engine, so it
 // runs in another process than the service worker. Chrome mutes a tab while it
 // is captured, so the replay can be silent.
+const { PAD_MS, clockDomain, encodeMonoWav, isSilent, monoSamples } = globalThis.HDNetflixAudio;
 
 // The audio kept before and after the cue.
-export const SENTENCE_PAD_MS = 250;
+export const SENTENCE_PAD_MS = PAD_MS;
 // How long the last captured audio has to arrive after the page's replay ends.
 const DRAIN_TIMEOUT_MS = 500;
 // The video track is sampled no faster than the GIF's own rate while recording.
@@ -51,8 +55,7 @@ export function createAudioFrameClock({ timeOrigin, now }) {
     place({ timestampUs, frames, sampleRate }) {
       const rawMs = timestampUs / 1000;
       if (originMs === null) {
-        const arrival = now();
-        domainMs = Math.abs(timeOrigin + rawMs - arrival) < 1000 ? timeOrigin : arrival - rawMs - frames * 1000 / sampleRate;
+        domainMs = clockDomain(timeOrigin, rawMs, now(), frames * 1000 / sampleRate);
         originMs = domainMs + rawMs;
         next = frames;
         return 0;
@@ -87,52 +90,6 @@ export function clipSamples(chunks, { originMs, sampleRate, startMs, endMs }) {
     if (end > begin) output.set(chunk.samples.subarray(begin - chunk.startFrame, end - chunk.startFrame), begin - from);
   }
   return output;
-}
-
-// Protected playback can deliver a stream of exact zeros. Quiet audio is not silence.
-export const isSilent = samples => samples.every(sample => sample === 0);
-
-function setAscii(view, offset, value) {
-  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.codePointAt(index));
-}
-
-// 16-bit mono PCM WAV, revived from the removed media recorder's capture-buffer.js.
-export function encodeMonoWav(samples, sampleRate) {
-  if (!(samples instanceof Float32Array)) throw new Error("WAV input must be mono Float32 samples.");
-  if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0) throw new Error("The WAV sample rate is invalid.");
-  const byteLength = 44 + samples.length * 2;
-  const output = new ArrayBuffer(byteLength);
-  const view = new DataView(output);
-  setAscii(view, 0, "RIFF");
-  view.setUint32(4, byteLength - 8, true);
-  setAscii(view, 8, "WAVE");
-  setAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  setAscii(view, 36, "data");
-  view.setUint32(40, samples.length * 2, true);
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[index]));
-    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-  }
-  return new Uint8Array(output);
-}
-
-// One AudioData block as mono samples, revived from the removed recorder's mixer.
-function monoSamples(value) {
-  const mono = new Float32Array(value.numberOfFrames);
-  const plane = new Float32Array(value.numberOfFrames);
-  for (let channel = 0; channel < value.numberOfChannels; channel += 1) {
-    value.copyTo(plane, { planeIndex: channel, format: "f32-planar" });
-    for (let frame = 0; frame < mono.length; frame += 1) mono[frame] += plane[frame];
-  }
-  if (value.numberOfChannels > 1) for (let frame = 0; frame < mono.length; frame += 1) mono[frame] /= value.numberOfChannels;
-  return mono;
 }
 
 // The wall-clock time just after the last sample recorded so far, or null.
@@ -170,10 +127,7 @@ function createVideoFrameClock({ timeOrigin, now }) {
   return {
     wallMs(timestampUs) {
       const rawMs = timestampUs / 1000;
-      if (domainMs === null) {
-        const arrival = now();
-        domainMs = Math.abs(timeOrigin + rawMs - arrival) < 1000 ? timeOrigin : arrival - rawMs;
-      }
+      domainMs ??= clockDomain(timeOrigin, rawMs, now());
       return domainMs + rawMs;
     },
   };

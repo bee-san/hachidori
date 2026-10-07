@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder, encodeMonoWav, isSilent,
+import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder,
   mediaClockOffset } from "../extension/netflix-capture.js";
 import { readGif } from "./gif-structure.mjs";
 
@@ -45,22 +45,6 @@ test("a clip is exactly the recorded samples between two wall-clock times", () =
   assert.equal(clipSamples(chunks, { originMs: 5000, sampleRate: 1000, startMs: 6000, endMs: 7000 }), null);
   assert.equal(clipSamples([], { originMs: 0, sampleRate: 1000, startMs: 0, endMs: 10 }), null);
   assert.equal(clipSamples(chunks, { originMs: null, sampleRate: 1000, startMs: 0, endMs: 10 }), null);
-});
-
-test("only exact zeros are silence, and the WAV is 16-bit mono PCM of the clip", () => {
-  assert.equal(isSilent(new Float32Array(48)), true);
-  assert.equal(isSilent(Float32Array.of(0, 0, 1e-7)), false);
-  const wav = Buffer.from(encodeMonoWav(Float32Array.of(0, 0.5, -0.5, 1, -1, 2), 48_000));
-  assert.equal(wav.toString("ascii", 0, 4), "RIFF");
-  assert.equal(wav.readUInt32LE(4), wav.length - 8);
-  assert.equal(wav.toString("ascii", 8, 16), "WAVEfmt ");
-  assert.deepEqual([wav.readUInt16LE(20), wav.readUInt16LE(22), wav.readUInt32LE(24), wav.readUInt32LE(28),
-    wav.readUInt16LE(32), wav.readUInt16LE(34)], [1, 1, 48_000, 96_000, 2, 16]);
-  assert.equal(wav.toString("ascii", 36, 40), "data");
-  assert.equal(wav.readUInt32LE(40), 12);
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map(index => wav.readInt16LE(44 + index * 2)), [0, 16383, -16384, 32767, -32768, 32767]);
-  assert.throws(() => encodeMonoWav([0], 48_000), /Float32/u);
-  assert.throws(() => encodeMonoWav(new Float32Array(1), 0), /sample rate/u);
 });
 
 // The recorder frame's media stack: tabCapture, a tab stream, and a track
