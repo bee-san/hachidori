@@ -1419,8 +1419,10 @@ Otherwise the headwords of the spans shown are asked in one batch:
 - Function words and spans without Japanese stay unmarked.
 
 `hd_anki_word_status_changed` re-reads the statuses of the words shown without
-segmenting again, unless its revision is the one already read; a newer signal
-makes an answer still in flight stale.
+segmenting again, unless they were all read at its revision; a read of new
+words alone does not count, since it can be answered at a revision whose
+signal is still on its way. A newer signal makes an answer still in flight
+stale.
 
 Each status has one `Highlight` (`hd-word-unknown`, `hd-word-learning`,
 `hd-word-known`) at priority −1, so the hover's source highlight paints above

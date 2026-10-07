@@ -165,8 +165,9 @@
     const segments = new Map();
     let generation = null;
     let segmenting = false;
-    // Status by headword, read at statusRevision for statusesEpoch. Every
-    // change signal bumps statusEpoch, so the words shown are read again.
+    // Status by headword, every one shown read at statusRevision for
+    // statusesEpoch, or later. Every change signal bumps statusEpoch, so the
+    // words shown are read again.
     const statuses = new Map();
     let statusEpoch = 0;
     let statusesEpoch = -1;
@@ -619,13 +620,17 @@
     }
 
     function adoptStatuses(asked, reply, refresh) {
+      // Only a refresh reads every status shown, so only a refresh says which
+      // revision the marks show. A read of new headwords alone can be answered
+      // at a revision whose change signal is still on its way, and that signal
+      // must still re-read the rest.
       if (refresh) {
         statuses.clear();
         statusesEpoch = statusEpoch;
+        statusRevision = reply.revision;
         repaintAll();
       }
       available = Array.isArray(reply.statuses);
-      statusRevision = reply.revision;
       if (available) asked.forEach((headword, index) => statuses.set(headword, reply.statuses[index]));
     }
 
