@@ -554,36 +554,21 @@ h1 {
  * A section is its title, then its groups. The quiet autosave status
  * ("Saved.") sits at the end of the title row, where settings pages put it; a
  * failure or a refused edit takes a row of its own under the title and stays
- * in view while the section scrolls.
+ * in view while the section scrolls. The quiet status is positioned, not
+ * placed in a grid, so a section stays a flex column: a grid with an auto
+ * column measured every row on each section switch.
  */
 .card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-content: start;
-  row-gap: 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   scroll-margin-top: 24px;
 }
-.card > * {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-.card > :is(.card-head, .section-heading):has(~ .options-feedback-slot:not(:empty)) {
-  grid-column: 1;
-}
-.card > .options-feedback-slot {
-  grid-column: 2;
-  grid-row: 1;
-  margin-left: 16px;
-  padding-top: 6px;
-}
 .card > .options-feedback-slot:has(#options-status.is-quiet) {
-  position: static;
-}
-.card > .options-feedback-slot:has(#options-status:not(.is-quiet, :empty)) {
-  grid-column: 1 / -1;
-  grid-row: auto;
-  margin-left: 0;
-  padding-top: 0;
+  position: absolute;
+  top: 6px;
+  right: 0;
 }
 .section-heading {
   display: flex;
@@ -1460,8 +1445,7 @@ textarea {
 }
 /*
  * A group of settings is one card of rows, titled by its legend above it, as
- * in Chrome's and macOS's settings. Rows stack once the card itself is narrow
- * (see @container below).
+ * in Chrome's and macOS's settings.
  */
 .lookup-group {
   position: relative;
@@ -1469,6 +1453,15 @@ textarea {
   margin: 0;
   padding: 0 16px;
   border: 0;
+}
+/*
+ * Cards whose rows rearrange with their own width (see @container below):
+ * Design's half-width column, the keybinds, the audio sources and, on a phone,
+ * every card. Only these are query containers, as each costs a style pass.
+ */
+.design-controls .lookup-group,
+#keybind-settings,
+#audio-sources {
   container-type: inline-size;
 }
 .lookup-group:has(> legend) {
@@ -2289,6 +2282,13 @@ textarea {
 }
 
 @media (max-width: 620px) {
+  .lookup-group {
+    container-type: inline-size;
+  }
+  /* A long title and "Unsaved changes…" do not fit one row on a phone. */
+  .card > .options-feedback-slot:has(#options-status.is-quiet) {
+    position: static;
+  }
   .settings-sidebar {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px;
