@@ -14,6 +14,7 @@
 
 import { readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { test as nodeTest } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ACTION_ROW_CHECK } from "../chrome-action-row.mjs";
 import { AUDIO_CHOOSER_CHECK } from "../chrome-audio-chooser.mjs";
@@ -32,8 +33,6 @@ import { SETTINGS_FEEDBACK_CHECK } from "../chrome-settings-feedback-scenarios.m
 import { SETTINGS_FIRST_FRAME_THEME_CHECK } from "../chrome-settings-first-frame.mjs";
 import { STRUCTURED_TABLE_CHECK } from "../chrome-structured-table.mjs";
 
-import { test as nodeTest } from "node:test";
-
 let current = null;
 let completeSuite = false;
 const steps = [];
@@ -43,13 +42,17 @@ function attribute(name) {
   current?.failures.push(name);
 }
 
-// test/chrome-e2e.mjs loads every file, so only it can account for every planned check.
+// A run that leaves steps out (one file on its own, or a name pattern) can account only
+// for the checks that ran; test/chrome-e2e.mjs without a pattern accounts for all of them.
+const NAME_FILTERED = [...process.execArgv, ...(process.env.NODE_OPTIONS ?? "").split(/\s+/u)]
+  .some((argument) => /^--test-(?:name-pattern|skip-pattern|only)\b/u.test(argument));
+
 function markCompleteSuite() {
   completeSuite = true;
 }
 
 function completeRun() {
-  return completeSuite && steps.every((entry) => entry.ran);
+  return completeSuite && !NAME_FILTERED;
 }
 
 // One step of the scenario. Steps share one browser and run in order; when a name
@@ -69,7 +72,11 @@ function step(name, fn) {
         try {
           await earlier.fn();
         } catch (error) {
-          record.failures.push(`the earlier step "${earlier.name}" threw: ${error?.message ?? error}`);
+          const name = `${context.fullName}: the earlier step "${earlier.name}" finished without throwing`;
+          results.push({ name, ok: false, detail: error?.stack || String(error) });
+          failed++;
+          record.failures.push(name);
+          console.log(`FAIL ${name}\n       ${error?.stack || error}`);
         }
       }
       entry.ran = true;
