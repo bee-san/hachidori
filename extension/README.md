@@ -125,14 +125,16 @@ the service worker and both engine runtimes run the same code.
 - **Netflix mining.** While the experimental flag is on, `netflix.js`
   registers `netflix-page.js` (main world: the subtitle hooks adapted from
   Subadub, and the line replay, pause and resume through Netflix's player) and
-  `netflix-subtitles.js` with `netflix-content.js` (WebVTT/TTML cue timelines,
-  the hovered line's cue, and pausing while a line is hovered) on
-  `www.netflix.com`. `netflix-recorder.html`
+  `netflix-subtitles.js`, `netflix-audio.js` and `netflix-content.js`
+  (WebVTT/TTML cue timelines, the last 30 seconds of the video's sound, the
+  hovered line's cue, and pausing while a line is hovered) on
+  `www.netflix.com`. `{sentence-audio}` attaches the line's WAV, cut from what
+  `netflix-audio.js` kept. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
-  records the replayed line inside the Netflix tab; `{sentence-audio}`
-  attaches its WAV to the note, and `{gif}` attaches a looping GIF of the line
-  (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`), or the page
-  screenshot where there is none.
+  records the replayed line inside the Netflix tab for `{gif}`, a looping GIF
+  of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
+  or the page screenshot where there is none, and for `{sentence-audio}` while
+  the video's sound does not yet go through Hachidori.
 - **Netflix preview screenshots.** A separate experimental switch uses
   `netflix-preview.js` on demand in the watch page's main world to obtain the
   player's timeline JPEG for `{screenshot}`. It avoids screen capture but has

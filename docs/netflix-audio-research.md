@@ -178,10 +178,11 @@ feature gets `{sentence-audio}` rather than adding a separate one:
    so routing never starts on a silent graph. The graph passes the sound to the
    speakers and copies a mono mix to a `MediaStreamTrackProcessor`.
 2. Only audio played at 1× is kept: 30 seconds of it, in one `Float32Array` in
-   the page. Played stretches are segments that close on pause, seek, a stall
-   or a speed change. Each segment places its samples on the video's media
-   clock by the median of per-block estimates, as the recorder's clock fit does.
-   A new episode clears the buffer.
+   the page. Played stretches are segments that close on pause, a stall, a
+   seek, a speed change or a new episode. Each segment places its samples on
+   the video's media clock by the median of per-block estimates, and ends at
+   the media time the video was seen to reach, so the silence between a pause
+   and its event is not taken for the line.
 3. On Add, the line is cut from the cue start − 250 ms to the cue end + 250 ms:
    - **heard at 1×** → cut at once: no seek, no replay, no capture;
    - **stopped partway**, the start heard (hover pause stops lines mid-way) →
@@ -193,12 +194,13 @@ feature gets `{sentence-audio}` rather than adding a separate one:
    worker, which holds it like a recorded one (`sentenceAudio`), so
    `{sentence-audio}`, the Kiku/Lapis/Senren routing and the upload lifecycle are
    unchanged.
-5. `{gif}` keeps the tab-capture replay and its grant; with a GIF the buffer
-   records the audio of that same replay. The tab-capture recorder still
-   records sentence audio when the buffer is not running: Chrome has not let
-   the page start audio yet (a browser shortcut is not a page gesture, but it
-   does grant tab capture), or another extension or the page already routes the
-   element through Web Audio.
+5. `{gif}` keeps the tab-capture replay and its grant. Chrome mutes the tab for
+   that replay at its output, after the page's Web Audio graph, so the buffer
+   still records the replay's sound and the WAV comes from there. The
+   tab-capture recorder still records sentence audio when the buffer is not
+   running: Chrome has not let the page start audio yet (a browser shortcut is
+   not a page gesture, but it does grant tab capture), or another extension or
+   the page already routes the element through Web Audio.
 6. Turning the switch off stops the copy and frees the buffer. The video's sound
    keeps going through the graph until the page reloads, because Chrome cannot
    disconnect an element from Web Audio.
