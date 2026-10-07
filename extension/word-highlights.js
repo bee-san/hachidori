@@ -611,7 +611,8 @@
         reply = await send("hd_segment", {
           chunks: texts.map((text, id) => ({ id, text })),
           scanLength: options.scanLength,
-          options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder },
+          options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder,
+            personalDictionary: options.personalDictionaryEnabled },
         }, ENGINE_TARGET);
       } catch {
         if (epoch === segmentEpoch) {
@@ -793,7 +794,8 @@
       options = next;
       if (!running) return;
       if (next.scanLength !== previous.scanLength || next.frequencyDictionary !== previous.frequencyDictionary
-          || next.frequencyOrder !== previous.frequencyOrder) invalidate();
+          || next.frequencyOrder !== previous.frequencyOrder
+          || next.personalDictionaryEnabled !== previous.personalDictionaryEnabled) invalidate();
       if (next.wordHighlightStyle !== previous.wordHighlightStyle || next.popupTheme !== previous.popupTheme) refreshColors();
       register();
     }

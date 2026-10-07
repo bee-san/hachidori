@@ -242,11 +242,12 @@ function boundedText(value, label, maxBytes, cString = true) {
 }
 
 // The engine's ranking options, the same for a hover lookup and a segment.
-function lookupOptionsJson(options) {
+function lookupOptionsJson(options, extra = {}) {
   return JSON.stringify({
     frequencyDictionary: boundedText(options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
     frequencyOrder: FREQUENCY_ORDERS.includes(options?.frequencyOrder) ? options.frequencyOrder : "auto",
     primaryReading: boundedText(options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+    ...extra,
   });
 }
 
@@ -3436,7 +3437,10 @@ const HANDLERS = {
   async hd_segment(message) {
     requireEngine();
     const scanLength = clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH);
-    const options = lookupOptionsJson(message.options);
+    // A hover with the personal dictionary off drops its results
+    // (withoutPersonalDictionary), so the split leaves its words out as well.
+    const options = lookupOptionsJson(message.options,
+      message.options?.personalDictionary === false ? { excludedDictionary: CUSTOM_DICTIONARY_TITLE } : {});
     // Every chunk is checked before the first engine turn. A lone surrogate (a
     // pair split across two text nodes) becomes U+FFFD, one code unit for one,
     // so the spans' offsets still index the text the page sent.

@@ -634,8 +634,36 @@ void record_match(std::vector<SegmentMatch>& matches, size_t codepoints, const L
   }
 }
 
+// hdw_segment's options beyond the lookup's: a dictionary whose words the
+// split leaves out, as a hover leaves out the personal dictionary's results
+// while Use the personal dictionary is off. Empty leaves nothing out.
+struct WireSegmentOptions {
+  std::string excludedDictionary;
+};
+
+std::string parse_excluded_dictionary(const char* options_json) {
+  if (options_json == nullptr || *options_json == '\0') {
+    return {};
+  }
+  WireSegmentOptions wire;
+  if (auto ec = glz::read<glz::opts{.error_on_unknown_keys = false}>(wire, std::string_view{options_json})) {
+    throw std::runtime_error("invalid options json: " + glz::format_error(ec, std::string_view{options_json}));
+  }
+  require_lookup_text_size(wire.excludedDictionary, "excludedDictionary");
+  return wire.excludedDictionary;
+}
+
+// A result whose every glossary comes from the excluded dictionary is one a
+// hover would drop; a word another dictionary also has stays.
+bool excluded_result(const TermResult& term, std::string_view excluded) {
+  return !excluded.empty() && !term.glossaries.empty()
+         && std::ranges::all_of(term.glossaries, [excluded](const GlossaryEntry& glossary) {
+              return glossary.dict_name == excluded;
+            });
+}
+
 SegmentLattice build_lattice(const Engine& e, std::string_view text, const TextIndex& index, size_t scan_length,
-                             const LookupOptions& options, LookupCopyBudget& budget) {
+                             const LookupOptions& options, std::string_view excluded, LookupCopyBudget& budget) {
   const SegmentFrequency frequency = segment_frequency(e.query, options);
   // The hover hands the engine the scan length, or a long key's length plus
   // room for its inflection when a dictionary lists keys longer than that
@@ -650,6 +678,9 @@ SegmentLattice build_lattice(const Engine& e, std::string_view text, const TextI
     auto& matches = lattice[start];
     // Every result, so that each matched length keeps its candidates.
     for (const auto& result : e.lookup.lookup(slice, INT_MAX, scan_length, options)) {
+      if (excluded_result(result.term, excluded)) {
+        continue;
+      }
       record_match(matches, matched_codepoints(index, start, result), result, frequency, budget);
     }
     for (auto& match : matches) {
@@ -746,9 +777,9 @@ std::vector<WireSegmentWord> alternative_split(const SegmentLattice& lattice, st
 }
 
 WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_length, const LookupOptions& options,
-                            LookupCopyBudget& budget) {
+                            std::string_view excluded, LookupCopyBudget& budget) {
   const TextIndex index = index_text(text);
-  const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, budget);
+  const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, excluded, budget);
   const std::vector<SplitStep> best = best_split(lattice, 0, index.codepoints());
   WireSegmentResponse response;
   for (size_t position = 0; position < index.codepoints();) {
@@ -1498,7 +1529,8 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const c
 }
 
 // Splits `text` into the words a hover would show, as {"spans": [...]}; see
-// WireSegmentSpan. `scan_length` and `options_json` are the hover lookup's.
+// WireSegmentSpan. `scan_length` and `options_json` are the hover lookup's,
+// and `options_json` may also name an excludedDictionary (WireSegmentOptions).
 EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, const char* options_json) {
   static std::string out;
   clear_error();
@@ -1510,7 +1542,8 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
         !segment_text.empty() && scan_length > 0) {
       require_lookup_text_size(segment_text, "segment text");
       const LookupOptions options = parse_options(options_json);
-      response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, budget);
+      const std::string excluded = parse_excluded_dictionary(options_json);
+      response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget);
     }
     out = lookup_json(response, budget);
   } catch (...) {

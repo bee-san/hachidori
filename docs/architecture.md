@@ -1042,7 +1042,12 @@ pencil sentence. Every term lookup carries `options.personalDictionary`, and
 with `false` the engine service removes Hachidori Custom Dictionary glossaries
 from `hd_lookup` and `hd_lookup_dictionary` replies, dropping a result that had
 no others. It filters after the engine's `maxResults` cut, so a personal-only
-term can use up one result slot. The option is a reader preference: it never
+term can use up one result slot. [Word highlighting](#word-highlighting)'s
+`hd_segment` carries the same option; with `false` the engine service names
+the custom dictionary as `hdw_segment`'s `excludedDictionary`, whose split
+skips a result every glossary of which comes from it, so a word only the
+personal dictionary has is no span and is left unmarked, as a hover would show
+nothing there. The option is a reader preference: it never
 disables, reorders, recompiles or removes the managed package, and turning it
 back on shows the entries again without an engine reload.
 
@@ -1407,8 +1412,11 @@ since a hover can wait behind the chunk being segmented. They go through
 flight per frame, and are cached by their exact text (the latest 4,096), so
 repeated texthooker lines and redrawn subtitles cost nothing. A reply from
 another engine generation is discarded with the cache. A dictionary change, or
-a scan length or frequency option change, segments the shown text again, and
-each run keeps its marks until its new segmentation arrives.
+a scan length, frequency or Use the personal dictionary change, segments the
+shown text again, and each run keeps its marks until its new segmentation
+arrives. Each batch carries the hover's frequency options and its
+`personalDictionary` flag, so with the personal dictionary off its words are
+not split out at all.
 
 Status comes from `hd_anki_word_status`. Its first request carries no
 headwords: an index with no rows for the first Template (`statuses: null`)
@@ -3325,7 +3333,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Apply a package change, then compare-and-set it atomically. An unchanged manifest set uses native order only, retaining failed-package diagnostics and skipping load/warmup; other changes load incrementally when verified, otherwise rebuild. The reply's `loadPath` and `hd_status.lastLoadPath` report `order-only`, `incremental`, or `full`. |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
-| `hd_segment` | Split a batch of text chunks into the words a hover would show, for word highlighting (#520): each chunk's spans carry their candidate headwords, a function-word flag, and a known-words alternative split, in UTF-16 offsets. Unqueued; it serializes one engine turn per chunk and, before each later chunk, lets the messages that reached the engine worker meanwhile take theirs, so a hover's `hd_lookup` runs between chunks, and it stays available during imports. A hover still waits for the chunk being segmented: with Jitendex a line takes about 3 ms at p95 and a 4 KiB chunk about 190 ms (`benchmark/segmentation.mjs`), so callers send a line or a text node per chunk. The reply's `generation` is read after the last chunk and a dictionary commit can land between chunks, so a caller that expects one generation treats a reply carrying another as stale |
+| `hd_segment` | Split a batch of text chunks into the words a hover would show, for word highlighting (#520): each chunk's spans carry their candidate headwords, a function-word flag, and a known-words alternative split, in UTF-16 offsets. With `options.personalDictionary: false` the split leaves out words only the personal dictionary has, as a hover does. Unqueued; it serializes one engine turn per chunk and, before each later chunk, lets the messages that reached the engine worker meanwhile take theirs, so a hover's `hd_lookup` runs between chunks, and it stays available during imports. A hover still waits for the chunk being segmented: with Jitendex a line takes about 3 ms at p95 and a 4 KiB chunk about 190 ms (`benchmark/segmentation.mjs`), so callers send a line or a text node per chunk. The reply's `generation` is read after the last chunk and a dictionary commit can land between chunks, so a caller that expects one generation treats a reply carrying another as stale |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_anki_word_status` | Read `known`/`learning`/`unknown` for a page's headwords from the first Template's duplicate-index rows held in memory, with their `rowRevision`; never reads storage or contacts Anki, and forwarded to the host while linked |
 | `hd_word_status_override` | Set one headword to `known` or `ignored`, or clear it with `null`, in the revisioned `wordStatusOverrides` record (#520), in the storage queue and without a base revision; forwarded to the host while linked |

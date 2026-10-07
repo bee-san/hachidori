@@ -160,13 +160,22 @@ test("visible words take their first result's status, leaving function words and
   assert.equal(page.sent[0].type, "hd_anki_word_status");
   assert.deepEqual(page.segmented(), ["食べたかった。", "漢字を読む"]);
   assert.equal(page.prepared, 1);
-  assert.deepEqual(page.sent.find(request => request.type === "hd_segment").fields.scanLength, page.options.scanLength);
+  const segmentRequest = page.sent.find(request => request.type === "hd_segment").fields;
+  assert.equal(segmentRequest.scanLength, page.options.scanLength);
+  assert.deepEqual(segmentRequest.options, { frequencyDictionary: "", frequencyOrder: "auto", personalDictionary: true },
+    "the split ranks and leaves out dictionaries as a hover does");
   // The conjugated verb is marked by its dictionary form's card, around the
   // ruby's reading; を is a function word and known words are off by default.
   assert.deepEqual(page.marks(), { "hd-word-unknown": ["食", "べたかった"], "hd-word-learning": ["漢字"] });
   page.highlighter.update({ ...page.options, wordHighlightKnown: true, wordHighlightLearning: false });
   assert.deepEqual(page.marks(), { "hd-word-unknown": ["食", "べたかった"], "hd-word-known": ["読む"] });
   assert.equal(page.window.CSS.highlights.get("hd-word-unknown").priority, -1, "the hover's source highlight paints above");
+  // Turning Use the personal dictionary off segments the shown text again without its words.
+  page.highlighter.update({ ...page.options, wordHighlightKnown: true, wordHighlightLearning: false, personalDictionaryEnabled: false });
+  await settle();
+  const resegmented = page.sent.filter(request => request.type === "hd_segment").at(-1).fields;
+  assert.deepEqual(resegmented.chunks.map(chunk => chunk.text), ["食べたかった。", "漢字を読む"]);
+  assert.equal(resegmented.options.personalDictionary, false);
 });
 
 test("a kana word takes a reading candidate's card and a phrase around a function word takes its words' cards", async t => {

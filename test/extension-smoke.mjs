@@ -4868,6 +4868,23 @@ async function customEngineStage() {
       && JSON.stringify(await sendWorker("hd_custom_read")) === JSON.stringify(stateWithInvariantPeer),
     JSON.stringify({ personalLookups, statusBeforePersonal }),
   );
+  // Word highlighting (#520) splits the page as a hover reads it: with the
+  // personal dictionary off, a word only it has (注記) is no span, while one
+  // another dictionary has too (食べる) stays.
+  const personalSegments = {};
+  for (const personalDictionary of [false, true]) {
+    personalSegments[personalDictionary] = await request("hd_segment", { scanLength: 16, options: { personalDictionary },
+      chunks: [{ id: 0, text: "\u6ce8\u8a18\u3068\u98df\u3079\u308b" }] });
+  }
+  const segmentHeadwords = (reply) => (reply.segments?.[0]?.spans ?? []).map((span) => span.candidates[0]?.expression);
+  check(
+    "segmentation with the personal dictionary off leaves out only the words it alone has",
+    personalSegments.false.ok === true && !segmentHeadwords(personalSegments.false).includes("\u6ce8\u8a18")
+      && segmentHeadwords(personalSegments.false).includes("\u98df\u3079\u308b")
+      && personalSegments.true.ok === true && segmentHeadwords(personalSegments.true).includes("\u6ce8\u8a18")
+      && segmentHeadwords(personalSegments.true).includes("\u98df\u3079\u308b"),
+    JSON.stringify(personalSegments),
+  );
   const brokenState = {
     ...stateWithInvariantPeer.state,
     revision: stateWithInvariantPeer.state.revision + 1,

@@ -355,7 +355,9 @@ keeps the record.
 
 `node --test test/word-highlights.test.mjs` drives `word-highlights.js`, the
 content script's word highlighter, with jsdom and a fake engine and index
-(#520). Nothing is segmented off screen or before the index can answer; visible
+(#520). Nothing is segmented off screen or before the index can answer, a
+batch carries the hover's frequency options and personal dictionary switch, and
+turning that switch off segments the shown text again; visible
 words take their first result's status around a ruby reading, a kana word a
 reading candidate's card, and a phrase around a function word its words'
 cards, while a content-word compound keeps its own and function words stay
@@ -670,7 +672,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
 `HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-185 checks, ordered by dependency. Exits 0 on success,
+186 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -809,7 +811,8 @@ reference dictionary and its frequency dictionary from
 Easy news, visual novels and anime subtitles, with their expected split and
 headwords. The response shape, the UTF-16 offsets, the function-word flag, the
 known-words alternative split, and the no-op and oversized-text paths are all
-asserted. 今日本 splits into two words either way, so it pins the frequency
+asserted, and so is `excludedDictionary`: a word only that dictionary has is no
+span, while a word another dictionary also has stays. 今日本 splits into two words either way, so it pins the frequency
 tie-break: no frequency and ascending ranks keep 今日 + 本, descending counts
 choose 今 + 日本. A small extra dictionary with Jitendex's headwords for the
 copula's past and presumptive forms and the conjunctions built on it (だった,
@@ -858,7 +861,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 722 checks, all of
+full request→reply round trip per contract-C message type. 723 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -1955,7 +1958,8 @@ again, without a dictionary-state revision. The extension suite covers the same
 switch for selection changes, drag releases and activation-key selections in
 every lookup mode, Scan selected text, the notices and the lookup flag, and its
 real-WASM custom stage requires the engine service to drop only the personal
-glossaries and personal-only results. `chrome-overlay.mjs` requires a released
+glossaries and personal-only results, and `hd_segment` to split out no word
+only the personal dictionary has. `chrome-overlay.mjs` requires a released
 glyph drag to keep its selection without a lookup or the host window claim.
 
 Seven source-highlight assertions cover selected-text DOM replacement/stale
