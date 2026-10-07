@@ -554,9 +554,8 @@ h1 {
  * A section is its title, then its groups. The quiet autosave status
  * ("Saved.") sits at the end of the title row, where settings pages put it; a
  * failure or a refused edit takes a row of its own under the title and stays
- * in view while the section scrolls. The quiet status is positioned, not
- * placed in a grid, so a section stays a flex column: a grid with an auto
- * column measured every row on each section switch.
+ * in view while the section scrolls. The quiet status is positioned beside
+ * the title, so a section stays the flex column it was.
  */
 .card {
   position: relative;
