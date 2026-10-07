@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Experimental Netflix mining, the reader's side. netflix.js registers this
-// classic script after netflix-subtitles.js in the content scripts' world on
-// https://www.netflix.com/* (top frame, document_start) while Settings →
-// Advanced → Experimental features → Netflix mining is on. It keeps the
-// subtitle timelines netflix-page.js posts from the page, pins the cue of a
-// hovered `.player-timedtext` line, drives one replay while the extension
-// records that line for Anki, and pauses the video while a subtitle line or
-// Hachidori's popup is hovered.
+// classic script after netflix-subtitles.js and netflix-audio.js in the content
+// scripts' world on https://www.netflix.com/* (top frame, document_start)
+// while Settings → Advanced → Experimental features → Netflix mining is on. It
+// keeps the subtitle timelines netflix-page.js posts from the page, pins the
+// cue of a hovered `.player-timedtext` line, records that line for Anki from
+// what the viewer heard (netflix-audio.js) or while the page plays or replays
+// it, and pauses the video while a subtitle line or Hachidori's popup is hovered.
 (function () {
   "use strict";
 
@@ -24,9 +24,11 @@
   // REPLAY_SLACK_MS in netflix-page.js; the reader waits a little longer for
   // that answer.
   const REPLAY_SLACK_MS = 35_000;
+  // How long the line audio has to deliver what was played until now.
+  const DRAIN_MS = 500;
   const SHOW_TEXT = 4;
 
-  function createNetflix(window, subtitles = window.HDNetflixSubtitles) {
+  function createNetflix(window, subtitles = window.HDNetflixSubtitles, lineAudioApi = window.HDNetflixAudio) {
     const { document, location } = window;
     // movieId → { tracks: Map(trackId → { id, closedCaptions, cues }), status, chosen }
     const movies = new Map();
@@ -45,6 +47,8 @@
     let held = false;
     let restoring = false;
     let recordings = 0;
+    // What the viewer hears, kept while content.js has the switch on.
+    let lineAudio = null;
     const range = document.createRange();
 
     const command = message => {
@@ -85,8 +89,8 @@
           { code: message.error === "player" ? "player" : "replay" }));
       }
       // The page restores the viewer's state as it answers; its seek back
-      // reports itself afterwards.
-      restoring = true;
+      // reports itself afterwards. Playing on seeks nowhere.
+      restoring = !pending.playOn;
     }
 
     // Everything the page posts is checked before it is used: any script on
@@ -133,6 +137,9 @@
     }
 
     const mainVideo = () => document.querySelector(".watch-video video") ?? document.querySelector("video");
+    const watchedMovie = () => WATCH_PATH.exec(location.pathname)?.[1] ?? null;
+    // The line audio keeps the player's sound only, not a preview's on another page.
+    const watchVideo = () => (watchedMovie() === null ? null : mainVideo());
 
     function mediaTimeMs() {
       const video = mainVideo();
@@ -202,11 +209,15 @@
       return { netflix: { cue: { movieId, startMs, endMs } }, ...whole };
     }
 
-    function replay(cue, padMs) {
+    // Has the page play the cue's line at 1×: from just before it, or with
+    // `playOn` on from where the video stands, then restore the viewer's state.
+    // Resolves with its (wall ms, media ms) pairs.
+    function replay(cue, padMs, playOn = false) {
       const id = window.crypto.randomUUID();
-      // Chrome mutes the tab until the recorder stops, so with hover pause the
-      // page restores a playing video paused and this reader resumes it once
-      // the recording is over and the pointer has left.
+      // With hover pause the page leaves a playing video paused at the end,
+      // and this reader resumes it once the line is recorded and the pointer
+      // has left: Chrome mutes a captured tab until its recorder stops, and a
+      // line played on stops at its end.
       const video = mainVideo();
       if (hoverPause && video !== null && !video.paused) held = true;
       return new Promise((resolveReplay, rejectReplay) => {
@@ -214,8 +225,9 @@
           replays.delete(id);
           rejectReplay(Object.assign(new Error("Netflix's player did not finish replaying the line."), { code: "replay" }));
         }, cue.endMs - cue.startMs + 2 * padMs + REPLAY_SLACK_MS);
-        replays.set(id, { resolve: resolveReplay, reject: rejectReplay, timer });
-        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs, keepPaused: hoverPause });
+        replays.set(id, { resolve: resolveReplay, reject: rejectReplay, timer, playOn });
+        command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs, keepPaused: hoverPause,
+          ...(playOn ? { playOn: true } : {}) });
       });
     }
 
@@ -231,14 +243,13 @@
       return frame;
     }
 
-    // Records the cue's line: a recorder frame opens the tab's stream, the page
-    // replays the line, then the frame cuts the clip (with audio unset, no WAV;
-    // with gif set, a looping GIF of the line) and the worker holds its files
-    // for the note. Resolves with { audio, gif } for the fields, or with why
-    // there is none.
-    async function record(cue, { send, templateId, audio = true, gif = false }) {
+    // Records the cue's line with tab capture: a recorder frame opens the tab's
+    // stream, the page replays the line, then the frame cuts the clip (with
+    // audio unset, no WAV; with gif set, a looping GIF of the line) and the
+    // worker holds its files for the note. Resolves with { audio, gif } for
+    // the fields, or with why there is none.
+    async function recordTab(cue, { send, templateId, audio, gif }) {
       const frame = recorderFrame();
-      recordings += 1;
       try {
         const started = await send("hd_netflix_capture_start", { cue, audio, gif });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
@@ -255,8 +266,76 @@
         return await send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
       } finally {
         frame.remove();
+      }
+    }
+
+    // The cue's line with its pads, within the video.
+    function lineSpan(cue) {
+      const duration = mainVideo()?.duration;
+      const end = cue.endMs + lineAudioApi.PAD_MS;
+      return { from: Math.max(0, cue.startMs - lineAudioApi.PAD_MS),
+        to: Number.isFinite(duration) ? Math.min(end, duration * 1000) : end };
+    }
+
+    // The line as the viewer heard it at 1×, once the line audio has what has
+    // played until now, or null.
+    async function heardLine(cue) {
+      const { from, to } = lineSpan(cue);
+      await lineAudio.settled(DRAIN_MS);
+      return lineAudio.clip(cue.movieId, from, to);
+    }
+
+    // Plays what the viewer has not heard of the line, so the line audio keeps
+    // it: on from where the video stands when the start was heard (hover pause
+    // stops a line partway), otherwise the whole line again. Both are audible.
+    async function playLine(cue) {
+      const { from, to } = lineSpan(cue);
+      const position = mediaTimeMs();
+      const playOn = position !== null && position >= from && position < to
+        && lineAudio.covers(cue.movieId, from, position);
+      await replay(cue, lineAudioApi.PAD_MS, playOn);
+      return heardLine(cue);
+    }
+
+    // A clip of the line for its {sentence-audio} field: held by the worker,
+    // or why there is none.
+    async function holdLine(clip, { send, templateId }) {
+      if (clip === null) return { unavailable: "unheard" };
+      if (lineAudioApi.isSilent(clip.samples)) return { unavailable: "silent" };
+      const held = await send("hd_netflix_line_audio", { data: lineAudioApi.wavBase64(clip), templateId });
+      return typeof held.unavailable === "string" ? { unavailable: held.unavailable }
+        : { token: held.token, filename: held.filename };
+    }
+
+    // Records the cue's line for the fields that map it: `audio` for
+    // {sentence-audio}, `gif` for {gif}. Sentence audio comes from what the
+    // viewer heard, played on or replayed if need be, while the line audio
+    // keeps the video's sound; tab capture records a GIF, and the audio too
+    // otherwise. `conceal` hides Hachidori's overlays around tab capture only.
+    // Resolves with { audio, gif } for the fields, or with why there is none.
+    async function record(cue, { send, templateId, audio = true, gif = false, conceal = during => during() }) {
+      const buffered = audio && lineAudio?.ready() === true;
+      recordings += 1;
+      try {
+        let clip = buffered ? await heardLine(cue) : null;
+        if (!buffered) return await conceal(() => recordTab(cue, { send, templateId, audio, gif }));
+        const result = {};
+        if (gif) {
+          const recorded = await conceal(() => recordTab(cue, { send, templateId, audio: false, gif }));
+          result.gif = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.gif;
+          // The GIF's replay played the line, and the line audio kept it.
+          clip ??= await heardLine(cue);
+        }
+        try {
+          clip ??= await playLine(cue);
+          result.audio = await holdLine(clip, { send, templateId });
+        } catch (error) {
+          result.audio = { unavailable: error.code ?? error.message };
+        }
+        return result;
+      } finally {
         recordings -= 1;
-        // A leave during the recording takes effect now the recorder has stopped.
+        // A leave during the recording takes effect now the line has played.
         release();
       }
     }
@@ -325,6 +404,17 @@
       hovering = false;
     }
 
+    // content.js turns the line audio on and off with the switch too. Off, it
+    // stops keeping the video's sound and frees what it kept.
+    function setLineAudio(enabled) {
+      if (enabled === true && lineAudioApi !== undefined) {
+        lineAudio ??= lineAudioApi.createLineAudio(window, { video: watchVideo, movie: watchedMovie });
+        lineAudio.start();
+      } else {
+        lineAudio?.stop();
+      }
+    }
+
     document.addEventListener(PAGE_EVENT, event => {
       if (typeof event.detail === "string") accept(event.detail);
     });
@@ -336,7 +426,7 @@
       release();
     });
 
-    return { observe, resolve, miningFields, record, setHoverPause };
+    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio };
   }
 
   globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };

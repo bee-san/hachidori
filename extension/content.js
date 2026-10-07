@@ -949,11 +949,13 @@
   }
 
   // netflix-content.js cannot read the switch, so the reader tells it whether
-  // to pause Netflix while a subtitle is hovered, and turns that off when it
-  // stops.
-  function syncNetflixHoverPause() {
+  // to pause Netflix while a subtitle is hovered and to keep what the viewer
+  // hears for sentence audio, and turns both off when it stops.
+  function syncNetflix() {
     if (typeof window.HDNetflix?.setHoverPause !== "function") return;
-    window.HDNetflix.setHoverPause(!disposed && netflixMiningEnabled());
+    const enabled = !disposed && netflixMiningEnabled();
+    window.HDNetflix.setHoverPause(enabled);
+    window.HDNetflix.setLineAudio(enabled);
   }
 
   // Reading → Word highlighting (#520, experimental): word-highlights.js marks
@@ -1761,7 +1763,7 @@
     appearance?.destroy();
     customStyle?.destroy();
     releaseDocsProbe();
-    syncNetflixHoverPause();
+    syncNetflix();
     releaseFieldImposter();
     host?.remove();
     host = null;
@@ -4902,7 +4904,7 @@
     options = next;
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
-    syncNetflixHoverPause();
+    syncNetflix();
     if (customButtonsChanged) {
       for (const level of levels) level.view?.setCustomButtons(options.customButtons);
     }

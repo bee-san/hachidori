@@ -16,6 +16,7 @@
     grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts; later notes in this tab will record the line.",
     silent: "the recording was silent, so no audio was attached. If the video is not muted, Netflix may be blocking capture of protected playback; turning off Chrome's “Use graphics acceleration when available” can help.",
     "no-gif": "no GIF could be made of the line.",
+    unheard: "the line did not play through, so its audio was not recorded.",
     player: "Netflix's player controls were not found, so the line could not be replayed.",
     replay: "Netflix did not finish replaying the line.",
     linked: "this browser is linked to another Hachidori, so Netflix lines are not recorded.",
@@ -46,7 +47,8 @@
     if (wanted.gif) {
       const gif = heldMedia(recorded?.gif);
       if (gif) record.gif = gif;
-      else markUnavailable(outcome, { gif: true }, "no-gif");
+      else markUnavailable(outcome, { gif: true }, typeof recorded?.gif?.unavailable === "string"
+        ? recorded.gif.unavailable : "no-gif");
     }
   }
   function syncFeedbackSurface(feedback) {
@@ -241,7 +243,8 @@
     conceal = during => during(),
     // Experimental Netflix mining: records a cue's line through the page and
     // resolves with { audio, gif } for the fields, or with why there is none
-    // (netflix-content.js). Its options { audio, gif } name the media wanted.
+    // (netflix-content.js). Its options { audio, gif } name the media wanted;
+    // `conceal` is passed on for the tab capture a GIF needs.
     recordNetflixLine = async () => { throw new Error("this page cannot replay Netflix lines."); },
   }) {
     const owners = new Map(), bound = new WeakMap();
@@ -459,16 +462,16 @@
       }
     }
     // Experimental Netflix mining: the hovered subtitle line's audio and, when
-    // a {gif} field needs it, a looping GIF, recorded while the page replays
-    // the line with the reader concealed. Like the screenshot, media that
-    // cannot be recorded is a warning on an otherwise ordinary note; {gif}
-    // falls back to the screenshot the submission already took.
+    // a {gif} field needs it, a looping GIF. The page records the line, with
+    // the reader concealed while it captures the tab. Like the screenshot,
+    // media that cannot be recorded is a warning on an otherwise ordinary
+    // note; {gif} falls back to the screenshot the submission already took.
     //
     // `wanted` is { audio, gif }; `outcome` collects the warnings and the
     // captureUnavailable kinds while each recorded item is applied to `record`.
     async function recordNetflixMedia(record, outcome, wanted, cue) {
       try {
-        const recorded = await conceal(() => recordNetflixLine(cue, record.templateId, wanted));
+        const recorded = await recordNetflixLine(cue, record.templateId, { ...wanted, conceal });
         if (typeof recorded?.unavailable === "string") markUnavailable(outcome, wanted, recorded.unavailable);
         else applyRecordedMedia(record, outcome, wanted, recorded);
       } catch (error) {
