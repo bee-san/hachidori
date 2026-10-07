@@ -131,6 +131,12 @@ the service worker and both engine runtimes run the same code.
   attaches its WAV to the note, and `{gif}` attaches a looping GIF of the line
   (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`), or the page
   screenshot where there is none.
+- **Netflix preview screenshots.** A separate experimental switch uses
+  `netflix-preview.js` on demand in the watch page's main world to obtain the
+  player's timeline JPEG for `{screenshot}`. It avoids screen capture but has
+  lower resolution and approximate timing. It needs no recording or subtitle
+  integration; missing previews leave a warning on the saved note. See the
+  [capture research](../docs/netflix-screenshot-research.md).
 - **Word highlighting.** While the experimental flag and its switch are on,
   `word-highlights.js`, a content script beside `content.js`, marks a page's
   Japanese words by their Anki status: it segments the text near the viewport

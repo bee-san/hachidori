@@ -427,6 +427,14 @@ named toolbar actions, current word/reading/sentence expansion, background-tab
 clicks, live editing without replacing cards or Note drafts, and stale-control
 navigation rejection.
 
+`node --test test/netflix-preview.test.mjs` checks the serialized Netflix preview
+helper against fake native players: JPEG bytes, millisecond timestamps, active
+watch-session selection and rejection when the episode or player changes.
+The extension smoke suite checks opt-in routing, exact-document MAIN-world
+execution, ownership checks and useful errors without a viewport fallback.
+These contracts do not verify preview availability or image quality on a
+signed-in Netflix title; see [capture research](../docs/netflix-screenshot-research.md).
+
 `node --test test/netflix.test.mjs test/netflix-subtitles.test.mjs test/netflix-page.test.mjs
 test/netflix-content.test.mjs test/netflix-capture.test.mjs test/netflix-gif.test.mjs` covers experimental
 Netflix mining without contacting Netflix. The flag starts off and registers

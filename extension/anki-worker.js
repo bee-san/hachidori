@@ -242,11 +242,12 @@ export function createAnkiWorkerService({
   async function screenshot(captureViewport, templateId) {
     const token = crypto.randomUUID();
     screenshotRequestToken = token;
-    const { anki } = await readOptions();
+    const options = await readOptions();
+    const { anki } = options;
     const template = globalThis.HDReaderOptions.ankiTemplateConfig(anki, templateId);
     if (template === null) throw new Error("The selected Anki Template is no longer available.");
     if (template.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
-    const dataUrl = await captureViewport();
+    const dataUrl = await captureViewport(options);
     // Capture retries can complete out of order. Only the latest request may
     // publish its bytes, even if a newer picture has already been consumed.
     if (screenshotRequestToken !== token) throw new Error("A newer capture replaced this screenshot request.");
