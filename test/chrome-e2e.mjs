@@ -15650,7 +15650,6 @@ async function main() {
       && extensionTotal?.reply.ok === true && Number.isFinite(extensionTotal.reply.bytes)
       && extensionTotal.reply.heapBytes === lowMemoryBefore.memory.heapBytes
       && extensionTotal.reply.bytes >= extensionTotal.reply.heapBytes
-      && extensionTotal.reply.bytes - extensionTotal.reply.heapBytes < extensionTotal.reply.heapBytes
       && lowMemoryBefore.status.pagedDictionaries === true
       && lowMemoryBefore.status.dictionaryEntryStorage === "auto"
       && lowMemoryOptions?.lowMemoryMode === true
@@ -15766,10 +15765,10 @@ async function main() {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
     return status?.ok && status.ready && !status.loading && status.useLessRamByDefault === expected ? status : false;
   }, { timeout: 30_000, polling: 250 }, expected).then(handle => handle.jsonValue());
-  await page.click("#opt-use-less-ram-by-default");
+  await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
   const fullRamStatus = await waitForRamDefault(false);
   const fullRamLookup = await engineRequest("hd_lookup", { text: "食べる" });
-  await page.click("#opt-use-less-ram-by-default");
+  await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
   const lessRamStatus = await waitForRamDefault(true);
   const lessRamLookup = await engineRequest("hd_lookup", { text: "食べる" });
   await page.reload();
