@@ -1445,7 +1445,10 @@ otherwise the canvas, so text a page paints on another background inside them
 gets colours legible against its main background. Under forced colours Chrome
 paints every highlight in Highlight and HighlightText whatever its author
 colours, so the sheet applies only outside `forced-colors: active` and the line
-styles tell the statuses apart.
+styles tell the statuses apart. Only the text box behind a word is painted
+Highlight there, and HighlightText is the page's Canvas colour, so the line
+moves up to 0.12em below the baseline, just under the glyphs, where it stays
+inside the box rather than merging into the page below it.
 
 ## Lookup response boundary
 

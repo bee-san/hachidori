@@ -53,3 +53,19 @@
 ::highlight(hd-word-known) {
   text-decoration-style: dotted;
 }
+
+/*
+ * Under forced colours the line is HighlightText, the colour of the page's
+ * Canvas, and only the text box behind it is painted Highlight. A line below
+ * that box would vanish, so it moves up to just below the glyphs (ideographs
+ * end about 0.12em below the baseline), inside the box of a font whose descent
+ * is at least about 0.19em.
+ */
+@media (forced-colors: active) {
+  ::highlight(hd-word-unknown),
+  ::highlight(hd-word-learning),
+  ::highlight(hd-word-known) {
+    text-decoration-thickness: max(1px, 0.07em);
+    text-underline-offset: 0.12em;
+  }
+}
