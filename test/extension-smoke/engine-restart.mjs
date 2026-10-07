@@ -13,6 +13,9 @@ import { resolve } from "node:path";
 import { describe } from "node:test";
 import { runInContext } from "node:vm";
 import { backupEngineScenarios } from "../backup-engine-scenarios.mjs";
+// The trained fixture is built in memory rather than read out of test/fixtures:
+// the .zip on disk is only there for the browser test, which needs a real file to
+// hand to an <input type=file>.
 import {
   buildRecommendedZip,
   buildTitledZip,
