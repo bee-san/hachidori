@@ -47,6 +47,10 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_segment", chunks: [] }), true);
   assert.equal(mutatingForwardedRequest({ target: "hoshidicts-offscreen", type: "hd_segment", chunks: [] }), false);
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
+  // Mark as known and Ignore write the host's overrides, which it mirrors back.
+  const override = { target: "hoshidicts-worker", type: "hd_word_status_override", headword: "猫", status: "known" };
+  assert.equal(forwardableRequest(override), true);
+  assert.equal(mutatingForwardedRequest(override), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
   for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity",

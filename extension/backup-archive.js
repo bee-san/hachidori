@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { BlobReader, Writer, ZipReader, ZipWriter } from "./vendor/zip.js";
 import { assertLookupStatsRows, emptyLookupStats } from "./lookup-stats.js";
+import "./word-status-overrides.js";
 
 const MANIFEST = "hachidori-backup.json";
 const ZIP_OPTIONS = {
@@ -68,7 +69,7 @@ export async function createBackupArchive(snapshot, files, lookupStatsRows, crea
   const entries = files.map(({ path, data }) => ({ path, size: data.size }));
   assertFileList(entries);
   assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
-  const manifest = { format: "hachidori-backup", version: 2, createdAt, snapshot, lookupStatsRows, files: entries };
+  const manifest = { format: "hachidori-backup", version: 3, createdAt, snapshot, lookupStatsRows, files: entries };
   /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
   const writer = new ZipWriter(new BackupBlobWriter("application/zip"), ZIP_OPTIONS);
   await writer.add(MANIFEST, new BlobReader(new Blob([JSON.stringify(manifest)])));
@@ -106,11 +107,16 @@ export async function openBackupArchive(blob) {
     const manifestEntry = byPath.get(MANIFEST);
     if (!manifestEntry) throw new Error("The selected archive is not a Hachidori backup.");
     const manifest = JSON.parse(await (await readEntry(manifestEntry)).text());
-    if (manifest?.format !== "hachidori-backup" || ![1, 2].includes(manifest.version)
+    if (manifest?.format !== "hachidori-backup" || ![1, 2, 3].includes(manifest.version)
         || typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
       throw new Error("The selected archive is not a supported Hachidori backup.");
     }
-    const snapshot = manifest.version === 1 ? { ...manifest.snapshot, lookupStats: emptyLookupStats() } : manifest.snapshot;
+    let { snapshot } = manifest;
+    if (manifest.version === 1) snapshot = { ...snapshot, lookupStats: emptyLookupStats() };
+    // Version 3 adds the words marked as known or ignored; an older backup has none.
+    if (manifest.version < 3) {
+      snapshot = { ...snapshot, wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides() };
+    }
     // Older backups include the retired external corpus integration. Drop only
     // those fields before the complete snapshot contract validates the restore.
     delete snapshot?.options?.corpusSeenEnabled;

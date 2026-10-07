@@ -60,7 +60,8 @@ test("restore reads existing large backups without Response stream-to-blob consu
   const archive = await writer.close();
   failStreamedResponseBlobs(t);
   const prepared = await openBackupArchive(archive);
-  assert.deepEqual(prepared.snapshot, snapshot);
+  // Version 2 predates the words marked as known or ignored.
+  assert.deepEqual(prepared.snapshot, { ...snapshot, wordStatusOverrides: { revision: 0, known: [], ignored: [] } });
   assert.deepEqual(prepared.lookupStatsRows, lookupStatsRows);
   assert.equal(prepared.files[0].path, largeFile.path);
   assert.deepEqual(await prepared.files[0].data.arrayBuffer(), await largeFile.data.arrayBuffer());
@@ -153,8 +154,10 @@ test("backup validation checks file CRC and the exact declared sizes", async () 
   await assert.rejects(openBackupArchive(wrongSize), /size/u);
 });
 
-test("version 1 restores empty statistics while version 2 requires its complete statistics payload", async () => {
-  const archive = await createBackupArchive(snapshot, files, lookupStatsRows);
+test("version 1 restores empty statistics, version 2 requires them, and version 3 adds word status overrides", async () => {
+  const overrides = { revision: 2, known: ["猫"], ignored: ["さん"] };
+  const archive = await createBackupArchive({ ...snapshot, wordStatusOverrides: overrides }, files, lookupStatsRows);
+  assert.deepEqual((await openBackupArchive(archive)).snapshot.wordStatusOverrides, overrides);
   const editManifest = change => rewrite(archive, async (path, data) => {
     if (path !== "hachidori-backup.json") return { path, data };
     const manifest = JSON.parse(await data.text());
@@ -168,8 +171,11 @@ test("version 1 restores empty statistics while version 2 requires its complete 
   }));
   assert.deepEqual(old.lookupStatsRows, []);
   assert.deepEqual(old.snapshot.lookupStats, { generation: null, revision: 0 });
+  const version2 = await openBackupArchive(await editManifest(manifest => { manifest.version = 2; }));
+  assert.deepEqual(version2.snapshot.wordStatusOverrides, { revision: 0, known: [], ignored: [] });
+  assert.deepEqual(version2.lookupStatsRows, lookupStatsRows);
   for (const edit of [manifest => { delete manifest.lookupStatsRows; },
-    manifest => { delete manifest.snapshot.lookupStats; }, manifest => { manifest.version = 3; }]) {
+    manifest => { delete manifest.snapshot.lookupStats; }, manifest => { manifest.version = 4; }]) {
     await assert.rejects(openBackupArchive(await editManifest(edit)));
   }
 });

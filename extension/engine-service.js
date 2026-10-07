@@ -3269,11 +3269,14 @@ const HANDLERS = {
     const dictionary = snapshot.state.dictionaries.find(entry => entry?.id === message.id);
     if (!dictionary) throw new Error("unknown dictionary");
     if (dictionaryRoot(dictionary) === null) throw new Error("Cannot export an invalid dictionary path.");
+    // Like the lookup counts below, the words marked as known or ignored are
+    // the reader's own and stay out of a dictionary's archive.
     const single = {
       ...snapshot,
       state: { ...snapshot.state, dictionaries: [dictionary],
         groups: globalThis.HDDictionaryGroups.normaliseDictionaryGroups(snapshot.state.groups, [dictionary]) },
       document: dictionary.id === CUSTOM_DICTIONARY_ID ? snapshot.document : emptyCustomDictionaryDocument(),
+      wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides(),
     };
     await assertBackupSnapshot(single);
     const files = [];
