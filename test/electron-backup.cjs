@@ -36,7 +36,9 @@ async function run() {
   const extension = path.join(temporary, "extension");
   fs.cpSync(path.join(root, "extension"), extension, { recursive: true });
   if (baseline) {
-    for (const file of ["settings.js", "settings.html", "backup-settings.js", "overlay-mode.js"]) {
+    for (const file of ["settings.js", "library-settings.js", "import-settings.js", "update-settings.js",
+      "custom-dictionary-settings.js", "lookup-stats-settings.js", "option-settings.js", "settings.html",
+      "backup-settings.js", "overlay-mode.js"]) {
       fs.writeFileSync(path.join(extension, file), execFileSync("git", ["show", `${baseline}:extension/${file}`], { cwd: root }));
     }
   }
