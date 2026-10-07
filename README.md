@@ -133,18 +133,17 @@ changing and may be removed:
   toolbar button, but the sound starts going through Hachidori only once you
   have clicked or pressed a key on the Netflix page (or Chrome lets the site
   play sound by itself), and stays that way until the page reloads, even with
-  the switch off. Until then, and
-  for `{gif}`, Hachidori replays the line once to record the tab, muted, then
-  returns to where you were. Chrome lets it record a tab only after you click
-  Hachidori's toolbar button once on that tab, or add notes with its **Add the
-  current popup entry to Anki** shortcut. Netflix may change its data without
-  notice, and protected playback can record as silence, in which case the note
-  is added without the audio and says why, or as black frames, which Hachidori
-  cannot tell from a dark scene, so the GIF is then black. While you hover a
-  subtitle line the video pauses, and it plays on once the pointer has left the
-  line and Hachidori's popup, unless you played, paused or skipped it yourself
-  in the meantime. Adding a note leaves it paused until the line is recorded
-  and the pointer has left.
+  the switch off. Until then, and for `{gif}`, Hachidori replays the line once
+  to record the tab, muted, then returns to where you were. Chrome lets it
+  record a tab only after you click Hachidori's toolbar button once on that
+  tab, or add notes with its **Add the current popup entry to Anki** shortcut.
+  Netflix may change its data without notice, and protected playback can
+  record as silence, in which case the note is added without the audio and
+  says why, or as black frames, which Hachidori cannot tell from a dark scene,
+  so the GIF is then black. While you hover a subtitle line the video pauses,
+  and it plays on once the pointer has left the line and Hachidori's popup,
+  unless you played, paused or skipped it yourself in the meantime. Adding a
+  note leaves it paused until the line is recorded and the pointer has left.
 - **Word highlighting** — mark the Japanese words on every page by their Anki
   status, like Migaku: unknown words (no card) get a solid line, learning words
   a dashed one and, if you turn them on, known words (a mature card) a dotted
