@@ -254,7 +254,8 @@ scripts (the control), `production` with the manifest's list, and
 `no-renderer` without the two renderer files and with a stub for the two
 `HDPopup` members `content.js` reads before a popup exists. That last copy only
 estimates what deferring the renderer saves before the first hover; it cannot
-show a popup. `summary.json` reports, as medians across rounds:
+show a popup. `summary.json` reports distributions across rounds (n, quartiles,
+p95 and range) of:
 
 - the synchronous injection task of each frame, per file, from timing marks run
   between the files. A cold frame is the first in its renderer process; later

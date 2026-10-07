@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { summarizeValues } from './lib.mjs';
 import { directoryContentSha256, hostSnapshot, sha256File } from './system.mjs';
 
 const root = resolve(process.env.HACHIDORI_BENCH_REPO ?? import.meta.dirname, process.env.HACHIDORI_BENCH_REPO ? '.' : '..');
@@ -57,16 +58,11 @@ const LAZY = `document.addEventListener("hd-bench-lazy", async () => {
 const settings = { hoverEnabled: true, lookupMode: 'hover', definitionBlurCountEnabled: false };
 const text = '<p style="font:24px sans-serif">日本語の文章を読みながら、知らない言葉を調べます。</p>';
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
-const sorted = values => values.filter(Number.isFinite).sort((a, b) => a - b);
-const percentile = (values, p) => {
-  const list = sorted(values);
-  return list.length ? list[Math.min(list.length - 1, Math.ceil(p * list.length) - 1)] : null;
-};
-const median = values => {
-  const list = sorted(values);
-  const middle = Math.floor(list.length / 2);
-  if (!list.length) return null;
-  return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;
+// The distribution without its samples, which raw.jsonl keeps.
+const summarize = values => {
+  if (!values.length) return null;
+  const { samples: _, ...distribution } = summarizeValues(values);
+  return distribution;
 };
 
 function prepare(directory, variant) {
@@ -322,8 +318,8 @@ try {
   await new Promise(resolveClose => server.close(resolveClose));
 }
 
-// Medians across rounds. A per-frame delta pairs a page with the same round's
-// page under another variant and divides by the page's frame count.
+// Distributions across rounds. A per-frame delta pairs a page with the same
+// round's page under another variant and divides by the page's frame count.
 const rows = readFileSync(resolve(output, 'raw.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
 const find = (variant, kind, round) => rows.find(row => row.variant === variant && row.kind === kind && row.round === round);
 const metrics = {
@@ -339,7 +335,7 @@ const rounds = [...new Set(rows.map(row => row.round))];
 // after the first, measured against the plain page's single frame).
 function delta(kind, variant, base, divisor, less = null) {
   const pair = (page, round, read) => read(find(variant, page, round)) - read(find(base, page, round));
-  return Object.fromEntries(Object.entries(metrics).map(([name, read]) => [name, median(rounds.map(round =>
+  return Object.fromEntries(Object.entries(metrics).map(([name, read]) => [name, summarize(rounds.map(round =>
     (pair(kind, round, read) - (less ? pair(less, round, read) : 0)) / divisor))]));
 }
 const renderer = entry.js.map(file => RENDERER.includes(file));
@@ -351,21 +347,18 @@ for (const kind of PAGES) {
   for (const variant of VARIANTS) {
     const list = rows.filter(row => row.variant === variant && row.kind === kind);
     result.absolute[variant] = Object.fromEntries(Object.entries(metrics).map(([name, read]) =>
-      [name, median(list.map(read))]));
+      [name, summarize(list.map(read))]));
     if (variant === 'none') continue;
     // A cross-site frame has its own process; same-site frames after the first
     // reuse the first one's compiled scripts.
     const injected = list.flatMap(row => [...row.injection].sort((a, b) => a.start - b.start)
       .map((frame, index) => ({ ...frame, cold: kind !== 'same-site' || index === 0 })));
-    const stats = (cold, value) => {
-      const values = injected.filter(frame => frame.cold === cold).map(value);
-      return { n: values.length, medianMs: median(values), p95Ms: percentile(values, 0.95) };
-    };
+    const stats = (cold, value) => summarize(injected.filter(frame => frame.cold === cold).map(value));
     result.injection[variant] = { cold: stats(true, frame => frame.totalMs), warm: stats(false, frame => frame.totalMs) };
     if (variant === 'production') {
       Object.assign(result.injection[variant], { coldRenderer: stats(true, rendererMs), warmRenderer: stats(false, rendererMs),
         coldFileMedianMs: Object.fromEntries(entry.js.map((file, index) => [file,
-          median(injected.filter(frame => frame.cold).map(frame => frame.fileMs[index]))])) });
+          stats(true, frame => frame.fileMs[index])?.median ?? null])) });
     }
   }
   result.perFrame = { contentScripts: delta(kind, 'production', 'none', frames),
@@ -381,8 +374,7 @@ for (const [name, list] of Object.entries({
   scriptingWarm: lazy.filter(row => row.mode === 'scripting' && row.warm),
   importCold: lazy.filter(row => row.mode === 'import'),
 })) {
-  summary.lazy[name] = { n: list.length, medianMs: median(list.map(row => row.ms)),
-    p95Ms: percentile(list.map(row => row.ms), 0.95) };
+  summary.lazy[name] = summarize(list.map(row => row.ms));
 }
 writeFileSync(resolve(output, 'summary.json'), JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary, null, 2));
