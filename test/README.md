@@ -351,7 +351,9 @@ cards, while a content-word compound keeps its own and function words stay
 unmarked. A repeated line reuses its cached segmentation, a status change moves
 marks without segmenting again, a revision already read asks nothing, a signal
 still re-reads every word shown when only a later line's words were read at its
-revision, and a removed line takes its marks with it. Inside one long block of `<br>`-separated
+revision, and a removed line takes its marks with it. A line added to a list
+inside a wrapper that has text of its own reads only the new line's text, and
+the wrapper's only once its own text changes. Inside one long block of `<br>`-separated
 lines, with a fake layout, only the lines within a viewport of the visible area
 keep ranges as it scrolls, and a block leaving the viewport keeps none. A reply
 from another engine generation is

@@ -88,7 +88,9 @@ function fixture(t, html, { lexicon, statuses = {}, available = true, options = 
       ? fields.request.headwords.map(headword => state.statuses[headword] ?? "unknown") : null };
   }
   // Page text as content.js reads it, reduced to what these pages hold: each
-  // paragraph is a block, <br> ends a run and ruby annotations are left out.
+  // paragraph or div is a block whose runs are its own text (a nested block's
+  // text ends a run), <br> ends a run and ruby annotations are left out.
+  const blockOf = node => (node.nodeType === 1 ? node : node.parentElement)?.closest("p, div") ?? null;
   const textNodes = root => {
     const nodes = [];
     const walker = document.createTreeWalker(root, window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT);
@@ -99,23 +101,27 @@ function fixture(t, html, { lexicon, statuses = {}, available = true, options = 
   };
   const textBlocks = root => new Set(textNodes(root)
     .filter(node => node.nodeType === 3 && isJapanese(node.data) && !node.parentElement.closest("rt"))
-    .map(node => node.parentElement.closest("p")));
+    .map(blockOf));
+  // The blocks whose runs were read, in order.
+  const runsRead = [];
   const textRuns = block => {
+    runsRead.push(block);
     const runs = [[]];
     for (const node of textNodes(block)) {
-      if (node.nodeType === 1 && node.localName === "br") runs.push([]);
-      if (node.nodeType === 3 && !node.parentElement.closest("rt")) runs.at(-1).push({ node, start: 0, end: node.data.length });
+      if ((node.nodeType === 1 && node.localName === "br") || (node.nodeType === 3 && blockOf(node) !== block)) runs.push([]);
+      else if (node.nodeType === 3 && !node.parentElement.closest("rt")) runs.at(-1).push({ node, start: 0, end: node.data.length });
     }
     return runs.filter(run => run.length > 0);
   };
   const runEntries = parts => parts.flatMap(({ node, start, end }) => Array.from({ length: end - start },
     (_, index) => ({ node, offset: start + index, sourceLength: 1, text: node.data[start + index], collapsed: false })));
   let prepared = 0;
-  const highlighter = window.HDWordHighlights.createWordHighlighter({ window, send, textBlocks, textRuns, runEntries, isJapanese,
-    prepare: async () => { prepared += 1; }, readPalette: () => ({ getPropertyValue: name => palette[name] ?? "" }) });
+  const highlighter = window.HDWordHighlights.createWordHighlighter({ window, send, textBlocks, blockOf, textRuns, runEntries,
+    isJapanese, prepare: async () => { prepared += 1; },
+    readPalette: () => ({ getPropertyValue: name => palette[name] ?? "" }) });
   const current = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS, wordHighlightEnabled: true, ...options };
   return {
-    window, document, state, sent, highlighter, observed,
+    window, document, state, sent, highlighter, observed, runsRead,
     get prepared() { return prepared; },
     options: current,
     start: () => highlighter.start(current),
@@ -241,6 +247,31 @@ test("a change signal re-reads the words shown even after new words were read at
   page.highlighter.statusChanged(2);
   await settle();
   assert.deepEqual(page.marks(), { "hd-word-unknown": ["いる", "漢字", "読む"], "hd-word-learning": ["猫"] });
+});
+
+test("a line added inside a nested block reads only that block's text again", async t => {
+  // The page's wrapper holds text of its own, a label, beside the list of lines.
+  const page = fixture(t, `<div id="app"><span id="label">猫</span><div id="lines"><p id="first">いる</p></div></div>`,
+    { lexicon: VERBS });
+  const app = page.document.getElementById("app");
+  page.start();
+  page.show(app, page.document.getElementById("first"));
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫", "いる"] });
+  const reads = page.runsRead.length;
+  const line = page.document.createElement("p");
+  line.textContent = "漢字を読む";
+  page.document.getElementById("lines").append(line);
+  await settle();
+  page.show(line);
+  await settle();
+  assert.deepEqual(page.runsRead.slice(reads), [line], "the wrapper's own text did not change");
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫", "いる", "漢字", "読む"] });
+  // A change to the wrapper's own text still reads it again.
+  page.document.getElementById("label").firstChild.data = "いる猫";
+  await settle();
+  assert.deepEqual(page.runsRead.slice(reads), [line, app]);
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["いる", "漢字", "読む", "いる", "猫"] });
 });
 
 test("only text near the viewport keeps ranges, inside one long block and in blocks that leave it", async t => {
