@@ -265,9 +265,6 @@
       }
       if (routed !== element || branch === null) {
         closeBranch();
-        // A video Netflix has replaced plays nothing more; its graph
-        // connection would keep it alive.
-        if (routed !== null && routed !== element && !routed.isConnected) sources.get(routed)?.disconnect();
         routed = element;
         const sink = new window.MediaStreamAudioDestinationNode(context, { channelCount: 1 });
         source.connect(sink);

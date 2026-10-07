@@ -314,11 +314,10 @@
     // otherwise. `conceal` hides Hachidori's overlays around tab capture only.
     // Resolves with { audio, gif } for the fields, or with why there is none.
     async function record(cue, { send, templateId, audio = true, gif = false, conceal = during => during() }) {
-      const buffered = audio && lineAudio?.ready() === true;
       recordings += 1;
       try {
-        let clip = buffered ? await heardLine(cue) : null;
-        if (!buffered) return await conceal(() => recordTab(cue, { send, templateId, audio, gif }));
+        if (!audio || lineAudio?.ready() !== true) return await conceal(() => recordTab(cue, { send, templateId, audio, gif }));
+        let clip = await heardLine(cue);
         const result = {};
         if (gif) {
           const recorded = await conceal(() => recordTab(cue, { send, templateId, audio: false, gif }));
@@ -407,7 +406,7 @@
     // content.js turns the line audio on and off with the switch too. Off, it
     // stops keeping the video's sound and frees what it kept.
     function setLineAudio(enabled) {
-      if (enabled === true && lineAudioApi !== undefined) {
+      if (enabled === true) {
         lineAudio ??= lineAudioApi.createLineAudio(window, { video: watchVideo, movie: watchedMovie });
         lineAudio.start();
       } else {
