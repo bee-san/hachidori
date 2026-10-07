@@ -89,7 +89,7 @@ const names = source => [...withoutComments(source).matchAll(/\bhd_\w+/gu)].map(
 // first file that writes it.
 const used = new Map();
 for (const path of readdirSync(EXTENSION, { recursive: true }).map(path => path.replaceAll("\\", "/")).sort()) {
-  if (!path.endsWith(".js") || path.startsWith("vendor/") || path === REGISTRY) continue;
+  if (!/\.m?js$/u.test(path) || path.startsWith("vendor/") || path === REGISTRY) continue;
   for (const name of names(readFileSync(new URL(path, EXTENSION), "utf8"))) {
     if (!used.has(name)) used.set(name, path);
   }
