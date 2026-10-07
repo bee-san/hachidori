@@ -189,6 +189,10 @@ the shared cache had filled) and made lookups about 0.4 ms (22%) slower with the
 OS file cache warm, or about 9 ms slower for the first lookups after the files
 had left it. A library whose hashes fit the budget is unchanged.
 
+The [normal-mode 65 MiB comparison](benchmarks/default-ram.md) measures the new
+default with the full import pool, including lookup latency, rendered hovers,
+startup, reimport and memory. It retains all dictionaries and complete results.
+
 For diagnostics, `hd_memory` separates `hashBytes`, `residentHashBytes`,
 `otherResidentBytes` and `residentEntryBytes` for each package. `pageCacheBytes`
 remains the combined cache payload and `pageCacheBudgetBytes` its budget;

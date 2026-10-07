@@ -2,7 +2,7 @@
 
 ## Hash index residency
 
-`index-residency.mjs` compares `main` (all hashes resident), the rebuilt resident
+`index-residency.mjs` compares the original resident baseline (`43535b1b`), the rebuilt resident
 control, 16/32/64 MiB aggregate budgets, and fully paged hashes on threaded OPFS,
 all on the same installed files. Use Node 22 and the locked Chrome/Puppeteer
 tooling described below. Build the pinned native engine with its CLI and
@@ -20,11 +20,11 @@ node benchmark/index-residency-fixture.mjs /tmp/index-small "$importer" 20 2
 export HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js
 for fixture in reporter many large small; do
   node benchmark/index-residency.mjs --fixture /tmp/index-$fixture \
-    --output /tmp/index-$fixture-results --before-ref origin/main --samples 3 \
+    --output /tmp/index-$fixture-results --before-ref 43535b1b --samples 3 \
     --variants baseline,resident,16,32,64,paged
 done
 TMPDIR=/path/on/a/disk node benchmark/index-residency.mjs --fixture /tmp/index-reporter \
-  --output /tmp/index-reporter-cold-results --before-ref origin/main --samples 3 \
+  --output /tmp/index-reporter-cold-results --before-ref 43535b1b --samples 3 \
   --variants baseline,resident,16,32,64,paged --os-cold true
 node benchmark/index-residency-native.mjs /tmp/index-native/benchmark-lookup \
   /tmp/index-reporter /tmp/index-reporter-native
