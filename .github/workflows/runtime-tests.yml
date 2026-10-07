@@ -113,8 +113,8 @@ jobs:
 
   sonar:
     name: SonarCloud findings
-    # Runs after Pixiv, when this step used to run, so SonarCloud has had
-    # time to analyse the head; !cancelled() runs it even if Pixiv fails.
+    # Starts after the Pixiv job, which gives SonarCloud time to analyse
+    # the head, and runs whether or not that job passed.
     if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     needs: pixiv
     runs-on: ubuntu-24.04
