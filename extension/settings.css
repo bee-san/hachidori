@@ -1075,10 +1075,6 @@ input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
 /* The library is one card; a row's padding is its own, so a disabled row's tint spans it. */
 .dict-list:not(:empty) {
   overflow: clip;
-  border-radius: var(--radius-surface);
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
-  background: var(--surface);
 }
 .dict-row {
   display: grid;
@@ -1310,19 +1306,13 @@ textarea {
   align-items: end;
   gap: 8px;
 }
-/* Panels that are not rows of settings (a form, a group, the recommendations)
-   are cards with padding of their own, in the same outline as a group. */
+/* Panels that are not rows of settings (a form, a group, the recommendations) pad themselves. */
 .dict-group-create,
 .dict-group,
 .recommendations,
 .custom-dictionary-form,
 .local-file-access {
   padding: 16px;
-  border: 0;
-  border-radius: var(--radius-surface);
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
-  background: var(--surface);
 }
 .dict-group-create label,
 .dict-group-name-field {
@@ -1432,16 +1422,6 @@ textarea {
   margin-top: 6px;
 }
 
-.update-controls {
-  display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: 16px 24px;
-}
-.update-schedule-field {
-  width: 260px;
-  max-width: 100%;
-}
 .custom-dictionary-form,
 .custom-dictionary-source-field {
   display: grid;
@@ -1461,10 +1441,27 @@ textarea {
   tab-size: 2;
 }
 /*
+ * Every card has one surface: a group of settings, the library, Anki's panels
+ * and the panels that are not rows. Its edge is an inset outline, so a first
+ * row's top rule falls on it instead of doubling it, whatever that row is.
+ */
+.lookup-group,
+.anki-panel,
+.dict-list:not(:empty),
+.dict-group-create,
+.dict-group,
+.recommendations,
+.custom-dictionary-form,
+.local-file-access {
+  border-radius: var(--radius-surface);
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+  background: var(--surface);
+}
+/*
  * A group of settings is one card of rows, titled by its legend above it, as
- * in Chrome's and macOS's settings. The card's edge is an inset outline, so
- * the first row's top rule falls on it instead of doubling it, whatever that
- * row is. Rows stack once the card itself is narrow (see @container below).
+ * in Chrome's and macOS's settings. Rows stack once the card itself is narrow
+ * (see @container below).
  */
 .lookup-group {
   position: relative;
@@ -1472,10 +1469,6 @@ textarea {
   margin: 0;
   padding: 0 16px;
   border: 0;
-  border-radius: var(--radius-surface);
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
-  background: var(--surface);
   container-type: inline-size;
 }
 .lookup-group:has(> legend) {
@@ -1643,9 +1636,6 @@ textarea {
 }
 .anki-panel {
   padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-surface);
-  background: var(--surface);
 }
 /* An Anki card is padded, so its introduction needs no rule of its own. */
 .lookup-group.anki-panel > legend + .field-hint {
@@ -2507,7 +2497,7 @@ textarea {
   .keybind-columns > :nth-child(3) { grid-column: 5; }
   .keybind-heading,
   .keybind-fields { display: contents; }
-  .keybind-row > * ,
+  .keybind-row > *,
   .keybind-heading > *,
   .keybind-fields > * { grid-row: 1; }
   .keybind-enabled { grid-column: 1; }
