@@ -621,12 +621,6 @@ h2 {
   font-size: var(--font-caption);
   line-height: 1.6;
 }
-.local-file-access {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
-}
 .local-file-access h2 {
   margin: 0 0 6px;
 }
@@ -731,30 +725,16 @@ button.danger:hover:not(:disabled) {
   border-color: var(--error);
 }
 
-.backup-action {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px 32px;
-  padding: 24px 0;
-  border-bottom: 1px solid var(--border);
-}
-.backup-action > div { flex: 1 1 320px; }
-.backup-action h2, .backup-preview h2 { margin: 0 0 8px; }
-.backup-action p, .backup-preview p { margin: 6px 0; color: var(--text-dim); }
-.automatic-backups { border-bottom: 1px solid var(--border); padding-bottom: 24px; }
-.automatic-backups .backup-action { border-bottom: 0; padding-bottom: 8px; }
-.automatic-backup-list { display: grid; gap: 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.backup-preview h2 { margin: 0 0 8px; }
+.backup-preview p { margin: 6px 0; color: var(--text-dim); }
+.automatic-backup-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .automatic-backup-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px 32px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
+  padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
 }
 .automatic-backup-row > div { display: grid; gap: 2px; min-width: 0; }
 .automatic-backup-age { color: var(--text); font-weight: var(--weight-medium); }
@@ -880,7 +860,8 @@ button.danger:hover:not(:disabled) {
 .options-feedback-slot:has(#options-status:empty),
 .update-state:empty,
 .custom-dictionary-status:empty,
-.dict-group-error:empty {
+.dict-group-error:empty,
+.lookup-group > [aria-live]:empty {
   /* Empty live regions must remain available for their first announcement. */
   position: absolute;
   width: 1px;
@@ -904,7 +885,9 @@ button.danger:hover:not(:disabled) {
 .recommendations {
   display: grid;
   gap: 14px;
-  padding-top: 24px;
+  padding-bottom: 0;
+}
+.recommended-dictionary-list:not(:empty) {
   border-top: 1px solid var(--border);
 }
 .recommendations-head {
@@ -1082,22 +1065,30 @@ input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
   list-style: none;
 }
 /* One separator idiom for every list on the page: the list owns the top and
-   bottom rule, and each row after the first owns the rule above it. */
-.dict-list:not(:empty),
-.audio-source-list:not(:empty),
-.keybind-list:not(:empty),
-.custom-button-list:not(:empty),
-.recommended-dictionary-list:not(:empty),
+   bottom rule, and each row after the first owns the rule above it. A list in a
+   card is closed by the card's edge instead, so each of its rows owns the rule
+   above it (audio sources, keybinds, custom buttons, automatic backups). */
 .dict-group-members:not(:empty),
 .anki-templates:not(:empty) {
   border-block: 1px solid var(--border);
+}
+/* The library is one card; a row's padding is its own, so a disabled row's tint spans it. */
+.dict-list:not(:empty) {
+  overflow: clip;
+  border-radius: var(--radius-surface);
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+  background: var(--surface);
 }
 .dict-row {
   display: grid;
   grid-template-columns: 16px minmax(30px, max-content) minmax(0, 1fr) auto;
   align-items: start;
   gap: 4px 12px;
-  padding: var(--row-padding) 0;
+  padding: var(--row-padding) 16px;
+}
+.dict-row + .dict-row {
+  border-top: 1px solid var(--border);
 }
 .dict-row.is-drop-target {
   box-shadow: inset 0 3px var(--accent-fill);
@@ -1319,6 +1310,20 @@ textarea {
   align-items: end;
   gap: 8px;
 }
+/* Panels that are not rows of settings (a form, a group, the recommendations)
+   are cards with padding of their own, in the same outline as a group. */
+.dict-group-create,
+.dict-group,
+.recommendations,
+.custom-dictionary-form,
+.local-file-access {
+  padding: 16px;
+  border: 0;
+  border-radius: var(--radius-surface);
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+  background: var(--surface);
+}
 .dict-group-create label,
 .dict-group-name-field {
   display: grid;
@@ -1340,11 +1345,7 @@ textarea {
 }
 .dict-group-list {
   display: grid;
-  gap: 24px;
-}
-.dict-group {
-  padding-top: var(--row-padding);
-  border-top: 1px solid var(--border);
+  gap: 16px;
 }
 .dict-group-head,
 .dict-group-member {
@@ -1550,7 +1551,13 @@ textarea {
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
+  background: var(--surface);
+}
+/* In the personal dictionary's card the format help is a plain disclosure above the source. */
+.custom-dictionary-form > .format-help {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 .settings-disclosure > summary,
 .format-help > summary {
@@ -1565,7 +1572,7 @@ textarea {
   margin-bottom: 0;
 }
 .settings-disclosure code {
-  background: var(--surface);
+  background: var(--surface-sunken);
 }
 /* Inside a card a disclosure is one more row: its summary reads as the row's title. */
 .lookup-group > .settings-disclosure {
@@ -1577,9 +1584,6 @@ textarea {
 }
 .lookup-group > .settings-disclosure[open] > summary {
   margin-bottom: 4px;
-}
-.lookup-group > .settings-disclosure code {
-  background: var(--surface-sunken);
 }
 .fields {
   display: grid;
@@ -2148,7 +2152,7 @@ textarea {
 /* List rows (audio sources, keybinds) lay their own fields out. */
 .lookup-group .field:not(li *) {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, min(50%, 340px));
+  grid-template-columns: minmax(0, 1fr) minmax(180px, min(50%, 400px));
   grid-template-rows: auto auto;
   gap: 3px 24px;
   padding: var(--row-padding) 0;
@@ -2198,7 +2202,6 @@ textarea {
 }
 #opt-blur-frequency-threshold { width: 12ch; }
 #opt-automatic-backup-days { width: 8ch; }
-.automatic-backups .backup-action > .field { flex: 0 1 auto; }
 #sharing-host-port { width: 12ch; }
 #definition-blur-count-paused label {
   cursor: pointer;
@@ -2418,7 +2421,7 @@ textarea {
   gap: 8px 12px;
   padding: var(--row-padding) 0;
 }
-.custom-button-row + .custom-button-row { border-top: 1px solid var(--border); }
+.custom-button-row { border-top: 1px solid var(--border); }
 .custom-button-text { display: grid; gap: 3px; min-width: 0; }
 .custom-button-summary {
   color: var(--text-dim);
@@ -2443,7 +2446,7 @@ textarea {
   gap: 12px;
   padding: var(--row-padding) 0;
 }
-.keybind-row + .keybind-row { border-top: 1px solid var(--border); }
+.keybind-row { border-top: 1px solid var(--border); }
 .keybind-heading,
 .keybind-enabled,
 .keybind-buttons,
@@ -2539,8 +2542,9 @@ textarea {
 .browser-shortcut-list {
   display: grid;
   gap: 8px;
-  margin: 0 0 12px;
-  padding: 0;
+  margin: 0;
+  padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
   list-style: none;
 }
 .browser-shortcut-list li {
