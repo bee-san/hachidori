@@ -14,6 +14,7 @@ From the repository root, these are the same commands CI runs:
 
 ```sh
 npm ci --prefix test/tooling
+npm --prefix test/tooling run lint             # ESLint: undeclared names, unused bindings, redeclarations
 npm --prefix test/tooling test                 # all test/*.test.mjs and benchmark/*.test.mjs
 npm --prefix test/tooling run test:smoke        # both WASM variants, bridge, extension
 npm --prefix test/tooling run install:chrome    # Chrome for Testing 152.0.7977.75
@@ -25,8 +26,8 @@ HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
 ```
 
-`test/tooling/package-lock.json` locks jsdom **30.1.1**, Puppeteer **25.11.0**
-and the browser installer **3.2.2**, plus their transitive dependencies. The small
+`test/tooling/package-lock.json` locks jsdom **30.1.1**, Puppeteer **25.11.0**,
+the browser installer **3.2.2** and ESLint, plus their transitive dependencies. The small
 `test/run.mjs` launcher supplies the existing environment overrides, generates
 fixtures, runs each existing suite in a separate Node process, and propagates
 every nonzero exit or signal. It selects the exact Chrome build from
@@ -49,7 +50,7 @@ The extension smoke suite checks fullscreen host movement and its fallback
 elements; the primary Chrome suite checks an iframe lookup and popup painting
 over a fullscreen player in a real browser.
 
-`.github/workflows/runtime-tests.yml` runs the Node contracts, smoke tests, the
+`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke tests, the
 four Chrome browser suites on every PR
 and push to `main`, or manually. It also
 runs the primary Chrome suite on the exact Chrome 128 build recorded beside the
@@ -60,6 +61,16 @@ independently so one failing suite cannot hide the others. Logs are saved to
 `test/tmp/ci`; failing CI jobs upload them, the available screenshots, and the
 browser profiles retained by failed suites, for seven days. The same commands
 reproduce the failure locally. The optional native checks below remain separate checks for their domains.
+
+`npm --prefix test/tooling run lint` runs ESLint over every JavaScript file except
+`extension/vendor/`, `third_party/` and git-ignored output, with only `no-undef`,
+`no-unused-vars` and `no-redeclare`. `test/tooling/eslint.config.mjs` gives each
+file the globals of the context it runs in: classic content and page scripts with
+the `HD*` namespaces they publish, page main-world scripts, the service-worker
+module, dedicated workers, extension pages and the modules they share, Node, and
+the browser suites' Puppeteer callbacks. Content scripts come from the manifest;
+add a module that only the service worker or a worker loads to that context's
+list in the config.
 
 Direct `node test/...` commands below still support the external cache and
 `HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a
