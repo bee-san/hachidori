@@ -618,7 +618,7 @@ incomplete. The bundled extension-page exercise never needs file access.
 
 ![Dictionary practice and the optional saved-page prompt, dark palette](assets/startup-review-after-practice-desktop-dark.png)
 
-[The UI review](startup-ui-review.md) records before/after comparisons,
+[The UI review](history/startup-ui-review.md) records before/after comparisons,
 narrow layouts and the distinction between controlled screenshot states and
 the real dictionary lookup checks.
 
@@ -2239,7 +2239,7 @@ children are labelled and aggregated on the primary Library destination while
 the local navigation identifies the active child. Status setters own these
 notices; there are no observers or additional polling loops.
 
-[The Settings UI review](settings-ui-review.md) records the layout decisions
+[The Settings UI review](history/settings-ui-review.md) records the layout decisions
 behind this section, unedited browser captures of each state and the targeted
 timings taken while it was reworked.
 

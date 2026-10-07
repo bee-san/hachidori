@@ -154,19 +154,19 @@ rose, sage and slate metadata. Its Settings mapping lowers border glare and
 separates supporting text from the primary content without changing the other
 41 themes.
 
-![Settings using the selected Miku lookup theme](assets/settings-theme-miku.png)
+![Settings using the selected Miku lookup theme](../assets/settings-theme-miku.png)
 
-![Library with its five related settings views](assets/settings-library-navigation.png)
+![Library with its five related settings views](../assets/settings-library-navigation.png)
 
 | Desktop Design | Narrow Design |
 | --- | --- |
-| ![Design with full-width selectors and live preview](assets/settings-design-1440-dark.png) | ![Compact navigation and the live preview above the controls at 375 pixels](assets/settings-design-375-light.png) |
+| ![Design with full-width selectors and live preview](../assets/settings-design-1440-dark.png) | ![Compact navigation and the live preview above the controls at 375 pixels](../assets/settings-design-375-light.png) |
 
-![Reading with local lookup history and definition blur](assets/settings-reading.png)
+![Reading with local lookup history and definition blur](../assets/settings-reading.png)
 
-![Empty Library with installation and import actions](assets/settings-empty-library.png)
+![Empty Library with installation and import actions](../assets/settings-empty-library.png)
 
-![Save failure with recovery actions remains visible while scrolling](assets/settings-save-error.png)
+![Save failure with recovery actions remains visible while scrolling](../assets/settings-save-error.png)
 
 ## Targeted timings
 
@@ -188,7 +188,7 @@ last section is Library. Run before/after/after/before, each in a fresh browser.
 
 The local command was `node /tmp/hachidori-ui-review/benchmark-settings.mjs`;
 the repeat used the identical driver with a separate output path. Both runs'
-[raw samples](assets/settings-ui-timings.json) are retained. Medians below are
+[raw samples](../assets/settings-ui-timings.json) are retained. Medians below are
 milliseconds per batch, not per individual navigation or count request.
 
 | Run / order | Navigation before | Navigation after | Count before | Count after |
