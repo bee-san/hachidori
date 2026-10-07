@@ -93,13 +93,13 @@ dictionary when a new show starts. The archive is imported exactly as if it had
 been dropped into this browser's Settings, and every linked browser sees the
 result through the usual storage batches.
 
-On a linked browser, **Import dictionaries** sends each ZIP to the host. The
+On a linked browser, **Add dictionaries** sends each ZIP to the host. The
 browser still reads the archive's title first and asks whether to replace an
 installed dictionary with that title or add the archive separately; the host
 applies that choice to its own library. MDX dictionaries are imported on the
 host itself.
 
-![Import dictionaries on a linked browser](assets/sharing-linked-import.png)
+![Add dictionaries on a linked browser](assets/sharing-linked-import.png)
 
 An app sends four runtime messages to target `hachidori-linked-import`; a
 linked Hachidori forwards them to its host, and an unlinked one imports the

@@ -171,7 +171,7 @@ outside it.
 Setup normally offers the recommended dictionaries. Without it, open Settings.
 An empty library shows **Install recommended dictionaries**, which downloads
 and installs every recommended dictionary in one click. The same button stays under
-**Import dictionaries** until any of them is installed, and **Retry missing
+**Add dictionaries** until any of them is installed, and **Retry missing
 dictionaries** covers a partial install.
 
 The shared installer picks Jitendex for compact summaries and Bee's term-based
