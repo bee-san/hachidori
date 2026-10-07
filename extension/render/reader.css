@@ -2057,7 +2057,9 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 /* Mark as known and Ignore (#520), added by word-highlights.js while word
-   highlighting is on, look like the pencil; a pressed one is the word's status. */
+   highlighting is on, look like the pencil; a pressed one is the word's status.
+   Like a dictionary tab, an unpressed one only lifts under the pointer or
+   focus, so it never looks pressed. */
 .gsm-hoshidicts-note-button,
 .gsm-hoshidicts-word-status-button {
   border: 1px solid var(--hoshidicts-border-strong);
@@ -2067,12 +2069,14 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-note-button:hover,
 .gsm-hoshidicts-note-button:focus-visible,
 .gsm-hoshidicts-note-button[aria-expanded="true"],
-.gsm-hoshidicts-word-status-button:hover,
-.gsm-hoshidicts-word-status-button:focus-visible,
 .gsm-hoshidicts-word-status-button[aria-pressed="true"] {
   border-color: var(--accent-color);
   background: var(--hoshidicts-accent-soft);
   color: var(--accent-color);
+}
+
+.gsm-hoshidicts-word-status-button:not([aria-pressed="true"]):is(:hover, :focus-visible) {
+  background: var(--hoshidicts-surface-raised);
 }
 
 /* Colour alone shows a pressed button, so forced colours draw it as selected. */
