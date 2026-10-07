@@ -478,7 +478,9 @@ These run separately:
   `chrome-backup-scenarios.mjs` are scenarios `chrome-e2e.mjs` calls; each
   header says what it renders and checks. `backup-engine-scenarios.mjs` is the
   smoke suite's equivalent. `anki-connect-fake.mjs`, `anki-relay-server.mjs`,
-  `capture-resources.mjs` and `gif-structure.mjs` are shared helpers.
+  `capture-resources.mjs` and `gif-structure.mjs` are shared helpers;
+  `settings-modules.mjs` lists the Settings page's own modules, which the
+  jsdom Settings tests and the smoke loader evaluate as one script.
 
 ### The fixture
 

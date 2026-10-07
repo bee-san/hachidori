@@ -1,5 +1,10 @@
 /*
- * Settings page: dictionary import, load order, and lookup options.
+ * Settings page: section navigation and status, the controllers of the larger
+ * sections, engine status, storage events and start-up. The Library,
+ * Add dictionaries, Updates, the personal dictionary, lookup counts and the
+ * option controls live in their own *-settings.js modules, which import from
+ * each other and from this one. A binding is assigned only in the module that
+ * declares it; the others read it through the import.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
