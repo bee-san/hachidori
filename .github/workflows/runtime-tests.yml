@@ -112,7 +112,7 @@ jobs:
           retention-days: 7
 
   sonar:
-    name: SonarCloud findings
+    name: Read SonarCloud findings
     # Starts after the Pixiv job, which gives SonarCloud time to analyse
     # the head, and runs whether or not that job passed.
     if: ${{ !cancelled() && github.event_name == 'pull_request' }}
