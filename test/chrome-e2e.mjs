@@ -8303,15 +8303,16 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     const highlight = CSS.highlights.get(name);
     return highlight ? [[status, [...highlight].map(range => range.startContainer.data.slice(range.startOffset, range.endOffset))]] : [];
   })), Object.fromEntries(["unknown", "learning", "known"].map(status => [status, WORD_HIGHLIGHT_NAME(status)])));
-  const waitForMarks = async (predicate, timeout = 20_000) => {
+  const waitFor = async (read, predicate, timeout = 20_000) => {
     const deadline = Date.now() + timeout;
-    let current = await marks();
+    let current = await read();
     while (!predicate(current) && Date.now() < deadline) {
       await new Promise(resolveWait => setTimeout(resolveWait, 100));
-      current = await marks();
+      current = await read();
     }
     return current;
   };
+  const waitForMarks = (predicate, timeout) => waitFor(marks, predicate, timeout);
   // The page's markup without Hachidori's own popup host.
   const markup = () => tab.evaluate(() => {
     const clone = document.documentElement.cloneNode(true);
@@ -8439,15 +8440,6 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     const overrides = () => settings.evaluate(async () => (await chrome.storage.local.get("wordStatusOverrides")).wordStatusOverrides);
     const pressedState = async () => Object.fromEntries(((await popup.wordStatus())?.buttons ?? [])
       .map(button => [button.status, button.pressed]));
-    const waitFor = async (read, predicate, timeout = 10_000) => {
-      const deadline = Date.now() + timeout;
-      let current = await read();
-      while (!predicate(current) && Date.now() < deadline) {
-        await new Promise(resolveWait => setTimeout(resolveWait, 100));
-        current = await read();
-      }
-      return current;
-    };
     await settings.evaluate(async () => {
       const { options } = await chrome.storage.local.get("options");
       const keybinds = [...HDReaderOptions.normaliseOptions(options).keybinds, { action: "markWordKnown", argument: "",
