@@ -211,10 +211,10 @@ async function measurePage(browser, kind, variant) {
   const loadMs = performance.now() - started;
   const frames = page.frames();
   assert.equal(frames.length, kind === 'plain' ? 1 : frameCount + 1);
-  if (variant !== 'none') {
-    await Promise.all(frames.map(frame => frame.waitForFunction(
-      () => document.documentElement.hasAttribute('data-hd-injection'), { timeout: 60000 })));
-  }
+  // The control waits as well: Puppeteer's wait puts its utility script and
+  // poller in every frame's main world, so all three copies carry them.
+  const ready = variant === 'none' ? () => true : () => document.documentElement.hasAttribute('data-hd-injection');
+  await Promise.all(frames.map(frame => frame.waitForFunction(ready, { timeout: 60000 })));
   await sleep(settleMs);
   const cpu = cpuDelta(before, chromeProcesses(browserPid));
   const injection = variant === 'none' ? [] : await Promise.all(frames.map(async frame => {
