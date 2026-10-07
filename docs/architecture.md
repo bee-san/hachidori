@@ -3005,11 +3005,12 @@ ms block in nine about 9 ms late. A stretch starts at the time the video stood
 at when it opened, and the block being rendered then is its first, so a line
 played on after a pause joins the part heard before it; Chrome 152 can have
 rendered up to one 2.9 ms render quantum by the time the `play` event is
-handled, which the cut leaves out. A stretch ends at the latest media time seen
-while it played, or at the time the video stood when it paused or stalled, so
-the silence Chrome renders between a pause and its event is not counted as
-heard. Turning the switch off cancels the reader, stops the track, disconnects
-the copy and frees the buffer.
+handled, which the cut leaves out, and about 2 ms more when it resamples the
+video's sound to the context's rate. A stretch ends at the latest media time
+seen while it played, or at the time the video stood when it paused or
+stalled, so the silence Chrome renders between a pause and its event is not
+counted as heard. Turning the switch off cancels the reader, stops the track,
+disconnects the copy and frees the buffer.
 
 On Add, `record` cuts the cue ± 250 ms from the buffer once it has the blocks
 rendered until then (at most 500 ms). A line heard at 1× is cut at once, with
