@@ -1648,7 +1648,7 @@ textarea {
   background: var(--surface);
 }
 /* An Anki card is padded, so its introduction needs no rule of its own. */
-.anki-panel > legend + .field-hint {
+.lookup-group.anki-panel > legend + .field-hint {
   padding-top: 0;
   border-top: 0;
 }
@@ -2329,7 +2329,7 @@ textarea {
   .dict-row {
     grid-template-columns: 16px minmax(24px, max-content) minmax(0, 1fr);
     gap: 10px;
-    padding: 14px 0;
+    padding: 14px 12px;
   }
   .dict-quick-actions {
     grid-column: 3;
@@ -2466,7 +2466,7 @@ textarea {
 .keybind-scope { gap: 6px; }
 .keybind-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr));
   gap: 12px;
 }
 .keybind-row .field { display: grid; gap: 6px; }
