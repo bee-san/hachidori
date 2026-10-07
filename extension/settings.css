@@ -1637,20 +1637,16 @@ textarea {
   width: 16px;
   height: 16px;
 }
-#anki .lookup-group legend {
-  align-items: center;
-}
-#anki :is(.anki-panel legend, .anki-mapping-header h2) > .hd-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--accent);
-}
 .anki-panel {
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-surface);
   background: var(--surface);
-  box-shadow: var(--shadow-raised);
+}
+/* An Anki card is padded, so its introduction needs no rule of its own. */
+.anki-panel > legend + .field-hint {
+  padding-top: 0;
+  border-top: 0;
 }
 .anki-card {
   display: grid;
@@ -1765,66 +1761,8 @@ textarea {
 #anki-url-error:empty {
   display: none;
 }
-.anki-setup-row > button,
-.anki-screenshot-options > .anki-switch,
-.anki-audio-card .anki-status-pill {
+.anki-setup-row > button {
   flex-shrink: 0;
-}
-.anki-switch {
-  position: relative;
-  display: inline-block;
-  flex: none;
-  width: 38px;
-  height: 22px;
-}
-.anki-switch input {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.anki-switch-track {
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  transition: background 120ms ease, border-color 120ms ease;
-}
-.anki-switch-track::before {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-pill);
-  background: var(--border-strong);
-  transition: transform 120ms ease, background 120ms ease;
-}
-.anki-switch input:checked + .anki-switch-track {
-  border-color: var(--accent-fill);
-  background: var(--accent-fill);
-}
-.anki-switch input:checked + .anki-switch-track::before {
-  background: var(--accent-contrast);
-  transform: translateX(16px);
-}
-.anki-switch input:focus-visible + .anki-switch-track {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-.anki-switch input:disabled + .anki-switch-track {
-  opacity: 0.55;
-  cursor: default;
-}
-.anki-template-manager {
-  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
 }
 .anki-template-strip,
 .anki-template-pills,
@@ -2163,11 +2101,6 @@ textarea {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-.anki-audio-card {
-  border-style: dashed;
-  background: transparent;
-  box-shadow: none;
-}
 .anki-audio-status {
   overflow-wrap: anywhere;
 }
@@ -2182,9 +2115,7 @@ textarea {
     flex-basis: auto;
   }
   .anki-connection-actions,
-  .anki-setup-row > button,
-  .anki-screenshot-options > .anki-switch,
-  .anki-audio-card .anki-status-pill {
+  .anki-setup-row > button {
     align-self: flex-start;
   }
   .anki-template-editor,

@@ -1187,11 +1187,13 @@
                 <label class="anki-setting-col"><span class="field-label">Tags</span><input id="opt-anki-tags" type="text" spellcheck="false"><span class="field-hint">Separate tags with spaces.</span></label>
               </div>
             </div>
-            <label class="lookup-enable anki-screenshot-options">
-              <span>Screenshot page during card creation</span>
-              <input id="opt-anki-screenshot" type="checkbox" aria-describedby="anki-screenshot-help">
-            </label>
-            <p id="anki-screenshot-help" class="field-hint">Appends the visible browser page to fields using <code>{screenshot}</code>.</p>
+            <div class="anki-screenshot-options">
+              <label class="lookup-enable">
+                <span>Screenshot page during card creation</span>
+                <input id="opt-anki-screenshot" type="checkbox" aria-describedby="anki-screenshot-help">
+              </label>
+              <p id="anki-screenshot-help" class="field-hint">Appends the visible browser page to fields using <code>{screenshot}</code>.</p>
+            </div>
             <div class="anki-setting-row anki-duplicate-row">
               <div class="anki-setting-col">
                 <span class="field-label">Duplicate checking</span>
