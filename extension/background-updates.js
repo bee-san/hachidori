@@ -12,8 +12,9 @@ import {
   TARGET, DICTIONARY_STATE_KEY, UPDATE_SETTINGS_KEY, writeLocalState, relay, readDictionaryStorage, serialiseStorage,
   failureReply,
 } from "./background-core.js";
+import { WORKER_HANDLERS } from "./background-requests.js";
 import { sharingLinked, forwardToHost } from "./background-sharing.js";
-import { alarms, sharingReady, WORKER_HANDLERS } from "./background.js";
+import { alarms, sharingReady } from "./background.js";
 
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 

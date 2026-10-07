@@ -22,12 +22,13 @@ import {
   readDictionaryStorage, optionsRevision, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply,
   checkedOptionsResult, failureReply,
 } from "./background-core.js";
+import { getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background-requests.js";
 import {
   waitForAnkiIdle, readAnkiOptions, broadcastWordStatus, applyAnkiIndexRole, sendAnkiRequest,
 } from "./background-anki.js";
 import { reconcileAutomaticBackupsAfterSharingTransition } from "./background-backup.js";
 import { reconcileUpdateAlarm } from "./background-updates.js";
-import { alarms, sharingReady, getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background.js";
+import { alarms, sharingReady } from "./background.js";
 
 // The user data a linked browser mirrors: the same six keys a backup carries,
 // plus the lookup-count rows.

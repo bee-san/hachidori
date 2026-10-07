@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { normaliseOptions, OPTIONS_KEY } from "./background-core.js";
+import { getAnkiMining } from "./background-requests.js";
 import { sharingLinked } from "./background-sharing.js";
-import { sharingReady, getAnkiMining } from "./background.js";
+import { sharingReady } from "./background.js";
 
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). The
 // player page cuts a line's sentence audio from what the viewer heard and

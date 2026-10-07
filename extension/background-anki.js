@@ -10,10 +10,11 @@ import { capabilityAnkiOptions } from "./setup-state.js";
 import {
   normaliseOptions, OPTIONS_KEY, sleep, relay, startupSender, workerReply, failureReply,
 } from "./background-core.js";
+import { getAnkiDuplicateIndex, getAnkiMining } from "./background-requests.js";
 import {
   sharingLinked, sharingTransitionTail, linkedAnkiConfigKey, hostLinkedAnkiRequest, getSharingClient, forwardToHost,
 } from "./background-sharing.js";
-import { sharingReady, getAnkiDuplicateIndex, getAnkiMining } from "./background.js";
+import { sharingReady } from "./background.js";
 
 let activeAnkiOperations = 0;
 const ankiIdleWaiters = new Set();
