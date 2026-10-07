@@ -401,9 +401,12 @@ test("Mark as known and Ignore join each entry's row while highlighting is on an
   page.items[1].actions.querySelector("[data-word-status=ignored]").click();
   await settle();
   const failed = page.items[1].actions.querySelector("[data-word-status=ignored]");
-  assert.equal(failed.dataset.state, "error");
-  assert.match(failed.title, /not reachable/u);
+  assert.equal(failed.getAttribute("aria-label"), "Ignore 犬. Could not save: The linked Hachidori is not reachable.");
+  assert.equal(failed.title, failed.getAttribute("aria-label"));
   assert.equal(failed.getAttribute("aria-pressed"), "false");
+  failed.click();
+  await settle();
+  assert.equal(failed.getAttribute("aria-label"), "Ignore 犬", "pressing again clears the failure");
   // Retiring the popup's results, or turning highlighting off, takes them away.
   page.controls.retire(owner);
   assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 0);

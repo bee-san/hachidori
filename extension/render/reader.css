@@ -2084,7 +2084,7 @@ html[data-hoshidicts-theme="girlypop"],
   color: var(--accent-color);
 }
 
-.gsm-hoshidicts-word-status-button[data-state="error"] {
+.gsm-hoshidicts-word-status-button[data-error] {
   border-color: var(--hoshidicts-danger);
   color: var(--hoshidicts-danger);
 }

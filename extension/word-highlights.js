@@ -853,10 +853,12 @@
 
     const headwordOf = item => item.result.term.expression;
 
+    // A failed save stays in the button's name until it is pressed again.
     function label(button, headword) {
-      const text = button.dataset.wordStatus === "known" ? `Mark ${headword} as known` : `Ignore ${headword}`;
+      const action = button.dataset.wordStatus === "known" ? `Mark ${headword} as known` : `Ignore ${headword}`;
+      const text = button.dataset.error ? `${action}. Could not save: ${button.dataset.error}` : action;
+      button.title = text;
       button.setAttribute("aria-label", text);
-      if (button.dataset.state !== "error") button.title = text;
     }
 
     function sync(row) {
@@ -871,16 +873,16 @@
       const headword = headwordOf(item);
       const button = rows.get(item.actions)?.buttons.find(candidate => candidate.dataset.wordStatus === status);
       if (button) {
-        delete button.dataset.state;
+        delete button.dataset.error;
+        label(button, headword);
         button.setAttribute("aria-busy", "true");
       }
       try {
         await send("hd_word_status_override", { headword, status: overrides.get(headword) === status ? null : status });
-        if (button) label(button, headword);
       } catch (error) {
         if (button) {
-          button.dataset.state = "error";
-          button.title = `Could not save: ${error.message}`;
+          button.dataset.error = error.message;
+          label(button, headword);
         }
       } finally {
         button?.removeAttribute("aria-busy");
