@@ -18,7 +18,7 @@ const chrome = readonly(["chrome"]);
 // The namespace each classic script publishes on the global object for the
 // scripts loaded after it.
 const published = readonly([
-  "HDAnki", "HDAudio", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
+  "HDAnki", "HDAudio", "HDContent", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
   "HDReaderOptions", "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
   "HDWordStatusOverrides",
@@ -104,8 +104,8 @@ export default defineConfig([
       globals: {
         ...globals.browser, ...chrome, ...published,
         // content.js's own bindings around the splice point.
-        ...readonly(["SENTENCE_SCAN_EXTENT", "buildLevelUi", "extractSentence", "hide", "levels", "options",
-          "releaseFieldImposter", "resolveCandidate", "sendRequest", "shadow"]),
+        ...readonly(["buildLevelUi", "hide", "levels", "options", "releaseFieldImposter", "resolveCandidate",
+          "sendRequest", "shadow"]),
       },
     },
   },

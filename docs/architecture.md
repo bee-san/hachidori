@@ -7,7 +7,7 @@ extension, with a service worker and offscreen document.
 
 ```text
 web page
-  └─ content.js
+  └─ content.js, with content-scan.js and content-dictionaries.js
        ├─ scans Japanese text near the pointer
        ├─ renders the popup in a closed shadow root
        └─ appends popup Note entries to the managed custom source
@@ -1385,12 +1385,12 @@ one switch per status (`wordHighlightUnknown` and `wordHighlightLearning` on,
 (`wordHighlightStyle`: underline, text colour or background).
 
 `word-highlights.js` runs in every frame beside `content.js`, which supplies
-how page text is read: the blocks whose own text includes Japanese, and each
-block's runs as a hover scan reads them, with ruby readings and other opaque
-text left out, whitespace collapsed and CJK segment breaks dropped. A run ends
-where a hovered word ends, at a `<br>`, a block separator, a nested block, a
-control or a preserved line break. Text in editors and text fields, inside open
-shadow roots and Google Docs' imposter is not marked.
+how page text is read (`content-scan.js`): the blocks whose own text includes
+Japanese, and each block's runs as a hover scan reads them, with ruby readings
+and other opaque text left out, whitespace collapsed and CJK segment breaks
+dropped. A run ends where a hovered word ends, at a `<br>`, a block separator,
+a nested block, a control or a preserved line break. Text in editors and text
+fields, inside open shadow roots and Google Docs' imposter is not marked.
 
 An `IntersectionObserver` with a margin of one viewport watches the blocks,
 and a `MutationObserver` over the document notices text that arrives, changes or

@@ -1,6 +1,7 @@
 Popup rendering and styles include code ported through GameSentenceMiner
 PR #549 from Hoshi Reader, Yomitan and Yomichan. The original notices remain
-in extension/content.js, extension/content.css and extension/render/:
+in extension/content.js, extension/content-scan.js,
+extension/content-dictionaries.js, extension/content.css and extension/render/:
 
 Copyright (C) 2026 Manhhao
 Copyright (C) 2023-2026 Yomitan Authors

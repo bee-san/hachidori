@@ -100,6 +100,8 @@ async function staleKanjiResponseStage(invalidation) {
   window.eval(readFileSync(resolve(EXTENSION, "sentence.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "word-status-overrides.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "word-highlights.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "content-dictionaries.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "content-scan.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
