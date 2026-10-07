@@ -246,6 +246,9 @@ HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js 
   node benchmark/content-injection.mjs /tmp/content-injection
 ```
 
+It reads Linux `/proc`, so it runs on Linux only. Set
+`HACHIDORI_ALLOW_NO_SANDBOX=1` where sandboxed Chrome cannot start.
+
 Each sample loads one page in a fresh profile and browser: a plain page, or 20
 same-site iframes (one renderer process) or 20 cross-site iframes (a process
 each, through `--host-resolver-rules`), each frame holding one line of text.
@@ -256,19 +259,20 @@ scripts (the control), `production` with the manifest's list, and
 estimates what deferring the renderer saves before the first hover; it cannot
 show a popup. All three wait for their frames through Puppeteer, whose utility
 script then sits in every frame's main world, so the deltas leave it out.
-`summary.json` reports distributions across rounds (n, quartiles,
-p95 and range) of:
+`summary.json` reports distributions (n, quartiles, p95 and range) of:
 
 - the synchronous injection task of each frame, per file, from timing marks run
-  between the files. A cold frame is the first in its renderer process; later
-  same-site frames reuse V8's compilation cache and are warm;
-- per-frame deltas from the same round's `none` page (`contentScripts`) and
-  `no-renderer` page (`renderer`): main-thread CPU of the page renderers and CPU
-  of every Chrome process (Linux `schedstat`) from navigation until
-  `HACHIDORI_INJECTION_SETTLE_MS` (3000) after load, which includes the
-  asynchronous start-up after injection; V8 heap after two forced collections;
-  page-renderer USS and PSS; and the load event. `perAdditionalFrame` is a warm
-  same-site frame: the same-site delta less the plain page's, per iframe;
+  between the files, pooled over every frame of every round. A cold frame is
+  the first in its renderer process; later same-site frames reuse V8's
+  compilation cache and are warm;
+- per-frame deltas across rounds from the same round's `none` page
+  (`contentScripts`) and `no-renderer` page (`renderer`): main-thread CPU of
+  the page renderers and CPU of every Chrome process (Linux `schedstat`) from
+  navigation until `HACHIDORI_INJECTION_SETTLE_MS` (3000) after load, which
+  includes the asynchronous start-up after injection; V8 heap after two forced
+  collections; page-renderer USS and PSS; and the load event.
+  `perAdditionalFrame` is a warm same-site frame: the same-site delta less the
+  plain page's, per iframe;
 - in `no-renderer`'s cross-site page, each iframe loading the renderer on
   demand, timed in the frame until its globals exist: through the worker's
   `chrome.scripting.executeScript` (cold, then again warm) or through `import()`
