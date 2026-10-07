@@ -259,6 +259,12 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
+`node --test test/error-text.test.mjs` pins the exact text each
+`error-text.js` variant gives an Error, an empty-message Error, a string, a
+plain object with and without a `message`, an Error from another realm, and
+`null`, `undefined` and `NaN`, so sharing the variants cannot change a log
+line, status or reply.
+
 `node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs
 test/low-memory-option.test.mjs` covers [Low memory mode](../docs/memory.md):
 the pure recycle scheduler (no restart while busy, the two-second idle window,

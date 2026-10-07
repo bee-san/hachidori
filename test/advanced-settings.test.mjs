@@ -43,6 +43,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
     ["memory-settings.js", ["createMemorySettings"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
+    ["error-text.js", ["describeErrorOrJson"]],
   ]) {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }

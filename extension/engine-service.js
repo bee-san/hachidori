@@ -1,6 +1,7 @@
 import { actualIndexPolicy, planIndexStorage, residentHashBudgetBytes } from "./dictionary-index-storage.js";
 import { encodeBase64 } from "./base64.js";
 import { readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { describeErrorMessageOrJson } from "./error-text.js";
 import {
   httpsUrl,
   assertRecommendedDictionary,
@@ -165,25 +166,15 @@ export function configureEngineService(request, options = {}) {
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
 }
 
-function describe(error) {
-  if (error instanceof Error) {
-    return error.message || String(error);
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  return error?.message ? String(error.message) : JSON.stringify(error);
-}
-
 function asError(error) {
-  return error instanceof Error ? error : new Error(describe(error));
+  return error instanceof Error ? error : new Error(describeErrorMessageOrJson(error));
 }
 
 class UnknownDictionaryStateCommitError extends Error {
   constructor(commitError, readError, subject = "dictionary state") {
     super(
-      `${subject} commit outcome is unknown: ${describe(commitError)}; `
-      + `readback failed: ${describe(readError)}`,
+      `${subject} commit outcome is unknown: ${describeErrorMessageOrJson(commitError)}; `
+      + `readback failed: ${describeErrorMessageOrJson(readError)}`,
     );
     this.name = "UnknownDictionaryStateCommitError";
     this.cause = commitError;
@@ -229,7 +220,7 @@ function parseJson(json, source) {
   try {
     return JSON.parse(json);
   } catch (error) {
-    throw new Error(`${source} returned malformed JSON: ${describe(error)}`);
+    throw new Error(`${source} returned malformed JSON: ${describeErrorMessageOrJson(error)}`);
   }
 }
 
@@ -1036,7 +1027,7 @@ async function ask(type, fields = {}) {
   return reply;
 }
 
-async function readDictionaryStorage() {
+async function requestDictionaryStorage() {
   const reply = await ask("hd_state_read");
   if (reply.ok !== true) {
     throw new Error(reply.error || "the service worker could not read dictionary state");
@@ -1059,7 +1050,7 @@ async function readDictionaryStorage() {
 }
 
 async function readStoredDictionaries() {
-  const { state } = await readDictionaryStorage();
+  const { state } = await requestDictionaryStorage();
   return state?.dictionaries ?? [];
 }
 
@@ -1169,7 +1160,7 @@ async function commitCustomStorage(snapshot, source, semanticRevision, dictionar
       ok: false,
       stale: current.document.revision !== snapshot.document.revision,
       conflict: current.state?.revision !== snapshot.state.revision,
-      error: describe(commitError),
+      error: describeErrorMessageOrJson(commitError),
       ...current,
     };
   }
@@ -1184,7 +1175,7 @@ async function commitDictionaryState(baseRevision, dictionaries) {
   } catch (commitError) {
     let state;
     try {
-      ({ state } = await readDictionaryStorage());
+      ({ state } = await requestDictionaryStorage());
     } catch (readError) {
       throw new UnknownDictionaryStateCommitError(commitError, readError);
     }
@@ -1196,7 +1187,7 @@ async function commitDictionaryState(baseRevision, dictionaries) {
     return {
       ok: false,
       conflict: currentRevision !== baseRevision,
-      error: describe(commitError),
+      error: describeErrorMessageOrJson(commitError),
       state,
     };
   }
@@ -1229,7 +1220,7 @@ async function recoverPendingRemovals(snapshot) {
 // published merely because the live engine would otherwise skip it.
 async function commitDictionaryCandidate(buildCandidate) {
   for (let attempt = 0; ; attempt += 1) {
-    const snapshot = await readDictionaryStorage();
+    const snapshot = await requestDictionaryStorage();
     const next = await buildCandidate(snapshot);
     const loadedCount = loadDictionaries(next, { committed: snapshot.state?.dictionaries ?? [] });
     if (snapshot.state !== null && sameDictionaries(next, snapshot.state.dictionaries)) {
@@ -1286,7 +1277,7 @@ async function refreshReferencedPackages(stored) {
       generated = await packageFromIndex(path);
     } catch (error) {
       // Keep the committed row; loading reports the package if it cannot load.
-      console.warn(`hoshidicts: could not refresh ${path}: ${describe(error)}`);
+      console.warn(`hoshidicts: could not refresh ${path}: ${describeErrorMessageOrJson(error)}`);
       entries.push(storedPackage);
       continue;
     }
@@ -1330,7 +1321,7 @@ function migrateLegacyPackages(legacy, onDisk) {
 }
 
 async function reconcile() {
-  await recoverPendingRemovals(await readDictionaryStorage());
+  await recoverPendingRemovals(await requestDictionaryStorage());
   return commitDictionaryCandidate(async (snapshot) => {
     if (snapshot.state !== null) {
       return refreshReferencedPackages(snapshot.state.dictionaries);
@@ -1633,7 +1624,7 @@ function publishLoadedDictionaries(loadedCount, { warm = true } = {}) {
 }
 
 async function restoreCommittedDictionaries(state = null, { publish = true } = {}) {
-  const committed = state ?? (await readDictionaryStorage()).state;
+  const committed = state ?? (await requestDictionaryStorage()).state;
   if (committed === null) {
     throw new Error("the committed dictionary state is unavailable");
   }
@@ -1746,7 +1737,7 @@ async function boot() {
   try {
     await reloadFromStorage();
   } catch (error) {
-    console.error(`hoshidicts: could not load the dictionaries at startup: ${describe(error)}`);
+    console.error(`hoshidicts: could not load the dictionaries at startup: ${describeErrorMessageOrJson(error)}`);
   }
 }
 
@@ -1995,7 +1986,7 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
 
 async function cleanupCommittedDictionaries() {
   try {
-    const { state } = await readDictionaryStorage();
+    const { state } = await requestDictionaryStorage();
     if (state === null) {
       return;
     }
@@ -2014,7 +2005,7 @@ async function cleanupCommittedDictionaries() {
       ...(preparedBackup?.dictionaries ?? []),
     ]);
   } catch (error) {
-    console.warn(`hoshidicts: could not remove unreferenced dictionaries: ${describe(error)}`);
+    console.warn(`hoshidicts: could not remove unreferenced dictionaries: ${describeErrorMessageOrJson(error)}`);
   }
 }
 
@@ -2094,11 +2085,11 @@ async function rollbackImportedGenerations(generationRoots, failure) {
     try {
       await discardGenerations(generationRoots.filter(root => !retained.has(root)));
     } catch (error) {
-      console.warn(`hoshidicts: could not discard failed dictionary generations: ${describe(error)}`);
+      console.warn(`hoshidicts: could not discard failed dictionary generations: ${describeErrorMessageOrJson(error)}`);
     }
   }
   if (restoreError !== null) {
-    throw new Error(`${describe(failure)}; dictionary rollback failed: ${describe(restoreError)}`);
+    throw new Error(`${describeErrorMessageOrJson(failure)}; dictionary rollback failed: ${describeErrorMessageOrJson(restoreError)}`);
   }
 }
 
@@ -2774,7 +2765,7 @@ async function discardImportingRoot(generationRoot) {
   try {
     await discardGeneration(generationRoot);
   } catch (error) {
-    console.warn(`hoshidicts: could not discard the failed dictionary generation: ${describe(error)}`);
+    console.warn(`hoshidicts: could not discard the failed dictionary generation: ${describeErrorMessageOrJson(error)}`);
   }
 }
 
@@ -2905,7 +2896,7 @@ async function rethrowCustomRemovalFailure(error, removesPackage) {
       await restoreCommittedDictionaries();
     } catch (restoreError) {
       reloadError = asError(restoreError);
-      throw new Error(`${describe(error)}; custom dictionary rollback failed: ${describe(restoreError)}`);
+      throw new Error(`${describeErrorMessageOrJson(error)}; custom dictionary rollback failed: ${describeErrorMessageOrJson(restoreError)}`);
     }
   }
   throw error;
@@ -3180,7 +3171,7 @@ async function commitBackupSnapshot(current, snapshot, lookupStatsRows) {
       throw new UnknownDictionaryStateCommitError(commitError,
         new Error("readback did not match the exact complete restore transaction"), "backup restore");
     }
-    return { ok: false, error: describe(commitError) };
+    return { ok: false, error: describeErrorMessageOrJson(commitError) };
   }
 }
 
@@ -3209,7 +3200,7 @@ async function restoreBackup(message) {
       const cleanup = await ask("hd_lookup_stats_cleanup");
       if (!cleanup.ok) throw new Error(cleanup.error);
     } catch (error) {
-      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describe(error)}`].filter(Boolean).join("; ");
+      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describeErrorMessageOrJson(error)}`].filter(Boolean).join("; ");
     }
     return { restored: true, dictionaryCount, warning };
   } catch (error) {
@@ -3592,10 +3583,10 @@ const HANDLERS = {
       const onDownload = reportProgress === null ? null : (event) => {
         try {
           Promise.resolve(reportProgress({ requestId, ...event })).catch((error) => {
-            console.warn(`hoshidicts: could not report import progress: ${describe(error)}`);
+            console.warn(`hoshidicts: could not report import progress: ${describeErrorMessageOrJson(error)}`);
           });
         } catch (error) {
-          console.warn(`hoshidicts: could not report import progress: ${describe(error)}`);
+          console.warn(`hoshidicts: could not report import progress: ${describeErrorMessageOrJson(error)}`);
         }
       };
       const staged = await stageImportArchive(response, onDownload);
@@ -3681,7 +3672,7 @@ const HANDLERS = {
         throw error;
       }
       try {
-        const { state } = await readDictionaryStorage();
+        const { state } = await requestDictionaryStorage();
         await restoreCommittedDictionaries(state);
       } catch (restoreError) {
         reloadError = asError(restoreError);
@@ -3704,7 +3695,7 @@ const HANDLERS = {
     if (!usableDictionaryTitle(title) && !legacyRemovalRoot) {
       throw new Error("the remove request carried an unusable dictionary title");
     }
-    const snapshot = await readDictionaryStorage();
+    const snapshot = await requestDictionaryStorage();
     if (snapshot.state === null) {
       throw new Error("the dictionary state is unavailable");
     }
@@ -3736,7 +3727,7 @@ const HANDLERS = {
         await restoreCommittedDictionaries(snapshot.state);
       } catch (restoreError) {
         reloadError = asError(restoreError);
-        throw new Error(`${describe(error)}; removal rollback failed: ${describe(restoreError)}`);
+        throw new Error(`${describeErrorMessageOrJson(error)}; removal rollback failed: ${describeErrorMessageOrJson(restoreError)}`);
       }
       throw error;
     }
@@ -3757,7 +3748,7 @@ const HANDLERS = {
       reloadError = asError(restoreError);
       throw new Error(
         `${reply.error || "the dictionary removal could not be saved"}; `
-        + `removal rollback failed: ${describe(restoreError)}`,
+        + `removal rollback failed: ${describeErrorMessageOrJson(restoreError)}`,
       );
     }
     return {
@@ -3786,7 +3777,7 @@ const HANDLERS = {
     const failure = bootError ?? reloadError;
     return {
       ok: failure === null,
-      error: failure === null ? null : describe(failure),
+      error: failure === null ? null : describeErrorMessageOrJson(failure),
       ready,
       loading: busy > 0 || stagingImports > 0,
       dictionaryCount,
@@ -3906,7 +3897,7 @@ function failurePayload(type) {
 }
 
 function engineFailureReply(type, requestId, error) {
-  const description = describe(error);
+  const description = describeErrorMessageOrJson(error);
   recordDebugFailure(globalThis, type, description);
   let errorCode = error === bootError ? "engine-start-failed" : error?.errorCode ?? null;
   if (errorCode === null && description === "the dictionary engine is still starting") {

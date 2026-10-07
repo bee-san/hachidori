@@ -14,6 +14,7 @@ import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
 import { captureDebugLog, readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { describeError } from "./error-text.js";
 
 // Settings → Advanced → Get debug info reads this document's recent warnings,
 // errors and failed replies, and the engine worker's (debug-log.js).
@@ -128,10 +129,6 @@ const recycler = createEngineRecycler({
   },
 });
 
-function describe(error) {
-  return error instanceof Error ? error.message || String(error) : String(error);
-}
-
 function failedResponse(message, error, errorCode = null) {
   recordDebugFailure(globalThis, message?.type || "hd_unknown", error);
   return boundResponseFailure({
@@ -245,7 +242,7 @@ function updatingStatus() {
 
 function failEngine(error) {
   if (engineError !== null) return;
-  engineError = describe(error) || "the Hoshidicts engine stopped";
+  engineError = describeError(error) || "the Hoshidicts engine stopped";
   console.error(`hoshidicts: engine failed: ${engineError}`);
   for (const [id, request] of pending) {
     finishRequest(id, failedResponse(request.message, engineError, "engine-start-failed"));
@@ -269,16 +266,16 @@ function probeDirectOpfs() {
         type: "module",
         name: "hoshidicts-opfs-capability",
       });
-      probe.addEventListener("error", (event) => finish(false, describe(event.error || event.message)));
+      probe.addEventListener("error", (event) => finish(false, describeError(event.error || event.message)));
       probe.addEventListener("messageerror", () => finish(false, "the OPFS capability worker sent an unreadable message"));
       probe.addEventListener("message", (event) => {
         if (event.data?.channel !== "opfs-capability-result") return;
-        finish(event.data.ok === true, describe(event.data.error || ""));
+        finish(event.data.ok === true, describeError(event.data.error || ""));
       });
       timer = setTimeout(() => finish(false, "the OPFS capability probe timed out"), PROBE_TIMEOUT_MS);
       probe.postMessage({ channel: "opfs-capability-probe" });
     } catch (error) {
-      finish(false, describe(error));
+      finish(false, describeError(error));
     }
   });
 }
@@ -321,7 +318,7 @@ function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionary
     if (data?.channel === "host-request") {
       Promise.resolve(chrome.runtime.sendMessage(data.message)).then(
         (response) => worker.postMessage({ channel: "host-response", id: data.id, ok: true, response }),
-        (error) => worker.postMessage({ channel: "host-response", id: data.id, ok: false, error: describe(error) }),
+        (error) => worker.postMessage({ channel: "host-response", id: data.id, ok: false, error: describeError(error) }),
       );
       return;
     }
@@ -377,7 +374,7 @@ async function readEngineConfig() {
       dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: reply?.dictionaryIndexStorage ?? "auto",
       useLessRamByDefault: reply?.useLessRamByDefault !== false };
   } catch (error) {
-    console.warn(`hoshidicts: could not read the engine configuration: ${describe(error)}`);
+    console.warn(`hoshidicts: could not read the engine configuration: ${describeError(error)}`);
     return { lowMemoryMode: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", useLessRamByDefault: true };
   }
 }
@@ -428,7 +425,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   service.then(handle => handle(message)).then(
     result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, ...result }),
-    error => sendResponse(failedResponse(message, describe(error))),
+    error => sendResponse(failedResponse(message, describeError(error))),
   );
   return true;
 });
@@ -499,7 +496,7 @@ function dispatchEngine(message, sendResponse) {
     }
     worker.postMessage({ channel: "engine-request", id, message });
     return undefined;
-  }).catch((error) => finishRequest(id, failedResponse(message, describe(error), "engine-start-failed")));
+  }).catch((error) => finishRequest(id, failedResponse(message, describeError(error), "engine-start-failed")));
 }
 
 // The engine worker and its pthreads: the isolates that share the engine heap.
@@ -548,11 +545,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   if (message.type === "hd_debug_log") {
-    readDebugLogs(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describe(error))));
+    readDebugLogs(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describeError(error))));
     return true;
   }
   if (message.type === "hd_memory_total") {
-    measureExtensionMemory(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describe(error))));
+    measureExtensionMemory(message).then(sendResponse, (error) => sendResponse(failedResponse(message, describeError(error))));
     return true;
   }
   dispatchEngine(message, sendResponse);
@@ -574,7 +571,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return installer.attach(message.sourceIds, { recordSetup: message.recordSetup === true });
   }).then(
     (result) => sendResponse({ type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, error: null, ...result }),
-    (error) => sendResponse(failedResponse(message, describe(error))),
+    (error) => sendResponse(failedResponse(message, describeError(error))),
   );
   return true;
 });
@@ -631,7 +628,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   answerUpload(message).then(
     (result) => sendResponse(message.type === "hd_upload_import" ? result
       : { type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, error: null, ...result }),
-    (error) => sendResponse(failedResponse(message, describe(error))),
+    (error) => sendResponse(failedResponse(message, describeError(error))),
   );
   return true;
 });

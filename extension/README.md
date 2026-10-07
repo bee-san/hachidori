@@ -71,6 +71,8 @@ the service worker and both engine runtimes run the same code.
   `setup-installer.js` the offscreen recommended installer, observed from startup
   and Settings by `recommended-install-client.js`. `json-value.js` and `response-limits.js`
   are the comparison and size rules the transaction boundaries share.
+  `error-text.js` turns a caught error into the text of a log line, status or
+  reply, in the variants the module contexts use.
 - **Lookup statistics.** `lookup-stats-identity.js`, a classic script so the
   content script can use it, and `lookup-stats.js`.
 - **Sentences.** `sentence.js` is Yomitan's sentence extraction: the content

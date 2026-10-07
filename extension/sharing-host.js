@@ -7,6 +7,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { describeError } from "./error-text.js";
 import {
   DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
 } from "./sharing-protocol.js";
@@ -15,10 +16,6 @@ export const SHARING_KEY = "sharing";
 export const SHARING_HOST_ALARM = "hachidori-sharing-host";
 
 const LOOPBACK_PEERS = new Set(["127.0.0.1", "::1"]);
-
-function describe(error) {
-  return error instanceof Error ? error.message || String(error) : String(error);
-}
 
 function relayAddresses(entries) {
   if (!Array.isArray(entries)) return [];
@@ -68,7 +65,7 @@ export function createSharingHost({
       target.send(JSON.stringify(frame));
       return true;
     } catch (sendError) {
-      console.warn("hachidori: could not reach the sharing relay:", describe(sendError));
+      console.warn("hachidori: could not reach the sharing relay:", describeError(sendError));
       return false;
     }
   }
@@ -89,7 +86,7 @@ export function createSharingHost({
     try {
       frame = parseClientFrame(text);
     } catch (parseError) {
-      if (sendTo(target, clientId, client, { kind: "bye", reason: describe(parseError) })) {
+      if (sendTo(target, clientId, client, { kind: "bye", reason: describeError(parseError) })) {
         postTo(target, { kind: "close", clientId });
       }
       return;
@@ -172,7 +169,7 @@ export function createSharingHost({
     try {
       next = new WebSocket(formatHostAddress({ port: configuredPort }));
     } catch (connectError) {
-      error = describe(connectError);
+      error = describeError(connectError);
       scheduleRetry();
       return;
     }

@@ -18,6 +18,7 @@ import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { collectDebugInfo, debugInfoBlob, debugInfoFilename } from "./debug-info.js";
 import { captureDebugLog } from "./debug-log.js";
+import { describeErrorOrJson } from "./error-text.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { LINKED_IMPORT_TARGET } from "./sharing-protocol.js";
 import { uploadDictionary } from "./linked-import.js";
@@ -85,7 +86,7 @@ const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
-  activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
+  activationLabel, clampOption, hasCapability, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -185,7 +186,7 @@ let renderedInstallRun = null;
 const recommendedInstallation = createRecommendedInstallClient({
   send: sourceIds => send("hd_setup_install", { sourceIds }, "hachidori-setup"),
   onChange: renderRecommendedInstallation,
-  onError(error) { setImportState(`Could not observe dictionary installation: ${describe(error)}`, "error"); },
+  onError(error) { setImportState(`Could not observe dictionary installation: ${describeErrorOrJson(error)}`, "error"); },
 });
 let updating = false;
 let removing = false;
@@ -483,7 +484,7 @@ async function downloadDebugInfo() {
     downloadBlob(document, debugInfoBlob(report), debugInfoFilename(new Date(report.generatedAt)));
     setSectionStatus("debug-info-status", "Debug info downloaded.", "ready", true);
   } catch (error) {
-    setSectionStatus("debug-info-status", `Could not collect debug info: ${describe(error)}`, "error");
+    setSectionStatus("debug-info-status", `Could not collect debug info: ${describeErrorOrJson(error)}`, "error");
   } finally {
     button.disabled = false;
   }
@@ -731,13 +732,6 @@ function attachSettingsNavigation() {
   showSettingsSection();
 }
 
-function describe(error) {
-  if (error instanceof Error) {
-    return error.message || String(error);
-  }
-  return typeof error === "string" ? error : JSON.stringify(error);
-}
-
 async function send(type, fields = {}, target = TARGET) {
   requestCounter += 1;
   const reply = await chrome.runtime.sendMessage({
@@ -883,14 +877,6 @@ function visibleDictionaries() {
       normaliseDictionarySearch(name).includes(search)));
 }
 
-function hasCapability(dictionary, kind) {
-  if (kind === "freq") return dictionary.frequencyCount > 0;
-  if (kind === "pitch") return dictionary.pitchCount > 0;
-  if (kind === "kanji") return dictionary.kanjiCount > 0;
-  if (dictionary.termCount > 0) return true;
-  return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
-}
-
 function dictionaryLabel(dictionary) {
   return dictionary.displayName || dictionary.title;
 }
@@ -942,7 +928,7 @@ function selectedDefinitionBlurFrequencyDictionary(title = definitionBlurFrequen
     && isAvailableFrequencyDictionary(dictionary));
 }
 
-function normaliseDictionarySelections() {
+function normaliseKanjiClickOption() {
   let changed = false;
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
   if (kanjiSelection?.kind === "tabGroup") {
@@ -1131,7 +1117,7 @@ async function loadCustomDictionarySource() {
     resetCustomDictionaryDraft(customDocument);
     setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
-    setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
+    setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describeErrorOrJson(error)}`, "error");
   } finally {
     customLoading = false;
     syncNavigationStatus("custom-dictionary-status");
@@ -1221,7 +1207,7 @@ async function saveCustomDictionarySource(event) {
       );
     }
   } catch (error) {
-    setCustomDictionaryStatus(`Could not save the custom dictionary: ${describe(error)}`, "error");
+    setCustomDictionaryStatus(`Could not save the custom dictionary: ${describeErrorOrJson(error)}`, "error");
   } finally {
     customSaving = false;
     syncNavigationStatus("custom-dictionary-status");
@@ -1399,7 +1385,7 @@ async function refreshStatus() {
     // or the offscreen document can be recreated faster than background.js's
     // retries. Keep polling, or one blip freezes this line on a stale error while
     // the engine finishes booting and every lookup works.
-    setStatus(`Cannot reach the engine: ${describe(error)}`, "error");
+    setStatus(`Cannot reach the engine: ${describeErrorOrJson(error)}`, "error");
     scheduleStatusPoll(STATUS_RETRY_MS);
     return;
   }
@@ -2579,7 +2565,7 @@ function renderDictionaryState() {
   dictionaryGroupController.render();
   renderRecommendedActions();
   setControlsDisabled(importing);
-  normaliseDictionarySelections();
+  normaliseKanjiClickOption();
   renderOptions();
   if (focus) restoreManagementFocus(focus);
 }
@@ -2621,8 +2607,8 @@ async function commitDictionaryStateChange(update, reloadEngine, baseState = dic
     reorderReuseHint = false;
     dictionaryCommitFailed = true;
     dictionaryReorderEpoch += 1;
-    setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
-    return { ok: false, error: describe(error) };
+    setStatus(`Dictionary change was not saved: ${describeErrorOrJson(error)}`, "error");
+    return { ok: false, error: describeErrorOrJson(error) };
   }
 }
 
@@ -2670,7 +2656,7 @@ function queueDictionaryStateChange(update, reloadEngine, { orderBatch = null } 
   });
   dictionaryCommitTail = settled.then(
     reply => reply,
-    error => ({ ok: false, error: describe(error) }),
+    error => ({ ok: false, error: describeErrorOrJson(error) }),
   );
   return settled;
 }
@@ -2762,7 +2748,7 @@ async function removePackages(entries) {
       if (!reply.ok) throw new Error(reply.error ?? "unknown error");
       selectedDictionaryIds.delete(id);
     } catch (error) {
-      failures.push(`${title}: ${describe(error)}`);
+      failures.push(`${title}: ${describeErrorOrJson(error)}`);
     }
   }
   if (await reloadDictionaries()) {
@@ -2806,7 +2792,7 @@ async function erasePersonalSource(confirmed) {
     }
     throw new Error(reply.error || "unknown error");
   } catch (error) {
-    return { erased: false, message: `Could not erase the personal dictionary source: ${describe(error)}.` };
+    return { erased: false, message: `Could not erase the personal dictionary source: ${describeErrorOrJson(error)}.` };
   }
 }
 
@@ -2858,7 +2844,7 @@ async function removeAllDictionaries() {
     const succeeded = failures.length === 0 && personalOutcome?.erased !== false;
     setLibraryResetStatus(messages.join(" "), succeeded ? "ready" : "error", succeeded);
   } catch (error) {
-    setLibraryResetStatus(`Could not remove the dictionaries: ${describe(error)}`, "error");
+    setLibraryResetStatus(`Could not remove the dictionaries: ${describeErrorOrJson(error)}`, "error");
   } finally {
     removing = false;
     setControlsDisabled(importing);
@@ -2879,7 +2865,7 @@ async function resetLookupCounts() {
     if (!reply.ok) throw new Error(reply.error || "the lookup counts could not be reset");
     setSectionStatus("lookup-counts-reset-status", "Lookup counts reset.", "ready", true);
   } catch (error) {
-    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describe(error)}`, "error");
+    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describeErrorOrJson(error)}`, "error");
   } finally {
     resettingLookupCounts = false;
     renderLookupCountsReset();
@@ -2904,7 +2890,7 @@ async function reloadDictionaries() {
     }
     adoptDictionaryState(reply.state);
   } catch (error) {
-    setStatus(`Could not read the dictionary list: ${describe(error)}`, "error");
+    setStatus(`Could not read the dictionary list: ${describeErrorOrJson(error)}`, "error");
     return false;
   }
   renderDictionaryState();
@@ -3347,7 +3333,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     const summary = updateOutcomeSummary(type, reply.outcomes ?? []);
     setUpdateState(summary.message, summary.tone);
   } catch (error) {
-    setUpdateState(`Dictionary updates failed: ${describe(error)}`, "error");
+    setUpdateState(`Dictionary updates failed: ${describeErrorOrJson(error)}`, "error");
   } finally {
     updating = false;
     syncNavigationStatus("update-state");
@@ -3388,7 +3374,7 @@ async function flushUpdateSchedule() {
       const stored = await chrome.storage.local.get("dictionaryUpdates");
       adoptUpdateSettings(stored.dictionaryUpdates);
     } catch { /* Keep the draft even if the committed state cannot be read. */ }
-    setUpdateState(`Could not save the schedule: ${describe(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
+    setUpdateState(`Could not save the schedule: ${describeErrorOrJson(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
   } finally {
     savingSchedule = null;
     renderUpdateControls();
@@ -3841,7 +3827,7 @@ function handleDictionaryStateChange(change) {
   try {
     adopted = adoptDictionaryState(change.newValue);
   } catch (error) {
-    setStatus(describe(error), "error");
+    setStatus(describeErrorOrJson(error), "error");
     return false;
   }
   if (adopted) {
@@ -3873,7 +3859,7 @@ function handleCustomDictionarySourceChange(change) {
   try {
     adoptCustomDictionaryDocument(change.newValue);
   } catch (error) {
-    setCustomDictionaryStatus(`Could not read the changed custom dictionary source: ${describe(error)}`, "error");
+    setCustomDictionaryStatus(`Could not read the changed custom dictionary source: ${describeErrorOrJson(error)}`, "error");
   }
 }
 
@@ -3983,7 +3969,7 @@ async function flushOptions() {
       const stored = await chrome.storage.local.get("options");
       adoptOptions(stored.options);
     } catch { /* The draft stays available even while storage is unreachable. */ }
-    setOptionsStatus(`Could not save settings: ${describe(error)}`);
+    setOptionsStatus(`Could not save settings: ${describeErrorOrJson(error)}`);
   } finally {
     savingOptions = null;
     syncNavigationStatus("options-status");

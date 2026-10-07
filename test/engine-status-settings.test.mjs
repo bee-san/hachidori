@@ -65,6 +65,7 @@ function fixture(t, { failedDictionaries = [] } = {}) {
     ["memory-settings.js", ["createMemorySettings"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
+    ["error-text.js", ["describeErrorOrJson"]],
     ["custom-dictionary.js", ["CUSTOM_DICTIONARY_ID", "CUSTOM_DICTIONARY_TITLE"]],
     ["recommended-dictionaries.js", ["RECOMMENDED_DICTIONARIES"]],
     ["managed-dictionary-source.js", ["effectiveDictionarySchedule", "managedDictionarySource",
