@@ -7,5 +7,5 @@
 // settings.js starts the page and comes last.
 export const SETTINGS_PAGE_MODULES = [
   "library-settings.js", "import-settings.js", "update-settings.js", "custom-dictionary-settings.js",
-  "lookup-stats-settings.js", "settings.js",
+  "lookup-stats-settings.js", "option-settings.js", "settings.js",
 ];

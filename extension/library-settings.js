@@ -13,9 +13,9 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import {
-  backingUp, dictionaryGroupController, element, memorySettings, nameDrafts, normaliseKanjiClickOption,
-  numberFormat, refreshMemorySettings, refreshStatus, renderEngineStatus, renderOptions, scheduleStatusPoll,
-  send, setSectionStatus, setStatus, sharingLinkedAddress, TARGET, WORKER_TARGET,
+  backingUp, dictionaryGroupController, element, memorySettings, nameDrafts, numberFormat,
+  refreshMemorySettings, refreshStatus, renderEngineStatus, scheduleStatusPoll, send, setSectionStatus,
+  setStatus, sharingLinkedAddress, TARGET, WORKER_TARGET,
 } from "./settings.js";
 import {
   importing, installingRecommended, renderRecommendedActions, setImportDragDepth,
@@ -26,6 +26,7 @@ import {
 import {
   adoptCustomDictionaryDocument, adoptCustomDictionaryState, customSaving, renderCustomDictionaryControls,
 } from "./custom-dictionary-settings.js";
+import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
