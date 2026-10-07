@@ -6,5 +6,5 @@
 // modules' top-level code only declares, so their order does not matter;
 // settings.js starts the page and comes last.
 export const SETTINGS_PAGE_MODULES = [
-  "update-settings.js", "custom-dictionary-settings.js", "settings.js",
+  "update-settings.js", "custom-dictionary-settings.js", "lookup-stats-settings.js", "settings.js",
 ];

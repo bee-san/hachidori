@@ -65,6 +65,10 @@ import {
   customDictionaryDirty, customEditorLoaded, customLoading, customSaving, handleCustomDictionarySourceChange,
   loadCustomDictionarySource, renderCustomDictionaryControls,
 } from "./custom-dictionary-settings.js";
+import {
+  attachDefinitionBlurHandlers, renderDefinitionBlurControls, renderDefinitionBlurFrequencyChoices,
+  renderLookupCountsReset, resetLookupCounts,
+} from "./lookup-stats-settings.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -180,7 +184,6 @@ const recommendedInstallation = createRecommendedInstallClient({
   onError(error) { setImportState(`Could not observe dictionary installation: ${describeErrorOrJson(error)}`, "error"); },
 });
 let removing = false;
-let resettingLookupCounts = false;
 let committing = false;
 let pendingDictionaryCommits = 0;
 let pendingDictionaryReorders = 0;
@@ -903,12 +906,6 @@ function selectedFrequencyDictionary(title = options.frequencyDictionary) {
     && isAvailableFrequencyDictionary(dictionary));
 }
 
-// The dictionary the blur threshold reads: its own choice, or "Same as sorting".
-function selectedDefinitionBlurFrequencyDictionary(title = definitionBlurFrequencyDictionary(options)) {
-  return dictionaries.find((dictionary) => dictionary.title === title
-    && isAvailableFrequencyDictionary(dictionary));
-}
-
 function normaliseKanjiClickOption() {
   let changed = false;
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
@@ -1074,10 +1071,6 @@ function renderLibraryReset(blocked) {
     || (!erasePersonal.checked && !dictionaries.some(entry => !isManagedCustomDictionary(entry)));
 }
 
-function renderLookupCountsReset() {
-  element("lookup-counts-reset").disabled = resettingLookupCounts || sharingLinkedAddress !== null;
-}
-
 function elapsedSince(started) {
   const seconds = Math.round((Date.now() - started) / 1000);
   if (seconds < 60) {
@@ -1200,25 +1193,6 @@ function renderFrequencyChoices() {
   select.value = previous;
 }
 
-function renderDefinitionBlurFrequencyChoices() {
-  const select = element("opt-blur-frequency-dictionary");
-  if (select === document.activeElement) return;
-  const previous = options.definitionBlurFrequencyDictionary;
-  select.disabled = !options.definitionBlurFrequencyEnabled;
-  const sorting = selectedFrequencyDictionary();
-  select.replaceChildren(new Option(sorting ? `Same as sorting (${dictionaryLabel(sorting)})` : "Same as sorting", ""));
-  const available = dictionaries.filter(isAvailableFrequencyDictionary);
-  for (const dictionary of available) select.add(new Option(dictionaryLabel(dictionary), dictionary.title));
-  if (previous !== "" && !available.some(dictionary => dictionary.title === previous)) {
-    const known = dictionaries.find(dictionary => dictionary.title === previous);
-    const status = known?.enabled === false ? "disabled" : "unavailable";
-    const stale = new Option(`${known ? dictionaryLabel(known) : previous} (${status})`, previous);
-    stale.disabled = true;
-    select.add(stale);
-  }
-  select.value = previous;
-}
-
 function renderCursorExitControls() {
   element("opt-hide-on-cursor-exit").checked = options.hidePopupOnCursorExit;
   const delay = element("opt-hide-on-cursor-exit-delay");
@@ -1244,65 +1218,6 @@ function renderCompactSummaryControls() {
   if (count !== document.activeElement) count.disabled = !enabled;
   renderPreferredDictionary("opt-summary-dictionary", options.compactDefinitionSummaryDictionary,
     "term", "Automatic — first available definition", enabled);
-}
-
-// All blur rules use the shared reveal controls. The delay field shows
-// seconds, fractions allowed, for the stored milliseconds.
-function renderDefinitionBlurControls() {
-  const countEnabled = options.definitionBlurCountEnabled;
-  const ankiEnabled = options.definitionBlurAnkiMature;
-  const frequencyEnabled = options.definitionBlurFrequencyEnabled;
-  const enabled = countEnabled || ankiEnabled || frequencyEnabled;
-  for (const [id, checked] of [["opt-blur-count", countEnabled], ["opt-blur-anki", ankiEnabled],
-    ["opt-blur-frequency", frequencyEnabled]]) element(id).checked = checked;
-  // Hiding a focused native control can emit blur before its pending change.
-  // Defer hiding until focusout so the change keeps its captured revision.
-  for (const [id, hidden] of [["definition-blur-count-controls", !countEnabled],
-    ["definition-blur-frequency-controls", !frequencyEnabled], ["definition-blur-reveal-controls", !enabled],
-    ["definition-blur-delay-control", options.definitionBlurReveal !== "timed"]]) {
-    const group = element(id);
-    if (!hidden || !group.contains(document.activeElement)) group.hidden = hidden;
-  }
-  element("definition-blur-count-paused").hidden = !countEnabled || options.showLookupCounts;
-  element("definition-blur-anki-help").hidden = !ankiEnabled;
-  element("definition-blur-any-help").hidden = [countEnabled, ankiEnabled, frequencyEnabled].filter(Boolean).length < 2;
-  element("definition-blur-help").hidden = !enabled;
-  renderDefinitionBlurFrequencyChoices();
-  for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
-    ["opt-blur-frequency-order", "definitionBlurFrequencyOrder", frequencyEnabled],
-    ["opt-blur-frequency-threshold", "definitionBlurFrequencyThreshold", frequencyEnabled],
-    ["opt-blur-reveal", "definitionBlurReveal", enabled], ["opt-blur-threshold", "definitionBlurThreshold", countEnabled]]) {
-    const control = element(id);
-    if (control === document.activeElement) continue;
-    control.value = String(options[key]);
-    control.disabled = !controlEnabled;
-  }
-  const delay = element("opt-blur-delay");
-  if (delay !== document.activeElement) {
-    delay.value = String(options.definitionBlurDelayMs / 1000);
-    delay.disabled = !enabled || options.definitionBlurReveal !== "timed";
-  }
-  const frequencyHelp = element("definition-blur-frequency-help");
-  frequencyHelp.hidden = !frequencyEnabled;
-  if (frequencyEnabled) {
-    const selected = selectedDefinitionBlurFrequencyDictionary();
-    if (!definitionBlurFrequencyDictionary(options)) {
-      frequencyHelp.textContent = "Sorting compares every frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.";
-    } else if (!selected) {
-      frequencyHelp.textContent = "The saved frequency dictionary is unavailable. This condition fails open until it is enabled or reinstalled.";
-    } else {
-      const automatic = options.definitionBlurFrequencyOrder === "auto";
-      const order = automatic && selected.frequencyMode === "rank-based"
-        ? "ascending" : automatic ? "descending" : options.definitionBlurFrequencyOrder;
-      const mode = automatic
-        ? selected.frequencyMode === "rank-based" ? "rank-based metadata"
-          : selected.frequencyMode === "occurrence-based" ? "occurrence-based metadata" : "undeclared metadata"
-        : "your manual order";
-      frequencyHelp.textContent = order === "ascending"
-        ? `Using ${mode}: values at or below the threshold qualify.`
-        : `Using ${mode}: values at or above the threshold qualify.`;
-    }
-  }
 }
 
 function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled) {
@@ -2463,27 +2378,6 @@ async function removeAllDictionaries() {
   }
 }
 
-// Settings → Reading → Reset lookup counts: a new, empty history generation.
-async function resetLookupCounts() {
-  if (!window.confirm("Reset lookup counts for every word? Each word starts again from zero, and its next lookup "
-    + "counts as 1. Dictionaries, settings and Anki notes are not changed, and existing backups keep the earlier counts.")) {
-    return;
-  }
-  resettingLookupCounts = true;
-  renderLookupCountsReset();
-  setSectionStatus("lookup-counts-reset-status", "Resetting lookup counts…", "working");
-  try {
-    const reply = await send("hd_lookup_stats_reset", {}, WORKER_TARGET);
-    if (!reply.ok) throw new Error(reply.error || "the lookup counts could not be reset");
-    setSectionStatus("lookup-counts-reset-status", "Lookup counts reset.", "ready", true);
-  } catch (error) {
-    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describeErrorOrJson(error)}`, "error");
-  } finally {
-    resettingLookupCounts = false;
-    renderLookupCountsReset();
-  }
-}
-
 async function reloadDictionaries() {
   try {
     let reply = await send("hd_state_read", {}, WORKER_TARGET);
@@ -3017,30 +2911,7 @@ function attachHandlers() {
       writeOptions();
     });
   }
-  for (const [id, key] of [["opt-blur-count", "definitionBlurCountEnabled"],
-    ["opt-blur-anki", "definitionBlurAnkiMature"],
-    ["opt-blur-frequency", "definitionBlurFrequencyEnabled"]]) {
-    element(id).addEventListener("change", (event) => {
-      options[key] = event.target.checked;
-      renderDefinitionBlurControls();
-      writeOptions();
-    });
-  }
-  element("opt-blur-frequency-dictionary").addEventListener("change", (event) => {
-    if (event.target.value && !selectedDefinitionBlurFrequencyDictionary(event.target.value)) {
-      event.target.value = options.definitionBlurFrequencyDictionary;
-      setOptionsStatus("That frequency dictionary is no longer available.");
-      return;
-    }
-    options.definitionBlurFrequencyDictionary = event.target.value;
-    renderDefinitionBlurControls();
-    writeOptions();
-  });
-  element("opt-blur-delay").addEventListener("change", (event) => {
-    options.definitionBlurDelayMs = clampOption("definitionBlurDelayMs", Math.round(Number(event.target.value) * 1000));
-    event.target.value = String(options.definitionBlurDelayMs / 1000);
-    writeOptions();
-  });
+  attachDefinitionBlurHandlers();
   element("opt-source-highlight").addEventListener("change", (event) => {
     options.sourceHighlightEnabled = event.target.checked;
     writeOptions();
@@ -3486,10 +3357,12 @@ async function start() {
 }
 
 export {
-  adoptDictionaryState, backingUp, commitDictionaries, committing, dictionaries, dictionaryLabel, element,
-  importing, installingRecommended, lastEngineStatus, OPTIONS_SAVE_DELAY_MS, reloadDictionaries, removing,
-  renderChangedDictionaryState, scheduleStatusPoll, send, setControlsDisabled, setSectionStatus, setStatus,
-  stringValue, syncNavigationStatus, UPDATE_TARGET, updateDictionary, WORKER_TARGET
+  adoptDictionaryState, backingUp, clampOption, commitDictionaries, committing,
+  definitionBlurFrequencyDictionary, dictionaries, dictionaryLabel, element, importing, installingRecommended,
+  isAvailableFrequencyDictionary, lastEngineStatus, options, OPTIONS_SAVE_DELAY_MS, reloadDictionaries,
+  removing, renderChangedDictionaryState, scheduleStatusPoll, selectedFrequencyDictionary, send,
+  setControlsDisabled, setOptionsStatus, setSectionStatus, setStatus, sharingLinkedAddress, stringValue,
+  syncNavigationStatus, UPDATE_TARGET, updateDictionary, WORKER_TARGET, writeOptions
 };
 
 await start();
