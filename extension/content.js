@@ -963,6 +963,23 @@
   // Toggle word highlights hides the marks in this frame until it reloads or
   // highlighting is switched off.
   let wordHighlightsHidden = false;
+  // Mark as known and Ignore: the popup's buttons and keybinds, and the stored
+  // overrides (word-status-overrides.js) they write, which win over the Anki
+  // status in the marks.
+  let wordStatusActions = null;
+  let wordStatusOverrides = new Map();
+  let wordStatusOverridesChanged = false;
+
+  // Storage events arrive in commit order, so each one is the current record,
+  // whatever its revision: a linked browser's mirror starts again from the
+  // host's. The first read applies only if no event has come before it.
+  function adoptWordStatusOverrides(value, changed) {
+    if (!changed && wordStatusOverridesChanged) return;
+    wordStatusOverridesChanged ||= changed;
+    wordStatusOverrides = window.HDWordStatusOverrides.wordStatusOverrideMap(value);
+    wordHighlights?.setOverrides(wordStatusOverrides);
+    wordStatusActions?.setOverrides(wordStatusOverrides);
+  }
 
   function syncWordHighlights() {
     if (!options.wordHighlightEnabled) wordHighlightsHidden = false;
@@ -970,17 +987,20 @@
       wordHighlights?.stop();
       return;
     }
-    wordHighlights ??= window.HDWordHighlights.createWordHighlighter({
-      window,
-      send: sendRequest,
-      textBlocks,
-      blockOf,
-      textRuns,
-      runEntries,
-      isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
-      prepare: ensureUi,
-      readPalette: () => (host ? window.getComputedStyle(host) : null),
-    });
+    if (!wordHighlights) {
+      wordHighlights = window.HDWordHighlights.createWordHighlighter({
+        window,
+        send: sendRequest,
+        textBlocks,
+        blockOf,
+        textRuns,
+        runEntries,
+        isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
+        prepare: ensureUi,
+        readPalette: () => (host ? window.getComputedStyle(host) : null),
+      });
+      wordHighlights.setOverrides(wordStatusOverrides);
+    }
     if (wordHighlights.running) wordHighlights.update(options);
     else wordHighlights.start(options);
   }
@@ -1694,6 +1714,7 @@
     }
     audio?.dispose();
     mining?.retire();
+    wordStatusActions?.retire();
     disposed = true;
     selectionDragActive = false;
     dragSelection = null;
@@ -1761,6 +1782,7 @@
   function discardUi() {
     audio?.retire();
     mining?.retire();
+    wordStatusActions?.retire();
     cancelPopupLayout();
     clearDictionaryResources();
     try {
@@ -2514,6 +2536,11 @@
       onSelectionChange: owner => mining.refresh(owner),
     });
     audio.update(options, optionsStorageRevision >= 0);
+    wordStatusActions ??= window.HDWordHighlights.createWordStatusActions({
+      send: (type, fields) => sendRequest(type, fields, WORKER_TARGET),
+    });
+    wordStatusActions.update(options);
+    wordStatusActions.setOverrides(wordStatusOverrides);
     const popup = document.createElement("div");
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = String(level.depth);
@@ -2582,7 +2609,12 @@
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
     level.view = themeHost.createView({
-      onRendererRetired() { audio.retire(level); mining.retire(level); level.noteEditing = false; },
+      onRendererRetired() {
+        audio.retire(level);
+        mining.retire(level);
+        wordStatusActions.retire(level);
+        level.noteEditing = false;
+      },
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       createPronunciationPitchAccent: window.HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
@@ -2611,6 +2643,7 @@
       onBeforeResultsRendered: (intent) => {
         audio.retire(level);
         mining.retire(level);
+        wordStatusActions.retire(level);
         pruneLevels(level.depth + 1);
         if (level.retainedView) {
           replayVisibleView(level, intent);
@@ -2676,6 +2709,9 @@
           level === rootLevel ? candidate : null) : {}),
       };
     } });
+    // Only Default's stylesheet styles Mark as known and Ignore; elsewhere
+    // their keybinds act alone.
+    wordStatusActions.bind(rendered.miningActions, { ...context, buttons: themeHost.renderer === "default" });
   }
 
   // A count on its way keeps its slot's place, so its arrival moves nothing.
@@ -2986,6 +3022,7 @@
       if (popupResize?.level === level) stopPopupResize();
       audio?.retire(level);
       mining?.retire(level);
+      wordStatusActions?.retire(level);
       clearDefinitionBlurTimer(level);
       level.retired = true;
       level.lookupToken += 1;
@@ -4571,6 +4608,9 @@
         if (!button || (action === "playAudioFromSource" && !argument)) return false;
         return audio.playButton(button, action === "playAudioFromSource" ? argument : "");
       }
+      case "markWordKnown":
+      case "ignoreWord":
+        return wordStatusActions.press(level, entry, action === "markWordKnown" ? "known" : "ignored");
       default:
         return false;
     }
@@ -4805,6 +4845,7 @@
       changed ||= dictionaryChanged;
     }
     if (changes.lookupStats) adoptLookupStatsDescriptor(changes.lookupStats.newValue, changes);
+    if (changes.wordStatusOverrides) adoptWordStatusOverrides(changes.wordStatusOverrides.newValue, true);
     if (changed) {
       invalidateStoredState(dictionaryChanged);
     } else if (presentationChanged) updateDictionaryPresentation();
@@ -4897,6 +4938,7 @@
     }
     audio?.update(options);
     mining?.update(options);
+    wordStatusActions?.update(options);
     appearance?.update(options);
     void themeHost.sync();
     // After the appearance, so a changed theme's palette is on the host.
@@ -4975,9 +5017,11 @@
       // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
       chrome.runtime.onMessage?.addListener(onReaderCommand);
       chrome.runtime.onMessage?.addListener(onWordStatusChanged);
-      chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
+      chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null,
+        wordStatusOverrides: null }, (stored) => {
         try {
           if (disposed || chrome.runtime.lastError) return;
+          adoptWordStatusOverrides(stored?.wordStatusOverrides, false);
           const optionsAdoption = adoptOptions(stored && stored.options);
           const adoption = adoptDictionaryState(stored && stored.dictionaryState);
           adoptLookupStatsDescriptor(stored && stored.lookupStats);

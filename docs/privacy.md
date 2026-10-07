@@ -15,8 +15,9 @@ Dictionary lookup runs inside your browser. There is no Hachidori analytics,
 advertising or remote lookup service.
 
 Your browser profile stores imported dictionaries and their indexes, personal
-dictionary entries, preferences, dictionary update settings, and local lookup
-statistics. Statistics contain each looked-up term and reading, its count, and
+dictionary entries, preferences, dictionary update settings, local lookup
+statistics, and the words you mark as known or ignored for word highlighting.
+Statistics contain each looked-up term and reading, its count, and
 first/last lookup times. Turning off lookup counts in Reading settings pauses
 new recording and keeps your existing history. Statistics do not contain a list
 of visited page URLs. **Reset lookup counts** in Reading settings deletes that
@@ -94,7 +95,9 @@ dictionaries, so it can mark them by that status; nothing leaves the browser
 for this unless it is linked to another Hachidori (below). The marks do not
 change the page's markup, but the page's own scripts can read which of its
 words are marked and with which status, and so learn which words have cards in
-your Anki collection.
+your Anki collection. **Mark as known** and **Ignore** in the popup keep the
+words you set in local browser storage, beside your settings and in your
+backups; they create no Anki note and contact nothing.
 Frequency definition blur uses only native numeric values already
 returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
@@ -118,18 +121,18 @@ computers** in Settings, which makes it accept links from the network this
 computer is on (Tailscale, your home network) and shows the addresses that
 reach it; anyone on that network could then connect, as with AnkiConnect
 bound to all interfaces. A linked browser receives dictionary results,
-personal entries, lookup counts, the Anki status of the words it asks about
-and settings, including custom URLs and the AnkiConnect API key, and its edits
-are stored here. Nothing is sent to other
+personal entries, lookup counts, the Anki status of the words it asks about,
+the words marked as known or ignored and settings, including custom URLs and
+the AnkiConnect API key, and its edits are stored here. Nothing is sent to other
 computers while that switch is off, and nothing is sent at all while Anki is
 closed. Another program or extension on your computer could connect to the
 relay while it runs, as with AnkiConnect. **Share this Hachidori** in Settings
 turns it off. A browser linked to a shared Hachidori sends the text it looks up
 or, with Word highlighting on, splits into words, the words on a page whose
-Anki status it reads, and its settings, presentation
-and personal-dictionary edits to that Hachidori,
-and keeps a mirror of its settings, personal entries and lookup counts until it
-unlinks. An explicit mining action also sends its selected note context and
+Anki status it reads, the words it marks as known or ignored, and its
+settings, presentation and personal-dictionary edits to that Hachidori,
+and keeps a mirror of its settings, personal entries, lookup counts and
+marked words until it unlinks. An explicit mining action also sends its selected note context and
 final screenshot bytes through the
 relay. The host validates them and performs Settings discovery and setup
 checks, availability checks, duplicate checks, generation validation, media
@@ -183,8 +186,8 @@ storage.
 Hachidori keeps the newest automatic daily snapshots in this device's
 browser profile; Settings → Backup & restore chooses how many days are kept
 (two by default). They use the same saved-state payload as an exported backup,
-including personal entries, lookup statistics, custom URLs, settings and a
-configured AnkiConnect API key. Hachidori does not upload them. Clearing a value
+including personal entries, lookup statistics, the words marked as known or
+ignored, custom URLs, settings and a configured AnkiConnect API key. Hachidori does not upload them. Clearing a value
 from current settings does not erase it from an older snapshot; it remains
 until later successful snapshots replace that record or the extension is
 uninstalled. A linked browser pauses local snapshot creation and keeps its
@@ -192,7 +195,7 @@ existing local snapshots until it is unlinked and local backup scheduling
 resumes.
 
 An exported backup is an **unencrypted file** containing dictionaries, personal
-entries, settings and lookup statistics. It can include custom URLs and your
+entries, settings, lookup statistics and the words marked as known or ignored. It can include custom URLs and your
 AnkiConnect API key. The derived Anki duplicate index is not included. Export the
 backup only to a location you trust. Hachidori does not upload backups to a cloud
 service. You control any later sharing or syncing of

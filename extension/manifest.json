@@ -76,6 +76,12 @@
     },
     "toggleWordHighlights": {
       "description": "Show or hide the word highlights on the page"
+    },
+    "markWordKnown": {
+      "description": "Mark the current popup entry's word as known"
+    },
+    "ignoreWord": {
+      "description": "Ignore the current popup entry's word"
     }
   },
   "action": {
@@ -105,6 +111,7 @@
         "render/glossary.js",
         "render/popup.js",
         "theme-host.js",
+        "word-status-overrides.js",
         "word-highlights.js",
         "content.js"
       ],

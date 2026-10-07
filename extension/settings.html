@@ -715,7 +715,7 @@
         >
           <div class="card-head">
             <h1 id="word-highlighting-heading" tabindex="-1"
-              data-search-keywords="Anki status unknown learning known mature marks underline colour Migaku">Word highlighting</h1>
+              data-search-keywords="Anki status unknown learning known mature ignored ignore marks underline colour Migaku">Word highlighting</h1>
             <p class="hint">Mark the Japanese words on every page by their status in Anki. Changes save automatically.</p>
           </div>
           <div class="options-feedback-slot"></div>
@@ -725,7 +725,7 @@
               <span>Highlight words by Anki status</span>
               <input type="checkbox" id="opt-word-highlight" aria-describedby="word-highlight-help" />
             </label>
-            <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser, and the status comes from the Anki index Hachidori keeps for the first Template in <a href="#anki">Anki settings</a>, which needs an {expression} field: opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. To show or hide the marks on one page, bind Toggle word highlights in <a href="#keybinds">Keybinds</a>.</p>
+            <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser, and the status comes from the Anki index Hachidori keeps for the first Template in <a href="#anki">Anki settings</a>, which needs an {expression} field: opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. Mark as known and Ignore in the popup set a word's status yourself, over its Anki status and without adding anything to Anki; in <a href="#keybinds">Keybinds</a> they are Mark word as known and Ignore word. To show or hide the marks on one page, bind Toggle word highlights.</p>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Statuses</legend>
@@ -743,7 +743,12 @@
               <span>Mark known words</span>
               <input type="checkbox" id="opt-word-highlight-known" aria-describedby="word-highlight-known-help" />
             </label>
-            <p class="field-hint" id="word-highlight-known-help">A mature card, reviewed at an interval of 21 days or more. A dotted line, green in most themes.</p>
+            <p class="field-hint" id="word-highlight-known-help">A mature card, reviewed at an interval of 21 days or more, or a word marked as known in the popup. A dotted line, green in most themes.</p>
+            <label class="lookup-enable">
+              <span>Mark ignored words</span>
+              <input type="checkbox" id="opt-word-highlight-ignored" aria-describedby="word-highlight-ignored-help" />
+            </label>
+            <p class="field-hint" id="word-highlight-ignored-help">A word set to Ignore in the popup, such as a name you will never mine. A double line, grey in most themes.</p>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Appearance</legend>
@@ -757,7 +762,7 @@
                 </select>
               </label>
             </div>
-            <p class="field-hint" id="word-highlight-style-help">The colours follow the popup theme chosen in <a href="#design">Design</a>, darkened or lightened until they stand out on the page. Text colour and Background tell the statuses apart by colour alone; under a Windows contrast theme every status keeps its own line.</p>
+            <p class="field-hint" id="word-highlight-style-help">The colours follow the popup theme chosen in <a href="#design">Design</a>, darkened or lightened until they stand out on the page. Text colour and Background tell the statuses apart by colour alone; under a Windows contrast theme every status keeps its own line, and an ignored word is marked without one.</p>
           </fieldset>
         </section>
 

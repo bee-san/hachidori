@@ -21,7 +21,8 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
   try {
     await page.setViewport({ width: 900, height: 700 });
     await page.setContent('<!doctype html><meta charset="utf-8"><p>明日は晴れる</p><div id="host"></div>');
-    for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js", "anki-content.js"]) {
+    for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js", "anki-content.js",
+      "word-highlights.js"]) {
       await page.addScriptTag({ path: fileURLToPath(new URL(`../extension/${file}`, import.meta.url)) });
     }
     await page.evaluate(({ css, results }) => {
@@ -54,9 +55,22 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
       const request = {};
       let scale = 100;
       let audio = [];
+      let mining = [];
+      // Mark as known and Ignore (#520) on the same rows. The stored record
+      // presses them, so this worker hands each change straight back.
+      const marked = new Map();
+      const wordStatus = HDWordHighlights.createWordStatusActions({ async send(_type, { headword, status }) {
+        if (status === null) marked.delete(headword);
+        else marked.set(headword, status);
+        wordStatus.setOverrides(new Map(marked));
+        return {};
+      } });
+      wordStatus.update({ wordHighlightEnabled: true });
       const bind = ({ audioButtons, miningActions }) => {
         audio = audioButtons;
+        mining = miningActions;
         anki.bind(miningActions, { owner: popup, popup, request, isCurrent: () => true, getRequest: result => ({ term: result.term }) });
+        wordStatus.bind(miningActions, { owner: popup, isCurrent: () => true });
       };
       const view = HDPopup.createPopupView({ document, window, popup, customButtons,
         appendExpressionRuby: HDGlossary.appendExpressionRuby,
@@ -69,7 +83,7 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
       const header = () => shadow.querySelector(".gsm-hoshidicts-primary-header");
       const articles = () => [...scroller.querySelectorAll(".gsm-hoshidicts-entry")];
       const shown = node => node.getClientRects().length > 0;
-      const kind = node => ["mine-button", "audio-control", "note-button", "custom-anki-button"]
+      const kind = node => node.dataset.wordStatus ?? ["mine-button", "audio-control", "note-button", "custom-anki-button"]
         .find(name => node.classList.contains(`gsm-hoshidicts-${name}`)) ?? node.className;
       window.headwordFixture = {
         shadow, view, submitted,
@@ -77,6 +91,8 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
           scale = percent;
           popup.style.setProperty("--gsm-hoshidicts-popup-scale", `${percent}%`);
           view.setToolbarPosition(toolbar);
+          marked.clear();
+          wordStatus.setOverrides(new Map());
           view.renderResults(results, { anchor: document.querySelector("p"), query: "明日" }, { expandAll: true });
           scroller.scrollTop = 0;
         },
@@ -100,7 +116,8 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
           const headwords = [...pinned.querySelectorAll(":scope > .gsm-hoshidicts-headword")].filter(shown);
           const row = pinned.querySelector(":scope > .gsm-hoshidicts-entry-actions");
           const controls = [...row.querySelectorAll(".gsm-hoshidicts-mine-button, .gsm-hoshidicts-audio-control, "
-            + ".gsm-hoshidicts-note-button, .gsm-hoshidicts-custom-anki-button")].filter(shown);
+            + ".gsm-hoshidicts-word-status-button, .gsm-hoshidicts-note-button, .gsm-hoshidicts-custom-anki-button")]
+            .filter(shown);
           const focused = shadow.activeElement;
           return {
             readings: headwords.map(node => [...node.querySelectorAll("rt")].map(rt => rt.textContent).join("")),
@@ -110,8 +127,18 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
             states: controls.filter(node => node.dataset.state).map(node => node.dataset.state),
             // Which result's own pronunciation button has focus.
             focusedAudio: audio.findIndex(item => item.button === focused),
+            // Which result's own Mark as known or Ignore has focus, as [status, result].
+            focusedWordStatus: focused?.dataset.wordStatus
+              ? [focused.dataset.wordStatus, mining.findIndex(item => item.actions === focused.parentElement)] : null,
             pinnedBelow: pinned.getBoundingClientRect().top >= scroller.getBoundingClientRect().bottom - 1,
           };
+        },
+        // The shown control's painted look, which tells pressed from hovered.
+        look(selector) {
+          const control = [...header().querySelectorAll(selector)].find(shown);
+          const style = getComputedStyle(control);
+          return { pressed: control.getAttribute("aria-pressed"),
+            paint: [style.backgroundColor, style.borderTopColor, style.color] };
         },
         slotBottom(index) {
           return (articles()[index].querySelector(":scope > .gsm-hoshidicts-entry-header").getBoundingClientRect().bottom
@@ -160,7 +187,9 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
       if (toolbar === "top" && percent === 100) await shoot("1-first-result");
       const state = await scrollPast(1, "あす", `${toolbar} ${percent}%`);
       const detail = JSON.stringify(state);
-      assert.deepEqual(state.kinds, ["mine-button", "audio-control", "note-button", "custom-anki-button"], detail);
+      // The first result's own Mark as known and Ignore stay hidden with its Anki and pronunciation.
+      assert.deepEqual(state.kinds, ["mine-button", "audio-control", "known", "ignored", "note-button", "custom-anki-button"],
+        detail);
       assert.equal(new Set(state.tops).size, 1, `the pinned actions split into rows: ${detail}`);
       assert.deepEqual(state.audio, ["Play pronunciation for 明日"], detail);
       assert.equal(state.pinnedBelow, toolbar === "bottom", `the pinned header left its edge: ${detail}`);
@@ -194,6 +223,28 @@ export async function checkDynamicHeadword(browser, { screenshotDirectory } = {}
     await evaluate(() => window.headwordFixture.focus(".gsm-hoshidicts-audio-button"));
     const focused = await scrollPast(1, "あす", "focus");
     assert.equal(focused.focusedAudio, 1, `focus did not follow the shown result: ${JSON.stringify(focused)}`);
+    // So does focus on Ignore, to the incoming result's Ignore.
+    await render();
+    await evaluate(() => window.headwordFixture.focus('[data-word-status="ignored"]'));
+    const ignoring = await scrollPast(1, "あす", "word status focus");
+    assert.deepEqual(ignoring.focusedWordStatus, ["ignored", 1], `focus did not follow Ignore: ${JSON.stringify(ignoring)}`);
+
+    // A pressed button is the word's status. Under the pointer an unpressed
+    // one only lifts, so it never looks pressed.
+    const ignore = await evaluate(() => window.headwordFixture.controlCenter('[data-word-status="ignored"]'));
+    await page.mouse.click(ignore.x, ignore.y);
+    await page.waitForFunction(() => window.headwordFixture.look('[data-word-status="ignored"]').pressed === "true",
+      { timeout: 3000 });
+    const resting = await evaluate(() => window.headwordFixture.look('[data-word-status="known"]'));
+    const known = await evaluate(() => window.headwordFixture.controlCenter('[data-word-status="known"]'));
+    await page.mouse.move(known.x, known.y);
+    const looks = await evaluate(() => ({ hovered: window.headwordFixture.look('[data-word-status="known"]'),
+      pressed: window.headwordFixture.look('[data-word-status="ignored"]') }));
+    await shoot("5-ignored-pressed-known-hovered");
+    const lookDetail = JSON.stringify({ resting, ...looks });
+    assert.equal(looks.hovered.pressed, "false", lookDetail);
+    assert.notDeepEqual(looks.hovered.paint, resting.paint, `hovering Mark as known changed nothing: ${lookDetail}`);
+    assert.notDeepEqual(looks.hovered.paint, looks.pressed.paint, `a hovered button looks pressed: ${lookDetail}`);
 
     // A focused custom Anki button holds the header: re-checking it for another
     // result would disable it, and Chrome would then take its focus.

@@ -140,6 +140,7 @@ const WORD_HIGHLIGHT_SWITCHES = [
   { key: "wordHighlightUnknown", id: "opt-word-highlight-unknown" },
   { key: "wordHighlightLearning", id: "opt-word-highlight-learning" },
   { key: "wordHighlightKnown", id: "opt-word-highlight-known" },
+  { key: "wordHighlightIgnored", id: "opt-word-highlight-ignored" },
 ];
 
 const numberFormat = new Intl.NumberFormat();

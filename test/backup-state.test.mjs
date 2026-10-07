@@ -10,6 +10,7 @@ const snapshot = () => ({
   options: { revision: 21, popupTheme: "dark" },
   updates: { revision: 4, schedule: "daily", lastCheckedAt: null },
   lookupStats: { generation: "archived", revision: 7 },
+  wordStatusOverrides: { revision: 3, known: ["猫"], ignored: ["さん"] },
 });
 
 test("complete restore advances each local revision and replaces absent/default settings", async () => {
@@ -20,11 +21,17 @@ test("complete restore advances each local revision and replaces absent/default 
   archived.state.revision = 0;
   await assertBackupSnapshot(archived);
   const restored = restoredBackupSnapshot(current, archived, []);
-  assert.deepEqual(backupRevisions(restored), { state: 9, options: 22, document: 1, updates: 5, lookupStats: 8 });
+  assert.deepEqual(backupRevisions(restored),
+    { state: 9, options: 22, document: 1, updates: 5, lookupStats: 8, wordStatusOverrides: 4 });
   assert.notEqual(restored.lookupStats.generation, archived.lookupStats.generation);
   assert.deepEqual(restored.options, { revision: 22 });
   assert.equal(restored.updates.schedule, "off");
+  assert.deepEqual(restored.wordStatusOverrides, { revision: 4, known: ["猫"], ignored: ["さん"] });
   await assertBackupSnapshot(restored);
+  // An automatic snapshot from before overrides existed restores none.
+  delete archived.wordStatusOverrides;
+  await assertBackupSnapshot(archived);
+  assert.deepEqual(restoredBackupSnapshot(current, archived, []).wordStatusOverrides, { revision: 4, known: [], ignored: [] });
 });
 
 test("an overlay restore reads on hover only when the backup chose no lookup mode", async () => {
@@ -142,6 +149,7 @@ test("restore validation rejects malformed state, settings and inconsistent cust
     value => { value.options.unknown = true; },
     value => { value.updates.schedule = "sometimes"; },
     value => { value.lookupStats.generation = ""; },
+    value => { value.wordStatusOverrides = { revision: 1, known: ["猫"], ignored: ["猫"] }; },
     value => { value.document.text = "猫,ねこ,cat"; },
     value => { value.state.groups = [{ id: "x", name: "All", dictionaryIds: [] }]; },
   ];

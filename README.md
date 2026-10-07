@@ -141,8 +141,13 @@ changing and may be removed:
   Word highlighting**. Your dictionaries split the page into words in the
   browser and the status comes from the Anki index Hachidori keeps for the
   first Anki Template, so opening a page never contacts Anki; adding a word from
-  the popup re-marks every copy of it at once. The page's markup is not
-  changed, but its own scripts can read which words are marked.
+  the popup re-marks every copy of it at once. **Mark as known** and **Ignore**
+  in the popup, or their keybinds, set a word's status yourself without an Anki
+  note: a name you will never mine stops showing as unknown. Pressing one again
+  clears it. Known and ignored words are left plain unless you turn their marks
+  on; ignored ones get a double line. The words you set travel with your backups
+  and to linked browsers. The page's markup is not changed, but its own scripts
+  can read which words are marked.
 
 
 # Opinionated

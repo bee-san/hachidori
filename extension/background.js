@@ -33,6 +33,7 @@ import { createUploadHost, uploadImportDecision } from "./linked-import.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm, resetLookupStats } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
+import "./word-status-overrides.js";
 import {
   assertDictionaryUpdateSchedule,
   httpsUrl,
@@ -80,6 +81,7 @@ const {
 } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
 const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
+const { WORD_STATUS_OVERRIDES_KEY, normaliseWordStatusOverrides, withWordStatusOverride } = globalThis.HDWordStatusOverrides;
 
 /*
  * Service worker for Hachidori.
@@ -194,9 +196,10 @@ function createTimerAlarms() {
   };
 }
 
-// The user data a linked browser mirrors: the same five keys a backup carries,
+// The user data a linked browser mirrors: the same six keys a backup carries,
 // plus the lookup-count rows.
-const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY];
+const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY,
+  WORD_STATUS_OVERRIDES_KEY];
 // What this install is called by the ones it shares with or links to.
 const SHARING_NAME = OVERLAY_MODE ? "GameSentenceMiner overlay" : browserName(globalThis.navigator);
 let sharingHost;
@@ -916,6 +919,7 @@ async function readBackupPayload() {
     document: normaliseCustomDictionaryDocument(snapshot.document),
     updates: normaliseUpdateSettings(snapshot.updates),
     lookupStats: descriptor,
+    wordStatusOverrides: normaliseWordStatusOverrides(snapshot.wordStatusOverrides),
   }, lookupStatsRows };
 }
 
@@ -1074,6 +1078,16 @@ const WORKER_HANDLERS = {
     }
     return { descriptor };
   },
+  // Mark as known and Ignore (#520): one headword set to known or ignored, or
+  // cleared with null. It runs in the storage queue and changes only that
+  // headword, so writes from several tabs compose without a base revision.
+  async hd_word_status_override(message) {
+    const stored = (await chrome.storage.local.get(WORD_STATUS_OVERRIDES_KEY))[WORD_STATUS_OVERRIDES_KEY];
+    const current = normaliseWordStatusOverrides(stored);
+    const next = withWordStatusOverride(current, message.headword, message.status);
+    if (next !== current) await writeLocalState({ [WORD_STATUS_OVERRIDES_KEY]: next });
+    return { revision: next.revision };
+  },
   async hd_backup_download(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Backup downloads are available only from Hachidori Settings.");
@@ -1083,6 +1097,7 @@ const WORKER_HANDLERS = {
   async hd_backup_base_read() {
     const stored = await chrome.storage.local.get([
       DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY,
+      WORD_STATUS_OVERRIDES_KEY,
     ]);
     return { snapshot: {
       state: stored[DICTIONARY_STATE_KEY] ?? null,
@@ -1090,6 +1105,7 @@ const WORKER_HANDLERS = {
       document: stored[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
       updates: stored[UPDATE_SETTINGS_KEY] ?? null,
       lookupStats: stored[LOOKUP_STATS_KEY] ?? null,
+      wordStatusOverrides: stored[WORD_STATUS_OVERRIDES_KEY] ?? null,
     } };
   },
 
@@ -1162,6 +1178,7 @@ const WORKER_HANDLERS = {
       [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
       [UPDATE_SETTINGS_KEY]: snapshot.updates,
       [LOOKUP_STATS_KEY]: snapshot.lookupStats,
+      [WORD_STATUS_OVERRIDES_KEY]: snapshot.wordStatusOverrides,
       ...Object.fromEntries(message.lookupStatsRows.map(row => [lookupStatsKey(snapshot.lookupStats, row), row])),
     });
     return { snapshot };
@@ -3207,7 +3224,7 @@ async function toggleLookupsFromCommand() {
 const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
-  "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights"]);
+  "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord"]);
 
 chrome.commands?.onCommand?.addListener((command, tab) => {
   if (command === "openSettingsPage") {

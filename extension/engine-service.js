@@ -244,11 +244,12 @@ function boundedText(value, label, maxBytes, cString = true) {
 }
 
 // The engine's ranking options, the same for a hover lookup and a segment.
-function lookupOptionsJson(options) {
+function lookupOptionsJson(options, extra = {}) {
   return JSON.stringify({
     frequencyDictionary: boundedText(options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
     frequencyOrder: FREQUENCY_ORDERS.includes(options?.frequencyOrder) ? options.frequencyOrder : "auto",
     primaryReading: boundedText(options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+    ...extra,
   });
 }
 
@@ -3271,11 +3272,14 @@ const HANDLERS = {
     const dictionary = snapshot.state.dictionaries.find(entry => entry?.id === message.id);
     if (!dictionary) throw new Error("unknown dictionary");
     if (dictionaryRoot(dictionary) === null) throw new Error("Cannot export an invalid dictionary path.");
+    // Like the lookup counts below, the words marked as known or ignored are
+    // the reader's own and stay out of a dictionary's archive.
     const single = {
       ...snapshot,
       state: { ...snapshot.state, dictionaries: [dictionary],
         groups: globalThis.HDDictionaryGroups.normaliseDictionaryGroups(snapshot.state.groups, [dictionary]) },
       document: dictionary.id === CUSTOM_DICTIONARY_ID ? snapshot.document : emptyCustomDictionaryDocument(),
+      wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides(),
     };
     await assertBackupSnapshot(single);
     const files = [];
@@ -3435,7 +3439,10 @@ const HANDLERS = {
   async hd_segment(message) {
     requireEngine();
     const scanLength = clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH);
-    const options = lookupOptionsJson(message.options);
+    // A hover with the personal dictionary off drops its results
+    // (withoutPersonalDictionary), so the split leaves its words out as well.
+    const options = lookupOptionsJson(message.options,
+      message.options?.personalDictionary === false ? { excludedDictionary: CUSTOM_DICTIONARY_TITLE } : {});
     // Every chunk is checked before the first engine turn. A lone surrogate (a
     // pair split across two text nodes) becomes U+FFFD, one code unit for one,
     // so the spans' offsets still index the text the page sent.
