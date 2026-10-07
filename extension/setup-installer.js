@@ -157,7 +157,7 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
         await importEntry(entry, source, last);
       } catch (error) {
         const seconds = entry.installStartedAt === null ? null : (now() - entry.installStartedAt) / 1000;
-        await settle(entry, { status: "failed", seconds, error: describeError(error) }, last);
+        await settle(entry, { status: "failed", seconds, error: describeError(error) }, last); // NOSONAR: sources install one at a time
       }
     }
     run.finished = true;
