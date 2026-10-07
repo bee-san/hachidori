@@ -325,8 +325,11 @@ ESM ignores `NODE_PATH`, which is why the loader resolves jsdom through
 What it cannot prove: anything about Chrome itself. No manifest validation, no
 `chrome.offscreen`, no real IndexedDB or `unlimitedStorage` quota, no MV3 CSP, no
 layout (so no popup positioning, masonry or `@scope`), and no `blob:` URL crossing
-from the options page to the offscreen document. That is what `chrome-e2e.mjs` is
-for.
+from the options page to the offscreen document. Nor the worker's module
+boundaries: its `background*.js` modules run here as one script, so an import of
+a name its module does not export, an assignment to an imported binding, or a
+module that reads another's binding before Chrome has evaluated it can pass here
+and fail only in Chrome. That is what `chrome-e2e.mjs` is for.
 
 ### `chrome-e2e.mjs`
 
