@@ -11,9 +11,10 @@ function harness({ idle = true } = {}) {
   const state = { idle, restarts: [] };
   const recycler = createEngineRecycler({
     isIdle: () => state.idle,
-    restart: (lowMemory, dictionaryEntryStorage, dictionaryIndexStorage) => {
-      state.restarts.push({ lowMemory, at: now, ...(dictionaryEntryStorage === "auto" ? {} : { dictionaryEntryStorage }), ...(dictionaryIndexStorage === "auto" ? {} : { dictionaryIndexStorage }) });
-      recycler.setRunning(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage);
+    restart: (lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault) => {
+      state.restarts.push({ lowMemory, at: now, ...(dictionaryEntryStorage === "auto" ? {} : { dictionaryEntryStorage }),
+        ...(dictionaryIndexStorage === "auto" ? {} : { dictionaryIndexStorage }), ...(useLessRamByDefault ? {} : { useLessRamByDefault }) });
+      recycler.setRunning(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
     },
     setTimer: (fn, ms) => {
       nextId += 1;
@@ -140,16 +141,16 @@ test("nothing is scheduled before the owner reports a running worker", () => {
 
 test("automatic OPFS paging does not change import threading or IDBFS storage", () => {
   assert.deepEqual(engineWorkerConfig(engineWorkerName(false), "opfs"), {
-    lowMemory: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", pagedDictionaries: true,
+    lowMemory: false, useLessRamByDefault: true, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", pagedDictionaries: true,
   });
   assert.deepEqual(engineWorkerConfig(engineWorkerName(false), "idbfs"), {
-    lowMemory: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", pagedDictionaries: false,
+    lowMemory: false, useLessRamByDefault: true, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", pagedDictionaries: false,
   });
   for (const backend of ["opfs", "idbfs"]) {
     assert.equal(engineWorkerConfig(engineWorkerName(false, "resident"), backend).pagedDictionaries, false);
     assert.equal(engineWorkerConfig(engineWorkerName(false, "paged"), backend).pagedDictionaries, true);
     assert.deepEqual(engineWorkerConfig(engineWorkerName(true, "resident"), backend), {
-      lowMemory: true, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "auto", pagedDictionaries: true,
+      lowMemory: true, useLessRamByDefault: true, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "auto", pagedDictionaries: true,
     }, "low memory overrides resident entries while retaining the preference");
   }
 });
@@ -176,6 +177,27 @@ test("changing only the index policy restarts when idle and retains entry and im
   h.advance(RECYCLE_IDLE_MS);
   assert.deepEqual(h.restarts, [{ lowMemory: false, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "paged", at: RECYCLE_IDLE_MS }]);
   assert.deepEqual(engineWorkerConfig(engineWorkerName(false, "resident", "paged"), "opfs"), {
-    lowMemory: false, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "paged", pagedDictionaries: false,
+    lowMemory: false, useLessRamByDefault: true, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "paged", pagedDictionaries: false,
   });
+});
+
+test("changing the RAM default waits for idle and keeps entry storage and the full import pool", () => {
+  const h = harness({ idle: false });
+  h.recycler.setRunning(false, "resident", "auto", true);
+  h.recycler.setDesired(false, "resident", "auto", false);
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.equal(h.restarts.length, 0);
+  h.idle = true;
+  h.recycler.noteIdle();
+  h.advance(RECYCLE_IDLE_MS);
+  assert.deepEqual(h.restarts, [{ lowMemory: false, dictionaryEntryStorage: "resident", useLessRamByDefault: false, at: 3 * RECYCLE_IDLE_MS }]);
+  assert.deepEqual(engineWorkerConfig(engineWorkerName(false, "resident", "paged", false), "opfs"), {
+    lowMemory: false, useLessRamByDefault: false, dictionaryEntryStorage: "resident", dictionaryIndexStorage: "paged", pagedDictionaries: false,
+  });
+  h.recycler.noteMutationSettled();
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.equal(h.restarts.length, 1, "normal mode does not recycle after every mutation");
+  h.recycler.setDesired(false, "resident", "auto", true);
+  h.advance(RECYCLE_IDLE_MS);
+  assert.equal(h.restarts.length, 2, "turning the default back on restarts once");
 });

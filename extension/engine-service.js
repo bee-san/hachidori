@@ -1,4 +1,4 @@
-import { actualIndexPolicy, planIndexStorage, RESIDENT_HASH_BUDGET_BYTES } from "./dictionary-index-storage.js";
+import { actualIndexPolicy, planIndexStorage, residentHashBudgetBytes } from "./dictionary-index-storage.js";
 import { encodeBase64 } from "./base64.js";
 import { readDebugLog, recordDebugFailure } from "./debug-log.js";
 import {
@@ -133,6 +133,7 @@ let lowRam = true;
 let pagedDictionaries = false;
 let dictionaryEntryStorage = "auto";
 let dictionaryIndexStorage = "auto";
+let useLessRamByDefault = true;
 let indexPagedPaths = new Set();
 // Whether this is a pthread runtime, as hd_status reports it.
 let threaded = false;
@@ -158,6 +159,7 @@ export function configureEngineService(request, options = {}) {
   pagedDictionaries = options.pagedDictionaries === true;
   dictionaryEntryStorage = options.dictionaryEntryStorage ?? "auto";
   dictionaryIndexStorage = options.dictionaryIndexStorage ?? "auto";
+  useLessRamByDefault = options.useLessRamByDefault !== false;
   threaded = options.threaded ?? !lowRam;
   reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
   isolatedImport = typeof options.isolatedImport === "function" ? options.isolatedImport : null;
@@ -1550,7 +1552,7 @@ function loadDictionaries(dictionaries, { committed = [] } = {}) {
       throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
     }
   }
-  indexPagedPaths = planIndexStorage(dictionaries, indexPolicy(), hashTableBytes);
+  indexPagedPaths = planIndexStorage(dictionaries, indexPolicy(), hashTableBytes, indexBudget() ?? 0);
   const incremental = loadDictionariesIncrementally(dictionaries);
   if (incremental !== null) {
     lastLoadPath = "incremental";
@@ -3795,8 +3797,9 @@ const HANDLERS = {
       pagedDictionaries,
       dictionaryEntryStorage,
       dictionaryIndexStorage,
+      useLessRamByDefault,
       hashIndexStorage: indexPolicy(),
-      residentHashBudgetBytes: indexPolicy() === "budget" ? RESIDENT_HASH_BUDGET_BYTES : null,
+      residentHashBudgetBytes: indexBudget(),
     };
   },
 
@@ -3829,8 +3832,9 @@ const HANDLERS = {
       pageCacheBytes: engine.ccall("hdw_page_cache_bytes", "number", [], []),
       ...JSON.parse(engine.ccall("hdw_memory_stats", "string", [], [])),
       dictionaryIndexStorage,
+      useLessRamByDefault,
       hashIndexStorage: indexPolicy(),
-      residentHashBudgetBytes: indexPolicy() === "budget" ? RESIDENT_HASH_BUDGET_BYTES : null,
+      residentHashBudgetBytes: indexBudget(),
       packageCount: dictionaries.length,
       registeredKindCount: dictionaryCount,
       dictionaries,
@@ -3845,7 +3849,11 @@ const HANDLERS = {
 const INDEX_FILES = ["bloom.filter", "media.idx", "dict.zstd"];
 
 function indexPolicy() {
-  return actualIndexPolicy(dictionaryIndexStorage, storageBackend, threaded && lowRam);
+  return actualIndexPolicy(dictionaryIndexStorage, storageBackend, threaded && lowRam, useLessRamByDefault);
+}
+
+function indexBudget() {
+  return indexPolicy() === "budget" ? residentHashBudgetBytes(threaded && lowRam) : null;
 }
 
 function fileBytes(path, name) {
