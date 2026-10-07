@@ -318,6 +318,13 @@ button,
   font-size: var(--font-small);
   font-weight: var(--weight-medium);
 }
+/* A plain footer link, below the sections, like a settings page's About link. */
+.privacy-link {
+  display: block;
+  margin: 0 10px 14px;
+  color: var(--text-dim);
+  font-size: var(--font-caption);
+}
 .settings-search { display: grid; gap: 6px; margin: 22px 10px 0; }
 .settings-search input { width: 100%; min-width: 0; }
 .settings-search-results h1 { margin-top: 0; }
