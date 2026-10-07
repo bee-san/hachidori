@@ -27,7 +27,8 @@ HACHIDORI_CHROME_BUILD=128.0.6613.137 \
 ```
 
 `test/tooling/package-lock.json` locks jsdom **30.1.1**, Puppeteer **25.11.0**,
-the browser installer **3.2.2** and ESLint, plus their transitive dependencies. The small
+the browser installer **3.2.2**, ESLint **10.12.0** and `globals` **17.13.0**,
+plus their transitive dependencies. The small
 `test/run.mjs` launcher supplies the existing environment overrides, generates
 fixtures, runs each existing suite in a separate Node process, and propagates
 every nonzero exit or signal. It selects the exact Chrome build from
