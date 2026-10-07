@@ -14,7 +14,7 @@ web page
 
 settings.html / content.js
   └─ extension runtime messaging
-       └─ background.js
+       └─ background.js, with the background-*.js modules it imports
             ├─ MV3 service worker
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
@@ -40,6 +40,19 @@ discarding loaded dictionaries. A later request recreates the routing context
 while the offscreen engine remains authoritative. Runtime requests carry
 explicit IDs, generations, and result message types so stale or malformed
 replies fail closed.
+
+`background.js` registers every service-worker listener and runs its start-up;
+the code they call lives in modules it imports. `background-core.js` holds the
+message targets, storage keys, offscreen relay, serialized storage queue
+(`serialiseStorage`, `writeLocalState`) and the dictionary-state and options
+rules; `background-requests.js` the requests the worker answers itself
+(`WORKER_HANDLERS`, `handleWorkerRequest`), recommended installs, the
+linked-browser dispatcher (`dispatchSharedRequest`) and the Anki gateway, mining
+service and duplicate index; `background-anki.js` the Anki routes
+(`handleAnkiRequest`), screenshots and word status; `background-backup.js`
+backups, `relayEngineRequest` and the alarm handler; `background-updates.js`
+managed updates (`handleUpdatesRequest`); `background-sharing.js` the sharing
+host and client; and `background-netflix.js` Netflix capture.
 
 ## Primary engine path
 
