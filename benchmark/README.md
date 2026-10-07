@@ -289,6 +289,41 @@ Content-script clocks are coarsened to 0.1 ms, the timing marks add up to 15
 tiny scripts, and USS after collection can still hold pages V8 has not returned.
 First-hover latency is the hover-popup harness's `cold` scan.
 
+## Netflix line audio (#542)
+
+`netflix-line-audio.mjs` measures what Netflix mining's line audio costs while a
+video plays: routing the `<video>` through Web Audio and keeping the last 30
+seconds of its 1× sound in the page.
+
+```sh
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/netflix-line-audio.mjs /tmp/line-audio <before-ref>
+```
+
+It reads Linux `/proc`, so it runs on Linux only. Set
+`HACHIDORI_ALLOW_NO_SANDBOX=1` where sandboxed Chrome cannot start.
+
+Each sample starts a fresh profile and browser with Netflix mining switched on,
+in the extension at `<before-ref>` (`before`, without the line audio) or in this
+checkout (`after`), the order alternating by round. A fixture watch page, served
+at `https://www.netflix.com/watch/81000001` by request interception, plays a
+stereo 48 kHz WAV (two tones and noise) on a loop; every host resolves to
+nothing, so no request leaves the machine. After `HACHIDORI_LINE_AUDIO_WARMUP_MS`
+(10000) the run counts `HACHIDORI_LINE_AUDIO_MEASURE_MS` (60000) of playback.
+`summary.json` reports per second of playback the main-thread and all-thread CPU
+of the page renderer, the audio service and every Chrome process (Linux
+`schedstat`), and, after two forced collections, the page's V8 heap, its array
+buffer backing store (where the 30-second ring lives) and the page renderer's
+USS and PSS; then the `after` less `before` delta of the same round. For `after`
+it adds the AudioContext's render capacity from `WebAudio.getRealtimeData`, the
+media seconds per wall second, and the time to cut a 4.5 s line from a 30 s ring
+and encode it as the base64 WAV the page sends (20 per sample). It requires one
+running AudioContext with the video's source and its copy in `after` and none in
+`before`. `HACHIDORI_LINE_AUDIO_SAMPLES` (3) sets the rounds; every row is in
+`raw.jsonl`, with `definition.json` beside it. `--disable-audio-output` gives
+Chrome a clocked fake output device, so it measures decoding and the graph, not
+a sound card's driver.
+
 ## Word segmentation (#520)
 
 `segmentation.mjs` measures `hdw_segment`, the word-highlighting feature's
