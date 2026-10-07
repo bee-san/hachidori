@@ -138,15 +138,17 @@ cannot use its port. Browsers on other computers then enter `address:port`.
 After linking, the page reloads, and from then on:
 
 - lookups, media, engine status, Note appends, settings edits, dictionary
-  presentation edits, update checks and installs, recommended-dictionary
-  installs and removals go to the host, which commits them through its
-  ordinary revisioned transactions and pushes the resulting storage batches back;
+  presentation edits, words marked as known or ignored, update checks and
+  installs, recommended-dictionary installs and removals go to the host, which
+  commits them through its ordinary revisioned transactions and pushes the
+  resulting storage batches back;
 - the host's dictionary state, settings, personal dictionary source, update
-  schedules and lookup counts are mirrored into this browser's storage, so the
-  popup, Settings and toolbar read exactly what they read before;
+  schedules, lookup counts and marked words are mirrored into this browser's
+  storage, so the popup, Settings and toolbar read exactly what they read before;
 - this browser's own dictionary state, settings, personal source, update
-  schedule and lookup counts are kept aside untouched, and its engine keeps
-  reading and committing them, so no local dictionary file is ever removed;
+  schedule, lookup counts and marked words are kept aside untouched, and its
+  engine keeps reading and committing them, so no local dictionary file is ever
+  removed;
 - Anki Settings discovery and existing-setup checks, cache-only View readiness,
   availability, preflight, generation validation, duplicate checks, writes and browsing use the host's
   AnkiConnect URL, API key and selected Template. The linked browser never falls
@@ -219,11 +221,13 @@ runtime needs nothing beyond the WebSocket.
 
 - lookups, media, styles and engine status;
 - reader and Design settings, dictionary state, groups, aliases and order, the
-  personal dictionary source, update schedules and lookup counts, pushed to
-  every linked browser as the same storage batches the host writes;
-- Note appends, settings and presentation edits, update checks and installs,
-  recommended-dictionary installs and removals made in a linked browser, which
-  the host commits through its ordinary revisioned transactions;
+  personal dictionary source, update schedules, lookup counts and the words
+  marked as known or ignored for word highlighting, pushed to every linked
+  browser as the same storage batches the host writes;
+- Note appends, settings and presentation edits, Mark as known and Ignore,
+  update checks and installs, recommended-dictionary installs and removals made
+  in a linked browser, which the host commits through its ordinary revisioned
+  transactions;
 - Anki Settings discovery and existing-setup checks, status, preflight,
   duplicate and generation checks, note writes and browsing. Endpoint
   credentials or mappings supplied by a linked request are ignored; only the

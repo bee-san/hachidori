@@ -340,7 +340,18 @@ from the first Template's rows without contacting Anki, broadcasts a row
 change to every tab with its revision and a Template source change without
 one (and to linked browsers), answers a linked browser's batch from the host's
 index, and has a linked browser's pages re-read at its hello, on each host
-revision and after unlinking.
+revision and after unlinking. Its word-status-overrides stage writes Mark as
+known and Ignore one headword at a time in the worker's storage queue (tabs
+compose, a repeat writes nothing, malformed changes are refused), sends the
+record in the host's hello and its batches, commits a linked browser's Ignore
+on the host, and forwards a linked page's Mark as known once, mirroring the
+record the host pushes back. Linking keeps the browser's own record aside and
+unlinking restores it above the mirror's revision.
+
+`node --test test/word-status-overrides.test.mjs` pins that record's shape:
+malformed records normalise, each headword sits under one status, and one
+change sets, moves or clears a headword at the next revision while a no-op
+keeps the record.
 
 `node --test test/word-highlights.test.mjs` drives `word-highlights.js`, the
 content script's word highlighter, with jsdom and a fake engine and index
@@ -358,8 +369,16 @@ lines, with a fake layout, only the lines within a viewport of the visible area
 keep ranges as it scrolls, and a block leaving the viewport keeps none. A reply
 from another engine generation is
 discarded, changed dictionaries keep the marks until the new segmentation
-arrives, and stopping removes every mark. The status colours reach 3:1 as
-lines and 4.5:1 as text against the page and apply only outside forced
+arrives, and stopping removes every mark. A word marked as known or ignored
+takes that status over its card's, a phrase around a function word follows its
+words' overrides, and setting or clearing one re-marks the words shown without
+a segmentation or status request. Mark as known and Ignore join each entry's
+row after Anki and pronunciation only while highlighting is on and the renderer
+styles them, send one explicit change (clearing a status already set), press
+from the stored record rather than the reply, name a failed save in their label
+until pressed again, act from their keybinds without the buttons, and leave
+with their popup level. The status colours, the ignored one included, reach
+3:1 as lines and 4.5:1 as text against the page and apply only outside forced
 colours. `advanced-settings.test.mjs` checks that Reading → Word highlighting,
 its rail link, picker option and search results stay hidden until its
 experimental switch is on, and that turning the switch off stops the marks in
@@ -839,7 +858,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 719 checks, all of
+full request→reply round trip per contract-C message type. 722 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -1276,7 +1295,7 @@ while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
 `HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
 Settings controls.
 
-Three word highlighting checks (#520) turn the experimental switch on and point
+Four word highlighting checks (#520) turn the experimental switch on and point
 the first Template at an AnkiConnect fake served by the suite's own page
 server, which both the mining worker and the offscreen index refresh reach. On
 a page of its own, the real content script marks 食べたかった, 漢字 and 読む as
@@ -1285,8 +1304,12 @@ the first line, now far away, keeps no ranges, and a line added later. The
 page's markup is identical before and after, and a `MutationObserver` records
 no change outside Hachidori's popup host. Adding 食べる from the popup moves
 食べたかった's ranges from unknown to learning and its painted line from the
-unknown colour to the learning one, while 漢字 stays unknown. Turning the switch
-off removes every mark and keeps the status switches and style.
+unknown colour to the learning one, while 漢字 stays unknown. In the popup for
+漢字, Mark as known and Ignore sit after Anki and pronunciation; Ignore takes
+漢字's mark away and presses its button from the stored record, an Alt+K
+binding of Mark word as known moves it to known, and pressing Mark as known
+again clears it at the next revision and brings the unknown mark back. Turning
+the switch off removes every mark and keeps the status switches and style.
 `HACHIDORI_WORD_HIGHLIGHT_SCREENSHOT` captures the marked line after the add.
 
 ### Real Custom buttons and Templates path
@@ -1382,7 +1405,7 @@ for.
 
 ## `chrome-theme-contrast.mjs`
 
-Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Each row also checks word highlighting (#520) on a light and a dark page, with a fake AnkiConnect making 学生, 先生 and 漢字 unknown, learning and known: every status line, measured below the glyphs' ink, must reach 3:1 against what it is drawn on, the statuses must differ by line style alone, one solid line, a dashed one and a dotted one, and in both forced-colors modes each line must end inside the word's Highlight box, where it does not merge into the page. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview/word-highlight filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
+Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Each row also checks word highlighting (#520) on a light and a dark page, with a fake AnkiConnect making 学生, 先生 and 漢字 unknown, learning and known and 学校, set to Ignore, ignored: every status line, measured below the glyphs' ink, must reach 3:1 against what it is drawn on, the statuses must differ by line style alone, one solid line, a dashed one, a dotted one and two lines one above the other, and in both forced-colors modes each line must end inside the word's Highlight box, where it does not merge into the page, while the ignored word has no line and its box must reach 3:1 against the page. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview/word-highlight filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
 
 ## `chrome-e2e.mjs`
 
@@ -1468,7 +1491,7 @@ pronunciation.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 300 predeclared checks in a browser. The reproducible
+The primary-path test runs 301 predeclared checks in a browser. The reproducible
 launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
 external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -2012,7 +2035,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 300 assertions, and the summary line
+`PLANNED` at the top of the file names all 301 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
