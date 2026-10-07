@@ -158,7 +158,9 @@ async function sample(variant, repetition) {
   writeFileSync(contentFile, content.replace(marker, `${probe}\n${marker}`));
   let browser, page, id, sampler;
 
-  const desiredIndex = baseline ? "resident" : variant === "resident" || variant === "paged" ? variant : "auto";
+  // Leave the baseline's own hash policy unchanged, including revisions that
+  // expose an Automatic preference in their status envelope.
+  const desiredIndex = baseline ? null : variant === "resident" || variant === "paged" ? variant : "auto";
   const request = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields }), type, fields);
   async function launch() {
     browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true,
@@ -183,7 +185,7 @@ async function sample(variant, repetition) {
         if (s) globalThis.benchmarkLastStatus = s;
         if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
         return s?.ok && s.ready && !s.loading && s.lowMemory === lowMemory && s.dictionaryCount === count*4
-          && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
+          && (desiredIndex === null || s.dictionaryIndexStorage === desiredIndex) ? s : false;
       }, { timeout: 180000, polling: 50 }, count, desiredIndex, lowMemory).then(handle => handle.jsonValue());
     } catch (error) {
       const last = await page.evaluate(() => globalThis.benchmarkLastStatus ?? null).catch(() => null);
