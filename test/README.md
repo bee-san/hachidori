@@ -94,13 +94,16 @@ header glyph remains visible, and wide tables still scroll to their final column
 both inside and outside a disclosure.
 
 `test/chrome-dynamic-headword.mjs`, called by the Chrome suite, renders four
-results, three for 明日, through the production renderer, stylesheet and Anki
-controller. Scrolling past あす's own header must show あす in the popup's
-header, with the top and bottom toolbars and at 125% scale, without moving any
-glossary card. The header keeps one row of Anki, pronunciation, Note and custom
-Anki buttons, and its Anki and custom Anki clicks mine あす. Focus on the leaving
-pronunciation button moves to あす's, and a focused custom Anki button holds the
-header until focus leaves it. Go to next entry leaves みょうにち's header under the
+results, three for 明日, through the production renderer, stylesheet, Anki
+controller and Mark as known and Ignore buttons. Scrolling past あす's own
+header must show あす in the popup's header, with the top and bottom toolbars
+and at 125% scale, without moving any glossary card. The header keeps one row
+of Anki, pronunciation, Mark as known, Ignore, Note and custom Anki buttons, and
+its Anki and custom Anki clicks mine あす. Focus on the leaving pronunciation
+button moves to あす's, as focus on the leaving Ignore moves to あす's Ignore,
+and a focused custom Anki button holds the header until focus leaves it. A
+Mark as known under the pointer must look neither like itself at rest nor like
+the pressed Ignore beside it. Go to next entry leaves みょうにち's header under the
 pinned one. The accessibility tree names the hidden first headword nowhere.
 `HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS` names a directory for its screenshots.
 The extension smoke suite's jsdom stage for the same change checks node identity,
