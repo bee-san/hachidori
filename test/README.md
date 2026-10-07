@@ -32,7 +32,8 @@ HACHIDORI_CHROME_BUILD=128.0.6613.137 \
 ```
 
 `test/tooling/package-lock.json` locks jsdom, Puppeteer, the browser installer,
-ESLint **10.12.0** and `globals` **17.13.0**, plus their transitive dependencies. The small `test/run.mjs` launcher
+ESLint **10.12.0** and `globals` **17.13.0**, plus their transitive
+dependencies. The small `test/run.mjs` launcher
 supplies the existing environment overrides, generates fixtures, runs each
 existing suite in a separate Node process, and propagates every nonzero exit or
 signal; logs go to `test/tmp/ci/<suite>.log`. It selects the exact Chrome build
@@ -51,8 +52,9 @@ For a Linux container that cannot run Chrome's sandbox, set
 `HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
 non-loopback network address for its other-computer checks.
 
-`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke tests and the
-five Chrome browser suites on every PR and push to `main`, or manually. It also
+`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke
+tests and the five Chrome browser suites on every PR and push to `main`, or
+manually. It also
 runs the primary Chrome suite on the exact Chrome 128 build recorded beside the
 current Chrome 152 pin, and creates and checksum-verifies the Chrome/source
 release pair. The release contract fails if the tested minimum drifts from the
