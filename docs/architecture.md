@@ -52,7 +52,7 @@ service and duplicate index; `background-anki.js` the Anki routes
 (`handleAnkiRequest`), screenshots and word status; `background-backup.js`
 backups, `relayEngineRequest` and the alarm handler; `background-updates.js`
 managed updates (`handleUpdatesRequest`); `background-sharing.js` the sharing
-host and client; and `background-netflix.js` Netflix capture.
+host and client; and `background-netflix.js` Netflix capture and line audio.
 
 ## Primary engine path
 

@@ -1,4 +1,5 @@
-// Experimental Netflix mining in the service worker: the recorder frame's port and line recordings.
+// Experimental Netflix mining in the service worker: the recorder frame's port, line recordings, and the
+// WAV the player page cuts from what the viewer heard.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { normaliseOptions, OPTIONS_KEY } from "./background-core.js";
