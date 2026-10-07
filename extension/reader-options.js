@@ -191,9 +191,9 @@
     frequencyDictionary: "",
     frequencyOrder: "auto",
     automaticBackupDays: 2,
+    useLessRamByDefault: true,
     // Recycle the engine worker after dictionary changes and import on one
     // thread; see docs/memory.md. Not a reader behaviour, so no hotkey toggle.
-    useLessRamByDefault: true,
     lowMemoryMode: false,
     dictionaryEntryStorage: "auto",
     dictionaryIndexStorage: "auto",

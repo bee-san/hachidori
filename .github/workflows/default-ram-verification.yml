@@ -1,0 +1,47 @@
+name: Verify default RAM budget
+
+on:
+  push:
+    branches: [feat/use-less-ram-default]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: default-ram-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --prefix test/tooling
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-14 fonts-noto-cjk
+          npm --prefix test/tooling run install:chrome
+          sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
+      - name: Build the pinned importer and prepare the 58-package library
+        run: |
+          cmake -S third_party/hoshidicts -B test/tmp/default-ram-native -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DHOSHIDICTS_CLI=ON
+          cmake --build test/tmp/default-ram-native --target hoshidicts-cli --parallel 2
+          node benchmark/index-residency-fixture.mjs test/tmp/default-ram-fixture test/tmp/default-ram-native/hoshidicts-cli reporter
+      - name: Compare main with the 65 MiB default in normal mode
+        run: |
+          export HACHIDORI_PUPPETEER="$(node -p "require.resolve('puppeteer-core', { paths: ['./test/tooling'] })")"
+          export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
+          node benchmark/index-residency.mjs --fixture test/tmp/default-ram-fixture --output test/tmp/default-ram-results --before-ref 2a204cc50d235f61b6e20aa1d8b263b961af54f4 --samples 3 --variants baseline,65 --low-memory false
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: default-ram-verification
+          path: test/tmp/default-ram-results/
+          retention-days: 7

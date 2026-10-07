@@ -1373,7 +1373,7 @@
                 <span>Use less ram by default</span>
                 <input type="checkbox" id="opt-use-less-ram-by-default" aria-describedby="opt-use-less-ram-by-default-help" />
               </label>
-              <p class="field-hint" id="opt-use-less-ram-by-default-help">With Automatic hash storage, keeps small indexes in memory within one shared 65 MiB budget and reads the rest from disk. Off, Automatic keeps every hash index in memory. Lookups may be slightly slower while this is on. Import threading stays the same. Low memory mode uses its smaller 32 MiB budget.</p>
+              <p class="field-hint" id="opt-use-less-ram-by-default-help">With Automatic hash storage, keeps small indexes in memory within one shared 65 MiB budget and reads the rest from disk. Off, Automatic keeps every hash index in memory. Lookups may be slightly slower while this is on. Changing this restarts the idle engine; import threading stays the same. Low memory mode uses its smaller 32 MiB budget.</p>
             </div>
             <label class="lookup-enable" id="low-memory-mode">
               <span>Low memory mode</span>

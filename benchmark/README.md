@@ -32,7 +32,12 @@ node benchmark/index-residency-report.mjs /tmp/index-*-results /tmp/index-*-nati
 ```
 
 `--before-ref` extracts the unmodified `extension/` of a commit (or pass an
-extracted copy with `--before`) and runs it as the `baseline` variant. Output
+extracted copy with `--before`) and runs it as the `baseline` variant. `--low-memory
+false` measures normal mode with its full import pool and no post-mutation recycle;
+the default `true` retains the original Low memory mode measurements. Use
+`--variants baseline,65 --low-memory false` to compare the 65 MiB default with
+an earlier revision on the same files. The selected mode and its default hash
+budget are recorded in `definition.json`. Output
 directories must be fresh. `--os-cold true` syncs and evicts every file of the
 seeded profile and temporary extension from the OS page cache (`dd
 iflag=nocache`) before the measured launch, so startup and the first pass read
@@ -42,7 +47,7 @@ the policy order, seeds a fresh profile with the same native files, and restarts
 timing startup, two full lookup passes and real pointer hovers. Complete ordered
 results, kanji, inflection, dictionary selection and media must match. Each sample
 also disables/re-enables packages, restarts with disabled packages, reimports,
-waits for the idle worker replacement, and removes a package. The first 32 MiB
+waits for the idle worker replacement in Low memory mode, and removes a package. The first 32 or 65 MiB
 sample checks all three Settings choices and saves both palettes after timing.
 
 Fixtures contain synthetic Japanese terms and production importer output. The

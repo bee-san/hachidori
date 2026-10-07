@@ -5,8 +5,9 @@ Chrome installations), it reads entries and images from disk when needed by
 default. This avoids copying every installed definition into the WebAssembly
 heap while retaining all lookup results. Settings → Advanced → Memory →
 **Dictionary entries** can instead keep entries in memory for the fastest
-lookups. **Dictionary hash indexes** selects hash residency. In **Low memory mode**,
-Automatic keeps small hashes within one shared budget and pages the rest.
+lookups. **Dictionary hash indexes** selects hash residency. **Use less ram by default**
+is on by default: Automatic keeps small hashes within one shared 65 MiB resident
+budget and pages the rest on direct OPFS. **Low memory mode** uses a 32 MiB budget.
 Low memory mode also reduces import peak memory and returns unused engine
 memory after changes. This page explains the storage policies,
 the readout, their costs, and what happens when dictionaries do not fit.
@@ -155,18 +156,28 @@ compatibility engine.
 
 On the threaded direct OPFS backend, **Dictionary hash indexes** selects:
 
-- **Automatic** (default): retain hashes outside Low memory mode. In Low memory
-  mode, keep hashes within one aggregate 32 MiB resident budget, sorted by file
-  size then stable package ID, and page the rest. Each enabled package counts
-  once, regardless of how many dictionary kinds it supplies.
+- **Automatic** (default): with **Use less ram by default** on, keep hashes within
+  one aggregate 65 MiB resident budget in normal mode. Turning that switch off
+  retains every hash in normal mode. Low memory mode uses its existing 32 MiB
+  budget either way. Budgeted hashes are sorted by file size then stable package
+  ID, with the rest read from disk. Each enabled package counts once, regardless
+  of how many dictionary kinds it supplies.
 - **Read from disk**: page every hash table through the existing entry cache.
 - **Keep in memory**: retain every hash table, including in Low memory mode.
 
-The 32 MiB resident budget is separate from the shared 32 MiB page-cache budget.
+The resident hash budget is separate from the shared 32 MiB page-cache budget.
 Neither excludes packages or limits results. Filters, scan metadata, media offsets
 and trained compression dictionaries stay resident. The installed format stays
 the same; changing the policy uses the existing idle worker restart and needs no
 reimport. Import threading continues to follow Low memory mode.
+
+**Use less ram by default** is enabled for new and existing installations whose
+stored options do not yet include it. It changes only Automatic hash storage:
+explicit **Read from disk** and **Keep in memory** choices still apply. Its switch
+is disabled while those choices or Low memory mode apply, preserving the saved
+preference. Changing it uses the same idle worker restart, without changing entry
+storage, import threading or recycling after dictionary mutations. The 65 MiB
+budget is a hash residency target, not a cap on the extension's total RAM.
 
 The selector is hidden on IDBFS and single-thread hosts, which keep resident
 hashes until their read cost is measured. Stored preferences remain intact.
