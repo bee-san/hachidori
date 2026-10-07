@@ -1385,7 +1385,9 @@ shadow roots and Google Docs' imposter is not marked.
 
 An `IntersectionObserver` with a margin of one viewport watches the blocks,
 and a `MutationObserver` over the document notices text that arrives, changes or
-leaves. A block within the margin has its run boundaries found in one walk; the
+leaves. A mutation re-reads only the block whose own text it changed, so a line
+appended to a list leaves the wrapper around it alone even when the wrapper has
+text of its own. A block within the margin has its run boundaries found in one walk; the
 runs within the margin themselves are found by bisection along the block's
 direction (down, or across for vertical text; a block set in columns is checked
 run by run), at most every 100 ms while the page scrolls, and only their

@@ -8,8 +8,9 @@
 // without segmenting the page again.
 //
 // content.js supplies how page text is read, the way a hover reads it: the
-// blocks under a node whose own text includes Japanese, each block's runs as
-// text node parts ({ node, start, end }), and a run's character entries
+// blocks under a node whose own text includes Japanese, the block whose own
+// text a node is part of, each block's runs as text node parts
+// ({ node, start, end }), and a run's character entries
 // ({ node, offset, sourceLength, text, collapsed }) once it is needed.
 (function () {
   "use strict";
@@ -134,7 +135,7 @@
     return { text, pieces };
   }
 
-  function createWordHighlighter({ window, send, textBlocks, textRuns, runEntries, isJapanese, prepare, readPalette }) {
+  function createWordHighlighter({ window, send, textBlocks, blockOf, textRuns, runEntries, isJapanese, prepare, readPalette }) {
     const { document } = window;
     const highlights = Object.fromEntries(STATUSES.map(status => {
       const highlight = new window.Highlight();
@@ -314,21 +315,17 @@
       schedule();
     }
 
-    function containingBlock(node) {
-      for (let current = node; current; current = current.parentNode) {
-        const block = blocks.get(current);
-        if (block) return block;
-      }
-      return null;
-    }
-
     function trackBlocks(node) {
       for (const element of textBlocks(node)) track(element);
     }
 
-    // Marks what a mutation changed; true when it removed nodes.
+    // Marks what a mutation changed; true when it removed nodes. Only the
+    // block holding the target as its own text can have changed runs: text
+    // added to a nested block, such as a line appended to a list, leaves the
+    // blocks around it alone. A target already out of the document belongs to
+    // a removed block, which onMutations drops.
     function noteMutation(record) {
-      const block = containingBlock(record.target);
+      const block = record.target.isConnected ? blocks.get(blockOf(record.target)) : undefined;
       if (block) block.dirty = true;
       if (record.type === "characterData") trackBlocks(record.target);
       for (const node of record.addedNodes) trackBlocks(node);

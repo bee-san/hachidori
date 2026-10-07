@@ -958,7 +958,7 @@
 
   // Reading → Word highlighting (#520, experimental): word-highlights.js marks
   // this frame's words by their Anki status, reading the page's text as a
-  // hover does through textBlocks(), textRuns() and runEntries().
+  // hover does through textBlocks(), blockOf(), textRuns() and runEntries().
   let wordHighlights = null;
   // Toggle word highlights hides the marks in this frame until it reloads or
   // highlighting is switched off.
@@ -974,6 +974,7 @@
       window,
       send: sendRequest,
       textBlocks,
+      blockOf,
       textRuns,
       runEntries,
       isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
@@ -993,6 +994,11 @@
 
   function textBlockOf(element, styleCache) {
     return blockAncestor(element, styleCache) ?? document.body;
+  }
+
+  /** The block whose own text `node` (a text node, or an element's content) is part of. */
+  function blockOf(node) {
+    return textBlockOf(node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement, new Map());
   }
 
   /** The blocks under `root`, or holding a text node `root`, whose own text includes Japanese. */
