@@ -13,6 +13,7 @@ const STORED = {
   lookupStats: { generation: "g", revision: 1 },
   ankiDuplicateIndex: { version: 1, snapshot: { sourceKey: "k", refreshedAt: 1, rows: [["猫", true, [1]]] } },
   automaticBackups: { schemaVersion: 1, backups: [{ id: "b1", createdAt: "2026-10-01T00:00:00.000Z", snapshot: { secretNotes: "猫" } }] },
+  wordStatusOverrides: { revision: 3, known: ["鶏肉", "豚肉"], ignored: ["牛肉"] },
 };
 
 const TARGETS = { worker: "worker", sharing: "sharing", anki: "anki" };
@@ -94,9 +95,11 @@ test("the debug report carries version, engine, dictionaries and settings withou
   assert.deepEqual(keys.ankiDuplicateIndex.value.snapshot.rows, { omitted: true, count: 1 });
   assert.equal(keys.automaticBackups.value.backups[0].id, "b1");
   assert.ok(keys.automaticBackups.value.backups[0].bytes > 0);
+  assert.deepEqual(keys.wordStatusOverrides.value,
+    { revision: 3, known: { omitted: true, count: 2 }, ignored: { omitted: true, count: 1 } });
 
   const text = await debugInfoBlob(report).text();
-  for (const secret of ["hunter2", "ねこ", "secretNotes"]) assert.ok(!text.includes(secret), `${secret} leaked`);
+  for (const secret of ["hunter2", "ねこ", "secretNotes", "鶏肉", "牛肉"]) assert.ok(!text.includes(secret), `${secret} leaked`);
   assert.equal(debugInfoFilename(new Date(report.generatedAt)), "hachidori-debug-2026-10-06T10-00-00Z.json");
 });
 
