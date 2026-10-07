@@ -2368,10 +2368,10 @@ textarea {
 }
 .audio-source-row {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   padding: var(--row-padding) 0;
 }
-.audio-source-row + .audio-source-row { border-top: 1px solid var(--border); }
+.audio-source-row { border-top: 1px solid var(--border); }
 .audio-source-heading,
 .audio-source-enabled,
 .audio-source-actions,
@@ -2385,7 +2385,20 @@ textarea {
 .audio-source-actions { gap: 6px; }
 .audio-source-row .field { display: grid; gap: 6px; }
 .audio-source-row .field[hidden] { display: none; }
-.audio-source-row select { width: min(100%, 360px); }
+.audio-source-row select { width: 100%; }
+/* A wide card puts a source's type, its URL or voice and Test on one line under its heading. */
+@container (min-width: 640px) {
+  .audio-source-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
+    align-items: end;
+    gap: 10px 12px;
+  }
+  .audio-source-heading { grid-column: 1 / -1; }
+  .audio-source-row > .field { grid-row: 2; grid-column: 1; }
+  .audio-source-row > :is(.audio-url-field, .audio-voice-field) { grid-column: 2; }
+  .audio-test-line { grid-row: 2; grid-column: 3; min-height: var(--control-height); align-items: center; }
+  .audio-test-status { max-width: 28ch; }
+}
 .audio-url { width: 100%; }
 .audio-test-status { color: var(--text-dim); overflow-wrap: anywhere; }
 .audio-test-line { align-items: baseline; }
