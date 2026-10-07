@@ -25575,7 +25575,7 @@ async function imageHoverPreviewModeStage({ HDGlossary, HDPopup, document, windo
   }
 }
 
-async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl, calculatePopupPosition }) {
+async function imagePreviewStage({ view, popup, shadow, window, candidate, result, mediaUrl, calculatePopupPosition }) {
   let requests = 0;
   let ownsRequest = true;
   let holdFirstMedia = false;

@@ -65,7 +65,7 @@ try {
       if (profile % 2) scenarios.reverse();
       for (const scenario of scenarios) {
         for (const checkout of order) {
-          await page.evaluate(async ({ scenario, measurements, warmups, checkout }) => {
+          await page.evaluate(async ({ scenario, checkout }) => {
             const base = `/${checkout}/`;
             const [{ default: bee }, css, icons] = await Promise.all([import(`${base}vendor/themes/bee/theme.js`),
               fetch(`${base}vendor/themes/bee/theme.css`).then(response => response.text()), fetch(`${base}icons.css`).then(response => response.text())]);
@@ -134,7 +134,7 @@ try {
             window.beeStates ??= [];
             window.beeStates.push({ checkout, cell, perform, render, destroy() { view.destroy(); host.remove(); } });
             return cell;
-          }, { scenario, measurements, warmups, checkout });
+          }, { scenario, checkout });
         }
         const cells = await page.evaluate(({ profile, measurements, warmups }) => {
           const states = window.beeStates;

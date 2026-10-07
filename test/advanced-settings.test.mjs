@@ -11,7 +11,6 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const extension = file => readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8");
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
-const tick = () => new Promise(resolve => setImmediate(resolve));
 // Values from the page's realm, compared as data.
 const plain = value => JSON.parse(JSON.stringify(value));
 
