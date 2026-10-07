@@ -67,36 +67,51 @@
     return toward;
   }
 
-  // A run's sentences as { start, text }. A sentence longer than
-  // MAX_CHUNK_LENGTH is cut after its last clause break in the second half of
-  // that length, or at the length itself; a chunk without Japanese is dropped.
+  // Where a sentence that has reached MAX_CHUNK_LENGTH at `index` is cut:
+  // after its last clause break in the second half of that length, or at the
+  // length itself, and never between the halves of a surrogate pair.
+  function longChunkEnd(text, start, index) {
+    let end = index + 1;
+    for (let back = index; back > start + MAX_CHUNK_LENGTH / 2; back -= 1) {
+      if (CLAUSE_END.has(text[back])) {
+        end = back + 1;
+        break;
+      }
+    }
+    const unit = text.codePointAt(end);
+    return unit >= 0xdc00 && unit <= 0xdfff ? end + 1 : end;
+  }
+
+  // A run's sentences as { start, text }, a long one cut by longChunkEnd(). A
+  // chunk without Japanese is dropped.
   function chunksOf(text, isJapanese) {
     const chunks = [];
     let start = 0;
-    const cut = end => {
+    let index = 0;
+    while (index < text.length) {
+      let end = null;
+      if (SENTENCE_END.has(text[index])) end = index + 1;
+      else if (index + 1 - start >= MAX_CHUNK_LENGTH) end = longChunkEnd(text, start, index);
+      if (end === null) {
+        index += 1;
+        continue;
+      }
       const piece = text.slice(start, end);
       if (isJapanese(piece)) chunks.push({ start, text: piece });
       start = end;
-    };
-    for (let index = 0; index < text.length; index += 1) {
-      if (SENTENCE_END.has(text[index])) {
-        cut(index + 1);
-      } else if (index + 1 - start >= MAX_CHUNK_LENGTH) {
-        let end = index + 1;
-        for (let back = index; back > start + MAX_CHUNK_LENGTH / 2; back -= 1) {
-          if (CLAUSE_END.has(text[back])) {
-            end = back + 1;
-            break;
-          }
-        }
-        // Never between the halves of a surrogate pair.
-        if ((text.charCodeAt(end) & 0xfc00) === 0xdc00) end += 1;
-        cut(end);
-        index = end - 1;
-      }
+      index = end;
     }
-    if (start < text.length) cut(text.length);
+    const rest = text.slice(start);
+    if (rest && isJapanese(rest)) chunks.push({ start, text: rest });
     return chunks;
+  }
+
+  // A phrase that is one dictionary entry and also splits into words around
+  // a function word (今日は as 今日 + は). A compound of content words alone
+  // (学生 as 学 + 生) is a word of its own, as its card would be.
+  function alternativeApplies(span) {
+    const words = Array.isArray(span.alternative) ? span.alternative : [];
+    return words.some(word => word.functionWord) && words.some(word => !word.functionWord);
   }
 
   // A run's text, and the pieces mapping it onto the page: run text
@@ -306,21 +321,25 @@
       return null;
     }
 
+    function trackBlocks(node) {
+      for (const element of textBlocks(node)) track(element);
+    }
+
+    // Marks what a mutation changed; true when it removed nodes.
+    function noteMutation(record) {
+      const block = containingBlock(record.target);
+      if (block) block.dirty = true;
+      if (record.type === "characterData") trackBlocks(record.target);
+      for (const node of record.addedNodes) trackBlocks(node);
+      return record.removedNodes.length > 0;
+    }
+
     function onMutations(records) {
       let removed = false;
-      for (const record of records) {
-        const block = containingBlock(record.target);
-        if (block) block.dirty = true;
-        if (record.type === "characterData") {
-          for (const element of textBlocks(record.target)) track(element);
-        }
-        for (const node of record.addedNodes) {
-          for (const element of textBlocks(node)) track(element);
-        }
-        removed ||= record.removedNodes.length > 0;
-      }
+      for (const record of records) removed = noteMutation(record) || removed;
+      // A Map iterator stays valid while drop() deletes its current entry.
       if (removed) {
-        for (const block of [...blocks.values()]) {
+        for (const block of blocks.values()) {
           if (!block.element.isConnected) drop(block);
         }
       }
@@ -352,14 +371,6 @@
     function readingCandidates(span, text) {
       const surface = surfaceOf(span, text);
       return span.candidates.slice(1).filter(candidate => (candidate.reading || candidate.expression) === surface);
-    }
-
-    // A phrase that is one dictionary entry and also splits into words around
-    // a function word (今日は as 今日 + は). A compound of content words alone
-    // (学生 as 学 + 生) is a word of its own, as its card would be.
-    function alternativeApplies(span) {
-      const words = Array.isArray(span.alternative) ? span.alternative : [];
-      return words.some(word => word.functionWord) && words.some(word => !word.functionWord);
     }
 
     function spanHeadwords(span, text) {
@@ -497,8 +508,8 @@
       }
       // A transparent root shows the canvas, which is dark only for a page
       // whose colour scheme allows dark.
-      const schemes = window.getComputedStyle(document.documentElement).colorScheme.split(/\s+/u);
-      const dark = schemes.includes("dark") && (!schemes.includes("light") || colorScheme.matches);
+      const schemes = new Set(window.getComputedStyle(document.documentElement).colorScheme.split(/\s+/u));
+      const dark = schemes.has("dark") && (!schemes.has("light") || colorScheme.matches);
       return dark ? [18, 18, 18] : [255, 255, 255];
     }
 
@@ -529,23 +540,49 @@
 
     // ------------------------------------------------------------- requests
 
-    async function requestSegments() {
-      if (segmenting || retryTimer !== null || available !== true) return;
-      const batch = new Set();
-      let length = 0;
-      collect: for (const block of visible) {
+    function* wantedRuns() {
+      for (const block of visible) {
         for (const run of block.runs) {
-          if (!run.wanted) continue;
-          for (const chunk of run.chunks) {
-            if (segments.has(chunk.text) || batch.has(chunk.text)) continue;
-            batch.add(chunk.text);
-            length += chunk.text.length;
-            if (batch.size >= MAX_BATCH_CHUNKS || length >= MAX_BATCH_LENGTH) break collect;
-          }
+          if (run.wanted) yield run;
         }
       }
-      if (batch.size === 0) return;
-      const texts = [...batch];
+    }
+
+    // The next texts to segment, in viewport order, within the batch limits.
+    function nextBatch() {
+      const batch = new Set();
+      let length = 0;
+      for (const run of wantedRuns()) {
+        for (const chunk of run.chunks) {
+          if (segments.has(chunk.text) || batch.has(chunk.text)) continue;
+          batch.add(chunk.text);
+          length += chunk.text.length;
+          if (batch.size >= MAX_BATCH_CHUNKS || length >= MAX_BATCH_LENGTH) return [...batch];
+        }
+      }
+      return [...batch];
+    }
+
+    function adoptSegments(texts, reply) {
+      // A dictionary commit between two chunks leaves a batch of two
+      // generations, so a changed generation discards every segmentation.
+      if (generation !== null && reply.generation !== generation) {
+        segments.clear();
+        repaintAll();
+      } else {
+        for (const { id, spans } of reply.segments) {
+          segments.delete(texts[id]);
+          segments.set(texts[id], spans);
+        }
+        while (segments.size > SEGMENT_CACHE_ENTRIES) segments.delete(segments.keys().next().value);
+      }
+      generation = reply.generation;
+    }
+
+    async function requestSegments() {
+      if (segmenting || retryTimer !== null || available !== true) return;
+      const texts = nextBatch();
+      if (texts.length === 0) return;
       const epoch = segmentEpoch;
       segmenting = true;
       let reply;
@@ -565,39 +602,41 @@
       if (epoch !== segmentEpoch) return;
       segmenting = false;
       failures = 0;
-      // A dictionary commit between two chunks leaves a batch of two
-      // generations, so a changed generation discards every segmentation.
-      if (generation !== null && reply.generation !== generation) {
-        segments.clear();
-        repaintAll();
-      } else {
-        for (const { id, spans } of reply.segments) {
-          segments.delete(texts[id]);
-          segments.set(texts[id], spans);
-        }
-        while (segments.size > SEGMENT_CACHE_ENTRIES) segments.delete(segments.keys().next().value);
-      }
-      generation = reply.generation;
+      adoptSegments(texts, reply);
       schedule();
+    }
+
+    // The headwords of the words shown: all of them for a refresh, else
+    // those not read yet.
+    function headwordsToAsk(refresh) {
+      const headwords = new Set();
+      for (const run of wantedRuns()) {
+        for (const headword of runHeadwords(run)) {
+          if (refresh || !statuses.has(headword)) headwords.add(headword);
+        }
+      }
+      return [...headwords];
+    }
+
+    function adoptStatuses(asked, reply, refresh) {
+      if (refresh) {
+        statuses.clear();
+        statusesEpoch = statusEpoch;
+        repaintAll();
+      }
+      available = Array.isArray(reply.statuses);
+      statusRevision = reply.revision;
+      if (available) asked.forEach((headword, index) => statuses.set(headword, reply.statuses[index]));
     }
 
     async function requestStatuses() {
       if (statusing || retryTimer !== null) return;
       const refresh = statusesEpoch !== statusEpoch;
       if (!refresh && available !== true) return;
-      const headwords = new Set();
-      for (const block of visible) {
-        for (const run of block.runs) {
-          if (!run.wanted) continue;
-          for (const headword of runHeadwords(run)) {
-            if (refresh || !statuses.has(headword)) headwords.add(headword);
-          }
-        }
-      }
+      const asked = headwordsToAsk(refresh);
       // A refresh with nothing segmented yet still learns whether the index
       // can answer, before any text is segmented.
-      if (headwords.size === 0 && !refresh) return;
-      const asked = [...headwords];
+      if (asked.length === 0 && !refresh) return;
       const token = session;
       const epoch = statusEpoch;
       statusing = true;
@@ -615,50 +654,47 @@
       statusing = false;
       failures = 0;
       // A newer change signal makes this answer stale, and the words are asked again.
-      if (epoch === statusEpoch) {
-        if (refresh) {
-          statuses.clear();
-          statusesEpoch = epoch;
-          repaintAll();
-        }
-        available = Array.isArray(reply.statuses);
-        statusRevision = reply.revision;
-        if (available) asked.forEach((headword, index) => statuses.set(headword, reply.statuses[index]));
-      }
+      if (epoch === statusEpoch) adoptStatuses(asked, reply, refresh);
       schedule();
+    }
+
+    function refreshBlock(block) {
+      if (block.dirty) rebuild(block);
+      if (block.recheck) recheck(block);
+      for (const run of block.runs) {
+        if (!run.wanted) continue;
+        if (run.text === null) build(run);
+        if (run.stale) paint(run);
+      }
     }
 
     function pump() {
       scheduled = false;
       if (!running) return;
-      for (const block of visible) {
-        if (block.dirty) rebuild(block);
-        if (block.recheck) recheck(block);
-        for (const run of block.runs) {
-          if (run.wanted && run.text === null) build(run);
-          if (run.wanted && run.stale) paint(run);
-        }
-      }
+      for (const block of visible) refreshBlock(block);
       // A frame with no Japanese text near its viewport, such as most
       // advertising frames, sends nothing and builds no popup host.
       if (visible.size === 0) return;
-      if (!preparing) prepareColors();
+      if (!preparing) void prepareColors();
       void requestStatuses();
       void requestSegments();
     }
 
     // The marks wait for the popup host, whose palette colours them.
-    function prepareColors() {
+    async function prepareColors() {
       preparing = true;
       const token = session;
-      Promise.resolve().then(prepare).catch(() => {}).then(() => {
-        if (token !== session) return;
-        ready = true;
-        // Added after the popup's own listener, which applies an automatic palette first.
-        colorScheme.addEventListener("change", refreshColors);
-        refreshColors();
-        register();
-      });
+      try {
+        await prepare();
+      } catch {
+        // Without the popup host the marks take the default palette's colours.
+      }
+      if (token !== session) return;
+      ready = true;
+      // Added after the popup's own listener, which applies an automatic palette first.
+      colorScheme.addEventListener("change", refreshColors);
+      refreshColors();
+      register();
     }
 
     // ------------------------------------------------------------ lifecycle
