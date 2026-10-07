@@ -70,8 +70,12 @@ file the globals of the context it runs in: classic content and page scripts wit
 the `HD*` namespaces they publish, page main-world scripts, the service-worker
 module, dedicated workers, extension pages and the modules they share, Node, and
 the browser suites' Puppeteer callbacks. Content scripts come from the manifest;
-add a module that only the service worker or a worker loads to that context's
-list in the config.
+the config lists the rest by hand. Add a classic page script or a registered
+isolated-world script to `CLASSIC` and a new `HD*` namespace to `published`. Add
+a main-world script to `MAIN_WORLD` and a module that only the service worker or
+a worker loads to `SERVICE_WORKER` or `WORKERS`: a file missing from those three
+lists gets extension-page globals, so a `chrome` or `document` it cannot use
+still passes.
 
 Direct `node test/...` commands below still support the external cache and
 `HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a
