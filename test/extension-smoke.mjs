@@ -816,9 +816,11 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const sharingProtocol = readFileSync(resolve(EXTENSION, "sharing-protocol.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const sharingHost = readFileSync(resolve(EXTENSION, "sharing-host.js"), "utf8")
+    .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const sharingClient = readFileSync(resolve(EXTENSION, "sharing-client.js"), "utf8")
+    .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const glossary = readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8");
@@ -827,9 +829,11 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
+  const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
     .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
     .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
@@ -883,7 +887,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n`
       + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -5173,9 +5177,11 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ readDictionaryArchiveIdentity \} from "\.\/dictionary-import-archive\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "")
     .replace(/import \{ captureDebugLog \} from "\.\/debug-log\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
     // The module awaits its entry point; a classic script has no top-level await.
     .replace(/^await start\(\);$/mu, "start();");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
+  const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   window.TextEncoder ??= TextEncoder;
   for (const dialog of window.document.querySelectorAll("dialog")) {
     dialog.showModal ??= function showModal() {
@@ -5190,7 +5196,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${errorText}\n${settings}`,
   );
 }
 
@@ -11593,8 +11599,9 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
-    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol)\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol|error-text)\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
@@ -11606,7 +11613,7 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${errorText}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen

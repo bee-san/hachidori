@@ -7,6 +7,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { describeError } from "./error-text.js";
 import {
   LINKED_ANKI_UNSUPPORTED, PROTOCOL_VERSION, SHARING_CAPABILITIES, assertLinkedAnkiFrame, parseHostFrame,
 } from "./sharing-protocol.js";
@@ -15,10 +16,6 @@ export const SHARING_LOCAL_STATE_KEY = "sharingLocalState";
 export const NOT_REACHABLE = "The linked Hachidori is not reachable.";
 export const OUTCOME_UNKNOWN = "The linked Hachidori may have completed this change. Check its state before trying again.";
 const CONNECT_WAIT_MS = 5000;
-
-function describe(error) {
-  return error instanceof Error ? error.message || String(error) : String(error);
-}
 
 function requestFailure(failure, entry) {
   if (!entry.sent || !entry.mutation) return failure;
@@ -83,7 +80,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
     try {
       frame = parseHostFrame(text);
     } catch (parseError) {
-      console.warn("hachidori: dropped a sharing frame:", describe(parseError));
+      console.warn("hachidori: dropped a sharing frame:", describeError(parseError));
       return;
     }
     switch (frame.kind) {
@@ -133,7 +130,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
     try {
       next = new WebSocket(address);
     } catch (connectError) {
-      error = describe(connectError);
+      error = describeError(connectError);
       settleWaiting(new Error(NOT_REACHABLE));
       scheduleRetry();
       return;
@@ -228,7 +225,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
       try {
         probeSocket = new WebSocket(target);
       } catch (connectError) {
-        reject(new Error(`No shared Hachidori answered at ${target}: ${describe(connectError)}`));
+        reject(new Error(`No shared Hachidori answered at ${target}: ${describeError(connectError)}`));
         return;
       }
       let settled = false;

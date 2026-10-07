@@ -20,7 +20,7 @@ function worker(stored) {
     normaliseOptions: globalThis.HDReaderOptions.normaliseOptions,
     WORKER_HANDLERS: { hd_options_write: async message => { writes.push(message); return { options: {} }; } },
     serialiseStorage: job => { const run = job(); queued.push(run); return run; },
-    describe: String,
+    describeErrorOrJson: String,
     console: { error: (...args) => errors.push(args.join(" ")) },
     chrome: {
       commands: { onCommand: { addListener(listener) { onCommand = listener; } } },

@@ -1,5 +1,6 @@
 import { extensionApi as chrome } from "./browser-api.js";
 import { captureWorkerDebugLog, readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { describeErrorOrJson } from "./error-text.js";
 import { ensureChromeOffscreen } from "./chrome-offscreen.js";
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
@@ -583,12 +584,6 @@ const NOT_LISTENING = /Receiving end does not exist|Could not establish connecti
 // relay gets no reply, so the next attempt verifies the document again.
 let offscreenAnswered = false;
 let latestAudioOperation = null;
-function describe(error) {
-  if (error instanceof Error) {
-    return error.message || String(error);
-  }
-  return typeof error === "string" ? error : JSON.stringify(error);
-}
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -629,7 +624,7 @@ async function relay(message, stillCurrent = null) {
       }
       failure = new Error("offscreen document sent no reply");
     } catch (error) {
-      if (!NOT_LISTENING.test(describe(error))) {
+      if (!NOT_LISTENING.test(describeErrorOrJson(error))) {
         throw error;
       }
       failure = error;
@@ -846,7 +841,7 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
   try {
     await chrome.storage.local.remove(LEGACY_DICTIONARIES_KEY);
   } catch (error) {
-    console.warn("hoshidicts: could not remove legacy dictionary rows:", describe(error));
+    console.warn("hoshidicts: could not remove legacy dictionary rows:", describeErrorOrJson(error));
   }
 }
 
@@ -934,14 +929,14 @@ async function commitAutomaticBackupStore(current, next) {
       readback = (await chrome.storage.local.get(AUTOMATIC_BACKUPS_KEY))[AUTOMATIC_BACKUPS_KEY];
     } catch (readError) {
       throw new Error(
-        `automatic backup metadata commit outcome is unknown: ${describe(commitError)}; `
-        + `readback failed: ${describe(readError)}`,
+        `automatic backup metadata commit outcome is unknown: ${describeErrorOrJson(commitError)}; `
+        + `readback failed: ${describeErrorOrJson(readError)}`,
       );
     }
     if (sameJsonValue(readback, next)) return;
     if (sameJsonValue(readback, current)) throw commitError;
     throw new Error(
-      `automatic backup metadata commit outcome is unknown: ${describe(commitError)}; `
+      `automatic backup metadata commit outcome is unknown: ${describeErrorOrJson(commitError)}; `
       + "readback did not match the previous or replacement index",
     );
   }
@@ -986,7 +981,7 @@ async function reconcileAutomaticBackups() {
     try {
       await assertBackupSnapshot(payload.snapshot);
     } catch (error) {
-      throw new AutomaticBackupNotReadyError(describe(error), { cause: error });
+      throw new AutomaticBackupNotReadyError(describeErrorOrJson(error), { cause: error });
     }
     const createdAt = Date.now();
     if (!automaticBackupDue(store, createdAt)) {
@@ -1018,7 +1013,7 @@ async function reconcileAutomaticBackups() {
       });
       if (!cleanup?.ok) throw new Error(cleanup?.error || "the dictionary engine refused automatic backup cleanup");
     } catch (error) {
-      console.warn("hachidori: automatic backup metadata was committed; deferred generation cleanup failed:", describe(error));
+      console.warn("hachidori: automatic backup metadata was committed; deferred generation cleanup failed:", describeErrorOrJson(error));
     }
   }
   return result;
@@ -1039,9 +1034,9 @@ function queueAutomaticBackup(force = false) {
     const retryAt = Date.now() + AUTOMATIC_BACKUP_RETRY_MS;
     try { await scheduleAutomaticBackup(retryAt); }
     catch (alarmError) {
-      console.warn("hachidori: could not schedule an automatic backup retry:", describe(alarmError));
+      console.warn("hachidori: could not schedule an automatic backup retry:", describeErrorOrJson(alarmError));
     }
-    console.warn("hachidori: could not create the automatic backup:", describe(error));
+    console.warn("hachidori: could not create the automatic backup:", describeErrorOrJson(error));
   }).finally(() => {
     if (automaticBackupRun === run) automaticBackupRun = null;
   });
@@ -1075,7 +1070,7 @@ const WORKER_HANDLERS = {
     try {
       await removeObsoleteLookupStatsRows();
     } catch (error) {
-      console.warn("hachidori: lookup counts were reset; the replaced rows could not be removed yet:", describe(error));
+      console.warn("hachidori: lookup counts were reset; the replaced rows could not be removed yet:", describeErrorOrJson(error));
     }
     return { descriptor };
   },
@@ -1250,7 +1245,7 @@ const WORKER_HANDLERS = {
       return {
         ok: false,
         protected: true,
-        error: describe(error),
+        error: describeErrorOrJson(error),
         state: current,
       };
     }
@@ -1539,7 +1534,7 @@ async function writeLinkedOverlayOptions(message) {
 // Ordinary absence is a connection that never answered; an answer that refused
 // or failed keeps its specific reason.
 function ankiSetupFailure(error) {
-  const detail = describe(error);
+  const detail = describeErrorOrJson(error);
   const unavailable = /Open Anki with the AnkiConnect add-on|timed out/iu.test(detail);
   return { status: unavailable ? "unavailable" : "needs-attention", detail, model: null, deck: null };
 }
@@ -1784,7 +1779,7 @@ async function checkManagedCandidate(candidate, checkedAt) {
   try {
     update = await remoteUpdate(candidate);
   } catch (error) {
-    const message = describe(error);
+    const message = describeErrorOrJson(error);
     return {
       update: null,
       available: null,
@@ -1841,7 +1836,7 @@ async function installCheckedCandidate(candidate, checked, checkedAt) {
     await installManagedCandidate(candidate, checked.update, checkedAt);
     return { id: candidate.id, status: "updated" };
   } catch (error) {
-    let message = describe(error);
+    let message = describeErrorOrJson(error);
     const failed = await updateDictionaryCheck(
       candidate.fingerprint,
       { ...checked.available, error: message },
@@ -1946,7 +1941,7 @@ function reconcileUpdateAlarm() {
 
 function refreshUpdateAlarm() {
   return reconcileUpdateAlarm().catch(error => {
-    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describeErrorOrJson(error));
   });
 }
 
@@ -2094,7 +2089,7 @@ function checkedOptionsResult(message, result) {
 }
 
 function failureReply(message, error) {
-  const description = describe(error);
+  const description = describeErrorOrJson(error);
   recordDebugFailure(globalThis, message?.type ?? "hd_unknown", description);
   let errorCode = typeof error?.code === "string" ? error.code : null;
   if (errorCode === null && description === NOT_REACHABLE) {
@@ -2183,7 +2178,7 @@ async function captureSenderViewport(sender, options) {
         captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
       }
     } catch (error) {
-      if (preview || attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
+      if (preview || attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describeErrorOrJson(error))) throw error;
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
       continue;
     }
@@ -2442,7 +2437,7 @@ async function forwardLinkedAnki(message) {
     }
     return reply;
   } catch (error) {
-    if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
+    if (message.type === "hd_anki_status" && describeErrorOrJson(error) === LINKED_ANKI_UNSUPPORTED) {
       return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
     }
     return failureReply(message, error);
@@ -2512,7 +2507,7 @@ async function submitToLinkedAnki(message) {
     if (!sent) return failureReply(message, error);
     return workerReply(message, {
       state: "uncertain",
-      error: `The write could not be confirmed. Check Anki before trying again. ${describe(error)}`,
+      error: `The write could not be confirmed. Check Anki before trying again. ${describeErrorOrJson(error)}`,
     });
   }
   const states = ["added", "updated", "duplicate", "invalid", "uncertain"];
@@ -2531,9 +2526,9 @@ async function submitToLinkedAnki(message) {
     } catch (error) {
       if (["added", "updated"].includes(settlement)) {
         reply = { ...reply, warnings: [...(Array.isArray(reply.warnings) ? reply.warnings : []),
-          `Media cleanup: ${describe(error)}`] };
+          `Media cleanup: ${describeErrorOrJson(error)}`] };
       } else {
-        console.warn("hachidori: could not discard rejected linked media:", describe(error));
+        console.warn("hachidori: could not discard rejected linked media:", describeErrorOrJson(error));
       }
     }
   }
@@ -2644,7 +2639,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (message.type === "cancel" && owned.has(message.token)) {
       void cancelOwnedBackupPreparation(message.token).then(
         () => owned.delete(message.token),
-        error => console.warn("hachidori: could not discard an abandoned backup preparation:", describe(error)),
+        error => console.warn("hachidori: could not discard an abandoned backup preparation:", describeErrorOrJson(error)),
       );
     }
   });
@@ -2653,7 +2648,7 @@ chrome.runtime.onConnect.addListener((port) => {
     owned.clear();
     for (const token of abandoned) {
       void cancelOwnedBackupPreparation(token).catch(
-        error => console.warn("hachidori: could not discard an abandoned backup preparation:", describe(error)),
+        error => console.warn("hachidori: could not discard an abandoned backup preparation:", describeErrorOrJson(error)),
       );
     }
   });
@@ -2835,7 +2830,7 @@ async function handleWorkerRequest(message, sender) {
     async (result) => {
       if (type === "hd_backup_cas" && result.ok !== false) {
         try { await reconcileUpdateAlarm(); }
-        catch (error) { result.warning = `Restored successfully; update alarm could not be refreshed: ${describe(error)}`; }
+        catch (error) { result.warning = `Restored successfully; update alarm could not be refreshed: ${describeErrorOrJson(error)}`; }
       }
       return workerReply(message, result);
     },
@@ -3051,7 +3046,7 @@ const SHARING_HANDLERS = {
       sharingEpoch += 1;
       getSharingClient().unlink();
       await chrome.storage.local.remove(OVERLAY_MODE ? [SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY] : SHARING_LOCAL_STATE_KEY).catch(error => {
-        console.warn("hachidori: could not clean up the restored sharing snapshot:", describe(error));
+        console.warn("hachidori: could not clean up the restored sharing snapshot:", describeErrorOrJson(error));
       });
     });
     await reconcileUpdateAlarm();
@@ -3143,7 +3138,7 @@ function handleAlarm(alarm) {
     return;
   }
   void sharingReady.then(() => (sharingLinked ? undefined : queueManagedUpdate({ install: true, dueOnly: true }))).catch((error) => {
-    console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
+    console.error("hoshidicts: scheduled dictionary updates failed:", describeErrorOrJson(error));
   });
 }
 
@@ -3152,7 +3147,7 @@ if (alarms === chrome.alarms) chrome.alarms.onAlarm.addListener(handleAlarm);
 chrome.downloads?.onChanged?.addListener(delta => {
   if (!delta.state || delta.state.current === "in_progress") return;
   getBackupDownloads().changed(delta.id).catch(error => {
-    console.warn("hoshidicts: could not release a finished backup download:", describe(error));
+    console.warn("hoshidicts: could not release a finished backup download:", describeErrorOrJson(error));
   });
 });
 
@@ -3160,10 +3155,10 @@ function warmUp() {
   void reconcileAnkiIndex();
   void queueAutomaticBackup(true);
   ensureOffscreen().catch((error) => {
-    console.error("hoshidicts: could not create the offscreen document:", describe(error));
+    console.error("hoshidicts: could not create the offscreen document:", describeErrorOrJson(error));
   });
   reconcileUpdateAlarm().catch((error) => {
-    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describeErrorOrJson(error));
   });
 }
 
@@ -3222,7 +3217,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   warmUp();
   if (details.reason !== "install" || OVERLAY_MODE) return;
   beginFirstRunSetup().catch((error) => {
-    console.error("hoshidicts: could not start first-run setup:", describe(error));
+    console.error("hoshidicts: could not start first-run setup:", describeErrorOrJson(error));
   });
 });
 chrome.runtime.onStartup.addListener(warmUp);
@@ -3252,11 +3247,11 @@ const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "
 chrome.commands?.onCommand?.addListener((command, tab) => {
   if (command === "openSettingsPage") {
     chrome.runtime.openOptionsPage().catch((error) => {
-      console.error("hachidori: could not open settings:", describe(error));
+      console.error("hachidori: could not open settings:", describeErrorOrJson(error));
     });
   } else if (command === "toggleTextScanning") {
     toggleLookupsFromCommand().catch((error) => {
-      console.error("hachidori: could not toggle lookups:", describe(error));
+      console.error("hachidori: could not toggle lookups:", describeErrorOrJson(error));
     });
   } else if (READER_COMMANDS.has(command) && tab?.id !== undefined) {
     // Pages Chrome keeps content scripts out of, such as chrome://, have no reader.
@@ -3272,7 +3267,7 @@ async function initialiseUpdateAlarm() {
   try {
     await reconcileUpdateAlarm();
   } catch (error) {
-    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describeErrorOrJson(error));
   }
 }
 
@@ -3292,12 +3287,12 @@ async function initialiseAutomaticBackupAlarm() {
     if (Date.now() >= nextAt) await queueAutomaticBackup(true);
     else await scheduleAutomaticBackup(nextAt);
   } catch (error) {
-    console.warn("hachidori: could not reconcile the automatic backup alarm:", describe(error));
+    console.warn("hachidori: could not reconcile the automatic backup alarm:", describeErrorOrJson(error));
   }
 }
 
 sharingReady = initialiseSharing().catch((error) => {
-  console.error("hachidori: could not restore sharing:", describe(error));
+  console.error("hachidori: could not restore sharing:", describeErrorOrJson(error));
 });
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
@@ -3310,7 +3305,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
 
 if (OVERLAY_MODE) {
   seedOverlayModeOptions().catch((error) => {
-    console.error("hoshidicts: could not seed overlay mode options:", describe(error));
+    console.error("hoshidicts: could not seed overlay mode options:", describeErrorOrJson(error));
   });
 }
 void reconcileAnkiIndex(); // NOSONAR -- initialize without delaying worker activation.
