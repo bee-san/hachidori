@@ -332,7 +332,6 @@
     function place(value) {
       const frames = value.numberOfFrames;
       const rate = value.sampleRate;
-      if (!(frames > 0) || !(rate > 0)) return;
       const arrival = now();
       const rawMs = value.timestamp / 1000;
       domainMs ??= clockDomain(window.performance.timeOrigin, rawMs, arrival, frames * 1000 / rate);
@@ -341,7 +340,8 @@
       try {
         keep(value, frames, rate, wall, arrival);
       } finally {
-        for (const waiter of [...waiters]) if (deliveredWall >= waiter.untilWall) settle(waiter);
+        // Deleting the entry being visited does not disturb a Set's iteration.
+        for (const waiter of waiters) if (deliveredWall >= waiter.untilWall) settle(waiter);
       }
     }
 
@@ -381,7 +381,7 @@
 
     // The pieces of media time `from`–`to`, if they leave no gap longer than GAP_MS.
     function span(movieId, from, to) {
-      if (ring === null || typeof movieId !== "string" || !(to > from)) return null;
+      if (ring === null || typeof movieId !== "string" || to <= from) return null;
       const length = Math.round((to - from) * sampleRate / 1000);
       const parts = pieces(movieId, from, length);
       const gap = GAP_MS * sampleRate / 1000;
@@ -409,7 +409,7 @@
         capacity = 0;
         sampleRate = 0;
         written = 0;
-        for (const waiter of [...waiters]) settle(waiter);
+        for (const waiter of waiters) settle(waiter);
         if (!joined && context !== null) {
           const unused = context;
           context = null;
