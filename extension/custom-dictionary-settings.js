@@ -9,10 +9,10 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import {
-  adoptDictionaryState, backingUp, committing, element, importing, installingRecommended, removing,
-  renderChangedDictionaryState, send, setControlsDisabled, setSectionStatus, stringValue,
-  syncNavigationStatus, WORKER_TARGET,
+  adoptDictionaryState, backingUp, committing, element, removing, renderChangedDictionaryState, send,
+  setControlsDisabled, setSectionStatus, stringValue, syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
+import { importing, installingRecommended } from "./import-settings.js";
 import { updating } from "./update-settings.js";
 
 let customDocument = null;

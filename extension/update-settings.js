@@ -12,11 +12,11 @@ import {
   normaliseUpdateSettings,
 } from "./managed-dictionary-source.js";
 import {
-  backingUp, commitDictionaries, committing, dictionaries, dictionaryLabel, element, importing,
-  installingRecommended, lastEngineStatus, OPTIONS_SAVE_DELAY_MS, reloadDictionaries, removing,
-  scheduleStatusPoll, send, setControlsDisabled, setSectionStatus, setStatus, syncNavigationStatus,
-  UPDATE_TARGET, updateDictionary,
+  backingUp, commitDictionaries, committing, dictionaries, dictionaryLabel, element, lastEngineStatus,
+  OPTIONS_SAVE_DELAY_MS, reloadDictionaries, removing, scheduleStatusPoll, send, setControlsDisabled,
+  setSectionStatus, setStatus, syncNavigationStatus, UPDATE_TARGET, updateDictionary,
 } from "./settings.js";
+import { importing, installingRecommended } from "./import-settings.js";
 import { customSaving } from "./custom-dictionary-settings.js";
 
 let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
