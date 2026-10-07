@@ -29,7 +29,9 @@ const SECRET_KEY = /api.?key|token|secret|password/iu;
 // forces within 20 seconds, so the bound leaves room for it.
 export const DEBUG_PROBE_TIMEOUT_MS = 30_000;
 
-function describeError(error) {
+// The text a failed probe leaves in the report: an Error's message as it is,
+// even when empty, unlike error-text.js's describeError.
+function probeFailureText(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -43,7 +45,7 @@ async function probe(read, timeoutMs = DEBUG_PROBE_TIMEOUT_MS) {
       }),
     ]);
   } catch (error) {
-    return { error: describeError(error) };
+    return { error: probeFailureText(error) };
   } finally {
     clearTimeout(timer);
   }
@@ -188,7 +190,7 @@ export async function listOpfs(directory, path = "") {
         bytes += file.size;
         entries.push({ path: child, kind: "file", bytes: file.size, lastModified: new Date(file.lastModified).toISOString() });
       } catch (error) {
-        entries.push({ path: child, kind: "file", error: describeError(error) });
+        entries.push({ path: child, kind: "file", error: probeFailureText(error) });
       }
     }
   }
