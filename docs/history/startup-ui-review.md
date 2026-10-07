@@ -44,16 +44,16 @@ capture driver and state/overflow report for the controlled captures remain in t
 
 | Progressive Anki choices | Automatic real lookup |
 | --- | --- |
-| ![Configured card followed by the selected deck](assets/startup-auto-anki.png) | ![Practice page showing its automatic lookup](assets/startup-auto-lookup.png) |
+| ![Configured card followed by the selected deck](../assets/startup-auto-anki.png) | ![Practice page showing its automatic lookup](../assets/startup-auto-lookup.png) |
 
-![Empty library with Add dictionaries and Finish setup](assets/startup-refined-empty.png)
+![Empty library with Add dictionaries and Finish setup](../assets/startup-refined-empty.png)
 
 | Optional Anki check, narrow dark | Disabled dictionaries, narrow dark |
 | --- | --- |
-| ![Optional Anki check with immediate Continue now](assets/startup-refined-anki-pending-dark.png) | ![Disabled dictionaries with a prominent Open Library action](assets/startup-refined-disabled-dark.png) |
+| ![Optional Anki check with immediate Continue now](../assets/startup-refined-anki-pending-dark.png) | ![Disabled dictionaries with a prominent Open Library action](../assets/startup-refined-disabled-dark.png) |
 
-[Full-width failure status at 500px](assets/startup-refined-partial-500.png) and
-[the retained working practice scene](assets/startup-refined-practice.png).
+[Full-width failure status at 500px](../assets/startup-refined-partial-500.png) and
+[the retained working practice scene](../assets/startup-refined-practice.png).
 
 A simplification pass consolidated readiness headings, recovery text and the
 probe precondition in `practiceReadiness`, retained the existing setup CAS and
@@ -122,8 +122,8 @@ continuation controls.
 
 | View | Before | After |
 | --- | --- | --- |
-| Desktop, light | ![Overlapping JMnedict error before the change](assets/startup-review-before-failure-desktop-light.png) | ![Wrapped error below the dictionary name after the change](assets/startup-review-after-failure-desktop-light.png) |
-| Narrow, dark | ![Previous stacked setup steps and failure state](assets/startup-review-before-failure-narrow-dark.png) | ![Compact setup steps and readable failure recovery](assets/startup-review-after-failure-narrow-dark.png) |
+| Desktop, light | ![Overlapping JMnedict error before the change](../assets/startup-review-before-failure-desktop-light.png) | ![Wrapped error below the dictionary name after the change](../assets/startup-review-after-failure-desktop-light.png) |
+| Narrow, dark | ![Previous stacked setup steps and failure state](../assets/startup-review-before-failure-narrow-dark.png) | ![Compact setup steps and readable failure recovery](../assets/startup-review-after-failure-narrow-dark.png) |
 
 ## Practice and optional saved pages
 
@@ -136,10 +136,10 @@ the appropriate Settings recovery section.
 
 | View | Before | After |
 | --- | --- | --- |
-| Desktop, light | ![Previous final screen in the light palette](assets/startup-review-before-practice-desktop-light.png) | ![Practice and saved-page prompt in the light palette](assets/startup-review-after-practice-desktop-light.png) |
-| Desktop, dark | ![Previous final screen in the dark palette](assets/startup-review-before-practice-desktop-dark.png) | ![Practice and saved-page prompt in the dark palette](assets/startup-review-after-practice-desktop-dark.png) |
-| Narrow, light | ![Previous final screen at narrow width in light mode](assets/startup-review-before-practice-narrow-light.png) | ![Wrapped Japanese passage and optional controls at narrow width in light mode](assets/startup-review-after-practice-narrow-light.png) |
-| Narrow, dark | ![Previous final screen at narrow width in dark mode](assets/startup-review-before-practice-narrow-dark.png) | ![Wrapped Japanese passage and optional controls at narrow width in dark mode](assets/startup-review-after-practice-narrow-dark.png) |
+| Desktop, light | ![Previous final screen in the light palette](../assets/startup-review-before-practice-desktop-light.png) | ![Practice and saved-page prompt in the light palette](../assets/startup-review-after-practice-desktop-light.png) |
+| Desktop, dark | ![Previous final screen in the dark palette](../assets/startup-review-before-practice-desktop-dark.png) | ![Practice and saved-page prompt in the dark palette](../assets/startup-review-after-practice-desktop-dark.png) |
+| Narrow, light | ![Previous final screen at narrow width in light mode](../assets/startup-review-before-practice-narrow-light.png) | ![Wrapped Japanese passage and optional controls at narrow width in light mode](../assets/startup-review-after-practice-narrow-light.png) |
+| Narrow, dark | ![Previous final screen at narrow width in dark mode](../assets/startup-review-before-practice-narrow-dark.png) | ![Wrapped Japanese passage and optional controls at narrow width in dark mode](../assets/startup-review-after-practice-narrow-dark.png) |
 
 These comparison images render the actual packaged page DOM and CSS in Chrome,
 with controlled storage, dictionary progress and Anki outcomes. Their background
@@ -150,7 +150,7 @@ The capture driver and complete state matrix remain in ignored
 and failure captures use `test/tmp/merge-pr75/capture-artwork.mjs` and
 `capture-failure.mjs` in the integration checkout. Production-path checks are
 documented in
-[the test guide](../test/README.md#chrome-e2emjs).
+[the test guide](../../test/README.md#chrome-e2emjs).
 
 A partial dictionary can answer a passage word while lacking **辞書**. In that
 case the scene and ordinary reader stay available, but the unanswered shortcut
@@ -159,14 +159,14 @@ the same 360 × 900 controlled setup with only **蝉** answering the probe;
 `test/tmp/merge-pr75/capture-partial.mjs` reported no console errors or horizontal
 overflow. The actual page and CSS were captured without editing the image.
 
-![A partial dictionary retains the practice scene without an unanswered lookup button](assets/startup-practice-partial.png)
+![A partial dictionary retains the practice scene without an unanswered lookup button](../assets/startup-practice-partial.png)
 
 The separate real-Chrome run imports the catalogue fixtures through the normal
 WASM engine. Pressing Enter on **Look up 辞書** returns their actual glossary
 content in the ordinary popup; pointer lookup is checked too. This viewport
 capture shows the result anchored above the selected passage:
 
-![Actual installed-fixture lookup on the practice scene](assets/startup-practice-lookup.png)
+![Actual installed-fixture lookup on the practice scene](../assets/startup-practice-lookup.png)
 
 The shared Settings tokens give the dim, success and error text on the inset
 surface contrast ratios of at least **5.67:1** in light mode and **6.77:1** in
@@ -182,7 +182,7 @@ covered by the full Chrome test. This refreshed narrow screenshot uses
 controlled startup state with access disabled and the details shortcut already
 opened:
 
-![Saved-page instructions and reload recovery at narrow width](assets/startup-file-access-recovery.png)
+![Saved-page instructions and reload recovery at narrow width](../assets/startup-file-access-recovery.png)
 
 ## Targeted progress-update measurements
 
@@ -244,8 +244,8 @@ They exclude Chrome, messaging IPC, native dictionary lookup, paint and reader
 loading. The raw samples remain in `test/tmp/merge-pr75/probe-timing.json`.
 
 The scene uses the project owner's supplied 1672 × 941 PNG and the shared
-visual novel styles introduced by #79. [Asset provenance](../extension/assets/ATTRIBUTION.md)
-and the [ownership record](asset-rights.md) retain the original filename,
+visual novel styles introduced by #79. [Asset provenance](../../extension/assets/ATTRIBUTION.md)
+and the [ownership record](../asset-rights.md) retain the original filename,
 authorization and SHA-256. The earlier practice-only asset is removed; the
 runtime and current screenshots use the same supplied artwork as Design.
 The long paragraph has its own readable dialogue surface and fits the scene
