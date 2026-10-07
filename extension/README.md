@@ -210,9 +210,11 @@ the service worker and both engine runtimes run the same code.
   closed. Stored values are revisioned and written only by the service
   worker; a page edits them by compare-and-set. The offscreen document never
   touches `chrome.storage` itself.
-- `message-types.js` lists every `hd_*` type. Call sites still write the
-  names themselves; `test/message-types.test.mjs` fails when code names a
-  type the list lacks, or the list keeps one nothing uses.
+- `message-types.js` lists every `hd_*` type the code spells out; a reply
+  named at run time after its request (`hd_lookup_result`) is not listed.
+  Call sites still write the names themselves;
+  `test/message-types.test.mjs` fails when code names a type the list lacks,
+  or the list keeps one nothing uses.
 - Nothing here is generated except `vendor/`. There is no bundler,
   transpiler or minifier: what is committed is what ships.
 
