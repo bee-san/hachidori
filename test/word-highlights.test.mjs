@@ -221,6 +221,28 @@ test("arriving lines reuse cached segmentation and a status change moves marks w
   assert.equal(page.observed.has(line), false);
 });
 
+test("a change signal re-reads the words shown even after new words were read at its revision", async t => {
+  const page = fixture(t, `<p id="first">猫がいる</p>`, { lexicon: VERBS });
+  page.start();
+  page.show(page.document.getElementById("first"));
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫", "いる"] });
+  // 猫 is added to Anki, and a line that arrives meanwhile has its words read
+  // at the new revision before the worker's signal reaches this frame.
+  page.state.statuses = { 猫: "learning" };
+  page.state.revision = 2;
+  const line = page.document.createElement("p");
+  line.textContent = "漢字を読む";
+  page.document.body.append(line);
+  await settle();
+  page.show(line);
+  await settle();
+  assert.deepEqual(page.statusRequests().at(-1), ["漢字", "読む"]);
+  page.highlighter.statusChanged(2);
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["いる", "漢字", "読む"], "hd-word-learning": ["猫"] });
+});
+
 test("only text near the viewport keeps ranges, inside one long block and in blocks that leave it", async t => {
   const page = fixture(t, `<p id="novel">${Array.from({ length: 40 }, () => "猫がいる").join("<br>")}</p><p id="other">猫</p>`,
     { lexicon: VERBS });

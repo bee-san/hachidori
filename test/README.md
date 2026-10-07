@@ -349,8 +349,9 @@ words take their first result's status around a ruby reading, a kana word a
 reading candidate's card, and a phrase around a function word its words'
 cards, while a content-word compound keeps its own and function words stay
 unmarked. A repeated line reuses its cached segmentation, a status change moves
-marks without segmenting again, a revision already read asks nothing, and a
-removed line takes its marks with it. Inside one long block of `<br>`-separated
+marks without segmenting again, a revision already read asks nothing, a signal
+still re-reads every word shown when only a later line's words were read at its
+revision, and a removed line takes its marks with it. Inside one long block of `<br>`-separated
 lines, with a fake layout, only the lines within a viewport of the visible area
 keep ranges as it scrolls, and a block leaving the viewport keeps none. A reply
 from another engine generation is
