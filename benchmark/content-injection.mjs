@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { summarizeValues } from './lib.mjs';
-import { directoryContentSha256, hostSnapshot, sha256File } from './system.mjs';
+import { chromeProcesses, cpuDelta, directoryContentSha256, hostSnapshot, pageRendererMemory,
+  sha256File } from './system.mjs';
 
 const root = resolve(process.env.HACHIDORI_BENCH_REPO ?? import.meta.dirname, process.env.HACHIDORI_BENCH_REPO ? '.' : '..');
 const output = process.argv[2] && resolve(process.argv[2]);
@@ -90,74 +91,6 @@ function prepare(directory, variant) {
   }
   writeFileSync(resolve(extension, 'manifest.json'), JSON.stringify(copy, null, 2));
   return extension;
-}
-
-// Linux /proc: every Chrome process, its kind and per-thread CPU time (ns).
-function chromeProcesses(browserPid) {
-  const parents = new Map();
-  for (const name of readdirSync('/proc')) {
-    if (!/^\d+$/.test(name)) continue;
-    try {
-      const stat = readFileSync(`/proc/${name}/stat`, 'utf8');
-      parents.set(Number(name), Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]));
-    } catch {
-      // A process can exit between listing /proc and reading it.
-    }
-  }
-  const ids = new Set([browserPid]);
-  for (let size = 0; size !== ids.size;) {
-    size = ids.size;
-    for (const [pid, parent] of parents) if (ids.has(parent)) ids.add(pid);
-  }
-  const rows = new Map();
-  for (const pid of ids) {
-    try {
-      // Chrome rewrites its process title, so the arguments may be space-separated.
-      const args = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split(/[\0 ]/);
-      const type = args.find(arg => arg.startsWith('--type='))?.slice(7) ?? 'browser';
-      const kind = type !== 'renderer' ? type : args.includes('--extension-process') ? 'extension' : 'page';
-      let mainNs = 0, allNs = 0;
-      for (const tid of readdirSync(`/proc/${pid}/task`)) {
-        const ns = Number(readFileSync(`/proc/${pid}/task/${tid}/schedstat`, 'utf8').split(' ')[0]);
-        allNs += ns;
-        if (Number(tid) === pid) mainNs = ns;
-      }
-      rows.set(pid, { kind, mainNs, allNs });
-    } catch {
-      // As above.
-    }
-  }
-  return rows;
-}
-
-function cpuDelta(before, after) {
-  const delta = {};
-  for (const [pid, row] of after) {
-    const base = before.get(pid) ?? { mainNs: 0, allNs: 0 };
-    const kind = delta[row.kind] ??= { processes: 0, mainMs: 0, allMs: 0 };
-    kind.processes += 1;
-    kind.mainMs += (row.mainNs - base.mainNs) / 1e6;
-    kind.allMs += (row.allNs - base.allNs) / 1e6;
-  }
-  return delta;
-}
-
-function pageRendererMemory(processes) {
-  const total = { processes: 0, rssKiB: 0, pssKiB: 0, ussKiB: 0 };
-  for (const [pid, row] of processes) {
-    if (row.kind !== 'page') continue;
-    try {
-      const rollup = readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8');
-      const field = name => Number(rollup.match(new RegExp(`^${name}:\\s+(\\d+) kB$`, 'm'))?.[1] ?? 0);
-      total.processes += 1;
-      total.rssKiB += field('Rss');
-      total.pssKiB += field('Pss');
-      total.ussKiB += field('Private_Clean') + field('Private_Dirty');
-    } catch {
-      // As above.
-    }
-  }
-  return total;
 }
 
 // A plain page, then 20 same-site iframes (one renderer process) or 20

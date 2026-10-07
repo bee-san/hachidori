@@ -19,15 +19,16 @@ const chrome = readonly(["chrome"]);
 // scripts loaded after it.
 const published = readonly([
   "HDAnki", "HDAudio", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
-  "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixSubtitles", "HDPopup", "HDReaderOptions",
-  "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights", "HDWordStatusOverrides",
+  "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
+  "HDReaderOptions", "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
+  "HDWordStatusOverrides",
 ]);
 
 // Classic scripts sharing their world's global object: the manifest's content
-// scripts, the two netflix.js registers while Netflix mining is on, and the
-// classic <script> files of extension pages.
+// scripts, the three netflix.js registers beside them while Netflix mining is
+// on, and the classic <script> files of extension pages.
 const CLASSIC = [
-  ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-content.js",
+  ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
   "design-preview.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without

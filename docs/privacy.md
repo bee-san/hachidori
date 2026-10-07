@@ -163,18 +163,23 @@ sent by the host to its configured AnkiConnect server.
 Settings → Advanced → Experimental features → **Netflix mining** is off by
 default. While it is on, Hachidori reads the Japanese subtitle files that
 Netflix's own player requests on `https://www.netflix.com/watch/…` pages, in
-that page, and keeps their text and timing only in the page's memory. When you
-add a note from a Netflix subtitle and a field maps `{sentence-audio}` or
-`{gif}`, Hachidori replays that one line and records the tab while it plays:
-its audio, and for `{gif}` also its video frames. The recording exists only in
-the memory of a hidden Hachidori frame in that tab until it is cut to the line
-and encoded, as a WAV for `{sentence-audio}` and a short looping GIF for
-`{gif}`, which are sent to your configured AnkiConnect server with the note.
-Audio that no field maps is discarded, and nothing is recorded at any other
-time. Where no GIF can be made, a `{gif}` field gets the ordinary page
-screenshot instead. Still pictures are otherwise taken only by the
-ordinary page screenshot above. A browser linked to another Hachidori does not
-record Netflix lines.
+that page, and keeps their text and timing only in the page's memory. Once
+Chrome lets the page play sound through Web Audio (after you click or press a
+key on it), the video's sound plays through Hachidori, which keeps the last 30
+seconds you heard at normal speed in the page's memory, overwriting older audio
+as it goes. Nothing of it leaves the page unless you add a note: then a field
+mapping `{sentence-audio}` gets that line cut from it, playing on or replaying
+the line first if you had not heard all of it. When a field maps `{gif}`, or
+before the sound goes through Hachidori, Hachidori replays that one line and
+records the tab while it plays: its audio, and for `{gif}` also its video
+frames. That recording exists only in the memory of a hidden Hachidori frame in
+that tab until it is cut to the line and encoded. The line is sent as a WAV for
+`{sentence-audio}` and a short looping GIF for `{gif}` to your configured
+AnkiConnect server with the note. Audio that no field maps is discarded, and
+turning the switch off frees the kept audio and keeps no more. Where no GIF can
+be made, a `{gif}` field gets the ordinary page screenshot instead. Still
+pictures are otherwise taken only by the ordinary page screenshot above. A
+browser linked to another Hachidori does not record Netflix lines.
 
 ## Backups, retention and deletion
 

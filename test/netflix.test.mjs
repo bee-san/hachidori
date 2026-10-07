@@ -38,7 +38,8 @@ test("the flag registers the main-world hook and the reader's scripts for Netfli
     { id: "hachidori-netflix-page", matches: ["https://www.netflix.com/*"], js: ["netflix-page.js"],
       runAt: "document_start", allFrames: false, world: "MAIN" },
     { id: "hachidori-netflix-content", matches: ["https://www.netflix.com/*"],
-      js: ["netflix-subtitles.js", "netflix-content.js"], runAt: "document_start", allFrames: false, world: "ISOLATED" },
+      js: ["netflix-subtitles.js", "netflix-audio.js", "netflix-content.js"], runAt: "document_start", allFrames: false,
+      world: "ISOLATED" },
   ]);
   const fake = scriptingFake();
   assert.deepEqual(await applyNetflixFlag(fake.browser, true), { supported: true, registered: true });

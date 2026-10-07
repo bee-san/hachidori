@@ -5,8 +5,8 @@ let application = Promise.resolve();
 // The scripts Settings → Advanced → Experimental features → Netflix mining
 // registers, top frame only because Netflix reaches /watch/ by navigating
 // inside one document: netflix-page.js in the page's main world, before
-// Netflix's own bundle, and the reader's netflix-subtitles.js and
-// netflix-content.js beside the manifest's content scripts.
+// Netflix's own bundle, and the reader's netflix-subtitles.js, netflix-audio.js
+// and netflix-content.js beside the manifest's content scripts.
 export const NETFLIX_SCRIPTS = Object.freeze([
   Object.freeze({
     id: "hachidori-netflix-page",
@@ -19,7 +19,7 @@ export const NETFLIX_SCRIPTS = Object.freeze([
   Object.freeze({
     id: "hachidori-netflix-content",
     matches: ["https://www.netflix.com/*"],
-    js: ["netflix-subtitles.js", "netflix-content.js"],
+    js: ["netflix-subtitles.js", "netflix-audio.js", "netflix-content.js"],
     runAt: "document_start",
     allFrames: false,
     world: "ISOLATED",

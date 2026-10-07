@@ -2185,13 +2185,14 @@ async function captureSenderViewport(sender, options) {
   }
 }
 
-// Experimental Netflix mining (docs/architecture.md, Netflix mining). While the
-// page replays one subtitle line, a hidden recorder frame in the Netflix tab
-// (netflix-recorder.html) records the tab: `start` lets that frame open its
-// tab-capture stream, `finish` has it cut the line out and gives its WAV and
-// GIF to the Anki worker to hold for the note, `cancel` stops it. The frame
-// connects on a port; the worker holds no media itself and only the WAV and
-// GIF reach Anki.
+// Experimental Netflix mining (docs/architecture.md, Netflix mining). The
+// player page cuts a line's sentence audio from what the viewer heard and
+// sends its WAV with `line_audio`. Otherwise, while the page replays the line,
+// a hidden recorder frame in the Netflix tab (netflix-recorder.html) records
+// the tab: `start` lets that frame open its tab-capture stream, `finish` has it
+// cut the line out and gives its WAV and GIF to the Anki worker to hold for
+// the note, `cancel` stops it. The frame connects on a port; the worker holds
+// no media itself and only the WAV and GIF reach Anki.
 const NETFLIX_TARGET = "hachidori-netflix";
 const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
@@ -2214,18 +2215,24 @@ function netflixCue(value) {
   return { movieId: value.movieId, startMs: value.startMs, endMs: value.endMs };
 }
 
-// The exact top-frame Netflix player document that asked, in the active tab.
-async function netflixRecordingTab(sender) {
+// The exact top-frame Netflix player document that asked.
+async function netflixPlayerTab(sender) {
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || typeof sender.tab?.id !== "number"
       || !sender.documentId) {
     throw new Error("Only the Netflix player page can record a line.");
   }
   const tab = await chrome.tabs.get(sender.tab.id);
-  if (tab?.active !== true) throw new Error("The Netflix tab is no longer the active tab.");
-  if (!NETFLIX_WATCH_URL.test(tab.url ?? "")) throw new Error("The tab is no longer playing a Netflix title.");
+  if (!NETFLIX_WATCH_URL.test(tab?.url ?? "")) throw new Error("The tab is no longer playing a Netflix title.");
   const document = await chrome.tabs.sendMessage(tab.id, { target: "hachidori-anki-content", type: "hd_anki_document" },
     { documentId: sender.documentId }).catch(() => null);
   if (document?.present !== true) throw new Error("The Netflix page changed before the line was recorded.");
+  return tab;
+}
+
+// Tab capture records the active tab's player page only.
+async function netflixRecordingTab(sender) {
+  const tab = await netflixPlayerTab(sender);
+  if (tab.active !== true) throw new Error("The Netflix tab is no longer the active tab.");
   return tab;
 }
 
@@ -2364,10 +2371,20 @@ function cancelNetflixRecording(message, sender) {
   return { cancelled: true };
 }
 
+// The WAV the player page cut from what the viewer heard (netflix-audio.js),
+// held for the note like a recorded one. Nothing was captured, so the page
+// need not be the active tab.
+async function holdNetflixLineAudio(message, sender) {
+  if (sharingLinked) return { unavailable: "linked" };
+  await netflixPlayerTab(sender);
+  return getAnkiMining().sentenceAudio(message.data, message.templateId);
+}
+
 const NETFLIX_REQUESTS = {
   hd_netflix_capture_start: startNetflixRecording,
   hd_netflix_capture_finish: finishNetflixRecording,
   hd_netflix_capture_cancel: cancelNetflixRecording,
+  hd_netflix_line_audio: holdNetflixLineAudio,
 };
 
 async function handleNetflixRequest(message, sender) {

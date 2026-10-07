@@ -814,9 +814,10 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
     const result = await during();
     concealed.push("restored");
     return result;
-  }, async (cue, templateId) => {
+  }, async (cue, templateId, { conceal }) => {
+    // The page conceals the reader with the function it is given, around tab capture.
     recordings.push([cue, templateId, calls.at(-1)]);
-    return recorded();
+    return conceal(() => recorded());
   });
   f.context.getRequest = result => ({ term: result.term, netflix });
   f.controller.update(configured);
@@ -910,8 +911,8 @@ test("a Netflix note records its line's GIF, and a missing or failed GIF falls b
     if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
     if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 21, warnings: [] }; }
     return decision;
-  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
-    recordings.push([cue, templateId, options]);
+  }, undefined, undefined, during => during(), async (cue, templateId, { audio, gif }) => {
+    recordings.push([cue, templateId, { audio, gif }]);
     return recorded();
   });
   f.context.getRequest = result => ({ term: result.term, netflix });
@@ -958,8 +959,8 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
     if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
     if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 31, warnings: [] }; }
     return decision;
-  }, undefined, undefined, during => during(), async (cue, templateId, options) => {
-    wantedMedia.push(options);
+  }, undefined, undefined, during => during(), async (cue, templateId, { audio, gif }) => {
+    wantedMedia.push({ audio, gif });
     return recorded();
   });
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
@@ -992,4 +993,25 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
   assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
   // Each recording asked for the GIF only, so no WAV is made or held.
   assert.deepEqual(wantedMedia, Array(3).fill({ audio: false, gif: true }));
+});
+
+test("sentence audio the page cut from what was heard goes in beside a GIF that has its own reason", async t => {
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 41, warnings: [] }; }
+    return { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true, gif: true };
+  }, undefined, undefined, during => during(), async () => ({ audio: { token: "line-a", filename: "a.wav" },
+    gif: { unavailable: "grant" } }));
+  f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.match(f.items[0].output.textContent, /^Added note 41\. GIF: Chrome has not let Hachidori record this tab yet\./u);
+  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
+  assert.equal(submittedRequest.gif, undefined);
 });

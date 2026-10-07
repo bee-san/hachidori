@@ -209,7 +209,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `local-audio-setup`, `local-file-access`, `startup-practice` | Local audio detection, the file-access prompt and the startup practice step's recovery. |
 | `lookup-stats` | Canonical lookup-count keys and their row updates. |
 | `message-types` | `extension/message-types.js` equals the `hd_*` names written in the code of every extension JavaScript file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as does a listed name nothing uses. It loads the list as a classic script and as an ES module, and checks that blanking comments leaves strings, templates and regular expressions alone. |
-| `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks and player replay, hover pause, the recorder's clock fit, WAV and GIF encoding, and the preview helper. Real playback, capture grants and protected video are not covered by any automated suite, nor are preview availability and image quality on a signed-in title (see [capture research](../docs/netflix-screenshot-research.md)). |
+| `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-audio`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks, the player replay and a line played on without a seek, hover pause, the recorder's clock fit, GIF encoding, and the preview helper. `netflix-audio` drives the line audio with a jsdom video on a scripted timeline and fake Web Audio: a line heard at 1× is cut to within 2 ms of its media time, the silence between a pause and its event is not heard, a line paused and played on mid-block joins its two hearings sample for sample, other speeds, seeks and a new episode end a stretch, only 30 s stay, nothing joins a graph Chrome has not let start, and the switch going off stops the copy and frees the buffer; also the shared silence test and WAV encoder. `netflix-content` cuts a heard line with no replay or recorder frame, plays on a line stopped partway, replays one not heard, and records a `{gif}` with tab capture concealed while its sentence audio comes from the line audio, which a failed GIF recording does not take with it. Real playback, capture grants and protected video are not covered by any automated suite, nor are preview availability and image quality on a signed-in title (see [capture research](../docs/netflix-screenshot-research.md)). |
 | `note-editor` | The personal-dictionary pencil on term, kanji and missing-word views. |
 | `pitch-accent-colors`, `pitch-badges` | Pitch colours at 3:1 in every palette; Yomitan's pronunciation markup in the popup. |
 | `popup-scale`, `popup-theme`, `progressive-results` | Popup scale, AUTO appearance and progressively appended results. |
@@ -278,7 +278,7 @@ wasm module or the fixtures are missing.
 | `sharing.mjs` | The sharing host and client in the worker and the transitions between them: hosting waits for dictionaries, linking, unlinking, Anki routes and duplicate-index suspension, link generations. |
 | `anki.mjs` | First-run Anki detection, the worker's Anki routes, word status and its overrides through the worker's storage queue, screenshots, linked Settings discovery. |
 | `backup.mjs` | The backup relay and lifecycle port, automatic backups in the worker, Settings retention. |
-| `netflix.mjs` | The recorder port is kept only for the recorder page in a watch tab while the switch is on. |
+| `netflix.mjs` | The recorder port is kept only for the recorder page in a watch tab while the switch is on, and a page's line audio is held only for its own top-frame watch document while the switch is on. |
 | `updates.mjs` | The managed-update schedule and checks in the worker, and Settings' update controls. |
 | `lookup-stats.mjs`, `audio.mjs` | Lookup statistics and the audio relay in the worker. |
 | `custom-dictionary.mjs` | The personal dictionary's storage ownership, its engine transaction through real WASM, and its Settings section. |
@@ -459,7 +459,9 @@ These run separately:
 - **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
   headless Chrome records tab audio as silence), mines a fixture page served at a
   Netflix watch address into a fake AnkiConnect: the WAV's beep within 125 ms,
-  a decodable looping GIF, restored playback, and hover pause.
+  from the replay that records a decodable looping GIF, from a line already
+  heard (no seek, player call or recorder frame) and from a line hover pause
+  stopped partway and played on; restored playback, and hover pause.
 - **`chrome-custom-buttons-templates.mjs`** needs an isolated real Anki with
   AnkiConnect on `HACHIDORI_ANKI_URL`; it creates only its `Hachidori I23` decks
   and note types and deletes only notes tagged `hachidori-i23-e2e`.

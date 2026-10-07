@@ -107,7 +107,11 @@ function animate(now) {
 requestAnimationFrame(animate);
 const video = document.querySelector("video");
 const native = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
-const evidence = window.__fixture = { seeks: [], calls: [], directWrites: 0, profiles: null };
+const evidence = window.__fixture = { seeks: [], calls: [], directWrites: 0, profiles: null, frames: 0 };
+// Every recorder frame the extension adds, which tab capture needs and the line audio does not.
+new MutationObserver(records => {
+  for (const record of records) for (const node of record.addedNodes) if (node.nodeName === "IFRAME") evidence.frames++;
+}).observe(document.documentElement, { childList: true, subtree: true });
 let seeking = false;
 Object.defineProperty(video, "currentTime", { configurable: true,
   get() { return native.get.call(this); },
@@ -240,6 +244,26 @@ try {
     if (!reply.ok) throw new Error(reply.error);
   }, `http://127.0.0.1:${anki.address().port}`, back);
   await mapBack("{sentence}<br>{sentence-audio}<br>{gif}");
+  // The switch, through the options queue. The open Netflix page keeps its
+  // scripts, which follow the switch once its reader has the new options. The
+  // worker applies the switch just after the write's reply; Settings is a
+  // background tab here, where Chrome pauses animation frames and slows
+  // timers, so the registered scripts are polled from Node.
+  async function setSwitch(enabled) {
+    await settings.evaluate(async on => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: options.revision, options: { experimental: { ...options.experimental, netflixMining: on } } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, enabled);
+    for (const deadline = Date.now() + 30_000; ;) {
+      const registered = await settings.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).length);
+      if (registered === (enabled ? 2 : 0)) break;
+      assert.ok(Date.now() < deadline, `the Netflix scripts follow the switch (${registered} registered)`);
+      await new Promise(done => setTimeout(done, 100));
+    }
+    await new Promise(done => setTimeout(done, 500));
+  }
 
   const tab = await browser.newPage();
   tab.setDefaultTimeout(60_000);
@@ -313,26 +337,35 @@ try {
     return { ...decoded, kib: bytes.length / 1024 };
   }
 
+  // The note's WAV must hold the cue with its pads, with the fixture's beep
+  // within 125 ms of its place.
+  function checkLineAudio(back, label) {
+    const filename = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.wav)\]/u.exec(back)?.[1];
+    assert.ok(filename, `${label}: the note references the line's WAV: ${back}`);
+    const clip = Buffer.from(media.get(filename), "base64");
+    assert.equal(clip.toString("ascii", 0, 4), "RIFF");
+    const rate = clip.readUInt32LE(24);
+    const count = clip.readUInt32LE(40) / 2;
+    let first = -1;
+    for (let index = 0; index < count; index++) {
+      if (Math.abs(clip.readInt16LE(44 + index * 2)) > 0x1000) { first = index; break; }
+    }
+    const expected = BEEP_MS - (CUE.startMs - PAD_MS);
+    const found = first * 1000 / rate;
+    console.log(`${label}: clip ${(count / rate).toFixed(3)} s at ${rate} Hz; beep at ${found.toFixed(1)} ms, expected ${expected} ms`);
+    assert.ok(first >= 0 && Math.abs(found - expected) <= 125, `${label}: the beep is within 125 ms (${found} vs ${expected})`);
+    assert.ok(Math.abs(count / rate * 1000 - (CUE.endMs - CUE.startMs + 2 * PAD_MS)) <= 50,
+      `${label}: the clip is the cue with its pads`);
+  }
+
+  // A line never heard at 1× ({gif} mapped): one replay records the GIF with
+  // tab capture, and the line audio keeps that replay's sound for the WAV.
   await addNote();
   assert.equal(notes.length, 1, "one note was added");
   const [note] = notes;
   if (!/\[sound:/u.test(note.fields.Back)) console.log("diagnostics:", JSON.stringify(await diagnose(tab)));
-  const filename = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.wav)\]/u.exec(note.fields.Back)?.[1];
-  assert.ok(filename, `the note references the line's WAV: ${note.fields.Back}`);
   assert.match(note.fields.Back, /^朝ごはんを<b>食べたかった<\/b>/u, "the sentence is the whole cue");
-  const clip = Buffer.from(media.get(filename), "base64");
-  assert.equal(clip.toString("ascii", 0, 4), "RIFF");
-  const rate = clip.readUInt32LE(24);
-  const count = clip.readUInt32LE(40) / 2;
-  let first = -1;
-  for (let index = 0; index < count; index++) {
-    if (Math.abs(clip.readInt16LE(44 + index * 2)) > 0x1000) { first = index; break; }
-  }
-  const expected = BEEP_MS - (CUE.startMs - PAD_MS);
-  const found = first * 1000 / rate;
-  console.log(`clip ${(count / rate).toFixed(3)} s at ${rate} Hz; beep at ${found.toFixed(1)} ms, expected ${expected} ms`);
-  assert.ok(first >= 0 && Math.abs(found - expected) <= 125, `the beep is within 125 ms (${found} vs ${expected})`);
-  assert.ok(Math.abs(count / rate * 1000 - (CUE.endMs - CUE.startMs + 2 * PAD_MS)) <= 50, "the clip is the cue with its pads");
+  checkLineAudio(note.fields.Back, "replayed for its GIF");
   // The {gif} field holds the line's animated GIF: Chrome decodes it into more
   // than one distinct frame, from the moving band the fixture painted while the
   // line played, looping forever and at most 480 px wide.
@@ -349,8 +382,10 @@ try {
   });
   assert.deepEqual(evidence.profiles, ["webvtt-lssdh-ios8", "heaac-2-dash", "playready-h264mpl30-dash"]);
   assert.equal(evidence.directWrites, 0, "nothing but Netflix's player wrote currentTime");
+  assert.equal(evidence.seeks.length, 3, `one replay, there and back: ${evidence.seeks}`);
   assert.equal(evidence.seeks[1], CUE.startMs - PAD_MS, "the replay seeks to the cue's padded start");
   assert.ok(Math.abs(evidence.seeks.at(-1) - 3500) < 50, `the replay returns to the viewer's position: ${evidence.seeks}`);
+  assert.equal(evidence.frames, 1, "one recorder frame, for the GIF");
   assert.equal(evidence.paused, true, "the paused video stays paused");
   assert.equal(evidence.rate, 1.25, "the viewer's speed is restored");
 
@@ -359,7 +394,8 @@ try {
   const away = [1150, 30];
   const onWord = [box.x + 12, box.y + box.height / 2];
   const playback = () => tab.evaluate(() => ({ paused: document.querySelector("video").paused,
-    calls: [...window.__fixture.calls], seeks: window.__fixture.seeks.length, directWrites: window.__fixture.directWrites }));
+    calls: [...window.__fixture.calls], seeks: window.__fixture.seeks.length, directWrites: window.__fixture.directWrites,
+    frames: window.__fixture.frames, mediaMs: document.querySelector("video").currentTime * 1000 }));
   async function playFrom(ms) {
     await tab.mouse.move(...away);
     await tab.evaluate(async from => {
@@ -421,6 +457,50 @@ try {
   await waitForCalls(start, 4, false, "leaving after mining plays the video on");
   assert.equal((await playback()).calls.at(-1), "play", "the video plays on after the recorder has stopped");
 
+  // Without {gif}, a line the viewer heard at 1× is cut from what was kept: no
+  // seek, no player call and no recorder frame. The earlier notes' replays
+  // played the whole line, so the switch is turned off and on first: off frees
+  // what the line audio kept. The line is paused just after its padded end,
+  // while the subtitle would still be matched to its cue.
+  await mapBack("{sentence}<br>{sentence-audio}");
+  await setSwitch(false);
+  await setSwitch(true);
+  start = await playFrom(1500);
+  await tab.waitForFunction(end => document.querySelector("video").currentTime * 1000 >= end, { timeout: 10_000 },
+    CUE.endMs + PAD_MS + 50);
+  await tab.evaluate(() => document.querySelector("video").pause());
+  start = await playback();
+  await addNote();
+  assert.equal(notes.length, 4, "a fourth note was added for a line already heard");
+  checkLineAudio(notes[3].fields.Back, "heard");
+  after = await playback();
+  assert.deepEqual(after.calls.slice(start.calls.length), [], "nothing replayed or played the line");
+  assert.equal(after.seeks, start.seeks, "nothing seeked");
+  assert.equal(after.frames, start.frames, "no recorder frame");
+  assert.ok(Math.abs(after.mediaMs - start.mediaMs) < 1, "the video stayed where the viewer left it");
+
+  // Hovered while it plays, the line stops partway: adding it plays the rest
+  // once, audibly and without seeking, and stops at its end. The line was
+  // just heard in full, so the line audio starts afresh again.
+  await setSwitch(false);
+  await setSwitch(true);
+  start = await playFrom(1700);
+  await tab.waitForFunction(() => document.querySelector("video").currentTime >= 1.9, { timeout: 10_000 });
+  await tab.mouse.move(...onWord);
+  await waitForCalls(start, 1, true, "hovering the playing line pauses it partway");
+  const pausedAt = (await playback()).mediaMs;
+  assert.ok(pausedAt < BEEP_MS, `paused before the beep (${pausedAt} ms), so the beep is in the part played on`);
+  await addNote();
+  assert.equal(notes.length, 5, "a fifth note was added for a line stopped partway");
+  checkLineAudio(notes[4].fields.Back, "played on");
+  after = await playback();
+  assert.deepEqual(after.calls.slice(start.calls.length), ["pause", "play", "pause"], "the rest of the line played once");
+  assert.equal(after.seeks, start.seeks, "nothing seeked");
+  assert.equal(after.frames, start.frames, "no recorder frame");
+  assert.ok(after.paused && after.mediaMs >= CUE.endMs + PAD_MS - 30, `it stopped at the line's end (${after.mediaMs} ms)`);
+  await tab.mouse.move(...away);
+  await waitForCalls(start, 4, false, "leaving plays the video on from the line's end");
+
   // A note whose only Netflix field is {gif}: the line is recorded for its GIF
   // alone, with no sentence audio. The paused video is placed inside the cue.
   await mapBack("{gif}");
@@ -430,21 +510,14 @@ try {
     document.querySelector("video").pause();
   }, CUE.startMs + 200);
   await addNote();
-  assert.equal(notes.length, 4, "a fourth note was added with only {gif} mapped");
-  const onlyGif = /^<img src="(hachidori-gif-[0-9a-f-]{36}\.gif)">$/u.exec(notes[3].fields.Back)?.[1];
-  assert.ok(onlyGif, `the {gif}-only note holds the line's GIF alone: ${notes[3].fields.Back}`);
+  assert.equal(notes.length, 6, "a sixth note was added with only {gif} mapped");
+  const onlyGif = /^<img src="(hachidori-gif-[0-9a-f-]{36}\.gif)">$/u.exec(notes[5].fields.Back)?.[1];
+  assert.ok(onlyGif, `the {gif}-only note holds the line's GIF alone: ${notes[5].fields.Back}`);
   const second = await decodeGif(onlyGif);
   assert.ok(second.frames > 1 && second.distinct > 1, `the {gif}-only GIF decodes into distinct frames: ${JSON.stringify(second)}`);
 
   // Switched off, the page that still has the scripts pauses nothing.
-  await settings.evaluate(async () => {
-    const { options } = await chrome.storage.local.get("options");
-    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { experimental: { ...options.experimental, netflixMining: false } } });
-    if (!reply.ok) throw new Error(reply.error);
-  });
-  await settings.waitForFunction(async () => (await chrome.scripting.getRegisteredContentScripts()).length === 0);
-  await new Promise(done => setTimeout(done, 500));
+  await setSwitch(false);
   start = await playFrom(CUE.startMs + 200);
   await tab.mouse.move(...onWord);
   await new Promise(done => setTimeout(done, 1500));
@@ -453,7 +526,7 @@ try {
   assert.equal(after.paused, false);
   assert.equal(after.directWrites, 0, "the hover pause wrote no currentTime either");
   passed = true;
-  console.log("Netflix mining fixture: 4 notes, line audio within 125 ms, a decoded looping GIF, a {gif}-only note, playback restored, hover pause and resume through the player, no play while recording — passed");
+  console.log("Netflix mining fixture: 6 notes, line audio within 125 ms replayed for a GIF, cut from what was heard and played on, a decoded looping GIF, a {gif}-only note, playback restored, hover pause and resume through the player, no play while recording — passed");
 } finally {
   await browser?.close();
   anki.close();

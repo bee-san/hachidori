@@ -2887,8 +2887,9 @@ added with its other fields and a warning.
 **Scripts.** While the flag is on, `netflix.js` registers two scripts for
 `https://www.netflix.com/*` at `document_start`, top frame only because Netflix
 reaches `/watch/<id>` by navigating inside one document: `netflix-page.js` in
-the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`
-with `netflix-content.js` beside the manifest's content scripts. The worker
+the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`,
+`netflix-audio.js` and `netflix-content.js` beside the manifest's content
+scripts. The worker
 applies the flag at startup and on every options change, serialised like the
 Google Docs flag; turning it off unregisters both. A Netflix tab that was open
 when the switch changed needs a reload. The reader and the worker also check
@@ -2973,8 +2974,64 @@ mining is off, like `{sentence-audio}`; a saved mapping stays valid and renders
 as the screenshot. Both markers and the preset note types are left otherwise
 unchanged.
 
-**Recording.** After the screenshot, the reader adds a hidden recorder frame,
-`netflix-recorder.html`, to the Netflix page (outside Netflix's app root) and
+**Line audio.** `netflix-content.js` cannot read the switch, so the content
+script calls `HDNetflix.setLineAudio` with it on every options change, as it
+does `setHoverPause`, and turns it off when the reader stops. While it is on,
+`netflix-audio.js` routes the watch page's `<video>` into a Web Audio graph
+(`createMediaElementSource`): on to the speakers as before, and as a mono copy
+(a `MediaStreamAudioDestinationNode` with one channel) to a
+`MediaStreamTrackProcessor` with a 100-block queue, since Chrome 152's default
+of 10 dropped half a second of a 600 ms main-thread stall. Web Audio receives
+the element's decoded sound, protected playback included where Chrome decrypts
+it in software; `captureStream()` refuses EME media outright. An element routed
+into a graph plays only through that graph until the page reloads, and Chrome
+lets a page start an `AudioContext` only after a click or key press in it, or
+once the site has high media engagement. So the video joins the graph only when
+the context is running: until then a capture-phase `pointerdown` or `keydown`
+listener resumes it, and the same listener restarts a context Chrome suspends
+later, with the switch off too, so the video is never left silent. Another
+graph that already has the element leaves it alone, and the tab-capture path
+below records its lines.
+
+The copy's blocks fill one `Float32Array` of 30 seconds at the context's rate,
+about 5.3 MB at 44.1 kHz, in the page's memory and nowhere else. Only playback
+at 1× is kept: a played stretch opens while the element plays at 1× with
+enough data, and closes on `pause`, `waiting`, `seeking`, `ended`, a speed
+change or a new `/watch/<id>`. Each stretch takes its media clock from the
+median of its first 64 blocks' estimates: the element's time when a block
+arrives, less the time since it was rendered and the frames before it.
+Contiguous blocks are placed by counting samples, because Chrome stamps one 10
+ms block in nine about 9 ms late. A stretch starts at the time the video stood
+at when it opened, and the block being rendered then is its first, so a line
+played on after a pause joins the part heard before it; Chrome 152 can have
+rendered up to one 2.9 ms render quantum by the time the `play` event is
+handled, which the cut leaves out, and about 2 ms more when it resamples the
+video's sound to the context's rate. A stretch ends at the latest media time
+seen while it played, or at the time the video stood when it paused or
+stalled, so the silence Chrome renders between a pause and its event is not
+counted as heard. Turning the switch off cancels the reader, stops the track,
+disconnects the copy and frees the buffer.
+
+On Add, `record` cuts the cue ± 250 ms from the buffer once it has the blocks
+rendered until then (at most 500 ms). A line heard at 1× is cut at once, with
+no seek, replay or recorder frame. When the video stands inside the padded cue
+and its start was heard, as when hover pause stops a line partway, the page
+plays the line on (`replay` with `playOn`: no seek, and no seek back; it pauses
+at the clip's end, keeping the paused state the reader asked for) and the
+buffer keeps the rest. Otherwise the page replays the line through the player,
+which the viewer now hears, and the clip is cut afterwards. A line not all
+heard at 1× in the end is `unheard`. A clip of exact zeros is reported as
+silent; otherwise its 16-bit mono WAV (base64, as extension messages are JSON)
+goes to the worker as `hd_netflix_line_audio`, which requires the switch and
+the top-frame watch document that asked, as `hd_netflix_capture_start` does but
+not the active tab, since nothing is captured, and holds it with the same
+`sentenceAudio` lifecycle as a recorded one. The reader stays visible: nothing
+is captured.
+
+**Recording.** For a `{gif}` field, and for sentence audio while the line audio
+is not running, the reader records the line with tab capture, after the
+screenshot. It adds a hidden recorder frame, `netflix-recorder.html`, to the
+Netflix page (outside Netflix's app root) and
 sends `hd_netflix_capture_start` with the cue. The worker requires the switch, a
 top-frame sender in the active tab at a `https://www.netflix.com/watch/` address
 whose exact document still answers `hd_anki_document`, and stops any earlier
@@ -3000,10 +3057,13 @@ stream's video track too and reads it with a second `MediaStreamTrackProcessor`:
 it draws each `VideoFrame` into an `OffscreenCanvas` at most 480 px wide, reads
 back its RGBA and closes the frame at once, keeping no more than ten frames a
 second by the frames' own timestamps and placing each on the same wall clock.
-When no field maps `{sentence-audio}`, the request sets `audio: false`: the frame
-still opens the audio track, which mutes the tab for the replay and tells it
-when the capture has caught up, but encodes no WAV and the worker holds none.
-Chrome mutes a captured tab, so the replay is silent. A recording nobody
+When no field maps `{sentence-audio}`, or the line audio records it, the request
+sets `audio: false`: the frame still opens the audio track, which mutes the tab
+for the replay and tells it when the capture has caught up, but encodes no WAV
+and the worker holds none. Chrome mutes a captured tab, so the replay is silent,
+but its sound reaches the line audio's graph before that mute, so the buffer
+keeps the line and the reader cuts its sentence audio from that once the
+recording is over. A recording nobody
 finishes stops itself a minute after the cue's length, and removing the frame
 or closing its port stops it at once.
 
@@ -3058,15 +3118,17 @@ popups share), and leaving both sends `resume`. A `play` or `seeking` event on
 the video outside a replay drops the resume, so the viewer's own play, pause
 (which follows a play) or seek wins; a new `/watch/<id>` and the switch going
 off also drop it and leave the video as it is. Nothing is paused or resumed
-while a line is recorded: the reader sends neither command from the recorder
-frame's creation to its removal, and the page ignores both while it replays.
-Chrome mutes the tab until the recorder stops, so the reader sends the replay
-`keepPaused`, and the page restores a video that was playing paused. The
+while a line is recorded: the reader sends neither command until the line is
+recorded, and the page ignores both while it replays or plays a line on.
+Chrome mutes the tab until a tab recorder stops, and a line played on stops at
+its end, so the reader sends the replay `keepPaused`, and the page restores a
+video that was playing paused. The
 reader then holds that pause like its own, whether it paused the video or the
-viewer had played it on, and resumes once the frame is gone and the pointer
+viewer had played it on, and resumes once the line is recorded and the pointer
 has left the line and the popup; a leave during the recording takes effect
 then. The page's seek back reports itself after its answer and is not taken
-for the viewer's.
+for the viewer's; a line played on has no seek back, so the viewer's next seek
+is the viewer's.
 
 **Warnings.** No timing (with its reason), no capture grant (click the toolbar
 button once on the tab, or add notes with the **Add the current popup entry to
@@ -3075,7 +3137,10 @@ warning on the added note, named for the media its fields map: `Sentence
 audio:`, `GIF:` or `Sentence audio and GIF:`. A silent recording (a muted video
 or protected playback; turning off Chrome's graphics acceleration can help) is a
 `Sentence audio:` warning, and a recording that made no GIF a `GIF:` one, while
-the field gets the screenshot. A browser linked to another Hachidori records
+the field gets the screenshot. When the line audio records the sentence audio
+and tab capture the GIF, each medium gets its own reason, and a line that did
+not play through at 1× is a `Sentence audio:` warning that says so. A browser
+linked to another Hachidori records
 nothing: its worker marks a Netflix request's linked preflight replies
 `netflixLinked`, and the reader adds a `Netflix mining:` warning instead, since
 the host never sees the cue and so cannot say which media are mapped. No DRM
@@ -3084,8 +3149,15 @@ workaround is attempted, and black pictures are not detected.
 Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their
 text and screenshot and say why they have no line audio or GIF. Nothing of
-Netflix is stored: timelines live in the page's memory, the recording in the
-recorder frame's, and only the final WAV and GIF reach Anki.
+Netflix is stored: timelines and the last 30 seconds of sound live in the
+page's memory, a tab recording in the recorder frame's, and only the final WAV
+and GIF reach Anki. Routing the video through Web Audio has costs: the picture
+can lead the sound by the context's output latency, because Chrome's Web Audio
+source tells the media clock of no output delay, which is small on wired output
+and can be noticeable over Bluetooth; and the video plays through Hachidori's
+graph until the page reloads, even with the switch off. The research behind
+this design, and how other tools get line audio, is in
+[netflix-audio-research.md](netflix-audio-research.md).
 
 ## Managed custom dictionary
 

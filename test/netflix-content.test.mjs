@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import "../extension/netflix-audio.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -17,14 +18,16 @@ const PAGE_EVENT = "hachidori-netflix-page";
 const COMMAND_EVENT = "hachidori-netflix-command";
 
 // Netflix's watch page as the reader sees it: the player's <video> and its
-// subtitle layer, one span per line (synthetic markup).
-function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこで", "何してんの？"], timeMs = 2000 } = {}) {
+// subtitle layer, one span per line (synthetic markup). `lineAudio` stands in
+// for what netflix-audio.js keeps of the video's sound.
+function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこで", "何してんの？"], timeMs = 2000, lineAudio } = {}) {
   const dom = new JSDOM(`<!doctype html><div class="watch-video"><video></video><div class="player-timedtext">
     <div class="player-timedtext-text-container">${lines.map(line => `<span>${line}</span>`).join("<br>")}</div></div></div>`,
   { url: `https://www.netflix.com/watch/${movieId}`, runScripts: "outside-only" });
   t.after(() => dom.window.close());
   const { window } = dom;
   window.chrome = { runtime: { getURL: path => `chrome-extension://hachidori/${path}` } };
+  if (lineAudio) window.HDNetflixAudio = { ...globalThis.HDNetflixAudio, createLineAudio: () => lineAudio };
   for (const source of SCRIPTS) window.eval(source);
   const video = window.document.querySelector("video");
   Object.defineProperty(video, "currentTime", { value: timeMs / 1000, writable: true });
@@ -44,6 +47,7 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
     miningFields: (...args) => plain(api.miningFields(...args)),
     record: async (...args) => plain(await api.record(...args)),
     setHoverPause: enabled => api.setHoverPause(enabled),
+    setLineAudio: enabled => api.setLineAudio(enabled),
   };
   return { window, netflix: reader, video, commands, post, subtitle, spans,
     navigate: path => window.history.pushState({}, "", path) };
@@ -233,6 +237,172 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   sent.length = 0;
   await f.netflix.record(cue, { send: gifSend, templateId: "default", audio: false, gif: true });
   assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, audio: false, gif: true }]);
+});
+
+// What netflix-audio.js keeps, scripted: `heard` answers each clip in turn
+// (null when the line was not all heard), `covers` whether a span was heard.
+function heardAudio({ ready = true, heard = [], covers = () => false } = {}) {
+  const calls = [];
+  const clips = [...heard];
+  return { calls, lineAudio: {
+    start() { calls.push("start"); },
+    stop() { calls.push("stop"); },
+    ready: () => ready,
+    covers(movieId, from, to) { calls.push(["covers", movieId, from, to]); return covers(from, to); },
+    clip(movieId, from, to) { calls.push(["clip", movieId, from, to]); return clips.length > 1 ? clips.shift() : clips[0] ?? null; },
+    async settled() { calls.push("settled"); },
+  } };
+}
+const LINE = { samples: Float32Array.from({ length: 480 }, (_, index) => Math.sin(index / 5)), sampleRate: 48_000 };
+
+// The page's side of a replay: answers each replay command as it comes.
+function answerReplays(f, answer = command => ({ kind: "replay", id: command.id, ok: true, anchors: [[5000, 950]] })) {
+  const replays = [];
+  f.window.document.addEventListener(COMMAND_EVENT, event => {
+    const command = JSON.parse(event.detail);
+    if (command.type !== "replay") return;
+    replays.push(command);
+    setTimeout(() => f.post(answer(command)), 0);
+  });
+  return replays;
+}
+
+test("a line the viewer heard is cut from what was kept: no replay, recorder frame or tab capture", async t => {
+  const audio = heardAudio({ heard: [LINE] });
+  const f = netflix(t, { lineAudio: audio.lineAudio });
+  const replays = answerReplays(f);
+  f.netflix.setLineAudio(true);
+  const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  const sent = [];
+  let concealed = 0;
+  const send = async (type, fields) => {
+    sent.push([type, fields]);
+    assert.equal(f.window.document.querySelectorAll("iframe").length, 0, "no recorder frame");
+    return { type: `${type}_result`, ok: true, token: "t1", filename: "hachidori-sentence-audio-a.wav" };
+  };
+  const conceal = during => { concealed += 1; return during(); };
+  assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default", conceal }),
+    { audio: { token: "t1", filename: "hachidori-sentence-audio-a.wav" } });
+  assert.deepEqual(audio.calls, ["start", "settled", ["clip", "81000001", 750, 3750]]);
+  assert.deepEqual(sent.map(([type, fields]) => [type, fields.templateId]), [["hd_netflix_line_audio", "default"]]);
+  assert.deepEqual(Buffer.from(sent[0][1].data, "base64"), Buffer.from(globalThis.HDNetflixAudio.encodeMonoWav(LINE.samples, 48_000)));
+  assert.equal(replays.length, 0);
+  assert.equal(concealed, 0, "nothing is captured, so the reader stays visible");
+
+  // Exact zeros are silence, and nothing is sent; a linked worker holds nothing.
+  const silent = heardAudio({ heard: [{ samples: new Float32Array(480), sampleRate: 48_000 }] });
+  const quiet = netflix(t, { lineAudio: silent.lineAudio });
+  quiet.netflix.setLineAudio(true);
+  sent.length = 0;
+  assert.deepEqual(await quiet.netflix.record(cue, { send, templateId: "default" }), { audio: { unavailable: "silent" } });
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await f.netflix.record(cue, { send: async () => ({ unavailable: "linked" }), templateId: "default" }),
+    { audio: { unavailable: "linked" } });
+  // The switch off stops it.
+  f.netflix.setLineAudio(false);
+  assert.equal(audio.calls.at(-1), "stop");
+});
+
+test("a line stopped partway plays on from where it stands, and one not heard replays audibly", async t => {
+  const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  const send = async () => ({ token: "t1", filename: "a.wav" });
+  // Paused at 2000 ms, inside the line, with its start heard: the page plays on.
+  const partway = heardAudio({ heard: [null, LINE], covers: (from, to) => from === 750 && to === 2000 });
+  const f = netflix(t, { lineAudio: partway.lineAudio });
+  const replays = answerReplays(f);
+  f.netflix.setLineAudio(true);
+  assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default" }), { audio: { token: "t1", filename: "a.wav" } });
+  assert.deepEqual(replays.map(({ id, ...command }) => command),
+    [{ type: "replay", startMs: 1000, endMs: 3500, padMs: 250, keepPaused: false, playOn: true }]);
+  assert.deepEqual(partway.calls.filter(call => call !== "settled"), ["start", ["clip", "81000001", 750, 3750],
+    ["covers", "81000001", 750, 2000], ["clip", "81000001", 750, 3750]]);
+
+  // The start not heard, or the video past the line: the whole line is replayed.
+  const unheard = heardAudio({ heard: [null, LINE] });
+  const g = netflix(t, { lineAudio: unheard.lineAudio });
+  const replayed = answerReplays(g);
+  g.netflix.setLineAudio(true);
+  await g.netflix.record(cue, { send, templateId: "default" });
+  const past = heardAudio({ heard: [null, LINE], covers: () => true });
+  const p = netflix(t, { lineAudio: past.lineAudio, timeMs: 9000 });
+  const pastReplays = answerReplays(p);
+  p.netflix.setLineAudio(true);
+  await p.netflix.record(cue, { send, templateId: "default" });
+  assert.deepEqual([...replayed, ...pastReplays].map(command => command.playOn), [undefined, undefined]);
+
+  // A replay Netflix's player refuses, or one that leaves the line unheard, says so.
+  const refused = heardAudio({ heard: [null] });
+  const h = netflix(t, { lineAudio: refused.lineAudio });
+  answerReplays(h, command => ({ kind: "replay", id: command.id, ok: false, error: "player" }));
+  h.netflix.setLineAudio(true);
+  assert.deepEqual(await h.netflix.record(cue, { send, templateId: "default" }), { audio: { unavailable: "player" } });
+  const missed = heardAudio({ heard: [null] });
+  const m = netflix(t, { lineAudio: missed.lineAudio });
+  answerReplays(m);
+  m.netflix.setLineAudio(true);
+  assert.deepEqual(await m.netflix.record(cue, { send, templateId: "default" }), { audio: { unavailable: "unheard" } });
+  // Not keeping the video's sound yet, the tab recorder records the line as before.
+  const idle = heardAudio({ ready: false });
+  const i = netflix(t, { lineAudio: idle.lineAudio });
+  idle.lineAudio.ready = () => false;
+  const types = [];
+  await i.netflix.record(cue, { send: async (type, fields) => { types.push([type, fields.audio]); return { unavailable: "grant" }; },
+    templateId: "default" });
+  assert.deepEqual(types, [["hd_netflix_capture_start", true]]);
+});
+
+test("a {gif} field records with tab capture concealed, and its sentence audio comes from what was kept", async t => {
+  const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  // The GIF's replay plays the line, so the line audio has it afterwards.
+  const audio = heardAudio({ heard: [null, LINE] });
+  const f = netflix(t, { lineAudio: audio.lineAudio });
+  const replays = answerReplays(f);
+  f.netflix.setLineAudio(true);
+  const sent = [];
+  let hidden = false;
+  const send = async (type, fields) => {
+    sent.push([type, fields.audio, fields.gif, hidden]);
+    if (type === "hd_netflix_capture_start") return { sessionId: "s1", padMs: 250 };
+    if (type === "hd_netflix_capture_finish") return { audio: null, gif: { token: "g1", filename: "hachidori-gif-a.gif" } };
+    return { token: "t1", filename: "a.wav" };
+  };
+  const conceal = async during => {
+    hidden = true;
+    try {
+      return await during();
+    } finally {
+      hidden = false;
+    }
+  };
+  assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default", gif: true, conceal }), {
+    gif: { token: "g1", filename: "hachidori-gif-a.gif" }, audio: { token: "t1", filename: "a.wav" } });
+  // Concealed for the tab capture only.
+  assert.deepEqual(sent, [["hd_netflix_capture_start", false, true, true], ["hd_netflix_capture_finish", undefined, undefined, true],
+    ["hd_netflix_line_audio", undefined, undefined, false]]);
+  assert.equal(replays.length, 1, "one replay records both");
+
+  // Without a capture grant the GIF says why, and the line still plays for its audio.
+  const ungranted = heardAudio({ heard: [null, null, LINE] });
+  const g = netflix(t, { lineAudio: ungranted.lineAudio });
+  const replayed = answerReplays(g);
+  g.netflix.setLineAudio(true);
+  const grantless = async type => (type === "hd_netflix_capture_start" ? { unavailable: "grant" } : { token: "t2", filename: "b.wav" });
+  assert.deepEqual(await g.netflix.record(cue, { send: grantless, templateId: "default", gif: true }), {
+    gif: { unavailable: "grant" }, audio: { token: "t2", filename: "b.wav" } });
+  assert.equal(replayed.length, 1);
+
+  // A GIF recording the worker refuses outright costs only the GIF.
+  const refused = heardAudio({ heard: [null, null, LINE] });
+  const h = netflix(t, { lineAudio: refused.lineAudio });
+  const played = answerReplays(h);
+  h.netflix.setLineAudio(true);
+  const inactive = async type => {
+    if (type === "hd_netflix_capture_start") throw new Error("The Netflix tab is no longer the active tab.");
+    return { token: "t3", filename: "c.wav" };
+  };
+  assert.deepEqual(await h.netflix.record(cue, { send: inactive, templateId: "default", gif: true }), {
+    gif: { unavailable: "The Netflix tab is no longer the active tab." }, audio: { token: "t3", filename: "c.wav" } });
+  assert.equal(played.length, 1, "the line still plays for its audio");
 });
 
 // Where the fixture's two lines are drawn: a gap between them, inside
@@ -441,6 +611,48 @@ test("mining leaves the video paused until the recording is over and the pointer
   assert.equal((await mine(f)).keepPaused, false);
   assert.equal(f.paused(), false);
   assert.equal(f.hoverCommands().length, 3);
+});
+
+test("a line played on stays paused at its end until the pointer leaves, and seeks nowhere", async t => {
+  const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  const send = async () => ({ token: "t1", filename: "a.wav" });
+  const playOn = f => f.window.document.addEventListener(COMMAND_EVENT, event => {
+    const command = JSON.parse(event.detail);
+    if (command.type !== "replay") return;
+    assert.equal(command.playOn, true);
+    // The page plays the rest of the line and pauses at its end.
+    setTimeout(() => {
+      f.media("play");
+      f.media("pause");
+      f.post({ kind: "replay", id: command.id, ok: true, anchors: [] });
+    }, 0);
+  });
+  const f = playing(t, { lineAudio: heardAudio({ heard: [null, LINE], covers: () => true }).lineAudio });
+  f.netflix.setHoverPause(true);
+  f.netflix.setLineAudio(true);
+  playOn(f);
+  f.move(ON_LINE);
+  f.popup(true);
+  await f.netflix.record(cue, { send, templateId: "default" });
+  assert.deepEqual(f.hoverCommands(), ["pause"], "nothing resumes while the popup is open");
+  f.move(AWAY);
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"], "leaving resumes the video at the line's end");
+  await settle();
+
+  // Nothing waits for a seek back: the viewer's next seek takes the pause over.
+  const g = playing(t, { lineAudio: heardAudio({ heard: [null, LINE], covers: () => true }).lineAudio });
+  g.netflix.setHoverPause(true);
+  g.netflix.setLineAudio(true);
+  playOn(g);
+  g.move(ON_LINE);
+  g.popup(true);
+  await g.netflix.record(cue, { send, templateId: "default" });
+  g.media("seeking");
+  g.media("seeked");
+  g.move(AWAY);
+  g.popup(false);
+  assert.deepEqual(g.hoverCommands(), ["pause"]);
 });
 
 test("a new /watch/ page drops the resume, and nothing pauses while the reader has hover pause off", async t => {

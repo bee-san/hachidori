@@ -221,11 +221,12 @@
     });
   }
 
-  // Each part of the viewer's state is restored on its own, whatever the others do.
-  function restore(player, video, saved) {
+  // Each part of the viewer's state is restored on its own, whatever the
+  // others do. A line played on stays where it ended.
+  function restore(player, video, saved, seekBack) {
     const steps = [
       () => pause(player, video),
-      () => Promise.resolve(player.seek(Math.max(0, Math.round(saved.positionMs)))).catch(() => {}),
+      () => { if (seekBack) Promise.resolve(player.seek(Math.max(0, Math.round(saved.positionMs)))).catch(() => {}); },
       () => { video.playbackRate = saved.rate; },
       () => { if (!saved.paused) play(player, video).catch(() => {}); },
     ];
@@ -274,8 +275,10 @@
   // reports (wall-clock ms, media ms) pairs, so the extension can find the
   // line in what it recorded. Position, paused state and speed are restored;
   // with `keepPaused`, the reader's hover pause resumes the video once the
-  // recording is over, so a playing video is restored paused.
-  async function replay({ id, startMs, endMs, padMs, keepPaused }) {
+  // recording is over, so a playing video is restored paused. With `playOn`
+  // it plays from where the video stands, without seeking, and stays at the
+  // clip's end: the reader has heard the rest of the line already.
+  async function replay({ id, startMs, endMs, padMs, keepPaused, playOn }) {
     const player = netflixPlayer();
     const video = mainVideo();
     if (player === null || video === null || replaying) {
@@ -290,15 +293,17 @@
     let reply;
     try {
       video.playbackRate = 1;
-      const landed = await seek(player, video, from);
-      if (landed > from + 50 && from > 0) await seek(player, video, from - PREROLL_MS);
+      if (playOn !== true) {
+        const landed = await seek(player, video, from);
+        if (landed > from + 50 && from > 0) await seek(player, video, from - PREROLL_MS);
+      }
       await play(player, video);
       const anchors = await sample(video, to, wallClock() + (to - from) + REPLAY_SLACK_MS);
       reply = { kind: "replay", id, ok: true, anchors };
     } catch (error) {
       reply = { kind: "replay", id, ok: false, error: error?.code ?? "replay" };
     } finally {
-      restore(player, video, saved);
+      restore(player, video, saved, playOn !== true);
       replaying = false;
     }
     post(reply);
