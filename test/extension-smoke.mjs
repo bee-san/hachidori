@@ -790,6 +790,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     + readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
+  const wordStatusOverrides = readFileSync(resolve(EXTENSION, "word-status-overrides.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -840,6 +841,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
+    .replace(/import "\.\/word-status-overrides\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
@@ -879,7 +881,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${chromeOffscreen}\n${debugLog}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n`
       + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1781,7 +1783,8 @@ async function sharingHostStage() {
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
       && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "hoshidicts-api-v1", "linked-import-v1"])
-      && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
+      && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options",
+        "wordStatusOverrides"])
       && hello.snapshot.options === null,
     JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
 
@@ -2285,7 +2288,7 @@ async function sharingClientStage() {
       && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
       && linkWaitedForLocalAnki && localStatusReply.available === true
       && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
-        customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats })
+        customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats, wordStatusOverrides: null })
       && JSON.stringify(storage.raw.get("dictionaryState")) === JSON.stringify(hostSnapshot.dictionaryState)
       && JSON.stringify(storage.raw.get("options")) === JSON.stringify(hostSnapshot.options)
       && JSON.stringify(storage.raw.get("lookupStats")) === JSON.stringify(hostSnapshot.lookupStats)
@@ -2624,6 +2627,7 @@ async function sharingTransitionStage() {
       } : {}) },
       customDictionarySource: { schemaVersion: 1, revision: 4, semanticRevision, text },
       dictionaryUpdates: null, lookupStats: null,
+      wordStatusOverrides: { revision: 2, known: ["猫"], ignored: ["さん"] },
     };
     const automaticBackups = {
       schemaVersion: 1,
@@ -2678,6 +2682,7 @@ async function sharingTransitionStage() {
         lookupMode: "activationSticky", sourceHighlightEnabled: true, popupWidthPx: 1000, popupTheme: "light",
       } : {}) }, customDictionarySource: null,
       dictionaryUpdates: { revision: 5, schedule: "off", lastCheckedAt: null }, lookupStats: null,
+      wordStatusOverrides: { revision: 1, known: ["犬"], ignored: [] },
     } };
     async function finishLinks(requests) {
       let replies;
@@ -2717,9 +2722,12 @@ async function sharingTransitionStage() {
     f.local.options = structuredClone(f.storage.raw.get("options"));
     const links = await f.finishLinks([first, second]);
     const kept = structuredClone(f.storage.raw.get("sharingLocalState"));
+    const mirroredOverrides = structuredClone(f.storage.raw.get("wordStatusOverrides"));
     check("concurrent Links keep the original personal state including edits made while the probe waits",
       edit.ok && links.every(reply => reply.ok) && f.sockets.length === 2
-        && JSON.stringify(kept) === JSON.stringify(f.local), JSON.stringify({ links, kept, local: f.local, sockets: f.sockets.length }));
+        && JSON.stringify(kept) === JSON.stringify(f.local)
+        && JSON.stringify(mirroredOverrides) === JSON.stringify(f.hello.snapshot.wordStatusOverrides),
+      JSON.stringify({ links, kept, local: f.local, mirroredOverrides, sockets: f.sockets.length }));
     const keptSocket = f.sockets.at(-1);
     const requestsBeforeOldAnki = keptSocket.requests().length;
     const oldAnki = await f.send("hd_anki_status", {}, "hachidori-anki");
@@ -2771,6 +2779,8 @@ async function sharingTransitionStage() {
         && restored.customDictionarySource?.text === f.local.customDictionarySource.text
         && restored.dictionaryState?.dictionaries[0].id === CUSTOM_DICTIONARY_ID
         && restored.options?.showLookupCounts === false && restored.options?.revision > 10
+        // The kept words come back, at a revision above the mirror's.
+        && JSON.stringify(restored.wordStatusOverrides) === JSON.stringify({ ...f.local.wordStatusOverrides, revision: 3 })
         && !f.storage.raw.has("sharingLocalState") && !f.storage.raw.has("dictionaryUpdates")
         && JSON.stringify(Object.fromEntries(f.storage.raw)) === JSON.stringify(restored), JSON.stringify({ unlinks, restored }));
   } finally { f.dispose(); }
@@ -3880,21 +3890,49 @@ async function ankiBackgroundStage() {
     JSON.stringify({ enabledIndex, disabledIndex, optionsCommits }));
 }
 
+// The word status stages' workers run beside an offscreen engine that already
+// exists, so they create none; the returned function restores the bookkeeping
+// so the later single-creation checks measure their own run.
+function existingOffscreenStage() {
+  FakeSharingSocket.instances.length = 0;
+  const offscreenBefore = { ...offscreenState };
+  Object.assign(offscreenState, { created: 0, exists: true, concurrent: 0, peakConcurrent: 0 });
+  return () => Object.assign(offscreenState, offscreenBefore);
+}
+
+async function settleSharing(predicate) {
+  for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+  }
+}
+
+// The worker on `storage` shares itself once it has a dictionary; a linked
+// reader then connects through the relay and is answered with its hello.
+async function shareWithLinkedReader(storage) {
+  const dictionary = { id: "word-status-dict", title: "Words", displayName: null, path: "/dicts/Words", enabled: true,
+    favorite: false, revision: "1", isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null,
+    termCount: 2, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-10-01T00:00:00.000Z",
+    lastUpdateCheck: null };
+  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [dictionary], groups: [] } });
+  await settleSharing(() => FakeSharingSocket.instances.some(socket => socket.url.endsWith("/host")));
+  const host = FakeSharingSocket.instances.find(socket => socket.url.endsWith("/host"));
+  host?.open();
+  host?.receive({ kind: "listening", port: 8771 });
+  host?.receive({ kind: "client-open", clientId: "reader", origin: "chrome-extension://linkedreader", address: "127.0.0.1" });
+  const fromReader = frame => host?.receive({ kind: "client-text", clientId: "reader", text: JSON.stringify(frame) });
+  const toReader = () => (host?.sent ?? []).filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
+  fromReader({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Linked",
+    capabilities: ["linked-anki-v1", "linked-anki-v2"] });
+  await settleSharing(() => toReader().some(frame => frame.kind === "hello"));
+  return { host, fromReader, toReader };
+}
+
 // Page-wide word status (#520): the worker answers a batch from the first
 // Template's cached index rows and never contacts Anki; a linked browser sends
 // the batch to its host, which owns that evidence.
 async function ankiWordStatusStage() {
-  FakeSharingSocket.instances.length = 0;
-  // The offscreen engine already exists for these worker-only checks, so this
-  // stage creates none; its bookkeeping is restored on exit so the later
-  // single-creation checks measure their own run.
-  const offscreenBefore = { ...offscreenState };
-  Object.assign(offscreenState, { created: 0, exists: true, concurrent: 0, peakConcurrent: 0 });
-  const settle = async (predicate) => {
-    for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
-      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
-    }
-  };
+  const restoreOffscreen = existingOffscreenStage();
+  const settle = settleSharing;
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("word-status-worker", bus, storage);
   const broadcasts = [];
@@ -3942,21 +3980,7 @@ async function ankiWordStatusStage() {
 
   // The same worker shares itself once it has a dictionary. A linked
   // browser's batch is rebuilt from its headwords and read from this index.
-  const dictionary = { id: "word-status-dict", title: "Words", displayName: null, path: "/dicts/Words", enabled: true,
-    favorite: false, revision: "1", isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null,
-    termCount: 2, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-10-01T00:00:00.000Z",
-    lastUpdateCheck: null };
-  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [dictionary], groups: [] } });
-  await settle(() => FakeSharingSocket.instances.some(socket => socket.url.endsWith("/host")));
-  const host = FakeSharingSocket.instances.find(socket => socket.url.endsWith("/host"));
-  host?.open();
-  host?.receive({ kind: "listening", port: 8771 });
-  host?.receive({ kind: "client-open", clientId: "reader", origin: "chrome-extension://linkedreader", address: "127.0.0.1" });
-  const fromReader = frame => host?.receive({ kind: "client-text", clientId: "reader", text: JSON.stringify(frame) });
-  const toReader = () => (host?.sent ?? []).filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
-  fromReader({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Linked",
-    capabilities: ["linked-anki-v1", "linked-anki-v2"] });
-  await settle(() => toReader().some(frame => frame.kind === "hello"));
+  const { host, fromReader, toReader } = await shareWithLinkedReader(storage);
   fromReader({ kind: "request", id: "linked-word-status", message: {
     target: "hachidori-anki", type: "hd_anki_word_status", requestId: "reader-word-status",
     request: { headwords: ["読む", "猫"], url: "https://client.invalid/anki", apiKey: "client-secret" },
@@ -4041,7 +4065,90 @@ async function ankiWordStatusStage() {
       && clientBroadcasts.every(entry => entry.message.target === "hachidori-anki-content"
         && entry.message.type === "hd_anki_word_status_changed"),
     JSON.stringify({ unlinked, clientBroadcasts }));
-  Object.assign(offscreenState, offscreenBefore);
+  restoreOffscreen();
+}
+
+// Mark as known and Ignore (#520): the worker changes one headword per write in
+// its storage queue, without a base revision, so writes from several tabs
+// compose. A linked browser sends the write to its host, whose record comes
+// back through the mirror like any other shared value.
+async function wordStatusOverridesStage() {
+  const restoreOffscreen = existingOffscreenStage();
+  const settle = settleSharing;
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("word-overrides-worker", bus, storage);
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  const page = { id: chrome.runtime.id, url: "https://reader.example/novel", tab: { id: 9 }, frameId: 0 };
+  const change = (fields, requestId, target = bus) => target.sendMessage("word-overrides-page",
+    { target: "hoshidicts-worker", type: "hd_word_status_override", requestId, ...fields }, page);
+  const overrideWrites = () => storage.sets.filter(keys => keys.includes("wordStatusOverrides")).length;
+  const known = await change({ headword: "猫", status: "known" }, "known");
+  const again = await change({ headword: "猫", status: "known" }, "again");
+  const writesAfterRepeat = overrideWrites();
+  const [ignored, dog] = await Promise.all([change({ headword: "猫", status: "ignored" }, "ignored"),
+    change({ headword: "犬", status: "known" }, "dog")]);
+  const cleared = await change({ headword: "猫", status: null }, "cleared");
+  const malformed = await Promise.all([change({ headword: "", status: "known" }, "empty"),
+    change({ headword: "猫", status: "learning" }, "learning"), change({ headword: "猫" }, "missing")]);
+  check("Mark as known and Ignore write one headword in the worker's storage queue, compose across tabs, skip a repeat and refuse malformed changes",
+    known.ok === true && known.type === "hd_word_status_override_result" && known.requestId === "known" && known.revision === 1
+      && again.ok === true && again.revision === 1 && writesAfterRepeat === 1
+      && ignored.revision === 2 && dog.revision === 3 && cleared.revision === 4
+      && JSON.stringify(storage.raw.get("wordStatusOverrides")) === JSON.stringify({ revision: 4, known: ["犬"], ignored: [] })
+      && malformed.every(reply => reply.ok === false) && overrideWrites() === 4,
+    JSON.stringify({ known, again, ignored, dog, cleared, malformed, stored: storage.raw.get("wordStatusOverrides") }));
+
+  // Shared once it has a dictionary: a linked browser's hello carries the
+  // record, and its Ignore is committed here and pushed back as a batch.
+  const { host, fromReader, toReader } = await shareWithLinkedReader(storage);
+  const pushed = () => (host?.sent ?? []).filter(frame => frame.kind === "broadcast").map(frame => JSON.parse(frame.text))
+    .filter(frame => frame.kind === "storage" && frame.changes.wordStatusOverrides);
+  const hello = toReader().find(frame => frame.kind === "hello");
+  fromReader({ kind: "request", id: "linked-override", message: { target: "hoshidicts-worker", type: "hd_word_status_override",
+    requestId: "reader-override", headword: "さん", status: "ignored" } });
+  await settle(() => toReader().some(frame => frame.id === "linked-override") && pushed().length > 0);
+  const hostReply = toReader().find(frame => frame.id === "linked-override");
+  const hostRecord = { revision: 5, known: ["犬"], ignored: ["さん"] };
+  check("the host's hello carries its word status overrides, and a linked browser's Ignore is committed there and pushed back",
+    JSON.stringify(hello?.snapshot.wordStatusOverrides) === JSON.stringify({ revision: 4, known: ["犬"], ignored: [] })
+      && hostReply?.response?.ok === true && hostReply.response.revision === 5
+      && JSON.stringify(storage.raw.get("wordStatusOverrides")) === JSON.stringify(hostRecord)
+      && pushed().length === 1 && JSON.stringify(pushed()[0].changes.wordStatusOverrides) === JSON.stringify(hostRecord),
+    JSON.stringify({ hello: hello?.snapshot.wordStatusOverrides, hostReply, pushed: pushed() }));
+
+  // A linked reading browser sends a page's Mark as known to the host as it
+  // came, commits nothing itself, and stores the record the host pushes back.
+  const clientBus = makeBus(), clientStorage = makeStorage();
+  const clientChrome = makeChrome("word-overrides-client", clientBus, clientStorage);
+  const linkAddress = "ws://127.0.0.1:9102/link";
+  await clientStorage.api().local.set({ sharing: { host: null, client: { address: linkAddress } } });
+  loadBackgroundScript({ chrome: clientChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  await settle(() => FakeSharingSocket.instances.some(socket => socket.url === linkAddress));
+  const link = FakeSharingSocket.instances.find(socket => socket.url === linkAddress);
+  link?.open();
+  link?.receive({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Host", dictionaryCount: 1,
+    capabilities: ["linked-anki-v1", "linked-anki-v2"], snapshot: { wordStatusOverrides: hostRecord } });
+  await settle(() => clientStorage.raw.get("wordStatusOverrides")?.revision === 5);
+  const mirroredOnHello = structuredClone(clientStorage.raw.get("wordStatusOverrides"));
+  const writing = change({ headword: "猫", status: "known" }, "client-override", clientBus);
+  await settle(() => (link?.requests().length ?? 0) >= 1);
+  const forwarded = link?.requests() ?? [];
+  const committed = { revision: 6, known: ["犬", "猫"], ignored: ["さん"] };
+  link?.receive({ kind: "reply", id: forwarded[0]?.id, response: { type: "hd_word_status_override_result",
+    requestId: "client-override", ok: true, error: null, revision: 6 } });
+  const linkedReply = await writing;
+  link?.receive({ kind: "storage", changes: { wordStatusOverrides: committed } });
+  await settle(() => clientStorage.raw.get("wordStatusOverrides")?.revision === 6);
+  check("a linked page's Mark as known crosses the link once and its record arrives through the mirror",
+    JSON.stringify(mirroredOnHello) === JSON.stringify(hostRecord)
+      && forwarded.length === 1 && JSON.stringify(forwarded[0].message) === JSON.stringify({ target: "hoshidicts-worker",
+        type: "hd_word_status_override", requestId: "client-override", headword: "猫", status: "known" })
+      && linkedReply.ok === true && linkedReply.revision === 6
+      && JSON.stringify(clientStorage.raw.get("wordStatusOverrides")) === JSON.stringify(committed),
+    JSON.stringify({ mirroredOnHello, forwarded, linkedReply, mirrored: clientStorage.raw.get("wordStatusOverrides") }));
+  await clientBus.sendMessage("word-overrides-client-settings", {
+    target: "hachidori-sharing", type: "hd_sharing_client_unlink", requestId: "word-overrides-unlink" });
+  restoreOffscreen();
 }
 
 async function backupRelayStage() {
@@ -4755,6 +4862,23 @@ async function customEngineStage() {
       && (await request("hd_status")).generation === statusBeforePersonal.generation
       && JSON.stringify(await sendWorker("hd_custom_read")) === JSON.stringify(stateWithInvariantPeer),
     JSON.stringify({ personalLookups, statusBeforePersonal }),
+  );
+  // Word highlighting (#520) splits the page as a hover reads it: with the
+  // personal dictionary off, a word only it has (注記) is no span, while one
+  // another dictionary has too (食べる) stays.
+  const personalSegments = {};
+  for (const personalDictionary of [false, true]) {
+    personalSegments[personalDictionary] = await request("hd_segment", { scanLength: 16, options: { personalDictionary },
+      chunks: [{ id: 0, text: "\u6ce8\u8a18\u3068\u98df\u3079\u308b" }] });
+  }
+  const segmentHeadwords = (reply) => (reply.segments?.[0]?.spans ?? []).map((span) => span.candidates[0]?.expression);
+  check(
+    "segmentation with the personal dictionary off leaves out only the words it alone has",
+    personalSegments.false.ok === true && !segmentHeadwords(personalSegments.false).includes("\u6ce8\u8a18")
+      && segmentHeadwords(personalSegments.false).includes("\u98df\u3079\u308b")
+      && personalSegments.true.ok === true && segmentHeadwords(personalSegments.true).includes("\u6ce8\u8a18")
+      && segmentHeadwords(personalSegments.true).includes("\u98df\u3079\u308b"),
+    JSON.stringify(personalSegments),
   );
   const brokenState = {
     ...stateWithInvariantPeer.state,
@@ -5666,6 +5790,7 @@ async function main() {
   await audioRelayStage();
   await ankiBackgroundStage();
   await ankiWordStatusStage();
+  await wordStatusOverridesStage();
   await ankiScreenshotStage();
 
   section("custom dictionary storage ownership");
@@ -15794,6 +15919,8 @@ async function staleKanjiResponseStage(invalidation) {
   window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "sentence.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "word-status-overrides.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "word-highlights.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -16145,6 +16272,8 @@ async function contentNoteStage() {
     window.eval(readFileSync(resolve(EXTENSION, "sentence.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "audio-content.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "word-status-overrides.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "word-highlights.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = await driver.install();

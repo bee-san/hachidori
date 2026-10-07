@@ -173,14 +173,15 @@ was `.hdw-remove`.
 
 `automaticBackups` is a schema-versioned service-worker-owned index containing
 at most `automaticBackupDays` records (a reader option, default 2), pruned when
-the next record is written. Each record carries the same five-key snapshot and
-lookup-statistics rows used by manual backup, but references committed immutable
-dictionary generation paths instead of copying their files. Snapshot creation
-runs inside the background storage queue, captures its timestamp after reaching
-that queue, writes the replacement index once, and schedules
-`hachidori-automatic-backup` for 24 hours after the committed record. Concurrent
-triggers share that serialized result. An absent key becomes schema version 1;
-an unsupported future schema is left untouched.
+the next record is written. Each record carries the same six-key snapshot and
+lookup-statistics rows used by manual backup (a record written before word
+status overrides existed has five keys and restores none), but references
+committed immutable dictionary generation paths instead of copying their files.
+Snapshot creation runs inside the background storage queue, captures its
+timestamp after reaching that queue, writes the replacement index once, and
+schedules `hachidori-automatic-backup` for 24 hours after the committed record.
+Concurrent triggers share that serialized result. An absent key becomes schema
+version 1; an unsupported future schema is left untouched.
 
 The index is authoritative before cleanup. A refused metadata write performs no
 generation deletion. A lost reply is successful only when exact readback matches
@@ -783,7 +784,9 @@ actions that map onto an existing Hachidori control are offered. Close, entry
 and dictionary navigation, Back, Add note, View notes, Play audio, Play audio
 from source, Scan selected text, Scan text at selection and Toggle option are
 available, and Hachidori's own Toggle word highlights, in the page scope, which
-shows or hides [word highlighting](#word-highlighting)'s marks in a frame. The
+shows or hides [word highlighting](#word-highlighting)'s marks in a frame, and
+Mark word as known and Ignore word, which [set the current entry's
+word](#mark-as-known-and-ignore) for those marks and have no default key. The
 defaults are Yomitan's keys for those actions: Escape,
 Alt+PageUp/PageDown (three entries), Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B,
 Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
@@ -862,7 +865,8 @@ Hachidori has:
 - Open Hachidori settings, unassigned.
 - One unassigned command for each popup keybind action that needs no chosen
   argument: Close, Add to Anki, View in Anki, Play audio, the entry and
-  dictionary moves, Back, the two selection scans and Toggle word highlights.
+  dictionary moves, Back, the two selection scans, Toggle word highlights,
+  Mark word as known and Ignore word.
 
 The worker toggles `hoverEnabled` inside its storage queue with the same
 revisioned options write as the toolbar switch. A popup-action command goes to
@@ -1038,7 +1042,12 @@ pencil sentence. Every term lookup carries `options.personalDictionary`, and
 with `false` the engine service removes Hachidori Custom Dictionary glossaries
 from `hd_lookup` and `hd_lookup_dictionary` replies, dropping a result that had
 no others. It filters after the engine's `maxResults` cut, so a personal-only
-term can use up one result slot. The option is a reader preference: it never
+term can use up one result slot. [Word highlighting](#word-highlighting)'s
+`hd_segment` carries the same option; with `false` the engine service names
+the custom dictionary as `hdw_segment`'s `excludedDictionary`, whose split
+skips a result every glossary of which comes from it, so a word only the
+personal dictionary has is no span and is left unmarked, as a hover would show
+nothing there. The option is a reader preference: it never
 disables, reorders, recompiles or removes the managed package, and turning it
 back on shows the entries again without an engine reload.
 
@@ -1372,8 +1381,8 @@ highlighting. Its **Highlight words by Anki status** (`wordHighlightEnabled`,
 off by default) is the runtime switch, together with Enable lookups; turning
 the experimental switch off turns it off in the same save and keeps the rest:
 one switch per status (`wordHighlightUnknown` and `wordHighlightLearning` on,
-`wordHighlightKnown` off) and the style (`wordHighlightStyle`: underline, text
-colour or background).
+`wordHighlightKnown` and `wordHighlightIgnored` off) and the style
+(`wordHighlightStyle`: underline, text colour or background).
 
 `word-highlights.js` runs in every frame beside `content.js`, which supplies
 how page text is read: the blocks whose own text includes Japanese, and each
@@ -1403,21 +1412,26 @@ since a hover can wait behind the chunk being segmented. They go through
 flight per frame, and are cached by their exact text (the latest 4,096), so
 repeated texthooker lines and redrawn subtitles cost nothing. A reply from
 another engine generation is discarded with the cache. A dictionary change, or
-a scan length or frequency option change, segments the shown text again, and
-each run keeps its marks until its new segmentation arrives.
+a scan length, frequency or Use the personal dictionary change, segments the
+shown text again, and each run keeps its marks until its new segmentation
+arrives. Each batch carries the hover's frequency options and its
+`personalDictionary` flag, so with the personal dictionary off its words are
+not split out at all.
 
 Status comes from `hd_anki_word_status`. Its first request carries no
 headwords: an index with no rows for the first Template (`statuses: null`)
 leaves the page unsegmented and unmarked until the worker's change signal.
 Otherwise the headwords of the spans shown are asked in one batch:
 
+- A headword marked as known or ignored (below) takes that status instead of
+  its card's.
 - A span takes the status of its first candidate, the popup's first result.
-  Without a card there, a candidate whose reading, or kana headword, is the
-  surface text lends its card (かわいい against 可愛い).
-- A span with no card whose alternative split runs around a function word
-  (今日は as 今日 + は), and whose content words all have cards, is marked as
-  those words. A compound of content words alone (学生 as 学 + 生) keeps its
-  own status.
+  When that is unknown, a candidate whose reading, or kana headword, is the
+  surface text lends its status (かわいい against 可愛い).
+- An unknown span whose alternative split runs around a function word
+  (今日は as 今日 + は), and whose content words are all known, learning or
+  ignored, is marked as those words. A compound of content words alone (学生
+  as 学 + 生) keeps its own status.
 - Function words and spans without Japanese stay unmarked.
 
 `hd_anki_word_status_changed` re-reads the statuses of the words shown without
@@ -1427,8 +1441,8 @@ signal is still on its way. A newer signal makes an answer still in flight
 stale.
 
 Each status has one `Highlight` (`hd-word-unknown`, `hd-word-learning`,
-`hd-word-known`) at priority −1, so the hover's source highlight paints above
-it. A word's ranges are `StaticRange`s, one per text node it covers, so ruby
+`hd-word-known`, `hd-word-ignored`) at priority −1, so the hover's source
+highlight paints above it. A word's ranges are `StaticRange`s, one per text node it covers, so ruby
 readings stay unmarked and the page's own mutations do no range upkeep. A
 status switched off is unregistered, not recomputed. The page's DOM never
 changes: only the frame's popup host is added, once the frame shows Japanese
@@ -1439,10 +1453,12 @@ hides and shows a frame's marks until it reloads or highlighting is switched
 off. The page's own scripts can read
 `CSS.highlights`, so a page can see which of its words are marked and how.
 
-`content.css` draws unknown with a solid line, learning dashed and known
-dotted, so a status never depends on colour alone. An owned document sheet
-colours them with the popup palette's error, warning and success colours, or
-the default palette's for a renderer without them, moved toward black or white
+`content.css` draws unknown with a solid line, learning dashed, known dotted
+and ignored with two thin lines, so a status never depends on colour alone. An
+owned document sheet colours them with the popup palette's error, warning and
+success colours, and ignored with its faint text (`--hoshidicts-text-faint`,
+the content colour 56% into the base), or the default palette's for a renderer
+without them, moved toward black or white
 until a line reaches 3:1 against the page background, or text 4.5:1;
 backgrounds are tinted at 34%. The page background is the body's or the root's,
 otherwise the canvas, so text a page paints on another background inside them
@@ -1452,7 +1468,36 @@ colours, so the sheet applies only outside `forced-colors: active` and the line
 styles tell the statuses apart. Only the text box behind a word is painted
 Highlight there, and HighlightText is the page's Canvas colour, so the line
 moves up to 0.12em below the baseline, just under the glyphs, where it stays
-inside the box rather than merging into the page below it.
+inside the box rather than merging into the page below it. Two lines do not
+fit there, so an ignored word is marked by its box alone.
+
+### Mark as known and Ignore
+
+The popup's **Mark as known** and **Ignore** buttons and the Mark word as known
+and Ignore word keybinds set the current entry's headword, the popup's own
+`expression`, to that status in the `wordStatusOverrides` record, or clear it
+when it already has it; no Anki note is involved. The record is `{ revision,
+known: [headword…], ignored: [headword…] }` (`word-status-overrides.js`, shared
+by the worker, the reader, backups and debug info). The service worker owns it:
+`hd_word_status_override { headword, status }`, with `status` `known`,
+`ignored` or `null`, runs in its storage queue and changes only that headword,
+so writes from several tabs compose without a base revision, and a repeated
+change writes nothing. Each reader takes the record from its storage events,
+which arrive in commit order, so it adopts each one whatever its revision, and
+re-marks the words shown from the statuses already read, without segmenting or
+asking the index again. The record is in backups and shared like the other
+user data (below): a linked browser's change goes to its host, which owns the
+record, and comes back through the mirror.
+
+`word-highlights.js` adds the two toggle buttons (`aria-pressed`) to each
+entry's action row after its Anki and pronunciation buttons, and moves them
+with the shown result in the pinned header, while Highlight words by Anki
+status is on. Only Default's stylesheet styles them; with another renderer the
+keybinds act alone. The keybinds are browser shortcuts too, like the other
+popup actions, and either acts only on an open popup's current entry.
+A failed write names its error in the button's label until it is pressed
+again, and the stored record alone decides which button is pressed, in every
+tab at once.
 
 ## Lookup response boundary
 
@@ -3101,7 +3146,7 @@ must start with `chrome-extension://`, `/host` is accepted from loopback peers
 only, a client is refused (503) while no host is connected, and turning the
 network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,
-browser name, dictionary count, capabilities and a snapshot of the five shared
+browser name, dictionary count, capabilities and a snapshot of the six shared
 keys), `request` carrying an ordinary runtime message, and `pong` to the
 relay's `ping`. `linked-anki-v1` advertises the legacy singleton host-owned
 Anki transaction. `linked-anki-v2` adds stable Template identity to readiness,
@@ -3140,9 +3185,9 @@ setup detection carries only the selected Template ID. The host reads its own
 saved mapping, URL and API key for both. Every
 `chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
-`lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
-can replay it as one write. The host also broadcasts the Anki duplicate index's
-word-status signal (its `rowRevision`, or `null` after a Template source
+`lookupStats`, `wordStatusOverrides` or a `lookupStats:` row is broadcast
+whole, so a linked browser can replay it as one write. The host also
+broadcasts the Anki duplicate index's word-status signal (its `rowRevision`, or `null` after a Template source
 change) as a `word-status` frame, which the relay forwards verbatim like any
 broadcast; the index itself is derived state the host never mirrors. A
 browser install shares by default; the overlay copy (`OVERLAY_MODE`) does not.
@@ -3161,7 +3206,7 @@ Advanced, which is also what the startup page and Settings → Sharing probe.
 while linked and return the host's reply verbatim; the storage batches the
 host pushes are written with one `chrome.storage.local` `set()` outside
 `writeLocalState()`, the only other writer of shared keys. At link time the
-install's own five shared values are kept in `sharingLocalState`, the host's
+install's own six shared values are kept in `sharingLocalState`, the host's
 snapshot takes their place under the live keys, and the engine's
 `hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
 from that kept record, so no local generation is judged against the mirror.
@@ -3213,6 +3258,7 @@ uncertain write leaves it for inspection and an explicit retry.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
+| Revisioned words marked as known or ignored for word highlighting | service worker; readers adopt its storage events | `chrome.storage.local` key `wordStatusOverrides` |
 | Newest `automaticBackupDays` automatic complete-state snapshots and lookup-statistics rows | service worker; the engine validates referenced immutable dictionary roots during restore and cleanup | `chrome.storage.local` key `automaticBackups`; dictionary blobs remain in shared OPFS or IDBFS generation roots |
 | Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
@@ -3287,9 +3333,10 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Apply a package change, then compare-and-set it atomically. An unchanged manifest set uses native order only, retaining failed-package diagnostics and skipping load/warmup; other changes load incrementally when verified, otherwise rebuild. The reply's `loadPath` and `hd_status.lastLoadPath` report `order-only`, `incremental`, or `full`. |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
-| `hd_segment` | Split a batch of text chunks into the words a hover would show, for word highlighting (#520): each chunk's spans carry their candidate headwords, a function-word flag, and a known-words alternative split, in UTF-16 offsets. Unqueued; it serializes one engine turn per chunk and, before each later chunk, lets the messages that reached the engine worker meanwhile take theirs, so a hover's `hd_lookup` runs between chunks, and it stays available during imports. A hover still waits for the chunk being segmented: with Jitendex a line takes about 3 ms at p95 and a 4 KiB chunk about 190 ms (`benchmark/segmentation.mjs`), so callers send a line or a text node per chunk. The reply's `generation` is read after the last chunk and a dictionary commit can land between chunks, so a caller that expects one generation treats a reply carrying another as stale |
+| `hd_segment` | Split a batch of text chunks into the words a hover would show, for word highlighting (#520): each chunk's spans carry their candidate headwords, a function-word flag, and a known-words alternative split, in UTF-16 offsets. With `options.personalDictionary: false` the split leaves out words only the personal dictionary has, as a hover does. Unqueued; it serializes one engine turn per chunk and, before each later chunk, lets the messages that reached the engine worker meanwhile take theirs, so a hover's `hd_lookup` runs between chunks, and it stays available during imports. A hover still waits for the chunk being segmented: with Jitendex a line takes about 3 ms at p95 and a 4 KiB chunk about 190 ms (`benchmark/segmentation.mjs`), so callers send a line or a text node per chunk. The reply's `generation` is read after the last chunk and a dictionary commit can land between chunks, so a caller that expects one generation treats a reply carrying another as stale |
 | `hd_anki_maturity` | Read whether the first term's expression has a mature card in the selected duplicate-index scope; independent of engine and mutation queues |
 | `hd_anki_word_status` | Read `known`/`learning`/`unknown` for a page's headwords from the first Template's duplicate-index rows held in memory, with their `rowRevision`; never reads storage or contacts Anki, and forwarded to the host while linked |
+| `hd_word_status_override` | Set one headword to `known` or `ignored`, or clear it with `null`, in the revisioned `wordStatusOverrides` record (#520), in the storage queue and without a base revision; forwarded to the host while linked |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, registered-kind count (`dictionaryCount` and `registeredKindCount`), unique `packageCount`, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) and its entry storage policy (`dictionaryEntryStorage`) and whether every package's entries are read from disk (`pagedDictionaries`), requested hash policy (`dictionaryIndexStorage`), actual policy (`hashIndexStorage`) and resident hash budget; while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report WASM capacity (`heapBytes`), live/free allocator bytes, combined cache (`pageCacheBytes`) with `entries`/`indexes` activity, requested/actual hash policy and budget, package/kind counts, and each package's hash, other-resident and resident-entry bytes plus actual hash residency; see [memory.md](memory.md) |

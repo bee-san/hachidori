@@ -2184,6 +2184,29 @@ check('the copula forms and conjunctions a dictionary lists whole are function w
   }
 });
 
+check('segment leaves out the words only an excluded dictionary has', () => {
+  // A hover with Use the personal dictionary off drops the personal
+  // dictionary's results (engine-service.js); segmentation passes that
+  // dictionary as excludedDictionary so it marks what the hover shows. ハチドリ
+  // is only there, 猫 is in the reference dictionary as well.
+  const title = 'segmentation-personal';
+  const report = simport(buildTitledZip(title, {
+    terms: [['ハチドリ', 'はちどり', '', '', 0, ['hummingbird'], 0, ''], ['猫', 'ねこ', '', '', 0, ['my cat'], 1, '']],
+  }), '/dicts');
+  ok(report.success, `personal import failed: ${report.error}`);
+  eq(segAdd(title, 0), 1, `personal add_dict: ${scall('hdw_last_error', 'string', [], [])}`);
+  try {
+    const heads = (options) => segmentS('ハチドリと猫', 16, options).spans.map((span) => span.candidates[0].expression);
+    ok(heads('').includes('ハチドリ') && heads('').includes('猫'), `with it: ${heads('').join(' ')}`);
+    const without = heads(JSON.stringify({ excludedDictionary: title }));
+    ok(!without.includes('ハチドリ'), `without it: ${without.join(' ')}`);
+    ok(without.includes('猫'), `a word another dictionary has stays: ${without.join(' ')}`);
+    eq(scall('hdw_last_error', 'string', [], []), '', 'no error');
+  } finally {
+    eq(scall('hdw_remove_dict', 'number', ['string'], [`/dicts/${title}`]), 1, 'personal remove_dict');
+  }
+});
+
 check('segment rejects text above the 4 KiB lookup limit', () => {
   const tooLong = 'あ'.repeat(1500);
   const response = JSON.parse(scall('hdw_segment', 'string', ['string', 'number', 'string'], [tooLong, 16, '']));

@@ -26,9 +26,10 @@ const scenarios = [
   { name: "forced colors light", theme: "default", scheme: "light", forced: true },
 ];
 const fixture = monochromeImageFixture();
-// One word per Anki status, marked on a light page and on a dark one: 学生 has
-// no card, 先生 a card being learned and 漢字 a mature one.
-const WORDS = { unknown: "学生", learning: "先生", known: "漢字" };
+// One word per status, marked on a light page and on a dark one: 学生 has no
+// card, 先生 a card being learned, 漢字 a mature one, and 学校, which has no
+// card either, is set to Ignore.
+const WORDS = { unknown: "学生", learning: "先生", known: "漢字", ignored: "学校" };
 const STATUSES = Object.keys(WORDS);
 const wordArchive = buildTitledZip("word-highlight-contrast",
   { terms: Object.values(WORDS).map((word, index) => [word, "", "", "", 1, [`word ${index + 1}`], index + 1, ""]) });
@@ -61,11 +62,12 @@ async function sample(tab, points) {
 
 // Each status's line under its word: the colour it is drawn in (the owned
 // sheet's, or HighlightText under forced colours), what it is drawn on, how
-// much of the word it spans and in how many pieces (solid, dashed, dotted).
+// much of the word it spans, in how many pieces (solid, dashed, dotted) and
+// in how many lines one above the other (double).
 async function sampleWords(tab, theme, forced) {
   await tab.bringToFront();
-  await tab.waitForFunction(expected => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === expected
-    && ["unknown", "learning", "known"].every(status => CSS.highlights.get(`hd-word-${status}`)?.size > 0), {}, theme);
+  await tab.waitForFunction((expected, statuses) => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === expected
+    && statuses.every(status => CSS.highlights.get(`hd-word-${status}`)?.size > 0), {}, theme, STATUSES);
   await tab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const png = await tab.screenshot({ encoding: "base64" });
   return tab.evaluate(async ({ png, forced, statuses }) => {
@@ -94,11 +96,17 @@ async function sampleWords(tab, theme, forced) {
     // The status lines lie below the glyphs' ink, which the font's own metrics
     // locate, and, under forced colours, inside the word's box, the only part
     // Chrome paints with Highlight: below it the line would be HighlightText
-    // on the page's Canvas, the same colour.
+    // on the page's Canvas, the same colour. Elsewhere a double line may end
+    // a little below the box, on the page.
     const baseline = document.getElementById("baseline").getBoundingClientRect().bottom;
     const style = getComputedStyle(document.getElementById("words"));
     const measure = new OffscreenCanvas(1, 1).getContext("2d");
     measure.font = `${style.fontSize} ${style.fontFamily}`;
+    const below = forced ? 0 : 0.25 * Number.parseFloat(style.fontSize);
+    // The page itself, left of the first word.
+    const firstRect = document.getElementById(statuses[0]).getBoundingClientRect();
+    const backdrop = [...context.getImageData(Math.round((firstRect.left - 16) * scale),
+      Math.round((firstRect.top + firstRect.height / 2) * scale), 1, 1).data.slice(0, 3)];
     const result = {};
     for (const status of statuses) {
       const line = forcedLine
@@ -110,7 +118,7 @@ async function sampleWords(tab, theme, forced) {
       const left = Math.round(rect.left * scale);
       const width = Math.round(rect.width * scale);
       const top = Math.ceil((baseline + measure.measureText(word.textContent).actualBoundingBoxDescent) * scale);
-      const height = Math.floor(rect.bottom * scale) - top;
+      const height = Math.floor((rect.bottom + below) * scale) - top;
       const { data } = context.getImageData(left, top, width, height);
       const pixel = (x, y) => [...data.slice((y * width + x) * 4, (y * width + x) * 4 + 3)];
       const rows = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => close(pixel(x, y), line)));
@@ -126,22 +134,27 @@ async function sampleWords(tab, theme, forced) {
       while (end + 1 < height && coverage[end + 1] >= 0.3) end += 1;
       result[status] = { line, under, coverage: Number(coverage[best].toFixed(2)),
         pieces: rows[best].filter((on, x) => on && !rows[best][x - 1]).length,
+        bands: coverage.filter((value, y) => value >= 0.3 && !(coverage[y - 1] >= 0.3)).length,
         // A row of the box itself below the line: the line ends inside it.
         enclosed: coverage.slice(end + 1).some(value => value < 0.1) };
     }
-    const first = document.getElementById(statuses[0]).getBoundingClientRect();
     const last = document.getElementById(statuses.at(-1)).getBoundingClientRect();
-    return { marks: result, viewport: window.innerWidth,
-      rect: { left: first.left - 6, top: first.top - 2, width: last.right - first.left + 12, height: first.height + 6 } };
+    return { marks: result, backdrop, viewport: window.innerWidth,
+      rect: { left: firstRect.left - 6, top: firstRect.top - 2, width: last.right - firstRect.left + 12, height: firstRect.height + 6 } };
   }, { png, forced, statuses: STATUSES }).then(measured => ({ ...measured, png }));
 }
 
-function wordsPassed({ marks }, forced) {
-  const { unknown, learning, known } = marks;
-  return STATUSES.every(status => marks[status].coverage >= 0.3 && contrast(marks[status].line, marks[status].under) >= 3
+function wordsPassed({ marks, backdrop }, forced) {
+  const { unknown, learning, known, ignored } = marks;
+  const lined = forced ? STATUSES.filter(status => status !== "ignored") : STATUSES;
+  return lined.every(status => marks[status].coverage >= 0.3 && contrast(marks[status].line, marks[status].under) >= 3
       && (!forced || marks[status].enclosed))
-    // Not by colour alone: one solid line, a dashed one, a dotted one.
-    && unknown.pieces === 1 && learning.pieces > 1 && known.pieces > learning.pieces;
+    // Not by colour alone: one solid line, a dashed one, a dotted one, and
+    // for an ignored word two lines, or under forced colours its box alone,
+    // which must stand out from the page.
+    && unknown.pieces === 1 && learning.pieces > 1 && known.pieces > learning.pieces
+    && (forced ? ignored.coverage < 0.3 && contrast(ignored.under, backdrop) >= 3
+      : unknown.bands === 1 && ignored.bands === 2);
 }
 
 async function writeFilmstrip(tab, tiles) {
@@ -213,7 +226,7 @@ const server = createServer(async (request, response) => {
   // colours.
   response.end(page
     ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}#baseline{display:inline-block;width:0;height:0}</style>`
-      + `<p id="words"><span id="unknown">${WORDS.unknown}</span>と<span id="learning">${WORDS.learning}</span>と<span id="known">${WORDS.known}</span><span id="baseline"></span></p>`
+      + `<p id="words">${STATUSES.map(status => `<span id="${status}">${WORDS[status]}</span>`).join("と")}<span id="baseline"></span></p>`
     : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
 });
 let browser;
@@ -255,7 +268,12 @@ try {
   await writeOptions({ hoverEnabled: true, lookupMode: "hover", popupTheme: "default",
     anki: { ...anki, url: `${origin}/anki`, model: "Basic", fields: { ...anki.fields, expression: "Front" } },
     experimental: { ...experimental, wordHighlighting: true },
-    wordHighlightEnabled: true, wordHighlightKnown: true });
+    wordHighlightEnabled: true, wordHighlightKnown: true, wordHighlightIgnored: true });
+  await settings.evaluate(async headword => {
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_word_status_override",
+      requestId: "theme-contrast-ignore", headword, status: "ignored" });
+    if (!reply.ok) throw new Error(reply.error);
+  }, WORDS.ignored);
   const wordTabs = [];
   for (const name of Object.keys(WORD_PAGES)) {
     const page = await browser.newPage();
@@ -359,7 +377,9 @@ try {
         previewInk, textColor, contrast: Number(ratio.toFixed(2)),
         words: Object.fromEntries(wordTabs.map((word, index) => [word.name, Object.fromEntries(STATUSES.map(status => {
           const mark = words[index].marks[status];
-          return [status, { ...mark, contrast: Number(contrast(mark.line, mark.under).toFixed(2)) }];
+          // An ignored word's mark under forced colours is its box, against the page.
+          const ground = scenario.forced && status === "ignored" ? words[index].backdrop : mark.line;
+          return [status, { ...mark, contrast: Number(contrast(ground, mark.under).toFixed(2)) }];
         }))])) };
       results.push(result);
       tiles.push({ name: scenario.name, cardPng, cardRect, previewPng, previewRect: preview.rect,

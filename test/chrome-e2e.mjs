@@ -242,6 +242,7 @@ const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json
 const WORD_HIGHLIGHT_CHECKS = [
   "word highlights mark visible words by Anki status, and text scrolled to or added later, without changing the page's DOM",
   "adding a word to Anki from the popup moves its marks from unknown to learning",
+  "Ignore and Mark as known in the popup, and the Mark as known keybind, set a word's status over Anki's, re-mark the page and clear again",
   "turning word highlighting off removes every mark and keeps its settings",
 ];
 // The highlight names come from the source, so a rename cannot leave the
@@ -1746,6 +1747,25 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
+  // Mark as known and Ignore in the pinned header's row (#520).
+  async function wordStatus() {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        const row = this.querySelector(".gsm-hoshidicts-primary-header > .gsm-hoshidicts-entry-actions");
+        const kind = node => node.dataset.wordStatus
+          ?? [["mine-button", "add"], ["audio-control", "audio"], ["note-button", "note"]]
+            .find(([name]) => node.classList.contains(`gsm-hoshidicts-${name}`))?.[1] ?? node.className;
+        return { order: row ? [...row.children].filter(node => !node.hidden).map(kind) : [],
+          buttons: [...(row?.querySelectorAll(":scope > .gsm-hoshidicts-word-status-button") ?? [])].map(button => ({
+            status: button.dataset.wordStatus, pressed: button.getAttribute("aria-pressed"),
+            label: button.getAttribute("aria-label"), busy: button.getAttribute("aria-busy") === "true" })) };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
   async function focusAnki(index = 0) {
     const object = await resolvePopupObject();
     if (!object) return false;
@@ -1861,7 +1881,7 @@ async function popupReader(page, depth = 0) {
   return {
     anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
-    waitForVisible, waitForHidden, writeNote,
+    waitForVisible, waitForHidden, wordStatus, writeNote,
   };
 }
 
@@ -8246,6 +8266,8 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     "opt-word-highlight-learning", "opt-word-highlight-known", "opt-word-highlight-style"];
   const original = await readSettingsControls(settings, controls);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
+  const originalKeybinds = await settings.evaluate(async () =>
+    HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options).keybinds);
   // A collection with no notes until the popup adds one; nothing is mature.
   const notes = new Map();
   const actions = [];
@@ -8281,15 +8303,16 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     const highlight = CSS.highlights.get(name);
     return highlight ? [[status, [...highlight].map(range => range.startContainer.data.slice(range.startOffset, range.endOffset))]] : [];
   })), Object.fromEntries(["unknown", "learning", "known"].map(status => [status, WORD_HIGHLIGHT_NAME(status)])));
-  const waitForMarks = async (predicate, timeout = 20_000) => {
+  const waitFor = async (read, predicate, timeout = 20_000) => {
     const deadline = Date.now() + timeout;
-    let current = await marks();
+    let current = await read();
     while (!predicate(current) && Date.now() < deadline) {
       await new Promise(resolveWait => setTimeout(resolveWait, 100));
-      current = await marks();
+      current = await read();
     }
     return current;
   };
+  const waitForMarks = (predicate, timeout) => waitFor(marks, predicate, timeout);
   // The page's markup without Hachidori's own popup host.
   const markup = () => tab.evaluate(() => {
     const clone = document.documentElement.cloneNode(true);
@@ -8411,6 +8434,59 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
       JSON.stringify({ verb: verb?.plain, ready: ready?.controls?.[0], notes: [...notes.values()], added, actions,
         red: red.statuses, orange: orange.statuses }));
 
+    // Ignore and Mark as known (#520 phase 4) write the worker's overrides,
+    // whose storage event re-marks the page; known and ignored words are left
+    // unmarked by default. Alt+K is bound to Mark word as known for the check.
+    const overrides = () => settings.evaluate(async () => (await chrome.storage.local.get("wordStatusOverrides")).wordStatusOverrides);
+    const pressedState = async () => Object.fromEntries(((await popup.wordStatus())?.buttons ?? [])
+      .map(button => [button.status, button.pressed]));
+    await settings.evaluate(async () => {
+      const { options } = await chrome.storage.local.get("options");
+      const keybinds = [...HDReaderOptions.normaliseOptions(options).keybinds, { action: "markWordKnown", argument: "",
+        key: "KeyK", modifiers: ["alt"], scopes: ["popup"], enabled: true }];
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: options.revision, options: { keybinds } });
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await tab.bringToFront();
+    const kanji = await hoverForPopup(tab, popup, "#line > span:last-child", { accept: state => state.plain.includes("漢字") });
+    const row = await waitFor(() => popup.wordStatus(), current => current?.buttons.length === 2);
+    await popup.click('.gsm-hoshidicts-primary-header [data-word-status="ignored"]');
+    const ignoredMarks = await waitForMarks(current => !current.unknown?.includes("漢字"));
+    const ignoredStored = await overrides();
+    const ignoredPressed = await waitFor(pressedState, current => current.ignored === "true");
+    await tab.keyboard.down("Alt");
+    await tab.keyboard.press("KeyK");
+    await tab.keyboard.up("Alt");
+    const knownStored = await waitFor(overrides, current => current?.known?.includes("漢字"));
+    const knownPressed = await waitFor(pressedState, current => current.known === "true");
+    const knownMarks = await marks();
+    await popup.click('.gsm-hoshidicts-primary-header [data-word-status="known"]');
+    const clearedMarks = await waitForMarks(current => current.unknown?.includes("漢字"));
+    const clearedStored = await overrides();
+    const clearedPressed = await waitFor(pressedState, current => current.known === "false");
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    check(WORD_HIGHLIGHT_CHECKS[2],
+      kanji?.plain.includes("漢字")
+        // After Anki and pronunciation, before the pencil and any custom buttons.
+        && JSON.stringify(row?.order.filter(kind => ["add", "audio", "known", "ignored", "note"].includes(kind)))
+          === JSON.stringify(["add", "audio", "known", "ignored", "note"])
+        && JSON.stringify(row?.buttons.map(button => [button.status, button.label, button.pressed]))
+          === JSON.stringify([["known", "Mark 漢字 as known", "false"], ["ignored", "Ignore 漢字", "false"]])
+        && !ignoredMarks.unknown?.includes("漢字") && ignoredMarks.unknown?.includes("読む")
+        && JSON.stringify([ignoredStored?.known, ignoredStored?.ignored]) === JSON.stringify([[], ["漢字"]])
+        && JSON.stringify(ignoredPressed) === JSON.stringify({ known: "false", ignored: "true" })
+        && JSON.stringify([knownStored?.known, knownStored?.ignored]) === JSON.stringify([["漢字"], []])
+        && JSON.stringify(knownPressed) === JSON.stringify({ known: "true", ignored: "false" })
+        && !knownMarks.unknown?.includes("漢字") && !knownMarks.known
+        && clearedMarks.unknown?.includes("漢字")
+        && JSON.stringify([clearedStored?.known, clearedStored?.ignored]) === JSON.stringify([[], []])
+        && clearedStored.revision === knownStored.revision + 1
+        && JSON.stringify(clearedPressed) === JSON.stringify({ known: "false", ignored: "false" }),
+      JSON.stringify({ kanji: kanji?.plain, row, ignoredMarks, ignoredStored, ignoredPressed, knownStored, knownPressed,
+        knownMarks, clearedMarks, clearedStored, clearedPressed }));
+
     await updateSettingsControls(settings, { "opt-word-highlight": false });
     const cleared = await waitForMarks(current => Object.keys(current).length === 0, 5_000);
     const kept = await settings.evaluate(async () => {
@@ -8419,18 +8495,20 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
         learning: options.wordHighlightLearning, known: options.wordHighlightKnown, style: options.wordHighlightStyle,
         flag: options.experimental.wordHighlighting };
     });
-    check(WORD_HIGHLIGHT_CHECKS[2],
+    check(WORD_HIGHLIGHT_CHECKS[3],
       Object.keys(cleared).length === 0
         && JSON.stringify(kept) === JSON.stringify({ enabled: false, unknown: true, learning: true, known: false,
           style: "underline", flag: true }),
       JSON.stringify({ cleared, kept }));
   } finally {
     await updateSettingsControls(settings, original);
-    await settings.evaluate(async anki => {
+    await settings.evaluate(async ({ anki, keybinds }) => {
       const { options } = await chrome.storage.local.get("options");
-      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, options: { anki } });
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+        options: { anki, keybinds } });
       if (!reply.ok) throw new Error(reply.error);
-    }, originalAnki);
+      await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_word_status_override", headword: "漢字", status: null });
+    }, { anki: originalAnki, keybinds: originalKeybinds });
     wordHighlightAnki = null;
     await tab.close();
   }

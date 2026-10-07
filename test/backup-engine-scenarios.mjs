@@ -361,7 +361,11 @@ export async function backupEngineScenarios({
   for (const reading of ["ねこ", "ねこ", ""]) {
     assert.equal((await sendWorker("hd_lookup_stats_record", { term: "猫", reading })).ok, true);
   }
+  for (const [headword, status] of [["猫", "known"], ["さん", "ignored"]]) {
+    assert.equal((await sendWorker("hd_word_status_override", { headword, status })).ok, true);
+  }
   const archived = await read(), archivedRows = await readRows();
+  assert.deepEqual([archived.wordStatusOverrides.known, archived.wordStatusOverrides.ignored], [["猫"], ["さん"]]);
   const exported = await accepted("hd_backup_export");
   const archive = await (await fetch(exported.blobUrl)).blob();
   const parsed = await openBackupArchive(archive);
@@ -399,13 +403,13 @@ export async function backupEngineScenarios({
   }
   assert.deepEqual(await readRows(), archivedRows);
   assert.deepEqual(storage.sets.slice(writes), [["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options",
-    ...archivedRows.map(row => lookupStatsKey(restored.lookupStats, row))].sort()]);
+    "wordStatusOverrides", ...archivedRows.map(row => lookupStatsKey(restored.lookupStats, row))].sort()]);
   assert.ok(roots().every(root => !oldRoots.includes(root)));
   const customLookup = await accepted("hd_lookup", { text: "猫" });
   assert.ok(customLookup.results.length > 0);
-  check("restore publishes all five values and statistics rows once before superseded-generation cleanup", true);
+  check("restore publishes all six values and statistics rows once before superseded-generation cleanup", true);
 
-  for (const edit of ["options", "document", "updates", "state", "lookupStats"]) {
+  for (const edit of ["options", "document", "updates", "state", "lookupStats", "wordStatusOverrides"]) {
     const pending = await prepare(exported.blobUrl);
     const base = await read();
     if (edit === "options") await sendWorker("hd_options_write", { baseRevision: base.options.revision, options: { scanLength: base.options.scanLength + 1 } });
@@ -415,6 +419,7 @@ export async function backupEngineScenarios({
     if (edit === "state") await sendWorker("hd_state_cas", { baseRevision: base.state.revision,
       dictionaries: base.state.dictionaries, groups: [] });
     if (edit === "lookupStats") await sendWorker("hd_lookup_stats_record", { term: "猫", reading: "ねこ" });
+    if (edit === "wordStatusOverrides") await sendWorker("hd_word_status_override", { headword: "犬", status: "ignored" });
     const changed = await read();
     assert.notDeepEqual(backupRevisions(changed), backupRevisions(base));
     const refused = await request("hd_backup_restore", { token: pending.token });
@@ -423,7 +428,7 @@ export async function backupEngineScenarios({
     assert.deepEqual(await read(), changed);
     assert.equal(roots().length, changed.state.dictionaries.length);
   }
-  check("restore refuses concurrent options, source, schedule, dictionary and statistics edits without leaking staging", true);
+  check("restore refuses concurrent options, source, schedule, dictionary, statistics and word status edits without leaking staging", true);
 
   const corruptFiles = parsed.files.map(file => file.path.endsWith("/hash.table") && file.path.startsWith("dictionaries/2/")
     ? { ...file, data: new Blob([new Uint8Array([0])]) } : file);
@@ -453,7 +458,7 @@ export async function backupEngineScenarios({
     assert.deepEqual(await readRows(), archivedRows);
     assert.equal(roots().length, (await read()).state.dictionaries.length);
   } finally { hostChrome.runtime.sendMessage = originalSend; }
-  check("lost complete-restore CAS reply is recovered by exact five-value readback without a duplicate commit", true);
+  check("lost complete-restore CAS reply is recovered by exact six-value readback without a duplicate commit", true);
 
   const beforeFailure = await read();
   const rowsBeforeFailure = await readRows();

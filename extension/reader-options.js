@@ -38,7 +38,7 @@
     { id: "netflixMining", label: "Netflix mining",
       description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice, and replays the line once to record it. Reload Netflix after turning this on. Protected video can make the audio silent or the GIF black." },
     { id: "wordHighlighting", label: "Word highlighting", section: "word-highlighting",
-      description: "Mark the Japanese words on every page by their Anki status: unknown, learning or known. Your dictionaries split the page into words on this computer, and the status comes from Hachidori's copy of your Anki index, so opening a page never contacts Anki." },
+      description: "Mark the Japanese words on every page by their Anki status: unknown, learning or known, or as you set them with Mark as known and Ignore in the popup. Your dictionaries split the page into words on this computer, and the status comes from Hachidori's copy of your Anki index, so opening a page never contacts Anki." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -63,8 +63,11 @@
     // Yomitan offers this only inside its popup. Hachidori's popup cannot
     // exist while lookups are off, so the page scope can turn them back on.
     { id: "toggleOption", label: "Toggle option", argument: "option", scopes: ["popup", "web"] },
-    // Hachidori's own: shows or hides the word highlights (#520) of the page.
+    // Hachidori's own: shows or hides the word highlights (#520) of the page,
+    // and sets the current entry's word to known or ignored for them.
     { id: "toggleWordHighlights", label: "Toggle word highlights", scopes: ["web"] },
+    { id: "markWordKnown", label: "Mark word as known" },
+    { id: "ignoreWord", label: "Ignore word" },
   ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,
@@ -160,6 +163,8 @@
     wordHighlightUnknown: true,
     wordHighlightLearning: true,
     wordHighlightKnown: false,
+    // Words set to Ignore from the popup, which are otherwise left unmarked.
+    wordHighlightIgnored: false,
     wordHighlightStyle: "underline",
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
@@ -201,7 +206,7 @@
   // Word highlighting's switches stay with its experimental Settings section;
   // a page shows or hides its marks with Toggle word highlights instead.
   const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "wordHighlightEnabled", "wordHighlightUnknown",
-    "wordHighlightLearning", "wordHighlightKnown"]);
+    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {

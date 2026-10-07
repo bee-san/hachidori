@@ -7,14 +7,16 @@
 // host leaves `{ error }` in its place instead of losing the report.
 //
 // Credentials are redacted. Reader-authored content is reduced to counts: the
-// personal dictionary text, lookup history rows, Anki duplicate-index rows and
-// automatic backup payloads never leave the browser through this file.
+// personal dictionary text, lookup history rows, Anki duplicate-index rows, the
+// words marked as known or ignored and automatic backup payloads never leave
+// the browser through this file.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
 import { LOOKUP_STATS_ROW_PREFIX } from "./lookup-stats.js";
 import { ANKI_INDEX_KEY } from "./anki-index-cache.js";
 import { AUTOMATIC_BACKUPS_KEY } from "./backup-automatic.js";
 import { readDebugLog } from "./debug-log.js";
+import "./word-status-overrides.js";
 
 export const DEBUG_INFO_SCHEMA_VERSION = 1;
 export const REDACTED = "[redacted]";
@@ -78,6 +80,12 @@ function summariseAnkiIndex(value) {
   return { ...value, snapshot: { ...value.snapshot, rows: { omitted: true, count: rows.length } } };
 }
 
+function summariseWordStatusOverrides(value) {
+  const record = globalThis.HDWordStatusOverrides.normaliseWordStatusOverrides(value);
+  return { revision: record.revision, ...Object.fromEntries(globalThis.HDWordStatusOverrides.OVERRIDE_STATUSES
+    .map(status => [status, { omitted: true, count: record[status].length }])) };
+}
+
 function summariseAutomaticBackups(value) {
   if (!Array.isArray(value?.backups)) return value;
   return { schemaVersion: value.schemaVersion, backups: value.backups.map(record => ({
@@ -89,6 +97,7 @@ const SUMMARISERS = {
   [CUSTOM_DICTIONARY_SOURCE_KEY]: summariseCustomDictionary,
   [ANKI_INDEX_KEY]: summariseAnkiIndex,
   [AUTOMATIC_BACKUPS_KEY]: summariseAutomaticBackups,
+  [globalThis.HDWordStatusOverrides.WORD_STATUS_OVERRIDES_KEY]: summariseWordStatusOverrides,
 };
 
 // Every chrome.storage.local key with its stored size, the value redacted and

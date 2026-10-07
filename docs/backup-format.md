@@ -10,7 +10,8 @@ Desktop paths, profiles and application-backup plumbing are not portable.
 Settings → Backup & restore exports every installed dictionary, including
 disabled packages and generated media, plus dictionary order, aliases,
 favourites, groups, managed-source/update metadata, the personal source document,
-reader/Design/audio/Anki settings, update schedules and local lookup counts. The archive is
+reader/Design/audio/Anki settings, update schedules, local lookup counts and the
+words marked as known or ignored for word highlighting. The archive is
 unencrypted and can contain personal notes, custom URLs and API keys. Keep it
 private. It does not contain browser history, downloads, cached runtime results,
 or Anki's own collection/media database.
@@ -99,15 +100,16 @@ including disabled ones. It then restores the working loaded set without
 publishing a new logical generation. A damaged current installation does not
 prevent restoring a valid backup.
 
-Confirmation checks the exact raw five-key preparation snapshot, strict-loads
+Confirmation checks the exact raw six-key preparation snapshot, strict-loads
 the candidate again, and publishes `dictionaryState`, `options`,
-`customDictionarySource`, `dictionaryUpdates`, and `lookupStats`, together with
-the restored statistics rows, in one background storage write.
+`customDictionarySource`, `dictionaryUpdates`, `lookupStats` and
+`wordStatusOverrides`, together with the restored statistics rows, in one
+background storage write.
 Each local revision advances; archived revision numbers and generation paths are
 not adopted. The storage queue is never held while awaiting the engine.
 Schedule reconciliation runs after the storage commit.
 
-A lost commit reply is resolved by reading back the exact expected five-value
+A lost commit reply is resolved by reading back the exact expected six-value
 transaction. Confirmed success publishes the new engine generation and cleans
 superseded roots. Confirmed failure restores authoritative state and removes
 unpublished roots. An uncertain commit retains both sets for restart recovery.
@@ -141,13 +143,17 @@ both OPFS and IDBFS suites, followed by browser restart.
 The extension format is a stored ZIP64 archive. Native dictionary data is already
 compressed; storing it avoids recompression and allows files and archives larger
 than classic ZIP's representation. `hachidori-backup.json` identifies format
-`hachidori-backup`, version 2, creation time, the persisted-state snapshot,
+`hachidori-backup`, version 3, creation time, the persisted-state snapshot,
 `lookupStatsRows` (term, reading, count and first/last lookup timestamps), and the
 exact file list with sizes. Payload names are `dictionaries/<ordinal>/<relative
 file path>`; paths from a backup are never used as live generation paths.
 Version 1 archives remain readable and restore an empty statistics collection,
 not the current browser's unrelated history. Version 2 requires a valid
-descriptor and canonical, unique term/reading rows.
+descriptor and canonical, unique term/reading rows. Version 3 adds the snapshot's
+`wordStatusOverrides`, `{ revision, known, ignored }` with each headword under one
+status; versions 1 and 2 restore none, as does an automatic snapshot taken
+before it existed. A one-dictionary archive from the relay's download carries
+none either.
 
 Every entry's CRC32, declared size, path and ZIP headers are validated before
 restore. CRC32 detects accidental corruption, not authenticity: only restore

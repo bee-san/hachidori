@@ -376,6 +376,10 @@ struct WireOptions {
   std::string frequencyDictionary;
   std::string frequencyOrder;
   std::string primaryReading;
+  // hdw_segment's own: a dictionary whose words the split leaves out, as a
+  // hover leaves out the personal dictionary's results while Use the personal
+  // dictionary is off. A lookup ignores it, as it does any other key.
+  std::string excludedDictionary;
 };
 
 LookupFrequencyOrder parse_frequency_order(std::string_view name) {
@@ -392,7 +396,8 @@ LookupFrequencyOrder parse_frequency_order(std::string_view name) {
 }
 
 // Upstream models "unset" as a nullopt, the wire format models it as "".
-LookupOptions parse_options(const char* options_json) {
+// `excluded_dictionary`, given by hdw_segment alone, receives excludedDictionary.
+LookupOptions parse_options(const char* options_json, std::string* excluded_dictionary = nullptr) {
   LookupOptions options;
   if (options_json == nullptr || *options_json == '\0') {
     return options;
@@ -412,6 +417,10 @@ LookupOptions parse_options(const char* options_json) {
     options.primary_reading = wire.primaryReading;
   }
   options.frequency_order = parse_frequency_order(wire.frequencyOrder);
+  if (excluded_dictionary != nullptr) {
+    require_lookup_text_size(wire.excludedDictionary, "excludedDictionary");
+    *excluded_dictionary = std::move(wire.excludedDictionary);
+  }
   return options;
 }
 
@@ -634,8 +643,18 @@ void record_match(std::vector<SegmentMatch>& matches, size_t codepoints, const L
   }
 }
 
+// A result whose every glossary comes from the excluded dictionary (empty
+// excludes nothing) is one a hover would drop; a word another dictionary also
+// has stays.
+bool excluded_result(const TermResult& term, std::string_view excluded) {
+  return !excluded.empty() && !term.glossaries.empty()
+         && std::ranges::all_of(term.glossaries, [excluded](const GlossaryEntry& glossary) {
+              return glossary.dict_name == excluded;
+            });
+}
+
 SegmentLattice build_lattice(const Engine& e, std::string_view text, const TextIndex& index, size_t scan_length,
-                             const LookupOptions& options, LookupCopyBudget& budget) {
+                             const LookupOptions& options, std::string_view excluded, LookupCopyBudget& budget) {
   const SegmentFrequency frequency = segment_frequency(e.query, options);
   // The hover hands the engine the scan length, or a long key's length plus
   // room for its inflection when a dictionary lists keys longer than that
@@ -650,6 +669,9 @@ SegmentLattice build_lattice(const Engine& e, std::string_view text, const TextI
     auto& matches = lattice[start];
     // Every result, so that each matched length keeps its candidates.
     for (const auto& result : e.lookup.lookup(slice, INT_MAX, scan_length, options)) {
+      if (excluded_result(result.term, excluded)) {
+        continue;
+      }
       record_match(matches, matched_codepoints(index, start, result), result, frequency, budget);
     }
     for (auto& match : matches) {
@@ -746,9 +768,9 @@ std::vector<WireSegmentWord> alternative_split(const SegmentLattice& lattice, st
 }
 
 WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_length, const LookupOptions& options,
-                            LookupCopyBudget& budget) {
+                            std::string_view excluded, LookupCopyBudget& budget) {
   const TextIndex index = index_text(text);
-  const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, budget);
+  const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, excluded, budget);
   const std::vector<SplitStep> best = best_split(lattice, 0, index.codepoints());
   WireSegmentResponse response;
   for (size_t position = 0; position < index.codepoints();) {
@@ -1498,7 +1520,8 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const c
 }
 
 // Splits `text` into the words a hover would show, as {"spans": [...]}; see
-// WireSegmentSpan. `scan_length` and `options_json` are the hover lookup's.
+// WireSegmentSpan. `scan_length` and `options_json` are the hover lookup's,
+// and `options_json` may also name an excludedDictionary (WireOptions).
 EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, const char* options_json) {
   static std::string out;
   clear_error();
@@ -1509,8 +1532,9 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
     if (const std::string_view segment_text{text == nullptr ? "" : text};
         !segment_text.empty() && scan_length > 0) {
       require_lookup_text_size(segment_text, "segment text");
-      const LookupOptions options = parse_options(options_json);
-      response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, budget);
+      std::string excluded;
+      const LookupOptions options = parse_options(options_json, &excluded);
+      response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget);
     }
     out = lookup_json(response, budget);
   } catch (...) {
