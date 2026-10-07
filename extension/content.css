@@ -28,9 +28,9 @@
 /*
  * Word highlighting (#520): one highlight per Anki status, and one for words
  * set to Ignore from the popup, each with its own line style so the statuses
- * differ by more than colour. Under forced colours
- * Chrome paints every highlight in Highlight and HighlightText whatever its
- * author colours, and these line styles are what tells the statuses apart.
+ * differ by more than colour. Under forced colours Chrome paints every
+ * highlight in Highlight and HighlightText whatever its author colours, and
+ * these line styles are what tells the statuses apart.
  * word-highlights.js adds the selected palette's colours, made legible
  * against the page's background, in an owned sheet outside forced colours,
  * where Settings may also swap the line for coloured text or a background.
@@ -56,8 +56,10 @@
   text-decoration-style: dotted;
 }
 
+/* Two thin lines, about the depth of one of the others. */
 ::highlight(hd-word-ignored) {
   text-decoration-style: double;
+  text-decoration-thickness: max(1px, 0.05em);
 }
 
 /*
