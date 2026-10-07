@@ -347,11 +347,18 @@ function updateAudioSettings() {
     readSources: () => options.audioSources,
     editSources: sources => {
       options.audioSources = sources;
+      localAudioSetup?.render();
       writeOptions();
     },
     send: (type, fields) => send(type, fields, AUDIO_TARGET),
   });
   audioController.render();
+  // Audio → Sources → Local Audio Server add-on: an added source joins the list above it.
+  localAudioSetup ??= createLocalAudioSetup({ document, readSources: () => options.audioSources,
+    isLinked: () => sharingLinkedAddress !== null,
+    editSources: sources => { options.audioSources = sources; audioController.render(); writeOptions(); },
+  });
+  localAudioSetup.render();
 }
 
 function updateKeybindSettings() {
@@ -388,11 +395,6 @@ function updateAnkiSettings() {
     },
   });
   ankiController.render();
-  localAudioSetup ??= createLocalAudioSetup({ document, readSources: () => options.audioSources,
-    isLinked: () => sharingLinkedAddress !== null,
-    editSources: sources => { options.audioSources = sources; writeOptions(); },
-  });
-  localAudioSetup.render();
 }
 
 // While linked, imported archives go to the host and backups belong to it; the notices say so.

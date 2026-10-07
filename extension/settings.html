@@ -1076,25 +1076,45 @@
         <section class="card" id="audio" aria-labelledby="audio-heading" hidden>
           <div class="card-head">
             <h1 id="audio-heading" tabindex="-1" data-search-keywords="voice pronunciation text to speech TTS source provider URL">Audio</h1>
-            <p class="hint">Pronunciation sources, tried from top to bottom.</p>
+            <p class="hint">Pronunciations in the popup and in Anki notes.</p>
           </div>
           <div class="options-feedback-slot"></div>
-          <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
-          <label class="lookup-enable">
-            <span>Show the audio button</span>
-            <input id="opt-popup-audio-button" type="checkbox" aria-describedby="popup-audio-button-help" />
-          </label>
-          <p class="field-hint" id="popup-audio-button-help">Autoplay and audio keybinds still work when it's hidden.</p>
-          <p id="audio-mining-help" class="section-note" hidden>Browser speech can play in this overlay, but cannot be recorded into Anki. Add a downloadable pronunciation source to fill <code>{audio}</code> fields.</p>
-          <ol id="audio-source-list" class="audio-source-list"></ol>
-          <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
-          <button id="audio-source-add" type="button" class="ghost">Add source</button>
-          <details class="settings-disclosure">
-            <summary>Help</summary>
-            <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code>, URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
-            <p class="field-hint">Shift-click or right-click the popup's audio button to choose a pronunciation.</p>
-            <p class="field-hint">Sources receive the word and reading. Remote URLs need HTTPS; localhost may use HTTP. Some system voices are online.</p>
-          </details>
+          <div class="lookup-group">
+            <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
+            <label class="lookup-enable">
+              <span>Show the audio button</span>
+              <input id="opt-popup-audio-button" type="checkbox" aria-describedby="popup-audio-button-help" />
+            </label>
+            <p class="field-hint" id="popup-audio-button-help">Autoplay and audio keybinds still work when it's hidden.</p>
+          </div>
+          <fieldset class="lookup-group" id="audio-sources">
+            <legend>Sources</legend>
+            <p class="field-hint">Tried from top to bottom until one has a pronunciation.</p>
+            <p id="audio-mining-help" class="section-note" hidden>Browser speech can play in this overlay, but cannot be recorded into Anki. Add a downloadable pronunciation source to fill <code>{audio}</code> fields.</p>
+            <ol id="audio-source-list" class="audio-source-list"></ol>
+            <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
+            <div class="setting-row">
+              <button id="audio-source-add" type="button" class="ghost">Add source</button>
+            </div>
+            <div class="setting-row local-audio">
+              <div class="setting-text">
+                <span class="field-label">Local Audio Server add-on</span>
+                <p class="field-hint">Offline pronunciations from the Local Audio Server for Yomichan Anki add-on, at 127.0.0.1:5050.</p>
+                <output id="anki-audio-status" class="field-hint anki-audio-status" aria-live="polite" aria-atomic="true"></output>
+              </div>
+              <div class="options-actions">
+                <span id="anki-audio-pill" class="anki-status-pill" data-state="offline">Not detected</span>
+                <button id="anki-audio-check" type="button" class="ghost">Detect local audio</button>
+                <button id="anki-audio-add" type="button" class="ghost" hidden>Add detected audio source</button>
+              </div>
+            </div>
+            <details class="settings-disclosure">
+              <summary>Help</summary>
+              <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code>, URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
+              <p class="field-hint">Shift-click or right-click the popup's audio button to choose a pronunciation.</p>
+              <p class="field-hint">Sources receive the word and reading. Remote URLs need HTTPS; localhost may use HTTP. Some system voices are online.</p>
+            </details>
+          </fieldset>
         </section>
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>
           <div class="section-heading">
@@ -1206,20 +1226,6 @@
             <div id="anki-templates" class="anki-templates"></div>
             <details class="anki-marker-reference"><summary>Dictionary-specific markers</summary><p class="field-hint">Replace <code>DICTIONARY</code> in <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code> with the dictionary marker shown in its Details. Single-glossary variants also support <code>-brief</code>, <code>-no-dictionary</code>, <code>-plain</code> and <code>-plain-no-dictionary</code>. Empty, colliding or shadowed names can use <code>{single-glossary-id--PACKAGE-ID}</code>, where <code>PACKAGE-ID</code> is the dictionary's 32-character lowercase hexadecimal ID.</p></details>
           </section>
-          <div class="anki-panel anki-card anki-audio-card">
-            <div class="anki-setting-row">
-              <div class="anki-setting-col">
-                <span class="field-label">Local Audio Server Add-on</span>
-                <span class="field-hint">127.0.0.1:5050 · Offline pronunciations from the Local Audio Server for Yomichan Anki add-on</span>
-                <div class="sharing-actions">
-                  <button id="anki-audio-check" type="button" class="ghost">Detect local audio</button>
-                  <button id="anki-audio-add" type="button" class="ghost" hidden>Add detected audio source</button>
-                </div>
-                <output id="anki-audio-status" class="field-hint anki-audio-status" aria-live="polite" aria-atomic="true"></output>
-              </div>
-              <span id="anki-audio-pill" class="anki-status-pill" data-state="offline">Not detected</span>
-            </div>
-          </div>
         </section>
         <section class="card" id="keybinds" aria-labelledby="keybinds-heading" hidden>
           <div class="card-head">
