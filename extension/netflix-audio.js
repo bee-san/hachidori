@@ -132,7 +132,9 @@
     // The wall-clock time the copy has delivered up to, kept or not.
     let deliveredWall = -Infinity;
     // Played stretches, oldest first: { movieId, openWall, closeWall, start,
-    // frames, estimates, base }, where `base` is the media time of frame `start`.
+    // frames, estimates, base, startMedia, endMedia }, where `base` is the
+    // media time of frame `start` and the stretch was heard from `startMedia`
+    // to `endMedia`.
     let segments = [];
     const waiters = new Set();
     let listening = false;
@@ -183,17 +185,18 @@
       }
     }
 
-    function openSegment(wall) {
+    function openSegment(wall, startMedia = -Infinity) {
       const segment = { movieId: currentMovie(), openWall: wall, closeWall: Infinity, start: null, frames: 0,
-        estimates: [], base: null, endMedia: -Infinity };
+        estimates: [], base: null, startMedia, endMedia: -Infinity };
       segments.push(segment);
       return segment;
     }
 
-    // Opens or closes the played stretch to match the video.
+    // Opens or closes the played stretch to match the video. A stretch that
+    // opens as the video starts playing was heard from where it stood.
     function update(type = "") {
       if (branch !== null && routed === currentVideo() && playingAt1x(routed)) {
-        if (segments.at(-1)?.closeWall !== Infinity) openSegment(now());
+        if (segments.at(-1)?.closeWall !== Infinity) openSegment(now(), routed.currentTime * 1000);
       } else {
         closeOpen(type);
       }
@@ -281,12 +284,14 @@
     }
     for (const type of MEDIA_EVENTS) window.document.addEventListener(type, onMedia, true);
 
-    // The stretch a block rendered at `wall` belongs to, if it can still grow:
-    // only the newest stretch holding audio can, so the ring stays in order.
-    function segmentAt(wall) {
+    // The stretch a block rendered from `wall` to `end` belongs to, if it can
+    // still grow: the newest one open by the block's end, if the block began
+    // before it closed. The block a stretch opens during holds its first sound.
+    // Only the newest stretch holding audio can grow, so the ring stays in order.
+    function segmentAt(wall, end) {
       for (let index = segments.length - 1; index >= 0; index -= 1) {
         const segment = segments[index];
-        if (segment.openWall <= wall) return wall < segment.closeWall ? segment : null;
+        if (segment.openWall < end) return wall < segment.closeWall ? segment : null;
         if (segment.start !== null) return null;
       }
       return null;
@@ -354,7 +359,7 @@
         ring = new Float32Array(capacity);
         written = 0;
       }
-      let segment = segmentAt(wall);
+      let segment = segmentAt(wall, wall + frames * 1000 / rate);
       if (segment === null) return;
       segment = fitClock(segment, wall, arrival, rate);
       segment.start ??= written;
@@ -365,14 +370,16 @@
 
     // Where each kept stretch of `movieId` lands in a clip of `length` frames
     // from media time `from`: ring frame `zero + i` is the clip's frame i, for
-    // i from `first` to `last`. A stretch ends at the media time it was seen to reach.
+    // i from `first` to `last`. A stretch holds what was heard from the media
+    // time the video stood at when it opened to the time it was seen to reach.
     function pieces(movieId, from, length) {
       const parts = [];
       for (const segment of segments) {
         if (segment.movieId !== movieId || segment.base === null || segment.frames === 0) continue;
+        const frame = media => segment.start + Math.round((media - segment.base) * sampleRate / 1000);
         const heard = Math.min(segment.frames, Math.ceil((segment.endMedia - segment.base) * sampleRate / 1000));
-        const zero = segment.start + Math.round((from - segment.base) * sampleRate / 1000);
-        const first = Math.max(0, Math.max(segment.start, written - capacity) - zero);
+        const zero = frame(from);
+        const first = Math.max(0, Math.max(segment.start, written - capacity, frame(segment.startMedia)) - zero);
         const last = Math.min(length, segment.start + heard - zero);
         if (last > first) parts.push({ zero, first, last });
       }

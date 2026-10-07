@@ -3001,7 +3001,11 @@ change or a new `/watch/<id>`. Each stretch takes its media clock from the
 median of its first 64 blocks' estimates: the element's time when a block
 arrives, less the time since it was rendered and the frames before it.
 Contiguous blocks are placed by counting samples, because Chrome stamps one 10
-ms block in nine about 9 ms late. A stretch ends at the latest media time seen
+ms block in nine about 9 ms late. A stretch starts at the time the video stood
+at when it opened, and the block being rendered then is its first, so a line
+played on after a pause joins the part heard before it; Chrome 152 can have
+rendered up to one 2.9 ms render quantum by the time the `play` event is
+handled, which the cut leaves out. A stretch ends at the latest media time seen
 while it played, or at the time the video stood when it paused or stalled, so
 the silence Chrome renders between a pause and its event is not counted as
 heard. Turning the switch off cancels the reader, stops the track, disconnects

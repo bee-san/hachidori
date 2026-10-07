@@ -173,7 +173,8 @@ test("a line paused partway joins the part played on, and silence after the paus
   const f = playback(t);
   f.lineAudio.start();
   await f.play();
-  await f.advance(1500);
+  // Partway through a 10 ms block, as a hover pause stops a line.
+  await f.advance(1505);
   const paused = f.mediaNow();
   // Chrome's pause event comes after the element has stopped: the copy's
   // blocks until then are silence and must not count as heard.
@@ -182,12 +183,13 @@ test("a line paused partway joins the part played on, and silence after the paus
   assert.equal(f.lineAudio.covers(MOVIE, 1000, paused), true, "the start of the line was heard");
   assert.equal(f.lineAudio.covers(MOVIE, 1000, paused + 100), false, "nothing after the pause was");
   assert.equal(f.lineAudio.clip(MOVIE, 1000, 2200), null);
+  // Playing on starts partway through a block too: its sound from the pause
+  // on is the line's, the silence before it is not.
   await f.play();
   await f.advance(1000);
   const clip = f.lineAudio.clip(MOVIE, 1000, 2200);
   assert.ok(clip, "the two hearings cover the line");
-  assert.equal(f.matching(clip, 1000, 0, paused - 1000 - 10), paused - 1000 - 10, "the part heard before the pause");
-  assert.equal(f.matching(clip, 1000, paused - 1000 + 20), clip.samples.length - (paused - 1000 + 20), "the part played on");
+  assert.equal(f.matching(clip, 1000), clip.samples.length, "every sample holds its media time, across the join too");
 });
 
 test("only 1× playback is kept, speed changes and seeks end a stretch, and only the last 30 seconds stay", async t => {
