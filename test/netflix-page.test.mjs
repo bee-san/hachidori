@@ -271,3 +271,17 @@ test("a replay asked to keep the video paused restores a playing video paused", 
   assert.equal(calls.at(-1)[0], "play");
   assert.equal(video.paused, false);
 });
+
+test("a line played on plays from where the video stands to the clip's end and stays there, without a seek", async () => {
+  // Paused partway through the cue 1000–1100 ms, at 1.5×.
+  const { calls, video, player } = playerFixture({ startMs: 1050, rate: 1.5 });
+  const { posted, command } = page({ player, video });
+  command({ type: "replay", id: "r1", startMs: 1000, endMs: 1100, padMs: 50, keepPaused: true, playOn: true });
+  const reply = await replayed(posted);
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.deepEqual(calls.map(([name]) => name), ["play", "pause"], "no seek before or after");
+  assert.deepEqual(calls[0], ["play", 1], "the rest of the line plays at 1×");
+  assert.ok(video.currentTime * 1000 >= 1150, "it stops at the clip's end");
+  assert.equal(video.playbackRate, 1.5, "the viewer's speed is restored");
+  assert.equal(video.paused, true);
+});
