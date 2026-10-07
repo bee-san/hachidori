@@ -419,6 +419,11 @@ test("Mark as known and Ignore join each entry's row while highlighting is on an
   assert.equal(page.controls.press(owner, 1, "known"), true);
   await settle();
   assert.deepEqual(page.sent.at(-1).fields, { headword: "犬", status: "known" });
+  // Discarding the popup retires every level's rows at once.
+  page.controls.bind(page.items, context);
+  page.controls.retire();
+  assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 0);
+  assert.equal(page.controls.press(owner, 1, "known"), false);
 });
 
 test("an unavailable index marks nothing until the worker signals, and stale or stopped replies are dropped", async t => {

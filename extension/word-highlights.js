@@ -938,11 +938,13 @@
         owners.set(context.owner, group);
         render(group);
       },
+      // One popup level's rows, or every row without an owner.
       retire(owner) {
         for (const [actions, row] of rows) {
-          if (row.owner === owner) removeRow(actions);
+          if (owner === undefined || row.owner === owner) removeRow(actions);
         }
-        owners.delete(owner);
+        if (owner === undefined) owners.clear();
+        else owners.delete(owner);
       },
       update(options) {
         enabled = options.wordHighlightEnabled === true;

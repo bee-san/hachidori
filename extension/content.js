@@ -1714,6 +1714,7 @@
     }
     audio?.dispose();
     mining?.retire();
+    wordStatusActions?.retire();
     disposed = true;
     selectionDragActive = false;
     dragSelection = null;
@@ -1781,6 +1782,7 @@
   function discardUi() {
     audio?.retire();
     mining?.retire();
+    wordStatusActions?.retire();
     cancelPopupLayout();
     clearDictionaryResources();
     try {
@@ -3020,6 +3022,7 @@
       if (popupResize?.level === level) stopPopupResize();
       audio?.retire(level);
       mining?.retire(level);
+      wordStatusActions?.retire(level);
       clearDefinitionBlurTimer(level);
       level.retired = true;
       level.lookupToken += 1;
