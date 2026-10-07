@@ -297,6 +297,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
   window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "word-status-overrides.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "word-highlights.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "content-scan.js"), "utf8"));
   window.eval(instrumented);
   const driver = window.__hachidoriContentNoteSmoke;
   const popup = await driver.install();

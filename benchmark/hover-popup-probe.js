@@ -132,6 +132,7 @@
     // the page's own text, and once per synthetic text length at the default
     // extent. Null on a revision without extractSentence.
     sentenceCost(point, iterations = 1000) {
+      const { SENTENCE_SCAN_EXTENT, extractSentence } = globalThis.HDSentence ?? {};
       if (typeof extractSentence !== 'function') return null;
       hide();
       const candidate = resolveCandidate(point.x, point.y);
