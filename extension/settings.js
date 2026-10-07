@@ -74,6 +74,8 @@ const OPTION_SECTIONS = {
   audio: "Audio",
   anki: "Anki",
   keybinds: "Keybinds",
+  // Backup & restore → Automatic backups → Days kept.
+  backup: "Backup & restore",
   advanced: "Advanced",
   // Library → Personal dictionary owns its lookup switches.
   "custom-dictionary": "Personal dictionary",

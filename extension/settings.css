@@ -543,11 +543,40 @@ h1 {
   font-weight: var(--weight-bold);
   letter-spacing: -0.035em;
 }
+/*
+ * A section is its title, then its groups. The quiet autosave status
+ * ("Saved.") sits at the end of the title row, where settings pages put it; a
+ * failure or a refused edit takes a row of its own under the title and stays
+ * in view while the section scrolls.
+ */
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  row-gap: 24px;
   scroll-margin-top: 24px;
+}
+.card > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.card > :is(.card-head, .section-heading):has(~ .options-feedback-slot:not(:empty)) {
+  grid-column: 1;
+}
+.card > .options-feedback-slot {
+  grid-column: 2;
+  grid-row: 1;
+  margin-left: 16px;
+  padding-top: 6px;
+}
+.card > .options-feedback-slot:has(#options-status.is-quiet) {
+  position: static;
+}
+.card > .options-feedback-slot:has(#options-status:not(.is-quiet, :empty)) {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  margin-left: 0;
+  padding-top: 0;
 }
 .section-heading {
   display: flex;
