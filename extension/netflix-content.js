@@ -54,11 +54,12 @@
     const command = message => {
       document.dispatchEvent(new window.CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
     };
+    const watchedMovie = () => WATCH_PATH.exec(location.pathname)?.[1] ?? null;
 
     // A new /watch/<id> drops the previous movie's timeline and any resume
     // this reader still owed it.
     function sync() {
-      const movieId = WATCH_PATH.exec(location.pathname)?.[1] ?? null;
+      const movieId = watchedMovie();
       if (movieId === watched) return movieId;
       if (watched !== null) {
         retired.add(watched);
@@ -137,7 +138,6 @@
     }
 
     const mainVideo = () => document.querySelector(".watch-video video") ?? document.querySelector("video");
-    const watchedMovie = () => WATCH_PATH.exec(location.pathname)?.[1] ?? null;
     // The line audio keeps the player's sound only, not a preview's on another page.
     const watchVideo = () => (watchedMovie() === null ? null : mainVideo());
 
