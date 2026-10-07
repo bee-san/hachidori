@@ -22,6 +22,8 @@
   const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
   const WORKER_TARGET = "hoshidicts-worker";
   const READER_TARGET = "hachidori-reader";
+  // The worker's word-status change signal for reading tabs (#520).
+  const WORD_STATUS_TARGET = "hachidori-anki-content";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
@@ -155,6 +157,7 @@
     onReady() {
       styleGeneration = -1;
       appearance?.refreshHighlight();
+      wordHighlights?.refreshColors();
       if (shadow) ensureDictionaryStyles(currentGeneration);
     },
   });
@@ -953,6 +956,117 @@
     window.HDNetflix.setHoverPause(!disposed && netflixMiningEnabled());
   }
 
+  // Reading → Word highlighting (#520, experimental): word-highlights.js marks
+  // this frame's words by their Anki status, reading the page's text as a
+  // hover does through textBlocks(), blockOf(), textRuns() and runEntries().
+  let wordHighlights = null;
+  // Toggle word highlights hides the marks in this frame until it reloads or
+  // highlighting is switched off.
+  let wordHighlightsHidden = false;
+
+  function syncWordHighlights() {
+    if (!options.wordHighlightEnabled) wordHighlightsHidden = false;
+    if (disposed || !options.hoverEnabled || !options.wordHighlightEnabled || wordHighlightsHidden) {
+      wordHighlights?.stop();
+      return;
+    }
+    wordHighlights ??= window.HDWordHighlights.createWordHighlighter({
+      window,
+      send: sendRequest,
+      textBlocks,
+      blockOf,
+      textRuns,
+      runEntries,
+      isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
+      prepare: ensureUi,
+      readPalette: () => (host ? window.getComputedStyle(host) : null),
+    });
+    if (wordHighlights.running) wordHighlights.update(options);
+    else wordHighlights.start(options);
+  }
+
+  function onWordStatusChanged(message) {
+    if (!disposed && message?.target === WORD_STATUS_TARGET && message.type === "hd_anki_word_status_changed") {
+      wordHighlights?.statusChanged(message.revision ?? null);
+    }
+    return false;
+  }
+
+  function textBlockOf(element, styleCache) {
+    return blockAncestor(element, styleCache) ?? document.body;
+  }
+
+  /** The block whose own text `node` (a text node, or an element's content) is part of. */
+  function blockOf(node) {
+    return textBlockOf(node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement, new Map());
+  }
+
+  /** The blocks under `root`, or holding a text node `root`, whose own text includes Japanese. */
+  function textBlocks(root) {
+    const styleCache = new Map();
+    const blocks = new Set();
+    const add = (node) => {
+      if (JAPANESE_CHARACTER_PATTERN.test(node.nodeValue || "") && isScannableTextNode(node, styleCache)) {
+        blocks.add(textBlockOf(node.parentElement, styleCache));
+      }
+    };
+    if (root.nodeType === Node.TEXT_NODE) {
+      add(root);
+    } else if (root.nodeType === Node.ELEMENT_NODE) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) add(node);
+    }
+    return blocks;
+  }
+
+  /**
+   * The runs of `block`'s own text, each a list of text node parts
+   * ({ node, start, end }, up to the node's end or its next preserved line
+   * break). A run ends where a hovered word ends: at a <br>, a block
+   * separator, a nested block, a control or a line break the page preserves.
+   * Only the parts are found here, so a long block costs one walk; runEntries()
+   * reads a run's characters once it is needed.
+   */
+  function textRuns(block) {
+    const styleCache = new Map();
+    const runs = [];
+    let parts = [];
+    const endRun = () => {
+      if (parts.length > 0) runs.push(parts);
+      parts = [];
+    };
+    const walker = createScanWalker(block, styleCache);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType !== Node.TEXT_NODE || BLOCK_SEPARATOR_PATTERN.test(node.nodeValue || "")
+          || isEditingElement(node.parentElement.closest(EDITING_SELECTOR))
+          || textBlockOf(node.parentElement, styleCache) !== block) {
+        endRun();
+        continue;
+      }
+      const text = node.nodeValue || "";
+      let start = 0;
+      if (preservesWhitespace(node.parentElement, styleCache)) {
+        for (const { index } of text.matchAll(/[\n\r]/gu)) {
+          if (index > start) parts.push({ node, start, end: index });
+          endRun();
+          start = index + 1;
+        }
+      }
+      if (start < text.length) parts.push({ node, start, end: text.length });
+    }
+    endRun();
+    return runs;
+  }
+
+  /** A run's character entries, collapsed and joined as a scan reads them. */
+  function runEntries(parts) {
+    const styleCache = new Map();
+    const entries = [];
+    for (const { node, start } of parts) appendTextNode(entries, node, start, Infinity, styleCache);
+    dropCjkSegmentBreaks(entries);
+    return entries;
+  }
+
   function releaseDocsImposter() {
     docsImposter?.text.remove();
     docsImposter = null;
@@ -1612,9 +1726,11 @@
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
       chrome.runtime.onMessage?.removeListener(onReaderCommand);
+      chrome.runtime.onMessage?.removeListener(onWordStatusChanged);
     } catch {
       // The context is already gone; the listener died with it.
     }
+    wordHighlights?.stop();
     try {
       highlighter?.clearAll();
       for (const level of levels) level.view?.destroy();
@@ -2287,6 +2403,7 @@
   // whatever the captures did.
   let concealing = 0;
   let restoreMatchHighlight = null;
+  let restoreWordHighlights = null;
   let hostOpacity = "";
   let hostOpacityPriority = "";
   async function concealReader(during) {
@@ -2294,8 +2411,10 @@
     // The source-term highlight is painted by the document, not by the shadow
     // tree, so the highlighter stops publishing for as long as this lasts —
     // including for a lookup that settles while the picture is being taken.
+    // Word highlights leave the picture the same way.
     if (concealing === 0) {
       restoreMatchHighlight = highlighter?.suspend() ?? null;
+      restoreWordHighlights = wordHighlights?.suspend() ?? null;
       hostOpacity = host.style.getPropertyValue("opacity");
       hostOpacityPriority = host.style.getPropertyPriority("opacity");
       // Descendants can override inherited visibility, including masonry cards.
@@ -2312,6 +2431,8 @@
         host.style.setProperty("opacity", hostOpacity, hostOpacityPriority);
         restoreMatchHighlight?.();
         restoreMatchHighlight = null;
+        restoreWordHighlights?.();
+        restoreWordHighlights = null;
       }
     }
   }
@@ -4417,6 +4538,12 @@
         options: { [argument]: !options[argument] } }, WORKER_TARGET).catch(() => {});
       return true;
     }
+    if (action === "toggleWordHighlights") {
+      if (!options.hoverEnabled || !options.wordHighlightEnabled) return false;
+      wordHighlightsHidden = !wordHighlightsHidden;
+      syncWordHighlights();
+      return true;
+    }
     if (!level?.view || level.popup.inert) return false;
     const entry = level.view.currentEntryIndex();
     switch (action) {
@@ -4648,7 +4775,10 @@
     const dictionaryChanged = !sameDictionaryContents(next.dictionaries, dictionaries);
     const presentationChanged = !sameDictionaries(next.dictionaries, dictionaries)
       || !sameDictionaries(next.groups, dictionaryGroups);
-    if (dictionaryChanged) clearDictionaryResources();
+    if (dictionaryChanged) {
+      clearDictionaryResources();
+      wordHighlights?.invalidate();
+    }
     dictionaryStateRevision = next.revision;
     dictionaries = next.dictionaries;
     dictionaryGroups = next.groups;
@@ -4769,6 +4899,8 @@
     mining?.update(options);
     appearance?.update(options);
     void themeHost.sync();
+    // After the appearance, so a changed theme's palette is on the host.
+    syncWordHighlights();
     if (sizeChanged) for (const level of levels) level.view?.hideImagePreview();
     const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {
@@ -4842,6 +4974,7 @@
       chrome.storage.onChanged.addListener(onStorageChanged);
       // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
       chrome.runtime.onMessage?.addListener(onReaderCommand);
+      chrome.runtime.onMessage?.addListener(onWordStatusChanged);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
         try {
           if (disposed || chrome.runtime.lastError) return;

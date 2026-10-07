@@ -71,6 +71,7 @@ const ANKI_TARGET = "hachidori-anki";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
 const OPTION_SECTIONS = {
   lookup: "Reading",
+  "word-highlighting": "Word highlighting",
   design: "Design",
   audio: "Audio",
   anki: "Anki",
@@ -83,7 +84,7 @@ const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates",
 const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
-  DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, definitionBlurFrequencyDictionary,
+  DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
   activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -131,6 +132,14 @@ const APPEARANCE_CHOICES = [
   { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
   { key: "definitionBlurFrequencyOrder", id: "opt-blur-frequency-order", values: DEFINITION_BLUR_FREQUENCY_ORDERS },
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
+  { key: "wordHighlightStyle", id: "opt-word-highlight-style", values: WORD_HIGHLIGHT_STYLES },
+];
+// Reading → Word highlighting (#520, experimental).
+const WORD_HIGHLIGHT_SWITCHES = [
+  { key: "wordHighlightEnabled", id: "opt-word-highlight" },
+  { key: "wordHighlightUnknown", id: "opt-word-highlight-unknown" },
+  { key: "wordHighlightLearning", id: "opt-word-highlight-learning" },
+  { key: "wordHighlightKnown", id: "opt-word-highlight-known" },
 ];
 
 const numberFormat = new Intl.NumberFormat();
@@ -497,6 +506,12 @@ function updateSharingSettings() {
 
 async function toggleExperimental(id, enabled) {
   options.experimental = { ...options.experimental, [id]: enabled };
+  // Word highlighting keeps its own switches and style, but its marks must
+  // not stay on pages behind a hidden section.
+  if (id === "wordHighlighting" && !enabled) {
+    options.wordHighlightEnabled = false;
+    renderWordHighlightControls();
+  }
   renderExperimentalSettings();
   writeOptions();
 }
@@ -512,6 +527,8 @@ function renderExperimentalSettings() {
     const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section);
     document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
     element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
+    // Global search leaves the hidden section's settings out as well.
+    element(feature.section).toggleAttribute("data-settings-gated", hidden);
   }
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.
@@ -1594,6 +1611,12 @@ function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled)
   select.value = preferred;
 }
 
+function renderWordHighlightControls() {
+  for (const { key, id } of WORD_HIGHLIGHT_SWITCHES) element(id).checked = options[key];
+  const style = element("opt-word-highlight-style");
+  if (style !== document.activeElement) style.value = options.wordHighlightStyle;
+}
+
 function renderMetadataControls() {
   for (const field of METADATA_FIELDS) {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
@@ -1861,6 +1884,7 @@ function renderOptions() {
   renderCompactSummaryControls();
   renderPopupImageSources();
   renderMetadataControls();
+  renderWordHighlightControls();
   renderExperimentalSettings();
   renderLowMemoryMode();
   updateDesignPreview();
@@ -3603,6 +3627,12 @@ function attachHandlers() {
     options.onlyScanJapaneseText = event.target.checked;
     writeOptions();
   });
+  for (const { key, id } of WORD_HIGHLIGHT_SWITCHES) {
+    element(id).addEventListener("change", (event) => {
+      options[key] = event.target.checked;
+      writeOptions();
+    });
+  }
   element("opt-personal-dictionary").addEventListener("change", (event) => {
     options.personalDictionaryEnabled = event.target.checked;
     renderPersonalDictionaryControls();

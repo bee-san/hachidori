@@ -342,6 +342,29 @@ one (and to linked browsers), answers a linked browser's batch from the host's
 index, and has a linked browser's pages re-read at its hello, on each host
 revision and after unlinking.
 
+`node --test test/word-highlights.test.mjs` drives `word-highlights.js`, the
+content script's word highlighter, with jsdom and a fake engine and index
+(#520). Nothing is segmented off screen or before the index can answer; visible
+words take their first result's status around a ruby reading, a kana word a
+reading candidate's card, and a phrase around a function word its words'
+cards, while a content-word compound keeps its own and function words stay
+unmarked. A repeated line reuses its cached segmentation, a status change moves
+marks without segmenting again, a revision already read asks nothing, a signal
+still re-reads every word shown when only a later line's words were read at its
+revision, and a removed line takes its marks with it. A line added to a list
+inside a wrapper that has text of its own reads only the new line's text, and
+the wrapper's only once its own text changes. Inside one long block of `<br>`-separated
+lines, with a fake layout, only the lines within a viewport of the visible area
+keep ranges as it scrolls, and a block leaving the viewport keeps none. A reply
+from another engine generation is
+discarded, changed dictionaries keep the marks until the new segmentation
+arrives, and stopping removes every mark. The status colours reach 3:1 as
+lines and 4.5:1 as text against the page and apply only outside forced
+colours. `advanced-settings.test.mjs` checks that Reading → Word highlighting,
+its rail link, picker option and search results stay hidden until its
+experimental switch is on, and that turning the switch off stops the marks in
+the same save and keeps their settings.
+
 `node test/chrome-sharing.mjs` launches two real Chromes: the host imports
 the fixture, handles a simulated HTTP 503 add-on download, and retries the
 live pinned release from its Sharing page. The suite checks the downloaded
@@ -1014,11 +1037,12 @@ What it proves, in order:
    other dictionaries keep answering lookups, `hd_status.failedDictionaries`
    names it with its load error, and removing it clears the report.
    `hd_segment` splits a batch of chunks, each keyed by its id, through the
-   real background → offscreen → engine path. A lookup queued from inside the
-   first chunk's native call reaches the engine before the second chunk does,
-   which only a per-chunk engine turn allows. A chunk holding a lone surrogate
-   keeps its UTF-16 offsets, and an oversized chunk refuses the batch before
-   any chunk is segmented.
+   real background → offscreen → engine path. A lookup that arrives as a
+   message during the first chunk's native call, as a hover reaches the engine
+   worker, reaches the engine before the second chunk does, which only a
+   per-chunk turn that lets pending messages in allows. A chunk holding a lone
+   surrogate keeps its UTF-16 offsets, and an oversized chunk refuses the batch
+   before any chunk is segmented.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
@@ -1252,6 +1276,19 @@ while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
 `HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
 Settings controls.
 
+Three word highlighting checks (#520) turn the experimental switch on and point
+the first Template at an AnkiConnect fake served by the suite's own page
+server, which both the mining worker and the offscreen index refresh reach. On
+a page of its own, the real content script marks 食べたかった, 漢字 and 読む as
+unknown, around 食's ruby reading, then a far line once it is scrolled to, while
+the first line, now far away, keeps no ranges, and a line added later. The
+page's markup is identical before and after, and a `MutationObserver` records
+no change outside Hachidori's popup host. Adding 食べる from the popup moves
+食べたかった's ranges from unknown to learning and its painted line from the
+unknown colour to the learning one, while 漢字 stays unknown. Turning the switch
+off removes every mark and keeps the status switches and style.
+`HACHIDORI_WORD_HIGHLIGHT_SCREENSHOT` captures the marked line after the add.
+
 ### Real Custom buttons and Templates path
 
 `test/chrome-custom-buttons-templates.mjs` requires an explicitly isolated real
@@ -1345,7 +1382,7 @@ for.
 
 ## `chrome-theme-contrast.mjs`
 
-Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
+Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Each row also checks word highlighting (#520) on a light and a dark page, with a fake AnkiConnect making 学生, 先生 and 漢字 unknown, learning and known: every status line, measured below the glyphs' ink, must reach 3:1 against what it is drawn on, the statuses must differ by line style alone, one solid line, a dashed one and a dotted one, and in both forced-colors modes each line must end inside the word's Highlight box, where it does not merge into the page. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview/word-highlight filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
 
 ## `chrome-e2e.mjs`
 
@@ -1431,7 +1468,7 @@ pronunciation.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 293 predeclared checks in a browser. The reproducible
+The primary-path test runs 300 predeclared checks in a browser. The reproducible
 launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
 external setup above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -1975,7 +2012,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 293 assertions, and the summary line
+`PLANNED` at the top of the file names all 300 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

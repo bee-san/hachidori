@@ -269,6 +269,42 @@ are per-call engine timings; they exclude messaging, the content script's
 chunking, the hover delay and popup rendering, which the hover-popup harness
 above measures end to end.
 
+### Word highlighting end to end
+
+`word-highlights.mjs` measures word highlighting in the real extension and
+Chrome on a long page of lines built from the segmentation reference lines
+(2,000 by default, `HACHIDORI_WORD_LINES`), under a fixed header holding two
+hover words. `HACHIDORI_WORD_LAYOUT=block` (the default) puts them in one block
+of `<br>`-separated lines, as Aozora Bunko lays a novel out; `paragraphs` gives
+each line its own `<p>`, as news sites and texthookers do, so the blocks a
+scroll reveals are segmented at once rather than after the 100 ms recheck.
+AnkiConnect is a local fake whose index gives those words cards, so status is
+available and no real Anki is contacted. Each session imports the given
+dictionaries into a fresh profile and reports:
+
+- the time from load to the first marks and to settled marks, and the ranges
+  kept then and after scrolling twenty viewports;
+- hover latency, from the pointer's `mousemove` to the popup showing the word,
+  on the idle page and right after each scroll, while the new text is being
+  segmented;
+- how long the line in the middle of the viewport takes to be marked after each
+  scroll;
+- the main thread's long tasks over the run.
+
+```sh
+git archive origin/main extension | tar -x -C /tmp/main
+HACHIDORI_WORD_TERM_ZIP=/path/to/jitendex-yomitan.zip \
+HACHIDORI_WORD_MAIN_EXTENSION=/tmp/main/extension \
+  node benchmark/word-highlights.mjs /tmp/word-highlight-results
+```
+
+It compares `main` (the extension directory `HACHIDORI_WORD_MAIN_EXTENSION`
+names, if any), this checkout with the switch off (`off`) and on (`on`), in
+`HACHIDORI_WORD_SESSIONS` (3) rounds that alternate their order.
+`HACHIDORI_WORD_HOVERS` (20) sets the hovers per state, after three excluded
+warmups, and `HACHIDORI_WORD_FREQ_ZIP` adds a frequency dictionary. It writes
+every sample to `word-highlights.json`.
+
 ## Linked-browser relay latency
 
 The existing two-browser Sharing suite can record healthy linked-browser lookup

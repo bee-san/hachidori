@@ -1,12 +1,14 @@
-// Pixel-check monochrome dictionary images in every popup palette and both
-// emulated Windows contrast palettes through the real extension and importer.
+// Pixel-check monochrome dictionary images and word highlights (#520) in every
+// popup palette and both emulated Windows contrast palettes through the real
+// extension and importer.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { monochromeImageFixture } from "./make-fixture.mjs";
+import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { buildTitledZip, monochromeImageFixture } from "./make-fixture.mjs";
 import "../extension/reader-options.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -24,6 +26,15 @@ const scenarios = [
   { name: "forced colors light", theme: "default", scheme: "light", forced: true },
 ];
 const fixture = monochromeImageFixture();
+// One word per Anki status, marked on a light page and on a dark one: 学生 has
+// no card, 先生 a card being learned and 漢字 a mature one.
+const WORDS = { unknown: "学生", learning: "先生", known: "漢字" };
+const STATUSES = Object.keys(WORDS);
+const wordArchive = buildTitledZip("word-highlight-contrast",
+  { terms: Object.values(WORDS).map((word, index) => [word, "", "", "", 1, [`word ${index + 1}`], index + 1, ""]) });
+const CARDS = new Map([[1, WORDS.learning], [2, WORDS.known]]);
+const MATURE = [2];
+const WORD_PAGES = { light: { background: "#ffffff", text: "#1a1a1a" }, dark: { background: "#1e1e1e", text: "#e6e6e6" } };
 const centre = rect => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
 const near = (left, right) => Array.isArray(left) && Array.isArray(right)
   && left.every((value, index) => Math.abs(value - right[index]) <= 3);
@@ -48,11 +59,96 @@ async function sample(tab, points) {
   return { png, pixels };
 }
 
+// Each status's line under its word: the colour it is drawn in (the owned
+// sheet's, or HighlightText under forced colours), what it is drawn on, how
+// much of the word it spans and in how many pieces (solid, dashed, dotted).
+async function sampleWords(tab, theme, forced) {
+  await tab.bringToFront();
+  await tab.waitForFunction(expected => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === expected
+    && ["unknown", "learning", "known"].every(status => CSS.highlights.get(`hd-word-${status}`)?.size > 0), {}, theme);
+  await tab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const png = await tab.screenshot({ encoding: "base64" });
+  return tab.evaluate(async ({ png, forced, statuses }) => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    const scale = bitmap.width / window.innerWidth;
+    const paint = value => {
+      const probe = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+      probe.fillStyle = value;
+      probe.fillRect(0, 0, 1, 1);
+      return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    };
+    const rules = [...document.adoptedStyleSheets].flatMap(sheet => [...sheet.cssRules])
+      .flatMap(rule => (rule.cssRules ? [...rule.cssRules] : [rule]));
+    let forcedLine = null;
+    if (forced) {
+      const probe = document.createElement("span");
+      probe.style.color = "HighlightText";
+      document.documentElement.append(probe);
+      forcedLine = paint(getComputedStyle(probe).color);
+      probe.remove();
+    }
+    const close = (pixel, colour) => pixel.every((value, index) => Math.abs(value - colour[index]) <= 12);
+    // The status lines lie below the glyphs' ink, which the font's own metrics
+    // locate, and, under forced colours, inside the word's box, the only part
+    // Chrome paints with Highlight: below it the line would be HighlightText
+    // on the page's Canvas, the same colour.
+    const baseline = document.getElementById("baseline").getBoundingClientRect().bottom;
+    const style = getComputedStyle(document.getElementById("words"));
+    const measure = new OffscreenCanvas(1, 1).getContext("2d");
+    measure.font = `${style.fontSize} ${style.fontFamily}`;
+    const result = {};
+    for (const status of statuses) {
+      const line = forcedLine
+        ?? paint(rules.find(rule => rule.selectorText === `::highlight(hd-word-${status})`).style.textDecorationColor);
+      const word = document.getElementById(status);
+      const range = document.createRange();
+      range.selectNodeContents(word);
+      const rect = range.getBoundingClientRect();
+      const left = Math.round(rect.left * scale);
+      const width = Math.round(rect.width * scale);
+      const top = Math.ceil((baseline + measure.measureText(word.textContent).actualBoundingBoxDescent) * scale);
+      const height = Math.floor(rect.bottom * scale) - top;
+      const { data } = context.getImageData(left, top, width, height);
+      const pixel = (x, y) => [...data.slice((y * width + x) * 4, (y * width + x) * 4 + 3)];
+      const rows = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => close(pixel(x, y), line)));
+      const coverage = rows.map(on => on.filter(Boolean).length / width);
+      const best = coverage.indexOf(Math.max(...coverage));
+      // What the line is drawn on: the commonest other colour between the ink and the box's bottom.
+      const counts = new Map();
+      rows.forEach((on, y) => on.forEach((isLine, x) => {
+        if (!isLine) counts.set(pixel(x, y).join(), (counts.get(pixel(x, y).join()) ?? 0) + 1);
+      }));
+      const under = [...counts].sort((a, b) => b[1] - a[1])[0][0].split(",").map(Number);
+      let end = best;
+      while (end + 1 < height && coverage[end + 1] >= 0.3) end += 1;
+      result[status] = { line, under, coverage: Number(coverage[best].toFixed(2)),
+        pieces: rows[best].filter((on, x) => on && !rows[best][x - 1]).length,
+        // A row of the box itself below the line: the line ends inside it.
+        enclosed: coverage.slice(end + 1).some(value => value < 0.1) };
+    }
+    const first = document.getElementById(statuses[0]).getBoundingClientRect();
+    const last = document.getElementById(statuses.at(-1)).getBoundingClientRect();
+    return { marks: result, viewport: window.innerWidth,
+      rect: { left: first.left - 6, top: first.top - 2, width: last.right - first.left + 12, height: first.height + 6 } };
+  }, { png, forced, statuses: STATUSES }).then(measured => ({ ...measured, png }));
+}
+
+function wordsPassed({ marks }, forced) {
+  const { unknown, learning, known } = marks;
+  return STATUSES.every(status => marks[status].coverage >= 0.3 && contrast(marks[status].line, marks[status].under) >= 3
+      && (!forced || marks[status].enclosed))
+    // Not by colour alone: one solid line, a dashed one, a dotted one.
+    && unknown.pieces === 1 && learning.pieces > 1 && known.pieces > learning.pieces;
+}
+
 async function writeFilmstrip(tab, tiles) {
   const png = await tab.evaluate(async entries => {
     const columns = 6;
     const tileWidth = 220;
-    const tileHeight = 126;
+    const tileHeight = 190;
     const canvas = document.createElement("canvas");
     canvas.width = columns * tileWidth;
     canvas.height = Math.ceil(entries.length / columns) * tileHeight;
@@ -60,21 +156,26 @@ async function writeFilmstrip(tab, tiles) {
     context.fillStyle = "#fff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.font = "12px sans-serif";
-    const draw = async (encoded, rect, x, y) => {
+    const draw = async (encoded, rect, x, y, width, height, viewport = window.innerWidth) => {
       const image = new Image();
       image.src = `data:image/png;base64,${encoded}`;
       await image.decode();
-      const scale = image.naturalWidth / window.innerWidth;
+      const scale = image.naturalWidth / viewport;
       context.drawImage(image, rect.left * scale, rect.top * scale,
-        rect.width * scale, rect.height * scale, x, y, 96, 96);
+        rect.width * scale, rect.height * scale, x, y, width, height);
     };
     for (const [index, tile] of entries.entries()) {
       const x = (index % columns) * tileWidth;
       const y = Math.floor(index / columns) * tileHeight;
       context.fillStyle = "#111";
       context.fillText(tile.name, x + 7, y + 15);
-      await draw(tile.cardPng, tile.cardRect, x + 7, y + 23);
-      await draw(tile.previewPng, tile.previewRect, x + 113, y + 23);
+      await draw(tile.cardPng, tile.cardRect, x + 7, y + 23, 96, 96);
+      await draw(tile.previewPng, tile.previewRect, x + 113, y + 23, 96, 96);
+      // The word highlights, on the light page and then the dark one.
+      for (const [row, words] of tile.words.entries()) {
+        const width = Math.min(206, Math.round(28 * words.rect.width / words.rect.height));
+        await draw(words.png, words.rect, x + 7, y + 126 + row * 32, width, 28, words.viewport);
+      }
     }
     return canvas.toDataURL("image/png").split(",")[1];
   }, tiles);
@@ -84,46 +185,87 @@ async function writeFilmstrip(tab, tiles) {
 }
 
 const profile = mkdtempSync(resolve(tmpdir(), "hachidori-theme-contrast-"));
-const server = createServer((_request, response) => {
+const server = createServer(async (request, response) => {
+  // Anki, as AnkiConnect answers the word status index's refresh.
+  if (request.method === "POST") {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const reply = await answerAnkiConnect(JSON.parse(body), async (action, params) => {
+      if (action === "findNotes") return params.query.endsWith("prop:ivl>=21") ? MATURE : [...CARDS.keys()];
+      if (action === "notesInfo") {
+        return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [noteId],
+          fields: { Front: { value: CARDS.get(noteId), order: 0 } } }));
+      }
+      if (action === "deckNames") return ["Default"];
+      if (action === "modelNames") return ["Basic"];
+      if (action === "modelFieldNames") return ["Front", "Back"];
+      if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
+      throw new Error(`Unexpected Anki action ${action}`);
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(reply));
+    return;
+  }
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
+  const page = WORD_PAGES[request.url.slice(1)];
+  // #baseline, an empty inline-block, sits on the line's baseline: the status
+  // lines are measured below the glyphs, which share their colour in forced
+  // colours.
+  response.end(page
+    ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}#baseline{display:inline-block;width:0;height:0}</style>`
+      + `<p id="words"><span id="unknown">${WORDS.unknown}</span>と<span id="learning">${WORDS.learning}</span>と<span id="known">${WORDS.known}</span><span id="baseline"></span></p>`
+    : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
 });
 let browser;
 try {
   await new Promise(done => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
   browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true, userDataDir: profile,
     args: [`--disable-extensions-except=${resolve(root, "extension")}`, `--load-extension=${resolve(root, "extension")}`,
       "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"] });
   const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
-  const origin = `chrome-extension://${new URL(worker.url()).host}`;
+  const extensionOrigin = `chrome-extension://${new URL(worker.url()).host}`;
   const settings = await browser.newPage();
   settings.setDefaultTimeout(120_000);
-  await settings.goto(`${origin}/settings.html#add-dictionaries`);
+  await settings.goto(`${extensionOrigin}/settings.html#add-dictionaries`);
   await settings.waitForFunction(async () => {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
     return status.ok && status.ready && !status.loading;
   }, { polling: 100 });
-  await settings.evaluate(async base64 => {
-    const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
-    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
-    try {
-      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import",
-        requestId: "theme-contrast-import", blobUrl, fileName: "theme-contrast.zip" });
-      if (!reply.ok) throw new Error(reply.error);
-    } finally {
-      URL.revokeObjectURL(blobUrl);
-    }
-  }, fixture.archive.toString("base64"));
+  for (const [name, archive] of [["theme-contrast.zip", fixture.archive], ["word-highlight-contrast.zip", wordArchive]]) {
+    await settings.evaluate(async (base64, fileName) => {
+      const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+      try {
+        const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import",
+          requestId: "theme-contrast-import", blobUrl, fileName });
+        if (!reply.ok) throw new Error(reply.error);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }, archive.toString("base64"), name);
+  }
   const writeOptions = patch => settings.evaluate(async next => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options?.revision ?? 0, options: next });
     if (!reply.ok) throw new Error(reply.error);
   }, patch);
-  await writeOptions({ hoverEnabled: true, lookupMode: "hover", popupTheme: "default" });
+  const { anki, experimental } = globalThis.HDReaderOptions.normaliseOptions({});
+  await writeOptions({ hoverEnabled: true, lookupMode: "hover", popupTheme: "default",
+    anki: { ...anki, url: `${origin}/anki`, model: "Basic", fields: { ...anki.fields, expression: "Front" } },
+    experimental: { ...experimental, wordHighlighting: true },
+    wordHighlightEnabled: true, wordHighlightKnown: true });
+  const wordTabs = [];
+  for (const name of Object.keys(WORD_PAGES)) {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 700, height: 200 });
+    await page.goto(`${origin}/${name}`);
+    wordTabs.push({ name, page, media: await page.createCDPSession() });
+  }
   const tab = await browser.newPage();
   await tab.setViewport({ width: 1100, height: 800 });
-  await tab.goto(`http://127.0.0.1:${server.address().port}`);
+  await tab.goto(origin);
   const media = await tab.createCDPSession();
   const results = [];
   const tiles = [];
@@ -131,11 +273,13 @@ try {
   try {
     for (const scenario of scenarios) {
       const expectedTheme = scenario.theme === "auto" ? scenario.scheme : scenario.theme;
-      await media.send("Emulation.setEmulatedMedia", { features: [
-        { name: "prefers-reduced-motion", value: "reduce" },
-        { name: "prefers-color-scheme", value: scenario.scheme },
-        ...(scenario.forced ? [{ name: "forced-colors", value: "active" }] : []),
-      ] });
+      for (const session of [media, ...wordTabs.map(word => word.media)]) {
+        await session.send("Emulation.setEmulatedMedia", { features: [
+          { name: "prefers-reduced-motion", value: "reduce" },
+          { name: "prefers-color-scheme", value: scenario.scheme },
+          ...(scenario.forced ? [{ name: "forced-colors", value: "active" }] : []),
+        ] });
+      }
       await writeOptions({ popupTheme: scenario.theme });
       await tab.bringToFront();
       await tab.mouse.move(2, 2);
@@ -201,25 +345,35 @@ try {
         return { rect: node.getBoundingClientRect().toJSON(), appearance: node.dataset.appearance };
       });
       const { png: previewPng, pixels: [previewInk] } = await sample(tab, [centre(preview.rect)]);
-      const textColor = state.textColor;
-      const ratio = contrast(ink, background);
-      const passed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
-        && preview.appearance === "monochrome" && near(previewInk, textColor)
-        && ratio >= (scenario.forced ? 20 : 3);
-      const result = { name: scenario.name, passed, theme: state.theme, ink, auto, background,
-        previewInk, textColor, contrast: Number(ratio.toFixed(2)) };
-      results.push(result);
-      tiles.push({ name: scenario.name, cardPng, cardRect, previewPng, previewRect: preview.rect });
-      console.log(`${passed ? "ok  " : "FAIL"} ${scenario.name}${passed ? "" : ` ${JSON.stringify(result)}`}`);
       await tab.$eval("hachidori-host", host => host.shadowRoot.activeElement?.blur());
       await tab.mouse.move(2, 2);
+      const words = [];
+      for (const word of wordTabs) words.push(await sampleWords(word.page, expectedTheme, scenario.forced));
+      const textColor = state.textColor;
+      const ratio = contrast(ink, background);
+      const imagesPassed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
+        && preview.appearance === "monochrome" && near(previewInk, textColor)
+        && ratio >= (scenario.forced ? 20 : 3);
+      const passed = imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
+      const result = { name: scenario.name, passed, theme: state.theme, ink, auto, background,
+        previewInk, textColor, contrast: Number(ratio.toFixed(2)),
+        words: Object.fromEntries(wordTabs.map((word, index) => [word.name, Object.fromEntries(STATUSES.map(status => {
+          const mark = words[index].marks[status];
+          return [status, { ...mark, contrast: Number(contrast(mark.line, mark.under).toFixed(2)) }];
+        }))])) };
+      results.push(result);
+      tiles.push({ name: scenario.name, cardPng, cardRect, previewPng, previewRect: preview.rect,
+        words: words.map(({ png, rect, viewport }) => ({ png, rect, viewport })) });
+      console.log(`${passed ? "ok  " : "FAIL"} ${scenario.name}${passed ? "" : ` ${JSON.stringify(result)}`}`);
     }
   } catch (error) {
     interrupted = error;
     console.error(error);
   } finally {
-    await media.send("Emulation.setEmulatedMedia", { features: [] });
-    await media.detach();
+    for (const session of [media, ...wordTabs.map(word => word.media)]) {
+      await session.send("Emulation.setEmulatedMedia", { features: [] });
+      await session.detach();
+    }
   }
   for (const scenario of scenarios.slice(results.length)) {
     results.push({ name: scenario.name, passed: false, error: "check never completed" });

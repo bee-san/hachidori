@@ -87,7 +87,14 @@ contacting Anki, while an unknown miss continues to the ordinary live mining
 check. Clicking View validates the matching IDs live before opening Anki and
 repairs or removes the compact row. These reads and checks do not create notes.
 Page-wide word status reads this same local index for the words on a page and
-never contacts Anki; a linked browser asks its host's index instead.
+never contacts Anki; a linked browser asks its host's index instead. With the
+experimental **Word highlighting** on, Hachidori reads the Japanese text near
+the visible part of every page and splits it into words with your local
+dictionaries, so it can mark them by that status; nothing leaves the browser
+for this unless it is linked to another Hachidori (below). The marks do not
+change the page's markup, but the page's own scripts can read which of its
+words are marked and with which status, and so learn which words have cards in
+your Anki collection.
 Frequency definition blur uses only native numeric values already
 returned by the selected local dictionary lookup; it adds no request or
 external disclosure. A linked browser suspends its own duplicate-index refresh and alarm; the
@@ -117,8 +124,9 @@ are stored here. Nothing is sent to other
 computers while that switch is off, and nothing is sent at all while Anki is
 closed. Another program or extension on your computer could connect to the
 relay while it runs, as with AnkiConnect. **Share this Hachidori** in Settings
-turns it off. A browser linked to a shared Hachidori sends the text it looks up,
-the words on a page whose Anki status it reads, and its settings, presentation
+turns it off. A browser linked to a shared Hachidori sends the text it looks up
+or, with Word highlighting on, splits into words, the words on a page whose
+Anki status it reads, and its settings, presentation
 and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
 unlinks. An explicit mining action also sends its selected note context and

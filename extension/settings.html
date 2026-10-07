@@ -36,6 +36,7 @@
               <option value="custom-dictionary">Personal dictionary</option>
             </optgroup>
             <option value="lookup">Reading</option>
+            <option value="word-highlighting" hidden>Word highlighting</option>
             <option value="design">Design</option>
             <option value="audio">Audio</option>
             <option value="anki">Anki</option>
@@ -54,6 +55,10 @@
           <div class="nav-item">
             <a href="#lookup" aria-describedby="nav-status-lookup">Reading</a>
             <output class="nav-status" id="nav-status-lookup" aria-live="polite"></output>
+          </div>
+          <div class="nav-item nav-subitem" hidden>
+            <a href="#word-highlighting" aria-describedby="nav-status-word-highlighting">Word highlighting</a>
+            <output class="nav-status" id="nav-status-word-highlighting" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#design" aria-describedby="nav-status-design">Design</a>
@@ -697,6 +702,63 @@
             </details>
           </fieldset>
           <div id="settings-local-file-access" hidden></div>
+        </section>
+
+        <section
+          class="card"
+          id="word-highlighting"
+          aria-labelledby="word-highlighting-heading"
+          data-settings-group="Reading"
+          data-settings-name="Word highlighting"
+          data-settings-gated
+          hidden
+        >
+          <div class="card-head">
+            <h1 id="word-highlighting-heading" tabindex="-1"
+              data-search-keywords="Anki status unknown learning known mature marks underline colour Migaku">Word highlighting</h1>
+            <p class="hint">Mark the Japanese words on every page by their status in Anki. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <fieldset class="lookup-group">
+            <legend>Highlighting</legend>
+            <label class="lookup-enable">
+              <span>Highlight words by Anki status</span>
+              <input type="checkbox" id="opt-word-highlight" aria-describedby="word-highlight-help" />
+            </label>
+            <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser, and the status comes from the Anki index Hachidori keeps for the first Template in <a href="#anki">Anki settings</a>, which needs an {expression} field: opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. To show or hide the marks on one page, bind Toggle word highlights in <a href="#keybinds">Keybinds</a>.</p>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Statuses</legend>
+            <label class="lookup-enable">
+              <span>Mark unknown words</span>
+              <input type="checkbox" id="opt-word-highlight-unknown" aria-describedby="word-highlight-unknown-help" />
+            </label>
+            <p class="field-hint" id="word-highlight-unknown-help">No card in Anki. A solid line, red in most themes.</p>
+            <label class="lookup-enable">
+              <span>Mark learning words</span>
+              <input type="checkbox" id="opt-word-highlight-learning" aria-describedby="word-highlight-learning-help" />
+            </label>
+            <p class="field-hint" id="word-highlight-learning-help">A card that is not mature yet. A dashed line, orange in most themes.</p>
+            <label class="lookup-enable">
+              <span>Mark known words</span>
+              <input type="checkbox" id="opt-word-highlight-known" aria-describedby="word-highlight-known-help" />
+            </label>
+            <p class="field-hint" id="word-highlight-known-help">A mature card, reviewed at an interval of 21 days or more. A dotted line, green in most themes.</p>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Appearance</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Mark style</span>
+                <select id="opt-word-highlight-style" aria-describedby="word-highlight-style-help">
+                  <option value="underline">Underline</option>
+                  <option value="color">Text colour</option>
+                  <option value="background">Background</option>
+                </select>
+              </label>
+            </div>
+            <p class="field-hint" id="word-highlight-style-help">The colours follow the popup theme chosen in <a href="#design">Design</a>, darkened or lightened until they stand out on the page. Text colour and Background tell the statuses apart by colour alone; under a Windows contrast theme every status keeps its own line.</p>
+          </fieldset>
         </section>
 
         <section class="card" id="design" aria-labelledby="design-heading" hidden>
