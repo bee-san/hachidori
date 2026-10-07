@@ -2458,6 +2458,71 @@ textarea {
 .keybind-scope[hidden] { display: none; }
 .keybind-row :is(input[type="text"], input[type="number"], select) { width: 100%; }
 .keybind-list-actions { justify-content: flex-start; }
+.keybind-columns { display: none; }
+/*
+ * A wide card shows one row per keybind, as Chrome's and VS Code's shortcut
+ * lists do: the rows and the column titles share one grid, so the columns line
+ * up whatever the buttons and scopes measure. Keys and Action keep their labels
+ * as accessible names; the column titles say them once.
+ */
+@container (min-width: 760px) {
+  .keybind-table {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 0.8fr) auto auto;
+    column-gap: 12px;
+  }
+  .keybind-columns,
+  .keybind-list,
+  .keybind-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+  }
+  .keybind-columns {
+    padding: 10px 0 6px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: var(--font-caption);
+    font-weight: var(--weight-medium);
+  }
+  .keybind-columns > :nth-child(1) { grid-column: 2; }
+  .keybind-columns > :nth-child(2) { grid-column: 3; }
+  .keybind-columns > :nth-child(3) { grid-column: 5; }
+  .keybind-heading,
+  .keybind-fields { display: contents; }
+  .keybind-row > * ,
+  .keybind-heading > *,
+  .keybind-fields > * { grid-row: 1; }
+  .keybind-enabled { grid-column: 1; }
+  .keybind-fields > :nth-child(1) { grid-column: 2; }
+  .keybind-fields > :nth-child(2) { grid-column: 3; }
+  .keybind-fields > :nth-child(n + 3) {
+    grid-column: 4;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+  .keybind-scopes {
+    grid-column: 5;
+    flex-direction: column;
+    align-items: start;
+    gap: 4px;
+  }
+  .keybind-buttons {
+    grid-column: 6;
+    justify-content: end;
+  }
+  .keybind-number,
+  .keybind-fields > :is(:nth-child(1), :nth-child(2)) > .field-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 .browser-shortcut-list {
   display: grid;
   gap: 8px;
