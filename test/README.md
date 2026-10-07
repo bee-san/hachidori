@@ -140,9 +140,9 @@ node --test-name-pattern="^import$" test/chrome-e2e.mjs    # one describe: chrom
   that creates them; a step that changes another file's binding calls its
   setter (`setBrowser()`, `setLoseNextStateCasReply()`…).
 - `test/run.mjs` passes `--test-force-exit --test-reporter=spec`. The code under
-  test leaves timers behind (background.js's emulated alarms), so without
-  `--test-force-exit` a direct run exits about a second after its last test,
-  with the run's own summary line instead of node:test's.
+  test leaves timers behind (background.js's emulated alarms), so a direct run
+  without `--test-force-exit` is ended by the suite's `after` hook a second
+  after its last test, as the old scripts' final `process.exit()` did.
 
 ## Index
 
