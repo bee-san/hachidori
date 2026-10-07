@@ -27,11 +27,9 @@ These instructions apply to the entire repository.
 - Open an accessibility-affecting change with the `accessibility` label and screenshots of the affected palettes.
 - Under Windows contrast themes, masked image layers need `forced-color-adjust: none` and a `CanvasText` background in `@media (forced-colors: active)` so the glyph remains visible.
 
-## Issue #9 scope and phases
+## Issue #9 scope
 
-- D1-D9 and E1-E27 are delivered. The user's subsequent request, "work on l2 to l5", authorizes L2 backup/restore, L3 per-dictionary update schedules, L4 lookup/corpus-seen statistics, and L5 definition blur as the current phase. Deliver them in focused pull requests preserving the completed dictionary and reader behavior, using GSM PR #549 as the reference.
-- L2 (#62), L3 (#63) and L4 (#65) are merged; L5 is #67. When asked to "do L1-L5", the user confirmed L2-L5 only: L1 profiles stay excluded.
-- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work. L3 intentionally extends D6's original global-only schedule; L5 depends on L4. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
+- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work (L2 backup/restore, L3 per-dictionary update schedules, L4 lookup statistics and L5 definition blur). L3 intentionally extends D6's original global-only schedule. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
 
 ## Dictionary-only issue #9 contract
 
