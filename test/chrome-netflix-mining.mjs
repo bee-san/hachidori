@@ -42,7 +42,6 @@ const WATCH = "https://www.netflix.com/watch/81000001";
 const SAMPLE_RATE = 48_000;
 const BEEP_MS = 2500;
 const CUE = { startMs: 2000, endMs: 3600 };
-const LINE = "朝ごはんを食べたかった";
 const PAD_MS = 250;
 
 // An unpacked extension's ID is derived from its absolute path.

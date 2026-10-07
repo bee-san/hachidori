@@ -116,7 +116,7 @@ test("the sender slices a Blob into ordered chunks and aborts after a refusal", 
 
   const sent = [];
   await assert.rejects(uploadDictionary({ blob: new Blob(["abcd"]), fileName: "a.zip", replace: true,
-    send: async (type, fields) => {
+    send: async (type) => {
       sent.push(type);
       if (type === "hd_import_begin") return { ok: true, token: "t", chunkBytes: 2 };
       if (type === "hd_import_chunk") return { ok: false, error: "refused" };

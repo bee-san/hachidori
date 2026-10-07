@@ -25,7 +25,6 @@ export async function checkPopupResize(settings, tab) {
     await new Promise(done => setTimeout(done, 200));
   };
   const drag = async (dx, dy) => {
-    const before = await read();
     const point = await tab.evaluate(() => {
       const rect = document.querySelector('hachidori-host').shadowRoot
         .querySelector('.gsm-hoshidicts-resize-handle').getBoundingClientRect();

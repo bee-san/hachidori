@@ -28,6 +28,7 @@ checks need Python; CI uses **3.13.2**. Install the locked test-only dependencie
 
 ```sh
 npm ci --prefix test/tooling
+npm --prefix test/tooling run lint
 npm --prefix test/tooling test
 npm --prefix test/tooling run test:smoke
 ```
@@ -40,7 +41,7 @@ npm --prefix test/tooling run test:chrome
 ```
 
 Sharing changes also need `npm --prefix test/tooling run test:sharing` and a
-usable non-loopback network address. The Runtime tests workflow runs Node
+usable non-loopback network address. The Runtime tests workflow runs ESLint, Node
 contracts, both WASM smoke variants, the extension smoke suite, and four real
 Chrome suites on pull requests. It separately runs the primary suite on the
 manifest-minimum Chrome build and builds and verifies the checksummed release

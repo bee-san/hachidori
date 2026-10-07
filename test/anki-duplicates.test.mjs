@@ -46,16 +46,16 @@ test("preflight retains cloze fields while distinguishing duplicates from invali
   let result = [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
   const invoke = async (action, params) => { calls.push({ action, params }); return result; };
   const value = note({ fields: { Front: "猫", Back: "{{c1::cat}}" }, audio: [{ url: "https://example.com/audio" }] });
-  const duplicate = await checkAnkiDuplicate(invoke, value, config());
+  const duplicate = await checkAnkiDuplicate(invoke, value);
   assert.deepEqual(duplicate, { duplicate: true, addable: false, error: result[0].error });
   assert.equal(calls[0].action, "canAddNotesWithErrorDetail");
   assert.deepEqual(calls[0].params.notes[0].fields, value.fields);
   assert.equal(Object.hasOwn(calls[0].params.notes[0], "audio"), false);
   assert.equal(calls[0].params.notes[0].options.allowDuplicate, false);
   result = [{ canAdd: false, error: "cannot create note because it is empty" }];
-  assert.equal((await checkAnkiDuplicate(invoke, value, config())).duplicate, false);
+  assert.equal((await checkAnkiDuplicate(invoke, value)).duplicate, false);
   result = [];
-  await assert.rejects(checkAnkiDuplicate(invoke, value, config()), /invalid duplicate/u);
+  await assert.rejects(checkAnkiDuplicate(invoke, value), /invalid duplicate/u);
   result = [{ canAdd: true, error: null }];
   assert.deepEqual(await validateAnkiNote(invoke, value), { addable: true, error: null });
   assert.equal(calls.at(-1).params.notes[0].options.allowDuplicate, true);
@@ -68,9 +68,9 @@ test("legacy duplicate checks fall back only for the documented unsupported acti
     if (action === "canAddNotesWithErrorDetail") throw new Error("unsupported action");
     return [params.notes[0].options.allowDuplicate];
   };
-  assert.equal((await checkAnkiDuplicate(invoke, note(), config())).duplicate, true);
+  assert.equal((await checkAnkiDuplicate(invoke, note())).duplicate, true);
   assert.deepEqual(calls, ["canAddNotesWithErrorDetail", "canAddNotes", "canAddNotes"]);
-  await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note(), config()), /offline/u);
+  await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note()), /offline/u);
 });
 
 test("one add check validates every note in order, through the legacy action too", async () => {

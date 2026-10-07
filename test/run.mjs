@@ -51,6 +51,9 @@ try {
     const browser = await install({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild,
       installDeps: process.argv.includes("--install-deps") });
     console.log(`Chrome ${chromeBuild}: ${browser.executablePath}`);
+  } else if (suite === "lint") {
+    const eslint = resolve(dirname(require.resolve("eslint/package.json")), "bin/eslint.js");
+    await run("lint", [eslint, "--config", "test/tooling/eslint.config.mjs", "."]);
   } else if (suite === "node") {
     const tests = ["test", "benchmark"].flatMap(directory => readdirSync(resolve(ROOT, directory))
       .filter(file => file.endsWith(".test.mjs")).sort().map(file => `${directory}/${file}`));
@@ -73,7 +76,7 @@ try {
     if (suite === "chrome-e2e") await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
   } else {
     throw new Error(
-      "Choose node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
+      "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
         + " chrome-overlay, chrome-theme-contrast or install-chrome.",
     );
   }

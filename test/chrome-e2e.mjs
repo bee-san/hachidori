@@ -14367,7 +14367,7 @@ async function main() {
   // hd_media answers asynchronously, so the <img> can arrive a beat after the
   // glossary text it sits in.
   let withImage = scState;
-  for (const _ of [0, 1, 2, 3, 4, 5, 6, 7]) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     if ((withImage.images ?? []).some(src => src.startsWith("data:image/"))) break;
     await new Promise(r => setTimeout(r, 400));
     withImage = (await popup.state()) ?? withImage;

@@ -49,7 +49,7 @@ function host({ fail = new Set() } = {}) {
     hd_anki_status: { ok: true, available: false, error: "Choose an Anki note type in Settings." },
     hd_state_read: { ok: true, state: { dictionaries: [{ id: "a", title: "Jitendex", enabled: true }] } },
   };
-  const send = async (type, fields = {}, target = "offscreen") => {
+  const send = async (type, fields, target = "offscreen") => {
     sent.push({ type, target });
     if (fail.has(type)) throw new Error("the extension's service worker did not reply");
     if (type === "hd_debug_log" && target === "worker") return { ok: true, log: { context: "service-worker", entries: [] } };

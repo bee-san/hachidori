@@ -100,6 +100,7 @@ Settings → Advanced → Experimental features is the one place a feature that 
 Run the narrowest existing checks that exercise the change:
 
 - Documentation-only changes: inspect the rendered Markdown, links, and final diff; code tests are not required.
+- JavaScript changes, tests and benchmarks included: run `npm --prefix test/tooling run lint`.
 - Fixture, C ABI, or WebAssembly changes: rebuild when needed, then run `node test/make-fixture.mjs` and `node test/node-smoke.mjs`.
 - Extension runtime or renderer changes: run `node test/make-fixture.mjs` and `node test/extension-smoke.mjs`.
 - Palette, theme, popup-styling or dictionary-image styling changes: also run `node test/chrome-theme-contrast.mjs` and attach its `test/tmp/ci/theme-contrast.png` filmstrip.

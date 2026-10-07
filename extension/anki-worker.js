@@ -411,7 +411,7 @@ export function createAnkiWorkerService({
     return validateLinkedAnkiClientMedia(request, value);
   }
 
-  async function settleClientMedia(request, state) {
+  async function settleClientMedia(request) {
     discardScreenshot(request?.screenshot);
     return { settled: true };
   }

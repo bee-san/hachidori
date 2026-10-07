@@ -70,7 +70,7 @@ async function addableDecision(prepared) {
 
 async function unindexedDecision(prepared) {
   const { invoke, note, config, firstField } = prepared;
-  const checked = await checkAnkiDuplicate(invoke, note, config);
+  const checked = await checkAnkiDuplicate(invoke, note);
   if (!checked.duplicate) return checkedDecision(prepared, checked.addable, checked.error);
   // A non-direct destination field cannot be keyed by the word index. Keep
   // Anki's exact first-field identity as a compatibility path, restricted to
