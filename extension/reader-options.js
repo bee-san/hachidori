@@ -699,8 +699,7 @@
     if (!dictionary || dictionary.enabled === false) return null;
     const defaultKind = dictionary.kanjiCount > 0 ? "kanji" : "term";
     const kind = requestedKind === "" ? defaultKind : requestedKind;
-    const available = kind === "kanji" ? dictionary.kanjiCount > 0 : dictionary.termCount > 0
-      || (dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0);
+    const available = hasCapability(dictionary, kind === "kanji" ? "kanji" : "term");
     return available ? { kind, title: dictionary.title } : null;
   }
 

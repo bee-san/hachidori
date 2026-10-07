@@ -20,7 +20,7 @@ export function describeErrorOrJson(error) {
   return typeof error === "string" ? error : JSON.stringify(error);
 }
 
-// An object's own truthy `message`, otherwise JSON.
+// Anything else by its truthy `message`, otherwise as JSON.
 export function describeErrorMessageOrJson(error) {
   if (error instanceof Error) {
     return error.message || String(error);
@@ -31,8 +31,8 @@ export function describeErrorMessageOrJson(error) {
   return error?.message ? String(error.message) : JSON.stringify(error);
 }
 
-// Any value's non-empty string `message`, an Error's from another realm
-// included, otherwise String().
+// Anything with a non-empty string `message` by that message, an Error from
+// another realm included, otherwise as String() writes it.
 export function describeErrorMessage(error) {
   return typeof error?.message === "string" && error.message !== "" ? error.message : String(error);
 }
