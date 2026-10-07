@@ -333,6 +333,81 @@ export function processTreeSample(rootPid) {
   return sample;
 }
 
+// Every Chrome process under the browser (Linux /proc): its kind (`browser`,
+// `page` or `extension` renderer, `utility:<sub-type>`, `gpu-process`…), and
+// the CPU time of its main thread and of all its threads (schedstat, ns).
+export function chromeProcesses(browserPid) {
+  const parents = new Map();
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = readFileSync(`/proc/${name}/stat`, "utf8");
+      parents.set(Number(name), Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]));
+    } catch {
+      // A process can exit between listing /proc and reading it.
+    }
+  }
+  const ids = new Set([browserPid]);
+  for (let size = 0; size !== ids.size;) {
+    size = ids.size;
+    for (const [pid, parent] of parents) if (ids.has(parent)) ids.add(pid);
+  }
+  const rows = new Map();
+  for (const pid of ids) {
+    try {
+      // Chrome rewrites its process title, so the arguments may be space-separated.
+      const args = readFileSync(`/proc/${pid}/cmdline`, "utf8").split(/[\0 ]/);
+      const type = args.find((arg) => arg.startsWith("--type="))?.slice(7) ?? "browser";
+      const sub = args.find((arg) => arg.startsWith("--utility-sub-type="))?.slice(19);
+      let kind = sub ? `utility:${sub}` : type;
+      if (type === "renderer") kind = args.includes("--extension-process") ? "extension" : "page";
+      let mainNs = 0;
+      let allNs = 0;
+      for (const tid of readdirSync(`/proc/${pid}/task`)) {
+        const ns = Number(readFileSync(`/proc/${pid}/task/${tid}/schedstat`, "utf8").split(" ")[0]);
+        allNs += ns;
+        if (Number(tid) === pid) mainNs = ns;
+      }
+      rows.set(pid, { kind, mainNs, allNs });
+    } catch {
+      // As above.
+    }
+  }
+  return rows;
+}
+
+// CPU milliseconds by process kind between two chromeProcesses() readings.
+export function cpuDelta(before, after) {
+  const delta = {};
+  for (const [pid, row] of after) {
+    const base = before.get(pid) ?? { mainNs: 0, allNs: 0 };
+    const kind = delta[row.kind] ??= { processes: 0, mainMs: 0, allMs: 0 };
+    kind.processes += 1;
+    kind.mainMs += (row.mainNs - base.mainNs) / 1e6;
+    kind.allMs += (row.allNs - base.allNs) / 1e6;
+  }
+  return delta;
+}
+
+// RSS, PSS and USS of the page renderers in a chromeProcesses() reading.
+export function pageRendererMemory(processes) {
+  const total = { processes: 0, rssKiB: 0, pssKiB: 0, ussKiB: 0 };
+  for (const [pid, row] of processes) {
+    if (row.kind !== "page") continue;
+    try {
+      const rollup = readFileSync(`/proc/${pid}/smaps_rollup`, "utf8");
+      const field = (name) => Number(rollup.match(new RegExp(`^${name}:\\s+(\\d+) kB$`, "m"))?.[1] ?? 0);
+      total.processes += 1;
+      total.rssKiB += field("Rss");
+      total.pssKiB += field("Pss");
+      total.ussKiB += field("Private_Clean") + field("Private_Dirty");
+    } catch {
+      // As above.
+    }
+  }
+  return total;
+}
+
 export function startProcessSampler(rootPid, intervalMs = 50, { excludeInitialTree = false } = {}) {
   let peakRssBytes = 0;
   let peakProcessCount = 0;
