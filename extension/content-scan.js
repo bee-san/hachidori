@@ -1,7 +1,7 @@
 /*
- * Page text as the reader scans it, for content.js: the characters a scan
- * reads from a glyph onward, the sentence around a match, an exact
- * selection's sentence, the runs of text word highlighting segments, and the
+ * Page text as the reader reads it, for content.js: the caret and glyph under
+ * the pointer, the text a scan reads from there, the sentence around a match
+ * or an exact selection, the runs of text word highlighting segments, and the
  * page text a candidate's match covers. content.js creates one scanner as it
  * starts and builds its candidates with it.
  *
