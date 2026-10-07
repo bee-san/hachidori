@@ -34,6 +34,7 @@ import {
 } from "../../extension/local-audio-setup.js";
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
+import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
@@ -987,8 +988,13 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "")
     .replace(/import \{ captureDebugLog \} from "\.\/debug-log\.js";\s*/u, "")
     .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
+    .replace(/^import \{[^}]*\} from "\.\/[\w-]+-settings\.js";\s*/gmu, "")
+    .replace(/^export\s+/gmu, "")
     // The module awaits its entry point; a classic script has no top-level await.
     .replace(/^await start\(\);$/mu, "start();");
+  // The modules that share settings.js's bindings run in its script, ahead of it.
+  const settingsModules = SETTINGS_PAGE_MODULES.slice(0, -1).map(file => readFileSync(resolve(EXTENSION, file), "utf8")
+    .replace(/^import[^;]+;\s*/gmu, "").replace(/^export\s+/gmu, "")).join("\n");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   window.TextEncoder ??= TextEncoder;
@@ -1005,7 +1011,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${errorText}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${errorText}\n${settingsModules}\n${settings}`,
   );
 }
 
