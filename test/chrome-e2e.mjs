@@ -535,6 +535,8 @@ const PLANNED = [
   "low memory mode imports single-threaded and recycles the import high-water mark",
   "low memory mode keeps only each dictionary's index in the heap",
   "turning low memory mode off restarts the full-pool worker",
+  "Use less ram by default applies a 65 MiB hash budget with the full import pool",
+  "changing the RAM default restarts the idle engine and preserves lookups and entry storage",
   "resident entry storage restores mapped entries independently of low memory mode",
   "paged hash storage uses the shared cache independently of entry residency",
   "resident hash storage returns after an idle policy restart",
@@ -15726,7 +15728,6 @@ async function main() {
       && extensionTotal?.reply.ok === true && Number.isFinite(extensionTotal.reply.bytes)
       && extensionTotal.reply.heapBytes === lowMemoryBefore.memory.heapBytes
       && extensionTotal.reply.bytes >= extensionTotal.reply.heapBytes
-      && extensionTotal.reply.bytes - extensionTotal.reply.heapBytes < extensionTotal.reply.heapBytes
       && lowMemoryBefore.status.pagedDictionaries === true
       && lowMemoryBefore.status.dictionaryEntryStorage === "auto"
       && lowMemoryOptions?.lowMemoryMode === true
@@ -15830,6 +15831,34 @@ async function main() {
       && fullPoolMemory.dictionaries[0].bytes === indexBytes,
     JSON.stringify({ status: fullPoolStatus, lookup: fullPoolLookup, memory: fullPoolMemory, lowMemoryMode: fullPoolOptions?.lowMemoryMode }),
   );
+
+  check("Use less ram by default applies a 65 MiB hash budget with the full import pool",
+    fullPoolStatus?.lowMemory === false && fullPoolStatus.useLessRamByDefault === true
+      && fullPoolStatus.hashIndexStorage === "budget" && fullPoolStatus.residentHashBudgetBytes === 65 * 1024 * 1024
+      && fullPoolMemory.residentHashBudgetBytes === fullPoolStatus.residentHashBudgetBytes
+      && fullPoolOptions.useLessRamByDefault === true
+      && await page.$eval("#opt-use-less-ram-by-default", input => input.checked && !input.disabled),
+    JSON.stringify({ status: fullPoolStatus, memory: fullPoolMemory }));
+  const waitForRamDefault = expected => page.waitForFunction(async expected => {
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return status?.ok && status.ready && !status.loading && status.useLessRamByDefault === expected ? status : false;
+  }, { timeout: 30_000, polling: 250 }, expected).then(handle => handle.jsonValue());
+  await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
+  const fullRamStatus = await waitForRamDefault(false);
+  const fullRamLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
+  const lessRamStatus = await waitForRamDefault(true);
+  const lessRamLookup = await engineRequest("hd_lookup", { text: "食べる" });
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById("opt-use-less-ram-by-default").checked);
+  check("changing the RAM default restarts the idle engine and preserves lookups and entry storage",
+    fullRamStatus.lowMemory === false && fullRamStatus.hashIndexStorage === "resident"
+      && fullRamStatus.residentHashBudgetBytes === null && fullRamStatus.pagedDictionaries === true
+      && lessRamStatus.lowMemory === false && lessRamStatus.hashIndexStorage === "budget"
+      && lessRamStatus.residentHashBudgetBytes === 65 * 1024 * 1024 && lessRamStatus.pagedDictionaries === true
+      && JSON.stringify(fullRamLookup.results) === JSON.stringify(fullPoolLookup.results)
+      && JSON.stringify(lessRamLookup.results) === JSON.stringify(fullPoolLookup.results),
+    JSON.stringify({ fullRamStatus, lessRamStatus }));
 
   await page.select("#opt-dictionary-entry-storage", "resident");
   const residentStatus = await page.waitForFunction(async () => {

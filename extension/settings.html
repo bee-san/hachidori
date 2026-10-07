@@ -1354,7 +1354,7 @@
             <p id="memory-total" class="section-note" aria-live="polite">Engine memory: —</p>
             <p id="memory-extension-total" class="section-note" aria-live="polite">Extension total: —</p>
             <p id="memory-indexes" class="section-note" aria-live="polite"></p>
-            <p class="hint">On direct OPFS storage, entries and images are read from disk when needed by default. In Low memory mode, Automatic hash indexes also read a large library's bigger indexes from disk. Each dictionary's share is under its Details in Library. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
+            <p class="hint">On direct OPFS storage, entries and images are read from disk when needed by default. With Use less ram by default or Low memory mode, Automatic hash indexes also read a large library's bigger indexes from disk. Each dictionary's share is under its Details in Library. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
             <div id="dictionary-entry-storage">
               <label class="field-label" for="opt-dictionary-entry-storage">Dictionary entries</label>
               <select id="opt-dictionary-entry-storage" aria-describedby="opt-dictionary-entry-storage-help">
@@ -1367,11 +1367,18 @@
             <div id="dictionary-index-storage">
               <label class="field-label" for="opt-dictionary-index-storage">Dictionary hash indexes</label>
               <select id="opt-dictionary-index-storage" aria-describedby="opt-dictionary-index-storage-help">
-                <option value="auto">Automatic (reduce memory in Low memory mode)</option>
+                <option value="auto">Automatic</option>
                 <option value="paged">Read from disk</option>
                 <option value="resident">Keep in memory</option>
               </select>
-              <p class="field-hint" id="opt-dictionary-index-storage-help">Automatic keeps every hash index in memory, except in Low memory mode, where it keeps the smallest within one shared 32 MiB budget and reads the rest from disk. Reading indexes from disk saves memory in large libraries and makes lookups slightly slower. All dictionaries remain available. Changing this restarts the idle engine.</p>
+              <p class="field-hint" id="opt-dictionary-index-storage-help">Automatic follows Use less ram by default in normal mode and uses a shared 32 MiB budget in Low memory mode. Reading indexes from disk saves memory in large libraries and makes lookups slightly slower. All dictionaries remain available. Changing this restarts the idle engine.</p>
+            </div>
+            <div id="use-less-ram-by-default">
+              <label class="lookup-enable" for="opt-use-less-ram-by-default">
+                <span>Use less ram by default</span>
+                <input type="checkbox" id="opt-use-less-ram-by-default" aria-describedby="opt-use-less-ram-by-default-help" />
+              </label>
+              <p class="field-hint" id="opt-use-less-ram-by-default-help">With Automatic hash storage, keeps small indexes in memory within one shared 65 MiB budget and reads the rest from disk. Off, Automatic keeps every hash index in memory. Lookups may be slightly slower while this is on. Changing this restarts the idle engine; import threading stays the same. Low memory mode uses its smaller 32 MiB budget.</p>
             </div>
             <label class="lookup-enable" id="low-memory-mode">
               <span>Low memory mode</span>

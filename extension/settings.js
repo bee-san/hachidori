@@ -550,6 +550,9 @@ function renderLowMemoryMode() {
   element("opt-dictionary-entry-storage").disabled = options.lowMemoryMode;
   element("dictionary-index-storage").hidden = !available || lastEngineStatus?.storageBackend !== "opfs";
   element("opt-dictionary-index-storage").value = options.dictionaryIndexStorage;
+  element("use-less-ram-by-default").hidden = element("dictionary-index-storage").hidden;
+  element("opt-use-less-ram-by-default").checked = options.useLessRamByDefault;
+  element("opt-use-less-ram-by-default").disabled = options.lowMemoryMode || options.dictionaryIndexStorage !== "auto";
 }
 
 function memorySettings() {
@@ -3655,6 +3658,11 @@ function attachHandlers() {
   });
   element("opt-dictionary-index-storage").addEventListener("change", (event) => {
     options.dictionaryIndexStorage = event.target.value;
+    renderLowMemoryMode();
+    writeOptions();
+  });
+  element("opt-use-less-ram-by-default").addEventListener("change", (event) => {
+    options.useLessRamByDefault = event.target.checked;
     writeOptions();
   });
   element("opt-dictionary-entry-storage").addEventListener("change", (event) => {

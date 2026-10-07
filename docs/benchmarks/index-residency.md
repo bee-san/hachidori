@@ -23,7 +23,9 @@ For a 58-package library shaped like the reporter's, the default 32 MiB budget
 
 Libraries whose hash tables fit the budget are unaffected. Recommendation: keep
 budgeted hashes as the default only in Low memory mode, at 32 MiB
-([suggestion and downsides](#recommendation)).
+([suggestion and downsides](#recommendation)). PR #530 later extended Automatic
+to normal mode with a 65 MiB budget behind **Use less ram by default**; see
+[its measurements](default-ram.md).
 
 ## Setup
 

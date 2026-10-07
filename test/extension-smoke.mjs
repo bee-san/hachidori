@@ -6300,6 +6300,7 @@ async function main() {
     "storageBackend",
     "threaded",
     "type",
+    "useLessRamByDefault",
   ]);
   check("hd_status echoes the requestId", status.requestId === "status-1", JSON.stringify(status));
   check(
@@ -6402,6 +6403,7 @@ async function main() {
     configFromPage?.ok === false
       && pushFromPage?.ok === false
       && configOff?.ok === true && configOff.lowMemoryMode === false && configOff.dictionaryEntryStorage === "auto"
+      && configOff.useLessRamByDefault === true
       && lowMemoryWrite.ok === true
       && configOn?.ok === true && configOn.lowMemoryMode === true
       && unrelatedWrite.ok === true
@@ -6410,7 +6412,19 @@ async function main() {
       && residentConfig?.dictionaryEntryStorage === "resident" && residentConfig.lowMemoryMode === true,
     JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, residentConfig, pushesBefore, pushesAfterUnrelated }),
   );
-  await writeReaderOptions(entryStorageWrite.options.revision, { lowMemoryMode: false, dictionaryEntryStorage: "auto", scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
+  const pushesBeforeLessRam = enginePushes();
+  const lessRamWrite = await writeReaderOptions(entryStorageWrite.options.revision, { useLessRamByDefault: false });
+  for (let attempt = 0; attempt < 50 && enginePushes() === pushesBeforeLessRam; attempt += 1) {
+    await new Promise((done) => setTimeout(done, 2));
+  }
+  const lessRamConfig = await readEngineConfig(engineConfigSender);
+  check("changing only the RAM default pushes the engine configuration",
+    lessRamWrite.ok === true && enginePushes() === pushesBeforeLessRam + 1
+      && lessRamConfig.useLessRamByDefault === false && lessRamConfig.lowMemoryMode === true
+      && lessRamConfig.dictionaryEntryStorage === "resident",
+    JSON.stringify({ lessRamConfig, pushesBeforeLessRam, pushesAfter: enginePushes() }));
+  await writeReaderOptions(lessRamWrite.options.revision, { lowMemoryMode: false, useLessRamByDefault: true,
+    dictionaryEntryStorage: "auto", scanLength: optionsBeforeLowMemory.scanLength ?? 16 });
 
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);

@@ -1412,8 +1412,8 @@ const WORKER_HANDLERS = {
   async hd_engine_config(message, sender) {
     if (!engineSender(sender)) throw new Error("The engine configuration is read only by the dictionary engine host.");
     const stored = await chrome.storage.local.get(OPTIONS_KEY);
-    const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage } = normaliseOptions(stored[OPTIONS_KEY]);
-    return { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage };
+    const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(stored[OPTIONS_KEY]);
+    return { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault };
   },
 
   async hd_setup_record(message, sender) {
@@ -1975,13 +1975,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
-  const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage } = normaliseOptions(changes[OPTIONS_KEY].newValue);
+  const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
   if (lowMemoryMode === previous.lowMemoryMode && dictionaryEntryStorage === previous.dictionaryEntryStorage
-      && dictionaryIndexStorage === previous.dictionaryIndexStorage) return;
+      && dictionaryIndexStorage === previous.dictionaryIndexStorage && useLessRamByDefault === previous.useLessRamByDefault) return;
   // Sent to the offscreen document only if it exists: a document created later
   // reads the option itself. A busy engine picks the change up when idle.
-  Promise.resolve(chrome.runtime.sendMessage({ target: TARGET, type: "hd_engine_config", relayed: true, lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage }))
+  Promise.resolve(chrome.runtime.sendMessage({ target: TARGET, type: "hd_engine_config", relayed: true,
+    lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault }))
     .catch(() => {});
 });
 

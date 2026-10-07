@@ -2,7 +2,7 @@
 
 ## Hash index residency
 
-`index-residency.mjs` compares `main` (all hashes resident), the rebuilt resident
+`index-residency.mjs` compares the original resident baseline (`43535b1b`), the rebuilt resident
 control, 16/32/64 MiB aggregate budgets, and fully paged hashes on threaded OPFS,
 all on the same installed files. Use Node 22 and the locked Chrome/Puppeteer
 tooling described below. Build the pinned native engine with its CLI and
@@ -20,11 +20,11 @@ node benchmark/index-residency-fixture.mjs /tmp/index-small "$importer" 20 2
 export HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js
 for fixture in reporter many large small; do
   node benchmark/index-residency.mjs --fixture /tmp/index-$fixture \
-    --output /tmp/index-$fixture-results --before-ref origin/main --samples 3 \
+    --output /tmp/index-$fixture-results --before-ref 43535b1b --samples 3 \
     --variants baseline,resident,16,32,64,paged
 done
 TMPDIR=/path/on/a/disk node benchmark/index-residency.mjs --fixture /tmp/index-reporter \
-  --output /tmp/index-reporter-cold-results --before-ref origin/main --samples 3 \
+  --output /tmp/index-reporter-cold-results --before-ref 43535b1b --samples 3 \
   --variants baseline,resident,16,32,64,paged --os-cold true
 node benchmark/index-residency-native.mjs /tmp/index-native/benchmark-lookup \
   /tmp/index-reporter /tmp/index-reporter-native
@@ -32,7 +32,12 @@ node benchmark/index-residency-report.mjs /tmp/index-*-results /tmp/index-*-nati
 ```
 
 `--before-ref` extracts the unmodified `extension/` of a commit (or pass an
-extracted copy with `--before`) and runs it as the `baseline` variant. Output
+extracted copy with `--before`) and runs it as the `baseline` variant. `--low-memory
+false` measures normal mode with its full import pool and no post-mutation recycle;
+the default `true` retains the original Low memory mode measurements. Use
+`--variants baseline,65 --low-memory false` to compare the 65 MiB default with
+an earlier revision on the same files. The selected mode and its default hash
+budget are recorded in `definition.json`. Output
 directories must be fresh. `--os-cold true` syncs and evicts every file of the
 seeded profile and temporary extension from the OS page cache (`dd
 iflag=nocache`) before the measured launch, so startup and the first pass read
@@ -42,7 +47,7 @@ the policy order, seeds a fresh profile with the same native files, and restarts
 timing startup, two full lookup passes and real pointer hovers. Complete ordered
 results, kanji, inflection, dictionary selection and media must match. Each sample
 also disables/re-enables packages, restarts with disabled packages, reimports,
-waits for the idle worker replacement, and removes a package. The first 32 MiB
+waits for the idle worker replacement in Low memory mode, and removes a package. The first 32 or 65 MiB
 sample checks all three Settings choices and saves both palettes after timing.
 
 Fixtures contain synthetic Japanese terms and production importer output. The

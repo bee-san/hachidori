@@ -20,8 +20,9 @@ export const RECYCLE_IDLE_MS = 2000;
 export const ENGINE_WORKER_NAME = "hoshidicts-engine";
 export const LOW_MEMORY_WORKER_NAME = "hoshidicts-engine:low-memory";
 
-export function engineWorkerName(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto") {
-  const name = lowMemory ? LOW_MEMORY_WORKER_NAME : ENGINE_WORKER_NAME;
+export function engineWorkerName(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto", useLessRamByDefault = true) {
+  const mode = lowMemory ? LOW_MEMORY_WORKER_NAME : ENGINE_WORKER_NAME;
+  const name = useLessRamByDefault ? mode : `${mode}:full-ram`;
   const entryName = dictionaryEntryStorage === "auto" ? name : `${name}:${dictionaryEntryStorage}`;
   return dictionaryIndexStorage === "auto" ? entryName : `${entryName}:index=${dictionaryIndexStorage}`;
 }
@@ -31,6 +32,7 @@ export function engineWorkerConfig(name, storageBackend) {
   const dictionaryEntryStorage = ["paged", "resident"].find((storage) => name.split(":").includes(storage)) ?? "auto";
   return {
     lowMemory,
+    useLessRamByDefault: !name.split(":").includes("full-ram"),
     dictionaryEntryStorage,
     dictionaryIndexStorage: ["paged", "resident"].find(storage => name.endsWith(`:index=${storage}`)) ?? "auto",
     pagedDictionaries: lowMemory || dictionaryEntryStorage === "paged"
@@ -43,15 +45,18 @@ export function createEngineRecycler({ isIdle, restart, setTimer = setTimeout, c
   let desired = false;
   let desiredStorage = "auto";
   let desiredIndexStorage = "auto";
+  let desiredLessRam = true;
   // null until the owner reports which worker is running.
   let running = null;
   let runningStorage = "auto";
   let runningIndexStorage = "auto";
+  let runningLessRam = true;
   let settledSinceStart = false;
   let timer = null;
 
   function wanted() {
-    return running !== null && (desired !== running || desiredStorage !== runningStorage || desiredIndexStorage !== runningIndexStorage || (desired && settledSinceStart));
+    return running !== null && (desired !== running || desiredStorage !== runningStorage
+      || desiredIndexStorage !== runningIndexStorage || desiredLessRam !== runningLessRam || (desired && settledSinceStart));
   }
 
   function fire() {
@@ -63,7 +68,7 @@ export function createEngineRecycler({ isIdle, restart, setTimer = setTimeout, c
     }
     settledSinceStart = false;
     running = null;
-    restart(desired, desiredStorage, desiredIndexStorage);
+    restart(desired, desiredStorage, desiredIndexStorage, desiredLessRam);
   }
 
   function schedule() {
@@ -81,17 +86,19 @@ export function createEngineRecycler({ isIdle, restart, setTimer = setTimeout, c
 
   return {
     // The option as stored.
-    setDesired(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto") {
+    setDesired(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto", useLessRamByDefault = true) {
       desired = lowMemory === true;
       desiredStorage = dictionaryEntryStorage;
       desiredIndexStorage = dictionaryIndexStorage;
+      desiredLessRam = useLessRamByDefault;
       reconsider();
     },
     // The mode the worker that is now serving requests was created with.
-    setRunning(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto") {
+    setRunning(lowMemory, dictionaryEntryStorage = "auto", dictionaryIndexStorage = "auto", useLessRamByDefault = true) {
       running = lowMemory === true;
       runningStorage = dictionaryEntryStorage;
       runningIndexStorage = dictionaryIndexStorage;
+      runningLessRam = useLessRamByDefault;
       settledSinceStart = false;
       reconsider();
     },

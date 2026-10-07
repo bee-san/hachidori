@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeSummary } from "./index-residency-report.mjs";
 import { appendJsonlDurable, directoryContentSha256, hostSnapshot } from "./system.mjs";
+import { residentHashBudgetBytes } from "../extension/dictionary-index-storage.js";
 
 const arg = (name, fallback) => { const at = process.argv.indexOf(`--${name}`); return at < 0 ? fallback : process.argv[at + 1]; };
 const repo = resolve(import.meta.dirname, "..");
@@ -21,6 +22,7 @@ const measureTotal = arg("measure-total", "false") === "true";
 // OS-cold samples evict the seeded profile from the OS page cache before the
 // measured launch. tmpfs pages cannot be evicted: point TMPDIR at a disk.
 const osCold = arg("os-cold", "false") === "true";
+const lowMemory = arg("low-memory", "true") === "true";
 const profileFilesystem = execFileSync("stat", ["-f", "-c", "%T", tmpdir()], { encoding: "utf8" }).trim();
 assert.ok(!osCold || profileFilesystem !== "tmpfs", "--os-cold needs TMPDIR on a block-device filesystem");
 const variants = arg("variants", "resident,16,32,64,paged").split(",");
@@ -106,8 +108,8 @@ const rows = [];
 const definition = { revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(),
   extensionSha256: directoryContentSha256(baseExtension), beforeExtensionSha256: before ? directoryContentSha256(resolve(before, "extension")) : null,
   beforeRef, beforeRevision,
-  defaultBudgetMiB: Number(readFileSync(resolve(baseExtension, "dictionary-index-storage.js"), "utf8")
-    .match(/RESIDENT_HASH_BUDGET_BYTES = (\d+) \* 1024 \* 1024;/)[1]),
+  lowMemory,
+  defaultBudgetMiB: residentHashBudgetBytes(lowMemory) / (1024 * 1024),
   node: process.version, chrome: execFileSync(chrome, ["--version"], { encoding: "utf8" }).trim(),
   environment: hostSnapshot(), fixture, samples, variants, before, measureTotal, osCold, profileDirectory: tmpdir(), profileFilesystem,
   boundary: `fresh engine; cache includes header/startup warmup pages; ${osCold ? "profile files evicted from the OS page cache before launch" : "OS cache is uncontrolled"}; engine ccall includes serialization/glue; round trip excludes CDP and rendering; RSS peak sampled every 100 ms from launch to the end of the warm pass` };
@@ -133,8 +135,8 @@ async function sample(variant, repetition) {
   const policyFile = resolve(extension, "dictionary-index-storage.js");
   if (/^\d+$/.test(variant)) {
     const original = readFileSync(policyFile, "utf8");
-    writeFileSync(policyFile, original.replace(/export const RESIDENT_HASH_BUDGET_BYTES = \d+ \* 1024 \* 1024;/,
-      `export const RESIDENT_HASH_BUDGET_BYTES = ${variant} * 1024 * 1024;`));
+    writeFileSync(policyFile, original.replace(/(export const (?:DEFAULT_)?RESIDENT_HASH_BUDGET_BYTES = )\d+( \* 1024 \* 1024;)/g,
+      `$1${variant}$2`));
   }
   // These two clocks only instrument the temporary extension. The production
   // source/bundle is identical across all budget variants.
@@ -156,7 +158,9 @@ async function sample(variant, repetition) {
   writeFileSync(contentFile, content.replace(marker, `${probe}\n${marker}`));
   let browser, page, id, sampler;
 
-  const desiredIndex = baseline ? "resident" : variant === "resident" || variant === "paged" ? variant : "auto";
+  // Leave the baseline's own hash policy unchanged, including revisions that
+  // expose an Automatic preference in their status envelope.
+  const desiredIndex = baseline ? null : variant === "resident" || variant === "paged" ? variant : "auto";
   const request = (type, fields = {}) => page.evaluate((type, fields) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type, ...fields }), type, fields);
   async function launch() {
     browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true,
@@ -171,7 +175,7 @@ async function sample(variant, repetition) {
   }
   async function ready(count = fixture.packages) {
     try {
-      return await page.waitForFunction(async (count, desiredIndex) => {
+      return await page.waitForFunction(async (count, desiredIndex, lowMemory) => {
         // A startup message can lose its reply while Chrome activates/replaces
         // extension contexts. Retry observations; never retry a mutation.
         let timer;
@@ -180,9 +184,9 @@ async function sample(variant, repetition) {
         clearTimeout(timer);
         if (s) globalThis.benchmarkLastStatus = s;
         if (s?.failedDictionaries?.length) throw new Error(JSON.stringify(s.failedDictionaries));
-        return s?.ok && s.ready && !s.loading && s.lowMemory && s.dictionaryCount === count*4
-          && (s.dictionaryIndexStorage ?? "resident") === desiredIndex ? s : false;
-      }, { timeout: 180000, polling: 50 }, count, desiredIndex).then(handle => handle.jsonValue());
+        return s?.ok && s.ready && !s.loading && s.lowMemory === lowMemory && s.dictionaryCount === count*4
+          && (desiredIndex === null || s.dictionaryIndexStorage === desiredIndex) ? s : false;
+      }, { timeout: 180000, polling: 50 }, count, desiredIndex, lowMemory).then(handle => handle.jsonValue());
     } catch (error) {
       const last = await page.evaluate(() => globalThis.benchmarkLastStatus ?? null).catch(() => null);
       throw new Error(`${error.message}; last engine status: ${JSON.stringify(last)}`, { cause: error });
@@ -207,7 +211,7 @@ async function sample(variant, repetition) {
       for (const [key, value] of Object.entries(patch)) {
         if (options[key] !== value) throw new Error(`stored option ${key} is ${JSON.stringify(options[key])}`);
       }
-    }, { lowMemoryMode: true, dictionaryEntryStorage: "auto", ...(baseline ? {} : { dictionaryIndexStorage: desiredIndex }),
+    }, { lowMemoryMode: lowMemory, dictionaryEntryStorage: "auto", ...(baseline ? {} : { dictionaryIndexStorage: desiredIndex }),
       audioAutoplay: false, showLookupCounts: false, maxResults: 256, hoverEnabled: true, lookupMode: "hover",
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, definitionBlurCountEnabled: false });
     for (const open of await browser.pages()) if (open.url().includes("startup.html")) await open.close();
@@ -351,12 +355,14 @@ async function sample(variant, repetition) {
     }, origin);
     const afterReimport = await request("hd_memory");
     const recycleStarted = performance.now();
-    await page.waitForFunction(async generation => {
-      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
-      return reply?.ready && !reply.loading && reply.generation < generation;
-    }, { timeout: 120000, polling: 50 }, reimport.generation);
+    if (lowMemory) {
+      await page.waitForFunction(async generation => {
+        const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+        return reply?.ready && !reply.loading && reply.generation < generation;
+      }, { timeout: 120000, polling: 50 }, reimport.generation);
+    }
     await ready();
-    const recycleMs = performance.now() - recycleStarted;
+    const recycleMs = lowMemory ? performance.now() - recycleStarted : null;
     const afterRecycle = await request("hd_memory");
     assert.equal((await pass()).resultHash, signatures.get("corpus"));
     const removeStarted = performance.now();
@@ -371,7 +377,7 @@ async function sample(variant, repetition) {
       rssAfterLifecycle: processMemory(browser.process().pid) };
     // Advanced starts Chrome's asynchronous memory measurement. Keep it
     // outside setup and timings, where GC would interfere with OPFS writes.
-    if (variant === "32" && repetition === 0) {
+    if ((variant === "32" || variant === "65") && repetition === 0) {
       await page.goto(`chrome-extension://${id}/settings.html#advanced`);
       await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident"));
       const expected = (await request("hd_lookup", { text: "食べる", maxResults: 256 })).results;
@@ -389,7 +395,8 @@ async function sample(variant, repetition) {
         row.uiControls[policy] = { heapBytes: memory.heapBytes, residentHashBytes: memory.dictionaries.reduce((sum, item) => sum + item.residentHashBytes, 0) };
       }
       await page.reload();
-      await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident"));
+      await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident")
+        && !document.getElementById("use-less-ram-by-default").hidden);
       mkdirSync(resolve(output, "screenshots"), { recursive: true });
       for (const palette of ["light", "dark"]) {
         await page.evaluate(palette => { document.documentElement.dataset.hoshidictsTheme = palette; }, palette);

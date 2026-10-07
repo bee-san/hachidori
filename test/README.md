@@ -292,11 +292,17 @@ included. `node --test test/dictionary-index-storage.test.mjs` checks the
 aggregate hash budget: the smallest hash tables stay resident first, ties go by
 stable package ID, each enabled package counts once and disabled packages not
 at all, and the plan only chooses which hashes are paged, never which packages
-load. Automatic budgets only on low-memory direct OPFS. `node-smoke.mjs` also pads a copy's `hash.table`: paged,
+load. Automatic uses 65 MiB in normal direct OPFS mode with **Use less ram by default**
+on, and 32 MiB in Low memory mode; turning the default switch off keeps resident
+hashes in normal mode. The option and Settings checks cover its enabled default,
+revisioned saves, explicit hash overrides and the idle restart without changing
+entry storage or import mode. The Chrome suite checks the serving worker's 65 MiB
+budget and toggles the switch both ways with identical lookups, then reloads Settings.
+`node-smoke.mjs` also pads a copy's `hash.table`: paged,
 it adds no allocation of that size and every term, kanji and media answer is
 identical, and its pages share the entries' cache and leave with the package.
-`chrome-e2e.mjs` first requires the real extension total, with the engine
-heap counted once, then turns the mode on in a real Chrome, watches the worker recycle
+`chrome-e2e.mjs` first requires a real extension total at least as large as the
+engine heap it reports, then turns the mode on in a real Chrome, watches the worker recycle
 (the generation restarts from zero), imports in the strict two-thread pool,
 and checks that the heap dropped, lookups still hit, the package's row counts
 only its index files as sized in OPFS, the page cache filled within its budget

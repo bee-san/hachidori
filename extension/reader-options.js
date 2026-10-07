@@ -198,6 +198,7 @@
     frequencyDictionary: "",
     frequencyOrder: "auto",
     automaticBackupDays: 2,
+    useLessRamByDefault: true,
     // Recycle the engine worker after dictionary changes and import on one
     // thread; see docs/memory.md. Not a reader behaviour, so no hotkey toggle.
     lowMemoryMode: false,
@@ -207,7 +208,7 @@
   };
   // Word highlighting's switches stay with its experimental Settings section;
   // a page shows or hides its marks with Toggle word highlights instead.
-  const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "wordHighlightEnabled", "wordHighlightUnknown",
+  const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "useLessRamByDefault", "wordHighlightEnabled", "wordHighlightUnknown",
     "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));

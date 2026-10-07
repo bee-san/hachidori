@@ -1,0 +1,208 @@
+{
+  "kind": "browser",
+  "fixture": "synthetic importer output; package sizes approximate the #496 inventory; nested vocabularies; Zipf corpus",
+  "packages": 58,
+  "failures": [
+    {
+      "variant": "65",
+      "repetition": 2,
+      "attempt": 1,
+      "utc": "2026-10-07T06:55:05.789Z",
+      "error": "ProtocolError: Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
+    }
+  ],
+  "hashTableBytes": 261378456,
+  "corpus": 570,
+  "revision": "70f4f08b78191d92bc1fca116645e4c34be8689e",
+  "beforeRevision": "d5bac6318c0cc03c2d07214719be639c3b50f43e",
+  "variants": [
+    {
+      "variant": "baseline",
+      "label": "main (all resident)",
+      "samples": 3,
+      "startupMs": 5668.1027270000195,
+      "firstLookupMs": 6.305000000051223,
+      "cold": {
+        "roundTrip": {
+          "p50": 2.1349999999802094,
+          "p95": 4.725000000034925,
+          "p99": 6.024999999965075,
+          "throughputPerSecond": 401.9561867756408,
+          "p50Range": [
+            2.1049999999813735,
+            2.1350000000093132
+          ],
+          "queries": 570
+        },
+        "engine": {
+          "p50": 1.1099999999860302,
+          "p95": 3.5249999999650754,
+          "p99": 4.289999999979045,
+          "throughputPerSecond": 714.5453861673655,
+          "p50Range": [
+            1.0749999999534339,
+            1.1149999999906868
+          ],
+          "queries": 570
+        }
+      },
+      "warm": {
+        "roundTrip": {
+          "p50": 1.9949999999953434,
+          "p95": 4.400000000023283,
+          "p99": 5.769999999960419,
+          "throughputPerSecond": 433.981513910255,
+          "p50Range": [
+            1.9899999999906868,
+            2.0050000000046566
+          ],
+          "queries": 570
+        },
+        "engine": {
+          "p50": 1.0200000000186265,
+          "p95": 3.2999999999883585,
+          "p99": 3.85999999998603,
+          "throughputPerSecond": 786.1852086844463,
+          "p50Range": [
+            1.0150000000139698,
+            1.0449999999837019
+          ],
+          "queries": 570
+        }
+      },
+      "residentHashBytes": 261378456,
+      "residentFileBytes": 289249145,
+      "heapAfterLoadBytes": 358809600,
+      "heapPeakBytes": 358809600,
+      "liveAfterLookupsBytes": 334433816,
+      "pageCacheAfterLookupsBytes": 33551686,
+      "warmIndexReads": 0,
+      "extensionRssPeakBytes": 868130816,
+      "extensionRssSteadyBytes": 866095104,
+      "treeRssPeakBytes": 2049376256,
+      "treeRssSteadyBytes": 2045808640,
+      "reimportMs": 2873.345000000001,
+      "disabledRestartMs": 4775.500296000013,
+      "recycleMs": null,
+      "hoverFirst": 25.699999999953434,
+      "hoverComplete": 53
+    },
+    {
+      "variant": "65",
+      "label": "PR, 65 MiB budget (default)",
+      "samples": 3,
+      "startupMs": 5619.7197890000025,
+      "firstLookupMs": 7.070000000065193,
+      "cold": {
+        "roundTrip": {
+          "p50": 2.4400000000023283,
+          "p95": 5.130000000004657,
+          "p99": 8.915000000008149,
+          "throughputPerSecond": 364.8945806753108,
+          "p50Range": [
+            2.3950000000186265,
+            2.7199999999720603
+          ],
+          "queries": 570
+        },
+        "engine": {
+          "p50": 1.4249999999883585,
+          "p95": 3.9399999999732245,
+          "p99": 6.160000000032596,
+          "throughputPerSecond": 595.5334987596493,
+          "p50Range": [
+            1.360000000015134,
+            1.584999999962747
+          ],
+          "queries": 570
+        }
+      },
+      "warm": {
+        "roundTrip": {
+          "p50": 2.3099999999976717,
+          "p95": 4.880000000004657,
+          "p99": 6.975000000005821,
+          "throughputPerSecond": 385.4632998363496,
+          "p50Range": [
+            2.294999999983702,
+            2.5950000000884756
+          ],
+          "queries": 570
+        },
+        "engine": {
+          "p50": 1.3250000000116415,
+          "p95": 3.8549999999813735,
+          "p99": 4.579999999987194,
+          "throughputPerSecond": 646.5627250918509,
+          "p50Range": [
+            1.3099999999976717,
+            1.5100000000093132
+          ],
+          "queries": 570
+        }
+      },
+      "residentHashBytes": 63095956,
+      "residentFileBytes": 90966645,
+      "heapAfterLoadBytes": 125435904,
+      "heapPeakBytes": 150536192,
+      "liveAfterLookupsBytes": 136153056,
+      "pageCacheAfterLookupsBytes": 33553429,
+      "warmIndexReads": 5111,
+      "extensionRssPeakBytes": 666771456,
+      "extensionRssSteadyBytes": 664555520,
+      "treeRssPeakBytes": 1847832576,
+      "treeRssSteadyBytes": 1846075392,
+      "reimportMs": 2804.975000000035,
+      "disabledRestartMs": 5126.95417099999,
+      "recycleMs": null,
+      "hoverFirst": 26.5,
+      "hoverComplete": 55.800000000046566
+    }
+  ],
+  "comparisons": [
+    {
+      "variant": "65",
+      "against": "baseline",
+      "coldP50Ms": {
+        "delta": 0.3050000000221189,
+        "percent": 14.285714286882722
+      },
+      "coldP95Ms": {
+        "delta": 0.404999999969732,
+        "percent": 8.571428570724624
+      },
+      "warmP50Ms": {
+        "delta": 0.3150000000023283,
+        "percent": 15.789473684364088
+      },
+      "warmP95Ms": {
+        "delta": 0.47999999998137355,
+        "percent": 10.909090908609855
+      },
+      "warmThroughput": {
+        "delta": -48.51821407390537,
+        "percent": -11.179788198061052
+      },
+      "startupMs": {
+        "delta": -48.38293800001702,
+        "percent": -0.8536002315121212
+      },
+      "heapPeakBytes": {
+        "delta": -208273408,
+        "percent": -58.04566210045662
+      },
+      "heapAfterLoadBytes": {
+        "delta": -233373696,
+        "percent": -65.04109589041096
+      },
+      "extensionRssPeakBytes": {
+        "delta": -201359360,
+        "percent": -23.194587300538817
+      },
+      "extensionRssSteadyBytes": {
+        "delta": -201539584,
+        "percent": -23.269913785357225
+      }
+    }
+  ]
+}
