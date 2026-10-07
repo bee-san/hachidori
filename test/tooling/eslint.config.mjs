@@ -19,7 +19,7 @@ const chrome = readonly(["chrome"]);
 // scripts loaded after it.
 const published = readonly([
   "HDAnki", "HDAudio", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
-  "HDGlossary", "HDLookupStats", "HDNetflix", "HDNetflixSubtitles", "HDPopup", "HDReaderOptions",
+  "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixSubtitles", "HDPopup", "HDReaderOptions",
   "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights", "HDWordStatusOverrides",
 ]);
 
