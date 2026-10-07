@@ -862,7 +862,7 @@ corpus, query fixture, and correctness boundary.
 
 ## Runtime overrides
 
-The defaults match `test/chrome-e2e.mjs`. Override them when necessary:
+The defaults match the real-Chrome suite's (`test/chrome-e2e/session.mjs`). Override them when necessary:
 
 ```bash
 HACHIDORI_CHROME=/path/to/chrome \

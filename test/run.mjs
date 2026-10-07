@@ -44,6 +44,10 @@ async function run(name, args, overrides = {}) {
   }
 }
 
+// The node:test suites: the spec reporter keeps their logs readable, and the run ends
+// once every test has finished even though the code under test leaves timers behind.
+const NODE_TEST = ["--test-force-exit", "--test-reporter=spec"];
+
 const suite = process.argv[2];
 mkdirSync(OUTPUT, { recursive: true });
 try {
@@ -65,10 +69,10 @@ try {
     await run("node-threaded-idbfs", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
-    await run("extension-smoke", ["test/extension-smoke.mjs"]);
+    await run("extension-smoke", [...NODE_TEST, "test/extension-smoke.mjs"]);
   } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
-    await run(suite, [`test/${suite}.mjs`], {
+    await run(suite, [...(suite === "chrome-e2e" ? NODE_TEST : []), `test/${suite}.mjs`], {
       HACHIDORI_DEINFLECTION_SCREENSHOT: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT || resolve(OUTPUT, "deinflection.png"),
       HACHIDORI_SETTINGS_THEME_FILMSTRIP: process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP || resolve(OUTPUT, "settings-theme-first-frame.png"),
       HACHIDORI_SHARING_SCREENSHOTS: process.env.HACHIDORI_SHARING_SCREENSHOTS || resolve(OUTPUT, "sharing"),

@@ -2,7 +2,12 @@
 
 # Hachidori test harness
 
-## Reproducible setup and CI
+This page is an index: each file below with what it proves, plus what the code
+does not say on its own (setup, environment, conventions). The checks themselves
+are named in the code, and for the two largest suites the spec reporter that
+`test/run.mjs` passes prints each test's name as it runs.
+
+## Run the checks
 
 Use Node **22.23.1** (`.node-version`) and npm **10.9.8**. The bridge suite needs
 Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**.
@@ -26,14 +31,14 @@ HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
 ```
 
-`test/tooling/package-lock.json` locks jsdom **30.1.1**, Puppeteer **25.11.0**,
-the browser installer **3.2.2**, ESLint **10.12.0** and `globals` **17.13.0**,
-plus their transitive dependencies. The small
-`test/run.mjs` launcher supplies the existing environment overrides, generates
-fixtures, runs each existing suite in a separate Node process, and propagates
-every nonzero exit or signal. It selects the exact Chrome build from
-`test/tooling/package.json` rather than whichever browser happens to be newest
-in a developer's cache. Dependencies are isolated from the extension under
+`test/tooling/package-lock.json` locks jsdom, Puppeteer, the browser installer,
+ESLint **10.12.0** and `globals` **17.13.0**, plus their transitive
+dependencies. The small `test/run.mjs` launcher
+supplies the existing environment overrides, generates fixtures, runs each
+existing suite in a separate Node process, and propagates every nonzero exit or
+signal; logs go to `test/tmp/ci/<suite>.log`. It selects the exact Chrome build
+from `test/tooling/package.json` rather than whichever browser happens to be
+newest in a developer's cache. Dependencies are isolated from the extension under
 `test/tooling/node_modules`; the browser is ignored under `test/tmp/browsers`.
 The launcher ignores a machine-wide `CHROME_BIN` (GitHub runners set it to their
 system browser). Use `HACHIDORI_CHROME` for an intentional browser executable
@@ -47,21 +52,16 @@ For a Linux container that cannot run Chrome's sandbox, set
 `HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
 non-loopback network address for its other-computer checks.
 
-The extension smoke suite checks fullscreen host movement and its fallback
-elements; the primary Chrome suite checks an iframe lookup and popup painting
-over a fullscreen player in a real browser.
-
-`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke tests, the
-four Chrome browser suites on every PR
-and push to `main`, or manually. It also
+`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke
+tests and the five Chrome browser suites on every PR and push to `main`, or
+manually. It also
 runs the primary Chrome suite on the exact Chrome 128 build recorded beside the
 current Chrome 152 pin, and creates and checksum-verifies the Chrome/source
-release pair. The release contract fails
-if the tested minimum drifts from the manifest. The browser matrix runs
-independently so one failing suite cannot hide the others. Logs are saved to
-`test/tmp/ci`; failing CI jobs upload them, the available screenshots, and the
-browser profiles retained by failed suites, for seven days. The same commands
-reproduce the failure locally. The optional native checks below remain separate checks for their domains.
+release pair. The release contract fails if the tested minimum drifts from the
+manifest. The browser matrix runs independently so one failing suite cannot hide
+the others. Failing CI jobs upload `test/tmp/ci`, the available screenshots, and
+the browser profiles retained by failed suites, for seven days. The same commands
+reproduce the failure locally.
 
 `npm --prefix test/tooling run lint` runs ESLint over every JavaScript file except
 `extension/vendor/`, `third_party/` and git-ignored output, with only `no-undef`,
@@ -78,468 +78,21 @@ lists gets extension-page globals, so a `chrome` or `document` it cannot use
 still passes.
 
 Direct `node test/...` commands below still support the external cache and
-`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run a
-focused jsdom test with the locked tooling directly:
+`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. Unlike
+the launcher, a direct `node test/chrome-e2e.mjs` also accepts `CHROME_BIN`: it
+takes `HACHIDORI_CHROME`, then `CHROME_BIN`, then the newest Chrome for Testing in
+the external cache, then a system Chrome (`/usr/bin/google-chrome` and the like),
+and stops with a message naming `HACHIDORI_CHROME` or `HACHIDORI_PUPPETEER` when
+the browser or puppeteer-core is missing. To run a focused jsdom test with the
+locked tooling directly:
 
 ```sh
 HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
 ```
 
-`node --test test/anki-pitch.test.mjs test/anki-values.test.mjs test/anki-templates.test.mjs`
-checks pitch contours, kana, escaping, variants and existing text markers using
-the jsdom override above. Graph levels come from the popup's Yomitan pitch
-helpers, including a string pattern's particle as each Yomitan graph style reads
-it. The Chrome suite mines the fixture dictionary and
-renders both graph styles offline in light, dark and styled cards, including
-the hollow-particle regression for card CSS that colors mora dots by radius.
-
-`node --test test/anki-glossary.test.mjs` checks the rich and plain glossary
-markers: ordered senses, aliases and safe media, line breaks as `<br>`, one
-`li[data-dictionary]` per term-bank row, image sizes, and style-element escaping.
-It also pins Yomitan's `structured-content-style.json` rules inline (table,
-header and cell styles ahead of a dictionary's own style, a hidden external-link
-icon) against the output of Yomitan's `CssStyleApplier` at 67db60d, and dictionary
-CSS scoped by selector prefix through the real `applyDictionaryStyles`: each
-member of a selector list prefixed, commas inside `:is()` and strings kept,
-rules inside `@media` prefixed, global rules dropped and no `@scope`. The Chrome
-suite checks the prefixed styles apply only inside their dictionary's item.
-
-`test/chrome-structured-table.mjs`, called by the Chrome suite, checks NHK-pitch's
-negative-margin disclosure tables at 320px and 560px popup widths: the first
-header glyph remains visible, and wide tables still scroll to their final column
-both inside and outside a disclosure.
-
-`test/chrome-dynamic-headword.mjs`, called by the Chrome suite, renders four
-results, three for 明日, through the production renderer, stylesheet, Anki
-controller and Mark as known and Ignore buttons. Scrolling past あす's own
-header must show あす in the popup's header, with the top and bottom toolbars
-and at 125% scale, without moving any glossary card. The header keeps one row
-of Anki, pronunciation, Mark as known, Ignore, Note and custom Anki buttons, and
-its Anki and custom Anki clicks mine あす. Focus on the leaving pronunciation
-button moves to あす's, as focus on the leaving Ignore moves to あす's Ignore,
-and a focused custom Anki button holds the header until focus leaves it. A
-Mark as known under the pointer must look neither like itself at rest nor like
-the pressed Ignore beside it. Go to next entry leaves みょうにち's header under the
-pinned one. The accessibility tree names the hidden first headword nowhere.
-`HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS` names a directory for its screenshots.
-The extension smoke suite's jsdom stage for the same change checks node identity,
-the held Note draft, navigation that cannot reach its target, and Back's
-disclosure order. `test/anki-content.test.mjs` checks that a renderer can name
-the result that owns the shared custom Anki buttons.
-
-`test/chrome-audio-chooser.mjs`, called by the Chrome suite, renders three
-results through the production renderer, stylesheet and audio controller with
-the reader's own popup-pixel conversion (#504). A real right-click, Shift-click
-and Down each open the pronunciation chooser 4 popup pixels below Audio, or
-above it with the bottom toolbar, overlapping it horizontally and at least 6
-popup pixels inside every popup edge: at 100% and 125% popup scale, at 80% under
-125% browser zoom, and in the dark, light and high-contrast palettes. Opening
-it moves neither the definitions nor their scroll position, and focus goes to
-Close and back to Audio. In a 280×200 popup at 125%, 25 choices scroll inside
-the chooser and a real click on the last plays it with its exact identity. A
-later result's chooser follows its scrolled button, including into the pinned
-header, and closes when the button is scrolled out of the definitions or hidden
-by a later shown result. Keyboard focus on a choice draws a transparent outline,
-which forced colours (emulated dark and light) paint in a system colour.
-`HACHIDORI_AUDIO_CHOOSER_SCREENSHOTS` names a directory for its screenshots.
-
-`node --test test/sentence.test.mjs` is the table-driven contract of
-`extension/sentence.js`, Yomitan's sentence boundaries: terminators kept at the
-end, enclosing quotes and brackets left out, nested and preceding pairs kept
-whole, line breaks, the extent cap, surrogate pairs at the window's edge, the
-match itself never scanned, and the offset feeding the Anki `{sentence}` field.
-It needs no jsdom. The extension smoke suite scans texthooker-ui's line DOM, one
-sentence of a three-sentence text node and a collapsed line wrap through the
-real content script, and checks that the engine reply refines the sentence
-around the whole matched word. The Chrome suite mines a texthooker line through
-the real popup and the fake AnkiConnect and requires that one line as the note's
-sentence, with the page's full address, query and fragment included, as its
-`{url-plain}`.
-
-A highlighted or dragged selection reads its sentence as a hover over its first
-character does (issue #430). The extension smoke suite selects inside an inline
-element and a ruby base, one overlay glyph box, and across two overlay blocks
-with page script and hidden text beside them. The Chrome suite clicks a custom
-link's `%s` after a hover and after selections in an inline element and a ruby
-base, and mines a selection with hidden text inside it.
-`chrome-overlay.mjs` clicks the link with the mouse after a hover, a drag over
-one or several glyph boxes, and a drag on into the next OCR block.
-
-`node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
-settings search, keyboard navigation, disclosure focus and draft preservation,
-including "highlight", "selection" and "custom dictionary" finding **Use the
-personal dictionary** and "headword" and "header" finding **Headword and
-toolbar position**, plus the toolbar toggle and revision conflicts. Search uses
-the same external jsdom dependency described below. The toolbar tests do not
-start a recording session.
-
-`node --test test/activation-settings.test.mjs` checks Reading → Activation key
-or button: No key comes first and the mouse buttons above the keys, and **Press
-to set** selects the next middle, Back or Forward press without letting its
-release, click or menu act, records keys by name, reports the primary and
-secondary buttons and unlisted keys without saving them, ignores repeats and
-cancels on Escape.
-
-`node --test test/scan-delay-settings.test.mjs` checks that **Hover scan delay**
-shows only for No key and **Definition hover delay** only while Child popups
-follow the page, that Custom starts from the page delay, and that Same as page
-delay saves null while a custom 0 saves as 0. It uses the same external jsdom
-dependency.
-
-`node --test test/frequency-presentation.test.mjs` checks full Yomitan-style
-frequency values by default and opt-in abbreviated numbers, the primary result's frequency tags sharing the later
-entries' tag structure, every supplied frequency dictionary's tag in the first and later entries (13, 20 and 60
-sources, in either order, with monogatari's `13337/37459` last, and all of them kept hidden under an average),
-visible kana markers, values in each dictionary's own order with the first one averaged, as in
-Yomitan, tabs-only lower chrome, concise typed harmonic averages that keep each
-dictionary's tag hidden in the DOM outside the pitch-badge budget through live toggles and alias renames, preserved
-explicit display choices, source details, and live grammar/name/abbreviation controls without
-replacing definitions or Note drafts. It uses the same external jsdom dependency.
-
-`node --test test/pitch-badges.test.mjs` checks Yomitan's pronunciation markup
-in the real popup view: one `li.pronunciation-group` per pitch dictionary with
-its `pronunciation-dictionary` tag, each accent's mora levels, `[n]` notation and
-`reading [n]` tooltip and accessibility label; the engine's `{position: 0,
-pattern: "LHL"}` reading as `[2]` in the badge and the furigana contour; the
-Overline furigana pitch style drawing the headword with the badges' Yomitan
-text, with the list's levels, a hook at a segment-boundary drop and a live
-switch back to the contour; the
-text, position and graph switches updating an open popup without replacing
-definitions; the nasal and devoice marks; and alias renames and the dictionary
-name switch applied live. It also pins each headword's and badge's
-`data-pitch-category` (jp-mining-note's 平板, 頭高, 中高, 尾高 and 起伏 examples,
-the `v5` kifuku rule and an `LHL` pattern), the headword following the pitch
-accent dictionary while each badge keeps its own group, and the group staying
-set and live with the furigana contour off.
-
-`node --test test/pitch-accent-colors.test.mjs` parses `reader.css` and checks
-the five **Show pitch accent colours** groups against every registered palette:
-3:1 against base-100 and base-200, and against the popup body and the header at
-the default 85% opacity over a white or a black page, plus an RGB distance of at
-least 45 between the groups in each colour scheme and the 2 px focus outline on
-a coloured kanji. `oklch()` palette values are converted with CSS Color 4's
-OKLab matrices. It needs no external dependency.
-
-`node --test test/yomitan-parity.test.mjs` checks the renderer against
-Yomitan's own output at yomidevs/yomitan@67db60d, written inline with the
-Yomitan function that produced it, so no Yomitan checkout is needed. It covers
-structured-content inline styles (JMdict's `130%` redirect span, keywords,
-`calc()`, gradients, numeric em margins, shorthand order) and the values that
-stay refused: resource and custom functions, `var()` and CSS escapes. The
-glossary cases compare `ul.gloss-list` from `DisplayGenerator._createTermDefinition`
-for plain and Pixiv-style multiline strings, several senses, form-of data, the
-JMdict redirect, a Jitendex gaiji, an image with its description, a table, an
-external link and dictionary-set `lang`, after removing a short documented list
-of Hachidori's own hooks. A popup-view case pins `li.definition-item[data-dictionary]`,
-`.definition-tag-list`, `data-count` and the headword's `lang`. The pronunciation
-case compares `PronunciationGenerator`'s text, `[n]` notation and SVG graph for
-はし as `"LHL"` and as `2`, and がくせい with nasal and devoiced morae. It uses the same
-external jsdom dependency.
-
-`node --test test/note-editor.test.mjs` checks the shared personal-dictionary
-pencil on term, kanji and missing-word views, selected-word prefills and a single
-pending save, and that turning off **Use the personal dictionary** hides only
-the pencil, through the popup host, while custom buttons stay. The extension smoke
-suite also verifies that selected missing
-words refresh into their personal definition after the save, including when no
-dictionaries were installed. It uses the same external jsdom dependency.
-
-`node --test test/settings-labels.test.mjs` parses `settings.html` and fails
-when two controls share a visible label, when a keybind-toggleable option lacks
-a Toggle option label, or when that label's leading word (Show, Hide, Blur…)
-differs from the Settings checkbox it flips, so an inverted option cannot read
-with opposite polarity. It also rejects a sidebar item without a link. It uses
-the same external jsdom dependency.
-
-`node --test test/keybind-settings.test.mjs` checks Yomitan's default keybinds for
-supported actions plus the Alt+wheel rows, keybind normalisation and strict option
-patches, key combination capture, wheel steps recorded only with a modifier over
-the focused field, action/argument/scope editing, Clear, Reset, Remove, Add and
-Reset to defaults. It uses the same external jsdom dependency. The extension smoke
-suite drives the content script's keybind dispatch and the real popup view's entry
-navigation. Its wheel cases press a binding once per notch, gather a touchpad's
-small steps into notches, start again after a pause or a reversal, act on the
-popup under the pointer, and leave unbound and Ctrl wheels to the existing
-scrolling. The Chrome suite moves one entry per real Alt+wheel step without
-scrolling the pane or the page. `audio-content.test.mjs` covers keybind audio
-playback. The keybind
-settings suite also lists Chrome's browser shortcuts and refreshes them when the
-window regains focus, while proving an overlay disables only that Chrome-owned
-shortcut manager and leaves page/popup keybind editing available.
-`node --test test/browser-commands.test.mjs` runs the worker's command listener
-against the manifest: the toggle makes one queued revisioned `hoverEnabled`
-write, and the settings command opens Settings. Each argument-free keybind
-action has a manifest command that the worker forwards to the active tab. The
-extension smoke suite runs forwarded commands through the reader's keybind
-dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
-(reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
-them.
-
-`node --test test/error-text.test.mjs` pins the exact text each
-`error-text.js` variant gives an Error, an empty-message Error, a string, a
-plain object with and without a `message`, an Error from another realm, and
-`null`, `undefined` and `NaN`, so sharing the variants cannot change a log
-line, status or reply.
-
-`node --test test/message-types.test.mjs` keeps `extension/message-types.js`
-equal to the `hd_*` names written in the code of every extension JavaScript
-file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as
-does a listed name nothing uses. It loads the list as a classic script and as
-an ES module, and checks that blanking comments leaves strings, templates and
-regular expressions alone.
-
-`node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs
-test/low-memory-option.test.mjs` covers [Low memory mode](../docs/memory.md):
-the pure recycle scheduler (no restart while busy, the two-second idle window,
-one restart for back-to-back mutations, a restart on option mismatch in either
-direction), the Settings → Advanced → Memory readout and each Library row's
-*In memory* line from a stubbed `hd_memory` reply (an em dash when the engine
-is busy or unreachable, the *Extension total* line from a stubbed
-`hd_memory_total` reply, a dash where it cannot be measured and never holding
-the engine line, a refresh on a new engine generation while Advanced is
-shown and when a row's Details opens, the switches and entry-storage selector saving
-through the ordinary options queue, and the switch hidden with
-the single-thread engine, and a paged row's *(entries read from disk)*), and the
-`lowMemoryMode` and `dictionaryEntryStorage` options' normalisation. The
-memory settings suite uses the same external jsdom dependency. `node-smoke.mjs`
-records the heap after import and after `hdw_reset` and imports inside a
-two-thread pool. It also loads copies of the fixture into fresh modules with one
-file padded to 16 MiB: four kinds of one package grow the heap by one copy of
-its files, a padded `media.bin` and a paged package's padded `blobs.bin` grow it
-by nothing, and paged `hdw_lookup`/`hdw_kanji`/`hdw_media` answers are
-byte-identical to mapped ones. `extension-smoke.mjs` checks the `hd_memory` reply
-against the engine's file sizes (one copy, no `media.bin`) and the
-offscreen-only `hd_engine_config` read and push; its paged-dictionaries stage
-runs a worker configured as the low-memory one (every add paged, identical
-lookups, smaller rows, a filled page cache) and, with `hdw_add_dict` refusing a
-package the way a full heap does, checks that the package loads paged, and that
-one refused paged too is reported in `failedDictionaries` while the others load.
-`engine-recycler.test.mjs` checks automatic OPFS paging independently of import
-mode, IDBFS defaults, explicit resident storage, the low-memory override, and
-idle restarts when only the storage policy changes, the hash-index policy
-included. `node --test test/dictionary-index-storage.test.mjs` checks the
-aggregate hash budget: the smallest hash tables stay resident first, ties go by
-stable package ID, each enabled package counts once and disabled packages not
-at all, and the plan only chooses which hashes are paged, never which packages
-load. Automatic uses 65 MiB in normal direct OPFS mode with **Use less ram by default**
-on, and 32 MiB in Low memory mode; turning the default switch off keeps resident
-hashes in normal mode. The option and Settings checks cover its enabled default,
-revisioned saves, explicit hash overrides and the idle restart without changing
-entry storage or import mode. The Chrome suite checks the serving worker's 65 MiB
-budget and toggles the switch both ways with identical lookups, then reloads Settings.
-`node-smoke.mjs` also pads a copy's `hash.table`: paged,
-it adds no allocation of that size and every term, kanji and media answer is
-identical, and its pages share the entries' cache and leave with the package.
-`chrome-e2e.mjs` first requires a real extension total at least as large as the
-engine heap it reports, then turns the mode on in a real Chrome, watches the worker recycle
-(the generation restarts from zero), imports in the strict two-thread pool,
-and checks that the heap dropped, lookups still hit, the package's row counts
-only its index files as sized in OPFS, the page cache filled within its budget
-and the readout renders. Turning the mode off retains paged OPFS entries with
-the full import pool; selecting resident entry storage counts `blobs.bin` again
-and produces identical lookup results. Choosing **Read from disk** for hash
-indexes restarts the idle worker with the hash paged through the shared cache
-and identical lookups, and **Keep in memory** brings it back.
-The hoshidicts `dictionary-storage` and `paged-hash` tests cover the engine side
-natively.
-
-`node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
-test/sharing-host.test.mjs
-test/anki-client-media.test.mjs test/sharing-settings.test.mjs
-test/anki-addon.test.mjs` checks the sharing wire contract (addresses as a
-person types them, browser names, capability negotiation, the forwarding and
-Anki mining/Settings allowlists, host switching and retired-session replies,
-frame and client-media limits, and word-status frames carrying a revision or
-`null`). The relay's raw-socket,
-archive, paused-peer, ordered large-frame, shutdown and optional Anki Desktop
-checks live in
-[hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
-Release v0.0.3 also retains the Python 3.9 idle-timeout regression.
-`sharing-settings.test.mjs` covers the
-Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
-sharing states, the add-on download, the network switch with the addresses it
-lists and copies, the offer to use the Hachidori found on this computer, an
-address for another computer, the linked state and unlinking.
-It also verifies download progress surviving polls, one pending download,
-failure feedback, and retry. `anki-addon.test.mjs` checks the pinned GitHub
-URL, binary preservation, and HTTP/network errors. The extension smoke suite's
-sharing-host and sharing-client stages cover the service worker's side,
-including hosting that waits for dictionaries, the network exchange, linking
-that turns hosting off, a linked install's kept state, draining old-role Anki
-work before the route changes, linked Settings discovery/setup checks, local
-media/TTS ownership, host-specific mining keys, duplicate-index suspension and
-restart ordering. The focused sharing-client checks also pin link generations:
-an unsent edit cannot move to a replacement host, an already-sent write reports
-an unknown outcome, and an obsolete reply cannot settle the new link's request.
-The host broadcasts its word-status revision only while a browser is linked;
-the client relays that revision, and `null` when a link's hello completes or
-it unlinks. The extension smoke suite's word-status stage answers a page's batch
-from the first Template's rows without contacting Anki, broadcasts a row
-change to every tab with its revision and a Template source change without
-one (and to linked browsers), answers a linked browser's batch from the host's
-index, and has a linked browser's pages re-read at its hello, on each host
-revision and after unlinking. Its word-status-overrides stage writes Mark as
-known and Ignore one headword at a time in the worker's storage queue (tabs
-compose, a repeat writes nothing, malformed changes are refused), sends the
-record in the host's hello and its batches, commits a linked browser's Ignore
-on the host, and forwards a linked page's Mark as known once, mirroring the
-record the host pushes back. Linking keeps the browser's own record aside and
-unlinking restores it above the mirror's revision.
-
-`node --test test/word-status-overrides.test.mjs` pins that record's shape:
-malformed records normalise, each headword sits under one status, and one
-change sets, moves or clears a headword at the next revision while a no-op
-keeps the record.
-
-`node --test test/word-highlights.test.mjs` drives `word-highlights.js`, the
-content script's word highlighter, with jsdom and a fake engine and index
-(#520). Nothing is segmented off screen or before the index can answer, a
-batch carries the hover's frequency options and personal dictionary switch, and
-turning that switch off segments the shown text again; visible
-words take their first result's status around a ruby reading, a kana word a
-reading candidate's card, and a phrase around a function word its words'
-cards, while a content-word compound keeps its own and function words stay
-unmarked. A repeated line reuses its cached segmentation, a status change moves
-marks without segmenting again, a revision already read asks nothing, a signal
-still re-reads every word shown when only a later line's words were read at its
-revision, and a removed line takes its marks with it. A line added to a list
-inside a wrapper that has text of its own reads only the new line's text, and
-the wrapper's only once its own text changes. Inside one long block of `<br>`-separated
-lines, with a fake layout, only the lines within a viewport of the visible area
-keep ranges as it scrolls, and a block leaving the viewport keeps none. A reply
-from another engine generation is
-discarded, changed dictionaries keep the marks until the new segmentation
-arrives, and stopping removes every mark. A word marked as known or ignored
-takes that status over its card's, a phrase around a function word follows its
-words' overrides, and setting or clearing one re-marks the words shown without
-a segmentation or status request. Mark as known and Ignore join each entry's
-row after Anki and pronunciation only while highlighting is on and the renderer
-styles them, send one explicit change (clearing a status already set), press
-from the stored record rather than the reply, name a failed save in their label
-until pressed again, act from their keybinds without the buttons, and leave
-with their popup level. The status colours, the ignored one included, reach
-3:1 as lines and 4.5:1 as text against the page and apply only outside forced
-colours. `advanced-settings.test.mjs` checks that Reading → Word highlighting,
-its rail link, picker option and search results stay hidden until its
-experimental switch is on, and that turning the switch off stops the marks in
-the same save and keeps their settings.
-
-`node test/chrome-sharing.mjs` launches two real Chromes: the host imports
-the fixture, handles a simulated HTTP 503 add-on download, and retries the
-live pinned release from its Sharing page. The suite checks the downloaded
-manifest's independent add-on version, unpacks that exact archive with Python's
-`zipfile`, and runs its relay (`test/anki-relay-server.mjs`) on a test-only port
-(`HACHIDORI_SHARING_PORT`, default 18771). The host moves its
-sharing to that port; the second browser's startup page offers the shared
-Hachidori and links with one click, looks a word up through the link, writes
-an option and a personal entry that the host commits and pushes back, runs
-Settings discovery and existing-setup checks on the host, then mines a
-client-coloured real JPEG through a mocked host AnkiConnect while a separate
-healthy client endpoint remains unused. It also checks host generation
-rejection, browsing and Anki unavailability, loses the host when it closes and
-reconnects when it relaunches, unlinks back to its own empty state, and links
-again through this machine's network address (the machine needs one beyond
-loopback) until the host stops sharing on the network. Two Settings tabs then
-issue overlapping Link and Unlink requests, preserving a compiled local
-personal dictionary and settings. A third browser loads the actual overlay-mode
-extension, checks local Settings autosave and mixed shared/local saves, survives
-host disconnection and full browser restart, unlinks with its edited local
-geometry, and verifies that remote recorder/link options cannot reactivate
-Electron-only controls alongside the screenshot and browser-speech capability
-explanations. Twelve predeclared checks; profiles are kept on failure. The suite
-needs `python3` and access to the pinned GitHub
-release. For offline runs or coordinated add-on changes,
-`HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` serves that local
-archive at the pinned URL in the browser; no release is downloaded in that
-mode. The unpacked relay is temporary and removed on exit.
-`HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
-that real run.
-
-`node --test test/custom-button-settings.test.mjs test/external-link-host.test.mjs test/custom-buttons-renderer.test.mjs`
-checks link URL-template validation, Anki Template selection, button
-create/edit/delete/reorder behavior, the overlay host request/result boundary,
-named toolbar actions, current word/reading/sentence expansion, background-tab
-clicks, live editing without replacing cards or Note drafts, and stale-control
-navigation rejection.
-
-`node --test test/netflix-preview.test.mjs` checks the serialized Netflix preview
-helper against fake native players: JPEG bytes, millisecond timestamps, active
-watch-session selection and rejection when the episode or player changes.
-The extension smoke suite checks opt-in routing, exact-document MAIN-world
-execution, ownership checks and useful errors without a viewport fallback.
-These contracts do not verify preview availability or image quality on a
-signed-in Netflix title; see [capture research](../docs/netflix-screenshot-research.md).
-
-`node --test test/netflix.test.mjs test/netflix-subtitles.test.mjs test/netflix-page.test.mjs
-test/netflix-content.test.mjs test/netflix-capture.test.mjs test/netflix-gif.test.mjs` covers experimental
-Netflix mining without contacting Netflix. The flag starts off and registers
-the main-world and reader scripts for Netflix's top frame only while on; the
-manifest asks for `tabCapture`, never injects them itself, and exposes only
-the recorder page, to Netflix only. Synthetic WebVTT and TTML files in
-`test/data/netflix/` (lines written for these tests, no Netflix subtitles) parse
-to exact cue times and plain text, and cue matching covers whole and partial
-lines, the ±500 ms tolerance, overlapping cues and repeated lines. The page
-script runs in a `vm` context with fake `JSON`, `fetch` and Netflix's player:
-the profile is added once, unrelated values stringify and parse byte-identically,
-a cyclic value still throws its `TypeError`, forced, "Off", image and
-non-Japanese tracks are skipped, and a replay seeks through the player API,
-plays at 1× and restores position, pause and speed without writing
-`currentTime`. Hover pause's `pause` and `resume` commands also go through the
-player, never write `currentTime`, wait while a replay runs, and malformed
-commands do nothing, and a replay sent `keepPaused: true` restores a playing
-video paused. A jsdom watch page checks pinning, the whole-cue sentence, reasons
-for a missing cue, post validation, the episode reset and the [CC] track choice.
-With stubbed client rects it checks hover pause: entering a playing line pauses
-it, the gap between its lines and the shown popup keep it paused, and leaving
-both resumes it; nothing pauses for a paused video or a layer with no line, and
-nothing resumes after the viewer's own play, pause or seek, while a line is
-recorded (whose replay's play and seeks keep the pause), after a new
-`/watch/`, or once the reader turns hover pause off. Mining a video the viewer
-played on asks the page to keep it paused, and it resumes only once the
-recorder has stopped and the pointer has left.
-The recorder frame's sample clock, trim, median clock fit, silence detection
-and WAV encoding run on synthetic blocks through fake media APIs; with a `{gif}`
-field it also opens the video track, downscales the frames to 480 px wide and
-encodes a looping GIF of the cue window with more than one frame, and for a
-`{gif}` field alone returns that GIF and no WAV. `netflix-gif.test.mjs` covers
-the frame selection, per-frame delays, the loop marker and the one palette the
-frames share on their own; both read the GIF block by block
-(`gif-structure.mjs`). `anki-mining`, `anki-worker`,
-`anki-values` and `anki-content` cover the request-only preset routing, the
-held WAV's and GIF's storage lifecycle, the `{sentence-audio}` and `{gif}`
-values with the GIF's screenshot fallback, and the reader's warnings, named for
-the mapped media (a `{gif}`-only note included) and given for any linked Netflix
-note. The extension smoke suite keeps a recorder port only for the recorder
-page framed in a Netflix watch tab while the switch is on. Real Netflix playback, Chrome's capture grant and protected video are
-not covered by any automated suite.
-
-`xvfb-run -a node test/chrome-netflix-mining.mjs`, outside the default runs,
-mines a fixture page served at a Netflix watch address through the real popup
-into a fake AnkiConnect: the fixture's subtitle hook, cue, replay through a fake
-player and in-tab recording must store a WAV whose beep lies within 125 ms of
-its place, and a looping GIF of the line (from an animated element on the
-fixture page) that Chrome's `ImageDecoder` decodes into more than one distinct
-frame, at most 480 px wide, with the viewer's
-position, pause and speed restored and `currentTime` written only by the player. It then plays the fixture from inside
-the cue: hovering the line must pause it through the player and moving away
-resume it without a seek; a second note added during that pause must be
-recorded with the pause still in force afterwards and resumed on leaving; a
-third note, added after the viewer played the paused video on over the line,
-must leave it paused with no play but the replay's own while the recorder frame
-is in the page, and play it on once the pointer leaves; a fourth note, with
-`{gif}` its only Netflix field, must hold the line's GIF alone; and
-with the switch turned off, the page that still has the scripts must pause
-nothing. It needs headful Chrome, because
-headless Chrome captures tab audio as silence, and stands in for the user's
-toolbar click with `--allowlisted-extension-id`.
-
-The lower-level checks can also be run individually in this order. Node suites
-use built-ins and the DOM suites use jsdom. Browser checks need Chrome and
-`puppeteer-core`; the launcher above supplies the locked tooling automatically.
+The lower-level checks can also be run individually, in this order:
 
 ```sh
-cd /path/to/hachidori
-
 node test/submodule-identity.mjs # 1. submodule/runtime identity is internally consistent
 ./wasm/build.sh                  # 2. produces threaded OPFS, threaded IDBFS and fallback IDBFS bundles
 node --test test/custom-dictionary.test.mjs # 3. custom source and ZIP contract
@@ -558,359 +111,182 @@ node test/chrome-overlay.mjs     # 13. overlay capability Settings, glyph select
 
 Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
 the fixture bytes in memory, and also writes them to `test/fixtures/` as a side
-effect so `baseline.sh` has files to work with. Run it alone when you want to
-inspect the zip or hand it to another tool.
+effect so `baseline.sh` has files to work with. Everything these scripts write
+goes to `test/fixtures/` and `test/tmp/`. None of them touches
+`third_party/hoshidicts`; `baseline.sh` configures it out-of-tree and fails if
+`git status` in the submodule comes back dirty.
 
-Everything either script writes goes to `test/fixtures/` and `test/tmp/`. Neither
-touches `third_party/hoshidicts`; `baseline.sh` configures it out-of-tree and
-fails if `git status` in the submodule comes back dirty.
+## The extension smoke and real-Chrome suites
 
----
+`test/extension-smoke.mjs` and `test/chrome-e2e.mjs` run on `node:test`. Each
+feature is one file under `test/extension-smoke/` or `test/chrome-e2e/`, one
+`describe` per file, and each block of checks is one test. The entry file imports
+every feature file in the order the suite runs, in one process.
 
-## `issue-template.test.mjs`
+```sh
+node test/extension-smoke.mjs                        # the whole suite
+node test/extension-smoke/sharing.mjs                # one file
+node --test-name-pattern="Anki" test/extension-smoke.mjs   # tests or describes matching a regex
+node --test-name-pattern="^import$" test/chrome-e2e.mjs    # one describe: chrome-e2e/import.mjs
+```
 
-Run `node --test test/issue-template.test.mjs` for changes to issue templates or their enforcement workflow. This dependency-free suite uses the production validator and mocked GitHub issue calls to check completed and incomplete submissions, Markdown comments and code fences, the acknowledgement, closure feedback, and stale issue events. It never closes real issues. The Issue template workflow runs this check on relevant pull requests and pushes to `main`; its separate issue-event job enforces the template on opened, edited, and reopened issues.
+- The checks are soft. `check()`, `equal()`, `pass()` and `fail()` in the smoke
+  suite and `check()` in the Chrome suite print their `PASS`/`FAIL` or
+  `ok`/`FAIL` line, record the result and carry on. A test fails once
+  any check inside it has failed, and a test that throws fails on its own: the
+  run goes on with the next test, and the summary lists every failed test.
+- Some tests share expensive state. The smoke suite's `engine*.mjs`,
+  `renderer.mjs` and `engine-restart.mjs`/`engine-storage.mjs` steps share one
+  engine and its imported fixtures; every Chrome step shares one browser and its
+  profile, in a fixed order, through a browser restart. These are *steps*:
+  each such file imports the file before it, so running a file on its own runs
+  the earlier steps first. When a name pattern leaves out steps that a selected
+  step comes after, the selected step runs them first, printing
+  `first the earlier step "…"`. Everything else is independent and runs alone.
+- Values shared between steps are module-level bindings, assigned by the step
+  that creates them; a step that changes another file's binding calls its
+  setter (`setBrowser()`, `setLoseNextStateCasReply()`…).
+- `test/run.mjs` passes `--test-force-exit --test-reporter=spec`. The code under
+  test leaves timers behind (background.js's emulated alarms), so a direct run
+  without `--test-force-exit` is ended by the suite's `after` hook a second
+  after its last test, as the old scripts' final `process.exit()` did.
 
----
+## Index
 
-## `submodule-identity.mjs`
+### Node contracts (`npm --prefix test/tooling test`)
 
-Guards that the `third_party/hoshidicts` submodule's declared tracking branch in
-`.gitmodules` stays consistent with the runtime gitlink the superproject pins. 3
-checks: the declared url resolves to the engine repository, the pinned gitlink is
-reachable from the declared tracking branch, and the gitlink is that branch's
-tip. If the tracked branch drifts off the runtime branch, a
-`git submodule update --remote` would silently rewind the engine to an older
-commit; this check fails closed instead. Uses Node built-ins and the local git
-clone only. Prints `<n> passed, <n> failed`.
+Each `test/*.test.mjs` runs with `node --test`; the jsdom suites need
+`HACHIDORI_JSDOM` (above). `benchmark/*.test.mjs` test the benchmark framework;
+see [benchmark/README.md](../benchmark/README.md).
 
----
-
-## `make-fixture.mjs`
-
-Generates `test/fixtures/hachidori-fixture.zip`, a Yomitan format-3 dictionary,
-`hachidori-fixture-trained.zip` (enough term rows to cross the zstd-training floor),
-`hachidori-fixture-many-banks.zip` (twenty banks for the bounded scheduler), and
-`hachidori-generic-kanji-fixture.zip` (a term-only dictionary with single-kanji
-entries). It also writes malformed, missing-index, non-ZIP, and parent-title
-archives for the error and path-safety checks. The ZIP container is written by
-hand with `node:zlib` — the engine's reader only needs local file headers, a
-central directory and raw deflate streams, and that is about 80 lines.
-The exported `buildRecommendedZip()` helper builds the small in-memory archives
-used when tests intercept the five recommendation URLs; it does not contact the
-publishers.
-
-The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`
-and `src/importer.cpp`, not guessed. `python3 -m zipfile` and the native CLI both
-read it.
-
-| file | what it covers |
+| file | what it proves |
 | --- | --- |
-| `index.json` | `format: 3`, title, revision, `sequenced`, language and attribution fields |
-| `term_bank_1.json` | plain string glossary; a `structured-content` glossary with nested tags, a `ul`, a `table` and an `img`; an inflected-verb target (`食べる`, `rules: "v1"`); a kana-only entry with an empty reading; `definition_tags` and `term_tags` on every row; two rows sharing one (expression, reading) so the term has two glossaries |
-| `term_meta_bank_1.json` | `freq` in both accepted shapes (nested `{"frequency":{…}}` and flat `{"value":…}`), a `pitch` entry exercising int position, string position (pattern), bare-int `nasal` and array `devoice`, and an `ipa` entry |
-| `kanji_bank_1.json` | `食` with onyomi, kunyomi, tags, three definitions and three stats |
-| `tag_bank_1.json` | seven tags across four categories; they end up in the imported `index.json`'s `tags`, which is what `hdw_tags` returns |
-| `styles.css` | ends up in the imported `index.json`'s `styles`, which is what `hdw_styles` returns |
-| `media/kanji.png` | a real 16×16 PNG, the target of the `img` path above |
-| `media/` | a bare directory record; `get_files()` has to skip it or `mediaCount` is wrong |
+| `activation-settings` | Reading → Activation key or button: No key first, mouse buttons above keys; **Press to set** records middle/Back/Forward without their native actions, records keys by name, refuses primary/secondary buttons and unlisted keys, ignores repeats, cancels on Escape. |
+| `advanced-settings` | Advanced keeps dictionary experiments; Word highlighting's section, rail link, picker option and search results stay hidden until its experimental switch is on, and turning it off stops the marks in the same save. |
+| `anki-addon` | The pinned GitHub add-on URL, binary preservation, HTTP and network errors. |
+| `anki-audio`, `anki-offscreen-audio` | First decodable pronunciation exported without playback, exact TTS voice capture, linked TTS planned without host capture. |
+| `anki-client-media` | Linked screenshot and browser-speech WAV bytes are allowlisted against the request; stale and malformed media are refused. |
+| `anki-content` | The reader's Anki action across cold/warm cache, live repair, stale IDs, failures, retries and nested popups; an unresolved action is a disabled, busy Arrow Clockwise; a renderer can name the result owning the custom Anki buttons. |
+| `anki-duplicates` | Duplicate options keep Anki's race guard on the configured type; browse searches escape HTML and query syntax. |
+| `anki-enrichment` | Audio enrichment applies overwrite modes once and preserves a late external edit. |
+| `anki-glossary` | Rich and plain glossary markers: ordered senses, aliases, safe media, `<br>`, one `li[data-dictionary]` per row, image sizes, style escaping, Yomitan's inline structured-content styles at 67db60d, and dictionary CSS scoped by selector prefix (the cascade itself is checked in Chrome). |
+| `anki-index`, `anki-index-cache`, `anki-index-integration` | The duplicate index: scopes, note types, exact word keys, compact rows, maturity, deck filters, malformed replies; warm hits without Anki, miss repair, 30-minute refreshes, retained snapshots, worker restart, linked-role suspension; word status from rows in memory; the offscreen refresh worker returns compact rows and terminates. Never contacts an Anki collection. |
+| `anki-media` | The media transaction: deduplicated PNG/SVG, deterministic names, valid base64, live inventory confirmation, retries without re-upload; bad media never reaches `addNote`. |
+| `anki-mining`, `anki-worker` | Mining readiness, the worker's preflight and submission, deferred audio, Smaller Anki cards, Netflix `{sentence-audio}`/`{gif}` routing and the held media lifecycle. |
+| `anki-note-type-compatibility`, `anki-templates`, `anki-setup` | The reviewed Kiku, Lapis and Senren schemas through production preset mapping (order, first field, every mapping and overwrite mode, blanks, markers), drift controls, template mapping and automatic setup's model and deck choice. See [Anki note-type compatibility](../docs/anki-note-type-compatibility.md). |
+| `anki-pitch` | Pitch graph markers, kana mora counting, contours and the hollow-particle case. |
+| `anki-resources` | Media planning is lazy, deduplicated and bound to the committed generation; plain fields load no CSS. |
+| `anki-settings` | Anki Settings: overlay screenshot capability, discovery retries, setup proposals that never rewrite a verified mapping, per-Template discovery, connection status. |
+| `anki-values` | Anki values: escaping, furigana, UTF-16 sentence/cloze offsets, `{popup-selection-text}` line breaks, the Netflix values. |
+| `anki` | Global Anki configuration validation and the discovery `multi` batch. |
+| `api-host` | The relay API contract: every request the relay sends and the extension's version. |
+| `audio-*` (`sources`, `player`, `offscreen`, `cache`, `repository`, `content`) | Audio source options, candidate order, the player and its cleanup, TTS voices, Test deadlines, LRU/TTL/byte accounting, leases, exact candidate identity, the pronunciation chooser's placement and focus, autoplay, and named failures (#499, #501). |
+| `autumn-theme` | Autumn stays one light theme and keeps text, badges and statuses readable. |
+| `backup-archive`, `backup-automatic`, `backup-downloads`, `backup-settings`, `backup-state` | Backup export and restore without stream-to-blob consumption, automatic cadence and schema, download URL lifetime, Settings ages and confirmation, restore revisions. |
+| `base64`, `browser-api` | Base64 helpers against `btoa`/`atob`; the extension API module and exact sender URLs. |
+| `browser-commands` | The worker's command listener against the manifest: the toggle's revisioned write, Settings, and argument-free keybind actions forwarded to the active tab. |
+| `chrome-web-store` | The service-account assertion and its token endpoint. |
+| `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
+| `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
+| `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option. |
+| `debug-info`, `debug-log` | The debug report's contents without reader content; the log keeps the newest entries. |
+| `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
+| `dictionary-import`, `dictionary-import-errors` | Revision comparison, MDX loss-count notes, and mmap/writeback failures that cleanup cannot hide. |
+| `dictionary-index-storage` | The hash-index budget: smallest tables stay resident, stable ties, enabled packages counted once, 65 MiB with **Use less ram by default** and 32 MiB in Low memory mode. |
+| `dictionary-name-drafts`, `dictionary-update-schedule` | Name autosave and external renames; per-dictionary schedules and due times. |
+| `engine-recycler`, `memory-settings`, `low-memory-option` | [Low memory mode](../docs/memory.md): the recycle scheduler, the Advanced → Memory readout and per-row *In memory*, and the options' normalisation. |
+| `engine-status-settings` | Load failures render as a summary with one literal entry per dictionary. |
+| `error-text` | The exact text each `error-text.js` variant gives an Error, an empty-message Error, a string, a plain object with and without a `message`, an Error from another realm, and `null`, `undefined` and `NaN`, so sharing the variants cannot change a log line, status or reply. |
+| `experimental-features`, `experimental-settings` | The experimental-features registry and its switches. |
+| `fluent-icons`, `settings-fluent-icons` | The vendored Fluent subset, its provenance and use by controls. |
+| `frequency-presentation` | Yomitan-style frequency values and tags, abbreviations, averages and live controls. |
+| `furigana` | Headword furigana split by KANJIDIC readings. |
+| `google-docs` | The Google Docs flag and its main-world script. |
+| `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. The Issue template workflow also runs it on relevant pull requests and pushes to `main`; that workflow's issue-event job enforces the template on opened, edited and reopened issues. |
+| `kanji-click-settings`, `kanji-group-mining`, `reader-options` | The clicked-kanji chooser and groups, `kanjiEntryResult` against the engine's `LookupResult`, and reader option normalisation. |
+| `keybind-settings` | Yomitan's default keybinds, capture, Alt+wheel rows and Chrome's browser shortcuts list. |
+| `linked-import` | Dictionary uploads from a linked browser: chunk order and limits, replace or install beside, aborts and timeouts. |
+| `local-audio-setup`, `local-file-access`, `startup-practice` | Local audio detection, the file-access prompt and the startup practice step's recovery. |
+| `lookup-stats` | Canonical lookup-count keys and their row updates. |
+| `message-types` | `extension/message-types.js` equals the `hd_*` names written in the code of every extension JavaScript file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as does a listed name nothing uses. It loads the list as a classic script and as an ES module, and checks that blanking comments leaves strings, templates and regular expressions alone. |
+| `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks and player replay, hover pause, the recorder's clock fit, WAV and GIF encoding, and the preview helper. Real playback, capture grants and protected video are not covered by any automated suite, nor are preview availability and image quality on a signed-in title (see [capture research](../docs/netflix-screenshot-research.md)). |
+| `note-editor` | The personal-dictionary pencil on term, kanji and missing-word views. |
+| `pitch-accent-colors`, `pitch-badges` | Pitch colours at 3:1 in every palette; Yomitan's pronunciation markup in the popup. |
+| `popup-scale`, `popup-theme`, `progressive-results` | Popup scale, AUTO appearance and progressively appended results. |
+| `recommended-dictionaries`, `recommended-install-client`, `setup-installer`, `setup-state` | The catalogue as the single description of the recommended set, the installer's runs, the revisioned setup record and mining capabilities. |
+| `release-compatibility` | The manifest, minimum Chrome, current Chrome and release tag share one contract. |
+| `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
+| `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
+| `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
+| `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee): their DOM, actions, tabs, Notes and the Design settings each theme declares. |
+| `toolbar` | The toolbar toggle and its revision conflicts. |
+| `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
+| `yomitan-parity` | The renderer against Yomitan's own output at 67db60d, written inline. |
 
-Negative fixtures include:
+`anki_note_type_upstream_test.py` is the one Python test. The Anki note-type
+compatibility workflow runs it with
+`python -m unittest discover -s test -p 'anki_note_type_upstream_test.py' -v`
+(after `python -m pip install zstandard==0.25.0`). It tests the bounded read-only
+APKG extractor: legacy and modern SQLite, Zstandard collections, dummy legacy
+databases, corruption, ambiguous members, unsupported schemas, checksums, URLs and
+redirect credential stripping. See
+[Anki note-type compatibility](../docs/anki-note-type-compatibility.md) for the
+pinned/latest package commands and the schema-only boundary.
 
-- `malformed-index.zip` — `index.json` cannot be parsed during title preflight.
-- `no-index.zip` — a valid archive with no `index.json`.
-- `not-a-zip.txt` — plain text, so the EOCD scan has to bottom out.
-- `parent-title.zip` — declares `..`; the native baseline proves that direct use
-  of Hoshidicts cannot escape and recursively delete its output directory.
+### WASM, bridge and fixtures
 
-`buildTitledZip(title, {banks, terms, termMeta, mediaEntries})` builds a third kind on the fly, in memory: the
-same `index.json` with the title replaced, optionally with no term bank so the
-import fails *after* the importer has read the title and derived a directory from
-it. That is the only moment a title can do damage, so it is what the import
-staging checks are driven with. Optional term and metadata rows also build the
-lookup-byte-boundary fixtures without changing the ordinary fixture counts.
-Optional `[path, bytes]` media entries exercise fetch bounds independently of
-archive importability.
+- **`make-fixture.mjs`** writes `test/fixtures/` (see [the fixture](#the-fixture)).
+- **`node-smoke.mjs`** drives the frozen C ABI of the threaded bundle, the threaded
+  IDBFS bundle (`HACHIDORI_WASM_VARIANT=threaded-idbfs`) or the fallback bundle
+  (`HACHIDORI_WASM_VARIANT=fallback`) on plain MEMFS: import counts, the mmap
+  regression, all four kinds, lookups by structure and value, kanji, styles,
+  tags, media, error paths, reset, import staging, every on-disk layout,
+  interrupted-install recovery, dictionary-scoped lookups, response and media
+  bounds, MDX import, definition order and `hdw_segment` against
+  `segmentation-reference.mjs`. Exits 0 on success, 1 on a failed check, 2 when
+  the wasm module has not been built. See [node-smoke details](#node-smoke-details).
+- **`threaded-bridge-smoke.mjs`** imports the real offscreen bridge with
+  controlled worker and fallback endpoints (through Node 22.15's
+  `module.registerHooks`): the 128-request admission bound, responsive status,
+  mutation exclusion, exactly-once replies after failures, and reads during an
+  import's installing phase. It boots no fake native engine and leaves the
+  production bridge source alone; actual WASM/IDBFS behaviour stays covered by
+  `extension-smoke.mjs` and `chrome-fallback.mjs`.
+- **`submodule-identity.mjs`** checks that `.gitmodules`' tracking branch matches
+  the pinned engine gitlink, so `git submodule update --remote` cannot rewind it.
+- **`baseline.sh`** builds the engine natively and cross-checks the fixture (see
+  [baseline.sh](#baselinesh)).
+- `segmentation-reference.mjs` (47 original lines with their expected split),
+  `test/legacy/` (`.hoshidicts_3` and `_4` directories written by the engine at
+  hoshidicts `1ec66fe`), `test/mdict/` (copies of Hoshidicts' MDict fixtures,
+  committed because the smoke suites run without the submodule) and
+  `test/data/` are fixture data.
 
-Exports `EXPECTED` (the import counts, derived from the bank arrays rather than
-hardcoded) and `EXPECTED_GLOSSARIES` (the exact raw glossary strings, keyed by
-`termKey(expression, reading)`). `node-smoke.mjs` asserts against those, so
-editing a bank cannot silently desync the expectation.
+### `extension-smoke.mjs`
 
-### fixture counts
+The extension's own JavaScript against the real wasm engine: that `background.js`
+relays, that `offscreen.js` answers every message type with the documented reply
+shape, and that the engine's JSON survives the ported renderer. Exits 2 when the
+wasm module or the fixtures are missing.
 
-`hdw_import` on `hachidori-fixture.zip` must report exactly:
-
-```
-title           hachidori-fixture
-termCount       6
-metaCount       4
-frequencyCount  2
-pitchCount      2
-kanjiCount      1
-mediaCount      1
-```
-
-and the imported directory must be:
-
-```
-       0  .hoshidicts_5
-    1447  blobs.bin
-      32  bloom.filter
-     260  hash.table
-     738  index.json
-     160  media.bin
-      12  media.idx
-```
-
-(`blobs.bin` grew from 1307 bytes when the term score became a double; `index.json`
-from 719 when the importer began recording the long-key scan index.)
-
-### the trained fixture, and why there are two markers
-
-The importer trains a zstd dictionary from the **first** term bank when it can
-sample at least eight glossaries out of it, and then compresses every glossary
-against it. That changes the directory: the marker becomes `.hoshidicts_6` and a
-`dict.zstd` appears next to `blobs.bin`. Below the floor it writes `.hoshidicts_5`
-and no `dict.zstd`. `.hoshidicts_4` and `.hoshidicts_3` are the same pair written
-by engines that stored the term score as an int32 rather than a double; the
-engine still reads them, and `test/legacy/` keeps one directory of each, written
-by the engine at hoshidicts `1ec66fe` from these same fixture zips, so that the
-compatibility check loads bytes the current importer no longer produces rather
-than a fresh import under another name.
-
-`hachidori-fixture.zip` has six term rows, deliberately under that floor, so it stays
-the compatibility case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
-loudly if `TERMS` grows past it instead of silently retiring the coverage.
-`hachidori-fixture-trained.zip` (`buildTrainedZip()`, 49 rows with deliberately
-repetitive glossaries so the training has structure to find) is the other side.
-Both markers are then loaded together, from one query object, because that is the
-state of a profile after an engine upgrade.
-
-`dict.zstd` is mandatory when the marker is `_4`.
-`dictionary_files_present()` rejects an absent or empty file, and `query.cpp`
-loads non-empty bytes in Zstd's full-dictionary mode so arbitrary bytes cannot
-masquerade as a trained dictionary. Both layers are asserted in
-`node-smoke.mjs`.
-
-`index.json`'s size varies with `importDate`, which is a wall-clock millisecond
-timestamp; the rest is deterministic. If the counts above change, check whether a
-bank was edited before assuming a regression — `node-smoke.mjs` prints the actual
-report and the expected counts on every run.
-
----
-
-## `custom-dictionary.test.mjs`
-
-Five focused checks pin the context-independent custom source and archive
-contract. They cover first-two-comma parsing, comments and blank lines, ordered
-duplicates, every malformed-line report, CRLF-preserving append, and exact
-round trips for escaped newlines, literal backslashes, and literal
-backslash-plus-`n`. The production ZIP builder must be byte-deterministic, use
-UTF-8 classic ZIP metadata, and split more than 1,000 entries into successive
-term banks. The resulting multibank archive is then imported and queried through
-the real WebAssembly engine by `extension-smoke.mjs`.
-
----
-
-## `node-smoke.mjs`
-
-The real test. Loads the threaded bundle by default, the threaded IDBFS bundle when
-`HACHIDORI_WASM_VARIANT=threaded-idbfs`, or the fallback bundle when
-`HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-186 checks, ordered by dependency. Exits 0 on success,
-1 on assertion failure, 2 when the wasm module has not been built.
-
-What it proves, in order:
-
-1. **`hdw_import`** — success, the exact counts above, the title, that
-   `hdw_last_error` is cleared, and that the output directory holds a version
-   marker plus every file `hdw_add_dict` checks for. Marker-agnostic on purpose:
-   which marker the importer writes depends on whether it trained a zstd
-   dictionary, so a test that pins one pins the branch the fixture happened to
-   take.
-2. **The Emscripten mmap regression.** `hash.table` and `bloom.filter` are
-   non-empty *and* not zero-filled. The distinction matters: `memory::map_rw`
-   `ftruncate`s to the final length before mmapping, so before the submodule's
-   `wasm`-branch fd fix these files had exactly the right *size* and were full of
-   zeros — the import still reported success and every lookup then returned
-   nothing. So this reads the bytes and checks the `capacity` / `num_bits` /
-   `num_hashes` headers and that at least one hash slot and one bloom byte are
-   set. A size-only check would sail straight past the bug.
-3. **`hdw_add_dict`** for all four kinds. The fixture carries term, meta and kanji
-   banks in one zip and `DictionaryQuery` keeps a vector per kind, so the same
-   imported directory is registered four times — that is what makes one zip
-   exercise the term, frequency, pitch and kanji query paths.
-4. **`hdw_lookup`**, validated two ways. Structurally: every documented field of
-   `LookupResult` present, right type, exact camelCase, **and no extra keys** —
-   that last part is the one that catches a binding that grew a field the
-   renderer will not know about. By value: exact match; deinflected match
-   (`食べたかった` → `食べる`, trace `["-た", "-たい"]`, plus a five-step chain);
-   kana-only entry; reading-only query reaching the kanji headword; katakana,
-   half-width kana, decomposed dakuten, and supported kanji variants retaining
-   the raw matched input while counting preprocessing; and two misses. Glossaries are asserted
-   byte-for-byte against the raw JSON in the term bank, which is what pins down
-   "the renderer parses it, nobody else". Frequencies are checked in both object
-   shapes the fixture carries and as text: a frequency-only archive storing
-   `"324/37459"` bare and `"five (5)"` under a reading reports the text as
-   written with its first number as the value, as Yomitan does, and applies the
-   reading-scoped row to that reading only.
-5. **`hdw_kanji`** (including the `{"character":"","entries":[],"frequencies":[]}`
-   miss sentinel, the binding's sort of `stats` by name, and the frequencies of
-   a kanji_meta_bank-only archive loaded as a frequency dictionary), **`hdw_styles`**, **`hdw_tags`** (every
-   tag-bank row in bank order, again after a reset and reload and after a
-   re-import; none for a directory the previous engine imported), and
-   **`hdw_media`** (byte length, PNG signature, and the full bytes equal to the
-   fixture file).
-6. **Error paths.** An uncaught C++ exception aborts the wasm instance and takes
-   the extension's offscreen document with it, so these matter as much as the
-   happy path: importing a text file and an index-less zip and a missing path;
-   `hdw_add_dict` with an empty path, a directory with no version marker, a
-   nonexistent directory, and out-of-range kinds; `hdw_lookup` with four kinds of
-   malformed `options_json`; `hdw_media` with a null argument. Each asserts the
-   documented return value *and* `hdw_last_error`, then the suite re-runs a real
-   lookup, kanji query and media fetch to prove the module is still alive.
-   Archives are not subject to fixed compressed-byte, member-count, expanded-byte,
-   or compression-ratio caps. Regression fixtures cross each former threshold and
-   must complete import, reload from the installed files, and answer a lookup. The
-   expanded-size fixtures carry valid raw-deflate streams while keeping their
-   physical ZIPs small. Structurally inconsistent local and central headers and
-   impossible zero-byte deflate streams remain rejected. A copy of the fixture
-   whose local headers leave their sizes zero for a data descriptor (general-
-   purpose bit 3, as streaming writers produce) imports like the original, while
-   a bit-3 local header that records different sizes is still rejected.
-7. **`hdw_reset`** — every dictionary dropped (lookup, kanji, styles and media all
-   return their empty forms), then reloaded from the same MEMFS directory.
-8. **Import staging.** `dictionary_importer::import` builds its output directory
-   out of the title inside the archive and `remove_all()`s that directory when
-   anything later throws, so `hdw_import` never points it at the directory the
-   installed dictionaries live in: it stages every import in `<out_dir>/.hdw-import`
-   and moves the result into place only once it is complete. Asserted from both
-   ends — titles of `..`, `../../..`, `../escaped`, `sub/dir`, `.` and `""` are
-   refused with nothing deleted anywhere (the filesystem root is compared before
-   and after, and no staging debris is left behind), and a re-import that fails
-   after the title is parsed leaves the installed copy complete, loadable and
-   answering lookups.
-9. **Every on-disk layout, side by side.** The 6-row fixture lands in the
-   untrained layout and the 49-row one trains a zstd dictionary, so `.hoshidicts_5`
-   with no `dict.zstd` and `.hoshidicts_6` with one are both imported, both loaded,
-   and both asserted through a real lookup whose glossary bytes only come back if
-   the dictionary the importer trained was found. Then the previous engine's
-   `test/legacy/legacy-3` (`.hoshidicts_3`, int32 score) loads at the same time as
-   a fresh `_5` import, from one query object — the state of a profile after an
-   engine upgrade — and the merged term reports the same score from both, and
-   `legacy-4` (`.hoshidicts_4`, `dict.zstd`) still decompresses its glossaries.
-   Then the other direction: a `_6` directory whose `dict.zstd` is missing, empty,
-   or not a valid trained dictionary must be *refused* by `add_dict`.
-10. **Interrupted installation recovery.** Synthetic transaction trees cover a
-    partial old-dictionary backup, a committed backup beside a partial new
-    destination, a complete new destination beside its retained backup, and an
-    interrupted first install. Initialization restores the complete previous
-    files when needed, preserves a fully published replacement, removes
-    incomplete destinations, and leaves no transaction debris.
-11. **`hdw_lookup_dictionary`.** A dictionary-scoped lookup refuses a path that
-    is not loaded, preserves the normal lookup response contract and global
-    capability count, and returns definitions from only the selected term path.
-12. **Lookup response bounds.** Both term endpoints accept exact 8 MiB raw
-    glossaries and reject one extra UTF-8 byte, aggregate copied strings above
-    32 MiB, and JSON escaping that expands a response above 32 MiB. Query and
-    option strings retain their exact 4 KiB UTF-8 boundary, including kanji
-    queries. Frequency display control bytes survive valid escaped JSON, and
-    the loaded dictionary remains usable after each refusal.
-13. **Media response bounds.** Exact 1 KiB dictionary and 4 KiB path references
-    are accepted as well-formed misses, while one extra UTF-8 byte fails. Media
-    at 4 MiB and one byte larger both import and load; the exact fetch preserves
-    all bytes, the oversized fetch reports a native error, and healthy media
-    and term lookups still work afterward.
-14. **MDX import.** `test/mdict/v2_utf8_lzo_html.mdx` and `.mdd`, copies of
-    Hoshidicts' own `tests/fixtures/mdict` pair (an HTML MDX with an `@@@LINK`
-    alias, duplicate headwords, a StyleSheet substitution, and an MDD holding a
-    PNG, CSS files and a traversal key; committed here because the smoke suites
-    run without the submodule) go through `hdw_import` from a MEMFS directory: the title comes from the
-    MDX header, eight term rows and three media entries are reported (a
-    disabled `sound://` link imports nothing), the report counts one
-    unresolved alias and one missing resource (the traversal key) and the same
-    `.mdx` without its `.mdd` two missing resources, the
-    package loads and answers `食べる`, the alias is a headword and the missing
-    alias is dropped, the MDD CSS is the dictionary stylesheet, the PNG comes
-    back through `hdw_media` while the traversal key does not, and the `.mdd`
-    on its own is refused without leaving staging debris. Yomitan archives
-    report all four MDX loss counts as zero. Four more engine
-    fixtures cover issue #437. `key_rules.mdx` has no `KeyCaseSensitive` or
-    `StripKey` attribute, so MDict's defaults apply: `ティーシャツ →
-    @@@LINK=tシャツ`, `ワイファイ → @@@LINK=WiFi` and the two-hop `AliasOne`
-    reach their targets in seven rows. `key_rules_exact.mdx` declares exact keys
-    and keeps the first two unresolved in five rows. `css_charsets.mdx` and
-    `.mdd` import with their Shift_JIS (with and without `@charset`) and
-    windows-1252 stylesheets decoded, without `@charset` or U+FFFD.
-    `legacy_font.mdx` turns `<font size>` into `medium` and `x-large`, and its
-    inline `font-size` wins over `size="5"`.
-
-The definition-order regression (#472) imports two small dictionaries and checks
-descending definition scores, stable ties, fractional and negative scores, tag
-ownership, dictionary priority and reordering, and selected-dictionary lookups
-through both mapped and paged storage. The JSON response shape stays unchanged.
-
-**`hdw_segment`** (#520) is scored on a fresh engine instance holding the
-reference dictionary and its frequency dictionary from
-`segmentation-reference.mjs`: 47 original lines written in the style of NHK
-Easy news, visual novels and anime subtitles, with their expected split and
-headwords. The response shape, the UTF-16 offsets, the function-word flag, the
-known-words alternative split, and the no-op and oversized-text paths are all
-asserted, and so is `excludedDictionary`: a word only that dictionary has is no
-span, while a word another dictionary also has stays. 今日本 splits into two words either way, so it pins the frequency
-tie-break: no frequency and ascending ranks keep 今日 + 本, descending counts
-choose 今 + 日本. A small extra dictionary with Jitendex's headwords for the
-copula's past and presumptive forms and the conjunctions built on it (だった,
-でしょう, だけど…) checks that those spans are function words. The best split is
-scored against the greedy longest-match parse over the whole set with the
-shared `scoreReferenceSet`: it must score at least as well, must fix at least
-one boundary the greedy parse gets wrong (白い猫がいる, where greedy takes がい→外
-and strands る), and must recover the dictionary form of at least 90% of the
-conjugated lines. The run prints both scores so the owner can decide whether
-the whole-line split is worth keeping over greedy (the issue's open question).
-`benchmark/segmentation.mjs` scores real archives the same way and measures
-segment throughput, the longest single segment turn and hover latency beside
-it.
-
-Two behaviours worth knowing, both asserted so they cannot drift silently:
-
-- The `hdw_lookup` failure fallback is the literal
-  `{"results":[],"dictionaryCount":0}`, so `dictionaryCount` reads 0 even when
-  dictionaries are loaded. Do not treat it as a dictionary count.
-- `hdw_media` returning 0 for a path or dictionary that is simply absent leaves
-  `hdw_last_error` **empty**. Null arguments, oversized references, and oversized
-  payloads set the native error. Callers must inspect it before interpreting a
-  zero length as a successful miss.
-
----
-
-## `threaded-bridge-smoke.mjs`
-
-Imports the real offscreen bridge with controlled worker and fallback-service
-endpoints. It verifies the existing 128-request admission bound during capability
-selection, fallback module loading, and active dispatch; responsive status;
-mutation exclusion; slot reuse; and exactly-once replies after dispatch, local
-handler, engine selection, and worker failures. An import's `installing`
-phase keeps reads flowing and `hd_status.updating` names the replaced package;
-only an installing phase carrying `fallback: "memory"` (an import inside the
-live engine) refuses reads with `engine-mutating`. Lookup/media failure framing
-still includes oversized correlation IDs.
-
-The fallback endpoint uses Node's built-in
-[`module.registerHooks`](https://nodejs.org/download/release/v22.22.3/docs/api/module.html#moduleregisterhooksoptions)
-loader seam, requiring Node 22.15 or newer. It does not boot a fake native engine
-or alter the production bridge source. Actual WASM/IDBFS behavior remains covered
-by `extension-smoke.mjs` and `chrome-fallback.mjs`.
-
-## `extension-smoke.mjs`
-
-The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
-`render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 723 checks, all of
-which have to run: the renderer stage needs jsdom and **failing to load jsdom is
-a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
-2 when the wasm module or the fixtures are missing.
+| file | what it proves |
+| --- | --- |
+| `harness.mjs` | The checks, `test()` and `step()`. |
+| `fakes.mjs` | The fakes below, the script loaders and the wasm/fixture preflight. |
+| `reader-options.mjs` | `reader-options.js` ranges match the HTML inputs and the engine bounds. |
+| `background.mjs` | The worker in a hosted page, timer alarms with and without `chrome.alarms`, external links, first-run setup (one `startup.html`, the seeded record and options) and overlay mode. |
+| `sharing.mjs` | The sharing host and client in the worker and the transitions between them: hosting waits for dictionaries, linking, unlinking, Anki routes and duplicate-index suspension, link generations. |
+| `anki.mjs` | First-run Anki detection, the worker's Anki routes, word status and its overrides through the worker's storage queue, screenshots, linked Settings discovery. |
+| `backup.mjs` | The backup relay and lifecycle port, automatic backups in the worker, Settings retention. |
+| `netflix.mjs` | The recorder port is kept only for the recorder page in a watch tab while the switch is on. |
+| `updates.mjs` | The managed-update schedule and checks in the worker, and Settings' update controls. |
+| `lookup-stats.mjs`, `audio.mjs` | Lookup statistics and the audio relay in the worker. |
+| `custom-dictionary.mjs` | The personal dictionary's storage ownership, its engine transaction through real WASM, and its Settings section. |
+| `recommended.mjs` | The five trusted recommendations, the shared dictionary-group module, and the Settings installer. |
+| `settings.mjs`, `library.mjs` | Settings navigation, reader controls and autosave; library management, groups, removal, batch and MDX imports. |
+| `startup.mjs`, `design.mjs`, `source-highlight.mjs` | The startup page (welcome, installer runs, recovery, practice, visual novel scenes), the Design preview, source highlighting. |
+| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js` in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts and blur; scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes. |
+| `engine.mjs` → `engine-replacement.mjs` → `engine-updates.mjs` → `engine-library.mjs` → `engine-lookup.mjs` → `renderer.mjs` → `engine-restart.mjs` → `engine-storage.mjs` | One scenario on one engine: boot and relay, storage ownership and `hd_import`, atomic replacement, trusted recommended imports and managed updates, library state (migration, CAS ownership, titles, reloads), every read path and error path, the renderer against the engine's replies, `hd_remove`, the trained layout, a restart, then isolated imports, paged dictionaries and blob-backed IDBFS. |
 
 The fakes cover only the Chrome surface the extension actually touches:
 
@@ -919,530 +295,32 @@ The fakes cover only the Chrome surface the extension actually touches:
 | message bus | models the two rules `background.js` depends on — `sendMessage` never delivers to the sender, and an extension context never reaches a content script. That is what makes the `relayed: true` guard testable. |
 | `chrome.storage.local` | in-memory, with `onChanged`, so revision conflicts, legacy migration, and the service worker's ownership of `dictionaryState` are real. Given to the worker and the settings page only: an offscreen document has no storage. |
 | `indexedDB` | one object store keyed by path plus a `timestamp` index, which is all Emscripten's IDBFS uses. Enough to prove `FS.syncfs(false)` actually wrote something. |
-| `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic catalogue and managed-update responses |
+| `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic catalogue and managed-update responses. |
 
-Each script gets its own `chrome` object. The harness concatenates the shared
-custom-dictionary, JSON-value, and managed-source modules into `background.js`,
-strips those ES-module boundaries,
-and runs the worker and render code in `node:vm`; `offscreen.js` is a real ES
-module and reads the shared global, which is the one wired to the bus as
-`"offscreen"`.
+Each script gets its own `chrome` object. The offscreen document's has `runtime`
+only, as a real one does, so a storage call from `offscreen.js` fails here the way
+it fails in Chrome. The harness concatenates the shared modules into
+`background.js`, strips those ES-module boundaries, and runs the worker and render
+code in `node:vm`; `offscreen.js` is a real ES module and reads the shared global,
+which is the one wired to the bus as `"offscreen"`.
 
-What it proves, in order:
-
-0. **Reader options.** Static checks keep the shared `reader-options.js` ranges
-   aligned with HTML inputs and the independent engine request bounds. Actual
-   worker requests verify strict supported-field validation, unknown-field
-   projection, sparse legacy repairs/no-ops, revision conflicts, and options
-   pruning in dictionary CAS. Complete UTF-8 request and response boundary tests
-   include multibyte/escaped text, invalid/oversized correlation IDs, and a
-   9→10 revision change; an oversized prospective success must fail before
-   storage changes. Settings and content harnesses load the same shared script.
-   Activation cases cover legacy mode/key migration, strict new fields, delayed
-   stationary keydown, physical-code release and repeats, transfer/Note ownership,
-   interaction-only resource retention, focused-control pointer protection, and
-   cancellation of the first pending popup on departure/click/Escape/blur/scroll.
-   Scan delay cases (#502, #503) drive controlled timers: with No key, crossing
-   words sends no lookup and resting on one sends exactly one, without movement
-   inside the word restarting its dwell, while another word restarts it and
-   scroll, window exit, Escape, a press, a key mode change, a Note and teardown
-   cancel it; an edited delay restarts it, and 0 or a held key looks up at once.
-   Page lookups stay immediate while definitions wait for their own delay at
-   depths one and two, Same as page delay follows page edits, a custom 0 is
-   immediate, links, clicks and a held key never wait, and leaving the pane, a
-   redraw under the resting pointer or an ancestor press cancels the dwell. A
-   linked overlay keeps both delays local.
-   Leaving the tab or the window keeps a rendered popup and its Note draft in
-   every lookup mode, with no hide timer, until Escape closes the Note and then
-   the popup; it also keeps a selection's popup, a sticky child and a kanji
-   view whose request is in flight. A blur that moves focus into one of the
-   page's frames still closes the popup (#432).
-   In overlay mode a window blur or window-exit keeps a rendered popup in every
-   lookup mode, a selection drag and a held scan button without publishing
-   `hachidori-popup-hidden`, while a window-exit still cancels a pending scan.
-   Scan mouse buttons are held through `MouseEvent.buttons`: a middle or Back
-   press claims the host window before any bubble listener, scans at once and
-   while moving, follows each mode on release, and ends at a move after a lost
-   release. It cancels autoscroll over text, Back navigation and a middle click's
-   new tab only on a looked-up word, opens nested lookups from definitions,
-   leaves popup links and focused editors alone, and changes nothing in Hover
-   mode or with a keyboard key. Child popups set to hold the key wait for the
-   button in No key mode, where only a press over definitions is a scan press,
-   and Click ignores it. Yomitan's `mouse2` names stay invalid.
-   A successful hover expands its initial one-glyph placement range to the
-   complete matched word before rendering. Text moved outside the source during
-   a pending lookup retains the original glyph anchor.
-   Hidden cleanup skips scroll writes; visible term, kanji and notice renders
-   reset scrolling. Master disable cancels scans and
-   stale replies without rolling back or refreshing a successful Note append.
-1. **Managed custom dictionary.** The source document and package state commit
-   as one revision-checked write, ordinary state reads leave the potentially
-   large source off their hot path, stale Settings saves fail without merging,
-   queued Note appends read the latest source, and lost replies need an exact
-   pair readback. Real-WASM compilation covers multibyte text, escapes,
-   duplicates, multiple 1,000-row banks, semantic no-op repair, zero-row
-   removal, presentation-conflict retry, fixed-ID/title protection, and cleanup.
-   Settings and popup harnesses cover lazy newest-only source adoption,
-   coalesced complete malformed-line reporting, immediate-save validation,
-   pinned controls, lazily constructed shared term/kanji Note behavior,
-   exact-view refresh and Back context, Escape/hover guards, and successful
-   append followed by failed refresh.
-2. **Boot and relay.** `hd_status` has the documented envelope and load-path diagnostic
-   keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
-   and never concurrently. `background.js` stamps `relayed` on its forwarded copy
-   and senders never do.
-3. **Storage ownership and import.** The offscreen document's fake `chrome` has
-   `runtime` only, as a real one does, so a storage call from `offscreen.js` fails
-   here the way it fails in Chrome; a static check backs that up for the paths
-   this file does not exercise, and `hd_state_read` is answered by the worker
-   without ever being relayed. Then `hd_import` of `hachidori-fixture.zip` succeeds,
-   `hd_import_result` carries all nine `ImportReport` fields, the counts match the
-   baseline above, `chrome.storage.local.dictionaryState` gets one logical package
-   with generated-index metadata and its exact stable ID, four legacy kind rows
-   migrate once, stale CAS writes are rejected, invalid selectors are pruned in
-   the same worker-owned transaction, and IndexedDB is non-empty afterwards. The
-   Settings fixtures also cover normalized dictionary search, stable visible
-   selection, bulk state changes, every reorder path, queued moves, external
-   selection pruning, alias-edit preservation, conflict rollback, the removal
-   control barrier, global group naming and ordering, stable ordered memberships
-   and removal pruning. The shared group-state contract preserves normalized
-   names, disabled installed members, ordered deduplication, and worker metadata
-   without mutating its input. A three-archive batch verifies that a failed
-   middle import does not stop the last one. **Remove all imported
-   dictionaries** sends one ordered removal per ordinary package after one
-   confirmation, disabled and search-hidden packages included, and names a
-   failed one; it erases the personal source only when that is ticked, at the
-   source revision the confirmation described, so a Note saved since keeps it.
-   **Reset lookup counts** asks the worker once. Both are disabled while linked.
-   The worker accepts a lookup-count reset only from Settings and refuses it
-   while linked; a lookup held in the storage queue on either side of a reset
-   counts in the old generation (and is erased) or from 1 in the new one, and
-   only the new row remains.
-   Native spies verify that reordering skips reset, add and warm lookup even
-   beside an unchanged enabled or disabled failed package, retaining its error.
-   The real-Chrome dictionary-management scenario checks immediate rank and DOM
-   movement before acknowledgement, five rapid moves becoming one commit, a
-   later in-flight move surviving an older reply, and two Settings pages
-   producing one winning CAS and an explicit rollback in the losing page. It also
-   checks that the unsaved-work guard covers both the debounce and held replies
-   and clears after the reorder settles.
-   Frequency controls cover paired source/direction patches, explicit Auto,
-   preserved manual choices, unavailable selections, and focused native drafts
-   across newer options and capability changes. Alias writes retain frequency
-   mode metadata.
-   Metadata controls cover strict options, focused preferred-pitch drafts,
-   the furigana pitch style following its switch and focus,
-   stable-ID source rename/removal, numeric unit-separated harmonic averages,
-   independent IPA and grammar, metadata-only storage updates, and focused ruby
-   deferral without replacing Note, cards, definitions or unchanged metadata.
-   IPA overflow builds tags only on first expansion, preserves every ordered
-   transcription and uses the current source aliases.
-   Compact-summary controls cover strict opt-in/count/source options, remembered
-   unavailable sources, disabled-value retention and focused input drafts through
-   an external off update. Renderer checks pin ordered bullet/semantic extraction,
-   lazy fragment production without per-empty-bullet normalization and bounded
-   matching/normalization on long text, split Unicode pairs and raw block boundaries,
-   duplicate skipping with a partially filled preview without per-character matcher
-   calls, per-point boundary checks or unnecessary point arrays,
-   trailing-whitespace trimming, mixed
-   plain/structured top-level senses, shared fallback discovery and no empty-child
-   block checks without losing a later useful sense, line-break separators,
-   wrapper-selected payloads, ruby without annotation/fallback delimiters, and
-   exclusion of unrendered child lists/text,
-   leading-image dispatch, no default-off summary, unchanged full definitions and
-   Note controls, partial presentation no-ops, and independent image ownership.
-   A collapsed source image stays expanded only in the compact preview. Missing,
-   rejected and decode-failed media remove its wrapper but retain full-card errors.
-   Combined state delivery invalidates changed contents before summary work, or applies
-   current labels and summary preferences together once.
-   Image-source options preserve Automatic, canonical dictionary titles and stable
-   group IDs through strict, idempotent CAS, rejecting malformed known shapes.
-   Their native chooser retains disabled/missing sources and exact focused options
-   through aliases/group renames, then surfaces a stale draft's revision conflict.
-   The existing detached-child regression also rejects new summary/media work
-   before its obsolete anchor chain can be retired by later positioning.
-   The batch assertion pins sequential requests, completed/total progress, one
-   retained outcome and revoked object URL per file, a cleared picker, and one
-   final dictionary-state/status refresh. An `.mdx` with its `.mdd` travels as
-   `hd_import` with a `resources` list: the package carries the MDX title, its
-   MDD media and stylesheet answer `hd_media` and `hd_styles`, the reply
-   carries the MDX loss counts the package does not store, the `/.hdw-mdx`
-   staging directory is gone afterwards, and a ZIP import carrying resources
-   is refused before staging. In Settings, an MDX import whose reply has loss
-   counts keeps its green `Imported …` line, lists one note per count beneath
-   it, and is counted `with notes` in the final status line; a ZIP row lists
-   none. The recommendation stage separately
-   pins the five catalogue entries and publisher links, download/import phases,
-   atomic source validation, immediate starter-card hiding, failure continuation,
-   and a retry containing only missing entries.
-4. **Managed dictionary updates.** Manual checks cover every managed package,
-   including disabled packages, without downloading an archive or changing an
-   installed revision. Scoped checks fetch one selected index and leave other
-   packages' statuses untouched; per-package and global results persist.
-   Manual installs and the one global alarm both recheck
-   before replacing a generation, preserve presentation and groups, commit
-   successful status atomically, and retain a working generation after failure.
-   Generic and
-   catalogue-pinned source rules, final URLs, rotating HTTPS archives, stale
-   fingerprints, title collisions, lost replies, concurrent group-only state,
-   injected blob archives, cleanup, and alarm recreation are all exercised.
-   A package still carrying the `sourceId` of a source the catalogue has since
-   dropped (Sankoku 8 English, #290) is never an update candidate: whole-library
-   and scoped checks complete without touching or deleting it, and it keeps
-   answering lookups.
-5. **Every read path** with the logical fixture package expanded to all four native kinds:
-   `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
-   deinflection trace, glossary still a raw string,
-   frequencies, pitches), `hd_kanji` (including the string `onyomi`/`kunyomi`/
-   `tags` of contract B and the `null` for a miss), `hd_styles`, `hd_media` (a
-   `data:` URL matching the pattern `glossary.js` accepts, and `null` for an
-   absent path).
-   Two temporary rank/occurrence archives exercise actual native ranking before
-   one- and three-result truncation, selected ascending/descending directions,
-   disabled and all-dictionary ordering, and stable glossary identity. Their
-   generated index metadata also repairs older stored packages on reload.
-   A committed package whose files no longer load is skipped on reload: the
-   other dictionaries keep answering lookups, `hd_status.failedDictionaries`
-   names it with its load error, and removing it clears the report.
-   `hd_segment` splits a batch of chunks, each keyed by its id, through the
-   real background → offscreen → engine path. A lookup that arrives as a
-   message during the first chunk's native call, as a hover reaches the engine
-   worker, reaches the engine before the second chunk does, which only a
-   per-chunk turn that lets pending messages in allows. A chunk holding a lone
-   surrogate keeps its UTF-16 offsets, and an oversized chunk refuses the batch
-   before any chunk is segmented.
-6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
-   renders "no dictionaries imported" on 0, and 0 is also what the engine's error
-   fallback returns, so `offscreen.js` reads `hdw_last_error` after every
-   string-returning call and fails the request rather than forwarding an
-   ambiguous empty.
-   Focused boundary checks reject C-string NUL and oversized UTF-8 inputs,
-   malformed native envelopes, and complete replies above 32 MiB. They retain
-   exact-boundary replies and correlated bounded errors, including multibyte
-   request IDs and early service-worker relay failures. The next healthy lookup
-   keeps the same engine generation.
-7. **Error paths.** An unknown type is answered as `<type>_result` with
-   `ok: false` rather than dropped; a non-zip import fails with a report attached
-   and leaves the previously loaded set intact; an import with no blob URL is
-   rejected rather than thrown. A valid import with a declared length above the
-   former byte cap succeeds, and a counting filesystem sink receives an actual
-   streamed body one byte beyond that boundary.
-8. **The renderer against the engine's own bytes.** This is the check that a
-   hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
-   `hd_media` replies go into the real `createPopupView`, and the
-   headword, the parsed structured content, the `data-hoshidicts-dictionary`
-   attribute `@scope` keys off, the frequency tags, the `<img>` resolved through
-   `resolveMedia`, and `renderKanji`
-   are all asserted on the resulting DOM. `glossary` is the whole glossary *array*
-   of one term-bank row, so each of its elements must land in its own
-   `li.gloss-item` — appending them into one parent runs two senses together with
-   no separator, which is asserted against the fixture's own two-sense entry.
-   Deinflection disclosures expose the real engine's ordered trace, retain raw
-   duplicate/whitespace/literal-text cases, and use English/Japanese/Ukrainian
-   browser labels without replacement-string interpretation. Missing/malformed
-   traces are safe even with grammar tags enabled. Secondary headers stay lazy;
-   tab projection resets the disclosure, and stale toggles after replacement,
-   clear, request supersession, or destruction cannot request positioning.
-   Deep structured content is rendered through explicit traversal frames rather
-   than a fixed nesting-depth limit. The exported traversal's node counter is
-   seeded to test exact capacity without a million-node DOM, and containers,
-   wrappers, nulls, and ignored tags remain in that budget. Rejections name the
-   attempted value and limit; shallow structural paths stay exact while deep
-   paths elide their middle and never copy glossary payload text.
-   `structuredContentDeepFixture()` keeps a 大辞泉-shaped の entry nested past
-   the former depth limit with placeholder text: its deepest gloss must reach
-   the rendered glossary, the compact summary (every gloss in order, without
-   labels or examples) and the Anki `glossary`/`glossary-plain` fields, and
-   wrapper depths 1 through 500 never fail on depth alone; only the preview's
-   512-value budget ends a summary.
-   Deferred, tab, Show more, and storage-projection node-limit failures omit
-   only their definition body, including among 100 dictionary cards. Unexpected
-   renderer failures still reach the current view owner. Replaced, cleared,
-   destroyed, or request-superseded fills do no rendering, media, or layout
-   work, and the actual content callbacks cannot clear a newer request.
-   External links preserve safe native hrefs while routing current primary,
-   keyboard and middle activation exactly once, including mixed nested links.
-   Worker checks reject invalid URLs/senders before tab creation and bypass held
-   storage writes without waking the engine. Failed or missing navigation replies
-   do not retry, replace the lookup or discard an open Note draft.
-   Internal anchors preserve exact linked query/reading and share connected/current
-   ownership checks; an enclosing structured anchor cannot dispatch a second lookup.
-   Level-aware content checks cover same-link reuse, descendant-only pruning,
-   child-local kanji Back, viewport/depth changes, protected pointer transfer,
-   retired callbacks and replies, and non-monotonic engine generations. Parent
-   and child Note appends complete with reversed replies/storage events without
-   losing drafts, duplicating appends, or reviving a retired depth. Queued shared
-   media remains live while any owning popup still needs it. Opening a
-   pronunciation chooser closes the child pane over it unless a draft protects
-   the child, and definition scans start no hit test until the chooser closes.
-   Same-view refresh keeps the actual mounted Note form, pending save and
-   response-time focus; held failures/misses preserve protected drafts. Repeated
-   stale tab/Show-more actions share the current replay without reviving old
-   resources or leaking transient control preservation into ordinary Back.
-   Four real renderer resize/observer callbacks retain per-pane masonry but
-   position the chain once per deferred pass. Narrow-width recomputation,
-   root-only timing, owner retirement and shared-frame cancellation are pinned.
-   Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
-   embedded-NUL prefix rejection, bounded correlation on early relay failures,
-   and actual oversized native errors without capping archive imports.
-   Queued media checks its required generation before native extraction.
-   Controlled content replies cover old/new and repeated numeric generations,
-   pending dedupe, missing/failure retries, Back snapshot refresh, and style
-   request identity. Successful resources survive repeat hovers, completion
-   while hidden, and alias/favourite edits. Connected but obsolete image
-   fulfillment, rejection and load/error callbacks cannot mutate or reposition
-   an old panel; current failure keeps accessible alt text and a readable label.
-   Scheduler checks pin four dispatched jobs, 128 total admitted jobs (including
-   active jobs), dedupe at capacity, FIFO progress, and dispatch-only deadlines.
-   Controlled timeout/late-reply cases protect retry and active-count accounting;
-   new views can claim matching queued jobs without obsolete work blocking
-   admission. Invalidation and teardown settle every job before more dispatch.
-   LRU checks accept 64 entries and exactly 16 MiB of decoded media, promote hits,
-   evict on one extra entry/byte, and reset byte accounting on invalidation.
-   The Image hover preview modes are pinned: `large` opens no preview for an
-   `em`-sized or 16px image but does for a 64px one, `off` opens none on hover
-   or focus, and `all` previews every image.
-   Preview checks cover lazy closed-shadow ownership, exact source reuse without
-   another media request, viewport corners, unchanged inline dimensions,
-   combined hover/focus retention and failure cleanup, tab/clear/destroy, and
-   dismissal before new term/kanji replies or settings invalidation. Late loads
-   cannot steal newer preview intent or revive a dismissed preview. Keyboard scroll retains its
-   focused owner; keyboard focus cancels hover dismissal, while ordinary blur
-   rearms it and content replacement does not hide a refreshed Note result.
-   An ad-hoc format-3 fixture imports genuine AVIF and SVG through the real WASM
-   engine and checks their complete returned data URLs, not merely file headers.
-   Image-sizing checks keep the existing bounded sizer authoritative, preserve
-   ordinary/preferred/em dimensions, and recover intermediate width arithmetic
-   overflow/underflow while retaining valid original rounding and display clamps.
-9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
-   and removing an unknown title does not bump `generation`. Removal loads
-   the remaining manifest and commits it before deleting the old root. The
-   failure case injects a `chrome.storage.local.set` rejection: the original
-   generation and live engine must remain intact. Startup recovery also preserves
-   a legitimate legacy dictionary whose title is `.hdw-remove`.
-10. **A trained (`.hoshidicts_6`) dictionary through the extension layer.**
-   Everything above imports the 6-row fixture, which is under the zstd training
-   floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
-   engine writes for a real dictionary. `buildTrainedZip()` goes through
-   `hd_import`, and then its exact manifest path must strict-load, the IndexedDB
-   fake has to contain both the marker and `dict.zstd` under that generation root
-   — those are the files IDBFS repopulates after a restart — and `hd_lookup` has
-   to return the glossary bytes, which only decompress if `dict.zstd` was found
-   and loaded. The restart case also proves an explicitly unreferenced generation
-   is deleted rather than adopted from disk.
-11. **First-run setup.** A worker context receives `onInstalled` with reason
-   `install` and must create exactly one `startup.html` tab, seed the setup
-   record and the first-install options in one storage write, and leave a
-   later user edit alone through `update`, `onStartup` and a restarted worker
-   context; a profile that already carries options keeps them. `hd_setup_cas`
-   is answered only for the startup page URL, refuses a stale base revision with
-   the current state, rejects invalid stages, missing revisions and any move
-   back to an earlier or finished stage, and records `completedAt` and
-   `continued`. `hd_setup_record` is answered for the offscreen document only:
-   it stores each outcome, accumulates installation durations once per run (a resent
-   record confirms rather than recounts), and settles the Jitendex
-   summary source and Bee's clicked-kanji route once from the committed titles,
-   in one write with the setup record, without overwriting an option the user
-   already changed. A fresh jsdom `startup.html` shows its short setup invitation,
-   Bee credit and GitHub-star call to action without any runtime request, contains
-   no privacy-policy link, keeps the welcome screen after a failed Start save, and begins
-   installation only after that stage write succeeds. Reopening the accepted
-   stage resumes installation, while **Set up manually** reaches practice
-   without dictionary or Anki requests. An accepted startup page attaches to the installer with the
-   untouched sources, shows an unanswered request once with Retry instead of
-   re-requesting, renders **Already installed** only for trusted
-   `sourceId`/index identity, mirrors determinate and indeterminate download
-   rows, installation, installed and failed phases for its own run identity and
-   sequence only, announces settled outcomes but not bytes, shows Retry and
-   Continue on failure, requests only the missing source on retry, ignores the
-   superseded run, advances the all-installed result immediately with a
-   conflict retry, keeps focus on its controls
-   through inventory events, ignores an older setup revision,
-   defers rendering while a
-   write is in flight, moves focus to the heading on a stage change, adopts a
-   conflict reply's newer state, and closes its own tab after Finish. The
-   Settings harness shows **Resume setup** only for an incomplete, readable
-   setup record. The restarted fallback engine imports a recommended source
-   from its catalogue archive URL with no blob and no fingerprint, reporting
-   download bytes with no total (the fake response declares none) and one
-   installation phase under the request ID, and refuses a non-catalogue archive
-   URL, a URL-only request without a source, and an unexpected final URL;
-   `declaredResponseLength` ignores encoded, zero, and header-less responses.
-   With `OVERLAY_MODE` on, a worker instead seeds hover lookups without a page
-   highlight on top of the first-install options when it starts. It creates no
-   setup record or tab and leaves later edits and legacy `modifier` records
-   alone; a carried profile without a lookup mode gains hover in one revisioned
-   write (see [overlay mode](../docs/overlay-mode.md)).
-12. **Isolated import.** A separate engine-service instance is configured with
-   an `isolatedImport` that runs the real `importDictionaryArchive` on the
-   engine's own filesystem, which is what the direct-OPFS runtime's second
-   instance on the same OPFS root amounts to. A first install adds its
-   generation beside the loaded set without `hdw_reset`; during an update's
-   installing phase, lookups answer from the old generation (and the other
-   dictionaries keep answering), then the new generation swaps in through one
-   `hdw_remove_dict`, one `hdw_add_dict` and one `hdw_set_dict_order`, listed
-   once in `hd_memory` with the old root gone; an importer failure or a broken
-   archive leaves the engine untouched and removes the root; a commit that
-   conflicts three times unloads the new generation and keeps the committed
-   one. The IDBFS restart stage checks that its in-engine import reports
-   `fallback: "memory"` on the installing phase.
-
-### Anki duplicate index and maturity blur
-
-`node --test test/anki-index.test.mjs` exercises production scope construction,
-recognized note types, direct `{expression}` fields, exact word keys, compact
-rows, multiple note IDs, aggregate maturity, configured-deck filtering and
-stale cached-ID inspection. It also rejects malformed partial Anki replies.
-
-`node --test test/anki-index-cache.test.mjs test/anki-index-integration.test.mjs`
-checks warm hits without Anki, miss repair without negative rows, a second
-zero-request hit, immediate post-write updates, forced stale replacement,
-30-minute full refreshes, retained snapshots through failures, worker restart
-and cache-only maturity membership. It also verifies that linked-role
-suspension drains an admitted refresh, clears its alarm and blocks further
-local pulls until resume. Word status answers a batch in request order, at
-the revision of the rows it read, from the rows held in memory without
-reading the stored index, and answers `null` for another source or no Anki
-configuration. The offscreen service test verifies that
-the refresh worker returns only compact rows and terminates after success or
-failure. These focused suites never contact an Anki collection.
-
-`node --test test/anki-content.test.mjs` checks the reader action across initial
-cache lookup, warm hits, live repair, stale IDs, failures, retries, superseded
-requests and nested popup owners. An unresolved action is disabled and exposes
-an accessible busy Arrow Clockwise state before resolving to Add or View in
-Anki.
-
-The extension smoke harness checks maturity blur with counts disabled, the OR
-decision when both criteria are enabled, autoplay held until the hover reveal
-and never replayed by later tab bindings, first-count retention, stale replies, mapping changes,
-lookup before initial options, and pending/completed evidence retained for Back
-across Anki mapping edits. Frequency cases cover rank and occurrence boundaries,
-multiple native values, unavailable sources, immediate qualification, pending
-count evidence, no new message type, live edits, tabs, Note refresh, native
-kanji and Back. Settings exercises three independent condition checkboxes,
-conditional controls, unavailable frequency selections, paused-count
-explanation and revision-bound drafts. The Design preview uses fixed count,
-maturity and frequency data with the shared reveal behavior. The existing
-count-only tests retain timed reveal, navigation, Note and audio ownership
-coverage.
-
-The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
-service-worker target (mining controls) and offscreen target (including its
-dedicated index refresh worker). It checks
-source persistence, a responsive cold-cache popup during a held refresh,
-cached mature results without repeated Anki calls, and pronunciation that
-waits for the hover reveal.
-Real alarm delivery verifies that a refresh changes new lookups while keeping
-the open popup intact; the index continues refreshing while blur is disabled,
-and unavailable Anki retains the last successful snapshot. A real worker restart
-restores cached membership and a missing alarm without retrying a recent
-failure. Independent count blur and autoplay remain covered. These are
-fixtures, never the user's actual notes or scheduling data.
-The real-WASM fixture also verifies frequency-only blur from native value `142`
-while lookup counts are disabled. `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` and
-`HACHIDORI_DEFINITION_BLUR_NARROW_SCREENSHOT` capture the desktop and narrow
-Settings controls.
-
-Four word highlighting checks (#520) turn the experimental switch on and point
-the first Template at an AnkiConnect fake served by the suite's own page
-server, which both the mining worker and the offscreen index refresh reach. On
-a page of its own, the real content script marks 食べたかった, 漢字 and 読む as
-unknown, around 食's ruby reading, then a far line once it is scrolled to, while
-the first line, now far away, keeps no ranges, and a line added later. The
-page's markup is identical before and after, and a `MutationObserver` records
-no change outside Hachidori's popup host. Adding 食べる from the popup moves
-食べたかった's ranges from unknown to learning and its painted line from the
-unknown colour to the learning one, while 漢字 stays unknown. In the popup for
-漢字, Mark as known and Ignore sit after Anki and pronunciation; Ignore takes
-漢字's mark away and presses its button from the stored record, an Alt+K
-binding of Mark word as known moves it to known, and pressing Mark as known
-again clears it at the next revision and brings the unknown mark back. Turning
-the switch off removes every mark and keeps the status switches and style.
-`HACHIDORI_WORD_HIGHLIGHT_SCREENSHOT` captures the marked line after the add.
-
-### Real Custom buttons and Templates path
-
-`test/chrome-custom-buttons-templates.mjs` requires an explicitly isolated real
-Anki profile with AnkiConnect bound to a chosen `127.0.0.1` endpoint. It creates
-only the fixed `Hachidori I23 Words` and `Hachidori I23 Sentences` decks and
-note types, and deletes only notes carrying the `hachidori-i23-e2e` tag.
-
-```sh
-HACHIDORI_ANKI_URL=http://127.0.0.1:18773 \
-HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR=/tmp/hachidori-i23-evidence \
-node test/chrome-custom-buttons-templates.mjs
-```
-
-The harness starts a fresh Chrome profile, imports the production fixture,
-writes legacy flat Anki/custom-link settings and verifies their canonical
-migration, then drives Template and Custom button create, duplicate, navigation,
-reorder and delete controls with real keyboard input. For every field mapping,
-it checks the marker inventory and descriptions, filtering, active-option and
-selected state, Arrow/Home/End/Enter/Escape/Tab behavior, pointer insertion,
-free-form text, native copy/paste, IME composition, validation, focus exit and
-Chrome's accessibility tree. It switches Templates with distinct arbitrary
-drafts and reloads Settings to prove exact preservation. It then measures 40
-two-frame Template switches and captures Settings screenshots. A real lookup
-requires independent ready states for the built-in first Template and a custom
-second-Template action, plus a visible disabled action for a missing Template
-ID. It submits the custom action from the keyboard and the built-in action with
-the pointer, and finally reads Anki back to prove separate decks, note types,
-repeated-marker and literal mappings, tabs, newlines, tags and selected-Template
-screenshot media.
-
-`HACHIDORI_CUSTOM_BUTTONS_PROFILE` may name an empty profile for diagnosis.
-Setting `HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE=1` reuses a prior harness
-profile and fixture import; release evidence should omit both so migration and
-first-run storage are fresh.
-
-### Upstream Anki note-type contracts
-
-`node --test test/anki-note-type-compatibility.test.mjs
-test/anki-templates.test.mjs test/anki-setup.test.mjs` sends the complete
-reviewed Kiku, Lapis and Senren field schemas through production preset mapping.
-It checks exact field order, model selection, first-field identity, every
-mapping and overwrite mode, intentional blanks, markers and automatic-setup
-core detection. Negative controls cover schema and mapping drift.
-
-`python -m unittest discover -s test -p 'anki_note_type_upstream_test.py' -v`
-tests the bounded read-only APKG extractor, including legacy and modern SQLite,
-Zstandard collections, dummy legacy databases, corruption, ambiguous members,
-unsupported schemas, checksums, URLs and redirect credential stripping. See
-[Anki note-type compatibility](../docs/anki-note-type-compatibility.md) for the
-pinned/latest package commands and the schema-only boundary.
-
-### jsdom
-
-The renderer integration stage needs jsdom. The reproducible setup above installs
-it in `test/tooling`. Direct commands can also use an external dependency tree:
+The renderer, Settings, startup and content stages need jsdom. A jsdom that
+cannot be loaded is a **failed check**, printed with the paths that were searched:
+a suite that answers a missing dependency by quietly testing less reports success
+either way. The loader searches `HACHIDORI_JSDOM` (the directory above a
+`node_modules` holding jsdom; `test/run.mjs` sets it to `test/tooling`),
+`NODE_PATH`, the repository, and the external default
+`${XDG_CACHE_HOME:-~/.cache}/hachidori-e2e`:
 
 ```sh
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
-mkdir -p "$CACHE_ROOT/hachidori-e2e"
-cd "$CACHE_ROOT/hachidori-e2e"
+mkdir -p "$CACHE_ROOT/hachidori-e2e" && cd "$CACHE_ROOT/hachidori-e2e"
 npm install --save-exact jsdom@30.1.1 puppeteer-core@25.10.0 @puppeteer/browsers@3.2.2
 ./node_modules/.bin/browsers install chrome@152.0.7977.75 --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
-That path is the built-in default, so `node test/extension-smoke.mjs` finds it
-without an environment variable. To use another location, point
-`HACHIDORI_JSDOM` at the directory above a `node_modules` that has jsdom in it, or
-`NODE_PATH` at the `node_modules` itself:
-
-```sh
-HACHIDORI_JSDOM=/path/to/tree node test/extension-smoke.mjs
-NODE_PATH=/path/to/tree/node_modules node test/extension-smoke.mjs
-```
-
 ESM ignores `NODE_PATH`, which is why the loader resolves jsdom through
-`require()` before importing it, and why `NODE_PATH` works here at all.
-
-A jsdom that cannot be loaded is a **failed check**, printed with the paths that
-were searched and the command that fixes it. It used to print `SKIP` and leave
-the count at "44 passed, 0 failed", which is how the whole renderer stage sat
-unexercised without anyone noticing: a suite that answers a missing dependency by
-quietly testing less reports success either way.
+`require()` before importing it.
 
 What it cannot prove: anything about Chrome itself. No manifest validation, no
 `chrome.offscreen`, no real IndexedDB or `unlimitedStorage` quota, no MV3 CSP, no
@@ -1450,891 +328,267 @@ layout (so no popup positioning, masonry or `@scope`), and no `blob:` URL crossi
 from the options page to the offscreen document. That is what `chrome-e2e.mjs` is
 for.
 
----
+### `chrome-e2e.mjs`
 
-## `chrome-theme-contrast.mjs`
+`chrome-e2e.mjs` loads the unpacked extension into a real Chrome. It is the only
+suite that proves what Node cannot reach: that Chrome accepts the manifest, that
+the extension_pages CSP permits compiling the wasm in the offscreen document,
+that `chrome.offscreen` and `chrome.runtime.getContexts` behave as assumed, that
+OPFS survives a browser restart, and that a real `caretRangeFromPoint` hover
+produces a rendered popup. `test/run.mjs chrome-e2e` also runs
+`chrome-popup-scale.mjs` (fractional popup scale, real pointer hit testing).
 
-Run `node test/chrome-theme-contrast.mjs` after installing the pinned test tooling and Chrome. The suite imports a tagged monochrome and an untagged SVG through the real extension, then samples the card and enlarged preview in every palette from `POPUP_THEME_GROUPS`, including AUTO, plus dark and light emulated forced-colors modes. It requires 3:1 glyph contrast in normal palettes and 20:1 in both forced-colors modes. Each row also checks word highlighting (#520) on a light and a dark page, with a fake AnkiConnect making 学生, 先生 and 漢字 unknown, learning and known and 学校, set to Ignore, ignored: every status line, measured below the glyphs' ink, must reach 3:1 against what it is drawn on, the statuses must differ by line style alone, one solid line, a dashed one, a dotted one and two lines one above the other, and in both forced-colors modes each line must end inside the word's Highlight box, where it does not merge into the page, while the ignored word has no line and its box must reach 3:1 against the page. Its fixed denominator follows the palette registry; each row reports separately. `test/tmp/ci/theme-contrast.png` is a labelled card/preview/word-highlight filmstrip, uploaded by CI with the JSON pixel results. Chrome emulation does not replace a check on a real Windows contrast theme.
+Its steps run in this order, in one profile:
 
-## `chrome-e2e.mjs`
+| file | what it proves |
+| --- | --- |
+| `harness.mjs` | `PLANNED`, `check()`, the report and `step()`. |
+| `session.mjs` | Shared setup: launching Chrome, the page server, Fetch interception helpers and Settings helpers; then the extension loads, its branding, sharing by default and the browser shortcuts. |
+| `popup-reader.mjs` | Reading the closed-shadow popup through CDP, and the hover helpers. |
+| `first-run.mjs` | The startup page's first-run setup with intercepted catalogue downloads (held, failed once, with and without `Content-Length`), Resume setup, reconnecting, Retry, the Anki check, practice, the Settings exclusion, then **Remove all imported dictionaries**. |
+| `settings.mjs` | First-run Anki detection of an existing Kiku setup, Settings autosave, save feedback and option transport, Design, Audio, Anki Settings and glossary export, dictionary CSS isolation. |
+| `recommended.mjs` | Recommended dictionaries on desktop and narrow pages, the offscreen engine (wasm under the CSP, pthreads, one offscreen document), the Settings installer across a reload, a failure and Retry. |
+| `import.mjs` | The `.zip` input, import into OPFS and storage, batch import and re-import, the dictionary row. |
+| `library.mjs` | Settings navigation and keyboard access, the Google Docs flag, popup themes and the first frame, positions, bulk updates, reordering, aliases, groups, kanji choices. |
+| `custom-dictionary.mjs` | Settings saves a personal source through the real importer. |
+| `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup. |
+| `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |
+| `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
+| `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, popup audio; mining to a fake AnkiConnect. |
+| `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
+| `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
+| `restart.mjs` | Backups and atomic replacement in Chrome, then `SIGKILL` and a relaunch on the same profile: settings, counts, setup, the library, OPFS and lookups survive; removal. |
+| `memory.mjs`, `media.mjs`, `file-access.mjs` | Low memory mode, the RAM default, entry and hash storage; lookup bounds, deep structured content and dictionary media; saved-page setup with Chrome's file access. |
 
-The Library navigation regression launches its own temporary browser with real
-scrollbars (removing Puppeteer's `--hide-scrollbars` default). It makes
-Dictionaries tall, visits all five Library tabs and returns, requires both
-overflowing and short panels and a
-nonzero scrollbar width, and checks identical navigation left/width values with
-zero tolerance. It also checks the root's computed `scrollbar-gutter: stable`.
-In the same six states every tab must keep one left and width, again with zero
-tolerance, while exactly one tab is `aria-current="page"` at weight 600 and the
-rest stay at 400. Each tab's `data-label` must equal its text, because that
-copy reserves the semibold label's width.
-The same browser then walks Library → Sharing → Backup & restore → Advanced →
-Library at 1920px (above the shell's 1440px maximum, where a vanishing
-scrollbar would recentre the sidebar) and at 1280px (below it, where the main
-column would widen instead), requiring identical brand, search field, section
-navigation and main-column left/width values across the tall-to-short change.
+#### The profile
 
-Audio adds three browser assertions: default reading TTS plus ordered/disabled
-custom sources survive save/reload; encoded JSON discovery tries an undecodable
-candidate before naturally completing a one-second PCM WAV; no-result, HTTP
-failure and Stop have distinct feedback, a list failure names the list and its
-HTTP status, and a Yomitan list saved as an Audio URL, which Chrome cannot
-decode, tells the user to choose Yomitan JSON (#499). A stopped fetch cannot change the UI,
-and the same offscreen document and engine survive 31 seconds of audio silence.
-`HACHIDORI_AUDIO_SCREENSHOT` captures the Audio Settings page.
+`/tmp/hachidori-e2e-profile-<pid>` unless `HACHIDORI_PROFILE` says otherwise, and
+the path is printed at the top of the run. Per-pid because two runs sharing one
+profile deadlock over the extension's leveldb: the second Chrome cannot open
+`chrome.storage.local` at all (`IO error: …/LOCK`), which reads exactly like a
+persistence regression. A green run deletes its profile; a failing one keeps it
+and says so, because the profile is the only place the imported dictionary can be
+examined afterwards. `HACHIDORI_PROFILE` is never deleted, and a non-empty one is
+a hard error: pass 1 has to import into a clean profile or the restart check
+proves nothing.
 
-Popup audio adds four browser assertions for default-off silence, enabled-source
-and decode fallback, source/name choice with native cached replay, once-per-view
-autoplay, and cancellation on dismissal, source edits and navigation. A real
-right-click on Audio, and Down from the keyboard, open the chooser 4px beside
-it inside the popup without moving the definitions; a real mouse click selects
-a choice, and Escape restores Audio focus without hiding definitions.
-`HACHIDORI_AUDIO_POPUP_SCREENSHOT` captures the chooser. Test instrumentation
-observes native Audio instances without replacing decoding or completion events.
+#### The denominator is fixed
 
-The harness uses Chromium's `--disable-audio-output` clocked fake output device.
-This runs native fetching, decoding, playback progression and `ended` without
-requiring audio hardware; it does not bypass autoplay or synthesize completion.
-Without it, this headless macOS host accepts playback but stalls its audio clock
-at 64 ms. Audible hardware output and installed speech voices are not proved.
+`PLANNED` in `test/chrome-e2e/harness.mjs` names every assertion, and a complete
+run divides by `PLANNED.length`, not by the number of checks that happened to
+run. Anything in `PLANNED` that no `check()` reached is reported as
+`FAIL … check never ran`, and `check()` refuses a name that is not in the list or
+one that runs twice. A step that throws is recorded as
+`<step> finished without throwing` with its stack, and the report also prints the
+offscreen document's console. A run that leaves steps out (a name pattern, or one
+file on its own) counts only the checks that ran. When adding an assertion, add
+its name to `PLANNED` before its implementation, so a code path that never runs
+cannot look like a smaller successful suite. Do not nest a check under an `if`
+that could quietly drop it either: a hover that produced no popup fails the four
+assertions about that popup's contents.
 
-`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
-test/anki-{audio,offscreen-audio}.test.mjs`
-runs the focused tests for strict source options, defaults versus explicit empty
-lists, template encoding, candidate order, native callback ownership, cleanup,
-TTS supersession, first-use voice loading, automatic Japanese voice selection,
-unavailable selected voices and linked browser speech validation,
-document-scoped cancellation,
-Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
-candidate identity, stale controls, chooser focus/failure recovery and autoplay,
-including delayed initial options without repeating a manual play, nothing
-beside the audio button for a missing, failed or cancelled pronunciation (#501)
-while the chooser keeps each source's error, list and recording failures named
-with their HTTP status or network error, an undecodable recording's media error,
-size and content type, the Audio URL/Yomitan JSON type mismatch in both
-directions, the same explanation when mining (#499), and controls hidden when no source is configured. They also place the
-chooser beside its button in popup pixels from each gesture, above it when only
-that side has room and shortened to a long list's room, re-place it on the next
-frame after a popup scroll and at once when its popup is placed, and close it on
-a press elsewhere, a scrolled-away button or retirement, with no late candidates
-filling it. Extension
-checks exercise the actual worker's cancelled startup retries and Settings draft
-conflicts rather than duplicating their storage machinery.
+#### No sleeps
 
-`node --test test/anki-media.test.mjs test/anki-worker.test.mjs` checks the
-Anki media transaction. Referenced PNG and nested SVG files are deduplicated;
-CSS-only URL media remains outside the supported structured-image plan.
-Existing files skip retrieval and upload. New files require deterministic
-generated names, non-empty valid base64, and exact live inventory confirmation
-after `storeMediaFile`, including lost replies and false successful
-acknowledgements. Partial preparation and later generation or duplicate
-rejection retain deterministic confirmed files for a retry without another
-upload. Invalid base64, empty, colliding and renamed media cannot reach
-`addNote` or `updateNoteFields`. More than 64 legitimate references remain
-accepted, and browser-decoded pronunciation keeps its existing size, container
-and generated extension compatibility. The worker checks dictionary and
-first-field audio before mutation while preserving deferred non-first-field
-pronunciation.
+There is no fixed sleep standing in for synchronisation. The content script
+builds its host lazily on the first hover, so `hoverForPopup()` re-fires
+`mousemove` (stepping off the word and back on) until the popup is actually
+visible. Bounded polls wait for observable DOM, storage, OPFS, CDP, or alarm
+state; the scheduled-update cases create real near-future Chrome alarms.
 
-```sh
-node test/chrome-e2e.mjs
-```
+#### What the assertions are pinned to
 
-The primary-path test runs 301 predeclared checks in a browser. The reproducible
-launcher uses the pinned Chrome and `puppeteer-core`. For direct execution, the
-external setup above installs Chrome for Testing in the default cache; the harness also checks
-`CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
-`HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
-naming the variable if either is missing.
+- The popup's **structure**, not its flattened text: `popupReader()` reports
+  `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`), so a
+  renderer that flattened everything into one text node fails.
+- The **extension's own** highlight, read back as
+  `CSS.highlights.get(HIGHLIGHT_NAME).size`. The name is read out of
+  `extension/content.js`, so a rename cannot leave the check pointing at a dead
+  registry key.
+- "No popup for latin text" is **bracketed** by a popup immediately before and
+  after, so it cannot pass against an extension whose hover is dead.
+- Stable IDs against the fixtures' exact title-derived values, the post-restart
+  `dictionaryCount === 4` (every kind the combined fixture registers), and
+  index and archive request counts for managed updates.
 
-It launches Chrome with `--load-extension`, intercepts the four production
-recommendation URLs with deterministic ZIP fixtures, proves failure continuation,
-trusted source metadata, reload/restart hiding, and missing-only retry, then clears those
-fixtures. It next uses the real `#import-file` on `settings.html` for a valid
-archive and drops a three-file batch containing a term-only kanji dictionary, a
-malformed ZIP, and a same-title reimport. It verifies the drop target feedback,
-the shared startup-style progress rows, elapsed import times, ordered per-file
-outcomes and failure continuation, then exercises filtered bulk management, a real
-pointer drag, keyboard position movement, capability-aware chooser migration,
-and clicked-kanji navigation, and hovers real
-text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
-`chrome-extension://`, `about:blank`, or `file://` without a per-extension
-opt-in). A wrapped cross-inline match proves the popup sits outside the complete
-matched range rather than positioning against only the hovered glyph. A
-fixed-height scrolling chat feed proves the popup keeps its exact rectangle
-while the feed and then the page scroll the word out of view, and after the
-comment is removed, until Escape closes it (#402). In the default Shift mode,
-switching to another tab and back keeps the popup and its Note draft with the
-same selection and keyboard focus, so typing continues, until Escape closes the
-Note and then the popup; a click into a same-origin or cross-site (`localhost`)
-iframe still closes it (#432). The test
-then relaunches against the same profile and hovers again with no
-re-import — which is the only test that proves direct OPFS persistence through a
-full Chrome restart.
-
-The clean profile also fires `chrome.runtime.onInstalled` with reason `install`,
-so the extension itself opens `startup.html`, whose installer immediately asks
-the engine for the first catalogue archive. Those downloads happen inside the
-offscreen engine worker, so the harness attaches a Fetch interception to the
-offscreen target as soon as that target is named (`targetcreated` and
-`targetchanged`), before the engine can boot: the first Jitendex request is
-held until the clean-profile Settings checks have run, jmnedict's publisher
-answers 503 once, Jitendex and Jiten declare `Content-Length`, and Bee's does
-not; the padded 4 MiB fixtures come from `buildRecommendedZip({ paddingBytes })`.
-Eight assertions cover the tab: exactly one startup page at the dictionary
-stage with the Settings palette, Jitendex held in an indeterminate
-**Downloading… 0 KB** row and the seeded first-install options (compact
-summaries on at two, TTS and the dark popup defaults untouched); the Settings
-sidebar's **Resume setup** link outside the section navigation; a reload that
-rejoins the same run without a second archive request; the released run, whose
-recorded broadcasts and every rendered row prove waiting → downloading →
-installing → installed for the declared-length and the indeterminate archive,
-the 503 failure with its reason beside three installed rows, Retry and
-Continue, durable outcomes and no all-installed claim; Retry fetching only
-jmnedict, the all-installed heading with the accumulated total, and the
-Jitendex summary source and Bee's clicked-kanji route settled once while the
-user's compact-summary edit stands; the result advancing immediately to
-**Finding your Anki setup…** with focus on the new heading; the unavailable
-Anki connection settling into **Could not find Anki** for three seconds after
-exactly one AnkiConnect
-attempt, which the harness refuses on the worker target for that stage so a
-real Anki or another suite's mock server on port 8765 cannot decide the
-outcome, and whose recorded outcome carries the gateway's reason and moves
-setup to **You’re ready.** with the outcome sentence
-and its Settings link, where the real reader immediately demonstrates the
-answerable word before keyboard and hover checks, Finish closes the tab and the completed record
-hides the link; and, after the in-run service-worker restart and the full
-pass-2 relaunch, no reopened startup tab, no further archive request, the same
-completed record, and the earlier edit still in force. Both Anki headings are
-transient, so the page records every heading it paints through a
-`MutationObserver` instead of relying on a poll landing inside them. The
-setup-installed packages are then removed with Settings → Library → **Remove
-all imported dictionaries**, one of them disabled and the others hidden by a
-search: one confirmation must state their number and the real engine must
-leave an empty library, so the Settings installer below still starts from an
-empty library.
-
-One further check drives the recognised case. With setup returned to the Anki
-stage and a mocked AnkiConnect answering on the service-worker target, a new
-startup page must detect the busiest of three note types (`Kiku v2` beside
-`Basic` and the non-matching `My Kiku`), choose the deck holding the most of
-its distinct notes, save that model, deck and the resolved preset templates
-through the revisioned options write, record the `configured` outcome, and
-issue only the fixed read-only actions in ranking order at protocol version 6.
-The page visibly advances through finding the most popular mining card, finding
-its most popular deck and applying both. Each step holds for two seconds and
-shows its chosen card or deck as that step is reached, then the settled result
-holds for three seconds before practice.
-The mock is detached and the previous setup record and Anki options are
-restored, so the Anki Settings checks below still begin with a lazy, offline
-connection and an unconfigured mapping.
-`HACHIDORI_STARTUP_SCREENSHOT`/`_DARK_SCREENSHOT` capture the held download,
-`HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown
-result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
-after an absent Anki, and
-`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the automatic Anki
-progress with the chosen card complete and the chosen deck current, and
-`HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
-a real lookup open. `HACHIDORI_SETTINGS_SCREENSHOT` captures the empty import
-drop target and `HACHIDORI_IMPORT_SCREENSHOT` captures its completed shared
-progress rows.
-
-The jsdom stage for that step also requires the appended list to match the
-manifest's own `content_scripts` order, that the exact **辞書** selection is
-probed first and the sentence is then probed offset by offset only if needed,
-that a prefix-only shortcut hit keeps the button hidden while another passage
-word can still enable the exercise, and that the exact-selection length remains
-two when the hover scan length is one. It also checks that removing the package
-which answered retires the invitation and probes again while a group-only
-revision does not, and covers every state that must not invite a
-hover: a frequency-only library, a library that answers nothing, an engine that
-refuses the first pass and is retried after a failed status, a long loading
-recovery and then an idle engine, an engine that
-never answers, and lookups switched off. The group-only step also requires the
-sentence to be the same node afterwards, which is what keeps an in-flight lookup
-anchored.
-
-Two further checks cover that practice step. The first waits for the reader
-scripts the page appends for itself, requires their manifest order, aims the
-real mouse at **辞書** inside the reviewed street-scene passage, and requires
-the closed-shadow popup to show 辞書 with the definition from the Jitendex fixture this run
-installed, then to close on leave. The second loads those same scripts into
-Settings, hovers Japanese text there with the real mouse, and requires the
-renderer to be present but no reader host to exist, which is what proves the
-page restriction rather than the absence of an injection.
-
-The keyboard/hover practice check first reloads `startup.html#setup-heading`,
-the URL its native skip link can create before the module attaches a handler,
-then requires the ordinary reader to answer from the real installed fixture.
-The internal-page exclusion check also injects the same scripts into query
-variants (including one with the known fragment) and an unknown fragment,
-requiring no reader host or selection lookup there.
-
-Four further assertions cover the real practice and saved-page flow. The
-keyboard lookup button selects 辞書 from the scene and the ordinary reader
-returns the just-installed catalogue fixture's glossary; pointer lookup works
-too. An options update preserves the connected scene and selection. Using
-**Skip to setup** keeps the exact startup URL, while explicitly injecting the
-reader into Settings, the design preview or a query-suffixed startup URL still
-produces no lookup. The file-access control opens this extension's own Chrome
-details page. At the end of the browser suite, it returns without enabling,
-then flips the real switch in its isolated profile. Chrome closes extension
-tabs during the reload, so the test opens **Extension options** and follows
-**Resume setup** to the persisted practice stage. It confirms access on resume
-and page reload, then looks up 辞書 in a local HTML fixture. Access is disabled
-again before **Not now** and **Finish**. The Anki success screen, after fixture
-removal, proves dictionary recovery keeps Finish and Settings available.
-`HACHIDORI_STARTUP_LOOKUP_SCREENSHOT` captures the actual practice popup.
-
-The mining screenshot check changes the reading page's path, query and fragment
-with `history.pushState` and `history.replaceState` before adding the card, then
-requires the real JPEG in Anki. The page also shows a paused MSE video recorded
-from a canvas; the JPEG must hold that frame's own colour where the video
-stands, so a capture with a black video region fails. The extension smoke suite
-also keeps the content script's original URL stale, accepts the current tab
-URL, and refuses a route change during capture alongside its existing
-tab-switch and reload checks.
-
-The startup screenshot check uses Chrome’s live extension document context to
-capture that tab, since packaged extension pages cannot answer content-script
-messages and their runtime sender has no tab.
-The native-switch scenario enables Developer mode in its isolated profile:
-Chrome 152 otherwise disables a command-line extension when it reloads as an
-unpacked extension. No personal browser settings are changed.
-
-`node --test test/recommended-dictionaries.test.mjs` checks that
-`recommended-dictionaries.js` is the only place the recommended set is described:
-first-install selections and the count and topics the startup page and Settings
-show come from its entries, and no other extension page or script repeats a
-catalogue source ID, archive or index URL, or a written-out count. It also pins
-that the retired `sankoku8-eng` source stays out of the catalogue and that a
-package installed from it resolves to no managed update source.
-
-`node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
-covers the optional prompt's initial query, return/reload lifecycle, stale
-replies, skip and Settings shortcut, plus practice selection, retained nodes,
-reader load failure and missing/disabled-dictionary recovery with accurate
-headings and direct recovery actions. The startup smoke scenarios also cover
-pausing/resuming the success countdown, continuing immediately, and continuing
-while Anki detection is pending without a late reply reversing that decision.
-The startup extension-smoke assertion also checks selection and focus through a same-stage
-options event; audio routing covers startup document/request ownership.
-
-An in-memory external-reference fixture also passes through real WASM. Real Enter
-on its closed-shadow anchor must create exactly one worker-routed browser tab,
-with the exact local HTTP destination, no opener/frame and an unchanged source
-page. An invalid direct gateway request opens nothing; returning to the page
-still permits lookup. This fixture is removed before the remaining checks.
-
-The same run lazily opens the custom source editor, saves through the production
-ZIP compiler and real pthread WASM importer, and checks the fixed package's
-state and generation. It then drives the closed-shadow Note form through term
-and kanji views, including projected prefill, hover/Escape draft protection,
-exact-view refresh, Back restoration, source adoption in the already-open
-Settings page, and retirement of each superseded OPFS generation.
-
-Settings layout checks cover the eight-destination primary rail, Library's five
-local views, selection-aware bulk actions, native keyboard section and skip
-links, Back/Forward, same-hash focus, short-window sidebar scrolling, and mounted
-source drafts. All twelve task views are checked at 320px and desktop widths in
-light and dark mode, including palette text/control contrast and visible-control
-overflow. Empty live regions stay available for their first announcement. The
-extension harness pins hidden-view save failures, aggregated Library notices,
-unseen completions, draft retention without extra requests, and stable-ID
-Details expansion/focus across rerenders and filtering.
-Two real Settings pages exercise debounced option patches with one held reply:
-a newer external commit cannot be rolled back, and a stale queued draft surfaces
-a conflict with explicit discard. Revisioned options also survive the full
-browser restart. The extension harness covers no-op revisions, atomic selector
-pruning, failed-save retry, first-input draft ownership, and old/repeated content
-storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
-
-The lookup-count checks then press **Reset lookup counts** with a counted popup
-still open in the reading tab. After one confirmation, that same popup and
-count line must read *Looked up 0 times* without a recorded lookup, storage must
-hold a new generation one revision higher with no rows and unchanged dictionary
-and options revisions, and the next real lookup must count 1.
-`HACHIDORI_LOOKUP_STATS_SCREENSHOT` captures the Lookup history controls.
-
-Design adds three browser assertions: lazy production-rendered sample content
-and keyboard kanji/Back highlighting, live presentation edits with retained
-cards/Notes and no sample source mutation, and Fit/Actual geometry at desktop
-and 320px. `HACHIDORI_DESIGN_SCREENSHOT` captures the Design view after layout
-settles. The extension harness also checks shared Reading/Design save feedback,
-unsaved preview updates, unchanged-echo render skips, unavailable image routes,
-preferred-source draft retention, and exact tab/disclosure restoration.
-
-Three further appearance assertions cover AUTO plus all 42 grouped palette IDs,
-live browser light/dark changes and real high-contrast overrides, immediate
-unsaved opacity/dimension preview and scoped reset, and live reader/child
-geometry with exact highlight restoration and retained Note/cards/resources.
-Another measures the Design preview's pitch dictionary name in each of the 42
-palettes and requires 4.5:1 text contrast against its tinted background.
-Unit coverage checks strict option ranges and no-op CAS, first-layout width
-ordering, and native/term clicked-kanji preview switching without losing Note
-or Back state. Unrelated dictionary changes retain the current clicked-kanji
-cards and disclosures.
-
-`chrome-settings-first-frame.mjs` proves the first *visible* Settings frame
-already uses the saved theme (#296): a settled-state read cannot see the
-browser-preference palette that used to paint before `settings.js` read the
-options. A `requestAnimationFrame` probe registered before any page script
-records every frame from document creation, and a CDP screencast started
-before navigation supplies the painted frames; each is sampled at gutter
-pixels and must be either the browser's blank canvas or the saved theme. Light
-under a dark preference, the dark default under a light one, AUTO and a custom
-palette are covered, plus a held storage read (the page stays blank, then
-paints the saved theme) and a failed read (the page releases to the preference
-palette instead of staying blank, and `settings.js` still applies the saved
-theme). `HACHIDORI_SETTINGS_THEME_FILMSTRIP` saves the four ordinary
-scenarios' frames as a captioned filmstrip PNG; the launcher writes it to
-`test/tmp/ci/settings-theme-first-frame.png`.
-
-Three custom-CSS assertions check immediate unsaved preview, character count,
-persisted source and scoped reset; real CSS cascade after built-in and late
-dictionary styles, invalid-rule handling and page isolation; and live parent/
-child styling with retained Notes, Back context and zero extra engine requests.
-`HACHIDORI_CUSTOM_CSS_SCREENSHOT` captures the editor beside the live sample.
-Focused extension checks cover exact-string options CAS (including source over
-32 KiB), malformed types, sheet ownership/no-op work, a stylesheet load before
-the first preview update, one queued CSS placement and revision-bound editor
-conflicts. jsdom's constructed-sheet double proves ownership only; real Chrome
-proves parsing and cascade.
-
-Two toolbar assertions check Automatic/Top/Bottom persistence and live preview
-updates with mounted Note/cards, plus root/child overrides and fixed-edge resize
-without lost focus, draft selection, or extra lookup/media/style requests. The
-extension harness covers the placement matrix, strict sparse CAS, focused
-Settings conflicts and remote/reset reconciliation, combined reader-disable
-and Automatic reset, and focused-subtree/no-op DOM mutation contracts.
-
-Temporary rank/occurrence dictionaries connect the actual Settings controls to
-one-result popup lookups. The browser checks inferred and manual directions,
-explicit Auto, metadata-preserving alias edits, and unchanged engine generation;
-it removes those packages before continuing. A manual direction also survives
-the full browser restart. `HACHIDORI_FREQUENCY_SCREENSHOT` captures these controls.
-
-The initial real inflected-verb popup exposes the exact native endpoints and
-ordered descriptions in a closed disclosure. Chrome focuses its native summary,
-opens with Enter and closes with Space, and checks its marker, raw whitespace
-styling, horizontal containment, and stable Note-button position at 360px width.
-Scrolling reaches the last step and glossary without the expanded toolbar
-covering them; opening Note keeps its focused input visible. The viewport and
-focus are restored before the remaining hover tests.
-`HACHIDORI_DEINFLECTION_SCREENSHOT` captures the expanded desktop popup.
-
-One assertion covers the dictionary cards on a popup rendered from a fresh hover.
-Every card must be a plain `div` outside any `details`, with a non-interactive
-title (no pointer cursor, no `::before` marker) carrying the display name and
-dictionary, a laid-out definition body, and the same geometry after a real mouse
-click on the title.
-
-The late bounded-response dictionary also carries legal structured-content
-entries that exceed the depth and node-count limits independently. Real Chrome
-checks that each one leaves an accessible visible error with the dictionary's
-canonical title and stable package ID, term/reading, entry/definition position,
-exact limit and structural path. The warning retains both contextual and cause
-stacks, stays bounded without glossary payload text, and the next healthy hover
-recovers. `HACHIDORI_STRUCTURED_DEPTH_ERROR_SCREENSHOT` and
-`HACHIDORI_STRUCTURED_NODE_ERROR_SCREENSHOT` capture the two visible states.
-The `structuredContentDeepFixture()` archive then imports through real WASM;
-hovering its の shows the deepest gloss with no failure notice and a compact
-summary of real text, before the package is removed again.
-
-The exported `nestedLinksFixture()` supplies three linked term rows and one
-shared deterministic PNG without changing the ordinary fixture counts. The
-real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
-independent parent/child Note drafts and Escape, same-level kanji Back followed
-by child Back, live depth lowering/zero, and narrow-window geometry. Three further
-assertions drive the chain with a real mouse: linked and hovered children hang
-from their source text (below it, else above, left aligned) and follow the
-parent's content scroll, popup scale and a narrow viewport; at 800×900 panes in
-a 1920×945 window a child that fits on neither side of its link is shortened
-beside it, and in the default sticky mode it outlasts the pointer's return to
-its parent until a click there; a primary click in
-an ancestor pane dismisses focused, hovered and still-pending descendants at
-once while an open child draft stays until Escape closes its form, and a click
-on the root's link keeps its same-query child without another lookup.
-With Hide popup on cursor exit on in sticky mode, a mouse return from the child
-to its parent closes the child within the option's 300 ms delay while the grace
-period to reach the popup is raised to 5,000 ms.
-Reimports and held service-worker replies also prove top/bottom Note forms stay
-mounted, focused and reachable, and a still-focused tab survives same-view
-refresh. `HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
-`HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
-
-`dictionaryTabsFixture()` extends that linked source with three unequal glossary
-cards, without changing the generated fixture files. Four Chrome projections
-cover All, ordered nonempty groups and an ungrouped favourite from the complete
-native result; ordinary contributors and grouped favourites receive no duplicate
-dictionary tabs. Warmed tab changes must issue no lookup, media or style
-requests. Links open their exact target on All; a child's own tab selection
-survives clicked-kanji and Back while its parent keeps its selected tab.
-Back restores a complete, scrolled child with its prior tab, highlight and
-toolbar and identical dictionary cards, without another native lookup;
-its next Back still closes the child. Extension checks cover native-source fallback and
-terminal misses, cached versus changed-generation restoration, lazy IPA and
-structured disclosures, and cancellation by newer projections or deliberate
-scroll. A focused scroll-read assertion prevents forcing layout while a retained
-Note's replacement panel is empty.
-Live labels and group order preserve keyed focus, and changed membership waits
-for protected Note forms and child anchors to retire before local projection.
-
-The same scenario saves columns one through four through Settings, compares
-actual card rectangles for shortest-column packing and non-overlap, then resets
-all one-column inline styles. Narrow/wide resizing and a held real PNG reply
-retain complete results, mounted drafts and anchors. Linked-child readiness
-requires the complete exact-target bodies before freezing the DOM oracle;
-resizing preserves those cards, the mounted Note draft and the parent anchor.
-A nondefault column count also survives the existing full
-browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
-`HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
-the Reading controls in light and dark themes.
-
-`kanjiGroupFixture()` builds two kanji-bank-only dictionaries and one term
-dictionary answering the same character in memory. Two predeclared Chrome checks
-select that group as the clicked-kanji dictionary through the real Design
-chooser, click 食 in the verb popup and require All plus one tab per member in
-group order, the two native entries merged into one entry and the term member's
-own entry with its glossary, then remove the group and require the option to
-reset to Automatic in storage and in the open chooser. A third configures a
-Kiku note type behind a mocked AnkiConnect, clicks 食 again and requires every
-mining control to settle to ready with no feedback banner or offscreen
-exception, and Add to write `Expression` 食 with an empty reading and pitch
-fields and the native card as `Glossary` and `MainDefinition`.
-`HACHIDORI_KANJI_GROUP_SCREENSHOT` and `HACHIDORI_KANJI_GROUP_SETTINGS_SCREENSHOT`
-capture the group popup and the chooser. The extension smoke suite pins strict
-group-reference CAS and its reset, the parallel fan-out with out-of-order
-replies, the scoped tabs and structured native cards in the real renderer, the complete
-term-result shape of a merged native card and the Anki fields it builds, the
-Design preview's group sample, and `node --test test/reader-options.test.mjs
-test/kanji-click-settings.test.mjs` covers the resolver and the chooser.
-`node --test test/kanji-group-mining.test.mjs` pins the renderer's
-`kanjiEntryResult` to the engine's `LookupResult` keys and builds the Kiku,
-Lapis and Senren presets, `{tags}`, `{part-of-speech}`, `{conjugation}` and the
-rendered `{glossary}` from it.
-
-`compactSummaryFixture()` adds two temporary suppliers through the real WASM
-importer without changing generated fixture counts. Its single predeclared
-Chrome check proves persisted summary controls, one shared cold image request,
-exact PNG bytes and 36px thumbnail geometry, complete unchanged cards and a
-focused Note during live changes. The source image is collapsed in its full
-definition but remains visible in the compact thumbnail. Tab fallback, a child's
-non-leading image, genuine prefix Show more, failed-media text-only fallback with
-no empty thumbnail and a readable full-card error, and a held valid lookup
-using newer summary options are included. Focused control drafts survive a real
-external off CAS and then surface their old-revision conflict; only the initial
-input-before-change seed is synthetic. `HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT`
-and `HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT` capture Reading in both themes.
-`HACHIDORI_SUMMARY_POPUP_SCREENSHOT` captures the summary beside the complete
-definitions after the shared leading image has loaded.
-
-The real browser checks horizontal and vertical glyph hits, padded link tiles,
-and a transparent element covering text. `HACHIDORI_HOVER_SCREENSHOTS=/path/to/dir`
-saves each state with a red marker at the actual pointer coordinates. The
-extension smoke suite additionally checks the two-pixel tolerance and complete
-supplementary Unicode characters when the caret lands after the glyph. Its text
-field case scans an untyped input, a search input and a textarea line through
-their imposter, shares one imposter and pending lookup across moves, rebuilds it
-for a changed value, refuses padding, password, masked and empty fields, keeps
-page scans out of it and removes it when the popup closes or the pointer leaves.
-
-The real browser also changes hover enablement and activation controls from
-Settings while the reading tab remains open. It proves close/re-enable without
-engine reload, stationary printable-key activation with open delay, delayed hide
-on release, and cancellation of a quick press/release. Choosing No key stores
-Hover, hides the keep-open switch and opens a popup on plain hover; choosing the
-key again restores it with the popup staying open, and the switch selects the
-closing mode. With No key, the same quick pass across a word, counted at the
-worker's engine relay, looks its glyphs up without a hover scan delay and
-nothing with a 700 ms one; resting on the word then sends one lookup after the
-delay. A non-default key is kept behind No key and checked with mode,
-enablement and hide delay after the full browser restart. With Hide popup on
-cursor exit on, a sticky popup outlasts its delay while the pointer never enters
-it, hides once the pointer has been inside and left even though a mouse click
-left its audio button focused, and stays for keyboard focus; the non-default
-cursor-exit delay is also checked after the restart.
-
-Exact-selection checks first use a plain cross-inline mouse drag with Shift
-configured and prove that it sends no worker lookup, paints no source highlight
-and cannot open the personal-definition pencil. A real matrix then checks Hover
-without a modifier and Shift, Control, Alt and Meta activation, including plain
-input, a wrong modifier and the configured modifier held with another modifier.
-A matching Shift drag verifies the complete highlighted text, retained popup and
-pencil workflow, and rejects prefix-only matches despite a one-character scan
-setting. It distinguishes visible selection text from hidden DOM text and block
-separators, retains the popup while selecting its closed-shadow glossary, and
-observes real worker lookup relays while toggling Japanese-only scanning in the
-open tab. Set `HACHIDORI_SELECTION_BLOCKED_SCREENSHOT`,
-`HACHIDORI_SELECTION_ALLOWED_SCREENSHOT` and
-`HACHIDORI_SELECTION_EVIDENCE` to capture the two visible states and their
-request/highlight summary. Text inputs and textareas, one scrolled sideways and
-one scrolled down, look up 食べる from their own value (#425) while their focus,
-selection, value and scroll stay unchanged, typing still appends, selecting in
-them starts no lookup and no imposter remains once the popup closes; password
-and `-webkit-text-security` fields stay unread. Contenteditable typing stays
-intact; direct and spanning selections exclude visible editing controls,
-including boxless `display:contents` editors, without treating a hidden control
-as visible.
-Nested open-shadow editors suppress printable activation typing and cancel
-pending scans when focused. A local Japanese example link beside an autofocused
-search field, and the field's own value, support both hover and stationary Shift
-lookup while preserving the field's focus; after a click into the field and
-typing, a stationary Shift scans nothing until the pointer moves.
-Visibility-restored descendants are treated as visible even inside a hidden
-editor.
-The extension suite separately holds replies through selection cancellation,
-retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
-and pins same-candidate pending lookup deduplication.
-One hover-mode check opens a fresh copy of the page and selects English text
-once its reader is ready: no worker lookup and no `hachidori-host` may appear
-before a Japanese selection on that same page opens the popup. It then turns
-**Show a popup when a selection has no definition** off in Settings, requires a
-Japanese miss in the open tab to look up without a popup while a hit still
-renders, and requires the notice back once the switch is on again.
-`HACHIDORI_SELECTION_SETTINGS_SCREENSHOT` captures that Settings group. The
-extension suite applies the Japanese-only gate to both selection resolvers,
-including a Latin selection that precedes Japanese text, and keeps the
-no-dictionaries notice and the retained selection when the notice is off.
-The same Chrome check then turns **Use the personal dictionary** off: selecting
-Japanese text looks nothing up, hovering the still-selected word sends an
-ordinary lookup at the configured scan length with a hidden pencil, and the
-personal entry saved earlier in Settings is missing until the switch is on
-again, without a dictionary-state revision. The extension suite covers the same
-switch for selection changes, drag releases and activation-key selections in
-every lookup mode, Scan selected text, the notices and the lookup flag, and its
-real-WASM custom stage requires the engine service to drop only the personal
-glossaries and personal-only results, and `hd_segment` to split out no word
-only the personal dictionary has. `chrome-overlay.mjs` requires a released
-glyph drag to keep its selection without a lookup or the host window claim.
-
-Seven source-highlight assertions cover selected-text DOM replacement/stale
-cleanup without selection changes, native ancestor Range identity and fallback
-owner retention across child closure, and exact cross-inline fallback paint
-through clipping, scrolling, resize, visibility, opacity and final cleanup.
-An overlapping child must uncover the surviving source paint when closed.
-CSS source transitions, animated ancestors and focus-resumed paused motion keep
-exact geometry between DOM notifications.
-Sibling style/text mutations move the source inside an unchanged fixed-size
-container; that case parks the pointer away from the source so synthesized
-pointer boundary events cannot mask missing layout observation.
-Page-cover checks compare the remaining paint area and exact bounds under fixed
-and sticky headers, a small centred overlay, pointer-transparent paint, clipped
-header borders, fixed boxes escaping ancestor overflow, and moving overlays.
-Position-keyframe cases begin as ordinary static elements and become fixed
-covers, both after forwards-filled completion and when paused midway.
-They include an effect started before the fallback and overlapping effects whose
-first completion must not retire the remaining position-changing effect. Paused
-source effects also repaint their final/base transform on finish or cancellation.
-Programmatic effects begin after the catalogue settles, without a CSS DOM start
-event: ancestor transforms and new position-changing covers must wake the
-fallback, and direct finish/cancel events repaint paused source effects.
-Removing covers restores the exact source paint; a box behind the source leaves
-it unchanged.
-Style-only checks settle an offscreen cover before CSSOM rule insertion,
-declaration replacement, same-count adopted-sheet replacement, or releasing an
-intercepted late stylesheet response. No DOM notification accompanies those
-edits; bounded fallback refresh must discover the new fixed header and restore
-the source after removal.
-Changing colour-scheme emulation without resizing also activates sheet-level
-and nested media rules; their native change events must refresh cover discovery.
-The test disables `Highlight` in Hachidori's content-script CDP execution context,
-not the page's main world, and reads the actual closed-shadow paint layer.
-`HACHIDORI_HIGHLIGHT_SCREENSHOT` captures the clipped fallback source and popup.
-Focused extension checks also cover moved shadow sources, view disposal,
-document-root renderer callers, pending geometry delivery, removal-only and
-unrelated-animation no-ops, unchanged-owner traversal counts and untouched
-page classes/selection. Discovery counters distinguish ordinary text and owned
-shadow repaint from CSS membership changes, including stylesheets, empty text,
-automatic direction, attributes and element insertion/removal.
-Geometry comes from real Chrome, not jsdom's stub rects.
-It also recovers a selection drag when the button is released outside the
-document and no mouseup arrives, without scanning during a still-held drag.
+The popup's shadow root is closed, and puppeteer's `pierce/` selectors find
+nothing in it; CDP's `DOM.getDocument` with `pierce: true` does, so
+`popupReader()` goes through a session. The headword is furigana ruby, so
+`textContent` reads `食たべる`; `popupReader()` also returns a `plain` copy without
+`<rt>`. The offscreen document has a permanent CDP session on `Runtime`, because a
+boot failure there is otherwise invisible.
 
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
-the harness deliberately does not intercept the dedicated worker directly. The
-browser assertions prove check-only behavior for enabled and disabled packages,
-one row's check and explicit Update without touching another package, persisted
-Settings status, atomic Update all replacement, the one global periodic
-alarm, scheduled installation for a disabled package, failure rollback without
-OPFS debris, and alarm recreation after the exact worker version stops. One
-more enables the generic package and hovers the reading page every 100 ms
-(Escape, then a fresh hover) through a scheduled update whose archive download
-is held until the Settings row reads *Updating…*: every hover renders the old
-generation's glossary until the new one appears, none shows the update notice,
-`hd_status.updating` reports the package through `downloading` and
-`installing` with `fallback: null`, and the old generation root is gone.
+do not intercept the dedicated worker directly. The first-run catalogue
+downloads are intercepted on the offscreen target as soon as it is named. The
+suite intercepts AnkiConnect on both the service-worker and offscreen targets, or
+refuses it, so a real Anki on port 8765 cannot decide an outcome; the word
+highlight checks use an AnkiConnect fake on the suite's own page server. The
+browser uses Chromium's `--disable-audio-output` fake output device, which runs
+native fetching, decoding and `ended` without audio hardware; without it, a
+headless macOS host accepts playback but stalls its audio clock at 64 ms. Audible
+output and installed speech voices are not proved. The native file-access switch is flipped
+in the isolated profile only, with Developer mode on (Chrome 152 otherwise
+disables a command-line extension when it reloads).
 
-### the profile
+### Other browser suites
 
-`/tmp/hachidori-e2e-profile-<pid>` unless `HACHIDORI_PROFILE` says otherwise, and the path is
-printed at the top of the run. Per-pid because two runs sharing one profile
-deadlock over the extension's leveldb: the second Chrome cannot open
-`chrome.storage.local` at all and every read comes back
-`IO error: …/LOCK … (ChromeMethodBFE: 15::LockFile::1)`, which surfaces as a
-pass-2 failure that reads exactly like a persistence regression. Two concurrent runs
-are now fine. A green run deletes its profile; a failing one keeps it and says so,
-because the profile is the only place the imported dictionary can be examined
-afterwards.
+These run separately:
 
-`HACHIDORI_PROFILE` is never deleted, and never created over something that is already
-there either: pass 1 has to import the fixture into a clean profile or the restart
-check proves nothing, so a non-empty `HACHIDORI_PROFILE` is a hard error naming the
-directory rather than an `rmSync` of whatever the reader pointed the variable at.
+- **`chrome-fallback.mjs`** loads a manifest without cross-origin isolation, so
+  pthreads are unavailable: import, custom source and restart through the
+  single-thread IDBFS bundle, with OPFS left empty and a first-run run whose
+  downloads are answered 503.
+- **`chrome-overlay.mjs`** runs overlay mode (GameSentenceMiner): capability
+  Settings, glyph selection, host events, Anki readiness, links after hovers and
+  drags.
+- **`chrome-sharing.mjs`** launches two real Chromes and the pinned Hachidori
+  Relay (unpacked from the downloaded add-on with Python's `zipfile`, on
+  `HACHIDORI_SHARING_PORT`, default 18771), links them, looks up, writes options
+  and personal entries through the host, mines through a mocked host AnkiConnect,
+  survives the host closing and relaunching, unlinks and relinks over the
+  network address, and runs a third overlay-mode browser. It needs `python3`, a
+  non-loopback address and the pinned GitHub release, or
+  `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a local
+  archive instead.
+- **`chrome-theme-contrast.mjs`** samples a monochrome and an untagged SVG in
+  every palette plus emulated forced colors (3:1 normally, 20:1 forced) and the
+  word-highlight lines on light and dark pages; `test/tmp/ci/theme-contrast.png`
+  is its filmstrip. Chrome emulation does not replace a check on a real Windows
+  contrast theme.
+- **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
+  headless Chrome records tab audio as silence), mines a fixture page served at a
+  Netflix watch address into a fake AnkiConnect: the WAV's beep within 125 ms,
+  a decodable looping GIF, restored playback, and hover pause.
+- **`chrome-custom-buttons-templates.mjs`** needs an isolated real Anki with
+  AnkiConnect on `HACHIDORI_ANKI_URL`; it creates only its `Hachidori I23` decks
+  and note types and deletes only notes tagged `hachidori-i23-e2e`.
+  `HACHIDORI_CUSTOM_BUTTONS_EVIDENCE_DIR` collects its evidence;
+  `HACHIDORI_CUSTOM_BUTTONS_PROFILE` and `HACHIDORI_CUSTOM_BUTTONS_REUSE_PROFILE=1`
+  are for diagnosis only.
+- **`chrome-theme-store.mjs`** is a focused theme-store check; `electron-backup.cjs`
+  is a real-Electron overlay backup regression (see its header).
+- `chrome-action-row`, `chrome-audio-chooser`, `chrome-compact-summary`,
+  `chrome-dynamic-headword`, `chrome-glossary-layout`, `chrome-lookup-count-layout`,
+  `chrome-structured-table`, `chrome-popup-resize`, `chrome-library-navigation`,
+  `chrome-settings-first-frame`, `chrome-settings-feedback-scenarios`,
+  `chrome-dictionary-management-scenarios`, `chrome-dictionary-rank-scenarios` and
+  `chrome-backup-scenarios.mjs` are scenarios `chrome-e2e.mjs` calls; each
+  header says what it renders and checks. `backup-engine-scenarios.mjs` is the
+  smoke suite's equivalent. `anki-connect-fake.mjs`, `anki-relay-server.mjs`,
+  `capture-resources.mjs` and `gif-structure.mjs` are shared helpers.
 
-### the denominator is fixed
+### The fixture
 
-`PLANNED` at the top of the file names all 301 assertions, and the summary line
-divides by `PLANNED.length`, not by the number of checks that happened to run.
-Anything in `PLANNED` that no `check()` reached is reported as
-`FAIL … check never ran`, and `check()` refuses a name that is not in the list or
-one that runs twice. So an early bail-out — no service worker, an engine that
-never becomes ready — costs the whole remaining list rather than shrinking the
-total: this file used to print "14/15 checks passed" for a run that abandoned
-three assertions, which reads like success. Nothing here is nested under an `if`
-that could quietly drop it either; a hover that produced no popup fails the four
-assertions about that popup's contents.
+`make-fixture.mjs` writes `test/fixtures/hachidori-fixture.zip`, a Yomitan
+format-3 dictionary, `hachidori-fixture-trained.zip` (enough term rows to cross
+the zstd-training floor), `hachidori-fixture-many-banks.zip` (twenty banks for the
+bounded scheduler) and `hachidori-generic-kanji-fixture.zip` (a term-only
+dictionary with single-kanji entries), plus malformed (`malformed-index.zip`),
+index-less (`no-index.zip`), non-ZIP (`not-a-zip.txt`), parent-title
+(`parent-title.zip`, which declares `..`) and atomic-replacement archives. The
+ZIP container is written by hand with `node:zlib`, checked against
+`third_party/hoshidicts/src/json/yomitan_parser.cpp` and `src/importer.cpp`;
+`python3 -m zipfile` and the native CLI both read it. Its builders
+(`buildTitledZip`, `buildRecommendedZip`, `imagePreviewFixture`, …) make the
+in-memory archives the suites need without changing these files, and it exports
+`EXPECTED` (the import counts, derived from the bank arrays) and
+`EXPECTED_GLOSSARIES`, so editing a bank cannot silently desync an expectation.
 
-A thrown exception is counted the same way. It used to bypass `report()`
-altogether, which threw away both the tally and the browser diagnostics in exactly
-the case where something crashed; now the top-level handler records
-`the run finished without throwing` as a failure — so the exit code is non-zero
-even for a throw after the last check — and goes through `report()`, which prints
-the stack, every assertion that never ran, and the offscreen document's console.
+| file | what it covers |
+| --- | --- |
+| `index.json` | `format: 3`, title, revision, `sequenced`, language and attribution fields |
+| `term_bank_1.json` | plain and `structured-content` glossaries (nested tags, `ul`, `table`, `img`), an inflected-verb target (`食べる`, `rules: "v1"`), a kana-only entry, tags on every row, two rows sharing one (expression, reading) |
+| `term_meta_bank_1.json` | `freq` in both shapes, a `pitch` entry with int and string positions, `nasal` and `devoice`, and an `ipa` entry |
+| `kanji_bank_1.json` | `食` with onyomi, kunyomi, tags, three definitions and three stats |
+| `tag_bank_1.json`, `styles.css` | seven tags; the stylesheet `hdw_styles` returns |
+| `media/kanji.png`, `media/` | a real 16×16 PNG, and a bare directory record that `get_files()` has to skip |
 
-### no sleeps
+`hdw_import` on `hachidori-fixture.zip` must report exactly `termCount 6`,
+`metaCount 4`, `frequencyCount 2`, `pitchCount 2`, `kanjiCount 1`, `mediaCount 1`,
+and the imported directory must hold `.hoshidicts_5` (0 bytes), `blobs.bin`
+(1447), `bloom.filter` (32), `hash.table` (260), `index.json` (738), `media.bin`
+(160) and `media.idx` (12). `index.json`'s size varies with `importDate`; if the
+counts change, check whether a bank was edited before assuming a regression.
 
-There is no fixed sleep standing in for synchronisation. The content script
-builds its host lazily on the first hover, so there is nothing in the DOM to wait
-for beforehand and a mouse move that lands before its listeners attach is simply
-lost; `hoverForPopup()` therefore re-fires `mousemove` (stepping off the word and
-back on, because `mousemove` needs a position change) until the popup is
-actually visible. Bounded polls wait for observable DOM, storage, OPFS, CDP, or
-alarm state. The scheduled-update cases create real near-future Chrome alarms
-and wait for both package state and the global completed-check timestamp; the
-`<img>` poll likewise stops at the first read that contains the media response.
+The importer trains a zstd dictionary from the first term bank when it can sample
+at least eight glossaries, which changes the marker to `.hoshidicts_6` and adds a
+`dict.zstd`. The six-row fixture stays deliberately under that floor
+(`TRAINING_SAMPLE_FLOOR` pins it, and `node-smoke.mjs` fails if `TERMS` grows past
+it); the 49-row trained fixture is the other side, and both are loaded together,
+as after an engine upgrade. `.hoshidicts_4` and `_3` are the same pair from
+engines that stored the score as an int32; `test/legacy/` keeps one directory of
+each, so the compatibility check loads bytes the current importer no longer
+produces. `dict.zstd` is mandatory with marker `_4`, and arbitrary bytes cannot
+masquerade as a trained dictionary.
 
-### what the assertions are pinned to
+The fixture's Japanese is deliberately narrow: `食べる` (ichidan verb, the
+deinflection target), `読む` (godan, second frequency shape), `漢字` (structured
+content), `ありがとう` (kana-only), `食` (kanji bank). `baseline.sh`'s word list is
+a separate literal that has to be kept in step with `node-smoke.mjs`'s.
 
-Dictionary stylesheet installation moved from jsdom to four real-Chrome checks:
-jsdom cannot exercise constructed stylesheets, CSS nesting, or `@scope`. The
-production `applyDictionaryStyles` runs inside a shadow root with the production
-reader stylesheet. Tests verify escaped canonical titles, malformed-brace
-containment, nested formatting, duplicate suppression, and generation replacement.
-Resource probes intercept and abort a reserved `.invalid` origin; direct and
-escaped URLs, image-set strings, shorthand and escaped variables, comment-like
-strings, and page-defined fonts/functions/registered properties must neither
-apply a resource nor request it. Benign nested gradients and numeric variables
-still render through the typed wrappers. A dictionary's own custom properties
-drive lengths, colors and fallbacks, and a grammar-card disclosure keeps its
-flex summary and block chevron; page-inherited and page-registered values under
-the same names reach none of them.
-The existing glossary card must contain fixed-position descendants and oversized
-shadows without intercepting the reader control above it. The engine's exact
-`hd_styles` response remains independently covered by the extension smoke suite.
-Set `HACHIDORI_POPUP_SCREENSHOT` to an output PNG path to capture the ordinary
-structured-content popup after its media reply, using the same complete run.
+### node-smoke details
 
-Media ownership checks delay a completed real offscreen/WASM media reply at
-the service-worker relay while reimporting its package and loading the new
-image. Releasing the old reply cannot replace or evict the current image.
-A separately injected transient reply failure leaves the definition and a
-readable alt/error label intact; another hover performs a fresh successful
-fetch. `HACHIDORI_MEDIA_FAILURE_SCREENSHOT` captures that failure state, including
-the 16-pixel image case that previously clipped its error text. These controlled
-reply faults are correctness diagnostics, not image-latency measurements.
-Another browser fixture renders two copies of twelve distinct images. Holding
-completed native replies proves only four distinct requests dispatch at once;
-hiding before release prevents the other eight obsolete jobs from dispatching.
-A new hover reuses the four completed resources and loads the remaining eight,
-with exact PNG URLs and decoded dimensions checked for all 24 image elements.
+- Import is marker-agnostic: which marker the importer writes depends on whether
+  it trained a zstd dictionary.
+- The Emscripten mmap regression: `hash.table` and `bloom.filter` must be
+  non-empty *and* not zero-filled (their headers and at least one set slot are
+  read). Before the submodule's fd fix they had the right size and were all zeros,
+  and every lookup then returned nothing.
+- `LookupResult` is checked field by field with **no extra keys**, and glossaries
+  byte for byte against the term bank.
+- Error paths matter as much as the happy path, because an uncaught C++
+  exception aborts the wasm instance and the offscreen document with it; each
+  asserts the return value *and* `hdw_last_error`, then re-runs a real lookup.
+- Import staging: titles such as `..` and `sub/dir` are refused with nothing
+  deleted, and a re-import that fails after the title is parsed leaves the
+  installed copy working.
+- Two behaviours worth knowing: the `hdw_lookup` failure fallback is the literal
+  `{"results":[],"dictionaryCount":0}`, so `dictionaryCount` reads 0 even when
+  dictionaries are loaded; and `hdw_media` returning 0 for an absent path leaves
+  `hdw_last_error` **empty**, while null arguments and oversized references set
+  it. Callers must inspect it before treating a zero length as a miss.
 
-The image-preview fixture adds two genuine AVIF/SVG resources, with a second
-use of the SVG below a long glossary to exercise keyboard-induced scrolling.
-Chrome verifies exact sources and decoded dimensions, two native media requests
-for all three inline images, larger preview bounds outside the card's paint
-containment, viewport clamping, original-link keyboard focus, and reduced motion.
-The focused preview survives Chrome scrolling its owner into view; hover scroll,
-leave and blur close it. Holding a completed real navigation lookup verifies
-dismissal before the reply and refuses reopening from the still-connected old
-image. `HACHIDORI_IMAGE_PREVIEW_SCREENSHOT` captures the enlarged SVG in the
-closed shadow root. `imagePreviewFixture()` keeps these resources separate from
-the standard fixtures and their documented counts; its tiny AVIF was encoded
-once with FFmpeg/libaom and carries its command/hash in the builder, so tests
-need no encoder dependency.
-
-The separate `imageSizingFixture()` imports one PNG used by 14 dimension cases.
-Chrome checks exact decoded bytes, unchanged physical geometry for seven
-ordinary/preferred/em cases, and bounded geometry for the tall-aspect and
-floating-point edge cases. The one-pixel-wide tall case previously reached
-roughly 33 million pixels high through raw CSS `aspect-ratio`; it must now use
-the existing 10,000% sizer limit (100 pixels). The standard fixture counts and
-archive admission rules remain unchanged.
-
-`gaijiSizingFixture()` adds Meikyo-style gaiji and two images that declare one
-side of a 32×16 SVG, as 日本国語大辞典's accent labels declare only
-`height: 1.2em`. Chrome checks each box against the decoded ratio (2.4em by
-1.2em, 24px by 12px) and that the dictionary's `img { margin; padding }` rule
-leaves every image layer exactly on its container.
-
-`chrome-glossary-layout.mjs` renders a three-gloss plain row with tags and a
-Jitendex-shaped structured row, styled by Jitendex's own list rules, through
-`createPopupView` with the production stylesheet in a standards-mode shadow
-root. With Compact glossaries on, the tags and plain glosses share one line
-box; each later gloss carries the ` | ` bar; Jitendex's glossary lists compute
-`display: inline` and `padding-left: 0px` while its sense groups, example box
-and ★ tag row keep their lines; structured content starts at the same offset
-as in Default; a blurred definition still renders blurred; and Puppeteer's
-accessibility snapshot reads list items without a bar. The bar must reach 3:1
-against the card in every palette, and switching back restores the exact card
-heights.
-
-`chrome-lookup-count-layout.mjs` renders the primary entry the same way at every
-even popup width from 280 to 600 px, with no, four and four named frequency tags
-(#486). A count on its way keeps a place after the tags and paints nothing;
-painting counts from 0 to 99 leaves the tags, the count and the first definition
-card exactly where they were, and longer counts still never move the tags. A
-count that will not arrive keeps no place, and the accessibility snapshot exposes
-only the painted count, still before the tags.
-
-- The popup's **structure**, not just its flattened text. `popupReader()` reports
-  `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
-  fixture's bold span is bold through a style object), so the structured-content
-  checks name a `ul` with its two `li`, a `table` with the `on`/`kun` rows, a bold
-  `span` element and the `img`. A renderer that flattened everything into one text
-  node passes every text-based `includes` — that was the old check, and the flatten
-  is a two-character edit in `render/glossary.js`.
-- The **extension's own** highlight, read back as
-  `CSS.highlights.get(HIGHLIGHT_NAME).size` while a Japanese word is hovered and
-  again after Escape. The name comes out of `extension/content.js` with a regex
-  rather than being copied here, so a rename cannot leave the assertion pointing
-  at a dead registry key. Asserting that `CSS.highlights` merely exists tests
-  Chrome, not the extension, and passes with the extension uninstalled.
-- "No popup for latin text" is **bracketed**: the popup is asserted to be on
-  screen the moment before the pointer moves to `hello world`, and the same hover
-  routine is asserted to produce a popup again afterwards. On its own that check
-  passes against an extension whose hover is completely dead; bracketing keeps
-  that negative check from going green by itself.
-- `#import-file` is checked for `type="file"`, `multiple`, and an `accept` list
-  containing `.zip`, not just for existing. The three-file selection must retain
-  success, failure, and success outcomes in order and clear the picker afterwards.
-- Reimport in that batch keeps the logical package's stable ID, position, alias,
-  enabled/favourite state, and managed update source while clearing stale
-  generation-bound check state. The Settings row then exposes its canonical
-  title, alias, metadata, and all five capability badges, while the actual
-  checkbox is used for both an enable and a
-  disable commit.
-- Stable IDs are checked against the two fixtures' exact title-derived values,
-  not only against a hexadecimal shape, and the two IDs must differ.
-- The favourite package's popup tab uses its alias while lookups and stored state
-  continue to use the canonical dictionary title.
-- The post-restart `hd_status` must report `dictionaryCount === 4`: every kind
-  the combined fixture registers, while the deliberately disabled generic
-  package stays disabled. `>= 1` also passes for a reload that lost frequency
-  and pitch data and would then answer a bare lookup with no tags.
-- The OPFS path is imported into a fresh generation, replaced by another fresh
-  generation, and killed with `SIGKILL` after the old root is retired. The
-  committed generation must be restored, queried again, and removed; removal
-  clears settings rows, deletes its root, and turns the same query into a checked
-  miss.
-- The managed-update block counts both index and archive requests. **Check now**
-  must touch both indexes and neither archive; Update all and alarm-triggered
-  runs must replace the intended disabled package while preserving its stable
-  identity and presentation. A revision mismatch must leave the exact OPFS path
-  set unchanged and the engine ready before the service worker is restarted.
-- The custom block checks that source is not read before its editor opens, has
-  no arbitrary text-length cap, compiles through real WASM, and remains fixed
-  first and enabled. Term and kanji Note appends must each publish a new
-  generation, refresh the exact view, preserve Back context, and leave only the
-  final committed generation before the custom package is removed.
-
-Two things about reading the popup:
-
-- Its shadow root is `mode: "closed"`, and puppeteer's `pierce/` selectors walk
-  `element.shadowRoot` from injected script, which is `null` for a closed root.
-  They find nothing. CDP's `DOM.getDocument` with `pierce: true` does report the
-  closed root and its subtree, so `popupReader()` goes through a session.
-- The headword is furigana ruby, so `textContent` interleaves the reading into the
-  expression: 食べる with a た over 食 reads `食たべる`. `popupReader()` returns
-  both that and a `plain` copy with the `<rt>` removed.
-
-The offscreen document has a permanent CDP session on `Runtime`, because it has no
-console anyone reads and a boot failure there is otherwise invisible: its
-`consoleAPICalled` and `exceptionThrown` events go into the diagnostics the run
-prints after a failure.
-
----
-
-## `chrome-fallback.mjs`
-
-This loads a temporary extension manifest without cross-origin isolation, making
-pthreads unavailable. It imports a Yomitan archive, saves custom source through
-the production compiler and single-thread IDBFS bundle, closes Chrome, and
-launches the same fallback build against the retained profile. Both launches
-must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
-fixture and custom-dictionary lookups, restore the revisioned source and fixed
-package, and leave OPFS empty. The fresh profile also starts the first-run
-dictionary run inside the fallback engine; its five catalogue downloads are
-answered 503 on the offscreen target so nothing reaches the network, the run
-must record one failed outcome per source before the fixture import shares the
-same engine lock, and the relaunch must neither reseed the setup record nor
-request an archive again.
-
----
-
-## `baseline.sh`
+### baseline.sh
 
 Builds the engine natively with `-DHOSHIDICTS_CLI=ON`, imports the same fixture
-with `hoshidicts-cli`, and dumps the same word list. Output goes to
-`test/tmp/baseline.txt`, with `runtime:` lines stripped and no absolute paths, so
-it can be diffed run to run.
+with `hoshidicts-cli`, and dumps the same word list to `test/tmp/baseline.txt`
+(no `runtime:` lines or absolute paths, so runs diff cleanly). It shows that the
+submodule's `#ifdef __EMSCRIPTEN__` portability patches leave native behaviour
+alone, and gives the wasm results an independent comparison: byte-identical
+`hash.table`, `bloom.filter`, `blobs.bin`, `media.bin` and `media.idx`, and the
+same glossaries, traces, frequencies and kanji stats `node-smoke.mjs` asserts.
 
-Two things it buys:
+The engine is C++23 (`std::ranges::to`, `std::views::as_rvalue`, `std::format`)
+with glaze v8, so it needs GCC ≥ 14, or clang ≥ 17 with libc++ ≥ 17 / libstdc++
+≥ 14 headers. The script probes `g++-15 g++-14 gcc15-g++ gcc14-g++ g++ clang++-20
+clang++-19 clang++-18 clang++` with a program using exactly those features and
+uses the first that compiles and runs; `CXX=… CC=…` overrides it, and an explicit
+`$CXX` that fails the probe is a hard error. Exit codes: `0` success, `1` build or
+run failure (with the tail of `test/tmp/{configure,build}.log`), `3` no usable
+compiler. Nothing else needs a native compiler.
 
-- The submodule's two Emscripten portability patches are `#ifdef __EMSCRIPTEN__`
-  guarded. Building and running natively shows they did not change native
-  behaviour.
-- The wasm results get something independent to be compared against. The native
-  import produces byte-identical `hash.table` (260), `bloom.filter` (32),
-  `blobs.bin` (1307), `media.bin` (160) and `media.idx` (12), and the same
-  glossaries, traces, frequencies and kanji stats that `node-smoke.mjs` asserts.
+## Environment variables
 
-### compiler requirement
+| variable | effect |
+| --- | --- |
+| `HACHIDORI_JSDOM` | directory above a `node_modules` holding jsdom (the launcher sets `test/tooling`) |
+| `HACHIDORI_PUPPETEER`, `HACHIDORI_CHROME`, `HACHIDORI_CHROME_BUILD` | the puppeteer-core entry, a Chrome executable, or an exact Chrome for Testing build |
+| `HACHIDORI_ALLOW_NO_SANDBOX=1` | run Chrome without its sandbox (containers) |
+| `HACHIDORI_PROFILE`, `HACHIDORI_FALLBACK_PROFILE`, `HACHIDORI_SHARING_HOST_PROFILE`, `HACHIDORI_SHARING_CLIENT_PROFILE` | a browser profile to use instead of a fresh per-pid one |
+| `HACHIDORI_FALLBACK_EXTENSION` | where `chrome-fallback.mjs` writes its temporary extension copy |
+| `HACHIDORI_HEADLESS=shell`, `HACHIDORI_DUMPIO=1` | `chrome-e2e.mjs` on the old headless shell; Chrome's own output |
+| `HACHIDORI_WASM_VARIANT` | `threaded-idbfs` or `fallback` for `node-smoke.mjs` |
+| `HACHIDORI_SHARING_PORT`, `HACHIDORI_ANKI_ADDON`, `HACHIDORI_RELAY_SERVER` | the sharing relay's port, a local add-on archive, the relay server script to run |
+| `HACHIDORI_ANKI_URL`, `HACHIDORI_CUSTOM_BUTTONS_*` | the real-Anki custom-buttons harness |
+| `HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK`, `HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK`, `HACHIDORI_SHARING_BENCHMARK` | write benchmark evidence to that path |
+| `HACHIDORI_BACKUP_BASELINE=HEAD` | `electron-backup.cjs` against the original Settings files |
+| `HACHIDORI_*_SCREENSHOT`, `HACHIDORI_*_SCREENSHOTS`, `HACHIDORI_*_EVIDENCE`, `HACHIDORI_*_FILMSTRIP`, `HACHIDORI_THEME_OUTPUT` | an output path (or directory): the test that renders that state saves its PNG or JSON there. `grep -rn 'process.env.HACHIDORI_' test/` lists them; the launcher sets `HACHIDORI_DEINFLECTION_SCREENSHOT`, `HACHIDORI_SETTINGS_THEME_FILMSTRIP` and `HACHIDORI_SHARING_SCREENSHOTS` under `test/tmp/ci`. |
 
-Older default toolchains such as Clang 15 or GCC 11 cannot build the engine. The
-engine is C++23 (`std::ranges::to` and
-`std::views::as_rvalue` in `src/query.cpp` and `src/lookup.cpp`, `std::format` in
-`cli/main.cpp`) and `external/glaze` is v8. You need GCC ≥ 14, or clang ≥ 17 with
-libc++ ≥ 17 / libstdc++ ≥ 14 headers.
-
-The script does not hardcode a version test. It probes candidates in order with a
-program that uses exactly the three gating features, and uses the first one that
-compiles *and* runs:
-
-```
-g++-15  g++-14  gcc15-g++  gcc14-g++  g++  clang++-20  clang++-19  clang++-18  clang++
-```
-
-Override with `CXX=… CC=… ./test/baseline.sh`; an
-explicitly set `$CXX` that fails the probe is a hard error rather than being
-silently skipped.
-
-Exit codes: `0` success, `1` build or run failure (the tail of
-`test/tmp/{configure,build}.log` is printed), `3` no usable compiler — in which
-case it explains what to install. Nothing else in the repo needs a native
-compiler, so a `3` costs the native/wasm cross-check and nothing else;
-`node-smoke.mjs` still covers the ABI in full.
-
----
-
-## notes
+## Notes
 
 - Every file in `test/fixtures/` is generated by `make-fixture.mjs`, so
   `.gitignore` ignores the whole directory.
-- The fixture's Japanese is deliberately narrow: `食べる` (ichidan verb, the
-  deinflection target), `読む` (godan, second frequency shape), `漢字` (structured
-  content), `ありがとう` (kana-only), `食` (kanji bank). Adding entries means
-  updating nothing by hand — `EXPECTED` is derived from the arrays — but it will
-  change the counts printed above, and `baseline.sh`'s word list is a separate
-  literal that has to be kept in step with `node-smoke.mjs`'s.
+- Content scripts do not run on `chrome-extension://`, `about:blank`, or `file://`
+  without a per-extension opt-in, so the Chrome suite serves its reading pages
+  over `http://127.0.0.1`.
