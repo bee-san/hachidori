@@ -2285,6 +2285,10 @@ textarea {
   .lookup-group {
     container-type: inline-size;
   }
+  /* On a phone a switch's description may run under the switch's column. */
+  .lookup-enable + .field-hint {
+    padding-right: 0;
+  }
   /* A long title and "Unsaved changes…" do not fit one row on a phone. */
   .card > .options-feedback-slot:has(#options-status.is-quiet) {
     position: static;
