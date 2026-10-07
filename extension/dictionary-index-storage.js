@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // A residency budget, never a limit on the packages or results we load.
-// Chosen from the measured tradeoff in docs/benchmarks/index-residency.md.
+// Chosen from the measured tradeoffs in docs/benchmarks/index-residency.md
+// (Low memory mode) and docs/benchmarks/default-ram.md (normal mode).
 export const RESIDENT_HASH_BUDGET_BYTES = 32 * 1024 * 1024;
 export const DEFAULT_RESIDENT_HASH_BUDGET_BYTES = 65 * 1024 * 1024;
 
