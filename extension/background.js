@@ -5,6 +5,7 @@ import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
+import { captureNetflixPreview } from "./netflix-preview.js";
 import { detectLocalAudioSource } from "./local-audio-setup.js";
 import { createLocalAudioSource, findLocalAudioSource } from "./local-audio-source.js";
 import { lookupAnkiIndex, lookupAnkiIndexMany } from "./anki-index.js";
@@ -2147,7 +2148,7 @@ async function screenshotOwnedTab(sender, startup) {
 
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
-async function captureSenderViewport(sender) {
+async function captureSenderViewport(sender, options) {
   const startup = startupSender(sender);
   if (typeof sender.tab?.id !== "number" && !startup) {
     throw new Error("Only a reading tab can be captured.");
@@ -2155,11 +2156,28 @@ async function captureSenderViewport(sender) {
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, startup);
+    const preview = options.experimental.netflixPreviewScreenshots === true && !startup && (sender.frameId ?? 0) === 0
+      && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url);
     let captured;
     try {
-      captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+      if (preview) {
+        const [injection] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, documentIds: [sender.documentId] }, world: "MAIN",
+          func: captureNetflixPreview, args: [tab.url],
+        });
+        if (injection?.documentId !== sender.documentId || injection?.frameId !== 0) {
+          throw new Error("The reading document changed before the Netflix preview was read.");
+        }
+        if (typeof injection.result?.error === "string") throw new Error(injection.result.error);
+        captured = injection.result?.dataUrl;
+        if (typeof captured !== "string" || !captured.startsWith("data:image/jpeg;base64,/9j/")) {
+          throw new Error("Netflix preview screenshot: no JPEG preview image was returned.");
+        }
+      } else {
+        captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+      }
     } catch (error) {
-      if (attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
+      if (preview || attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
       continue;
     }
@@ -2523,7 +2541,7 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") {
-      return service.screenshot(() => captureSenderViewport(sender), message.templateId);
+      return service.screenshot(options => captureSenderViewport(sender, options), message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
       const status = await service.status(message.templateId);
